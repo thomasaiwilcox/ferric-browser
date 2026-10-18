@@ -24,7 +24,11 @@ impl qobject::BrowserUi {
             Some(value) => match value {
                 "active" => state.active_window(),
                 "last-focused" => state.last_focused_window().or(state.active_window()),
-                _ => return Err("window query accepts active or last-focused".into()),
+                value => Some(
+                    WindowId::from_display(value)
+                        .filter(|id| state.windows().contains_key(id))
+                        .ok_or_else(|| "requested window is no longer available".to_owned())?,
+                ),
             },
         };
         let tabs = state
@@ -92,7 +96,11 @@ impl qobject::BrowserUi {
             Some(value) => match value {
                 "active" => state.active_window(),
                 "last-focused" => state.last_focused_window().or(state.active_window()),
-                _ => return Err("window query accepts active or last-focused".into()),
+                value => Some(
+                    WindowId::from_display(value)
+                        .filter(|id| state.windows().contains_key(id))
+                        .ok_or_else(|| "requested window is no longer available".to_owned())?,
+                ),
             },
         };
         let windows = state

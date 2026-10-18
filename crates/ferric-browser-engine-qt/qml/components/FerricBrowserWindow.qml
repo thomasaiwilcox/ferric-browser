@@ -4,10 +4,13 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
+import "../scripts/ChromePresentation.js" as ChromePresentation
+import "../scripts/CloseRequests.js" as CloseRequests
 
 ApplicationWindow {
     required property var rootWindow
     id: secondaryWindow
+    readonly property var modalInputScope: FerricModalInputController { hostWindow: secondaryWindow }
     readonly property alias browserKeyRouterObject: secondaryKeyRouter
     width: 1180
     height: 760
@@ -15,10 +18,25 @@ ApplicationWindow {
     title: secondaryWindow.windowEphemeralProfile
            ? "Ferric Browser · " + secondaryWindow.windowProfileLabel
            : "Ferric Browser · " + secondaryWindow.windowProfileName
-    color: rootWindow.backgroundColor
-    font: rootWindow.font
-    palette: rootWindow.palette
+    color: secondaryAppearance.backgroundColor
+    font: secondaryAppearance.font
+    palette.window: secondaryAppearance.backgroundColor
+    palette.windowText: secondaryAppearance.primaryTextColor
+    palette.base: secondaryAppearance.surfaceColor
+    palette.alternateBase: secondaryAppearance.panelColor
+    palette.text: secondaryAppearance.primaryTextColor
+    palette.button: secondaryAppearance.surfaceColor
+    palette.buttonText: secondaryAppearance.primaryTextColor
+    palette.highlight: secondaryAppearance.selectionColor
+    palette.highlightedText: secondaryAppearance.selectionTextColor
+    palette.placeholderText: secondaryAppearance.mutedTextColor
+    palette.link: secondaryAppearance.accentColor
     property string windowStartupUrl: "about:blank"
+    readonly property alias windowUi: secondaryUi
+    readonly property alias chromeAppearance: secondaryAppearance
+    readonly property string displayScaleLabel: ChromePresentation.displayScaleLabel(
+                                                   Screen.devicePixelRatio, Screen.logicalPixelDensity)
+    signal bookmarkTransferStarted(var destinationUi, bool queued)
     property string windowBookmarkTransferUrl: ""
     property string windowBookmarkTransferTitle: ""
     property string windowProfileName: "secondary"
@@ -31,19 +49,33 @@ ApplicationWindow {
     property bool windowEphemeralProfile: false
     property string windowEphemeralInvocationToken: ""
     property var windowSharedProfile: null
+    property var windowInheritedUi: null
     property var windowSharedRequestInterceptor: null
+    property bool windowPopup: false
+    property var windowPopupRequest: null
+    property var windowPopupOpenerUi: null
+    property string windowPopupToken: ""
+    FerricPopupOwnerBridge { id: popupOwnerBridge }
     property var windowTransferView: null
     property var windowTransferSourceUi: null
     property var windowTransferSourceHost: null
     property string windowTransferOperationId: ""
     property string windowTransferPayload: ""
-    property var windowFallbackView: null
     property var windowPreparedTransferFallback: null
     property var windowDetachedView: null
-    property var devToolsWindow: null
-    property bool devToolsVisible: false
-    property var devToolsAttachedView: secondaryDevToolsLoader.item
-    property bool windowDetachedWasTransfer: false
+    readonly property alias devToolsWorkspace: secondaryDevTools
+    readonly property var devToolsWindow: secondaryDevTools.detachedWindow
+    readonly property bool devToolsVisible: secondaryDevTools.visible
+    readonly property var devToolsAttachedView: secondaryDevTools.attachedInspector
+    FerricDevToolsWorkspace {
+        id: secondaryDevTools
+        browserWindow: rootWindow
+        hostWindow: secondaryWindow
+        browserUi: secondaryUi
+        activeView: secondaryWindow.activeView
+        windowFactory: rootWindow.devToolsWindowFactory
+        attachedInspector: secondaryDevToolsLoader.item
+    }
     readonly property bool windowTransferMode: windowTransferView !== null
     readonly property bool inputBarActive: secondaryUi.mode === "command"
                                            || secondaryUi.mode === "search"
@@ -53,15 +85,37 @@ ApplicationWindow {
     property string pendingInteractiveCommand: ""
     readonly property bool statusBarVisible:
         (secondaryWindow.commandNoticeVisible && !secondaryWindow.inputBarActive)
-        || rootWindow.statusBarVisibleForMode(secondaryUi.mode)
-    readonly property real bottomChromeHeight:
-        inputBarActive ? rootWindow.inputBarHeight
-                       : (statusBarVisible ? rootWindow.statusBarHeight : 0)
-    readonly property var activeView: windowTransferMode
-                                               ? windowTransferView
-                                               : (windowFallbackView || secondaryView)
+        || secondaryAppearance.statusBarVisibleForMode(secondaryUi.mode)
+    readonly property real bottomControlsHeight:
+        inputBarActive ? secondaryAppearance.inputBarHeight
+                       : (statusBarVisible ? secondaryAppearance.statusBarHeight : 0)
+    readonly property real bottomChromeHeight: bottomControlsHeight + secondaryProfileNotice.height
+    readonly property var activeView: tabViewAt(secondaryUi.active_tab_index)
+    readonly property alias hintWorkspace: secondaryHintWorkspace
+    readonly property bool rapidHintConfirmationVisible: secondaryHintWorkspace.rapidHintConfirmationVisible
+    readonly property alias tabsModel: secondaryTabs
+    property alias tabViews: secondaryTabController.tabViews
+    function tabViewAt(index) { return index >= 0 && index < tabViews.length ? tabViews[index] : null }
+    function activeWebView() { return activeView }
+    function refreshDownloads() { secondaryDownloads.refresh() }
+    function syncTabModel() { secondaryTabController.syncTabModel() }
     readonly property bool browserKeyFocusActive:
-        !rootWindow.browserChromeInputActive
+        secondaryWindow.profileBootstrapComplete
+        && !secondaryWindow.modalInputScope.activeSurface
+        && !secondaryWindow.inputBarActive
+        && !secondaryProfileNotice.inputActive
+        && !(rootWindow.copyNoticeInputActive && rootWindow.copyNoticeHost === secondaryWindow)
+        && !secondaryDevTools.inputActive
+        && !secondaryHintWorkspace.rapidHintConfirmationVisible
+        && !secondaryUi.target_search_active
+        && !secondaryUi.link_preview_visible
+        && !secondaryWindow.pendingFileDialogRequest
+        && secondaryWindow.pendingFileDialogLeaseToken.length === 0
+        && !rootWindow.presentedPromptActiveFor(secondaryUi)
+        && !(rootWindow.rendererFailureVisible && rootWindow.rendererFailureHost === secondaryWindow)
+        && !secondarySettings.active
+        && !secondaryManagers.active
+        && !secondaryDownloads.active
         && !(activeView && activeView.nativeUrl === "rb://start" && activeView.startPage && activeView.startPage.inputActive)
         && !windowCloseConfirmationVisible
         && !windowShutdownPromptVisible
@@ -70,20 +124,20 @@ ApplicationWindow {
         && !secondaryUi.external_navigation_visible
     readonly property bool windowTransientProfile:
         windowPrivateProfile || windowEphemeralProfile
+    property var windowProfileResources: null
     readonly property var windowWebEngineProfile:
-        windowSharedProfile || secondaryProfile
+        windowProfileResources ? windowProfileResources.profile : null
     readonly property var windowRequestInterceptor:
-        windowSharedProfile
-        ? (windowSharedRequestInterceptor || rootWindow.primaryRequestInterceptor)
-        : secondaryRequestInterceptor
+        windowProfileResources ? windowProfileResources.interceptor : null
     property var permissionPromptSurface: null
     property var desktopMediaSurface: null
     property var captureIndicatorSurface: null
     property var rendererFailureSurface: null
     property var pendingFileDialogRequest: null
     property var pendingFileDialogView: null
-    property bool pendingFileDialogWaitingForPortal: false
-    property double pendingFileDialogPortalDeadlineMs: 0
+    property string pendingFileDialogLeaseToken: ""
+    property bool profileBootstrapComplete: false
+    property bool runtimeReleased: false
     property bool windowShutdownApproved: false
     property bool windowCloseConfirmationVisible: false
     property bool windowShutdownPromptVisible: false
@@ -92,6 +146,11 @@ ApplicationWindow {
     property string windowShutdownPagePromptReason: ""
     property int windowShutdownPageProbeGeneration: 0
     property var activeDownloads: ({})
+    property var pendingDownloadRequests: ({})
+    property string pendingDownloadId: ""
+    property string pendingDownloadSuggestedName: ""
+    readonly property alias downloadsModel: secondaryDownloads.downloadsModel
+    readonly property alias downloadManagerVisible: secondaryDownloads.downloadManagerVisible
     property bool caretSelecting: false
 
     Timer {
@@ -179,6 +238,8 @@ ApplicationWindow {
     }
 
     onActiveChanged: {
+        secondaryUi.set_ipc_window_active(active)
+        if (!active && rootWindow.copyNoticeHost === secondaryWindow) rootWindow.copyNoticeVisible = false
         if (!active && secondaryUi.mode === "pass-through-once") {
             secondaryUi.escape()
         }
@@ -199,6 +260,7 @@ ApplicationWindow {
 
     onClosing: function(close) {
         if (secondaryWindow.windowShutdownApproved) {
+            secondaryWindow.releaseWindowResources()
             return
         }
         close.accepted = false
@@ -206,6 +268,7 @@ ApplicationWindow {
     }
 
     function hasActiveDownloads() {
+        if (secondaryUi.has_finalizing_downloads && secondaryUi.has_finalizing_downloads()) return true
         if (secondaryWindow.pendingDownloadId.length > 0) {
             return true
         }
@@ -223,42 +286,28 @@ ApplicationWindow {
         return false
     }
 
-    function downloadOwnerFor(download) {
-        var view = download && download.view
-        if (!view) {
-            return secondaryWindow
-        }
-        var popups = rootWindow.popupWindowRegistry || []
-        for (var i = 0; i < popups.length; ++i) {
-            if (popups[i] && popups[i].view === view && popups[i].host) {
-                return popups[i].host
-            }
-        }
-        return secondaryWindow
-    }
-
     function checkPageStateBeforeQuit() {
         var generation = ++secondaryWindow.windowShutdownPageProbeGeneration
-        var view = secondaryWindow.activeView
-        if (!view || view.lifecycleState !== WebEngineView.LifecycleState.Active) {
-            secondaryWindow.finalizeQuit()
-            return
-        }
         secondaryShutdownPageProbeTimer.restart()
-        view.runJavaScript(rootWindow.shutdownPageProbeScript(), function(result) {
-            if (generation !== secondaryWindow.windowShutdownPageProbeGeneration) {
-                return
-            }
-            secondaryShutdownPageProbeTimer.stop()
-            if (result === "clean") {
-                secondaryWindow.finalizeQuit()
-                return
-            }
-            secondaryWindow.windowShutdownPagePromptReason = result === "dirty"
-                    ? "This page has unsaved form or editor state."
-                    : "Ferric Browser could not verify this page before closing."
-            secondaryWindow.windowShutdownPagePromptVisible = true
-        })
+        var candidates = []
+        for (var i = 0; i < tabViews.length; ++i) {
+            var view = secondaryWindow.tabViewAt(i)
+            if (view && view.lifecycleState === WebEngineView.LifecycleState.Active)
+                candidates.push(view)
+        }
+        CloseRequests.probePages(candidates,
+            function() { return generation === secondaryWindow.windowShutdownPageProbeGeneration },
+            function(view, reply) {
+                return rootWindow.runBrowserScript(view, rootWindow.shutdownPageProbeScript(), reply, 0)
+            },
+            function(result) {
+                secondaryShutdownPageProbeTimer.stop()
+                if (result.state === "clean") secondaryWindow.finalizeQuit()
+                else {
+                    secondaryWindow.windowShutdownPagePromptReason = result.reason
+                    secondaryWindow.windowShutdownPagePromptVisible = true
+                }
+            })
     }
 
     function cancelPageStateProbe() {
@@ -304,13 +353,14 @@ ApplicationWindow {
     }
 
     function cancelDownloadsAndQuit() {
+        rootWindow.profileResourceRegistry.cancelFinalizationsForHost(secondaryWindow)
         if (secondaryWindow.pendingDownloadId.length > 0) {
-            secondaryProfile.cancelPendingDownload()
+            secondaryWindow.cancelPendingDownload()
         }
         for (var pendingKey in secondaryWindow.pendingDownloadRequests) {
             var pendingDownload = secondaryWindow.pendingDownloadRequests[pendingKey]
             if (pendingDownload) {
-                rootWindow.resolveQtRequest(secondaryUi, pendingDownload, "download", "cancel", [])
+                rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, pendingDownload)
                 secondaryUi.update_download(
                     String(pendingKey), "cancelled", pendingDownload.receivedBytes, true)
             }
@@ -319,7 +369,7 @@ ApplicationWindow {
         for (var key in secondaryWindow.activeDownloads) {
             var download = secondaryWindow.activeDownloads[key]
             if (download && !download.isFinished) {
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+                rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
             }
         }
         secondaryWindow.activeDownloads = ({})
@@ -329,208 +379,182 @@ ApplicationWindow {
 
     FerricFileDialogSurfaces {
         id: secondaryDialogSurfaces
+        engineHostWindow: secondaryWindow
+        portalRequired: rootWindow.desktopPortalMode(secondaryUi) === "required"
+        onUserscriptManifestAccepted: secondarySettings.installManifest(userscriptManifestSelectedFile)
+        onUserscriptManifestFailed: function(message) { secondaryUi.status_text = message }
+        onDownloadAccepted: secondaryWindow.acceptPendingDownload()
+        onDownloadRejected: secondaryWindow.cancelPendingDownload()
+        onDownloadFailed: function(message) { secondaryWindow.failPendingDownload(message) }
         onEngineFileAccepted: secondaryWindow.acceptFileDialog()
         onEngineFileRejected: secondaryWindow.rejectFileDialog()
+        onEngineFileFailed: function(message) { secondaryWindow.clearSecondaryFileDialog(true, message) }
         onEngineFolderAccepted: secondaryWindow.acceptFolderDialog()
         onEngineFolderRejected: secondaryWindow.rejectFileDialog()
-    }
-
-    Timer {
-        id: secondaryFilePortalTimer
-        interval: 50
-        repeat: true
-        onTriggered: secondaryWindow.maybeOpenPendingFileDialog()
-    }
-
-    FileDialog {
-        id: secondaryDownloadChooser
-        title: "Choose download destination"
-        fileMode: FileDialog.SaveFile
-        nameFilters: ["All files (*)"]
-        onAccepted: secondaryProfile.acceptPendingDownload()
-        onRejected: secondaryProfile.cancelPendingDownload()
-    }
-
-    WebEngineProfile {
-        id: secondaryProfile
-        offTheRecord: secondaryWindow.windowTransientProfile
-        storageName: secondaryWindow.windowTransientProfile ? "" : "ferric-browser-" + secondaryWindow.windowProfileName
-        persistentStoragePath: secondaryWindow.windowTransientProfile
-                || secondaryWindow.windowStorageBasePath.length === 0
-                ? ""
-                : secondaryWindow.windowStorageBasePath + "/webengine/"
-                  + secondaryWindow.windowProfileName
-        cachePath: secondaryWindow.windowTransientProfile
-                || secondaryWindow.windowStorageBasePath.length === 0
-                ? ""
-                : secondaryWindow.windowStorageBasePath + "/webengine-cache/"
-                  + secondaryWindow.windowProfileName
-        persistentPermissionsPolicy: WebEngineProfile.AskEveryTime
-        spellCheckEnabled: rootWindow.spellcheckEnabled(secondaryUi)
-        spellCheckLanguages: rootWindow.spellcheckLanguages(secondaryUi)
-        isPushServiceEnabled: rootWindow.pushServiceEnabled(
-            secondaryUi, secondaryWindow.windowTransientProfile)
-
-        function acceptPendingDownload() {
-            var id = secondaryWindow.pendingDownloadId
-            var download = secondaryWindow.pendingDownloadRequests[id]
-            var selectedPath = secondaryDownloadChooser.selectedFile.toLocalFile()
-            if (!download) {
-                secondaryWindow.pendingDownloadId = ""
-                rootWindow.restoreOverlayFocus()
-                return
-            }
-            var finalName = secondaryUi.accept_download_path(id, selectedPath)
-            if (finalName.length === 0) {
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-            } else {
-                var separator = selectedPath.lastIndexOf("/")
-                var directory = separator > 0 ? selectedPath.slice(0, separator) : "/"
-                var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
-                if (stagingDirectory.length === 0) {
-                    rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                    secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                    delete secondaryWindow.pendingDownloadRequests[id]
-                    secondaryWindow.pendingDownloadId = ""
-                    secondaryWindow.pendingDownloadSuggestedName = ""
-                    rootWindow.restoreOverlayFocus()
-                    return
-                }
-                download.downloadDirectory = stagingDirectory
-                download.downloadFileName = finalName
-                secondaryWindow.activeDownloads[id] = download
-                download.stateChanged.connect(function() {
-                    secondaryUi.update_download(
-                        id, secondaryWindow.secondaryDownloadStateName(download),
-                        download.receivedBytes, false)
-                })
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
-                secondaryUi.update_download(id, "in-progress", 0, false)
-            }
-            delete secondaryWindow.pendingDownloadRequests[id]
-            secondaryWindow.pendingDownloadId = ""
-            secondaryWindow.pendingDownloadSuggestedName = ""
-            rootWindow.restoreOverlayFocus()
+        onEngineFolderFailed: function(message) { secondaryWindow.clearSecondaryFileDialog(true, message) }
+        onEngineChooserOpened: function(backend) {
+            if (!secondaryWindow.pendingFileDialogRequest) return
+            secondaryUi.status_text = backend === "system"
+                    ? "The system file chooser is open"
+                    : "The browser file chooser is open"
         }
+    }
 
-        function cancelPendingDownload() {
-            var id = secondaryWindow.pendingDownloadId
-            var download = secondaryWindow.pendingDownloadRequests[id]
-            if (download) {
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-            }
-            delete secondaryWindow.pendingDownloadRequests[id]
+    function acceptPendingDownload() {
+        var id = secondaryWindow.pendingDownloadId
+        var download = secondaryWindow.pendingDownloadRequests[id]
+        var selectedPath = secondaryUi.local_file_path(secondaryDialogSurfaces.downloadSelectedFile)
+        if (!download) {
             secondaryWindow.pendingDownloadId = ""
-            secondaryWindow.pendingDownloadSuggestedName = ""
-            rootWindow.restoreOverlayFocus()
+            rootWindow.restoreOverlayFocus(secondaryWindow)
+            return
         }
-
-        onDownloadRequested: function(download) {
-            var owner = secondaryWindow.downloadOwnerFor(download)
-            if (owner !== secondaryWindow && owner.handleDownloadRequested) {
-                owner.handleDownloadRequested(download)
-                return
-            }
-            var id = String(download.id)
-            var safeName = secondaryUi.offer_download(id, download.url.toString(), download.suggestedFileName)
-            var requestedPath = download.savePageFormat === WebEngineDownloadRequest.MimeHtmlSaveFormat
-                    ? secondaryUi.take_save_page_path() : ""
-            if (requestedPath.length > 0) {
-                var requestedName = secondaryUi.accept_download_path(id, requestedPath)
-                if (requestedName.length === 0) {
-                    rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                    secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                    return
-                }
-                var requestedSeparator = requestedPath.lastIndexOf("/")
-                var requestedDirectory = requestedSeparator > 0
-                        ? requestedPath.slice(0, requestedSeparator) : "/"
-                var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
-                if (stagingDirectory.length === 0) {
-                    rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                    secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                    return
-                }
-                download.downloadDirectory = stagingDirectory
-                download.downloadFileName = requestedName
-                secondaryWindow.activeDownloads[id] = download
-                download.stateChanged.connect(function() {
-                    secondaryUi.update_download(id, secondaryWindow.secondaryDownloadStateName(download), download.receivedBytes, false)
-                })
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
-                secondaryUi.update_download(id, "in-progress", 0, false)
-                return
-            }
-            var directory = secondaryUi.default_download_directory()
-            if (rootWindow.downloadsAskDestination()) {
-                if (secondaryWindow.pendingDownloadId.length > 0) {
-                    rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                    secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                    return
-                }
-                secondaryWindow.pendingDownloadRequests[id] = download
-                secondaryWindow.pendingDownloadId = id
-                secondaryWindow.pendingDownloadSuggestedName = safeName
-                rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
-                secondaryUi.update_download(id, "selecting-destination", 0, false)
-                secondaryDownloadChooser.currentFile = rootWindow.fileUrlForPath(
-                    directory + "/" + safeName)
-                secondaryDownloadChooser.open()
-                return
-            }
-            var finalName = secondaryUi.accept_download(id, directory, safeName)
-            if (finalName.length === 0) {
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                return
-            }
+        var finalName = secondaryUi.accept_download_path(id, selectedPath)
+        if (finalName.length === 0) {
+            rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
+            secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
+        } else {
+            var separator = selectedPath.lastIndexOf("/")
+            var directory = separator > 0 ? selectedPath.slice(0, separator) : "/"
             var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
             if (stagingDirectory.length === 0) {
-                delete secondaryWindow.activeDownloads[id]
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+                rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
                 secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
+                delete secondaryWindow.pendingDownloadRequests[id]
+                secondaryWindow.pendingDownloadId = ""
+                secondaryWindow.pendingDownloadSuggestedName = ""
+                rootWindow.restoreOverlayFocus(secondaryWindow)
                 return
             }
             download.downloadDirectory = stagingDirectory
             download.downloadFileName = finalName
-            download.stateChanged.connect(function() {
-                secondaryUi.update_download(id, secondaryWindow.secondaryDownloadStateName(download), download.receivedBytes, false)
-            })
-            rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
             secondaryWindow.activeDownloads[id] = download
+            rootWindow.attachDownloadStateUpdates(download, id, secondaryUi, secondaryWindow)
+            rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
             secondaryUi.update_download(id, "in-progress", 0, false)
         }
-        onDownloadFinished: function(download) {
-            var owner = secondaryWindow.downloadOwnerFor(download)
-            if (owner !== secondaryWindow && owner.handleDownloadFinished) {
-                owner.handleDownloadFinished(download)
+        delete secondaryWindow.pendingDownloadRequests[id]
+        secondaryWindow.pendingDownloadId = ""
+        secondaryWindow.pendingDownloadSuggestedName = ""
+        rootWindow.restoreOverlayFocus(secondaryWindow)
+    }
+
+    function failPendingDownload(message) {
+        var id = secondaryWindow.pendingDownloadId
+        var download = secondaryWindow.pendingDownloadRequests[id]
+        if (download) {
+            rootWindow.profileResourceRegistry.markDownloadSelectionFailed(download)
+            rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
+            secondaryUi.update_download(id, "interrupted", download.receivedBytes, true)
+        }
+        delete secondaryWindow.pendingDownloadRequests[id]
+        secondaryWindow.pendingDownloadId = ""
+        secondaryWindow.pendingDownloadSuggestedName = ""
+        rootWindow.restoreOverlayFocus(secondaryWindow)
+        secondaryUi.status_text = message
+    }
+
+    function cancelPendingDownload() {
+        var id = secondaryWindow.pendingDownloadId
+        var download = secondaryWindow.pendingDownloadRequests[id]
+        if (download) {
+            rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
+            secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
+        }
+        delete secondaryWindow.pendingDownloadRequests[id]
+        secondaryWindow.pendingDownloadId = ""
+        secondaryWindow.pendingDownloadSuggestedName = ""
+        rootWindow.restoreOverlayFocus(secondaryWindow)
+    }
+
+    function handleDownloadRequested(download, id, safeName) {
+        var requestedPath = download.savePageFormat === WebEngineDownloadRequest.MimeHtmlSaveFormat
+                ? secondaryUi.take_save_page_path() : ""
+        if (requestedPath.length > 0) {
+            var requestedName = secondaryUi.accept_download_path(id, requestedPath)
+            if (requestedName.length === 0) {
+                rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
+                secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
                 return
             }
-            var id = String(download.id)
-            var state = secondaryWindow.secondaryDownloadStateName(download)
-            if (state === "completed" && !secondaryUi.finalize_download(id)) {
-                state = "interrupted"
-            } else if (state !== "completed") {
-                secondaryUi.discard_download_staging(id)
+            var requestedSeparator = requestedPath.lastIndexOf("/")
+            var requestedDirectory = requestedSeparator > 0
+                    ? requestedPath.slice(0, requestedSeparator) : "/"
+            var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
+            if (stagingDirectory.length === 0) {
+                rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
+                secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
+                return
             }
-            delete secondaryWindow.activeDownloads[id]
-            delete secondaryWindow.pendingDownloadRequests[id]
-            if (secondaryWindow.pendingDownloadId === id) {
-                secondaryWindow.pendingDownloadId = ""
-                secondaryWindow.pendingDownloadSuggestedName = ""
-            }
-            secondaryUi.update_download(id, state, download.receivedBytes, true)
+            download.downloadDirectory = stagingDirectory
+            download.downloadFileName = requestedName
+            secondaryWindow.activeDownloads[id] = download
+            rootWindow.attachDownloadStateUpdates(download, id, secondaryUi, secondaryWindow)
+            rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
+            secondaryUi.update_download(id, "in-progress", 0, false)
+            return
         }
-        onPresentNotification: function(notification) {
-            rootWindow.presentWebNotification(
-                secondaryUi, notification, secondaryWindow.windowTransientProfile)
+        var directory = secondaryUi.default_download_directory()
+        if (rootWindow.downloadsAskDestination(secondaryUi)) {
+            if (secondaryWindow.pendingDownloadId.length > 0) {
+                rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
+                secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
+                return
+            }
+            secondaryWindow.pendingDownloadRequests[id] = download
+            secondaryWindow.pendingDownloadId = id
+            secondaryWindow.pendingDownloadSuggestedName = safeName
+            rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
+            secondaryUi.update_download(id, "selecting-destination", 0, false)
+            secondaryDialogSurfaces.downloadCurrentFile = rootWindow.fileUrlForPath(
+                directory + "/" + safeName)
+            secondaryDialogSurfaces.openDownload()
+            return
+        }
+        var finalName = secondaryUi.accept_download(id, directory, safeName)
+        if (finalName.length === 0) {
+            rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
+            return
+        }
+        var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
+        if (stagingDirectory.length === 0) {
+            delete secondaryWindow.activeDownloads[id]
+            rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
+            secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
+            return
+        }
+        download.downloadDirectory = stagingDirectory
+        download.downloadFileName = finalName
+        rootWindow.attachDownloadStateUpdates(download, id, secondaryUi, secondaryWindow)
+        rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
+        secondaryWindow.activeDownloads[id] = download
+        secondaryUi.update_download(id, "in-progress", 0, false)
+    }
+    function handleDownloadFinished(download, selectionFailed, id) {
+        var state = selectionFailed ? "interrupted" : secondaryWindow.secondaryDownloadStateName(download)
+        if (state === "completed") {
+            secondaryUi.update_download(id, "completed", download.receivedBytes, false)
+            if (secondaryUi.finalize_download(id)) return true
+            state = "interrupted"
+        }
+        secondaryUi.discard_download_staging(id)
+        secondaryUi.update_download(id, state, download.receivedBytes, true)
+        secondaryWindow.completeFinishedDownload(id)
+        return false
+    }
+
+    function completeFinishedDownload(id) {
+        delete secondaryWindow.activeDownloads[id]
+        delete secondaryWindow.pendingDownloadRequests[id]
+        if (secondaryWindow.pendingDownloadId === id) {
+            secondaryWindow.pendingDownloadId = ""
+            secondaryWindow.pendingDownloadSuggestedName = ""
         }
     }
 
     BrowserUi {
         id: secondaryUi
-        hint_chrome_available: false
+        hint_chrome_available: true
         status_text: "Ready"
         onRuntime_work_available: secondaryWindow.scheduleRuntimeWork(0)
         onStatus_textChanged: {
@@ -548,8 +572,30 @@ ApplicationWindow {
         }
     }
 
+    FerricWindowAppearance {
+        id: secondaryAppearance
+        browserUi: secondaryUi
+        hostWindow: secondaryWindow
+        themeWindow: rootWindow
+    }
+    FerricSettingsWorkspace {
+        id: secondarySettings
+        objectName: "secondarySettingsWorkspace"
+        browserWindow: secondaryAppearance
+        hostWindow: secondaryWindow
+        browserUi: secondaryUi
+        transientProfile: secondaryWindow.windowTransientProfile
+        profileLabel: secondaryWindow.windowProfileLabel
+        spellcheckStatus: rootWindow.spellcheckStatusText(secondaryUi)
+        spellcheckDictionariesMissing: rootWindow.spellcheckDictionaryStatus(secondaryUi).missing.length > 0
+        onOpening: rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
+        onClosed: rootWindow.restoreOverlayFocus(secondaryWindow)
+        onInstallManifestRequested: secondaryDialogSurfaces.openUserscriptManifest()
+    }
+
     FerricShutdownDecisionDialog {
         hostWindow: secondaryWindow
+        themeWindow: rootWindow
         promptVisible: secondaryWindow.windowCloseConfirmationVisible
         commandText: ":window-close"
         title: "Close this browser window?"
@@ -574,6 +620,7 @@ ApplicationWindow {
 
     FerricShutdownDecisionDialog {
         hostWindow: secondaryWindow
+        themeWindow: rootWindow
         promptVisible: secondaryWindow.windowShutdownPromptVisible
         commandText: ":window-close"
         title: "Active browser work is still running"
@@ -594,6 +641,7 @@ ApplicationWindow {
 
     FerricShutdownDecisionDialog {
         hostWindow: secondaryWindow
+        themeWindow: rootWindow
         promptVisible: secondaryWindow.windowShutdownPagePromptVisible
         commandText: ":window-close"
         title: "Page state may be lost"
@@ -616,6 +664,7 @@ ApplicationWindow {
 
     FerricShutdownDecisionDialog {
         hostWindow: secondaryWindow
+        themeWindow: rootWindow
         promptVisible: secondaryWindow.windowShutdownStoragePromptVisible
         commandText: ":window-close"
         title: "Durable profile state could not be flushed"
@@ -670,7 +719,7 @@ function onContext_workspaceChanged() {
             if (secondaryUi.external_navigation_visible) {
                 rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
             } else {
-                rootWindow.restoreOverlayFocus()
+                rootWindow.restoreOverlayFocus(secondaryWindow)
             }
         }
     }
@@ -685,35 +734,17 @@ function onContext_workspaceChanged() {
         }
     }
 
-    RequestInterceptor {
-        id: secondaryRequestInterceptor
-        enabled: secondaryUi.blocking_enabled || securityDenyHosts.length > 0
-        blockedHosts: secondaryUi.blocking_hosts
-        exceptionHosts: secondaryUi.blocking_exceptions
-        blockedRuleHosts: secondaryUi.blocking_rule_hosts
-        blockedRuleListIds: secondaryUi.blocking_rule_list_ids
-        exceptionRuleHosts: secondaryUi.blocking_exception_rule_hosts
-        exceptionRuleListIds: secondaryUi.blocking_exception_rule_list_ids
-        adblockEngineHandle: secondaryUi.blocking_adblock_handle
-        bypassSites: secondaryUi.blocking_bypass_sites
-        securityDenyHosts: secondaryUi.blocking_security_deny_hosts
+    FerricLinkPreview {
+        browserWindow: secondaryAppearance
+        hostWindow: secondaryWindow
+        previewUi: secondaryUi
+        onNavigationConfirmed: {
+            secondaryWindow.syncTabModel()
+            secondaryWindow.applySwitcherEngineAction()
+        }
     }
 
-    function secondaryDownloadStateName(download) {
-        if (download.state === WebEngineDownloadRequest.DownloadInProgress) {
-            return "in-progress"
-        }
-        if (download.state === WebEngineDownloadRequest.DownloadCompleted) {
-            return "completed"
-        }
-        if (download.state === WebEngineDownloadRequest.DownloadCancelled) {
-            return "cancelled"
-        }
-        if (download.state === WebEngineDownloadRequest.DownloadInterrupted) {
-            return "interrupted"
-        }
-        return "offered"
-    }
+    function secondaryDownloadStateName(download) { return rootWindow.downloadStateName(download) }
 
     function secondaryFileDialogPaths() {
         var paths = []
@@ -721,8 +752,8 @@ function onContext_workspaceChanged() {
                 ? secondaryDialogSurfaces.engineFileSelectedFiles
                 : [secondaryDialogSurfaces.engineFileSelectedFile]
         for (var i = 0; i < urls.length; ++i) {
-            var path = urls[i].toLocalFile()
-            if (!path || urls[i].scheme !== "file") {
+            var path = rootWindow.primaryBrowserUi.local_file_path(urls[i])
+            if (!path) {
                 return []
             }
             paths.push(path)
@@ -732,186 +763,85 @@ function onContext_workspaceChanged() {
 
     function secondaryFolderDialogPaths() {
         var url = secondaryDialogSurfaces.engineFolderSelectedFolder
-        var path = url && url.scheme === "file" ? url.toLocalFile() : ""
+        var path = rootWindow.primaryBrowserUi.local_file_path(url || "")
         return path ? [path] : []
     }
 
     function clearSecondaryFileDialog(cancelRequest, message) {
         var request = secondaryWindow.pendingFileDialogRequest
-        var hadRequest = !!request
+        var view = secondaryWindow.pendingFileDialogView
+        var leaseToken = secondaryWindow.pendingFileDialogLeaseToken
         secondaryWindow.pendingFileDialogRequest = null
         secondaryWindow.pendingFileDialogView = null
-        secondaryWindow.pendingFileDialogWaitingForPortal = false
-        secondaryWindow.pendingFileDialogPortalDeadlineMs = 0
-        secondaryFilePortalTimer.stop()
-        if (secondaryDialogSurfaces.engineFileVisible) {
-            secondaryDialogSurfaces.closeEngineFile()
-        }
-        if (secondaryDialogSurfaces.engineFolderVisible) {
-            secondaryDialogSurfaces.closeEngineFolder()
-        }
-        if (hadRequest) {
-            rootWindow.restoreOverlayFocus()
-        }
-        if (cancelRequest && request) {
+        secondaryWindow.pendingFileDialogLeaseToken = ""
+        secondaryDialogSurfaces.closeEngineFile()
+        secondaryDialogSurfaces.closeEngineFolder()
+        if (request) rootWindow.restoreOverlayFocus(secondaryWindow)
+        rootWindow.completeNativePromptLease(secondaryUi, leaseToken, view)
+        if (cancelRequest && request)
             rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-        }
-        if (message) {
-            secondaryUi.status_text = message
-        }
+        if (message) secondaryUi.status_text = message
     }
 
-    function acceptFileDialog() {
+    function finishFileDialog(paths, folder) {
         var request = secondaryWindow.pendingFileDialogRequest
-        var paths = secondaryWindow.secondaryFileDialogPaths()
+        var view = secondaryWindow.pendingFileDialogView
+        var leaseToken = secondaryWindow.pendingFileDialogLeaseToken
         secondaryWindow.pendingFileDialogRequest = null
         secondaryWindow.pendingFileDialogView = null
-        if (!request || paths.length === 0) {
-            if (request) {
+        secondaryWindow.pendingFileDialogLeaseToken = ""
+        if (request) {
+            if (paths.length > 0)
+                rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogAccept", [paths])
+            else
                 rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-            }
-            if (request) {
-                rootWindow.restoreOverlayFocus()
-            }
-            secondaryUi.status_text = "File selection returned no local paths"
-            return
+            rootWindow.restoreOverlayFocus(secondaryWindow)
         }
-        rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogAccept", [paths])
-        rootWindow.restoreOverlayFocus()
-        secondaryUi.status_text = paths.length === 1
-                ? "File selected"
-                : paths.length + " files selected"
+        rootWindow.completeNativePromptLease(secondaryUi, leaseToken, view)
+        if (!request) return
+        secondaryUi.status_text = paths.length === 0
+                ? (folder ? "Choose a folder stored on this computer" : "Choose a file stored on this computer")
+                : folder ? "Folder selected" : paths.length === 1 ? "File selected" : paths.length + " files selected"
     }
 
-    function acceptFolderDialog() {
-        var request = secondaryWindow.pendingFileDialogRequest
-        var paths = secondaryWindow.secondaryFolderDialogPaths()
-        secondaryWindow.pendingFileDialogRequest = null
-        secondaryWindow.pendingFileDialogView = null
-        if (!request || paths.length === 0) {
-            if (request) {
-                rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-            }
-            if (request) {
-                rootWindow.restoreOverlayFocus()
-            }
-            secondaryUi.status_text = "Folder selection returned no local path"
-            return
-        }
-        rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogAccept", [paths])
-        rootWindow.restoreOverlayFocus()
-        secondaryUi.status_text = "Folder selected"
-    }
+    function acceptFileDialog() { finishFileDialog(secondaryFileDialogPaths(), false) }
+    function acceptFolderDialog() { finishFileDialog(secondaryFolderDialogPaths(), true) }
 
     function rejectFileDialog() {
-        var request = secondaryWindow.pendingFileDialogRequest
-        if (!request) {
-            return
-        }
-        secondaryWindow.pendingFileDialogRequest = null
-        secondaryWindow.pendingFileDialogView = null
-        rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-        rootWindow.restoreOverlayFocus()
-        secondaryUi.status_text = "File selection cancelled"
+        if (secondaryWindow.pendingFileDialogRequest)
+            secondaryWindow.clearSecondaryFileDialog(true, "File selection cancelled")
     }
 
-    function handleFileDialogRequested(request) {
+    function handleFileDialogRequested(request, sourceView, sourceUi) {
+        if (!request) return
+        request.accepted = true
+        var view = sourceView || secondaryWindow.activeView
+        if (!view || view.viewRetired || view.viewHost !== secondaryWindow || view.viewUi !== secondaryUi
+                || (sourceUi && sourceUi !== secondaryUi)) {
+            rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
+            return
+        }
         if (secondaryWindow.pendingFileDialogRequest) {
-            secondaryWindow.clearSecondaryFileDialog(true,
-                    "Previous file selection cancelled")
-            rootWindow.resolveQtRequest(
-                secondaryUi, request, "file-dialog", "dialogReject", [])
+            rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
             secondaryUi.status_text = "Another file selection is already open"
             return
         }
-        rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
+        rootWindow.captureOverlayFocus(secondaryWindow, view)
         secondaryWindow.pendingFileDialogRequest = request
-        secondaryWindow.pendingFileDialogView = secondaryWindow.activeView
-        var requestUi = secondaryUi
-        if (rootWindow.desktopPortalMode(requestUi) === "required") {
-            var status = rootWindow.desktopPortalCapabilityStatus(requestUi, "file_chooser")
-            if (status === "not-probed") {
-                rootWindow.primaryBrowserUi.probe_desktop_portals()
-                status = rootWindow.desktopPortalCapabilityStatus(requestUi, "file_chooser")
-            }
-            if (status === "pending" || status === "not-probed") {
-                secondaryWindow.pendingFileDialogWaitingForPortal = true
-                secondaryWindow.pendingFileDialogPortalDeadlineMs = Date.now() + 5000
-                requestUi.status_text = "Checking required desktop portal…"
-                secondaryFilePortalTimer.start()
-                return
-            }
-            if (status !== "available") {
-                secondaryWindow.clearSecondaryFileDialog(
-                    true, "Required desktop portal unavailable; file selection cancelled")
-                return
-            }
-        }
-        secondaryWindow.pendingFileDialogWaitingForPortal = false
-        secondaryFilePortalTimer.stop()
-        if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-            secondaryDialogSurfaces.openEngineFolder()
+        secondaryWindow.pendingFileDialogView = view
+        secondaryWindow.pendingFileDialogLeaseToken = rootWindow.beginNativePromptLease(secondaryUi, view, "file-chooser")
+        if (secondaryWindow.pendingFileDialogLeaseToken.length === 0) {
+            secondaryWindow.clearSecondaryFileDialog(true, "This file selection is no longer available; try again")
             return
         }
-        secondaryDialogSurfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
-                ? FileDialog.OpenFiles
-                : request.mode === FileDialogRequest.FileModeSave
-                    ? FileDialog.SaveFile
-                    : FileDialog.OpenFile
-        secondaryDialogSurfaces.engineFileNameFilters = rootWindow.fileDialogNameFilters(request)
-        secondaryDialogSurfaces.engineFileCurrentFile = request.defaultFileName.length > 0
-                ? request.defaultFileName
-                : ""
-        secondaryDialogSurfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
-                ? "Save file"
-                : request.mode === FileDialogRequest.FileModeOpenMultiple
-                    ? "Choose files"
-                    : "Choose file"
-        secondaryDialogSurfaces.openEngineFile()
+        secondaryWindow.openPendingFileDialog()
     }
 
-    function maybeOpenPendingFileDialog() {
-        if (!secondaryWindow.pendingFileDialogWaitingForPortal
-                || !secondaryWindow.pendingFileDialogRequest) {
-            secondaryFilePortalTimer.stop()
-            return
-        }
-        if (Date.now() >= secondaryWindow.pendingFileDialogPortalDeadlineMs) {
-            secondaryWindow.clearSecondaryFileDialog(
-                true, "Desktop portal check timed out; file selection cancelled")
-            return
-        }
-        var ui = secondaryUi
-        var status = rootWindow.desktopPortalCapabilityStatus(ui, "file_chooser")
-        if (status === "pending" || status === "not-probed") {
-            return
-        }
-        if (status !== "available") {
-            secondaryWindow.clearSecondaryFileDialog(
-                true, "Required desktop portal unavailable; file selection cancelled")
-            return
-        }
-        secondaryWindow.pendingFileDialogWaitingForPortal = false
-        secondaryFilePortalTimer.stop()
+    function openPendingFileDialog() {
         var request = secondaryWindow.pendingFileDialogRequest
-        if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-            secondaryDialogSurfaces.openEngineFolder()
-            return
-        }
-        secondaryDialogSurfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
-                ? FileDialog.OpenFiles
-                : request.mode === FileDialogRequest.FileModeSave
-                    ? FileDialog.SaveFile
-                    : FileDialog.OpenFile
-        secondaryDialogSurfaces.engineFileNameFilters = rootWindow.fileDialogNameFilters(request)
-        secondaryDialogSurfaces.engineFileCurrentFile = request.defaultFileName.length > 0
-                ? request.defaultFileName : ""
-        secondaryDialogSurfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
-                ? "Save file"
-                : request.mode === FileDialogRequest.FileModeOpenMultiple
-                    ? "Choose files"
-                    : "Choose file"
-        secondaryDialogSurfaces.openEngineFile()
+        if (!request) return
+        secondaryUi.status_text = "Opening the file chooser…"
+        rootWindow.presentEngineFileDialog(secondaryDialogSurfaces, request, secondaryUi)
     }
 
     function clearFileDialogForView(view) {
@@ -924,6 +854,95 @@ function onContext_workspaceChanged() {
     function applySwitcherEngineAction() {
         var action = secondaryUi.take_engine_action()
         if (!action || action.length === 0) {
+            return
+        }
+        if (action.indexOf("new-window\t") === 0 || action.indexOf("context-window\t") === 0) {
+            rootWindow.executeNewWindowAction(secondaryUi, action)
+            return
+        }
+        if (action.indexOf("window-focus\t") === 0) {
+            rootWindow.executeWindowFocusAction(secondaryUi, action)
+            return
+        }
+        if (action === "show-settings" || action.indexOf("show-settings\t") === 0) {
+            secondarySettings.show(action === "show-settings" ? undefined : action.slice("show-settings\t".length))
+            return
+        }
+        if (action.indexOf("tab-close\t") === 0) {
+            var tabCloseParts = action.split("\t")
+            var tabCloseId = tabCloseParts.length >= 2 ? tabCloseParts[1] : ""
+            var tabCloseIndex = secondaryUi.tab_index_for_id(tabCloseId)
+            if (tabCloseIndex < 0) {
+                secondaryUi.status_text = "This tab is no longer available. Select an open tab and try again."
+                return
+            }
+            if (!secondaryWindow.closeTabAtIndex(tabCloseIndex)) {
+                secondaryUi.status_text = "Tab close was rejected"
+                return
+            }
+            return
+        }
+        if (action.indexOf("tab-close-active\t") === 0) {
+            var tabCloseActiveParts = action.split("\t")
+            var tabCloseCount = Number(tabCloseActiveParts[1])
+            if (!Number.isFinite(tabCloseCount) || tabCloseCount < 1 || tabCloseCount > 100) {
+                secondaryUi.status_text = "Tab close count is invalid"
+                return
+            }
+            var closedCount = 0
+            for (var tabCloseAttempt = 0; tabCloseAttempt < tabCloseCount; ++tabCloseAttempt) {
+                var candidateIndex = -1
+                var activeTabIndex = secondaryUi.active_tab_index
+                if (activeTabIndex >= 0 && activeTabIndex < secondaryTabs.count
+                        && !secondaryTabs.get(activeTabIndex).pinned) {
+                    candidateIndex = activeTabIndex
+                } else {
+                    for (var tabCloseCandidate = 0;
+                         tabCloseCandidate < secondaryTabs.count;
+                         ++tabCloseCandidate) {
+                        if (!secondaryTabs.get(tabCloseCandidate).pinned) {
+                            candidateIndex = tabCloseCandidate
+                            break
+                        }
+                    }
+                }
+                if (candidateIndex < 0 || !secondaryWindow.closeTabAtIndex(candidateIndex)) {
+                    break
+                }
+                closedCount += 1
+            }
+            secondaryUi.status_text = closedCount > 0
+                    ? "Closed " + closedCount + " tab" + (closedCount === 1 ? "" : "s")
+                    : "No unpinned tabs available to close"
+            return
+        }
+        if (action === "show-switcher") {
+            rootWindow.showSwitcherWith(String(secondaryUi.switcher_request_scope || "all"),
+                String(secondaryUi.switcher_request_query || ""), secondaryUi, secondaryWindow)
+            return
+        }
+        if (action === "show-diagnostics") { rootWindow.showDiagnostics(secondaryUi); return }
+        if (action === "show-profiles") { secondaryManagers.showProfiles(); return }
+        if (action === "show-sessions") { secondaryManagers.showSessions(); return }
+        if (action.indexOf("profile-delete\t") === 0) {
+            secondaryManagers.showProfileDeletePreview(action.slice("profile-delete\t".length))
+            return
+        }
+        if (action.indexOf("profile-window\t") === 0) {
+            var profileWindowAction = action.split("\t")
+            if (profileWindowAction.length >= 4) {
+                rootWindow.openProfileWindow(profileWindowAction[1], profileWindowAction[2],
+                    profileWindowAction.slice(3).join("\t"), secondaryUi.current_url)
+                secondaryManagers.closeProfiles()
+            }
+            return
+        }
+        if (action.indexOf("ephemeral-window\t") === 0) {
+            rootWindow.openEphemeralWindow(action.slice("ephemeral-window\t".length))
+            return
+        }
+        if (action.indexOf("show-session-preview\t") === 0) {
+            secondaryManagers.showSessionPreview(action.split("\t").slice(1).join("\t"), false)
             return
         }
         if (action.indexOf("edit\t") === 0) {
@@ -948,8 +967,7 @@ function onContext_workspaceChanged() {
             var scrollTargetParts = action.split("\t")
             var scrollTargetIndex = scrollTargetParts.length === 3
                     ? secondaryUi.tab_index_for_id(scrollTargetParts[1]) : -1
-            var scrollTargetView = scrollTargetIndex === 0
-                    ? secondaryWindow.activeView : null
+            var scrollTargetView = secondaryWindow.tabViewAt(scrollTargetIndex)
             rootWindow.applyScrollTargetAction(
                 secondaryUi, scrollTargetView,
                 scrollTargetParts.length === 3 ? scrollTargetParts[2] : "",
@@ -976,23 +994,36 @@ function onContext_workspaceChanged() {
         }
         if (action.indexOf("tab-mute\t") === 0) {
             var secondaryMuteParts = action.split("\t")
-            var secondaryTabId = secondaryUi.tab_id_for_index(0)
+            var secondaryMuteIndex = secondaryUi.tab_index_for_id(secondaryMuteParts[1] || "")
+            var secondaryTabId = secondaryUi.tab_id_for_index(secondaryMuteIndex)
             var secondaryMuted = secondaryMuteParts.length >= 3
                     && secondaryMuteParts[2] === "true"
-            if (secondaryMuteParts.length < 2
+            if (secondaryMuteIndex < 0 || secondaryMuteParts.length < 2
                     || secondaryMuteParts[1] !== secondaryTabId) {
-                secondaryUi.status_text = "Tab mute target is stale"
+                secondaryUi.status_text = "This tab is no longer available. Select an open tab and try again."
                 return
             }
-            secondaryWindow.activeView.audioMuted = secondaryMuted
+            secondaryTabs.setProperty(secondaryMuteIndex, "muted", secondaryMuted)
+            var mutedView = secondaryWindow.tabViewAt(secondaryMuteIndex)
+            if (mutedView) mutedView.audioMuted = secondaryMuted
             secondaryUi.status_text = secondaryMuted ? "Tab muted" : "Tab unmuted"
             return
         }
         if (action.indexOf("navigate\t") === 0) {
             var navigation = action.split("\t")
             if (navigation.length >= 3) {
-                secondaryWindow.activeView.setContentUrl(navigation.slice(2).join("\t"), false)
-                secondaryWindow.activeView.forceActiveFocus()
+                var navigationIndex = Number(navigation[1])
+                // Interactive tab-open can deliver its navigation before the
+                // scheduled runtime pass has created the new tab's view.
+                secondaryWindow.syncTabModel()
+                var navigationView = secondaryWindow.tabViewAt(navigationIndex)
+                if (navigationView) {
+                    secondaryTabs.setProperty(navigationIndex, "loaded", true)
+                    navigationView.setContentUrl(navigation.slice(2).join("\t"), false)
+                } else {
+                    secondaryUi.status_text = "This tab couldn't be opened. Try reopening it."
+                    console.error("navigation view unavailable", navigationIndex, secondaryUi.tab_count)
+                }
                 return
             }
         }
@@ -1057,16 +1088,19 @@ function onContext_workspaceChanged() {
             return
         }
         if (action.indexOf("zoom\t") === 0) {
-            var secondaryZoomParts = action.split("\t")
-            if (secondaryZoomParts.length >= 3) {
-                var secondaryZoomFactor = Number(secondaryZoomParts[2])
-                if (Number.isFinite(secondaryZoomFactor)
-                        && secondaryZoomFactor >= 0.25
-                        && secondaryZoomFactor <= 5.0) {
-                    secondaryWindow.activeView.zoomFactor = secondaryZoomFactor
+            var zoomParts = action.split("\t")
+            if (zoomParts.length >= 3) {
+                var zoomTabIndex = secondaryUi.tab_index_for_id(zoomParts[1])
+                var zoomFactor = Number(zoomParts[2])
+                if (zoomTabIndex >= 0 && Number.isFinite(zoomFactor)
+                        && zoomFactor >= 0.25 && zoomFactor <= 5.0) {
+                    secondaryTabs.setProperty(zoomTabIndex, "zoom", zoomFactor)
+                    var zoomView = tabViewAt(zoomTabIndex)
+                    if (zoomView) {
+                        zoomView.zoomFactor = zoomFactor
+                    }
                 }
             }
-            secondaryWindow.activeView.forceActiveFocus()
             return
         }
         if (action.indexOf("find-next\t") === 0) {
@@ -1117,9 +1151,17 @@ function onContext_workspaceChanged() {
             secondaryWindow.activeView.forceActiveFocus()
             return
         }
-        if (action.indexOf("download-open\t") === 0) {
+        if (action === "show-downloads") { secondaryDownloads.show(); return }
+        if (action.indexOf("download-pause\t") === 0 || action.indexOf("download-resume\t") === 0
+                || action.indexOf("download-cancel\t") === 0) {
+            var control = action.split("\t")
+            rootWindow.profileResourceRegistry.controlDownload(secondaryUi, control[1], control[0].slice("download-".length))
+            return
+        }
+        if (action.indexOf("download-open\t") === 0 || action.indexOf("download-show\t") === 0) {
             rootWindow.openExternalUri(secondaryUi,
                                    action.split("\t").slice(1).join("\t"))
+            return
         }
         if (action.indexOf("save-page\t") === 0) {
             var secondarySaveParts = action.split("\t")
@@ -1152,16 +1194,14 @@ function onContext_workspaceChanged() {
         if (action === "jseval") {
             var secondaryEvalId = String(secondaryUi.jseval_tab_id)
             var secondaryEvalIndex = secondaryUi.tab_index_for_id(secondaryEvalId)
-            var secondaryEvalView = secondaryEvalIndex >= 0
-                    && secondaryEvalIndex === secondaryUi.active_tab_index
-                    ? secondaryWindow.activeView : null
+            var secondaryEvalView = secondaryWindow.tabViewAt(secondaryEvalIndex)
             var secondaryEvalScript = String(secondaryUi.jseval_script)
             var secondaryEvalWorld = secondaryUi.jseval_world === "page"
                     ? WebEngineScript.MainWorld : rootWindow.browserScriptWorld
             if (!secondaryEvalView || secondaryEvalScript.length === 0
                     || secondaryEvalScript.length > 65536) {
                 secondaryUi.status_text =
-                        "JavaScript evaluation target is stale or invalid"
+                        "Cannot run JavaScript here. Check the page and script, then try :jseval again."
                 return
             }
             rootWindow.runBrowserScript(secondaryEvalView, secondaryEvalScript,
@@ -1171,39 +1211,14 @@ function onContext_workspaceChanged() {
             secondaryEvalView.forceActiveFocus()
             return
         }
+        if (action.indexOf("permission-reset\t") === 0) {
+            var permissionParts = action.split("\t")
+            if (permissionParts.length === 3)
+                rootWindow.applyPermissionReset(secondaryUi, permissionParts[1], permissionParts[2])
+            return
+        }
         if (action.indexOf("devtools\t") === 0) {
-            var secondaryDevtoolsParts = action.split("\t")
-            var secondaryDetach = secondaryDevtoolsParts.length >= 2
-                    && secondaryDevtoolsParts[1] === "true"
-            if (!secondaryDetach) {
-                if (secondaryWindow.windowTransferMode) {
-                    secondaryUi.status_text =
-                            "Use devtools --detach for a transferred view"
-                } else {
-                    secondaryWindow.devToolsVisible =
-                            !secondaryWindow.devToolsVisible
-                    secondaryUi.status_text = secondaryWindow.devToolsVisible
-                            ? "DevTools attached" : "DevTools closed"
-                }
-            } else if (secondaryWindow.activeView) {
-                if (secondaryWindow.devToolsWindow) {
-                    secondaryWindow.devToolsWindow.close()
-                    secondaryWindow.devToolsWindow = null
-                }
-                var secondaryDevtools = rootWindow.devToolsWindowFactory.createObject(null, {
-                    inspectView: secondaryWindow.activeView
-                })
-                if (secondaryDevtools) {
-                    secondaryWindow.devToolsWindow = secondaryDevtools
-                    secondaryWindow.activeView.devToolsView =
-                            secondaryDevtools.inspectorView
-                    secondaryDevtools.show()
-                    secondaryUi.status_text = "DevTools detached"
-                } else {
-                    secondaryUi.status_text = "DevTools window could not be created"
-                }
-            }
-            secondaryWindow.activeView.forceActiveFocus()
+            secondaryDevTools.toggle(action.split("\t")[1] === "true")
             return
         }
         if (action.indexOf("print\t") === 0) {
@@ -1244,6 +1259,7 @@ function onContext_workspaceChanged() {
     }
 
     function scheduleRuntimeWork(delay) {
+        if (secondaryWindow.runtimeReleased) return
         var boundedDelay = Math.max(0, Math.min(60000, Number(delay) || 0))
         if (!secondaryRuntimeWorkTimer.running
                 || boundedDelay < secondaryRuntimeWorkTimer.interval) {
@@ -1253,9 +1269,14 @@ function onContext_workspaceChanged() {
     }
 
     function processRuntimeWork() {
+        if (secondaryWindow.runtimeReleased) return
+        secondaryUi.poll_ipc()
+        secondaryWindow.syncTabModel()
         secondaryWindow.applySwitcherEngineAction()
         secondaryUi.poll_config()
-        secondaryWindow.maybeOpenPendingEngineFileDialog()
+        secondaryManagers.presentCommandRequest()
+        secondaryWindow.syncTabModel()
+        rootWindow.updateBrowserWindowView(secondaryUi, secondaryWindow.activeView)
         secondaryUi.refresh_operations()
         secondaryUi.tick_bindings()
         secondaryUi.tick_site_doctor_experiment()
@@ -1340,20 +1361,7 @@ function onContext_workspaceChanged() {
             }
         }
 
-        if (secondaryUi.take_download_request()) {
-            if (secondaryWindow.activeView) {
-                rootWindow.runBrowserScript(
-                    secondaryWindow.activeView,
-                    rootWindow.downloadLinkScript(secondaryUi.download_request_url),
-                    function() {
-                        secondaryUi.complete_download_request(
-                            secondaryUi.download_request_token, true)
-                    })
-            } else {
-                secondaryUi.complete_download_request(
-                    secondaryUi.download_request_token, false)
-            }
-        }
+        secondaryDownloads.dispatchRequest()
 
         var clipboardRequest = secondaryUi.take_clipboard_request()
         if (clipboardRequest.length > 0) {
@@ -1452,6 +1460,7 @@ function onContext_workspaceChanged() {
                 }
             }
             Label {
+                textFormat: Text.PlainText
                 text: secondaryWindow.windowEphemeralProfile
                       ? secondaryWindow.windowProfileLabel
                       : (secondaryWindow.windowPrivateProfile
@@ -1489,310 +1498,81 @@ function onContext_workspaceChanged() {
         }
     }
 
-    Item {
-        id: transferViewHost
-        anchors.fill: parent
-        anchors.bottomMargin: secondaryWindow.bottomChromeHeight
-        visible: secondaryWindow.windowTransferMode
+    ListModel {
+        id: secondaryTabs
+        ListElement {
+            tabId: ""; url: "about:blank"; title: "New tab"; loaded: true
+            pinned: false; muted: false; zoom: 1.0; suspended: false; discarded: false
+        }
     }
-
-    Item {
-        id: fallbackViewHost
-        anchors.fill: parent
-        anchors.bottomMargin: secondaryWindow.bottomChromeHeight
-        visible: !secondaryWindow.windowTransferMode
+    property bool tabSwitchingVisible: false
+    readonly property string tabPosition: secondaryUi.chrome_tab_position
+    readonly property bool sideTabs: tabPosition === "left" || tabPosition === "right"
+    readonly property real sideTabWidth: Math.max(160, Math.min(280, width * 0.22))
+    readonly property bool tabStripVisible: secondaryUi.chrome_tabs_mode === "always"
+        || (secondaryUi.chrome_tabs_mode === "multiple" && secondaryUi.tab_count > 1)
+        || (secondaryUi.chrome_tabs_mode === "switching" && tabSwitchingVisible)
+    function noteTabActivity() { tabSwitchingVisible = true; secondaryTabSwitchTimer.restart() }
+    Timer { id: secondaryTabSwitchTimer; interval: 800; onTriggered: secondaryWindow.tabSwitchingVisible = false }
+    FerricTabStrip {
+        id: secondaryTabStrip
+        x: secondaryWindow.tabPosition === "right" ? parent.width - width : 0
+        y: secondaryWindow.tabPosition === "bottom" ? parent.height - secondaryWindow.bottomChromeHeight - height : 0
+        width: secondaryWindow.sideTabs ? secondaryWindow.sideTabWidth : parent.width
+        height: !visible ? 0 : secondaryWindow.sideTabs
+                ? parent.height - secondaryWindow.bottomChromeHeight : secondaryAppearance.tabBarHeight
+        z: 9
+        vertical: secondaryWindow.sideTabs
+        visible: secondaryWindow.tabStripVisible
+        browserWindow: secondaryAppearance
+        tooltipsEnabled: secondaryWindow.active && secondaryWindow.browserKeyFocusActive
+                         && secondaryUi.mode !== "hint" && secondaryUi.mode !== "grid"
+        tabsModel: secondaryTabs
+        activeTabIndex: secondaryUi.active_tab_index
+        onSelectRequested: function(index) {
+            secondaryUi.select_tab(index)
+            secondaryWindow.syncTabModel()
+            secondaryWindow.applySwitcherEngineAction()
+        }
+        onCloseRequested: function(index) { secondaryWindow.closeTabAtIndex(index) }
+        onNewRequested: {
+            secondaryUi.execute_command("tab-new")
+            secondaryWindow.syncTabModel()
+            secondaryWindow.applySwitcherEngineAction()
+        }
     }
-
-    WebEngineView {
-        id: secondaryView
-        readonly property string promptLeaseIdentity: secondaryUi.new_prompt_view_identity()
-        property var promptIdentityUi: null
-        property int promptIdentityTabIndex: -1
-        function refreshPromptViewIdentity() {
-            if (promptIdentityUi && promptIdentityTabIndex >= 0
-                    && promptIdentityUi.unregister_prompt_view_identity) {
-                promptIdentityUi.unregister_prompt_view_identity(
-                    promptIdentityTabIndex, promptLeaseIdentity)
-            }
-            promptIdentityUi = viewUi
-            promptIdentityTabIndex = tabIndex >= 0 ? tabIndex
-                                                   : Number(viewUi.active_tab_index)
-            if (promptIdentityUi && promptIdentityTabIndex >= 0
-                    && promptIdentityUi.register_prompt_view_identity) {
-                promptIdentityUi.register_prompt_view_identity(
-                    promptIdentityTabIndex, promptLeaseIdentity)
-            }
-        }
-        onTabIndexChanged: refreshPromptViewIdentity()
-        onViewUiChanged: refreshPromptViewIdentity()
-        Component.onDestruction: {
-            if (promptIdentityUi && promptIdentityTabIndex >= 0
-                    && promptIdentityUi.unregister_prompt_view_identity) {
-                promptIdentityUi.unregister_prompt_view_identity(
-                    promptIdentityTabIndex, promptLeaseIdentity)
-            }
-        }
-        property alias nativeUrl: secondaryNativeContent.nativeUrl
-        property alias contentTraversalPending: secondaryNativeContent.traversalPending
-        readonly property var startPage: secondaryNativeContent.startPage
-        readonly property int engineHistoryIndex: secondaryNativeContent.engineHistoryIndex
-                readonly property bool contentCanGoBack: secondaryNativeContent.canNavigateBack
-                readonly property bool contentCanGoForward: secondaryNativeContent.canNavigateForward
-        function setContentUrl(destination, traversal, engineMoves) { secondaryNativeContent.setContentUrl(destination, traversal, engineMoves) }
-        function contentEngineOffset(destination, expected, backwards) { return secondaryNativeContent.engineOffset(destination, expected, backwards) }
-        function synchronizeContentHistory() { secondaryNativeContent.synchronizeHistory() }
-        FerricNativeTabContent {
-            id: secondaryNativeContent
-            anchors.fill: parent
-            webView: secondaryView
-            browserUi: secondaryView.viewUi
-            browserWindow: rootWindow
-            browserHost: secondaryView.viewHost
-            tabsModel: secondaryView.viewTabs
-        }
-        Connections {
-            target: secondaryView.viewUi
-            function onInitial_urlChanged() {
-                secondaryView.setContentUrl(secondaryView.viewUi.initial_url, false)
-            }
-        }
-        onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID) {
-            rootWindow.probeFocusNotification(viewUi, viewHost, secondaryView, -1, message)
-        }
-        property var viewUi: secondaryUi
-        property var selectionSource: null
-        property var viewHost: secondaryWindow
-        property var viewProfile: secondaryWindow.windowWebEngineProfile
-        property var viewInterceptor: secondaryWindow.windowRequestInterceptor
-        property bool viewTransientProfile: secondaryWindow.windowTransientProfile
-        property bool viewTransferred: false
-        property bool viewIsSecondaryStatic: true
-        property int tabIndex: -1
-        property var viewTabs: null
-        property var viewModel: ({})
-        property var pageUserScriptNames: []
-        property string pageUserScriptReloadUrl: ""
-        property string pageDialogDocumentKey: ""
-        property int pageDialogCount: 0
-        property bool pageDialogSuppressed: false
-        property bool rendererFailed: false
-        property int rendererFailureCount: 0
-        property double rendererFailureAt: 0
-        property string rendererFailureSafeUrl: ""
-        property string rendererFailureReason: ""
-        property int rendererFailureExitCode: 0
-        devToolsView: secondaryWindow.devToolsVisible
-                ? secondaryWindow.devToolsAttachedView : null
-        // Navigation-scoped content settings are snapshotted per
-        // document; live config changes apply to the next navigation.
-        property var effectiveSiteSettings: ({ values: {}, matched_rules: [] })
-        function refreshEffectiveSiteSettings() {
-            effectiveSiteSettings = rootWindow.siteRuleSettingsFor(
-                viewUi, secondaryView.url.toString())
-        }
-        Connections {
-            target: viewUi
-            function onSite_experiment_kindChanged() {
-                secondaryView.refreshEffectiveSiteSettings()
-            }
-        }
-        property int blockedRequestCount: {
-            var host = secondaryView.url && secondaryView.url.host
-                    ? String(secondaryView.url.host) : ""
-            var counts = viewInterceptor.blockedSiteCounts || ({})
-            return host.length > 0 && counts[host] !== undefined ? Number(counts[host]) : 0
-        }
+    StackLayout {
+        id: secondaryViews
         anchors.fill: parent
+        anchors.topMargin: secondaryWindow.tabStripVisible && secondaryWindow.tabPosition === "top" ? secondaryTabStrip.height : 0
+        anchors.leftMargin: secondaryWindow.tabStripVisible && secondaryWindow.tabPosition === "left" ? secondaryTabStrip.width : 0
+        anchors.rightMargin: secondaryWindow.tabStripVisible && secondaryWindow.tabPosition === "right" ? secondaryTabStrip.width : 0
         anchors.bottomMargin: secondaryWindow.bottomChromeHeight
-        visible: !secondaryWindow.windowTransferMode
-        profile: viewProfile
-        url: "about:blank"
-        settings.javascriptEnabled: !!rootWindow.siteRuleValue(
-            effectiveSiteSettings, "content.javascript", true)
-        settings.autoLoadImages: !!rootWindow.siteRuleValue(
-            effectiveSiteSettings, "content.images", true)
-        settings.forceDarkMode: !!rootWindow.siteRuleValue(
-            effectiveSiteSettings, "content.force_dark", false)
-        settings.playbackRequiresUserGesture:
-            rootWindow.siteRuleValue(effectiveSiteSettings, "content.autoplay", "engine-default")
-            === "require-gesture"
-        Accessible.name: "Web content"
-        Component.onCompleted: {
-            refreshPromptViewIdentity()
-            if (!secondaryWindow.windowTransferMode) setContentUrl(viewUi.initial_url, false)
-            refreshEffectiveSiteSettings()
-        }
-        onNavigationRequested: function(request) {
-            if (request.isMainFrame) secondaryNativeContent.beginNavigation(request.navigationType === WebEngineView.BackForwardNavigation)
-        }
-        onUrlChanged: {
-            if (nativeUrl.length > 0) return
-            secondaryNativeContent.noteSameDocument(url.toString())
-            refreshEffectiveSiteSettings()
-            if (viewHost === secondaryWindow) {
-                secondaryAddress.text = viewUi.display_url
-            }
-        }
-        onTitleChanged: {
-            if (nativeUrl.length > 0) return
-            if (viewTabs === tabs && tabIndex >= 0 && tabIndex < tabs.count) {
-                tabs.setProperty(tabIndex, "title", title || "New tab")
-            }
-        }
-        onRecentlyAudibleChanged: {
-            if (viewUi === rootWindow.primaryBrowserUi
-                    && tabIndex === viewUi.active_tab_index) {
-                rootWindow.updateMprisForPrimaryView(webView)
-            }
-        }
-        onAudioMutedChanged: {
-            if (viewUi === rootWindow.primaryBrowserUi
-                    && tabIndex === viewUi.active_tab_index) {
-                rootWindow.updateMprisForPrimaryView(webView)
-            }
-        }
-        onLoadingChanged: function(loadRequest) {
-            if (nativeUrl.length > 0) return
-            if (loadRequest.status === WebEngineView.LoadStartedStatus) {
-                viewUi.invalidate_native_prompt_leases()
-                rootWindow.clearPageDialogForView(secondaryView)
-                rootWindow.clearClientCertificateForView(secondaryView)
-                rootWindow.clearCertificateErrorForView(secondaryView)
-                rootWindow.clearWebAuthForView(secondaryView)
-                rootWindow.clearContextMenuForView(secondaryView)
-                rootWindow.clearDesktopMediaForView(secondaryView)
-                rootWindow.clearSiteDataClearForView(secondaryView)
-                rootWindow.noteCaptureNavigation(secondaryView)
-                secondaryWindow.clearFileDialogForView(secondaryView)
-                rootWindow.clearRendererFailureForView(secondaryView)
-                rootWindow.resetPageDialogBudget(secondaryView)
-                viewInterceptor.clearSiteEvidence(secondaryView.url.host)
-                rootWindow.cancelPermissionForUi(viewUi)
-                rootWindow.installPageUserscripts(
-                    viewUi, secondaryView, secondaryView.url.toString(),
-                    viewTransientProfile)
-                rootWindow.injectPageUserscripts(
-                    viewUi, secondaryView, secondaryView.url.toString(),
-                    viewTransientProfile, "document_start")
-                rootWindow.injectCosmeticRules(viewUi, secondaryView)
-                if (viewTabs === tabs) {
-                    viewUi.navigation_started_for(tabIndex, loadRequest.url.toString())
-                } else {
-                    viewUi.navigation_started(loadRequest.url.toString())
-                }
-            } else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
-                secondaryNativeContent.noteCommit()
-                if (viewTabs === tabs) {
-                    viewUi.navigation_committed_for(
-                        tabIndex, secondaryView.url.toString(), secondaryView.title)
-                } else {
-                    viewUi.navigation_committed(secondaryView.url.toString(), secondaryView.title)
-                }
-                rootWindow.injectPageUserscripts(
-                    viewUi, secondaryView, secondaryView.url.toString(),
-                    viewTransientProfile, "document_end")
-                rootWindow.injectCosmeticRules(viewUi, secondaryView)
-                Qt.callLater(function() {
-                    rootWindow.injectPageUserscripts(
-                        viewUi, secondaryView, secondaryView.url.toString(),
-                        viewTransientProfile, "document_idle")
-                })
-                if (viewTabs === tabs) {
-                    viewUi.navigation_completed_for(tabIndex)
-                } else {
-                    viewUi.navigation_completed()
-                }
-            } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
-                        secondaryNativeContent.noteCommit()
-                if (viewTabs === tabs) {
-                    viewUi.navigation_failed_with_details(
-                        tabIndex,
-                        loadRequest.url.toString(),
-                        rootWindow.navigationFailureKind(loadRequest),
-                        rootWindow.navigationFailureDetail(loadRequest))
-                } else {
-                    viewUi.navigation_failed_with_details(
-                        -1,
-                        loadRequest.url.toString(),
-                        rootWindow.navigationFailureKind(loadRequest),
-                        rootWindow.navigationFailureDetail(loadRequest))
-                }
-            }
-        }
-        onPermissionRequested: function(permissionRequest) {
-            rootWindow.handleImmediatePermissionRequested(
-                viewUi, permissionRequest, viewTransientProfile, viewHost, secondaryView)
-        }
-        onJavaScriptDialogRequested: function(request) {
-            rootWindow.handleJavaScriptDialogRequested(
-                viewUi, secondaryView, request, viewTransientProfile)
-        }
-        onAuthenticationDialogRequested: function(request) {
-            rootWindow.handleAuthenticationDialogRequested(
-                viewUi, secondaryView, request, viewTransientProfile)
-        }
-        onSelectClientCertificate: function(selection) {
-            rootWindow.handleClientCertificateRequested(
-                viewUi, secondaryView, selection, viewTransientProfile, viewHost)
-        }
-        onCertificateError: function(error) {
-            rootWindow.handleCertificateError(
-                viewUi, secondaryView, error, viewHost)
-        }
-        onWebAuthUxRequested: function(request) {
-            rootWindow.handleWebAuthRequested(viewUi, secondaryView, request, viewHost)
-        }
-        onContextMenuRequested: function(request) {
-            rootWindow.handleContextMenuRequested(viewUi, secondaryView, request, viewHost)
-        }
-        onFileDialogRequested: function(request) {
-            if (viewHost === secondaryWindow) {
-                secondaryWindow.handleFileDialogRequested(request)
-            } else {
-                rootWindow.handleFileDialogRequested(request, secondaryView, viewUi)
-            }
-        }
-        onDesktopMediaRequested: function(request) {
-            rootWindow.handleDesktopMediaRequested(
-                viewUi, secondaryView, request, viewHost)
-        }
-        onFullScreenRequested: function(request) {
-            request.accept()
-            if (request.toggleOn) {
-                viewHost.showFullScreen()
-                viewUi.status_text = "Page fullscreen enabled"
-            } else {
-                viewHost.showNormal()
-                viewUi.status_text = "Page fullscreen ended"
-            }
-        }
-        onRenderProcessTerminated: function(terminationStatus, exitCode) {
-                    if (nativeUrl.length > 0) return
-            rootWindow.handleRendererProcessTerminated(
-                viewUi, secondaryView, viewHost, -1,
-                terminationStatus, exitCode)
-        }
-        onNewWindowRequested: function(request) {
-            if (!viewUi.popup_allowed(request.requestedUrl.toString(), request.userInitiated)) {
-                return
-            }
-            var popup = rootWindow.popupWindowFactory.createObject(null, {
-                popupRequest: request,
-                popupJourneyToken: viewUi.take_popup_journey_token(
-                    request.requestedUrl.toString()),
-                popupProfile: viewProfile,
-                popupRequestInterceptor: viewInterceptor,
-                popupPermissionUi: viewUi,
-                popupContextName: viewUi.context_name,
-                popupContextLabel: viewUi.context_label,
-                popupPrivateProfile: viewTransientProfile,
-                popupEphemeralProfile: secondaryWindow.windowEphemeralProfile,
-                popupProfileName: secondaryWindow.windowProfileName
-            })
-            if (!popup) {
-                viewUi.navigation_failed()
-            }
-        }
+            + (secondaryWindow.tabStripVisible && secondaryWindow.tabPosition === "bottom" ? secondaryTabStrip.height : 0)
+        currentIndex: secondaryWindow.activeView ? secondaryWindow.activeView.StackLayout.index : -1
+    }
+    FerricHintWorkspace {
+        id: secondaryHintWorkspace
+        hostWindow: secondaryWindow
+        rootWindow: secondaryWindow.rootWindow
+        browserUi: secondaryUi
+        activeView: secondaryWindow.activeView
+        appearance: secondaryAppearance
+        anchors.fill: secondaryViews
+    }
+    FerricTabViewController {
+        id: secondaryTabController
+        ready: secondaryWindow.profileBootstrapComplete && !secondaryWindow.runtimeReleased
+        browserUi: secondaryUi
+        browserHost: secondaryWindow
+        tabs: secondaryTabs
+        viewFactory: rootWindow.webViewFactory
+        viewParent: secondaryViews
+        profile: secondaryWindow.windowWebEngineProfile
+        interceptor: secondaryWindow.windowRequestInterceptor
+        transientProfile: secondaryWindow.windowTransientProfile
+        onRestored: secondaryManagers.finishSessionRestore()
+        onActivity: secondaryWindow.noteTabActivity()
     }
 
     Loader {
@@ -1801,133 +1581,124 @@ function onContext_workspaceChanged() {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: Math.min(280, parent.height * 0.55)
-        active: secondaryWindow.devToolsVisible
-                && !secondaryWindow.windowTransferMode
-        visible: active
+        active: secondaryDevTools.visible && !secondaryDevTools.detached && secondaryDevTools.sourceCurrent
+        visible: active && secondaryDevTools.attachedVisible
         z: 20
         sourceComponent: Component {
             WebEngineView {
+                id: secondaryInspector
+                property var viewHost: secondaryWindow
+                property var viewUi: secondaryUi
                 anchors.fill: parent
-                profile: secondaryWindow.activeView
-                        ? secondaryWindow.activeView.profile
-                        : secondaryWindow.windowWebEngineProfile
-                inspectedView: secondaryWindow.activeView
+                profile: secondaryDevTools.sourceProfile
+                inspectedView: secondaryDevTools.sourceView
                 Accessible.name: "Attached developer tools"
+                Component.onCompleted: rootWindow.profileResourceRegistry.trackView(secondaryInspector,viewHost,viewUi)
             }
         }
     }
 
+    property int detachedTabIndex: -1
     function detachActiveViewForTransfer() {
-        var view = secondaryWindow.activeView
-        if (!view) {
-            return null
-        }
-        secondaryWindow.devToolsVisible = false
-        if (secondaryWindow.devToolsWindow) {
-            secondaryWindow.devToolsWindow.close()
-            secondaryWindow.devToolsWindow = null
-        }
+        var index = secondaryUi.active_tab_index
+        var view = tabViewAt(index)
+        if (!view) return null
+        secondaryDevTools.close()
+        secondaryWindow.detachedTabIndex = index
         secondaryWindow.windowDetachedView = view
-        secondaryWindow.windowDetachedWasTransfer = secondaryWindow.windowTransferMode
-        if (view === secondaryWindow.windowFallbackView) {
-            secondaryWindow.windowFallbackView = null
-        }
-        if (view === secondaryView) {
-            view.parent = null
-        } else {
-            view.parent = null
-        }
+        tabViews = tabViews.slice(0, index).concat(tabViews.slice(index + 1))
+        view.parent = null
         view.visible = false
         return view
     }
-
     function restoreDetachedView(view) {
-        if (!view) {
-            return false
-        }
-        if (secondaryWindow.windowDetachedWasTransfer) {
-            secondaryWindow.windowTransferView = view
-            view.parent = transferViewHost
-            view.anchors.fill = transferViewHost
-        } else {
-            if (view === secondaryView) {
-                view.parent = secondaryWindow.contentItem
-                view.anchors.fill = secondaryWindow.contentItem
-                secondaryView.visible = true
-            } else {
-                secondaryWindow.windowFallbackView = view
-                view.parent = fallbackViewHost
-                view.anchors.fill = fallbackViewHost
-            }
-        }
+        if (!view) return false
+        if (tabViews.indexOf(view) >= 0) return true
+        var sourceIndex = secondaryUi.tab_index_for_id(view.stableTabId)
+        var index = Math.max(0, Math.min(sourceIndex >= 0 ? sourceIndex : detachedTabIndex, tabViews.length))
+        if (tabViewAt(index) && tabViewAt(index).stableTabId === view.stableTabId)
+            secondaryWindow.removeTabViewAt(index)
+        view.viewUi = secondaryUi
+        view.viewHost = secondaryWindow
+        view.viewTabs = secondaryTabs
+        tabViews = tabViews.slice(0, index).concat([view], tabViews.slice(index))
+        view.parent = secondaryViews
+        view.anchors.fill = undefined
         view.visible = true
-        secondaryWindow.windowDetachedView = null
+        for (var i = 0; i < tabViews.length; ++i) {
+            tabViews[i].tabIndex = i
+            tabViews[i].viewModel = secondaryTabs.get(i)
+        }
+        windowDetachedView = null
+        detachedTabIndex = -1
         return true
     }
-
     function prepareTransferFallback() {
-        if (secondaryWindow.windowPreparedTransferFallback) {
-            return true
-        }
-        var fallback = rootWindow.webViewFactory.createObject(fallbackViewHost, {
-            tabIndex: -1,
-            viewUi: secondaryUi,
-            viewTabs: null,
-            viewModel: {
-                loaded: true,
-                url: "about:blank",
-                title: "New tab",
-                muted: false,
-                zoom: 1.0,
-                scrollX: -1,
-                scrollY: -1
-            },
-            viewProfile: secondaryWindow.windowWebEngineProfile,
-            viewInterceptor: secondaryWindow.windowRequestInterceptor,
-            viewTransientProfile: secondaryWindow.windowTransientProfile,
-            viewTransferred: false
+        if (secondaryUi.tab_count !== 1 || windowPreparedTransferFallback) return true
+        var fallback = rootWindow.webViewFactory.createObject(secondaryViews, {
+            tabIndex: -1, viewUi: secondaryUi, viewHost: secondaryWindow,
+            viewTabs: secondaryTabs,
+            viewModel: { loaded:true, url:"about:blank", title:"New tab", muted:false,
+                         zoom:1.0, scrollX:-1, scrollY:-1 },
+            viewProfile: windowWebEngineProfile, viewInterceptor: windowRequestInterceptor,
+            viewTransientProfile: windowTransientProfile, viewTransferred:false
         })
-        if (!fallback) {
-            secondaryUi.status_text = "Transfer fallback view could not be created"
-            return false
-        }
+        if (!fallback) return false
         fallback.visible = false
-        secondaryWindow.windowPreparedTransferFallback = fallback
+        windowPreparedTransferFallback = fallback
+        return true
+    }
+    function discardPreparedTransferFallback() {
+        if (windowPreparedTransferFallback) {
+            windowPreparedTransferFallback.destroy()
+            windowPreparedTransferFallback = null
+        }
+    }
+    function resetAfterTransferSource() {
+        if (detachedTabIndex >= 0 && detachedTabIndex < secondaryTabs.count)
+            secondaryTabs.remove(detachedTabIndex)
+        if (windowPreparedTransferFallback) {
+            var fallback = windowPreparedTransferFallback
+            windowPreparedTransferFallback = null
+            secondaryTabs.append({ tabId:secondaryUi.tab_id_for_index(0), url:"about:blank",
+                title:"New tab", loaded:true, pinned:false, muted:false, zoom:1.0,
+                suspended:false, discarded:false })
+            fallback.stableTabId = secondaryUi.tab_id_for_index(0)
+            fallback.tabIndex = 0
+            fallback.viewModel = secondaryTabs.get(0)
+            fallback.visible = true
+            tabViews = tabViews.concat([fallback])
+        }
+        windowDetachedView = null
+        detachedTabIndex = -1
+        syncTabModel()
+        rootWindow.updateBrowserWindowView(secondaryUi, activeView)
         return true
     }
 
-    function discardPreparedTransferFallback() {
-        if (secondaryWindow.windowPreparedTransferFallback) {
-            secondaryWindow.windowPreparedTransferFallback.destroy()
-            secondaryWindow.windowPreparedTransferFallback = null
-        }
-    }
-
-    function resetAfterTransferSource() {
-        if (!prepareTransferFallback()) {
+    function closeTabAtIndex(index) {
+        var view = tabViewAt(index)
+        if (index < 0 || !view) {
             return false
         }
-        secondaryWindow.windowTransferView = null
-        secondaryWindow.windowTransferSourceUi = null
-        secondaryWindow.windowTransferSourceHost = null
-        secondaryWindow.windowTransferOperationId = ""
-        secondaryWindow.windowTransferPayload = ""
-        secondaryView.visible = false
-        if (secondaryWindow.windowFallbackView) {
-            secondaryWindow.windowFallbackView.destroy()
-            secondaryWindow.windowFallbackView = null
+        rootWindow.clearPageDialogForView(view)
+        rootWindow.clearClientCertificateForView(view)
+        rootWindow.clearCertificateErrorForView(view)
+        rootWindow.clearWebAuthForView(view)
+        rootWindow.clearContextMenuForView(view)
+        rootWindow.removePermissionGroups(function(group) { return group.ui === secondaryUi && group.tabIndex === index }, true)
+        secondaryWindow.clearFileDialogForView(view)
+        if (!secondaryUi.close_tab(index)) {
+            return false
         }
-        // complete_tab_transfer() creates the reducer's mandatory
-        // blank fallback when this was the source's last tab.
-        var fallback = secondaryWindow.windowPreparedTransferFallback
-        secondaryWindow.windowPreparedTransferFallback = null
-        fallback.viewHost = secondaryWindow
-        fallback.parent = fallbackViewHost
-        fallback.anchors.fill = fallbackViewHost
-        fallback.visible = true
-        secondaryWindow.windowFallbackView = fallback
-        rootWindow.updateBrowserWindowView(secondaryUi, fallback)
-        secondaryUi.status_text = "Live tab moved; blank fallback tab created"
+        secondaryWindow.removeTabViewAt(index)
+        secondaryTabs.remove(index)
+        if (secondaryUi.tab_count > secondaryTabs.count) {
+            secondaryTabs.append({ url: secondaryUi.initial_url, title: "New tab",
+                          pinned: false, muted: false, zoom: 1.0,
+                          suspended: false, discarded: false })
+        }
+        secondaryWindow.syncTabModel()
         return true
     }
 
@@ -1945,16 +1716,12 @@ function onContext_workspaceChanged() {
         secondaryCommandBar.clearInput()
         secondaryWindow.applySwitcherEngineAction()
         commandStatus = secondaryUi.status_text
-        if (secondaryUi.mode === "command") {
-            secondaryUi.escape()
-            secondaryUi.status_text = commandStatus
-        }
         secondaryWindow.showCommandNotice(commandStatus, false)
     }
 
     FerricCommandLine {
         id: secondaryCommandBar
-        browserWindow: rootWindow
+        browserWindow: secondaryAppearance
         commandVisible: secondaryUi.mode === "command"
         completionVisible: secondaryUi.completion_visible
         completionText: secondaryUi.completion_text
@@ -2004,21 +1771,34 @@ function onContext_workspaceChanged() {
         }
     }
 
+    FerricProfileNotice {
+        id: secondaryProfileNotice
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: secondaryWindow.bottomControlsHeight
+        browserWindow: secondaryAppearance
+        hostWindow: secondaryWindow
+        noticeText: secondaryUi.profile_startup_notice
+        onDetailsRequested: rootWindow.showDiagnostics(secondaryUi, secondaryWindow)
+    }
+
     Rectangle {
         id: secondarySearchBar
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: rootWindow.inputBarHeight
+        height: secondaryAppearance.inputBarHeight
         z: 20
         visible: secondaryUi.mode === "search"
-        color: rootWindow.surfaceColor
+        color: secondaryAppearance.surfaceColor
 
         Label {
+            textFormat: Text.PlainText
             id: secondarySearchPrefix
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            width: rootWindow.inputBarHeight
+            width: secondaryAppearance.inputBarHeight
             text: secondaryUi.search_backward ? "?" : "/"
             color: rootWindow.warningColor
             font.bold: true
@@ -2037,11 +1817,11 @@ function onContext_workspaceChanged() {
             topPadding: 0
             bottomPadding: 0
             text: secondaryUi.search_text
-            color: rootWindow.primaryTextColor
-            selectionColor: rootWindow.selectionColor
-            selectedTextColor: rootWindow.selectionTextColor
+            color: secondaryAppearance.primaryTextColor
+            selectionColor: secondaryAppearance.selectionColor
+            selectedTextColor: secondaryAppearance.selectionTextColor
             placeholderText: "search"
-            placeholderTextColor: rootWindow.mutedTextColor
+            placeholderTextColor: secondaryAppearance.mutedTextColor
             background: Rectangle { color: "transparent" }
             focus: secondarySearchBar.visible
             Accessible.name: "Search"
@@ -2064,10 +1844,11 @@ function onContext_workspaceChanged() {
     }
 
     FerricWindowStatusBar {
-        browserWindow: window
+        browserWindow: secondaryAppearance
         statusVisible: secondaryWindow.statusBarVisible
         mode: secondaryUi.mode
         displayUrl: secondaryUi.display_url
+        hintPreviewText: secondaryUi.mode === "hint" && !secondaryUi.target_search_active ? secondaryHintWorkspace.previewText : ""
         statusText: secondaryWindow.commandNoticeVisible
                     ? secondaryWindow.commandNoticeText : secondaryUi.status_text
         profileLabel: secondaryWindow.windowEphemeralProfile ? "EPHEMERAL"
@@ -2087,10 +1868,23 @@ function onContext_workspaceChanged() {
                                secondaryWindow.windowEphemeralProfile)
     }
 
-    function attachTransferredView(view, payload, sourceUi, sourceHost, operationId) {
+    function removeTabViewAt(index) {
+        var view = tabViewAt(index)
+        if (!view) return
+        tabViews = tabViews.slice(0, index).concat(tabViews.slice(index + 1))
+        view.viewRetired = true
+        view.viewModel = ({ loaded:false, url:"", muted:false, zoom:1.0 })
+        view.visible = false
+        view.enabled = false
+        view.parent = null
+        Qt.callLater(function() { if (view) view.destroy() })
+    }
+
+    function attachTransferredView(view, payload, sourceUi, sourceHost) {
         if (!view || typeof payload !== "string" || payload.length === 0) {
             return false
         }
+        var sourceTabId = view.stableTabId
         var sourceUrl = view.url ? view.url.toString() : "about:blank"
         var contentHistory = sourceUi.content_history_export(view.tabIndex >= 0 ? view.tabIndex : sourceUi.active_tab_index)
         var transferData = null
@@ -2104,49 +1898,59 @@ function onContext_workspaceChanged() {
             return false
         }
         var adoptedTabId = secondaryUi.tab_id_for_index(secondaryUi.active_tab_index)
-        secondaryWindow.windowTransferView = view
-        secondaryWindow.windowTransferSourceUi = sourceUi
-        secondaryWindow.windowTransferSourceHost = sourceHost
-        secondaryWindow.windowTransferPayload = payload
+        secondaryWindow.syncTabModel()
+        var index = secondaryUi.active_tab_index
+        if (index < 0 || index >= secondaryTabs.count) {
+            secondaryUi.rollback_tab_transfer(adoptedTabId)
+            secondaryWindow.syncTabModel()
+            return false
+        }
+        secondaryTabs.setProperty(index, "url", transferData.url || "about:blank")
+        secondaryTabs.setProperty(index, "title", transferData.title || "New tab")
+        secondaryTabs.setProperty(index, "loaded", true)
+        secondaryTabs.setProperty(index, "muted", !!transferData.muted)
+        secondaryTabs.setProperty(index, "zoom", Number(transferData.zoom_hundredths || 100) / 100.0)
+        var placeholder = secondaryWindow.tabViewAt(index)
+        if (!placeholder) {
+            secondaryUi.rollback_tab_transfer(adoptedTabId)
+            secondaryWindow.syncTabModel()
+            return false
+        }
+        secondaryWindow.removeTabViewAt(index)
         if (contentHistory.length > 0) secondaryUi.content_history_import(secondaryUi.active_tab_index, contentHistory)
         view.viewUi = secondaryUi
-        view.viewTabs = null
-        view.viewModel = {
-            loaded: true,
-            url: transferData.url || "about:blank",
-            title: transferData.title || "New tab",
-            muted: !!transferData.muted,
-            zoom: Number(transferData.zoom_hundredths || 100) / 100.0,
-            scrollX: -1,
-            scrollY: -1
-        }
-        view.viewTransferred = true
+        view.viewTabs = secondaryTabs
+        view.viewModel = secondaryTabs.get(index)
+        view.viewTransferred = false
+        view.stableTabId = adoptedTabId
         if (view.viewHost !== undefined) {
             view.viewHost = secondaryWindow
         }
-        view.tabIndex = -1
-        view.parent = transferViewHost
-        view.anchors.fill = transferViewHost
-        view.visible = true
         if (view.viewIsSecondaryStatic === true) {
             view.url = sourceUrl
         }
+        view.tabIndex = index
+        view.anchors.fill = undefined
+        view.parent = secondaryViews
+        view.visible = true
+        tabViews = tabViews.slice(0, index).concat([view], tabViews.slice(index))
+        for (var reindex = index; reindex < tabViews.length; ++reindex) {
+            tabViews[reindex].tabIndex = reindex
+            tabViews[reindex].viewModel = secondaryTabs.get(reindex)
+        }
         rootWindow.updateBrowserWindowView(secondaryUi, view)
         if (!rootWindow.completeDetachedSource(sourceUi, sourceHost, payload)) {
+            tabViews = tabViews.slice(0, index).concat(tabViews.slice(index + 1))
             view.parent = null
             view.visible = false
+            view.stableTabId = sourceTabId
             secondaryUi.rollback_tab_transfer(adoptedTabId)
-            rootWindow.restoreSourceView(sourceUi, sourceHost, view)
-            resetAfterTransferSource()
+            secondaryWindow.syncTabModel()
             return false
         }
-        if (operationId && operationId.length > 0 && sourceUi) {
-            sourceUi.complete_transfer_operation(operationId, true)
-        }
-        if (secondaryWindow.windowTransferOperationId.length > 0
-                && secondaryWindow.windowTransferSourceUi) {
-            secondaryWindow.windowTransferSourceUi.complete_transfer_operation(
-                        secondaryWindow.windowTransferOperationId, true)
+        if (arguments.length >= 5 && typeof arguments[4] === "string"
+                && arguments[4].length > 0 && sourceUi) {
+            sourceUi.complete_transfer_operation(arguments[4], true)
         }
         view.forceActiveFocus()
         secondaryUi.status_text = "Live tab attached without navigation"
@@ -2158,13 +1962,15 @@ function onContext_workspaceChanged() {
         interval: 50
         repeat: true
         onTriggered: {
-            if (secondaryUi.profile_bootstrap_pending) {
+            if (secondaryUi.profile_bootstrap_pending || !secondaryWindow.profileBootstrapComplete) {
                 return
             }
             stop()
-            if (!secondaryUi.queue_bookmark_transfer(
+            var queued = secondaryUi.queue_bookmark_transfer(
                         secondaryWindow.windowBookmarkTransferUrl,
-                        secondaryWindow.windowBookmarkTransferTitle)) {
+                        secondaryWindow.windowBookmarkTransferTitle)
+            secondaryWindow.bookmarkTransferStarted(secondaryUi, queued)
+            if (!queued) {
                 secondaryUi.status_text = "Bookmark transfer failed"
             }
             secondaryWindow.windowBookmarkTransferUrl = ""
@@ -2173,6 +1979,13 @@ function onContext_workspaceChanged() {
     }
 
     Component.onCompleted: {
+        windowProfileResources=rootWindow.profileResourceRegistry.ensure(
+                    windowProfileName,windowTransientProfile,windowStorageBasePath,
+                    windowSharedProfile,windowSharedRequestInterceptor)
+        if (!rootWindow.profileResourceRegistry.retainWindow(windowProfileResources,secondaryWindow,secondaryUi)) {
+            secondaryUi.status_text="This profile couldn't be opened. Try reopening the window."
+            return
+        }
         secondaryWindow.scheduleRuntimeWork(0)
         secondaryWindow.permissionPromptSurface =
                 rootWindow.permissionPromptFactory.createObject(
@@ -2186,6 +1999,29 @@ function onContext_workspaceChanged() {
         secondaryWindow.rendererFailureSurface =
                 rootWindow.rendererFailureFactory.createObject(
                     secondaryWindow.contentItem, { hostWindow: secondaryWindow })
+        if (secondaryWindow.windowPopup) {
+            if (!secondaryWindow.windowPopupRequest
+                    || !popupOwnerBridge.initialize(secondaryWindow.windowPopupOpenerUi,
+                                                    secondaryUi,secondaryWindow.windowPopupToken)) {
+                secondaryWindow.rejectPopupAdmission()
+                return
+            }
+            secondaryWindow.windowPopupOpenerUi=null
+            secondaryWindow.completeProfileBootstrap()
+            return
+        }
+        if (secondaryWindow.windowInheritedUi) {
+            var inherited = popupOwnerBridge.inheritProfile(windowInheritedUi, secondaryUi, windowProfileName)
+            windowInheritedUi = null
+            if (!inherited) {
+                secondaryWindow.rejectPopupAdmission()
+                return
+            }
+            if (secondaryUi.profile_bootstrap_pending) secondaryProfileBootstrapTimer.start()
+            else secondaryWindow.completeProfileBootstrap()
+            return
+        }
+        secondaryWindow.syncTabModel()
         rootWindow.installFocusObserver(secondaryWindow.activeView)
         secondaryUi.set_startup_configuration(
                     rootWindow.primaryBrowserUi.config_json, rootWindow.primaryBrowserUi.config_base_json,
@@ -2198,7 +2034,7 @@ function onContext_workspaceChanged() {
                                       secondaryWindow.windowEphemeralProfile,
                                       secondaryWindow.windowProfileLabel,
                                       secondaryWindow.windowProfileName,
-                                      rootWindow.storageBasePath)
+                                      secondaryWindow.windowStorageBasePath)
         if (secondaryWindow.windowBookmarkTransferUrl.length > 0) {
             bookmarkTransferTimer.start()
         }
@@ -2209,11 +2045,83 @@ function onContext_workspaceChanged() {
                     secondaryWindow.windowProfileName,
                     secondaryWindow.windowEphemeralInvocationToken,
                     secondaryWindow.windowEphemeralProfile)
-        if (!secondaryWindow.windowSharedProfile
-                && !secondaryRequestInterceptor.attach(secondaryProfile)) {
-            secondaryUi.status_text = "Request interceptor unavailable"
+        secondaryProfileBootstrapTimer.start()
+    }
+
+    function rejectPopupAdmission() {
+        profileBootstrapComplete=false
+        Qt.callLater(function() {
+            if (secondaryWindow.runtimeReleased) return
+            secondaryWindow.windowShutdownApproved=true
+            secondaryWindow.close()
+            secondaryWindow.destroy()
+        })
+    }
+
+    function registerWindowOwner() {
+        if (windowPopup)
+            return rootWindow.registerPopupWindow(secondaryWindow,secondaryUi,activeView)
+        return rootWindow.registerBrowserWindow(
+                    secondaryWindow, secondaryUi, activeView,windowWebEngineProfile,
+                    windowProfileName,windowEphemeralInvocationToken,windowEphemeralProfile)
+    }
+
+    function clearPendingTransfer() {
+        windowTransferView = null
+        windowTransferSourceUi = null
+        windowTransferSourceHost = null
+        windowTransferOperationId = ""
+        windowTransferPayload = ""
+    }
+
+    function cancelPendingTransfer() {
+        if (windowTransferView && !rootWindow.runtimeDisposing) {
+            rootWindow.restoreSourceView(windowTransferSourceUi,
+                                         windowTransferSourceHost, windowTransferView)
+            if (windowTransferSourceUi && windowTransferOperationId.length > 0)
+                windowTransferSourceUi.complete_transfer_operation(windowTransferOperationId, false)
+        }
+        clearPendingTransfer()
+    }
+
+    Timer {
+        id: secondaryProfileBootstrapTimer
+        interval: 25
+        repeat: true
+        onTriggered: {
+            if (secondaryUi.profile_bootstrap_pending) return
+            stop()
+            secondaryWindow.completeProfileBootstrap()
+        }
+    }
+
+    function completeProfileBootstrap() {
+        if (runtimeReleased || profileBootstrapComplete || !secondaryUi.profile_available()
+                || (!windowPopup && secondaryUi.profile_bootstrap_pending)) return
+        rootWindow.profileResourceRegistry.activateWindow(secondaryWindow)
+        profileBootstrapComplete = true
+        secondaryWindow.syncTabModel()
+        if (!secondaryWindow.registerWindowOwner()) {
+            if (windowPopup) rejectPopupAdmission()
+            return
+        }
+        if (windowPopup) {
+            // The native request exists only during its signal delivery.
+            // The shared controller has created a blank view with the exact
+            // inherited profile; accept before returning to WebEngine.
+            var request=windowPopupRequest
+            var view=activeView
+            if (!request || !view || view.profile!==windowSharedProfile) {
+                rejectPopupAdmission()
+                return
+            }
+            request.openIn(view)
+            windowPopupRequest=null
+            return
         }
         if (secondaryWindow.windowTransferMode) {
+            var bootstrapTabId = secondaryUi.tab_count === 1
+                    ? secondaryUi.tab_id_for_index(0) : ""
             if (!secondaryWindow.attachTransferredView(
                         secondaryWindow.windowTransferView,
                         secondaryWindow.windowTransferPayload,
@@ -2221,17 +2129,26 @@ function onContext_workspaceChanged() {
                         secondaryWindow.windowTransferSourceHost,
                         secondaryWindow.windowTransferOperationId)) {
                 secondaryUi.status_text = "Live tab adoption failed"
-                if (secondaryWindow.windowTransferOperationId.length > 0
-                        && secondaryWindow.windowTransferSourceUi) {
-                    secondaryWindow.windowTransferSourceUi.complete_transfer_operation(
-                                secondaryWindow.windowTransferOperationId, false)
-                    secondaryWindow.windowTransferOperationId = ""
-                }
+                secondaryWindow.cancelPendingTransfer()
                 return
             }
-        } else if (secondaryWindow.windowStartupContext.length > 0) {
-            secondaryUi.execute_command(
-                        "context-enter " + secondaryWindow.windowStartupContext)
+            secondaryWindow.clearPendingTransfer()
+            var bootstrapTabIndex = secondaryUi.tab_index_for_id(bootstrapTabId)
+            // The reducer may reuse an idle blank tab for the transfer.
+            // Only close a bootstrap tab that remains separate from the live page.
+            if (bootstrapTabIndex >= 0
+                    && bootstrapTabId !== secondaryUi.tab_id_for_index(secondaryUi.active_tab_index))
+                secondaryWindow.closeTabAtIndex(bootstrapTabIndex)
+            return
+        }
+        if (secondaryWindow.windowStartupContext.length > 0) {
+            if (windowStartupContextRestore) {
+                secondaryUi.set_context_entry_reuse(true)
+                secondaryUi.execute_command("context-enter " + windowStartupContext)
+            } else if (!secondaryUi.assign_window_context(windowStartupContext)) {
+                secondaryWindow.rejectPopupAdmission()
+                return
+            }
             rootWindow.routeContextWorkspace(secondaryUi)
         }
         if (secondaryWindow.windowStartupContextRestore) {
@@ -2243,28 +2160,78 @@ function onContext_workspaceChanged() {
             secondaryUi.navigate_initial(
                         secondaryWindow.windowStartupUrl, "external-open", false)
         }
+        secondaryWindow.applySwitcherEngineAction()
+    }
+    Connections {
+        target: secondaryUi
+        function onActive_tab_indexChanged() {
+            if (rootWindow.copyNoticeHost === secondaryWindow) rootWindow.copyNoticeVisible = false
+            secondaryWindow.noteTabActivity(); secondaryWindow.scheduleRuntimeWork(0)
+        }
+        function onTab_countChanged() { secondaryWindow.scheduleRuntimeWork(0) }
+    }
+
+    FerricDownloadWorkspace {
+        id: secondaryDownloads
+        objectName: "secondaryDownloadWorkspace"
+        browserWindow: secondaryAppearance
+        hostWindow: secondaryWindow
+        browserUi: secondaryUi
+        rootWindow: secondaryWindow.rootWindow
+        onOpening: rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
+        onClosed: rootWindow.restoreOverlayFocus(secondaryWindow)
+    }
+    readonly property alias downloadWorkspaceObject: secondaryDownloads
+    readonly property alias profileSessionWorkspace: secondaryManagers
+    FerricProfileSessionWorkspace {
+        id: secondaryManagers
+        objectName: "secondaryProfileSessionWorkspace"
+        browserWindow: secondaryAppearance
+        hostWindow: secondaryWindow
+        browserUi: secondaryUi
+        transientProfile: secondaryWindow.windowTransientProfile
+        onOpening: rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
+        onClosed: rootWindow.restoreOverlayFocus(secondaryWindow)
     }
     FerricSelectorValidationSurface {
+        browserWindow: rootWindow
         browserUi: secondaryUi
     }
 
-    Component.onDestruction: {
-        if (secondaryWindow.devToolsWindow) {
-            secondaryWindow.devToolsWindow.close()
-            secondaryWindow.devToolsWindow = null
+    function releaseWindowResources() {
+        if (secondaryWindow.runtimeReleased) return
+        secondaryWindow.runtimeReleased = true
+        secondaryDownloads.shutdown()
+        secondaryDevTools.close()
+        rootWindow.discardOverlayFocus(secondaryWindow)
+        if (rootWindow.contextRouteUi === secondaryUi) rootWindow.closeContextRoutePrompt()
+        secondaryProfileBootstrapTimer.stop()
+        secondaryWindow.cancelPendingTransfer()
+        secondaryRuntimeWorkTimer.stop()
+        bookmarkTransferTimer.stop()
+        secondaryShutdownPageProbeTimer.stop()
+        secondaryCommandNoticeTimer.stop()
+        secondaryTabSwitchTimer.stop()
+        var views = tabViews.slice(0)
+        for (var index = 0; index < views.length; ++index) {
+            var view = views[index]
+            if (!view || views.indexOf(view) !== index) continue
+            rootWindow.cancelScriptsForView(view)
+            rootWindow.clearPageDialogForView(view)
+            rootWindow.clearClientCertificateForView(view)
+            rootWindow.clearCertificateErrorForView(view)
+            rootWindow.clearWebAuthForView(view)
+            rootWindow.clearContextMenuForView(view)
+            rootWindow.clearDesktopMediaForView(view)
+            rootWindow.clearCaptureSessionForView(view)
+            rootWindow.clearRendererFailureForView(view)
+            rootWindow.clearSiteDataClearForView(view)
+            secondaryWindow.clearFileDialogForView(view)
         }
-        rootWindow.unregisterBrowserWindow(secondaryUi)
-            rootWindow.clearPageDialogForView(secondaryView)
-            rootWindow.clearClientCertificateForView(secondaryView)
-            rootWindow.clearCertificateErrorForView(secondaryView)
-            rootWindow.clearWebAuthForView(secondaryView)
-            rootWindow.clearContextMenuForView(secondaryView)
-            rootWindow.clearDesktopMediaForView(secondaryView)
-            rootWindow.clearCaptureSessionForView(secondaryView)
-rootWindow.clearCaptureSessionsForHost(secondaryWindow)
-        secondaryWindow.clearFileDialogForView(secondaryView)
-        rootWindow.clearSiteDataClearForView(secondaryView)
-        rootWindow.cancelPermissionForUi(secondaryUi)
+        rootWindow.removePermissionGroups(function(group) { return group.host === secondaryWindow }, true)
+        if (windowPopup) rootWindow.unregisterPopupWindow(secondaryWindow)
+        else rootWindow.unregisterBrowserWindow(secondaryUi)
+        rootWindow.clearCaptureSessionsForHost(secondaryWindow)
         if (rootWindow.pendingDesktopMediaHost === secondaryWindow) {
             rootWindow.clearDesktopMediaRequest(true)
         }
@@ -2284,7 +2251,12 @@ rootWindow.clearCaptureSessionsForHost(secondaryWindow)
             secondaryWindow.rendererFailureSurface.destroy()
             secondaryWindow.rendererFailureSurface = null
         }
+        rootWindow.profileResourceRegistry.releaseWindow(secondaryWindow)
         secondaryUi.view_closed()
         secondaryUi.release_transient_resources()
     }
+    Component.onDestruction: {
+        if (!secondaryWindow.runtimeReleased && !rootWindow.runtimeDisposing) releaseWindowResources()
+    }
+
 }

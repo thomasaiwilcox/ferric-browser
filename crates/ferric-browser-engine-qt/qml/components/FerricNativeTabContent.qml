@@ -8,6 +8,8 @@ Item {
     required property var browserUi
     required property var browserWindow
     required property var browserHost
+    Timer { id: historyRefreshTimer; interval: 0; onTriggered: content.synchronizeHistory() }
+    Timer { id: contentFocusTimer; interval: 0; onTriggered: content.focusContent() }
     property var tabsModel: null
     property string nativeUrl: ""
     property bool traversalPending: false
@@ -23,10 +25,17 @@ Item {
     property bool navigationPending: false
     property bool committedContent: false
     property int navigationBaseIndex: 0
-    readonly property int tabIndex: webView.tabIndex >= 0 ? webView.tabIndex : browserUi.active_tab_index
+    readonly property int tabIndex: webView ? webView.tabIndex : -1
+    // A provisional or retired renderer must never borrow the active tab.
+    function hasLiveOwner() {
+        return !!browserUi && !!webView && tabIndex >= 0
+            && typeof webView.ownsTab === "function" && webView.ownsTab()
+    }
+    onBrowserUiChanged: invalidateHistoryProbe()
+    onTabIndexChanged: invalidateHistoryProbe()
     readonly property int engineHistoryIndex: historyCursor.count
-    readonly property bool canNavigateBack: { var revision = browserUi.content_history_revision; return browserUi.content_history_available(tabIndex, -1) }
-    readonly property bool canNavigateForward: { var revision = browserUi.content_history_revision; return browserUi.content_history_available(tabIndex, 1) }
+    readonly property bool canNavigateBack: { if (!hasLiveOwner()) return false; var revision = browserUi.content_history_revision; return browserUi.content_history_available(tabIndex, -1) }
+    readonly property bool canNavigateForward: { if (!hasLiveOwner()) return false; var revision = browserUi.content_history_revision; return browserUi.content_history_available(tabIndex, 1) }
     readonly property var startPage: startLoader.item
     property bool startCreated: false
     visible: true
@@ -35,7 +44,7 @@ Item {
     Instantiator {
         id: historyCursor
         model: content.webView.history.backItems
-        onCountChanged: Qt.callLater(content.synchronizeHistory)
+        onCountChanged: historyRefreshTimer.restart()
         delegate: QtObject { required property url url; required property int offset }
     }
     Instantiator {
@@ -69,6 +78,7 @@ Item {
         return null
     }
     function synchronizeHistory() {
+        if (!hasLiveOwner()) return
         if (nativeUrl.length > 0 || webView.loading) return
         if (navigationPending && browserUi.load_state !== "complete") return
         if (typeof webView.runJavaScript !== "function" || typeof browserWindow.browserScriptWorld !== "number") {
@@ -84,12 +94,13 @@ Item {
                 ? String(browserUi.tab_id_for_index(identityIndex)) : ""
         var identityInputEpoch = Number(browserUi.input_epoch) || 0
         historyProbePending = true
-        webView.runJavaScript(BrowserScripts.historyTraversalProbe(), browserWindow.browserScriptWorld, function(value) {
+        var launched = browserWindow.runBrowserScript(webView, BrowserScripts.historyTraversalProbe(), function(value) {
             if (epoch !== historyProbeEpoch) return
             historyProbePending = false
+            if (!hasLiveOwner()) { historyProbeAgain = false; return }
             if (nativeUrl.length > 0 || webView.loading) return
             if (destination !== webView.url.toString() || position !== engineHistoryIndex) {
-                Qt.callLater(synchronizeHistory)
+                historyRefreshTimer.restart()
                 return
             }
             if (value && value.url === destination && typeof value.document === "string"
@@ -133,8 +144,9 @@ Item {
                 settleUnprovenSameDocumentChange(epoch, destination)
             }
             reconcileHistory()
-            if (historyProbeAgain) { historyProbeAgain = false; Qt.callLater(synchronizeHistory) }
-        })
+            if (historyProbeAgain) { historyProbeAgain = false; historyRefreshTimer.restart() }
+        }, browserWindow.browserScriptWorld)
+        if (!launched) historyProbePending = false
     }
     function invalidateHistoryProbe() {
         historyProbeEpoch += 1
@@ -144,6 +156,7 @@ Item {
         pendingSameDocumentNotification = null
     }
     function reconcileHistory() {
+        if (!hasLiveOwner()) return
         var snapshot
         try { snapshot = JSON.parse(browserUi.content_history_export(tabIndex)) } catch (error) { return }
         if (!snapshot || !snapshot.entries || !snapshot.entries[snapshot.cursor]) return
@@ -220,8 +233,9 @@ Item {
         }
         browserUi.content_history_import(tabIndex, JSON.stringify(snapshot))
     }
-    function focusContent() { if (nativeUrl === "rb://start" && startPage) startPage.focusContent() }
+    function focusContent() { if (hasLiveOwner() && nativeUrl === "rb://start" && startPage) startPage.focusContent() }
     function setContentUrl(destination, traversal, engineMoves) {
+        if (!hasLiveOwner()) return
         invalidateHistoryProbe()
         engineTraversalPending = false
         if (destination === "rb://start" || destination === "rb://blank") {
@@ -238,7 +252,7 @@ Item {
             if (destination === "rb://start") {
                 startCreated = true
                 if (startPage) startPage.refresh()
-                Qt.callLater(focusContent)
+                contentFocusTimer.restart()
             }
         } else {
             if (!traversal) navigationBaseIndex = engineHistoryIndex
@@ -264,12 +278,14 @@ Item {
         }
     }
     function beginNavigation(engineTraversal) {
+        if (!hasLiveOwner()) return
         if (nativeUrl.length > 0) return
         invalidateHistoryProbe()
         navigationPending = true
         engineTraversalPending = !!engineTraversal && !traversalPending
     }
     function reportUrlChange(index, destination) {
+        if (!hasLiveOwner()) return
         if (index >= 0 && typeof browserUi.navigation_url_changed_for === "function") {
             browserUi.navigation_url_changed_for(index, destination)
         } else {
@@ -277,6 +293,7 @@ Item {
         }
     }
     function settleUnprovenSameDocumentChange(epoch, probedDestination) {
+        if (!hasLiveOwner()) return
         var notification = pendingSameDocumentNotification
         if (!notification || notification.serial !== sameDocumentNotificationSerial
                 || notification.probeEpoch !== epoch
@@ -294,8 +311,9 @@ Item {
         }
     }
     function noteSameDocument(destination) {
+        if (!hasLiveOwner()) return
         if (typeof destination !== "string" || destination.length === 0) {
-            Qt.callLater(synchronizeHistory)
+            historyRefreshTimer.restart()
             return
         }
         var index = tabIndex
@@ -317,21 +335,22 @@ Item {
                 || browserUi.load_state !== "complete" || historyDocument.length === 0) {
             pendingSameDocumentNotification = null
             reportUrlChange(index, destination)
-            Qt.callLater(synchronizeHistory)
+            historyRefreshTimer.restart()
             return
         }
         pendingSameDocumentNotification = notification
         browserUi.begin_same_document_url_change_for(
             index, tabId, destination, historyDocument, notification.inputEpoch)
-        Qt.callLater(synchronizeHistory)
+        historyRefreshTimer.restart()
     }
     function noteCommit() {
+        if (!hasLiveOwner()) return
         if (nativeUrl.length > 0) return
         navigationPending = false
         committedContent = true
         if (!engineTraversalPending) browserUi.content_navigated(tabIndex, webView.url.toString(), engineHistoryIndex, traversalPending)
         traversalPending = false
-        Qt.callLater(synchronizeHistory)
+        historyRefreshTimer.restart()
     }
     Rectangle { anchors.fill: parent; visible: content.nativeUrl.length > 0; color: content.browserWindow.backgroundColor }
     Loader {
@@ -339,7 +358,7 @@ Item {
         anchors.fill: parent
         active: content.startCreated
         visible: content.nativeUrl === "rb://start"
-        onLoaded: Qt.callLater(content.focusContent)
+        onLoaded: contentFocusTimer.restart()
         sourceComponent: FerricStartPage {
             browserUi: content.browserUi
             browserWindow: content.browserWindow

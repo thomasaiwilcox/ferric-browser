@@ -1,12 +1,29 @@
 use super::{
-    CollisionPolicy, CxxQtType, DownloadState, DownloadUpdate, ParsedCommand, PathBuf,
-    PermissionRule, Pin, QString, StorageRequest, ValidatedUrl, Value, choose_download_path,
-    cleanup_staged_download, configured_download_directory_path, finalize_staged_download, fs,
-    is_safe_history_url, path_to_file_url, permission_session_key, qobject,
+    BrowserApplication, CollisionPolicy, CxxQtType, DownloadState, ParsedCommand, PathBuf,
+    PermissionRule, Pin, QString, StorageRequest, Uuid, ValidatedUrl, Value, choose_download_path,
+    cleanup_staged_download, configured_download_directory_path, fs, path_to_file_url, qobject,
     sanitize_download_filename, stage_download_path, unix_timestamp,
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn allocate_download_id(&self) -> QString {
+        let rust = self.rust();
+        let Some(window) = rust.window else {
+            return QString::default();
+        };
+        if rust.profile_bootstrap_pending
+            || !rust
+                .state
+                .as_ref()
+                .is_some_and(|state| state.windows().contains_key(&window))
+        {
+            return QString::default();
+        }
+        // Qt request IDs restart with the native profile. Persistent history
+        // needs an application identity retained by that request's owner.
+        QString::from(Uuid::new_v4().to_string())
+    }
+
     pub(super) fn default_download_directory(self: Pin<&mut Self>) -> QString {
         QString::from(
             configured_download_directory_path(&self.as_ref().rust().config)
@@ -22,25 +39,45 @@ impl qobject::BrowserUi {
         suggested_name: &QString,
     ) -> QString {
         let safe_name = sanitize_download_filename(&suggested_name.to_string());
-        let source = ValidatedUrl::parse(source_url.to_string())
-            .ok()
-            .filter(|url| is_safe_history_url(url.as_str()))
-            .map_or_else(|| "[redacted]".into(), |url| url.to_string());
-        if self.as_ref().rust().profile_persistence.is_durable() {
-            let result = self.as_mut().create_download_via_worker(
-                id.to_string(),
-                source,
-                String::new(),
-                DownloadState::Offered,
-                unix_timestamp(),
-            );
-            if let Err(error) = result {
-                self.set_status_text(QString::from(format!(
-                    "Download index unavailable: {error}"
-                )));
-            }
+        let result = Uuid::parse_str(&id.to_string())
+            .map_err(|_| "This download request is invalid.".to_owned())
+            .and_then(|id| {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .state
+                    .as_mut()
+                    .ok_or_else(|| "The window profile is not ready.".to_owned())?
+                    .offer_session_download(
+                        id,
+                        &source_url.to_string(),
+                        &safe_name,
+                        unix_timestamp(),
+                    )
+                    .map_err(|error| error.to_string())
+            });
+        if let Err(error) = result {
+            self.set_status_text(QString::from(error));
+            return QString::default();
         }
         QString::from(safe_name)
+    }
+
+    fn record_download_destination(
+        mut self: Pin<&mut Self>,
+        id: &str,
+        path: &std::path::Path,
+    ) -> Result<(), String> {
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .state
+            .as_mut()
+            .ok_or_else(|| "The window profile is not ready.".to_owned())?
+            .set_session_download_destination(id, path)
+            .map_err(|error| error.to_string())
     }
 
     pub(super) fn accept_download(
@@ -49,6 +86,12 @@ impl qobject::BrowserUi {
         directory: &QString,
         suggested_name: &QString,
     ) -> QString {
+        if !self.as_ref().get_ref().download_save_capacity() {
+            self.set_status_text(QString::from(
+                "Too many files are being saved. Wait for a download to finish, then retry.",
+            ));
+            return QString::default();
+        }
         let directory = PathBuf::from(directory.to_string());
         if let Err(error) = fs::create_dir_all(&directory) {
             self.set_status_text(QString::from(format!(
@@ -82,26 +125,13 @@ impl qobject::BrowserUi {
                 return QString::default();
             }
         };
-        if self.as_ref().rust().profile_persistence.is_durable() {
-            if let Err(error) = self.as_mut().set_download_destination_via_worker(
-                id.to_string(),
-                path.to_string_lossy().into_owned(),
-            ) {
-                cleanup_staged_download(&staged);
-                self.set_status_text(QString::from(format!(
-                    "Download index update failed: {error}"
-                )));
-                return QString::default();
-            }
-            if !self.as_mut().queue_download_update(DownloadUpdate {
-                id: id.to_string(),
-                state: DownloadState::InProgress,
-                bytes_received: 0,
-                completed_at: None,
-            }) {
-                cleanup_staged_download(&staged);
-                return QString::default();
-            }
+        if let Err(error) = self
+            .as_mut()
+            .record_download_destination(&id.to_string(), &path)
+        {
+            cleanup_staged_download(&staged);
+            self.set_status_text(QString::from(error));
+            return QString::default();
         }
         self.as_mut()
             .rust_mut()
@@ -120,6 +150,12 @@ impl qobject::BrowserUi {
         id: &QString,
         selected_path: &QString,
     ) -> QString {
+        if !self.as_ref().get_ref().download_save_capacity() {
+            self.set_status_text(QString::from(
+                "Too many files are being saved. Wait for a download to finish, then retry.",
+            ));
+            return QString::default();
+        }
         let result = (|| {
             let path = PathBuf::from(selected_path.to_string());
             if !path.is_absolute() || selected_path.to_string().chars().any(char::is_control) {
@@ -144,23 +180,12 @@ impl qobject::BrowserUi {
                 self.as_ref().rust().session_id,
                 &path,
             )?;
-            if self.as_ref().rust().profile_persistence.is_durable() {
-                if let Err(error) = self.as_mut().set_download_destination_via_worker(
-                    id.to_string(),
-                    path.to_string_lossy().into_owned(),
-                ) {
-                    cleanup_staged_download(&staged);
-                    return Err(error);
-                }
-                if !self.as_mut().queue_download_update(DownloadUpdate {
-                    id: id.to_string(),
-                    state: DownloadState::InProgress,
-                    bytes_received: 0,
-                    completed_at: None,
-                }) {
-                    cleanup_staged_download(&staged);
-                    return Err("download lifecycle update could not be queued".into());
-                }
+            if let Err(error) = self
+                .as_mut()
+                .record_download_destination(&id.to_string(), &path)
+            {
+                cleanup_staged_download(&staged);
+                return Err(error);
             }
             self.as_mut()
                 .rust_mut()
@@ -192,45 +217,8 @@ impl qobject::BrowserUi {
             })
     }
 
-    pub(super) fn finalize_download(mut self: Pin<&mut Self>, id: &QString) -> bool {
-        let id_string = id.to_string();
-        let Some(staged) = self
-            .as_ref()
-            .rust()
-            .staged_downloads
-            .get(&id_string)
-            .cloned()
-        else {
-            self.set_status_text(QString::from("Download staging record is unavailable"));
-            return false;
-        };
-        match finalize_staged_download(&staged) {
-            Ok(()) => {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .staged_downloads
-                    .remove(&id_string);
-                true
-            }
-            Err(error) => {
-                cleanup_staged_download(&staged);
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .staged_downloads
-                    .remove(&id_string);
-                self.set_status_text(QString::from(format!(
-                    "Download finalization failed: {error}"
-                )));
-                false
-            }
-        }
-    }
-
     pub(super) fn discard_download_staging(mut self: Pin<&mut Self>, id: &QString) {
+        self.as_mut().cancel_download_finalization(id);
         if let Some(staged) = self
             .as_mut()
             .rust_mut()
@@ -264,49 +252,91 @@ impl qobject::BrowserUi {
             }
         };
         let completed_at = (finished && state == DownloadState::Completed).then(unix_timestamp);
-        let update = DownloadUpdate {
-            id: id.to_string(),
-            state,
-            bytes_received,
-            completed_at,
-        };
-        if self
-            .as_ref()
-            .rust()
-            .profile_persistence
-            .lacks_durable_storage()
-        {
-            return true;
+        let result = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .state
+            .as_mut()
+            .ok_or_else(|| "The window profile is not ready.".to_owned())
+            .and_then(|application| {
+                application
+                    .update_session_download(
+                        &id.to_string(),
+                        state,
+                        bytes_received,
+                        finished,
+                        completed_at,
+                    )
+                    .map_err(|error| error.to_string())
+            });
+        match result {
+            Ok(()) => {
+                self.as_ref().rust().storage_library_dirty.set(true);
+                // Session-only transfers must not announce their existence on
+                // the ordinary durable-profile IPC event stream.
+                if self.as_ref().rust().profile_persistence.is_durable() {
+                    let mut rust = self.as_mut().rust_mut();
+                    let this = rust.as_mut().get_mut();
+                    super::publish_ipc_event(
+                        &mut this.ipc_sequence,
+                        "download.changed",
+                        serde_json::json!({ "download_id": id.to_string(), "state": state.as_str(), "bytes_received": bytes_received }),
+                    );
+                }
+                true
+            }
+            Err(error) => {
+                self.set_status_text(QString::from(error));
+                false
+            }
         }
-        self.as_mut().queue_download_update(update)
+    }
+
+    pub(super) fn current_download_rows(
+        &self,
+    ) -> Result<Vec<ferric_browser_application::DownloadRow>, String> {
+        let rust = self.rust();
+        rust.state
+            .as_ref()
+            .ok_or_else(|| "The window profile is not ready.".to_owned())?
+            .session_download_rows(
+                rust.storage_library
+                    .as_ref()
+                    .map_or(&[], |library| library.downloads.as_slice()),
+            )
+            .map_err(|error| error.to_string())
+    }
+
+    pub(super) fn prepare_download_history(mut self: Pin<&mut Self>) {
+        let needed = {
+            let rust = self.as_ref().get_ref().rust();
+            rust.profile_persistence.is_durable()
+                && (rust.storage_library.is_none() || rust.storage_library_dirty.get())
+                && rust.storage_library_read_state.permits_query_request()
+        };
+        if needed {
+            self.as_mut().request_storage_library();
+        }
     }
 
     pub(super) fn list_downloads(mut self: Pin<&mut Self>) -> QString {
-        if self.as_ref().rust().storage_library.is_none()
-            || self.as_ref().rust().storage_library_dirty.get()
-        {
-            self.as_mut().request_storage_library();
-            if self.as_ref().rust().storage_library.is_none() {
-                return QString::default();
-            }
-        }
-        let binding = self.as_ref();
-        let downloads = &binding
-            .rust()
-            .storage_library
+        self.as_mut().prepare_download_history();
+        let rows = self
             .as_ref()
-            .expect("checked")
-            .downloads;
+            .get_ref()
+            .current_download_rows()
+            .unwrap_or_default();
         QString::from(
-            downloads
-                .iter()
-                .map(|download| {
+            rows.iter()
+                .map(|row| {
                     format!(
                         "{}\t{}\t{}\t{}",
-                        download.id,
-                        download.state.as_str(),
-                        download.bytes_received,
-                        download.destination.replace(['\t', '\n', '\r'], " ")
+                        row.record.id,
+                        row.record.state.as_str(),
+                        row.record.bytes_received,
+                        row.record.destination.replace(['\t', '\n', '\r'], " ")
                     )
                 })
                 .collect::<Vec<_>>()
@@ -314,35 +344,80 @@ impl qobject::BrowserUi {
         )
     }
 
+    pub(super) fn download_rows(mut self: Pin<&mut Self>) -> super::QVariant {
+        self.as_mut().prepare_download_history();
+        super::download_presentation::project(
+            &self
+                .as_ref()
+                .get_ref()
+                .current_download_rows()
+                .unwrap_or_default(),
+        )
+    }
+
+    pub(super) fn download_history_status(&self) -> QString {
+        use ferric_browser_application::DownloadHistoryStatus;
+        QString::from(
+            match self
+                .rust()
+                .state
+                .as_ref()
+                .map(BrowserApplication::download_history_status)
+            {
+                Some(DownloadHistoryStatus::NotStored) => "not-stored",
+                Some(status @ (DownloadHistoryStatus::Ready | DownloadHistoryStatus::Saving)) => {
+                    if matches!(
+                        self.rust().storage_library_read_state,
+                        super::CatalogReadState::Failed(_)
+                    ) {
+                        "unavailable"
+                    } else if self.rust().storage_library_read_state.is_pending() {
+                        "loading"
+                    } else if status == DownloadHistoryStatus::Saving {
+                        "saving"
+                    } else {
+                        "ready"
+                    }
+                }
+                Some(DownloadHistoryStatus::Unavailable) | None => "unavailable",
+            },
+        )
+    }
+
+    pub(super) fn refresh_download_history(mut self: Pin<&mut Self>) {
+        self.as_mut().ensure_storage_worker();
+        if let Some(state) = self.as_mut().rust_mut().as_mut().get_mut().state.as_mut() {
+            state.retry_download_history();
+        }
+        self.as_ref().rust().storage_library_dirty.set(true);
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .storage_library_read_state = super::CatalogReadState::Unrequested;
+        self.request_storage_library();
+    }
+
     pub(super) fn resolve_download_desktop_uri(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         id: &QString,
         reveal: bool,
     ) -> Result<String, String> {
-        if self.as_ref().rust().storage_library.is_none()
-            || self.as_ref().rust().storage_library_dirty.get()
-        {
-            self.as_mut().request_storage_library();
-        }
         (|| {
-            let binding = self.as_ref();
-            let rust = binding.rust();
-            if rust.storage_library_dirty.get() {
-                return Err("download metadata is refreshing; retry the action".to_owned());
-            }
-            let library = rust
-                .storage_library
+            let row = self
                 .as_ref()
-                .ok_or_else(|| "download metadata is still loading; retry the action".to_owned())?;
-            let record = library
-                .downloads
-                .iter()
-                .find(|record| record.id == id.to_string())
-                .cloned()
-                .ok_or_else(|| "download ID was not found".to_owned())?;
-            if record.state != DownloadState::Completed {
-                return Err("only completed downloads can be opened or revealed".to_owned());
+                .get_ref()
+                .current_download_rows()?
+                .into_iter()
+                .find(|row| row.record.id == id.to_string())
+                .ok_or_else(|| {
+                    "This download is no longer available. Refresh Downloads and try again."
+                        .to_owned()
+                })?;
+            if !row.file_ready {
+                return Err("This file is not ready to open yet.".to_owned());
             }
+            let record = row.record;
             let destination = PathBuf::from(record.destination);
             let metadata = fs::symlink_metadata(&destination)
                 .map_err(|error| format!("download file is unavailable: {error}"))?;
@@ -389,26 +464,24 @@ impl qobject::BrowserUi {
     pub(super) fn execute_download_control_command(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, super::PublicError> {
         self.as_ref()
             .rust()
             .registry
             .validate(command, self.as_ref().rust().core_mode)
             .map_err(|error| error.to_string())?;
         if command.arguments.len() != 1 {
-            return Err(format!("{} requires exactly one download ID", command.name));
+            return Err(format!("{} requires exactly one download ID", command.name).into());
         }
         let action = command
             .name
             .strip_prefix("download-")
             .ok_or_else(|| "invalid download control command".to_owned())?;
-        self.as_mut()
+        let mut result = self
+            .as_mut()
             .queue_download_action(&command.arguments[0], action)?;
-        Ok(serde_json::json!({
-            "status": "accepted",
-            "download_id": command.arguments[0],
-            "action": command.name
-        }))
+        result["action"] = Value::String(command.name.clone());
+        Ok(result)
     }
 
     pub(super) fn execute_permission_command(
@@ -455,30 +528,29 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         id: &str,
         action: &str,
-    ) -> Result<(), String> {
-        if self
+    ) -> Result<Value, super::PublicError> {
+        let row = self
             .as_ref()
-            .rust()
-            .profile_persistence
-            .lacks_durable_storage()
-        {
-            return Err("download metadata is unavailable in a private session".to_owned());
+            .get_ref()
+            .current_download_rows()?
+            .into_iter()
+            .find(|row| row.record.id == id)
+            .ok_or_else(|| {
+                crate::browser_ui_download_requests::download_request_error(
+                    ferric_browser_ipc::ErrorCode::StaleTarget,
+                    "This download is no longer available. Refresh Downloads and try again.",
+                )
+            })?;
+        if matches!(action, "pause" | "resume" | "cancel") && !row.active {
+            return Err("This download is no longer running.".into());
         }
-        if self.as_ref().rust().storage_library_dirty.get() {
-            self.as_mut().request_storage_library();
-            return Err("download metadata is refreshing; retry the action".to_owned());
+        if row.finishing && matches!(action, "pause" | "resume") {
+            return Err(crate::browser_ui_download_requests::download_request_error(
+                ferric_browser_ipc::ErrorCode::Busy,
+                "This file is being saved. You can cancel it until saving finishes.",
+            ));
         }
-        let library = self.as_ref().rust().storage_library.clone();
-        let Some(library) = library else {
-            self.as_mut().request_storage_library();
-            return Err("download metadata is still loading; retry the action".to_owned());
-        };
-        let record = library
-            .downloads
-            .iter()
-            .find(|record| record.id == id)
-            .cloned()
-            .ok_or_else(|| "download ID was not found".to_owned())?;
+        let record = row.record;
         let pending = match action {
             "cancel"
                 if matches!(
@@ -503,13 +575,34 @@ impl qobject::BrowserUi {
                     DownloadState::Interrupted | DownloadState::Cancelled
                 ) =>
             {
+                if row.retry == ferric_browser_application::DownloadRetryState::Unavailable {
+                    return Err(crate::browser_ui_download_requests::download_request_error(
+                        ferric_browser_ipc::ErrorCode::InvalidArgument,
+                        "This saved address can't be retried. Start the download again from its page.",
+                    ));
+                }
                 let url = ValidatedUrl::parse(&record.source_url)
                     .map_err(|error| format!("download source is invalid: {error}"))?;
                 let scheme = url.as_str().split_once(':').map(|(scheme, _)| scheme);
                 if !matches!(scheme, Some("http" | "https")) {
                     return Err("download retry supports only HTTP(S) sources".into());
                 }
-                format!("download-retry\t{url}")
+                let target = super::current_target(
+                    self.as_ref().rust().state.as_ref(),
+                    self.as_ref().rust().tab,
+                )
+                .ok_or_else(|| {
+                    "Open a page in this window before retrying the download.".to_owned()
+                })?;
+                let mut result = self.as_mut().queue_download_request_for(
+                    target,
+                    url.as_str(),
+                    "Preparing download…",
+                    Some(id),
+                )?;
+                result["download_id"] = Value::String(id.to_owned());
+                result["action"] = Value::String(action.to_owned());
+                return Ok(result);
             }
             "cancel" => return Err("only active downloads can be cancelled".into()),
             "pause" => return Err("only in-progress downloads can be paused".into()),
@@ -528,7 +621,7 @@ impl qobject::BrowserUi {
             "resume" => "Download resume requested",
             _ => "Download retry requested",
         }));
-        Ok(())
+        Ok(serde_json::json!({"status":"accepted", "download_id":id, "action":action}))
     }
 
     pub(super) fn request_download_action(
@@ -540,12 +633,24 @@ impl qobject::BrowserUi {
             .as_mut()
             .queue_download_action(&id.to_string(), &action.to_string())
         {
-            Ok(()) => true,
+            Ok(_) => true,
             Err(error) => {
-                self.set_status_text(QString::from(error));
+                self.set_status_text(QString::from(error.user_message()));
                 false
             }
         }
+    }
+
+    pub(super) fn shares_permission_session(&self, other: &Self) -> bool {
+        let left = self.rust();
+        let right = other.rust();
+        !left.profile_bootstrap_pending
+            && !right.profile_bootstrap_pending
+            && left
+                .state
+                .as_ref()
+                .zip(right.state.as_ref())
+                .is_some_and(|(left, right)| left.shares_permission_session(right))
     }
 
     pub(super) fn permission_decision(
@@ -553,110 +658,26 @@ impl qobject::BrowserUi {
         origin: &QString,
         permission: &QString,
     ) -> QString {
-        let origin = origin.to_string();
-        let permission = permission.to_string();
-        // Screen/window capture is intentionally per-request.  Unlike the
-        // other permission types, it must never inherit a configured allow or
-        // a remembered decision: the portal source chooser is part of the
-        // consent boundary for every capture request.
-        if permission == "screen-capture" {
-            return QString::from("ask");
-        }
-        let normalized_origin = ferric_browser_storage::normalize_permission_origin(&origin).ok();
-        let normal_profile = self.as_ref().rust().profile_persistence.is_durable();
-        let permission_scope_id = self
-            .as_ref()
-            .rust()
-            .profile_id
-            .unwrap_or(self.as_ref().rust().session_id);
-        if normal_profile
-            && let Some(normalized_origin) = normalized_origin.as_deref()
-            && let Some(rule) = self
-                .as_ref()
-                .rust()
-                .config
-                .get("permission_rules")
-                .and_then(Value::as_array)
-                .and_then(|rules| {
-                    rules.iter().find(|rule| {
-                        rule.get("profile").and_then(Value::as_str)
-                            == Some(self.as_ref().rust().profile_name.as_str())
-                            && rule.get("permission").and_then(Value::as_str)
-                                == Some(permission.as_str())
-                            && rule
-                                .get("origin")
-                                .and_then(Value::as_str)
-                                .and_then(|origin| {
-                                    ferric_browser_storage::normalize_permission_origin(origin).ok()
-                                })
-                                .as_deref()
-                                == Some(normalized_origin)
-                    })
-                })
-            && let Some(decision) = rule.get("decision").and_then(Value::as_str)
-            && matches!(decision, "allow" | "deny" | "ask")
-        {
-            return QString::from(decision);
-        }
-        if normal_profile
-            && (self.as_ref().rust().storage_library.is_none()
-                || self.as_ref().rust().storage_library_dirty.get())
-        {
-            self.as_mut().request_storage_library();
-        }
-        if normal_profile
-            && let Some(normalized_origin) = normalized_origin.as_deref()
-            && !self.as_ref().rust().storage_library_dirty.get()
-        {
-            let durable = self
-                .as_ref()
-                .rust()
-                .storage_library
-                .as_ref()
-                .into_iter()
-                .flat_map(|library| library.permissions.iter())
-                .find(|rule| {
-                    rule.origin == normalized_origin
-                        && rule.permission == permission
-                        && rule
-                            .expires_at
-                            .is_none_or(|expires_at| expires_at > unix_timestamp())
-                })
-                .map(|rule| rule.decision.clone());
-            if let Some(decision) = durable {
-                return QString::from(decision.as_str());
-            }
-        }
-        if let Some(normalized_origin) = normalized_origin.as_deref()
-            && let Some(decision) =
-                self.as_ref()
-                    .rust()
-                    .session_permissions
-                    .get(&permission_session_key(
-                        permission_scope_id,
-                        normalized_origin,
-                        &permission,
-                    ))
-        {
-            return QString::from(decision.as_str());
-        }
-        let decision = match permission.as_str() {
-            "camera" | "microphone" | "screen-capture" | "notifications" | "geolocation"
-            | "clipboard" | "local-fonts" => {
-                let key = permission.replace('-', "_");
-                self.as_ref()
-                    .rust()
-                    .config
-                    .get("permissions")
-                    .and_then(|permissions| permissions.get(&key))
-                    .and_then(Value::as_str)
-                    .filter(|value| matches!(*value, "ask" | "allow" | "deny"))
-                    .unwrap_or("ask")
-                    .to_owned()
-            }
-            _ => "deny".to_owned(),
+        let resolution =
+            self.as_ref().rust().state.as_ref().map(|state| {
+                state.resolve_permission(&origin.to_string(), &permission.to_string())
+            });
+        let Some(resolution) = resolution else {
+            return QString::from("deny");
         };
-        QString::from(decision.as_str())
+        if resolution.refresh_needed {
+            let _ = self
+                .as_mut()
+                .request_permission_preferences(&origin.to_string());
+        }
+        if resolution.pending {
+            return QString::from("pending");
+        }
+        QString::from(match resolution.decision {
+            ferric_browser_config::PermissionDecision::Ask => "ask",
+            ferric_browser_config::PermissionDecision::Allow => "allow",
+            ferric_browser_config::PermissionDecision::Deny => "deny",
+        })
     }
 
     pub(super) fn remember_permission(
@@ -674,50 +695,37 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Permission decision must be allow or deny"));
             return false;
         }
-        let result = if lifetime == "session" {
-            let normalized_origin =
-                match ferric_browser_storage::normalize_permission_origin(&origin) {
-                    Ok(origin) => origin,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Permission session decision rejected: {error}"
-                        )));
-                        return false;
-                    }
-                };
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            let permission_scope_id = this.profile_id.unwrap_or(this.session_id);
-            if permission == "camera-and-microphone" {
-                this.session_permissions.insert(
-                    permission_session_key(permission_scope_id, &normalized_origin, "camera"),
-                    decision.clone(),
-                );
-                this.session_permissions.insert(
-                    permission_session_key(permission_scope_id, &normalized_origin, "microphone"),
-                    decision,
-                );
-            } else if matches!(
-                permission.as_str(),
-                "camera"
-                    | "microphone"
-                    | "notifications"
-                    | "geolocation"
-                    | "clipboard"
-                    | "local-fonts"
-            ) {
-                this.session_permissions.insert(
-                    permission_session_key(permission_scope_id, &normalized_origin, &permission),
-                    decision,
-                );
-            } else {
-                self.set_status_text(QString::from(
-                    "Permission session decision is unsupported for this capability",
-                ));
-                return false;
-            }
-            Ok(())
-        } else if lifetime == "site" {
+        if lifetime == "session" {
+            let result = {
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                this.state
+                    .as_mut()
+                    .ok_or(ferric_browser_application::SessionPermissionError::ProfileUnavailable)
+                    .and_then(|state| {
+                        state.remember_session_permission(
+                            &origin,
+                            &permission,
+                            &if decision == "allow" {
+                                ferric_browser_config::PermissionDecision::Allow
+                            } else {
+                                ferric_browser_config::PermissionDecision::Deny
+                            },
+                        )
+                    })
+            };
+            return match result {
+                Ok(()) => {
+                    self.set_status_text(QString::from("Permission session decision saved"));
+                    true
+                }
+                Err(error) => {
+                    self.set_status_text(QString::from(error.to_string()));
+                    false
+                }
+            };
+        }
+        let result = if lifetime == "site" {
             if self
                 .as_ref()
                 .rust()
@@ -735,15 +743,7 @@ impl qobject::BrowserUi {
                             vec![permission.as_str()]
                         };
                         if permissions.iter().any(|permission| {
-                            !matches!(
-                                *permission,
-                                "camera"
-                                    | "microphone"
-                                    | "notifications"
-                                    | "geolocation"
-                                    | "clipboard"
-                                    | "local-fonts"
-                            )
+                            !ferric_browser_storage::is_rememberable_permission(permission)
                         }) {
                             Err(ferric_browser_storage::StoreError::InvalidInput(
                                 "permission type is unsupported",
@@ -779,14 +779,8 @@ impl qobject::BrowserUi {
         };
         match result {
             Ok(()) => {
-                if lifetime != "session" {
-                    self.as_ref().rust().storage_library_dirty.set(true);
-                }
-                self.set_status_text(QString::from(if lifetime == "session" {
-                    "Permission session decision saved"
-                } else {
-                    "Permission rule queued"
-                }));
+                self.as_ref().rust().storage_library_dirty.set(true);
+                self.set_status_text(QString::from("Permission rule queued"));
                 true
             }
             Err(error) => {
@@ -871,37 +865,25 @@ impl qobject::BrowserUi {
     ) -> bool {
         let origin = origin.to_string();
         let permission = permission.to_string();
-        let session_removed = ferric_browser_storage::normalize_permission_origin(&origin)
-            .is_ok_and(|origin| {
+        let session_removed = if permission == "screen-capture" {
+            false
+        } else {
+            let result = {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                let permission_scope_id = this.profile_id.unwrap_or(this.session_id);
-                if permission == "camera-and-microphone" {
-                    this.session_permissions
-                        .remove(&permission_session_key(
-                            permission_scope_id,
-                            &origin,
-                            "camera",
-                        ))
-                        .is_some()
-                        || this
-                            .session_permissions
-                            .remove(&permission_session_key(
-                                permission_scope_id,
-                                &origin,
-                                "microphone",
-                            ))
-                            .is_some()
-                } else {
-                    this.session_permissions
-                        .remove(&permission_session_key(
-                            permission_scope_id,
-                            &origin,
-                            &permission,
-                        ))
-                        .is_some()
+                this.state
+                    .as_mut()
+                    .ok_or(ferric_browser_application::SessionPermissionError::ProfileUnavailable)
+                    .and_then(|state| state.reset_session_permission(&origin, &permission))
+            };
+            match result {
+                Ok(removed) => removed,
+                Err(error) => {
+                    self.set_status_text(QString::from(error.to_string()));
+                    return false;
                 }
-            });
+            }
+        };
         let normalized = match ferric_browser_storage::normalize_permission_origin(&origin) {
             Ok(origin) => origin,
             Err(error) => {
@@ -915,7 +897,8 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
-                .pending_engine_action = Some(format!("permission-reset\t{origin}\t{permission}"));
+                .pending_engine_action =
+                Some(format!("permission-reset\t{normalized}\t{permission}"));
             self.as_mut().set_status_text(QString::from(
                 "Screen-capture consent reset; active captures will be stopped",
             ));
@@ -923,10 +906,7 @@ impl qobject::BrowserUi {
         }
         let permissions = if permission == "camera-and-microphone" {
             vec!["camera".to_owned(), "microphone".to_owned()]
-        } else if matches!(
-            permission.as_str(),
-            "camera" | "microphone" | "notifications" | "geolocation" | "clipboard" | "local-fonts"
-        ) {
+        } else if ferric_browser_storage::is_rememberable_permission(&permission) {
             vec![permission.clone()]
         } else {
             self.as_mut().set_status_text(QString::from(
@@ -941,25 +921,20 @@ impl qobject::BrowserUi {
             .lacks_durable_storage()
         {
             self.as_mut()
-                .set_status_text(QString::from(if session_removed {
-                    "Permission decision reset"
-                } else {
-                    "Permission rule was not found"
-                }));
-            if session_removed {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_engine_action =
-                    Some(format!("permission-reset\t{origin}\t{permission}"));
-            }
-            return session_removed;
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_engine_action =
+                Some(format!("permission-reset\t{normalized}\t{permission}"));
+            self.as_mut().set_status_text(QString::from(
+                "Permission reset; existing page access will be stopped",
+            ));
+            return true;
         }
         let request_result = Some(
             self.as_mut()
                 .submit_storage(StorageRequest::PermissionReset {
-                    origin: normalized,
+                    origin: normalized.clone(),
                     permissions,
                 }),
         );
@@ -970,7 +945,7 @@ impl qobject::BrowserUi {
                 this.pending_permission_reset_session = Some(session_removed);
                 this.storage_library_dirty.set(true);
                 this.pending_engine_action =
-                    Some(format!("permission-reset\t{origin}\t{permission}"));
+                    Some(format!("permission-reset\t{normalized}\t{permission}"));
                 drop(rust);
                 self.as_mut()
                     .set_status_text(QString::from("Permission reset queued"));

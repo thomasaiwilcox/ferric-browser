@@ -25,6 +25,7 @@ Pane {
     property string capturedUrl: ""
     property string capturedTitle: ""
     property string editingAction: "pin"
+    readonly property bool closeNeedsConfirmation: editor.visible
     property string editBookmarkId: ""
     property int editingSlot: 1
     property alias guideSurface: guide
@@ -56,7 +57,7 @@ Pane {
         if (!initialSnapshot && browserUi.start_page_ready) {
             if (!viewChosen) selectedView = browserUi.start_page_view || "guide"
             initialSnapshot = true
-            if (visible && !inputActive) Qt.callLater(function() { if (!page.inputActive) page.focusContent() })
+            if (visible && !inputActive) scheduleContentFocus(true)
         }
     }
     function refresh() { requestedRankRevision = browserUi.start_page_rank_revision; refreshTopRequested = true; browserUi.refresh_start_page() }
@@ -64,7 +65,7 @@ Pane {
         selectedView = view
         viewChosen = true
         if (remember !== false) browserUi.start_page_action("view", 0, view, "")
-        Qt.callLater(function() { if (!editor.visible && !dismissedDialog.visible) page.focusContent() })
+        scheduleContentFocus(false)
     }
     function cycleView() {
         var views = ["top-sites", "favourites", "guide"]
@@ -74,6 +75,18 @@ Pane {
         if (focused) activeControl = control
         else if (activeControl === control) activeControl = null
     }
+    function scheduleContentFocus(requireIdle) {
+        focusTimer.requireIdle = requireIdle
+        focusTimer.restart()
+    }
+    Timer {
+        id: focusTimer
+        property bool requireIdle: true
+        interval: 0
+        onTriggered: if (page.visible && !editor.visible && !dismissedDialog.visible
+                         && (!requireIdle || !page.inputActive)) page.focusContent()
+    }
+    Timer { id: refreshRequestTimer; interval: 0; onTriggered: if (page.visible) page.refresh() }
     function focusContent() {
         if (selectedView === "guide") { if (guide.readerActive) guide.focusReader(); else guide.focusEntries(); return }
         var item = tileRepeater.itemAt(selectedSlot)
@@ -123,7 +136,7 @@ Pane {
         else return false
         focusContent(); event.accepted = true; return true
     }
-    Component.onCompleted: { if (browserUi.start_page_revision > 0) rebuild(); refresh(); Qt.callLater(function() { if (!page.inputActive) page.focusContent() }) }
+    Component.onCompleted: { if (browserUi.start_page_revision > 0) rebuild(); refresh(); scheduleContentFocus(true) }
     Timer {
         interval: 5000; running: page.visible; repeat: true
         onTriggered: if (!page.browserUi.start_page_busy) page.browserUi.refresh_start_page_metadata()
@@ -139,7 +152,7 @@ Pane {
             page.requestedRankRevision = page.browserUi.start_page_rank_revision
             if (editor.visible) editor.close()
             if (dismissedDialog.visible) dismissedDialog.close()
-            if (page.visible) Qt.callLater(page.refresh)
+            if (page.visible) refreshRequestTimer.restart()
         }
     }
     readonly property color canvasColor: browserWindow.backgroundColor
@@ -163,6 +176,7 @@ Pane {
                 columns: contentFrame.width > 620 ? 2 : 1
                 rowSpacing: 16
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: "Ferric"
                     color: page.inkColor
@@ -210,6 +224,7 @@ Pane {
                     Layout.fillWidth: true
                     spacing: 7
                     Label {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         text: page.selectedView === "guide" ? "A guide to Ferric" : page.selectedView === "favourites" ? "Your favourites" : "Your top sites"
                         color: page.inkColor
@@ -218,6 +233,7 @@ Pane {
                         wrapMode: Text.WordWrap
                     }
                     Label {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         text: page.selectedView === "guide" ? "Explore features and the shortcuts configured for you."
                               : page.selectedView === "favourites" ? "The places you choose, in the order you choose."
@@ -258,6 +274,7 @@ Pane {
                 }
             }
             Label {
+                textFormat: Text.PlainText
                 visible: page.contentView.viewTransientProfile
                 Layout.fillWidth: true
                 text: "Private session · favourites and view choices are temporary"
@@ -266,6 +283,7 @@ Pane {
                 wrapMode: Text.WordWrap
             }
             Label {
+                textFormat: Text.PlainText
                 visible: page.browserUi.start_page_error.length > 0
                 Layout.fillWidth: true
                 text: page.browserUi.start_page_error
@@ -283,6 +301,7 @@ Pane {
                     width: siteScroll.availableWidth
                     spacing: 20
                     Label {
+                        textFormat: Text.PlainText
                         visible: page.selectedView === "top-sites" && page.topTiles.every(function(tile) { return tile === null })
                         Layout.fillWidth: true
                         text: "Your sites will appear as you browse. You can also save a few favourites to get started."
@@ -453,6 +472,7 @@ Pane {
                     spacing: 8
                     FerricStartKeycap { visible: page.selectedView !== "guide"; text: "1–8"; browserWindow: page.browserWindow }
                     Label {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         text: page.selectedView === "guide" ? guide.navigationHelp : "Open a saved site · arrows/hjkl select · Enter open"
                         color: page.browserWindow.mutedTextColor
@@ -464,7 +484,7 @@ Pane {
                     Layout.alignment: contentFrame.width > 740 ? Qt.AlignRight : Qt.AlignLeft
                     spacing: 8
                     FerricStartKeycap { text: "Ctrl+Shift+Space"; browserWindow: page.browserWindow }
-                    Label { text: "Switch view"; color: page.browserWindow.mutedTextColor; font.pointSize: page.fontSize - 1 }
+                    Label { textFormat: Text.PlainText; text: "Switch view"; color: page.browserWindow.mutedTextColor; font.pointSize: page.fontSize - 1 }
                 }
             }
         }
@@ -481,6 +501,7 @@ Pane {
         title: page.editingAction === "move" ? "Move favourite" : page.editingAction === "edit" ? "Edit bookmark" : "Add a favourite"
         background: Rectangle { color: page.canvasColor; radius: 16; border.color: page.browserWindow.borderColor }
         header: Label {
+            textFormat: Text.PlainText
             text: editor.title
             leftPadding: editor.padding; rightPadding: editor.padding; topPadding: 22; bottomPadding: 10
             color: page.inkColor
@@ -523,6 +544,7 @@ Pane {
             width: editorScroll.availableWidth
             spacing: 14
             Label {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: page.editingAction === "edit" ? "Changes also update this site's bookmark."
                       : page.editingAction === "move" ? "Choose a new position. Two saved favourites swap places."
@@ -581,14 +603,14 @@ Pane {
                 visible: page.editingAction !== "move"
                 Layout.fillWidth: true
                 spacing: 8
-                Label { text: "Site address"; color: page.inkColor; font.pointSize: page.fontSize; font.weight: Font.DemiBold }
+                Label { textFormat: Text.PlainText; text: "Site address"; color: page.inkColor; font.pointSize: page.fontSize; font.weight: Font.DemiBold }
                 FerricStartField { id: editUrl; Layout.fillWidth: true; browserWindow: page.browserWindow; placeholderText: "https://example.org"; Accessible.name: "Favourite URL"; onTextEdited: page.editBookmarkId = ""; onAccepted: if (!page.browserUi.start_page_busy) editor.accept() }
             }
             ColumnLayout {
                 visible: page.editingAction !== "move"
                 Layout.fillWidth: true
                 spacing: 8
-                Label { text: "Name"; color: page.inkColor; font.pointSize: page.fontSize; font.weight: Font.DemiBold }
+                Label { textFormat: Text.PlainText; text: "Name"; color: page.inkColor; font.pointSize: page.fontSize; font.weight: Font.DemiBold }
                 FerricStartField { id: editTitle; Layout.fillWidth: true; browserWindow: page.browserWindow; placeholderText: "A name you'll recognise"; Accessible.name: "Favourite label"; onAccepted: if (!page.browserUi.start_page_busy) editor.accept() }
             }
             GridLayout {
@@ -629,7 +651,7 @@ Pane {
         modal: true
         title: "Hidden sites"
         background: Rectangle { color: page.canvasColor; radius: 16; border.color: page.browserWindow.borderColor }
-        header: Label { text: dismissedDialog.title; leftPadding: 20; topPadding: 22; bottomPadding: 12; color: page.inkColor; font.pointSize: page.fontSize + 5; font.weight: Font.DemiBold }
+        header: Label { textFormat: Text.PlainText; text: dismissedDialog.title; leftPadding: 20; topPadding: 22; bottomPadding: 12; color: page.inkColor; font.pointSize: page.fontSize + 5; font.weight: Font.DemiBold }
         footer: Item {
             implicitHeight: 60
             FerricStartButton { anchors.right: parent.right; anchors.rightMargin: 20; text: "Done"; browserWindow: page.browserWindow; onClicked: dismissedDialog.close() }

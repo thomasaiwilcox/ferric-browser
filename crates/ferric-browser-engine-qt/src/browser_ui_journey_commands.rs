@@ -406,7 +406,12 @@ impl qobject::BrowserUi {
                 .lacks_durable_storage()
                 && !private_history_command
             {
-                return Err("private profiles have no durable history or marks".into());
+                return Err(if self.as_ref().active_profile_is_transient() {
+                    "Private browsing does not save durable bookmarks or quickmarks"
+                } else {
+                    "Profile storage is unavailable. Restore storage and retry."
+                }
+                .into());
             }
             if !private_history_command
                 && (self.as_ref().rust().storage_library.is_none()
@@ -430,13 +435,22 @@ impl qobject::BrowserUi {
             } else {
                 None
             };
+            if let Err(error) = self.as_mut().submit_storage(StorageRequest::JourneyQuery {
+                current_tab_id,
+                search,
+                expand,
+            }) {
+                self.as_mut()
+                    .set_library_error(QString::from(error.to_string()));
+                return Err(error.to_string());
+            }
             self.as_mut()
-                .submit_storage(StorageRequest::JourneyQuery {
-                    current_tab_id,
-                    search,
-                    expand,
-                })
-                .map_err(|error| error.to_string())?;
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .journey_read_pending = true;
+            self.as_mut().publish_library_pending();
+            self.as_mut().set_library_error(QString::default());
             self.as_mut().set_library_kind(QString::from("journey"));
             self.as_mut().set_library_values(QString::default());
             self.as_mut().clear_library_graph_edges();
@@ -587,12 +601,7 @@ impl qobject::BrowserUi {
                 };
                 let stored_url = match command_name {
                     "history-open" => {
-                        let history = if self
-                            .as_ref()
-                            .rust()
-                            .profile_persistence
-                            .lacks_durable_storage()
-                        {
+                        let history = if self.as_ref().active_profile_is_transient() {
                             self.as_ref().private_history_records()
                         } else {
                             self.as_ref()
@@ -656,86 +665,22 @@ impl qobject::BrowserUi {
             "bookmark-delete" => {
                 unreachable!("bookmark-delete is handled by the worker path above")
             }
-            "bookmark-list" => {
+            "bookmark-list" | "quickmark-list" | "history" => {
                 if !command.arguments.is_empty() {
-                    return Err("bookmark-list does not accept arguments".into());
+                    return Err(format!("{command_name} does not accept arguments"));
                 }
-                listed_kind = Some("bookmarks");
-                listed_values = self
-                    .as_ref()
-                    .rust()
-                    .storage_library
-                    .clone()
-                    .ok_or_else(|| "profile library metadata is unavailable".to_owned())?
-                    .bookmarks
-                    .iter()
-                    .map(|bookmark| {
-                        format!(
-                            "{}\t{}\t{}",
-                            bookmark.id,
-                            bookmark.title.replace(['\t', '\n', '\r'], " "),
-                            safe_ipc_url(&bookmark.url)
-                        )
-                    })
-                    .collect();
-                serde_json::json!({"status": "listed", "kind": "bookmarks", "count": listed_values.len()})
-            }
-            "quickmark-add" => {
-                unreachable!("quickmark-add is handled by the worker path above")
-            }
-            "quickmark-delete" => {
-                unreachable!("quickmark-delete is handled by the worker path above")
-            }
-            "quickmark-list" => {
-                if !command.arguments.is_empty() {
-                    return Err("quickmark-list does not accept arguments".into());
-                }
-                listed_kind = Some("quickmarks");
-                listed_values = self
-                    .as_ref()
-                    .rust()
-                    .storage_library
-                    .clone()
-                    .ok_or_else(|| "profile library metadata is unavailable".to_owned())?
-                    .quickmarks
-                    .iter()
-                    .map(|mark| format!("{}\t{}", mark.name, safe_ipc_url(&mark.url)))
-                    .collect();
-                serde_json::json!({"status": "listed", "kind": "quickmarks", "count": listed_values.len()})
-            }
-            "history" => {
-                if !command.arguments.is_empty() {
-                    return Err("history does not accept arguments".into());
-                }
-                listed_kind = Some("history");
-                let history = if self
-                    .as_ref()
-                    .rust()
-                    .profile_persistence
-                    .lacks_durable_storage()
-                {
-                    self.as_ref().private_history_records()
-                } else {
-                    self.as_ref()
-                        .rust()
-                        .storage_library
-                        .clone()
-                        .ok_or_else(|| "profile library metadata is unavailable".to_owned())?
-                        .history
+                let kind = match command_name {
+                    "bookmark-list" => "bookmarks",
+                    "quickmark-list" => "quickmarks",
+                    _ => "history",
                 };
-                listed_values = history
-                    .iter()
-                    .map(|page| {
-                        format!(
-                            "{}\t{}\t{}\t{}",
-                            page.id,
-                            page.title.replace(['\t', '\n', '\r'], " "),
-                            safe_ipc_url(&page.url),
-                            page.last_visit
-                        )
-                    })
-                    .collect();
-                serde_json::json!({"status": "listed", "kind": "history", "count": listed_values.len()})
+                listed_kind = Some(kind);
+                listed_values = self
+                    .as_ref()
+                    .get_ref()
+                    .saved_library_rows(kind)
+                    .ok_or_else(|| "profile library metadata is unavailable".to_owned())?;
+                serde_json::json!({"status": "listed", "kind": kind, "count": listed_values.len()})
             }
             "history-clear" => {
                 unreachable!("history-clear is handled by the worker path above")

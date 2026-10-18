@@ -69,6 +69,9 @@ pub enum Event {
         window: WindowId,
         context: Option<String>,
     },
+    ClearWindowContexts {
+        windows: Vec<WindowId>,
+    },
     OpenTab {
         window: WindowId,
     },
@@ -397,6 +400,23 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                 .ok_or(ReduceError::UnknownWindow(window))?;
             window_state.context = context;
             persist(state, &mut effects);
+        }
+        Event::ClearWindowContexts { windows } => {
+            ensure_running(state)?;
+            for window in &windows {
+                if !state.windows.contains_key(window) {
+                    return Err(ReduceError::UnknownWindow(*window));
+                }
+            }
+            let mut changed = false;
+            for window in windows {
+                if let Some(window) = state.windows.get_mut(&window) {
+                    changed |= window.context.take().is_some();
+                }
+            }
+            if changed {
+                persist(state, &mut effects);
+            }
         }
         Event::OpenTab { window } => {
             ensure_running(state)?;
@@ -2215,6 +2235,66 @@ mod tests {
         )
         .unwrap();
         assert_eq!(state.windows[&window].context, None);
+        assert!(state.validate().is_ok());
+    }
+    #[test]
+    fn context_cleanup_is_atomic_persistent_and_profile_neutral() {
+        let (mut state, profile, window, tab, _) = setup();
+        reduce(&mut state, Event::CreateWindow { profile }).unwrap();
+        let other = state.active_window.unwrap();
+        for id in [window, other] {
+            reduce(
+                &mut state,
+                Event::SetWindowContext {
+                    window: id,
+                    context: Some("work".into()),
+                },
+            )
+            .unwrap();
+        }
+        let before = state.revision;
+        let unknown = state.ids.window();
+        assert!(
+            matches!(reduce(&mut state, Event::ClearWindowContexts { windows: vec![window, unknown] }), Err(ReduceError::UnknownWindow(id)) if id == unknown)
+        );
+        assert_eq!(state.revision, before);
+        assert_eq!(state.windows[&window].context.as_deref(), Some("work"));
+        let effects = reduce(
+            &mut state,
+            Event::ClearWindowContexts {
+                windows: vec![window, other, window],
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|effect| matches!(effect, Effect::Persist(_)))
+                .count(),
+            1
+        );
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::Engine(_)))
+        );
+        for id in [window, other] {
+            assert_eq!(state.windows[&id].context, None);
+            assert_eq!(state.windows[&id].profile, profile);
+        }
+        assert_eq!(state.tabs[&tab].window, window);
+        let revision = state.revision;
+        assert_eq!(
+            reduce(
+                &mut state,
+                Event::ClearWindowContexts {
+                    windows: vec![window, other]
+                }
+            )
+            .unwrap(),
+            []
+        );
+        assert_eq!(state.revision, revision);
         assert!(state.validate().is_ok());
     }
 }

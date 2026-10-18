@@ -6,7 +6,10 @@
 //! returned effects; they do not own application state or persistence
 //! scheduling.
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 use ferric_browser_config::{Config, ConfigError, ConfigurationApplyBoundary, RuntimeOverrides};
 use ferric_browser_core::{
@@ -21,18 +24,36 @@ use ferric_browser_storage::{
 };
 
 mod configuration;
+mod configuration_reservation;
+pub use configuration_reservation::ConfigurationReservation;
+mod contexts;
+mod download_catalog;
 mod profile;
 mod profile_open;
+mod profile_session;
+pub use download_catalog::{
+    DownloadFailure, DownloadRetryState, DownloadRow, DownloadSaveFailure, DownloadSessionError,
+};
+mod session_download_retries;
+pub use session_download_retries::DownloadRetryPermit;
+mod session_downloads;
+pub use session_downloads::DownloadHistoryStatus;
+mod session_permissions;
 mod storage;
 
 use configuration::ConfigurationState;
 pub use configuration::{ConfigurationLayers, ConfigurationSnapshot, PreparedConfigurationUpdate};
+pub use contexts::{ContextCatalog, ContextReloadEffect, ContextReloadError, ContextReloadJob};
 pub use ferric_browser_storage::StorageCommand as StorageRequest;
 use profile::ActiveProfile;
 use profile::ProfileActivation;
 pub use profile::{ContextChange, ContextCommand, ContextEffect, ProfileSnapshot};
 use profile_open::{PreparedProfile, ProfileOpenCoordinator};
 pub use profile_open::{ProfileOpenEffect, ProfileOpenError, ProfileOpenRequest, ProfileStorage};
+pub use session_permissions::{
+    PermissionPreferencesStatus, PermissionResolution, SavedPermissionPreferences,
+    SessionPermissionError,
+};
 use storage::StorageCoordinator;
 pub use storage::{StorageEffect, StorageTicket};
 
@@ -41,10 +62,18 @@ pub use storage::{StorageEffect, StorageTicket};
 pub struct BrowserApplication {
     runtime: BrowserRuntime,
     configuration: ConfigurationState,
+    configuration_reservation: Arc<AtomicBool>,
     active_profile: Option<ActiveProfile>,
     next_profile_generation: u64,
+    download_owner: uuid::Uuid,
     storage: StorageCoordinator,
     profile_open: Option<ProfileOpenCoordinator>,
+}
+
+impl Drop for BrowserApplication {
+    fn drop(&mut self) {
+        self.close_session_storage();
+    }
 }
 
 impl BrowserApplication {
@@ -53,8 +82,10 @@ impl BrowserApplication {
         Self {
             runtime: BrowserRuntime::new(),
             configuration: ConfigurationState::new(configuration),
+            configuration_reservation: Arc::default(),
             active_profile: None,
             next_profile_generation: 1,
+            download_owner: uuid::Uuid::new_v4(),
             storage: StorageCoordinator::default(),
             profile_open: None,
         }
@@ -69,11 +100,58 @@ impl BrowserApplication {
         Self {
             runtime,
             configuration: ConfigurationState::new(configuration),
+            configuration_reservation: Arc::default(),
             active_profile: None,
             next_profile_generation: 1,
+            download_owner: uuid::Uuid::new_v4(),
             storage: StorageCoordinator::default(),
             profile_open: None,
         }
+    }
+
+    /// Creates an independent window owner from an already validated profile.
+    /// Profile locks and configuration are retained without reopening files on
+    /// the GUI thread. Durable metadata work remains on its own worker.
+    ///
+    /// # Errors
+    /// Returns an error for an unavailable profile, a privacy mismatch, or a
+    /// metadata worker that cannot start. The source remains unchanged.
+    pub fn inherit_profile(&self, runtime: BrowserRuntime) -> Result<Self, ProfileOpenError> {
+        let profile = self
+            .active_profile
+            .as_ref()
+            .filter(|_| {
+                self.profile_open.is_none()
+                    && self.runtime.view().shutdown() == ferric_browser_core::ShutdownState::Running
+            })
+            .ok_or_else(|| {
+                ProfileOpenError::InvalidRequest("The source profile is not ready".into())
+            })?;
+        if runtime.view().profiles().len() != 1
+            || runtime
+                .view()
+                .profiles()
+                .values()
+                .any(|candidate| candidate.privacy != profile.snapshot().privacy)
+        {
+            return Err(ProfileOpenError::InvalidRequest(
+                "Window profile privacy does not match its source".into(),
+            ));
+        }
+        let mut storage = StorageCoordinator::default();
+        storage
+            .replace(profile.storage_path())
+            .map_err(|error| ProfileOpenError::InvalidRequest(error.to_string()))?;
+        Ok(Self {
+            runtime,
+            configuration: self.configuration.clone(),
+            configuration_reservation: Arc::default(),
+            active_profile: Some(profile.clone()),
+            next_profile_generation: self.next_profile_generation,
+            download_owner: uuid::Uuid::new_v4(),
+            storage,
+            profile_open: None,
+        })
     }
 
     /// Creates initial state through the same application boundary used after
@@ -93,8 +171,10 @@ impl BrowserApplication {
             Self {
                 runtime,
                 configuration: ConfigurationState::new(configuration),
+                configuration_reservation: Arc::default(),
                 active_profile: None,
                 next_profile_generation: 1,
+                download_owner: uuid::Uuid::new_v4(),
                 storage: StorageCoordinator::default(),
                 profile_open: None,
             },
@@ -214,6 +294,7 @@ impl BrowserApplication {
         &mut self,
         overrides: &RuntimeOverrides,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
+        self.ensure_configuration_writable()?;
         self.configuration.replace_temporary(overrides.clone())
     }
 
@@ -239,6 +320,7 @@ impl BrowserApplication {
         &mut self,
         layers: ConfigurationLayers,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
+        self.ensure_configuration_writable()?;
         self.configuration.activate_layers(layers)
     }
 
@@ -253,6 +335,7 @@ impl BrowserApplication {
         &mut self,
         layers: ConfigurationLayers,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
+        self.ensure_configuration_writable()?;
         self.configuration.update_layers(layers)
     }
 
@@ -283,6 +366,7 @@ impl BrowserApplication {
         layers: ConfigurationLayers,
         boundary: ConfigurationApplyBoundary,
     ) -> Result<PreparedConfigurationUpdate, ConfigError> {
+        self.ensure_configuration_writable()?;
         let mut state = self.configuration.clone();
         state.update_layers_at(layers, boundary)?;
         Ok(PreparedConfigurationUpdate {
@@ -302,6 +386,7 @@ impl BrowserApplication {
         prepared: PreparedConfigurationUpdate,
         persist: impl FnOnce() -> Result<(), ConfigError>,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
+        self.ensure_configuration_writable()?;
         if self.configuration.revision() != prepared.expected_revision {
             return Err(ConfigError::Validation(
                 "prepared configuration became stale".into(),
@@ -321,6 +406,7 @@ impl BrowserApplication {
         &mut self,
         configuration: Config,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
+        self.ensure_configuration_writable()?;
         self.configuration.replace_effective(configuration)
     }
 
@@ -335,7 +421,10 @@ impl BrowserApplication {
         &mut self,
         activation: ProfileActivation,
     ) -> Result<ProfileSnapshot, StorageWorkerError> {
-        self.storage.replace(activation.storage_path.as_deref())?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        self.drain_session_downloads(deadline);
+        self.storage
+            .replace_until(activation.storage_path.as_deref(), deadline)?;
         let generation = self.next_profile_generation;
         self.next_profile_generation = self.next_profile_generation.saturating_add(1);
         self.active_profile = Some(ActiveProfile::activate(generation, activation));
@@ -382,9 +471,11 @@ impl BrowserApplication {
                     .map_err(|error| ProfileOpenError::InvalidRequest(error.to_string()))?
             }
         };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        self.drain_session_downloads(deadline);
         if let Err(error) = self
             .storage
-            .replace(prepared.activation.storage_path.as_deref())
+            .replace_until(prepared.activation.storage_path.as_deref(), deadline)
         {
             prepared
                 .storage_error
@@ -414,7 +505,7 @@ impl BrowserApplication {
 
     /// Closes the active profile after draining its durable worker.
     pub fn close_profile(&mut self) {
-        self.storage.close();
+        self.close_session_storage();
         self.active_profile = None;
     }
 
@@ -460,10 +551,16 @@ impl BrowserApplication {
                 (ContextChange::MembershipSaved, context)
             }
         };
+        let generation = profile.generation;
+        let runtime_effects = self
+            .context_catalog()
+            .and_then(|catalog| self.refresh_context_catalog(&catalog))
+            .unwrap_or_default();
         Ok(ContextEffect {
-            generation: profile.generation,
+            generation,
             change,
             context,
+            runtime_effects,
         })
     }
 
@@ -478,13 +575,24 @@ impl BrowserApplication {
         &mut self,
         request: StorageRequest,
     ) -> Result<StorageTicket, StorageWorkerError> {
-        self.storage.submit(request)
+        let observation = session_permissions::durable::PermissionWork::prepare(
+            self.active_profile
+                .as_ref()
+                .map(|profile| profile.session.clone()),
+            &request,
+        );
+        self.storage.submit(
+            request,
+            observation.map(storage::StorageObservation::Permission),
+        )
     }
 
     /// Polls storage lifecycle events in the adapter-facing representation.
     #[must_use]
     pub fn poll_storage_effects(&mut self) -> Vec<StorageEffect> {
-        self.storage.poll()
+        let effects = self.storage.poll();
+        self.flush_session_downloads();
+        effects
     }
 
     /// Starts the single owner thread for one profile metadata database.
@@ -504,7 +612,7 @@ impl BrowserApplication {
     }
 
     pub fn close_storage(&mut self) {
-        self.storage.close();
+        self.close_session_storage();
     }
 
     #[must_use]
@@ -692,8 +800,75 @@ mod tests {
             application.contexts().expect("contexts")[0].name,
             "worker-context"
         );
+        let (runtime, _, _) =
+            BrowserRuntime::bootstrap(PrivacyKind::Normal, "child").expect("child runtime");
+        let child = application
+            .inherit_profile(runtime)
+            .expect("inherit ready profile");
+        assert_eq!(child.profile_snapshot(), application.profile_snapshot());
+        assert_eq!(
+            child.configuration_snapshot(),
+            application.configuration_snapshot()
+        );
+        assert_eq!(child.contexts(), application.contexts());
         application.close_profile();
+        assert!(child.storage_is_open());
+        assert!(child.profile_snapshot().is_some());
+        drop(child);
         let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn inherited_profile_rejects_unready_closed_and_wrong_privacy_sources() {
+        for privacy in [
+            PrivacyKind::Normal,
+            PrivacyKind::Private,
+            PrivacyKind::Ephemeral,
+        ] {
+            let (mut source, _, _) =
+                BrowserApplication::bootstrap(Config::default(), privacy, "source")
+                    .expect("source runtime");
+            let child_runtime = || {
+                BrowserRuntime::bootstrap(privacy, "child")
+                    .expect("child runtime")
+                    .0
+            };
+            assert!(source.inherit_profile(child_runtime()).is_err());
+            source
+                .activate_profile(ProfileActivation {
+                    name: "source".into(),
+                    id: None,
+                    privacy,
+                    roots: None,
+                    lock: None,
+                    contexts: None,
+                    storage_path: None,
+                })
+                .expect("activate profile");
+            let wrong_privacy = if privacy == PrivacyKind::Normal {
+                PrivacyKind::Private
+            } else {
+                PrivacyKind::Normal
+            };
+            let wrong_runtime = BrowserRuntime::bootstrap(wrong_privacy, "wrong")
+                .expect("wrong runtime")
+                .0;
+            assert!(source.inherit_profile(wrong_runtime).is_err());
+            let child = source
+                .inherit_profile(child_runtime())
+                .expect("inherit profile");
+            source
+                .dispatch_runtime(RuntimeInput::Lifecycle(Event::RequestShutdown))
+                .expect("begin source shutdown");
+            assert!(source.inherit_profile(child_runtime()).is_err());
+            source.close_profile();
+            assert!(source.inherit_profile(child_runtime()).is_err());
+            assert_eq!(
+                child.profile_snapshot().expect("independent child").privacy,
+                privacy
+            );
+            assert!(!child.storage_is_open());
+        }
     }
 
     #[test]
@@ -728,7 +903,8 @@ mod tests {
                 generation: 1,
                 change: ContextChange::Created,
                 context,
-            } if context.name == "research"
+                runtime_effects,
+            } if context.name == "research" && runtime_effects.is_empty()
         ));
         assert_eq!(application.contexts().map(<[_]>::len), Some(1));
 

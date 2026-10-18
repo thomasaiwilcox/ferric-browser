@@ -11,7 +11,7 @@ use ferric_browser_config::{
 };
 use ferric_browser_core::PrivacyKind;
 use ferric_browser_storage::{
-    ContextRegistry, ProfileLock, ProfileRegistry, RootSpec, StorageRoots,
+    ContextDefinitionUpdate, ContextRegistry, ProfileLock, ProfileRegistry, RootSpec, StorageRoots,
 };
 
 use crate::{ConfigurationLayers, ProfileActivation};
@@ -323,30 +323,38 @@ fn prepare_durable_profile(
     fs::create_dir_all(&profile_root).map_err(|error| error.to_string())?;
     set_private_directory_permissions(&profile_root).map_err(|error| error.to_string())?;
     let mut contexts = ContextRegistry::open(&roots).map_err(|error| error.to_string())?;
-    let mut context_error = None;
-    for definition in &definitions.contexts {
-        if !profile_names
+    let context_error = (|| {
+        ferric_browser_config::validate_contexts_configuration(definitions)
+            .map_err(|error| error.to_string())?;
+        for definition in &definitions.contexts {
+            if !profile_names
+                .iter()
+                .any(|profile| profile == &definition.profile)
+            {
+                return Err(format!(
+                    "context {} references missing profile {}",
+                    definition.name, definition.profile
+                ));
+            }
+        }
+        let updates = definitions
+            .contexts
             .iter()
-            .any(|profile| profile == &definition.profile)
-        {
-            context_error = Some(format!(
-                "context {} references missing profile {}",
-                definition.name, definition.profile
-            ));
-            continue;
-        }
-        if let Err(error) = contexts.ensure_definition(
-            &definition.name,
-            &definition.label,
-            &definition.profile,
-            definition.sessions.clone(),
-            definition.workspace.clone(),
-            definition.accent.clone(),
-            &definition.default_target,
-        ) {
-            context_error = Some(error.to_string());
-        }
-    }
+            .map(|definition| ContextDefinitionUpdate {
+                name: definition.name.clone(),
+                label: definition.label.clone(),
+                profile: definition.profile.clone(),
+                sessions: definition.sessions.clone(),
+                workspace: definition.workspace.clone(),
+                accent: definition.accent.clone(),
+                default_target: definition.default_target.clone(),
+            })
+            .collect::<Vec<_>>();
+        contexts
+            .reconcile_configured(&[], &updates)
+            .map_err(|error| error.to_string())
+    })()
+    .err();
     Ok(DurableProfile {
         profile_id,
         roots,

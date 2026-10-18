@@ -4,13 +4,14 @@ import QtQuick.Layouts
 
 FerricCommandDialog {
     id: confirmation
+    property var state: browserWindow
     signal confirmRequested()
     signal cancelRequested()
 
-    visible: browserWindow.reopenWindowConfirmationVisible
+    visible: state.reopenWindowConfirmationVisible
     commandText: ":reopen-in-window"
     title: "Reopen tab in a same-profile window?"
-    message: "This opens a safe URL descriptor in a new window. Live page state, forms, media, and in-progress engine work will not be preserved."
+    message: "Opens this page’s address in a new window using the same profile. Forms, media and other live page state won’t carry over."
     dialogWidth: 620 * scale
     dialogHeight: 280 * scale
     dialogBorderColor: browserWindow.warningColor

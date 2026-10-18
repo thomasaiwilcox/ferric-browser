@@ -5,7 +5,7 @@
 
 use crate::single_flight::{Poll as WorkerPoll, SingleFlightWorker, SubmitError};
 use ferric_browser_config::{
-    LoadedConfig, ProfilesConfig, RuntimeOverrides, load, load_contexts,
+    ContextsConfig, LoadedConfig, ProfilesConfig, RuntimeOverrides, load, load_contexts,
     load_profile_runtime_overrides, load_profiles, profile_config_path,
 };
 #[cfg(unix)]
@@ -18,6 +18,7 @@ use std::{
 
 pub(super) struct ConfigReloadResult {
     pub(super) loaded: LoadedConfig,
+    pub(super) contexts: ContextsConfig,
     pub(super) profile_overrides: RuntimeOverrides,
     pub(super) profiles_path: Option<PathBuf>,
     pub(super) profiles_config: Option<ProfilesConfig>,
@@ -27,16 +28,30 @@ pub(super) struct ConfigReloadResult {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ConfigReadOperation {
     Reload,
+    WatchedReload,
     Check,
 }
 
+#[derive(Debug)]
+pub(super) struct ConfigReadFailure {
+    pub(super) operation: Option<ConfigReadOperation>,
+    pub(super) detail: String,
+}
+
 enum ConfigReloadRequest {
-    Load { path: PathBuf, profile_name: String },
-    Check { path: PathBuf },
+    Load {
+        path: PathBuf,
+        profile_name: String,
+        operation: ConfigReadOperation,
+    },
+    Check {
+        path: PathBuf,
+    },
 }
 
 pub(super) struct ConfigReloadWorker {
     inner: SingleFlightWorker<ConfigReloadRequest, Result<ConfigReloadResult, String>>,
+    pending_operation: Option<ConfigReadOperation>,
 }
 
 pub(super) struct ConfigWriteResult {
@@ -105,26 +120,34 @@ impl ConfigReloadWorker {
         let inner = SingleFlightWorker::spawn(
             "ferric-browser-config-loader",
             |request: ConfigReloadRequest| match request {
-                ConfigReloadRequest::Load { path, profile_name } => load(&path)
+                ConfigReloadRequest::Load {
+                    path,
+                    profile_name,
+                    operation,
+                } => load(&path)
                     .map_err(|error| error.to_string())
-                    .and_then(|loaded| {
+                    .and_then(|mut loaded| {
                         let directory = path.parent().unwrap_or_else(|| Path::new("."));
                         let contexts_path = directory.join("contexts.toml");
-                        if contexts_path.exists() {
+                        let contexts = if contexts_path.exists() {
                             load_contexts(&contexts_path).map_err(|error| {
                                 format!("contexts configuration is invalid: {error}")
-                            })?;
-                        }
+                            })?
+                        } else {
+                            ContextsConfig::default()
+                        };
+                        loaded.sources.push(contexts_path);
                         let profile_overrides =
                             load_profile_runtime_overrides(&path, &profile_name)
                                 .map_err(|error| error.to_string())?;
                         let profiles_path = profile_config_path(&path);
                         Ok(ConfigReloadResult {
                             loaded,
+                            contexts,
                             profile_overrides,
                             profiles_path: profiles_path.exists().then_some(profiles_path),
                             profiles_config: None,
-                            operation: ConfigReadOperation::Reload,
+                            operation,
                         })
                     }),
                 ConfigReloadRequest::Check { path } => load(&path)
@@ -132,11 +155,13 @@ impl ConfigReloadWorker {
                     .and_then(|loaded| {
                         let directory = path.parent().unwrap_or_else(|| Path::new("."));
                         let contexts_path = directory.join("contexts.toml");
-                        if contexts_path.exists() {
+                        let contexts = if contexts_path.exists() {
                             load_contexts(&contexts_path).map_err(|error| {
                                 format!("contexts configuration is invalid: {error}")
-                            })?;
-                        }
+                            })?
+                        } else {
+                            ContextsConfig::default()
+                        };
                         let profiles_path = directory.join("profiles.toml");
                         let profiles_config = profiles_path
                             .exists()
@@ -147,6 +172,7 @@ impl ConfigReloadWorker {
                             })?;
                         Ok(ConfigReloadResult {
                             loaded,
+                            contexts,
                             profile_overrides: RuntimeOverrides::default(),
                             profiles_path: profiles_path.exists().then_some(profiles_path),
                             profiles_config,
@@ -156,15 +182,39 @@ impl ConfigReloadWorker {
             },
         )
         .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            pending_operation: None,
+        })
     }
 
     pub(super) fn request(&mut self, path: PathBuf, profile_name: String) -> Result<(), String> {
-        match self
-            .inner
-            .submit(ConfigReloadRequest::Load { path, profile_name })
-        {
-            Ok(()) => Ok(()),
+        self.request_reload(path, profile_name, ConfigReadOperation::Reload)
+    }
+
+    pub(super) fn request_watched(
+        &mut self,
+        path: PathBuf,
+        profile_name: String,
+    ) -> Result<(), String> {
+        self.request_reload(path, profile_name, ConfigReadOperation::WatchedReload)
+    }
+
+    fn request_reload(
+        &mut self,
+        path: PathBuf,
+        profile_name: String,
+        operation: ConfigReadOperation,
+    ) -> Result<(), String> {
+        match self.inner.submit(ConfigReloadRequest::Load {
+            path,
+            profile_name,
+            operation,
+        }) {
+            Ok(()) => {
+                self.pending_operation = Some(operation);
+                Ok(())
+            }
             Err(SubmitError::Busy) => Err("configuration reload is already pending".into()),
             Err(SubmitError::QueueFull) => Err("configuration reload queue is full".into()),
             Err(SubmitError::Stopped) => Err("configuration reload worker stopped".into()),
@@ -173,19 +223,24 @@ impl ConfigReloadWorker {
 
     pub(super) fn request_check(&mut self, path: PathBuf) -> Result<(), String> {
         match self.inner.submit(ConfigReloadRequest::Check { path }) {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                self.pending_operation = Some(ConfigReadOperation::Check);
+                Ok(())
+            }
             Err(SubmitError::Busy) => Err("configuration read is already pending".into()),
             Err(SubmitError::QueueFull) => Err("configuration read queue is full".into()),
             Err(SubmitError::Stopped) => Err("configuration reload worker stopped".into()),
         }
     }
 
-    pub(super) fn poll(&mut self) -> Option<Result<ConfigReloadResult, String>> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(Err("configuration reload worker stopped".into())),
-        }
+    pub(super) fn poll(&mut self) -> Option<Result<ConfigReloadResult, ConfigReadFailure>> {
+        let result = match self.inner.poll() {
+            WorkerPoll::Pending => return None,
+            WorkerPoll::Ready(result) => result,
+            WorkerPoll::Stopped => Err("configuration reload worker stopped".into()),
+        };
+        let operation = self.pending_operation.take();
+        Some(result.map_err(|detail| ConfigReadFailure { operation, detail }))
     }
 
     pub(super) fn is_pending(&self) -> bool {

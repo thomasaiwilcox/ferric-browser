@@ -1,0 +1,10 @@
+schema = 1
+qt_version = "6.11.2"
+source = "https://raw.githubusercontent.com/qt/qtwebengine/v6.11.2/src/core/profile_adapter_client.h"
+sha256 = "8080449e1ecc738c644fac7e05ffeeb7ab81d6b0babb51d832c3749450a13294"
+license = "LGPL-3.0-only"
+purpose = "Interface dependency of the installed version-matching QWebEngineDownloadRequest private header; no Qt implementation is modified."
+license_file = "LICENSE.LGPL-3.0"
+license_source = "https://raw.githubusercontent.com/qt/qtwebengine/v6.11.2/LICENSES/LGPL-3.0-only.txt"
+license_sha256 = "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"
+notice_file = "NOTICE"

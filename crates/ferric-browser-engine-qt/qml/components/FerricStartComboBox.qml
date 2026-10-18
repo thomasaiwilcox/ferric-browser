@@ -18,6 +18,7 @@ ComboBox {
         textFormat: Text.PlainText
     }
     indicator: Label {
+        textFormat: Text.PlainText
         x: control.width - width - 12
         anchors.verticalCenter: parent.verticalCenter
         text: "⌄"

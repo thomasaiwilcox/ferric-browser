@@ -45,11 +45,17 @@ fn ipc_copy_commands_use_safe_typed_url_arguments() {
 
 #[test]
 fn ipc_passthrough_modes_keep_canonical_names_and_aliases() {
-    for mode in ["passthrough", "pass-through", "passthrough-once", "pass-through-once"] {
+    for mode in [
+        "passthrough",
+        "pass-through",
+        "passthrough-once",
+        "pass-through-once",
+    ] {
         let (command, _) = typed_ipc_command(&serde_json::json!({
             "command": "mode-enter",
             "arguments": {"mode": mode}
-        })).expect("typed pass-through mode command");
+        }))
+        .expect("typed pass-through mode command");
         assert_eq!(command.arguments, vec![mode]);
     }
     for mode in [Mode::PassThrough, Mode::PassThroughOnce] {
@@ -110,8 +116,11 @@ fn profile_delete_command_uses_the_existing_preview_boundary() {
     let qml = QML_SOURCE;
     assert!(qml.contains("action.indexOf(\"profile-delete\\t\") === 0"));
     assert!(qml.contains("window.showProfileDeletePreview(profileDeleteAction"));
-    assert!(qml.contains("browserUi.delete_profile(window.profileDeleteName, true)"));
+    assert!(
+        qml.contains("workspace.browserUi.delete_profile(workspace.state.profileDeleteName, true)")
+    );
     assert!(!qml.contains("delete_profile(window.profileDeleteName, false)"));
+    assert!(!qml.contains("delete_profile(workspace.state.profileDeleteName, false)"));
 }
 
 #[test]
@@ -153,8 +162,11 @@ fn window_new_command_uses_typed_profile_and_private_options() {
     );
     let qml = QML_SOURCE;
     assert!(qml.contains("action.indexOf(\"new-window\\t\") === 0"));
-    assert!(qml.contains("windowPrivateProfile: windowAction[1] === \"true\""));
-    assert!(qml.contains("windowStartupUrl: windowAction.slice(3).join(\"\\t\")"));
+    assert!(qml.contains("window.executeNewWindowAction(browserUi, action)"));
+    assert!(qml.contains("rootWindow.executeNewWindowAction(secondaryUi, action)"));
+    assert!(qml.contains("windowPrivateProfile: privateProfile"));
+    assert!(qml.contains("windowInheritedUi: inherit ? ui : null"));
+    assert!(qml.contains("windowStartupUrl: fields[fields.length - 1]"));
 }
 
 #[test]
@@ -166,10 +178,14 @@ fn external_window_focus_reports_bounded_activation_outcome() {
     ));
     assert!(source.contains("fn complete_window_focus("));
     assert!(source.contains("\"activation\": outcome"));
-    assert!(qml.contains("var focusOperationId = focusParts.length >= 3 ? focusParts[2] : \"\""));
+    assert!(qml.contains("function executeWindowFocusAction(sourceUi, action)"));
+    assert!(qml.contains("executeWindowFocusAction(browserUi, action)"));
+    assert!(qml.contains("window.activateBrowserWindow(entry.host, sourceUi, operationId)"));
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(secondary.contains("executeWindowFocusAction(secondaryUi, action)"));
     assert!(qml.contains("complete_window_focus(focusOperationId, \"activated\")"));
     assert!(qml.contains("complete_window_focus(operationId, \"unknown\")"));
-    assert!(qml.contains("complete_window_focus(focusOperationId, \"stale\")"));
+    assert!(qml.contains("complete_window_focus(operationId, \"stale\")"));
 }
 
 #[test]
@@ -247,7 +263,10 @@ fn tab_give_command_preserves_target_and_queues_live_transfer() {
     assert!(qml.contains("fields[3].indexOf(\"op-\") === 0"));
     assert!(qml.contains("sourceUi.complete_transfer_operation(arguments[4], true)"));
     assert!(qml.contains("operationId))"));
-    assert!(qml.contains("complete_tab_transfer() creates the reducer's mandatory"));
+    assert!(qml.contains("sourceUi.complete_tab_transfer(transfer.tab_id)"));
+    assert!(qml.contains("sourceHost.prepareTransferFallback()"));
+    assert!(qml.contains("fallback.stableTabId = secondaryUi.tab_id_for_index(0)"));
+    assert!(qml.contains("windowPreparedTransferFallback"));
     assert!(!qml.contains("secondaryUi.new_tab()"));
     assert!(qml.contains("action.indexOf(\"window-focus\\t\") === 0"));
     assert!(source.contains("pending_engine_action = Some(format!(\"window-focus\\t{id}\"))"));
@@ -363,9 +382,7 @@ fn tab_close_command_uses_optional_typed_id_and_count() {
     let qml = QML_SOURCE;
     assert!(qml.contains("action.indexOf(\"tab-close-active\\t\") === 0"));
     assert!(qml.contains("function closeTabAtIndex(index)"));
-    assert!(
-        ADAPTER_SOURCE.contains(".finish_tab_close(index, target.tab, target.generation)")
-    );
+    assert!(ADAPTER_SOURCE.contains(".finish_tab_close(index, target.tab, target.generation)"));
     assert!(!qml.contains("browserUi.view_closed_for(index)"));
     assert!(qml.contains("view.visible = false"));
     assert!(qml.contains("view.parent = null"));
@@ -431,7 +448,7 @@ fn history_commands_use_typed_bounded_counts() {
     );
     let qml = QML_SOURCE;
     assert!(qml.contains("function executeHistoryTraversal(view, backwards, requestedCount)"));
-    assert!(qml.contains("History boundary reached"));
+    assert!(qml.contains("No earlier history") && qml.contains("No later history"));
 }
 
 #[test]

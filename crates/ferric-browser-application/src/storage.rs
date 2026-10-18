@@ -9,6 +9,27 @@ use ferric_browser_storage::{
     ProfileStoreWorker, StorageCommand, StorageCompletion, StorageOperation, StorageWorkerError,
 };
 
+use crate::{session_downloads::DownloadWork, session_permissions::durable::PermissionWork};
+
+pub(crate) enum StorageObservation {
+    Permission(PermissionWork),
+    Download(DownloadWork),
+}
+impl StorageObservation {
+    fn admitted(self) -> Self {
+        match self {
+            Self::Permission(work) => Self::Permission(work.admitted()),
+            Self::Download(work) => Self::Download(work),
+        }
+    }
+    fn finish(self, completion: &StorageCompletion) {
+        match self {
+            Self::Permission(work) => work.finish(completion),
+            Self::Download(work) => work.finish(completion),
+        }
+    }
+}
+
 const RETIRE_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_PENDING_REQUESTS: usize = 512;
 
@@ -50,6 +71,7 @@ pub(crate) struct StorageCoordinator {
     pending: VecDeque<ScheduledRequest>,
     active: BTreeMap<StorageOperation, StorageTicket>,
     effects: VecDeque<StorageEffect>,
+    observations: BTreeMap<StorageTicket, StorageObservation>,
     next_ticket: u64,
 }
 
@@ -60,6 +82,7 @@ impl Default for StorageCoordinator {
             pending: VecDeque::new(),
             active: BTreeMap::new(),
             effects: VecDeque::new(),
+            observations: BTreeMap::new(),
             next_ticket: 1,
         }
     }
@@ -67,14 +90,26 @@ impl Default for StorageCoordinator {
 
 impl StorageCoordinator {
     pub(crate) fn replace(&mut self, path: Option<&Path>) -> Result<(), StorageWorkerError> {
+        self.replace_until(path, Instant::now() + RETIRE_TIMEOUT)
+    }
+
+    pub(crate) fn replace_until(
+        &mut self,
+        path: Option<&Path>,
+        deadline: Instant,
+    ) -> Result<(), StorageWorkerError> {
         let replacement = path.map(ProfileStoreWorker::spawn).transpose()?;
-        self.retire(CancellationReason::ProfileReplaced);
+        self.retire(CancellationReason::ProfileReplaced, deadline);
         self.worker = replacement;
         Ok(())
     }
 
     pub(crate) fn close(&mut self) {
-        self.retire(CancellationReason::ProfileClosed);
+        self.close_until(Instant::now() + RETIRE_TIMEOUT);
+    }
+
+    pub(crate) fn close_until(&mut self, deadline: Instant) {
+        self.retire(CancellationReason::ProfileClosed, deadline);
     }
 
     pub(crate) const fn is_open(&self) -> bool {
@@ -84,9 +119,10 @@ impl StorageCoordinator {
     pub(crate) fn submit(
         &mut self,
         command: StorageCommand,
+        observation: Option<StorageObservation>,
     ) -> Result<StorageTicket, StorageWorkerError> {
         let ticket = self.next_ticket();
-        match self.submit_now(ticket, command.clone()) {
+        let result = match self.submit_now(ticket, command.clone()) {
             Ok(()) => Ok(ticket),
             Err(StorageWorkerError::Busy | StorageWorkerError::QueueFull) => {
                 if self.pending.len() >= MAX_PENDING_REQUESTS {
@@ -96,6 +132,18 @@ impl StorageCoordinator {
                 Ok(ticket)
             }
             Err(error) => Err(error),
+        };
+        if result.is_ok()
+            && let Some(observation) = observation
+        {
+            self.observations.insert(ticket, observation.admitted());
+        }
+        result
+    }
+
+    fn observe(&mut self, ticket: StorageTicket, completion: &StorageCompletion) {
+        if let Some(observation) = self.observations.remove(&ticket) {
+            observation.finish(completion);
         }
     }
 
@@ -115,13 +163,20 @@ impl StorageCoordinator {
                 Err(StorageWorkerError::Busy | StorageWorkerError::QueueFull) => break,
                 Err(error) => {
                     self.pending.pop_front();
+                    let completion = StorageCompletion::failed(operation, error.to_string());
+                    self.observe(request.ticket, &completion);
                     self.effects.push_back(StorageEffect {
                         ticket: request.ticket,
-                        completion: StorageCompletion::failed(operation, error.to_string()),
+                        completion,
                     });
                 }
             }
         }
+    }
+
+    pub(crate) fn collect_for_drain(&mut self) {
+        self.collect_completions();
+        self.submit_pending();
     }
 
     fn collect_completions(&mut self) {
@@ -133,18 +188,18 @@ impl StorageCoordinator {
         for completion in completions {
             let operation = completion.operation();
             if let Some(ticket) = self.active.remove(&operation) {
+                self.observe(ticket, &completion);
                 self.effects.push_back(StorageEffect { ticket, completion });
             }
         }
     }
 
-    fn retire(&mut self, reason: CancellationReason) {
+    fn retire(&mut self, reason: CancellationReason, deadline: Instant) {
         if self.worker.is_none() {
             self.cancel_outstanding(reason);
             return;
         }
 
-        let deadline = Instant::now() + RETIRE_TIMEOUT;
         while (!self.pending.is_empty() || !self.active.is_empty()) && Instant::now() < deadline {
             self.collect_completions();
             self.submit_pending();
@@ -188,7 +243,10 @@ impl StorageCoordinator {
         cancelled.sort_by_key(|effect| effect.ticket);
         self.active.clear();
         self.pending.clear();
-        self.effects.extend(cancelled);
+        for effect in cancelled {
+            self.observe(effect.ticket, &effect.completion);
+            self.effects.push_back(effect);
+        }
     }
 
     fn next_ticket(&mut self) -> StorageTicket {

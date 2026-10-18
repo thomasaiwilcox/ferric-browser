@@ -20,6 +20,7 @@ Rectangle {
     radius: 3
 
     Label {
+        textFormat: Text.PlainText
         id: label
         anchors.fill: parent
         anchors.margins: 7

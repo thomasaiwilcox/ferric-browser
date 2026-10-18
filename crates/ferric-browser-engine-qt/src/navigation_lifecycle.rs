@@ -101,11 +101,6 @@ impl qobject::BrowserUi {
         self.as_mut()
             .set_navigation_failure_detail(QString::from(&detail));
         self.as_mut().set_navigation_failure_visible(true);
-        let status = if detail.is_empty() {
-            format!("{} failure", kind.to_ascii_uppercase())
-        } else {
-            format!("{} failure: {detail}", kind.to_ascii_uppercase())
-        };
-        self.set_status_text(QString::from(status));
+        self.set_status_text(QString::from("Couldn't load this page"));
     }
 }

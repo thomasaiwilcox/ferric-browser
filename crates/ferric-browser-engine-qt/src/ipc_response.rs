@@ -19,15 +19,6 @@ pub(super) enum IpcQueryError {
 }
 
 impl IpcQueryError {
-    pub(super) fn message(&self) -> &str {
-        match self {
-            Self::Invalid(message)
-            | Self::NotFound(message)
-            | Self::Busy(message)
-            | Self::Unavailable(message) => message,
-        }
-    }
-
     pub(super) fn into_public_parts(self) -> (&'static str, String) {
         match self {
             Self::Invalid(message) => ("E_INVALID_PARAMS", message),

@@ -972,6 +972,21 @@ fn permission_rules_are_exact_origin_bounded_and_resettable() {
         normalize_permission_origin("https://[2001:db8::1]:8443").expect("IPv6 origin"),
         "https://[2001:db8::1]:8443"
     );
+    for (native, canonical) in [
+        ("HTTPS://Example.test:443/", "https://example.test"),
+        ("http://127.0.0.1:41729/", "http://127.0.0.1:41729"),
+        ("https://[::1]:443/", "https://[::1]"),
+    ] {
+        assert_eq!(normalize_permission_origin(native).unwrap(), canonical);
+    }
+    for non_origin in [
+        "https://example.test//",
+        "https://example.test/path/",
+        "https://example.test/?query",
+        "https://example.test/#fragment",
+    ] {
+        assert!(normalize_permission_origin(non_origin).is_err());
+    }
     assert!(normalize_permission_origin("http://example.test").is_err());
     assert!(normalize_permission_origin("https://example.test/path").is_err());
 

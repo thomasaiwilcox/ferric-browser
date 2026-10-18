@@ -55,7 +55,7 @@ fn profile_delete_preview_text(roots: &StorageRoots, name: &str) -> Result<Strin
         .find(|profile| profile.name == name)
         .ok_or_else(|| "profile was not found".to_owned())?;
     Ok(format!(
-        "Profile: {}\nUUID: {}\nRust data: {}\nSession data: {}\nCache: {}\nQtWebEngine storage is not deleted by this operation.",
+        "Profile: {}\nProfile ID: {}\nFerric data: {}\nSession data: {}\nCache: {}\nQtWebEngine storage is not deleted by this operation.",
         profile.name,
         profile.id,
         roots

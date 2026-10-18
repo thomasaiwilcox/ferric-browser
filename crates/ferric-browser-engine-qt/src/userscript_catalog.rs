@@ -5,7 +5,9 @@
 
 use crate::userscript;
 use ferric_browser_application::BrowserApplication;
-use ferric_browser_core::{ActionRegistry, ExistenceState, TabId, Target, WindowId};
+use ferric_browser_core::{
+    ActionRegistry, ExistenceState, PrivacyKind, TabId, Target, ValidatedUrl, WindowId,
+};
 use serde_json::Value;
 use std::path::Path;
 
@@ -14,6 +16,14 @@ pub(super) struct ActionPresentation {
     pub(super) id: String,
     pub(super) label: String,
     pub(super) available: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Availability {
+    pub(super) core_state_available: bool,
+    pub(super) durable_storage_available: bool,
+    pub(super) download_session_available: bool,
+    pub(super) privacy: Option<PrivacyKind>,
 }
 
 pub(super) fn action_value(action: &userscript::RegisteredAction, available: bool) -> Value {
@@ -86,9 +96,7 @@ pub(super) fn action_value(action: &userscript::RegisteredAction, available: boo
 pub(super) fn action_values(
     root: Option<&Path>,
     subject: Option<&str>,
-    core_state_available: bool,
-    durable_storage_available: bool,
-    private_profile: bool,
+    availability: Availability,
 ) -> Result<Vec<Value>, String> {
     let Some(root) = root else {
         return Ok(Vec::new());
@@ -102,12 +110,7 @@ pub(super) fn action_values(
                     && builtins.resolve(&action.id).is_none()
             })
             .map(|action| {
-                let available = is_available(
-                    &action,
-                    core_state_available,
-                    durable_storage_available,
-                    private_profile,
-                );
+                let available = is_available(&action, availability);
                 action_value(&action, available)
             })
             .collect()
@@ -117,9 +120,7 @@ pub(super) fn action_values(
 pub(super) fn action_presentations(
     root: Option<&Path>,
     subject: &str,
-    core_state_available: bool,
-    durable_storage_available: bool,
-    private_profile: bool,
+    availability: Availability,
 ) -> Result<Vec<ActionPresentation>, String> {
     let Some(root) = root else {
         return Ok(Vec::new());
@@ -130,12 +131,7 @@ pub(super) fn action_presentations(
             .into_iter()
             .filter(|action| action.subject == subject && builtins.resolve(&action.id).is_none())
             .map(|action| ActionPresentation {
-                available: is_available(
-                    &action,
-                    core_state_available,
-                    durable_storage_available,
-                    private_profile,
-                ),
+                available: is_available(&action, availability),
                 id: action.id,
                 label: action.label,
             })
@@ -145,17 +141,16 @@ pub(super) fn action_presentations(
 
 pub(super) fn is_available(
     action: &userscript::RegisteredAction,
-    core_state_available: bool,
-    durable_storage_available: bool,
-    private_profile: bool,
+    availability: Availability,
 ) -> bool {
     let requires_storage = matches!(
         action.subject.as_str(),
-        "download" | "history-entry" | "bookmark" | "quickmark" | "session"
+        "history-entry" | "bookmark" | "quickmark" | "session"
     );
-    core_state_available
-        && (!requires_storage || durable_storage_available)
-        && (!private_profile || action.allow_private)
+    availability.core_state_available
+        && (!requires_storage || availability.durable_storage_available)
+        && (action.subject != "download" || availability.download_session_available)
+        && (!availability.privacy.is_some_and(PrivacyKind::is_transient) || action.allow_private)
 }
 
 pub(super) fn is_hint_only(action: &userscript::RegisteredAction) -> bool {
@@ -183,6 +178,16 @@ pub(super) fn subject_argument_name(subject: &str) -> Option<&'static str> {
         "context" => Some("context_name"),
         _ => None,
     }
+}
+
+pub(super) fn link_context_url(value: &str) -> Result<String, String> {
+    let url = ValidatedUrl::parse(value.to_owned())
+        .map_err(|error| format!("userscript action link URL is invalid: {error}"))?;
+    let url = crate::url_safety::safe_ipc_url(url.as_str());
+    if !ferric_browser_storage::is_safe_history_url(&url) {
+        return Err("userscript action link URL is not eligible".into());
+    }
+    Ok(url)
 }
 
 pub(super) fn subject_target(
@@ -242,7 +247,7 @@ pub(super) fn subject_target(
 
 #[cfg(test)]
 mod tests {
-    use super::{action_value, is_available, subject_argument_name};
+    use super::{Availability, PrivacyKind, action_value, is_available, subject_argument_name};
     use crate::userscript::RegisteredAction;
 
     fn action(subject: &str, fields: &[&str], allow_private: bool) -> RegisteredAction {
@@ -266,15 +271,61 @@ mod tests {
     }
 
     #[test]
-    fn availability_enforces_storage_and_private_boundaries() {
-        assert!(!is_available(
-            &action("bookmark", &[], true),
-            true,
-            false,
-            false
+    fn link_context_sanitizes_before_applying_the_safe_url_policy() {
+        assert_eq!(
+            super::link_context_url(
+                "https://user:password@example.test/post?keep=1&token=secret#comments"
+            )
+            .unwrap(),
+            "https://example.test/post?keep=1"
+        );
+        assert_eq!(
+            super::link_context_url("https://example.test/post#comments").unwrap(),
+            "https://example.test/post"
+        );
+        for invalid in [
+            "javascript:alert(1)",
+            "data:text/plain,private",
+            "https://example.test/\n",
+        ] {
+            assert!(super::link_context_url(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn availability_enforces_storage_session_and_private_boundaries() {
+        let session = Availability {
+            core_state_available: true,
+            durable_storage_available: false,
+            download_session_available: true,
+            privacy: Some(PrivacyKind::Private),
+        };
+        assert!(is_available(
+            &action("download", &["download_id"], true),
+            session
         ));
-        assert!(!is_available(&action("link", &[], false), true, true, true));
-        assert!(is_available(&action("link", &[], true), true, true, true));
+        assert!(!is_available(
+            &action("download", &["download_id"], false),
+            session
+        ));
+        assert!(!is_available(
+            &action("bookmark", &["bookmark_id"], true),
+            session
+        ));
+        assert!(!is_available(
+            &action("download", &["download_id"], true),
+            Availability {
+                download_session_available: false,
+                ..session
+            }
+        ));
+        assert!(!is_available(
+            &action("link", &[], true),
+            Availability {
+                core_state_available: false,
+                ..session
+            }
+        ));
     }
 
     #[test]

@@ -49,7 +49,7 @@ pub use hints::{
 };
 pub use id::{
     ActionId, ContextId, DocumentId, DownloadId, HintSessionId, IdSource, JourneyNodeId, ProfileId,
-    RequestId, SessionId, SpatialRequestId, SpatialSessionId, TabId, WindowId,
+    RequestId, SessionId, SharedIdAllocator, SpatialRequestId, SpatialSessionId, TabId, WindowId,
 };
 pub use input::{
     BindingDefinition, BindingError, BindingOutcome, BindingRegistry, BindingResolver, BindingTrie,

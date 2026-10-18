@@ -6,6 +6,7 @@ import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
+import "../scripts/ChromePresentation.js" as ChromePresentation
 
 FerricBrowserRuntimeBase {
     id: window
@@ -46,66 +47,33 @@ FerricBrowserRuntimeBase {
     }
 
     function runBrowserScript(view, script, callback, world) {
-        if (!view || !script || (view.nativeUrl !== undefined && view.nativeUrl.length > 0)) {
+        if (window.runtimeDisposing || !view || !script
+                || (view.viewHost && view.viewHost.runtimeReleased)
+                || (view.nativeUrl !== undefined && view.nativeUrl.length > 0)) {
             return false
         }
         var executionWorld = world === undefined ? window.browserScriptWorld : world
         if (callback) {
-            view.runJavaScript(script, executionWorld, callback)
+            return window.scriptRunnerObject.run(view, view.mainFrame, script, executionWorld, callback)
         } else {
             view.runJavaScript(script, executionWorld)
         }
         return true
     }
 
-    function closeDevTools() {
-        var detached = window.devToolsDetachedWindow
-        window.devToolsDetachedWindow = null
-        window.devToolsExternalView = null
-        window.devToolsDetached = false
-        window.devToolsVisible = false
-        if (detached) {
-            detached.close()
-        }
+    function runBrowserFrameScript(view, frame, script, world, callback) {
+        if (window.runtimeDisposing || !view || !frame || !frame.isValid
+                || (view.viewHost && view.viewHost.runtimeReleased)) return false
+        return window.scriptRunnerObject.run(view, frame, script, world, callback)
     }
 
-    function toggleDevTools(detach) {
-        var inspected = window.activeWebView()
-        if (!inspected) {
-            browserUi.status_text = "DevTools target is unavailable"
-            return false
-        }
-        if (window.devToolsVisible) {
-            if (detach === window.devToolsDetached) {
-                window.closeDevTools()
-                browserUi.status_text = "DevTools closed"
-                return true
-            }
-            window.closeDevTools()
-        }
-        if (detach) {
-            var detached = window.devToolsWindowFactory.createObject(null, {
-                inspectView: inspected,
-                ownerWindow: window
-            })
-            if (!detached) {
-                browserUi.status_text = "DevTools window could not be created"
-                return false
-            }
-            window.devToolsDetachedWindow = detached
-            window.devToolsExternalView = detached.inspectorView
-            window.devToolsDetached = true
-            window.devToolsVisible = true
-            detached.show()
-            browserUi.status_text = "DevTools detached"
-        } else {
-            window.devToolsDetached = false
-            window.devToolsVisible = true
-            browserUi.status_text = "DevTools attached"
-        }
-        inspected.forceActiveFocus()
-        return true
+    function cancelScriptsForView(view) {
+        window.scriptRunnerObject.cancelFor(view)
     }
+
+    function closeDevTools() { window.devToolsWorkspace.close() }
+
+    function toggleDevTools(detach) { return window.devToolsWorkspace.toggle(detach) }
 
     function scrollScript(kind, direction, half, count) {
         return BrowserScripts.scroll(kind, direction, half, count)
@@ -319,12 +287,12 @@ FerricBrowserRuntimeBase {
         return BrowserScripts.focusProbe()
     }
 
-    function probeFocusFrame(ui, index, frame, framePath, url) {
+    function probeFocusFrame(ui, index, frame, framePath, url, view) {
         if (!ui || !frame || !frame.isValid) {
             return
         }
         var epoch = ui.input_epoch
-        frame.runJavaScript(window.focusProbeScript(), window.browserScriptWorld, function(value) {
+        window.runBrowserFrameScript(view, frame, window.focusProbeScript(), window.browserScriptWorld, function(value) {
             var state = value || {sequence: 0, editable: false,
                                   user_activated: false, kind: "unknown"}
             ui.page_focus_observed_for(index, url, framePath,
@@ -333,7 +301,7 @@ FerricBrowserRuntimeBase {
         })
         var children = frame.children || []
         for (var i = 0; i < children.length; ++i) {
-            window.probeFocusFrame(ui, index, children[i], framePath + "." + i, url)
+            window.probeFocusFrame(ui, index, children[i], framePath + "." + i, url, view)
         }
     }
 
@@ -360,7 +328,7 @@ FerricBrowserRuntimeBase {
                 return
             }
             tracker.pending += 1
-            frame.runJavaScript(window.focusProbeScript(), window.browserScriptWorld,
+            var launched = window.runBrowserFrameScript(view, frame, window.focusProbeScript(), window.browserScriptWorld,
                 function(value) {
                     var state = value || { sequence: 0, editable: false,
                                             user_activated: false }
@@ -371,6 +339,7 @@ FerricBrowserRuntimeBase {
                     tracker.pending -= 1
                     finishIfReady()
                 })
+            if (!launched) { tracker.pending -= 1; finishIfReady() }
             var children = frame.children || []
             for (var childIndex = 0; childIndex < children.length; ++childIndex) {
                 probe(children[childIndex], framePath + "." + childIndex)
@@ -402,7 +371,7 @@ FerricBrowserRuntimeBase {
         }
         var provider = window.selectionProviderFor(view)
         if (provider) provider.capture()
-        window.probeFocusFrame(ui, index, view.mainFrame, "0", view.url.toString())
+        window.probeFocusFrame(ui, index, view.mainFrame, "0", view.url.toString(), view)
     }
 
     function cosmeticHostMatches(host, pattern) {
@@ -594,7 +563,11 @@ FerricBrowserRuntimeBase {
         id: copyNoticeTimer
         interval: 6000
         repeat: false
-        onTriggered: window.copyNoticeVisible = false
+        onTriggered: {
+            var surface = window.copyNoticeSurfaceObject
+            if (surface && (surface.inputActive || surface.hovered)) restart()
+            else window.copyNoticeVisible = false
+        }
     }
 
     Timer {
@@ -611,7 +584,6 @@ FerricBrowserRuntimeBase {
             }
             if (host.active) {
                 window.activationStatus = "activated"
-                host.forceActiveFocus()
                 if (operationId.length > 0) {
                     ui.complete_window_focus(operationId, "activated")
                 }
@@ -648,17 +620,43 @@ FerricBrowserRuntimeBase {
 
     FerricFileDialogSurfaces {
         id: fileDialogSurfaces
+        engineHostWindow: window
+        diagnosticsHostWindow: window.diagnosticsHost || window
+        portalRequired: window.desktopPortalMode(browserUi) === "required"
+        enginePortalRequired: window.desktopPortalMode(window.pendingFileDialogUi || browserUi) === "required"
+        diagnosticsPortalRequired: window.desktopPortalMode(window.diagnosticsUi || browserUi) === "required"
         onDownloadAccepted: window.acceptPendingDownload()
         onDownloadRejected: window.cancelPendingDownload()
+        onDownloadFailed: function(message) { window.failPendingDownload(message) }
         onJourneyExportAccepted: window.finishJourneyExport()
         onJourneyExportRejected: window.journeyExportPreviewVisible = true
+        onJourneyExportFailed: function(message) {
+            window.journeyExportPreviewVisible = true
+            browserUi.status_text = message
+        }
         onDiagnosticsExportAccepted: window.finishDiagnosticsExport()
-        onDiagnosticsExportRejected: window.diagnosticsVisible = true
+        onDiagnosticsExportRejected: if (window.diagnosticsUi) window.diagnosticsVisible = true
+        onDiagnosticsExportFailed: function(message) {
+            if (!window.diagnosticsUi) return
+            window.diagnosticsVisible = true
+            window.diagnosticsExportNotice = message
+            window.diagnosticsExportDetail = ""
+        }
         onEngineFileAccepted: window.acceptEngineFileDialog()
         onEngineFileRejected: window.rejectEngineFileDialog()
+        onEngineFileFailed: function(message) { window.clearEngineFileDialog(true, message) }
+        onEngineChooserOpened: function(backend) {
+            if (!window.pendingFileDialogRequest) return
+            var ui = window.pendingFileDialogUi || browserUi
+            ui.status_text = backend === "system"
+                    ? "The system file chooser is open"
+                    : "The browser file chooser is open"
+        }
         onEngineFolderAccepted: window.acceptEngineFolderDialog()
         onEngineFolderRejected: window.rejectEngineFileDialog()
+        onEngineFolderFailed: function(message) { window.clearEngineFileDialog(true, message) }
         onUserscriptManifestAccepted: window.installUserscriptManifest()
+        onUserscriptManifestFailed: function(message) { browserUi.status_text = message }
     }
 
     FerricCertificatePrompts {
@@ -702,24 +700,11 @@ FerricBrowserRuntimeBase {
         }
     }
 
-    FerricUserscriptRemovalDialog {
-        id: userscriptRemovalDialog
-        browserWindow: window
-        onConfirmed: {
-            var name = window.pendingUserscriptRemoval
-            window.pendingUserscriptRemoval = ""
-            if (browserUi.remove_userscript(name)) {
-                window.settingsNotice = "Removing userscript…"
-            }
-        }
-        onCancelled: window.pendingUserscriptRemoval = ""
-    }
-
     function applyNativeEditAction(ui, view, action, source) {
         var edit = action.split("\t")
         if (edit.length !== 5 || !view
                 || !ui.clipboard_edit_target_current(edit[1], edit[2], edit[3], view.clipboardPopupToken || "")) {
-            ui.status_text = "Edit destination is stale"
+            ui.status_text = "The page or selection changed. Choose the text or field again and retry."
             return false
         }
         return window.requestNativeEdit(ui, view, edit[4], source)
@@ -736,7 +721,7 @@ FerricBrowserRuntimeBase {
         var provider = window.selectionProviderFor(view)
         provider.validate(source || provider.snapshot(), function(result) {
             if (!result || result.error || !view.action(action).enabled) {
-                ui.status_text = "Edit destination is stale or unavailable"
+                ui.status_text = "The page or selection changed. Choose the text or field again and retry."
                 return
             }
             view.triggerWebAction(action)
@@ -747,22 +732,49 @@ FerricBrowserRuntimeBase {
     }
 
     function copyToClipboard(value, exposeValue, primary, ownerUi) {
-        if (!value || value.length === 0) {
-            return false
-        }
-        if (exposeValue === undefined) {
-            exposeValue = true
-        }
+        if (!value || value.length === 0) return false
         var ui = ownerUi || browserUi
-        if (!ui.write_clipboard(value, primary === true)) {
-            return false
-        }
+        var owner = window.browserWindowEntryForUi(ui)
+        if (!owner || !owner.host || owner.host.runtimeReleased === true) return false
+        window.copyNoticeVisible = false
+        if (!ui.write_clipboard(value, primary === true)) return false
+        window.copyNoticeUi = ui
+        window.copyNoticeHost = owner.host
+        window.copyNoticeView = owner.host.activeWebView()
+        window.copyNoticeWindowId = String(ui.core_window_id)
+        window.copyNoticePrimary = primary === true
         window.copiedValue = value
-        window.copyNoticeSensitive = !exposeValue
-        window.copiedText = exposeValue ? value : "Selected document text (content hidden)"
+        var expose = exposeValue === undefined ? true : !!exposeValue
+        window.copyNoticeSensitive = !expose
+        window.copiedText = expose ? value : "Content hidden"
         window.copyNoticeVisible = true
         copyNoticeTimer.restart()
         return true
+    }
+
+    function repeatClipboardCopy() {
+        if (!window.copyNoticeOwnerCurrent) {
+            window.copyNoticeVisible = false
+            return false
+        }
+        // Keep the focused control and displayed value stable on repetition.
+        // The same native writer owns policy for both initial and repeat writes.
+        if (!window.copyNoticeUi.write_clipboard(window.copiedValue, window.copyNoticePrimary)) {
+            window.copyNoticeVisible = false
+            return false
+        }
+        copyNoticeTimer.restart()
+        return true
+    }
+
+    function dismissCopyNotice() {
+        var ui = window.copyNoticeUi
+        var host = window.copyNoticeHost
+        var view = window.copyNoticeView
+        var restorePage = window.copyNoticeOwnerCurrent && window.copyNoticeInputActive
+        window.copyNoticeVisible = false
+        if (restorePage && host && host.active && view && !window.nativePromptActiveFor(ui)
+                && (!host.modalInputScope || !host.modalInputScope.activeSurface)) view.forceActiveFocus()
     }
 
     function fileDialogNameFilters(request) {
@@ -797,8 +809,8 @@ FerricBrowserRuntimeBase {
                 ? fileDialogSurfaces.engineFileSelectedFiles
                 : [fileDialogSurfaces.engineFileSelectedFile]
         for (var i = 0; i < urls.length; ++i) {
-            var path = urls[i].toLocalFile()
-            if (!path || urls[i].scheme !== "file") {
+            var path = browserUi.local_file_path(urls[i])
+            if (!path) {
                 return []
             }
             paths.push(path)
@@ -816,7 +828,7 @@ FerricBrowserRuntimeBase {
 
     function folderDialogPaths() {
         var url = fileDialogSurfaces.engineFolderSelectedFolder
-        var path = url && url.scheme === "file" ? url.toLocalFile() : ""
+        var path = browserUi.local_file_path(url || "")
         return path ? [path] : []
     }
 
@@ -833,53 +845,34 @@ FerricBrowserRuntimeBase {
                 ? browserUi.portal_capability_status(capability) : "not-probed"
     }
 
-    function openPendingEngineFileDialog() {
-        var request = window.pendingFileDialogRequest
-        if (!request) {
-            return
-        }
-        window.pendingFileDialogWaitingForPortal = false
+    function presentEngineFileDialog(surfaces, request, ui) {
+        if (!surfaces || !request) return
         if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-            fileDialogSurfaces.openEngineFolder()
+            surfaces.openEngineFolder()
             return
         }
-        fileDialogSurfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
+        surfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
                 ? FileDialog.OpenFiles
                 : request.mode === FileDialogRequest.FileModeSave
                     ? FileDialog.SaveFile
                     : FileDialog.OpenFile
-        fileDialogSurfaces.engineFileNameFilters = window.fileDialogNameFilters(request)
-        fileDialogSurfaces.engineFileCurrentFile = request.defaultFileName.length > 0
-                ? request.defaultFileName : ""
-        fileDialogSurfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
+        surfaces.engineFileNameFilters = window.fileDialogNameFilters(request)
+        surfaces.engineFileDefaultFile = (ui || browserUi).file_dialog_default_url(
+                    request.defaultFileName, surfaces.engineFileCurrentFolder)
+        surfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
                 ? "Save file"
                 : request.mode === FileDialogRequest.FileModeOpenMultiple
                     ? "Choose files"
                     : "Choose file"
-        fileDialogSurfaces.openEngineFile()
+        surfaces.openEngineFile()
     }
 
-    function maybeOpenPendingEngineFileDialog() {
-        if (!window.pendingFileDialogWaitingForPortal
-                || !window.pendingFileDialogRequest) {
-            return
-        }
-        if (Date.now() >= window.pendingFileDialogPortalDeadlineMs) {
-            window.clearEngineFileDialog(true,
-                                         "Desktop portal check timed out; file selection cancelled")
-            return
-        }
+    function openPendingEngineFileDialog() {
+        var request = window.pendingFileDialogRequest
+        if (!request) return
         var ui = window.pendingFileDialogUi || browserUi
-        var status = window.desktopPortalCapabilityStatus(ui, "file_chooser")
-        if (status === "pending" || status === "not-probed") {
-            return
-        }
-        if (status !== "available") {
-            window.clearEngineFileDialog(true,
-                                         "Required desktop portal unavailable; file selection cancelled")
-            return
-        }
-        window.openPendingEngineFileDialog()
+        ui.status_text = "Opening the file chooser…"
+        window.presentEngineFileDialog(fileDialogSurfaces, request, ui)
     }
 
     function clearEngineFileDialog(cancelRequest, message) {
@@ -892,14 +885,8 @@ FerricBrowserRuntimeBase {
         window.pendingFileDialogView = null
         window.pendingFileDialogUi = null
         window.pendingFileDialogLeaseToken = ""
-        window.pendingFileDialogWaitingForPortal = false
-        window.pendingFileDialogPortalDeadlineMs = 0
-        if (fileDialogSurfaces.engineFileVisible) {
-            fileDialogSurfaces.closeEngineFile()
-        }
-        if (fileDialogSurfaces.engineFolderVisible) {
-            fileDialogSurfaces.closeEngineFolder()
-        }
+        fileDialogSurfaces.closeEngineFile()
+        fileDialogSurfaces.closeEngineFolder()
         if (hadRequest) {
             window.restoreOverlayFocus()
         }
@@ -930,7 +917,7 @@ FerricBrowserRuntimeBase {
                 window.restoreOverlayFocus()
             }
             window.completeNativePromptLease(ui, leaseToken, view)
-            ui.status_text = "File selection returned no local paths"
+            ui.status_text = "Choose a file stored on this computer"
             return
         }
         window.resolveQtRequest(ui, request, "file-dialog", "dialogAccept", [paths])
@@ -959,7 +946,7 @@ FerricBrowserRuntimeBase {
                 window.restoreOverlayFocus()
             }
             window.completeNativePromptLease(ui, leaseToken, view)
-            ui.status_text = "Folder selection returned no local path"
+            ui.status_text = "Choose a folder stored on this computer"
             return
         }
         window.resolveQtRequest(ui, request, "file-dialog", "dialogAccept", [paths])
@@ -980,7 +967,6 @@ FerricBrowserRuntimeBase {
         window.pendingFileDialogView = null
         window.pendingFileDialogUi = null
         window.pendingFileDialogLeaseToken = ""
-        window.pendingFileDialogWaitingForPortal = false
         window.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
         window.restoreOverlayFocus()
         window.completeNativePromptLease(ui, leaseToken, view)
@@ -988,36 +974,27 @@ FerricBrowserRuntimeBase {
     }
 
     function handleFileDialogRequested(request, view, ui) {
+        if (!request) return
+        request.accepted = true
+        var requestUi = ui || browserUi
+        if (view && (view.viewRetired || view.viewHost !== window || view.viewUi !== requestUi)) {
+            window.resolveQtRequest(requestUi, request, "file-dialog", "dialogReject", [])
+            return
+        }
         if (window.pendingFileDialogRequest) {
-            window.clearEngineFileDialog(true, "Previous file selection cancelled")
-            window.resolveQtRequest(ui || browserUi, request, "file-dialog", "dialogReject", [])
-            (ui || browserUi).status_text = "Another file selection is already open"
+            window.resolveQtRequest(requestUi, request, "file-dialog", "dialogReject", [])
+            requestUi.status_text = "Another file selection is already open"
             return
         }
         window.captureOverlayFocus(window, view || window.activeWebView())
         window.pendingFileDialogRequest = request
         window.pendingFileDialogView = view || null
-        window.pendingFileDialogUi = ui || browserUi
-        var requestUi = window.pendingFileDialogUi
+        window.pendingFileDialogUi = requestUi
         window.pendingFileDialogLeaseToken = window.beginNativePromptLease(
                     requestUi, view, "file-chooser")
-        if (window.desktopPortalMode(requestUi) === "required") {
-            var status = window.desktopPortalCapabilityStatus(requestUi, "file_chooser")
-            if (status === "not-probed") {
-                browserUi.probe_desktop_portals()
-                status = window.desktopPortalCapabilityStatus(requestUi, "file_chooser")
-            }
-            if (status === "pending" || status === "not-probed") {
-                window.pendingFileDialogWaitingForPortal = true
-                window.pendingFileDialogPortalDeadlineMs = Date.now() + 5000
-                requestUi.status_text = "Checking required desktop portal…"
-                return
-            }
-            if (status !== "available") {
-                window.clearEngineFileDialog(true,
-                                             "Required desktop portal unavailable; file selection cancelled")
-                return
-            }
+        if (window.pendingFileDialogLeaseToken.length === 0) {
+            window.clearEngineFileDialog(true, "This file selection is no longer available; try again")
+            return
         }
         window.openPendingEngineFileDialog()
     }
@@ -1043,7 +1020,25 @@ FerricBrowserRuntimeBase {
         }
     }
 
-    property var tabViews: []
+    readonly property alias tabViewControllerObject: primaryTabController
+    property alias tabViews: primaryTabController.tabViews
+    FerricTabViewController {
+        id: primaryTabController
+        ready: window.profileBootstrapComplete && !window.runtimeDisposing
+        browserUi: window.browserUi
+        browserHost: window
+        tabs: window.tabsModel
+        viewFactory: window.webViewFactory
+        viewParent: window.webViewsObject
+        profile: window.browserProfile
+        interceptor: window.primaryRequestInterceptor
+        transientProfile: window.temporaryProfile
+        onActivity: window.noteTabActivity()
+        onRestored: {
+            if (window.profileSessionWorkspaceObject) window.profileSessionWorkspaceObject.finishSessionRestore(window.recoveryAvailable)
+            window.recoveryAvailable = false
+        }
+    }
     property var preparedTransferFallback: null
 
     function tabViewAt(index) {
@@ -1055,10 +1050,12 @@ FerricBrowserRuntimeBase {
         if (!view) {
             return null
         }
-        tabViews.splice(index, 1)
+        tabViews = tabViews.slice(0, index).concat(tabViews.slice(index + 1))
         if (transferParent) {
             view.parent = transferParent
         } else {
+            view.viewRetired = true
+            view.viewModel = ({ loaded:false, url:"", muted:false, zoom:1.0 })
             // WebEngineView owns a compositor texture. Remove it from the
             // scene before deferred destruction so its last frame cannot
             // overlap the newly selected tab during renderer teardown.
@@ -1079,7 +1076,7 @@ FerricBrowserRuntimeBase {
         if (!view) {
             return null
         }
-        tabViews.splice(index, 1)
+        tabViews = tabViews.slice(0, index).concat(tabViews.slice(index + 1))
         view.parent = null
         view.visible = false
         return view
@@ -1150,58 +1147,14 @@ FerricBrowserRuntimeBase {
         id: libraryGraphNodes
     }
 
-    function refreshSessions() {
-        namedSessions.clear()
-        var names = browserUi.list_named_sessions()
-        if (names.length === 0) {
-            return
-        }
-        var values = names.split("\n")
-        for (var i = 0; i < values.length; ++i) {
-            if (values[i].length > 0) {
-                namedSessions.append({ name: values[i] })
-            }
-        }
-    }
+    function refreshSessions() { return window.profileSessionWorkspaceObject.refreshSessions() }
 
-    function showSessionPreview(name, append) {
-        if (!browserUi.request_session_preview(name)) {
-            return
-        }
-        sessionPreviewName = name
-        sessionPreviewAppend = append
-        sessionPreviewLoading = true
-        sessionPreviewError = false
-        sessionPreviewText = "Loading validated session descriptors…"
-        window.openInternalSurface()
-        sessionPreviewVisible = true
-    }
+    function applySessionValues() { return window.profileSessionWorkspaceObject.applySessionValues() }
 
-    function showCommandSessionPreview(payload) {
-        var lines = payload.split("\n")
-        if (lines.length < 2) {
-            return
-        }
-        sessionPreviewName = lines[1]
-        sessionPreviewAppend = lines[0] === "append"
-        sessionPreviewLoading = true
-        sessionPreviewError = false
-        sessionPreviewText = "Loading validated session descriptors…"
-        window.openInternalSurface()
-        sessionPreviewVisible = true
-    }
+    function showSessionPreview(name, append) { return window.profileSessionWorkspaceObject.showSessionPreview(name, append) }
 
-    function loadPreviewedSession() {
-        if (sessionPreviewError
-                || !browserUi.request_named_session_load(sessionPreviewName, sessionPreviewAppend)) {
-            return
-        }
-        sessionPreviewLoading = true
-        sessionPreviewError = false
-        sessionPreviewText = "Loading validated session…"
-        window.syncTabModel()
-        window.executePendingEngineAction()
-    }
+
+    function loadPreviewedSession() { return window.profileSessionWorkspaceObject.loadPreviewedSession() }
 
     function showReopenWindowConfirmation(sourceUi, sourceHost, action) {
         reopenWindowConfirmationUi = sourceUi
@@ -1237,32 +1190,9 @@ FerricBrowserRuntimeBase {
         browserUi.status_text = "Reopen-in-window cancelled"
     }
 
-    function refreshProfiles() {
-        profiles.clear()
-        if (!browserUi.request_profile_list()) {
-            return
-        }
-        profileRefreshAttempts = 0
-        profileSessionSurfaces.restartProfileRefresh()
-    }
+    function refreshProfiles() { return window.profileSessionWorkspaceObject.refreshProfiles() }
 
-    function applyProfileValues() {
-        var values = browserUi.profile_values
-        if (values.length === 0) {
-            return
-        }
-        var lines = values.split("\n")
-        for (var i = 0; i < lines.length; ++i) {
-            var fields = lines[i].split("\t")
-            if (fields.length >= 3) {
-                profiles.append({ name: fields[0], label: fields[1], id: fields[2] })
-            }
-        }
-    }
-
-    function scheduleProfileRefresh() {
-        refreshProfiles()
-    }
+    function applyProfileValues() { return window.profileSessionWorkspaceObject.applyProfileValues() }
 
     function showSiteLedger() {
         var payload = browserUi.refresh_site_status()
@@ -1279,15 +1209,17 @@ FerricBrowserRuntimeBase {
             var facts = siteLedgerData.facts || []
             for (var factIndex = 0; factIndex < facts.length; factIndex++) {
                 if (facts[factIndex] && facts[factIndex].id === "capture") {
-                    facts[factIndex].value = activeCapture
+                    facts[factIndex].value = siteLedgerData.private
+                            ? { status: "unavailable", reason: "withheld in private browsing" }
+                            : activeCapture
                             ? { status: activeCapture.status,
                                 origin: activeCapture.origin,
                                 provenance: "browser-owned capture ledger" }
                             : { status: "inactive",
                                 reason: "no active capture is recorded for this tab",
                                 provenance: "browser-owned capture ledger" }
-                    facts[factIndex].state = activeCapture ? "active" : "inactive"
-                    facts[factIndex].capability = activeCapture ? "available" : "not-active"
+                    facts[factIndex].state = siteLedgerData.private ? "unknown" : activeCapture ? "active" : "inactive"
+                    facts[factIndex].capability = siteLedgerData.private ? "unavailable" : activeCapture ? "available" : "not-active"
                     break
                 }
             }
@@ -1302,55 +1234,85 @@ FerricBrowserRuntimeBase {
         }
     }
 
+    function siteLedgerSnapshotIsCurrent() {
+        try {
+            var current = JSON.parse(browserUi.refresh_site_status())
+            if (ChromePresentation.siteScopeKey(current) === ChromePresentation.siteScopeKey(window.siteLedgerData)) {
+                return true
+            }
+            window.showSiteLedger()
+            browserUi.status_text = "This page changed. Review its updated site details before continuing."
+        } catch (error) {
+            browserUi.status_text = "Site details couldn't be checked. Refresh before continuing."
+        }
+        return false
+    }
+
+    function refreshVisibleSiteLedger() {
+        if (window.siteLedgerVisible) window.showSiteLedger()
+    }
+
+    // Reading a failed startup's own diagnostics does not require an admitted
+    // page. Validate the QObject/host pair without granting page authority.
+    function diagnosticsOwner(ui, host) {
+        if (!ui) return null
+        var owner = window.browserWindowEntryForUi(ui)
+        if (owner) return !host || owner.host === host ? owner : null
+        host = host || (ui === browserUi ? window : null)
+        if (!host || host.runtimeReleased === true || host.runtimeDisposing === true) return null
+        if (host === window ? ui !== browserUi
+                : host.rootWindow !== window || host.windowUi !== ui) return null
+        return {ui: ui, host: host, view: host.activeWebView()}
+    }
+
     function refreshDiagnostics() {
-        var payload = browserUi.diagnostics_json()
-        diagnosticsText = payload && payload.length > 0
-                ? payload
-                : "{\"error\":\"Diagnostics snapshot was unavailable\"}"
+        var ui = window.diagnosticsUi
+        if (!window.diagnosticsOwner(ui, window.diagnosticsHost)) return
+        window.diagnosticsExportNotice = ""
+        window.diagnosticsExportDetail = ""
+        window.diagnosticsStartupDetails = String(ui.profile_startup_details())
+        ui.request_diagnostics()
+    }
+
+    Connections {
+        target: window.diagnosticsUi
+        function onDiagnostics_previewChanged() {
+            window.diagnosticsText = window.diagnosticsUi ? String(window.diagnosticsUi.diagnostics_preview) : ""
+        }
     }
 
     function refreshEngineUpdateNotice() {
-        var payload = browserUi.diagnostics_json()
-        if (!payload || payload.length === 0) {
-            engineUpdateStatus = "unavailable"
-            engineUpdateNotice = "Engine qualification status unavailable; inspect diagnostics"
-            return
-        }
-        try {
-            var snapshot = JSON.parse(payload)
-            var policy = snapshot.build && snapshot.build.engine_update_policy
-                    ? snapshot.build.engine_update_policy : null
-            var status = policy && policy.status ? String(policy.status) : "unavailable"
-            engineUpdateStatus = status
-            if (status === "blocked") {
-                engineUpdateNotice = "QtWebEngine build is blocked; update it with the system package manager"
-            } else if (status === "unqualified") {
-                engineUpdateNotice = "QtWebEngine build is unqualified; verify the installed package before relying on compatibility"
-            } else if (status === "unavailable") {
-                engineUpdateNotice = "Engine qualification status unavailable; inspect diagnostics"
-            } else {
-                engineUpdateNotice = ""
-            }
-        } catch (error) {
-            engineUpdateStatus = "unavailable"
-            engineUpdateNotice = "Engine qualification status unavailable; inspect diagnostics"
-        }
+        var values = browserUi.engine_update_notice()
+        engineUpdateStatus = String(values[0] || "unavailable")
+        engineUpdateNotice = String(values[1] || "")
     }
 
-    function showDiagnostics() {
-        if (!window.diagnosticsVisible) {
-            window.openInternalSurface()
-        }
+    function showDiagnostics(ui, host) {
+        ui = ui || browserUi
+        var owner = window.diagnosticsOwner(ui, host)
+        if (!owner) return
+        if (window.diagnosticsUi) window.closeDiagnostics()
+        window.diagnosticsUi = ui
+        window.diagnosticsHost = owner.host
+        window.diagnosticsText = ""
+        window.captureOverlayFocus(owner.host, owner.view)
         window.refreshDiagnostics()
         window.diagnosticsVisible = true
     }
 
     function closeDiagnostics() {
         var wasVisible = window.diagnosticsVisible
+        var host = window.diagnosticsHost
+        var ui = window.diagnosticsUi
+        fileDialogSurfaces.closeDiagnosticsExport()
         window.diagnosticsVisible = false
-        if (wasVisible) {
-            window.closeInternalSurface()
-        }
+        window.diagnosticsExportUi = null
+        window.diagnosticsUi = null
+        window.diagnosticsHost = null
+        window.diagnosticsText = ""
+        window.diagnosticsStartupDetails = ""
+        if (ui) ui.cancel_diagnostics()
+        if (wasVisible) window.restoreOverlayFocus(host)
     }
 
     function rebuildBindingHelpRows() {
@@ -1403,141 +1365,17 @@ FerricBrowserRuntimeBase {
         }
     }
 
-    function refreshSettings() {
-        var query = (window.settingsSearch || "").trim().toLowerCase()
-        var visibleRows = []
-        for (var index = 0; index < browserUi.settings_rows.length; ++index) {
-            var row = browserUi.settings_rows[index]
-            var searchable = [row.key, row.label, row.scope, row.apply]
-                             .join(" ").toLowerCase()
-            if (!query || searchable.indexOf(query) >= 0) {
-                visibleRows.push(row)
-            }
-        }
-        var replaced = settingsModel.replaceRows(visibleRows)
-        if (!replaced) {
-            window.settingsNotice = "Settings could not be displayed because their row data was inconsistent"
-        }
-    }
-
-    function settingLiteral(row, value) {
-        if (row.type === "bool") {
-            return value ? "true" : "false"
-        }
-        if (row.type === "number") {
-            return String(value)
-        }
-        if (row.type === "languages") {
-            var languages = String(value || "").split(",")
-            var normalized = []
-            for (var index = 0; index < languages.length && index < 16; ++index) {
-                var language = languages[index].trim()
-                if (language.length > 0 && normalized.indexOf(language) < 0) {
-                    normalized.push(language)
-                }
-            }
-            return JSON.stringify(normalized)
-        }
-        return JSON.stringify(String(value))
-    }
-
-    function applySetting(row, value) {
-        if (!browserUi.set_runtime_setting(
-                    row.key, settingLiteral(row, value), window.settingsTemporary)) {
-            window.settingsNotice = row.key + ": " + browserUi.runtime_setting_error
-            return false
-        }
-        window.settingsNotice = "Applied " + row.key + " ("
-                + (window.settingsTemporary ? "temporary" : "persistent or memory-only") + ")"
-        window.refreshSettings()
-        return true
-    }
-
-    function resetSetting(row) {
-        if (!browserUi.unset_runtime_setting(row.key, window.settingsTemporary)) {
-            window.settingsNotice = row.key + ": " + browserUi.runtime_setting_error
-            return false
-        }
-        window.settingsNotice = "Reset " + row.key
-        window.refreshSettings()
-        return true
-    }
-
-    function showSettings(search) {
-        if (!window.settingsVisible) {
-            window.openInternalSurface()
-        }
-        window.settingsNotice = ""
-        if (search !== undefined) {
-            window.settingsSearch = String(search)
-        }
-        window.refreshUserscriptInventory()
-        window.refreshSettings()
-        window.settingsVisible = true
-        Qt.callLater(function() { settingsSearchInput.forceActiveFocus() })
-    }
-
-    function chooseUserscriptManifest() {
-        fileDialogSurfaces.openUserscriptManifest()
-    }
-
-    function installUserscriptManifest() {
-        var selected = fileDialogSurfaces.userscriptManifestSelectedFile
-        if (!selected || selected.scheme !== "file") {
-            window.settingsNotice = "Choose a local userscript manifest"
-            return
-        }
-        if (!browserUi.install_userscript_manifest(selected.toLocalFile())) {
-            window.settingsNotice = "Userscript installation could not be started"
-            return
-        }
-        window.settingsNotice = "Installing userscript…"
-        window.refreshUserscriptInventory()
-        window.refreshSettings()
-    }
-
-    function confirmRemoveUserscript(name) {
-        if (!name || window.temporaryProfile) {
-            return
-        }
-        window.pendingUserscriptRemoval = String(name)
-        userscriptRemovalDialog.open()
-    }
-
-    function refreshUserscriptInventory() {
-        browserUi.refresh_userscript_inventory()
-    }
-
-    function userscriptInventoryRows() {
-        var names = browserUi.userscript_names
-        var enabled = browserUi.userscript_enabled_values
-        var pageWorld = browserUi.userscript_page_world_values
-        var actions = browserUi.userscript_action_counts
-        if (names.length !== enabled.length || names.length !== pageWorld.length
-                || names.length !== actions.length) {
-            return []
-        }
-        var rows = []
-        for (var index = 0; index < names.length; ++index) {
-            var actionCount = Number(actions[index])
-            rows.push({
-                name: String(names[index]),
-                enabled: String(enabled[index]) === "true",
-                page_world: String(pageWorld[index]) === "true",
-                actions: isFinite(actionCount) && actionCount >= 0
-                         ? Math.floor(actionCount) : 0
-            })
-        }
-        return rows
-    }
-
-    function closeSettings() {
-        var wasVisible = window.settingsVisible
-        window.settingsVisible = false
-        if (wasVisible) {
-            window.closeInternalSurface()
-        }
-    }
+    function refreshSettings() { settingsWorkspace.refreshSettings() }
+    function settingLiteral(row, value) { return settingsWorkspace.settingLiteral(row, value) }
+    function applySetting(row, value) { return settingsWorkspace.applySetting(row, value) }
+    function resetSetting(row) { return settingsWorkspace.resetSetting(row) }
+    function showSettings(search) { settingsWorkspace.show(search) }
+    function closeSettings() { settingsWorkspace.close() }
+    function chooseUserscriptManifest() { fileDialogSurfaces.openUserscriptManifest() }
+    function installUserscriptManifest() { return settingsWorkspace.installManifest(fileDialogSurfaces.userscriptManifestSelectedFile) }
+    function confirmRemoveUserscript(name) { settingsWorkspace.confirmRemoveUserscript(name) }
+    function refreshUserscriptInventory() { browserUi.refresh_userscript_inventory() }
+    function userscriptInventoryRows() { return settingsWorkspace.userscriptRows() }
 
     function siteDoctorUserscriptsDisabled(ui) {
         return !!ui && ui.site_experiment_active
@@ -1566,9 +1404,13 @@ FerricBrowserRuntimeBase {
     }
 
     function openProfile(name, label, requestedUrl) {
+        window.openProfileWindow(name, label, requestedUrl, browserUi.current_url)
+        window.profileSessionWorkspaceObject.closeProfiles()
+    }
+    function openProfileWindow(name, label, requestedUrl, sourceUrl) {
         var hasRequestedUrl = requestedUrl !== undefined
                 && String(requestedUrl).length > 0
-        var startupUrl = hasRequestedUrl ? String(requestedUrl) : browserUi.current_url
+        var startupUrl = hasRequestedUrl ? String(requestedUrl) : String(sourceUrl || "rb://start")
         var entries = window.browserWindowRegistry || []
         for (var existingIndex = 0; existingIndex < entries.length; ++existingIndex) {
             var existing = entries[existingIndex]
@@ -1578,8 +1420,6 @@ FerricBrowserRuntimeBase {
                 if (hasRequestedUrl) {
                     existing.ui.navigate_initial(startupUrl, "external-open", false)
                 }
-                profileManagerVisible = false
-                window.closeInternalSurface()
                 return
             }
         }
@@ -1589,19 +1429,8 @@ FerricBrowserRuntimeBase {
             windowProfileLabel: label,
             windowPrivateProfile: false
         })
-        profileManagerVisible = false
-        window.closeInternalSurface()
     }
 
-    function showProfileDeletePreview(name) {
-        if (!browserUi.request_profile_delete_preview(name)) {
-            return
-        }
-        profileDeleteName = name
-        profileDeletePreviewText = "Loading validated profile deletion preview…"
-        window.openInternalSurface()
-        profileDeletePreviewVisible = true
-        profileSessionSurfaces.restartProfileDeletePreview()
-    }
+    function showProfileDeletePreview(name) { return window.profileSessionWorkspaceObject.showProfileDeletePreview(name) }
 
 }

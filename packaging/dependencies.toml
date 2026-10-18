@@ -6,7 +6,7 @@ support_status = "development"
 family = "Qt 6"
 minimum_version = "6.11.2"
 model = "system-dynamic"
-qualification = "The development host is qualified against Qt 6.11.2; release qualification must be repeated for the installed Arch package."
+qualification = "The native download-source guard is qualified for QtWebEngine 6.11.2 and needs matching private SDK headers. Refresh its verified interface and repeat release qualification before changing the SDK."
 
 [required]
 arch_packages = [
@@ -17,6 +17,7 @@ arch_packages = [
   "qt6-declarative>=6.11",
   "qt6-wayland",
   "qt6-webengine>=6.11",
+  "kwindowsystem>=6.28",
 ]
 
 qml_modules = [
@@ -37,11 +38,12 @@ qt_modules = [
   "WebChannel",
   "WebEngineCore",
   "WebEngineQuick",
+  "Widgets",
 ]
 
 [build]
 arch_packages = ["desktop-file-utils", "rust"]
-check_packages = ["dbus", "weston"]
+check_packages = ["dbus", "weston", "wayland", "wayland-protocols"]
 note = "desktop-file-utils is required by the package check phase; rust builds the locked application source; dbus and weston provide the disposable native-Wayland qualification harness."
 
 [optional.portals]

@@ -32,7 +32,7 @@ impl qobject::BrowserUi {
                 items,
                 PendingSelectorAction::RuntimeConfig {
                     candidate,
-                    layers,
+                    layers: Box::new(layers),
                     status,
                     persistent_overrides,
                     persist_path,
@@ -180,9 +180,9 @@ impl qobject::BrowserUi {
             result.ok,
         );
         match decision {
-            SelectorCallbackDecision::Stale => self
-                .as_mut()
-                .set_status_text(QString::from("Selector validation result became stale")),
+            SelectorCallbackDecision::Stale => self.as_mut().set_status_text(QString::from(
+                "Selector settings changed. Validate the rule again.",
+            )),
             SelectorCallbackDecision::Reject => self
                 .as_mut()
                 .reject_selector_action(pending.action, &result),
@@ -236,7 +236,7 @@ impl qobject::BrowserUi {
             } => {
                 match self.as_mut().commit_runtime_config_persisted(
                     candidate,
-                    layers,
+                    *layers,
                     &status,
                     persist_path
                         .as_deref()
@@ -249,43 +249,13 @@ impl qobject::BrowserUi {
                     ))),
                 }
             }
-            PendingSelectorAction::Reload {
-                candidate,
-                layers,
-                status,
-                path,
-                base_json,
-                profile_overrides,
-                sources,
-                profiles_path,
-            } => {
-                match self.as_mut().commit_reloaded_config(
-                    candidate,
-                    layers.clone(),
-                    &status,
-                    pending.fingerprint,
-                ) {
-                    Ok(_) => {
-                        let mut rust = self.as_mut().rust_mut();
-                        let this = rust.as_mut().get_mut();
-                        this.base_config =
-                            serde_json::to_value(&layers.base).unwrap_or(Value::Null);
-                        this.profile_overrides = profile_overrides.clone();
-                        let mut watched_sources = sources;
-                        if let Some(profile_path) = profiles_path {
-                            watched_sources.push(profile_path);
-                        }
-                        this.config_watch.set_sources(&path, &watched_sources);
-                        drop(rust);
-                        self.as_mut().set_config_base_json(QString::from(base_json));
-                        self.as_mut().set_profile_overrides_json(QString::from(
-                            serde_json::to_string(&profile_overrides)
-                                .unwrap_or_else(|_| "{}".into()),
-                        ));
-                    }
-                    Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                        "Configuration reload rejected: {error}"
-                    ))),
+            PendingSelectorAction::Reload { publication } => {
+                let announce = publication.announce;
+                if let Err(error) = self
+                    .as_mut()
+                    .queue_context_configuration_reload(*publication)
+                {
+                    self.report_config_reload_failure(&error, announce);
                 }
             }
             PendingSelectorAction::Profile {
@@ -334,9 +304,11 @@ impl qobject::BrowserUi {
                     }
                 }
             }
-            PendingSelectorAction::RuntimeConfig { .. }
-            | PendingSelectorAction::Reload { .. }
-            | PendingSelectorAction::Check { .. } => {
+            PendingSelectorAction::Reload { publication } => {
+                self.as_mut()
+                    .report_config_reload_failure(&diagnostic, publication.announce);
+            }
+            PendingSelectorAction::RuntimeConfig { .. } | PendingSelectorAction::Check { .. } => {
                 self.as_mut().set_status_text(QString::from(diagnostic));
             }
         }

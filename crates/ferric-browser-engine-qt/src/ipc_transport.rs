@@ -13,13 +13,18 @@ use std::{
     os::unix::net::{UnixListener, UnixStream},
     sync::{
         Arc, Mutex, OnceLock,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
     thread,
     time::{Duration, Instant},
 };
 
 static IPC_INSTANCE_ID: OnceLock<String> = OnceLock::new();
+static IPC_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+pub(super) fn current_sequence() -> u64 {
+    IPC_SEQUENCE.load(Ordering::Acquire)
+}
 
 #[must_use]
 pub(crate) fn instance_id() -> Option<&'static str> {
@@ -27,7 +32,13 @@ pub(crate) fn instance_id() -> Option<&'static str> {
 }
 
 pub(crate) fn publish_ipc_event(sequence: &mut u64, event_type: &str, payload: Value) {
-    *sequence = sequence.saturating_add(1);
+    #[allow(deprecated)]
+    let previous = IPC_SEQUENCE
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            Some(current.max(*sequence).saturating_add(1))
+        })
+        .unwrap_or_else(|current| current);
+    *sequence = previous.max(*sequence).saturating_add(1);
     if let Some(instance_id) = instance_id() {
         publish_event(&EventNotification {
             instance_id: instance_id.to_owned(),
@@ -269,6 +280,18 @@ mod tests {
     use ferric_browser_ipc::{bind_listener, instance_paths, take_pending_request};
     use std::{fs, path::Path};
     use uuid::Uuid;
+
+    #[test]
+    fn event_watermarks_are_monotonic_across_independent_window_owners() {
+        let mut first = 0;
+        let mut second = 0;
+        publish_ipc_event(&mut first, "test.owner", serde_json::json!({}));
+        publish_ipc_event(&mut second, "test.owner", serde_json::json!({}));
+        assert!(second > first);
+        publish_ipc_event(&mut first, "test.owner", serde_json::json!({}));
+        assert!(first > second);
+        assert!(current_sequence() >= first);
+    }
 
     #[test]
     fn server_queues_requests_for_the_qt_poller() {

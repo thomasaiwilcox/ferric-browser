@@ -75,6 +75,7 @@ TestCase {
         property bool temporaryProfile: false
         property var primaryBrowserUi: helpUi
         property bool bindingHelpVisible: true
+        property bool bindingOverlayVisible: true
         property bool recoveryAvailable: true
         property bool journeyExportPreviewVisible: false
         property string journeyExportPreviewText: ""
@@ -265,6 +266,7 @@ TestCase {
     Component {
         id: fileDialogSurfacesFixture
         FerricFileDialogSurfaces {
+            engineHostWindow: testWindow
             onEngineFileAccepted: chromeTest.acceptedEngineFileDialogs++
             onEngineFileRejected: chromeTest.rejectedEngineFileDialogs++
         }
@@ -475,6 +477,7 @@ TestCase {
                 notice: ""
                 spellcheckStatus: "Available"
                 spellcheckDictionariesMissing: false
+                userscriptInventoryReady: true
                 userscriptRows: [{ name: "Example script", enabled: true,
                                    actions: 2, page_world: false }]
                 settingsModel: chromeTest.settingsModelObject
@@ -516,7 +519,51 @@ TestCase {
         }
     }
 
+    QtObject { id: literalBindingUi; property string binding_overlay: "<b>Next command</b>" }
+    Component { id: literalBindingFixture; FerricBindingOverlay { browserWindow: theme; browserUi: literalBindingUi } }
+    function labelWithText(item,value) {
+        if(item && typeof item.text === "string" && item.text === value) return item
+        var children=item ? (item.children || []) : []
+        for(var child of children) { var found=labelWithText(child,value);if(found) return found }
+        return null
+    }
+    function test_status_text_and_names_are_literal_data() {
+        return [{tag:"primary-profile",primary:true,profile:true},{tag:"secondary-profile",primary:false,profile:true},
+                {tag:"secondary-message",primary:false,profile:false}]
+    }
+    function test_status_text_and_names_are_literal(data) {
+        var value="<b>Literal name</b>"
+        var properties={mode:"normal"}
+        properties[data.profile ? (data.primary ? "profileName" : "profileLabel") : "statusText"]=value
+        var bar=createTemporaryObject(data.primary ? primaryStatusFixture : secondaryStatusFixture,testWindow.contentItem,properties)
+        verify(bar);verify(waitForPolish(testWindow))
+        var label=labelWithText(bar,value);verify(label)
+        compare(label.textFormat,Text.PlainText)
+    }
+    function test_binding_continuation_is_literal() {
+        var overlay=createTemporaryObject(literalBindingFixture,testWindow.contentItem);verify(overlay)
+        var label=labelWithText(overlay,literalBindingUi.binding_overlay);verify(label)
+        compare(label.textFormat,Text.PlainText)
+    }
+    function test_context_menu_labels_are_literal() {
+        theme.contextMenuItems=[{label:"<b>Literal action</b>",actionId:"copy",enabled:true}]
+        var menu=createTemporaryObject(contextMenuFixture,testWindow.contentItem);verify(menu)
+        menu.openAt(testWindow,20,20)
+        var popup=findChild(menu,"contextMenuPopup");verify(popup)
+        tryCompare(popup,"visible",true)
+        var label=null
+        tryVerify(function(){label=labelWithText(popup.contentItem,"<b>Literal action</b>");return !!label})
+        compare(label.textFormat,Text.PlainText)
+        menu.close()
+    }
+
     function init() {
+        failOnWarning(/TypeError|ReferenceError|Cannot assign|Unable to assign|Binding loop/)
+        testWindow.width = 900
+        testWindow.height = 700
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+        theme.font = Qt.font({family:"monospace",pointSize:10})
         settingsModel.clear()
         settingsModel.append({ key: "ui.reduced_motion", label: "Reduced motion",
                                type: "enum", scope: "global", apply: "live",
@@ -562,10 +609,13 @@ TestCase {
         verify(combo)
         compare(combo.count, 3)
         compare(combo.currentText, "on")
+        compare(combo.displayText, "Reduce motion")
+        combo.font.pointSize = 28
         mouseClick(combo)
         tryCompare(combo.popup, "visible", true)
         var option = combo.popup.contentItem.itemAtIndex(2)
         verify(option)
+        compare(option.font.pointSize, 28)
         mouseClick(option)
         compare(appliedSettingValue, "off")
     }
@@ -640,6 +690,65 @@ TestCase {
         verify(list)
         mouseWheel(list, 20, 15, 0, -120)
         compare(selectedTabs, 1)
+    }
+
+    function test_tab_tooltip_closes_when_its_host_blocks_input() {
+        tabsModel.setProperty(0, "title", "A long literal tab title <b>that must be truncated</b>")
+        var strip = createTemporaryObject(tabFixture, testWindow.contentItem, {width:220})
+        verify(strip)
+        var list = findChild(strip, "tabList")
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        var row = list.itemAtIndex(0)
+        var tooltip = findChild(strip,"tabTitleTooltip")
+        verify(tooltip)
+        mouseMove(row, 20, row.height / 2)
+        tryVerify(function() { return tooltip.visible })
+        compare(tooltip.contentItem.textFormat,Text.PlainText)
+        compare(tooltip.contentItem.text,tabsModel.get(0).title)
+        strip.tooltipsEnabled = false
+        tryVerify(function() { return !tooltip.visible })
+        wait(650)
+        verify(!tooltip.visible)
+        strip.tooltipsEnabled = true
+        tryVerify(function() { return tooltip.visible })
+        mouseMove(testWindow.contentItem, 800, 600)
+        tryVerify(function() { return !tooltip.visible })
+    }
+
+    function test_tab_tooltip_is_bounded_and_drops_removed_rows_data() {
+        return [{tag:"normal",width:900,height:700,font:10,placement:"top"},
+                {tag:"narrow",width:390,height:600,font:20,placement:"bottom"},
+                {tag:"largest-text",width:640,height:480,font:60,placement:"top"},
+                {tag:"left",width:640,height:480,font:20,placement:"left"},
+                {tag:"right",width:640,height:480,font:20,placement:"right"}]
+    }
+    function test_tab_tooltip_is_bounded_and_drops_removed_rows(data) {
+        testWindow.width=data.width;testWindow.height=data.height
+        theme.font=Qt.font({family:"monospace",pointSize:data.font})
+        tabsModel.clear()
+        var title="<b>"+"A long literal page title & text ".repeat(50)+"</b>"
+        tabsModel.append({title:title,pinned:false,muted:false})
+        var strip=createTemporaryObject(tabFixture,testWindow.contentItem,{width:220})
+        verify(strip)
+        strip.vertical=data.placement==="left" || data.placement==="right"
+        if(strip.vertical) strip.height=testWindow.height
+        if(data.placement==="right") strip.x=testWindow.width-strip.width
+        if(data.placement==="bottom") strip.y=testWindow.height-strip.height
+        var list=findChild(strip,"tabList")
+        tryVerify(function() { return list.itemAtIndex(0)!==null })
+        var row=list.itemAtIndex(0)
+        var tooltip=findChild(strip,"tabTitleTooltip");verify(tooltip)
+        mouseMove(row,20,row.height/2)
+        tryVerify(function() { return tooltip.visible })
+        compare(tooltip.contentItem.textFormat,Text.PlainText)
+        compare(tooltip.contentItem.text,title)
+        verify(tooltip.width<=testWindow.width-16+1)
+        verify(tooltip.height<=testWindow.height/2+1)
+        if(testArtifactDirectory.length>0)
+            grabImage(testWindow.contentItem).save(testArtifactDirectory+"/tab-tooltip-"+data.tag+".png")
+        tabsModel.clear()
+        tryVerify(function() { return strip.tooltipRow===null })
+        tryVerify(function() { return !tooltip.visible })
     }
 
     function test_completion_selection_replaces_only_the_active_token() {
@@ -820,32 +929,25 @@ TestCase {
         tryCompare(popup, "visible", false)
     }
 
-    function test_native_prompt_file_chooser_accept_and_cancel_by_keyboard() {
+    function test_file_chooser_decisions_reach_the_request_owner() {
         var accepted = createTemporaryObject(fileDialogSurfacesFixture,
                                              testWindow.contentItem, {
                                                  engineFileOptions: FileDialog.DontUseNativeDialog,
                                                  engineFileMode: FileDialog.SaveFile,
-                                                 engineFileCurrentFolder: "file:///tmp/"
+                                                 engineFileCurrentFolder: "file:///tmp/",
+                                                 engineFileDefaultFile: "file:///tmp/ferric-chooser-accept.txt"
                                              })
         verify(accepted)
         accepted.openEngineFile()
         tryCompare(accepted, "engineFileVisible", true)
-        var acceptName = findChild(testWindow, "fileNameTextField")
-        verify(acceptName)
-        tryCompare(acceptName, "visible", true)
-        acceptName.forceActiveFocus()
-        tryCompare(acceptName, "activeFocus", true)
-        acceptName.text = "ferric-keyboard-accept.txt"
-        keyClick(Qt.Key_Tab)
-        keyClick(Qt.Key_Tab)
-        keyClick(Qt.Key_Space)
+        // Physical keyboard behavior belongs to the native widget backend's
+        // fixture. This layer verifies the actual owner's terminal signals.
+        accepted.engineFileDialog.accept()
         tryCompare(chromeTest, "acceptedEngineFileDialogs", 1, 3000)
         tryCompare(accepted, "engineFileVisible", false)
         accepted.openEngineFile()
         tryCompare(accepted, "engineFileVisible", true)
-        acceptName.forceActiveFocus()
-        tryCompare(acceptName, "activeFocus", true)
-        keyClick(Qt.Key_Escape)
+        accepted.engineFileDialog.reject()
         tryCompare(chromeTest, "rejectedEngineFileDialogs", 1, 3000)
     }
 

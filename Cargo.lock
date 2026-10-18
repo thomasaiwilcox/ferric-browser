@@ -407,6 +407,7 @@ dependencies = [
  "ferric-browser-runtime",
  "ferric-browser-storage",
  "libc",
+ "pkg-config",
  "serde",
  "serde_json",
  "toml",

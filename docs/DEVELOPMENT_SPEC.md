@@ -120,7 +120,9 @@ routine supported workflow.
 configuration, persistence, integration logic, and completion MUST be Rust.
 QML may describe views, bindings, accessibility properties, and minimal event
 forwarding. Small C++ adapters may express public Qt APIs that the bridge does
-not expose. Page interaction may require JavaScript. Generated C++ and Qt's
+not expose. ADR-0002 records one version-pinned compatibility exception for a
+broken nullable download-source getter; it does not permit private transport
+or policy APIs. Page interaction may require JavaScript. Generated C++ and Qt's
 existing code are expected; a literal all-Rust rendering stack is not the goal.
 
 **PROD-003 — Desktop focus.** Native Wayland on Arch/Hyprland/Omarchy is the
@@ -132,8 +134,9 @@ the same initial support promise. X11, Windows, and macOS are outside V1.
 **PROD-004 — Simplicity.** Use one engine, one primary presentation toolkit,
 one command registry, and one documented source of truth for each persistent
 data category. Prefer upstream public APIs and a small number of maintained
-dependencies. No private Qt APIs, custom compositor, browser-engine fork,
-cloud synchronization service, or native plugin ABI in V1.
+dependencies. Private Qt access is prohibited except for the narrow nullable
+download-source check documented in ADR-0002. No custom compositor,
+browser-engine fork, cloud synchronization service, or native plugin ABI in V1.
 
 **PROD-005 — qutebrowser relationship.** Reproduce its useful interaction
 concepts: modal input, hints, commands, quickmarks, completion, per-site
@@ -474,7 +477,9 @@ Quick profile APIs for profiles, interception, and settings. A QML
 `WebEngineView` must not be treated as exposing a public `QWebEnginePage*`.
 Do not obtain private Qt objects to emulate Widgets-only APIs. Any gap is a
 recorded capability limitation or a reason to reconsider the presentation
-choice through an ADR.
+choice through an ADR. ADR-0002 permits only a version-pinned null check before
+the Quick download source getter. It does not expose `QWebEnginePage`, broaden
+the engine contract or authorize other private API use.
 
 The adapter exposes typed operations conceptually resembling:
 
@@ -586,7 +591,8 @@ steal focus. Limit one interactive modal prompt per window with a bounded
 queue, and group identical origin/type requests.
 
 All browser-owned modal surfaces use the same command-first interaction
-contract: a visible command name, a safe initial choice, window-scoped Escape,
+contract: a visible command name for command-backed surfaces, or a plain context
+label for page/security/lifecycle prompts, a safe initial choice, window-scoped Escape,
 keyboard navigation that still works when WebEngine retained focus, Enter to
 activate the selected choice, and pointer-selectable action rows. Complex
 management surfaces may use Tab/Shift-Tab for editable controls, but must still
@@ -935,6 +941,7 @@ commands may be added, but these names and semantics form the target contract.
 | `blocklist-update`, `blocking-toggle [--site]`, `blocking-status` | Transactional list update, precise exception, diagnostics |
 | `macro-record <REGISTER>`, `macro-stop`, `macro-play <REGISTER>` | Record/replay eligible commands |
 | `repeat [--count N]`, `cancel` | Repeat eligible operation/cancel pending UI work |
+| `settings`, `profiles`, `sessions` | Open native browser management panels; list commands remain available for scripts |
 | `help [COMMAND\|SETTING]`, `version`, `diagnostics` | Local documentation and support report |
 | `quit` | Normal coordinated application shutdown |
 
@@ -1139,6 +1146,20 @@ profiles unless explicitly enabled there.
 tabs use that profile. Opening a different profile creates/focuses its window.
 Engine-initiated popups inherit the opener's profile, including private mode;
 they may not switch profile through a hostname rule mid-authentication.
+
+Regular browser windows use the same persistent tab-view reconciliation and
+profile/session manager presentation. Each manager keeps its requesting window's
+models, drafts, feedback, preview and focus scope. A restored logical tab must
+have a corresponding engine view before the restore preview closes; hidden
+restored pages remain unloaded until selected. Preview requests and worker
+results use separate typed handoffs, with one consumer for restore payloads.
+Opening a regular profile from a private or temporary manager uses the native
+start page through the existing validated profile-open path, preserving the
+private page's address. Provisional and retired renderers cannot publish tab
+metadata or native/history state; they must first hold a live stable tab identity.
+Ordinary windows materialize tab views only after profile bootstrap completes,
+so a provisional tab cannot replace a live renderer during startup or consume
+the configured profile's queued restore payload.
 
 **TAB-002 — Ordering.** New related tabs follow their opener's group in creation
 order; unrelated tabs append. Closing the active tab selects the next tab at
@@ -1642,6 +1663,16 @@ unless explicit priorities make the result unique. `context-save` records
 eligible membership and session references in generated state; it never edits
 this file. A context accent is presentation-only and must retain accessible
 contrast or fall back to the active theme token.
+
+Definitions in `contexts.toml` remain authoritative.
+`context-delete NAME --confirm` removes a context created with `context-create`.
+For a context
+defined in this file, remove its definition and any routes that refer to it,
+then run `config-reload`. Direct deletion rejects that context with guidance
+and preserves its identity, saved membership and current window bindings.
+Ownership is checked against the latest generated catalog under its lock,
+including changes from other owners. Removing a context keeps its profile,
+named sessions and pages already open.
 
 The following optional additions belong in config.toml. `permission_rules`
 accept only a named normal profile and exact normalized origin. Allowed types
@@ -2314,14 +2345,50 @@ actions use typed `arguments` objects derived from their registries. Clients
 cannot supply trusted source flags, consent assertions, or native event handles.
 JSON strings are not reparsed as shell or command chains. An optional
 `command.parse` method may validate command text but never execute it as a side
-effect. Site Doctor mutation remains a command/action with normal effect-class
-and confirmation policy; `site.status` is read-only.
+effect. Accepted asynchronous requests must reach a terminal operation status
+when their engine handoff succeeds or is rejected. Site Doctor mutation remains
+a command/action with normal effect-class and confirmation policy; `site.status` is read-only.
 
 **IPC-004 — Query schema.** Tab results include tab/window IDs, profile ID/name,
 optional context ID/name, compositor workspace/output when known, safe URL,
 safe title, selected/pinned/muted flags, loading/renderer state, and document
 revision. Results omit private tabs unless configuration permits
 private queries and the request explicitly sets `include_private: true`.
+Live window and tab IDs are unique across runtime owners and are not reused
+when a window closes or changes profile. Window selectors returned by queries
+route commands, actions and scoped queries to that exact live owner. Missing,
+closed or ambiguous explicit selectors never fall back to another window.
+Unscoped window/tab queries collect the live owners; active-tab queries select
+one active or last-focused owner. Destination profile/context/private-query
+validation still applies after native routing.
+Operation queries follow the same private-query opt-in and configuration rule,
+including status and explicitly requested stderr. Scoped operation queries use
+the same live window selector as tab queries.
+Download activation commands report a preparation operation. That operation
+completes only when the matching native-profile offer has been admitted; it does
+not claim that the file has finished. Cancellation invalidates its request token
+before a late offer can be accepted. Download rows expose `retry_pending` while
+an item's new request is preparing or its replacement transfer remains active.
+`can_retry` requires a cancelled/interrupted item with a reusable HTTP(S) source
+and no pending replacement. Requested downloads retain their original URL
+through redirects so a later retry can request a fresh redirect.
+Retries use the same profile session, reserve their source across its windows,
+and never revive a terminal historical row.
+`downloads.query` projects the selected owner's profile-session catalog over
+available saved history. A busy or unavailable history read does not suppress
+known live or completed session rows. `ready` means this session projection is
+available; `history_complete` and `history_status` separately describe saved
+history (`ready`, `saving`, `loading`, `unavailable`, or `not-stored`). Filtered
+transient queries return no rows and report `filtered: true`; exposing transient
+rows requires both `ipc.private_queries` and `include_private: true`. These
+opt-ins never enable private download events. Each row retains its stable ID,
+URL, destination, state, byte counts and timestamps, and adds a display name,
+`active`, `finishing`, and `file_ready`. File readiness describes finalized
+catalog state; file actions still revalidate the filesystem. Snapshot sequence
+watermarks include updates made by other owners of the shared session.
+Registered download actions resolve the same session rows and preserve their
+manifest's private-mode policy independently of saved-history readiness.
+
 Private permission answers and secrets are never exposed. Default URL output
 removes userinfo and recognized auth secrets; raw-query/fragment output, if
 added, requires an explicit sensitive-output flag and is not logged.
@@ -2373,6 +2440,20 @@ contexts are allowed. Referenced scripts are local trusted programs;
 installing/enabling one is an explicit user act.
 The manifest limits the browser's protocol response, not the executable's OS
 permissions. No native in-process plugin loader exists in V1.
+
+The installed-script manager distinguishes loading, a successfully empty
+inventory and a failed read. A failed refresh preserves the last loaded list,
+labels it as previous results and disables changes through those stale rows
+until refresh succeeds. Refreshes during a script change coalesce without
+replacing that operation's result. Ordinary failure notices stay readable;
+full errors remain available as selectable plain text under explicit details,
+including after reopening Settings. If the script service stops, the pending
+operation receives one terminal failure rather than remaining busy or repeatedly
+overwriting later status notices.
+The outcome of a script change is separate from its subsequent inventory read:
+an applied change remains successful when an unrelated manifest prevents that
+read. The manager then reports the list failure and offers refresh, rather than
+advising a retry of a change that already happened.
 
 A manifest is a `<name>.toml` file under the configured userscripts directory.
 Relative executable paths resolve against that manifest's directory, never
@@ -2669,6 +2750,21 @@ automatic network submission or silent core-dump upload.
 `E_IO`, `E_STORAGE`, `E_ENGINE`, and `E_CANCELLED`. A user message explains
 what failed, what was preserved, and a concrete next action. Logs retain a
 correlation ID instead of confidential raw input.
+
+CLI text separates the failure reason, preserved state, and next action. JSON
+errors retain the server's code, correlation ID and structured details; the CLI
+must not replace a remote rejection with a generic engine error or a new
+reference. Metadata remains available without embedding it in the short reason.
+Exit statuses are 1 for general failures, 2 for invalid arguments/configuration,
+3 for unavailable or stale targets/instances, 4 for denied access, 5 for
+unsupported operations, 6 for busy/timeout outcomes, and 7 for protocol failures.
+After a response timeout, completion is unconfirmed. If earlier requests in a
+chain were accepted, report that fact rather than implying rollback. Local
+encoding and selector conflicts must reject the full chain before sending it;
+CLI annotations must preserve command-authored profile/context selectors.
+Unexpected technical failures retain a reference in CLI text; JSON carries
+the reference for all failures. Local raw diagnostic context does not become
+public JSON merely because an output format was selected.
 
 **DIAG-004 — Site ledger.** `site-status` and the native Site Ledger report the
 captured tab/document, normalized origin, profile and context, effective

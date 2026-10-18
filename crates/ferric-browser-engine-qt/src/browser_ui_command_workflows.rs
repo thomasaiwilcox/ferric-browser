@@ -1,8 +1,9 @@
 use super::{
-    CommandRegistry, CxxQtType, MAX_MACRO_COMMANDS, ParsedCommand, Pin, QString,
-    interactive_open_command, is_context_command, is_profile_command, is_session_command,
-    parse_action_invocation, qobject,
+    CommandRegistry, CxxQtType, IpcRoute, MAX_MACRO_COMMANDS, ParsedCommand, Pin, PublicError,
+    QString, Value, interactive_open_command, is_context_command, is_profile_command,
+    is_session_command, parse_action_invocation, qobject,
 };
+use ferric_browser_ipc::ErrorCode;
 
 pub(super) enum CommandDispatchControl {
     Unhandled,
@@ -11,6 +12,114 @@ pub(super) enum CommandDispatchControl {
 }
 
 impl qobject::BrowserUi {
+    pub(super) fn execute_management_surface_command(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+    ) -> Result<Value, PublicError> {
+        let (action, label) = match command.name.as_str() {
+            "settings" => ("show-settings", "settings"),
+            "profiles" => ("show-profiles", "profiles"),
+            "sessions" => ("show-sessions", "saved sessions"),
+            _ => {
+                return Err(PublicError::new(
+                    ErrorCode::Unsupported,
+                    "This browser panel is unavailable.",
+                    "unknown management surface",
+                ));
+            }
+        };
+        if !command.arguments.is_empty() {
+            return Err(PublicError::new(
+                ErrorCode::InvalidArgument,
+                format!(
+                    "{} does not accept arguments. Use :{} to open it.",
+                    command.name, command.name
+                ),
+                "management surface received unexpected arguments",
+            ));
+        }
+        self.as_ref()
+            .rust()
+            .registry
+            .validate(command, self.as_ref().rust().core_mode)
+            .map_err(|error| {
+                PublicError::new(
+                    ErrorCode::InvalidArgument,
+                    "This panel command can't run in the current mode.",
+                    error.to_string(),
+                )
+            })?;
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .pending_engine_action = Some(action.into());
+        self.as_mut()
+            .set_status_text(QString::from(format!("Opening {label}")));
+        Ok(serde_json::json!({"status": "accepted", "surface": command.name}))
+    }
+
+    pub(super) fn dispatch_support_command(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        route: &IpcRoute,
+    ) -> Option<Result<Value, PublicError>> {
+        if !matches!(
+            command.name.as_str(),
+            "help" | "version" | "diagnostics" | "settings" | "profiles" | "sessions" | "get"
+        ) {
+            return None;
+        }
+        if route.context.is_some() {
+            return Some(Err(PublicError::new(
+                ErrorCode::InvalidArgument,
+                "This command can't be combined with a context selector.",
+                "support command received context routing",
+            )));
+        }
+        if matches!(command.name.as_str(), "settings" | "profiles" | "sessions")
+            && route.open_target != super::IpcOpenTarget::Tab
+        {
+            return Some(Err(PublicError::new(
+                ErrorCode::InvalidArgument,
+                "Browser panels open in an existing window.",
+                "panel received an open target",
+            )));
+        }
+        if let Err(error) = self.as_ref().validate_ipc_route_public(route) {
+            return Some(Err(error));
+        }
+        if matches!(command.name.as_str(), "settings" | "profiles" | "sessions") {
+            match self.as_ref().ipc_route_window(route) {
+                Ok(window) if Some(window) == self.as_ref().rust().window => {}
+                Ok(_) => {
+                    return Some(Err(PublicError::new(
+                        ErrorCode::Unsupported,
+                        "Open this panel in the primary browser window.",
+                        "target window cannot present this panel",
+                    )));
+                }
+                Err(error) => return Some(Err(error)),
+            }
+        }
+        Some(match command.name.as_str() {
+            "get" => self.as_mut().execute_config_get_command(command),
+            "help" => self
+                .as_mut()
+                .execute_help_command(command)
+                .map_err(PublicError::engine),
+            "version" => self
+                .as_mut()
+                .execute_version_command(command)
+                .map_err(PublicError::engine),
+            "diagnostics" => self
+                .as_mut()
+                .execute_diagnostics_command(command)
+                .map_err(PublicError::engine),
+            _ => self.as_mut().execute_management_surface_command(command),
+        })
+    }
+
     pub(super) fn dispatch_workflow_command(
         mut self: Pin<&mut Self>,
         command: &mut ParsedCommand,
@@ -74,6 +183,15 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .get_mut()
                 .macro_expanded_commands = expanded + 1;
+        }
+        if matches!(command.name.as_str(), "settings" | "profiles" | "sessions") {
+            return match self.as_mut().execute_management_surface_command(command) {
+                Ok(_) => CommandDispatchControl::Continue,
+                Err(error) => {
+                    self.set_status_text(QString::from(error.to_string()));
+                    CommandDispatchControl::Failed
+                }
+            };
         }
         if matches!(command.name.as_str(), "quit" | "window-close") {
             let mode = self.as_ref().rust().core_mode;
@@ -224,16 +342,11 @@ impl qobject::BrowserUi {
                 return CommandDispatchControl::Failed;
             }
             match parse_action_invocation(command) {
-                Ok((mapped, action_id)) => {
+                Ok((mapped, _)) => {
                     *command = mapped;
-                    self.as_mut()
-                        .set_status_text(QString::from(format!("Executing {action_id}")));
                 }
                 Err(error) => match self.as_mut().execute_userscript_action_command(command) {
-                    Ok(Some((_, action_id))) => {
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Executing userscript action {action_id}"
-                        )));
+                    Ok(Some(_)) => {
                         return CommandDispatchControl::Continue;
                     }
                     Ok(None) => {
@@ -241,11 +354,22 @@ impl qobject::BrowserUi {
                         return CommandDispatchControl::Failed;
                     }
                     Err(userscript_error) => {
-                        self.set_status_text(QString::from(userscript_error));
+                        self.set_status_text(QString::from(userscript_error.user_message()));
                         return CommandDispatchControl::Failed;
                     }
                 },
             }
+        }
+        if command.name == "send" {
+            if let Err(error) = registry.validate(command, self.as_ref().rust().core_mode) {
+                self.set_status_text(QString::from(error.to_string()));
+                return CommandDispatchControl::Failed;
+            }
+            if let Err(error) = self.as_mut().execute_send_command(command) {
+                self.set_status_text(QString::from(error));
+                return CommandDispatchControl::Failed;
+            }
+            return CommandDispatchControl::Continue;
         }
         if is_session_command(&command.name) {
             let mode = self.as_ref().rust().core_mode;
@@ -279,8 +403,6 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from(error));
                 return CommandDispatchControl::Failed;
             }
-            self.as_mut()
-                .set_status_text(QString::from("Context command executed"));
             return CommandDispatchControl::Continue;
         }
         CommandDispatchControl::Unhandled

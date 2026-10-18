@@ -42,6 +42,7 @@ Rectangle {
         spacing: 4
 
         Label {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             text: "Capture indicator"
             color: indicator.browserWindow.warningColor
@@ -64,6 +65,7 @@ Rectangle {
                 spacing: 6
 
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: modelData.origin + " · "
                           + (modelData.status === "active"

@@ -1,8 +1,8 @@
 use super::{
     Arc, AtomicBool, BTreeMap, Command, CommandExt, CxxQtType, DispatchTarget, Duration, Instant,
-    MAX_UNTRUSTED_ARGUMENT_BYTES, Ordering, ParsedCommand, PendingActionTarget, PendingDownload,
-    PendingSelection, PendingUserscript, Pin, QString, Stdio, Target, UserscriptCompletion, Uuid,
-    Value, Write, captured_target_is_current, configured_action_targets, current_target,
+    MAX_UNTRUSTED_ARGUMENT_BYTES, Ordering, ParsedCommand, PendingActionTarget, PendingSelection,
+    PendingUserscript, Pin, QString, Stdio, Target, UserscriptCompletion, Uuid, Value, Write,
+    captured_target_is_current, configured_action_targets, current_target,
     finish_pending_selection_operation, ipc_mode_name, is_bounded_untrusted_text,
     is_safe_history_url, qobject, read_bounded, resolve_input, safe_ipc_url,
     sanitize_process_stderr, terminate_child_process, thread, typed_ipc_command, userscript,
@@ -85,6 +85,7 @@ impl qobject::BrowserUi {
             let token = format!("selection-{}", Uuid::new_v4());
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
+            finish_pending_selection_operation(this, "cancelled");
             this.pending_action_target = Some(PendingActionTarget {
                 token: token.clone(),
                 target: current,
@@ -100,10 +101,14 @@ impl qobject::BrowserUi {
                 issued: false,
                 created_at: Instant::now(),
                 search_engine: None,
-                operation_id: None,
+                operation_id: Some(operation_id.clone()),
             });
             this.operation_states
                 .insert(operation_id.clone(), "selection pending".into());
+            drop(rust);
+            self.as_mut().set_status_text(QString::from(format!(
+                "Preparing selection for {target_name}…"
+            )));
             return Ok(serde_json::json!({
                 "status": "accepted",
                 "target": target_name,
@@ -148,10 +153,9 @@ impl qobject::BrowserUi {
         }
         let operation_id = self
             .as_mut()
-            .start_action_target_process(&argv, target.detach)?;
-        self.as_mut().set_status_text(QString::from(format!(
-            "Sent to {target_name}: {operation_id}"
-        )));
+            .start_action_target_process(&argv, target.detach, None)?;
+        self.as_mut()
+            .set_status_text(QString::from(format!("Started: {target_name}")));
         Ok(serde_json::json!({
             "status": "accepted",
             "target": target_name,
@@ -164,29 +168,44 @@ impl qobject::BrowserUi {
     pub(super) fn execute_download_command(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, super::PublicError> {
         self.as_ref()
             .rust()
             .registry
             .validate(command, self.as_ref().rust().core_mode)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| {
+                crate::browser_ui_download_requests::download_request_error(
+                    ferric_browser_ipc::ErrorCode::InvalidArgument,
+                    error.to_string(),
+                )
+            })?;
         if command.arguments.len() != 1 {
-            return Err("download requires exactly one URL".into());
+            return Err(crate::browser_ui_download_requests::download_request_error(
+                ferric_browser_ipc::ErrorCode::InvalidArgument,
+                "Use :download followed by one HTTP or HTTPS link.",
+            ));
         }
         let navigation = resolve_input(&command.arguments[0], &self.as_ref().navigation_context())
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| {
+                crate::browser_ui_download_requests::download_request_error(
+                    ferric_browser_ipc::ErrorCode::InvalidArgument,
+                    error.to_string(),
+                )
+            })?;
         let url = navigation.url.to_string();
         if !url.starts_with("http://") && !url.starts_with("https://") {
-            return Err("download supports only HTTP(S) URLs".into());
+            return Err(crate::browser_ui_download_requests::download_request_error(
+                ferric_browser_ipc::ErrorCode::InvalidArgument,
+                "Downloads need an HTTP or HTTPS link.",
+            ));
         }
         let target = current_target(
             self.as_ref().rust().state.as_ref(),
             self.as_ref().rust().tab,
         )
         .ok_or_else(|| "current document is unavailable".to_owned())?;
-        Ok(self
-            .as_mut()
-            .queue_download_request(target, &url, "Download request queued"))
+        self.as_mut()
+            .queue_download_request(target, &url, "Preparing download…")
     }
 
     pub(super) fn execute_print_pdf_command(
@@ -381,27 +400,6 @@ impl qobject::BrowserUi {
         }))
     }
 
-    pub(super) fn queue_download_request(
-        mut self: Pin<&mut Self>,
-        target: Target,
-        url: &str,
-        status: &str,
-    ) -> Value {
-        let token = format!("download-{}", Uuid::new_v4());
-        self.as_mut().rust_mut().as_mut().get_mut().pending_download = Some(PendingDownload {
-            token: token.clone(),
-            target,
-            url: url.to_owned(),
-            issued: false,
-        });
-        self.set_status_text(QString::from(status));
-        serde_json::json!({
-            "status": "accepted",
-            "token": token,
-            "url": safe_ipc_url(url)
-        })
-    }
-
     #[allow(clippy::too_many_lines)]
     pub(super) fn execute_userscript(
         mut self: Pin<&mut Self>,
@@ -456,6 +454,7 @@ impl qobject::BrowserUi {
             let token = format!("selection-{}", Uuid::new_v4());
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
+            finish_pending_selection_operation(this, "cancelled");
             this.pending_selection = Some(PendingSelection {
                 token: token.clone(),
                 target,
@@ -463,12 +462,13 @@ impl qobject::BrowserUi {
                 issued: false,
                 created_at: Instant::now(),
                 search_engine: None,
-                operation_id: None,
+                operation_id: Some(operation_id.clone()),
             });
             this.pending_userscript = Some(PendingUserscript {
                 token,
                 target,
                 name: name.to_owned(),
+                label: name.to_owned(),
                 operation_id: operation_id.clone(),
             });
             this.operation_states
@@ -794,61 +794,80 @@ impl qobject::BrowserUi {
                 return false;
             };
             if pending.token != token {
-                self.set_status_text(QString::from("Spawn selection is stale"));
                 return false;
             }
+            this.pending_selection = None;
             this.pending_spawn.take()
         };
         let Some(pending) = pending else {
-            self.set_status_text(QString::from("Spawn selection expired"));
             return false;
         };
-        {
-            let mut rust = self.as_mut().rust_mut();
-            finish_pending_selection_operation(rust.as_mut().get_mut(), "cancelled");
-        }
+        let fail = |mut ui: Pin<&mut Self>, message: String| {
+            ui.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .operation_states
+                .insert(pending.operation_id.clone(), format!("failed ({message})"));
+            ui.set_status_text(QString::from(message));
+            false
+        };
         if current_target(
             self.as_ref().rust().state.as_ref(),
             self.as_ref().rust().tab,
         ) != Some(pending.target)
         {
-            self.set_status_text(QString::from("Spawn target is stale"));
-            return false;
+            return fail(
+                self,
+                "The page changed. Select the text again and retry.".into(),
+            );
         }
         let value: Value = if let Ok(value) = serde_json::from_str(&result.to_string()) {
             value
         } else {
-            self.set_status_text(QString::from("Spawn selection extraction failed"));
-            return false;
+            return fail(
+                self,
+                "Could not read the selected text. Select it again and retry.".into(),
+            );
         };
+        if let Some(error) = value.get("error").and_then(Value::as_str) {
+            let failed = fail(self.as_mut(), format!("selection extraction: {error}"));
+            self.set_status_text(QString::from(super::selection_failure_message(error)));
+            return failed;
+        }
         let Some(text) = value.get("text").and_then(Value::as_str) else {
-            self.set_status_text(QString::from("Spawn selection is unavailable"));
-            return false;
+            return fail(self, "Select text on the page and try again.".into());
         };
         if text.is_empty() || text.len() > 1024 * 1024 || text.contains('\0') {
-            self.set_status_text(QString::from("Spawn selection is empty or invalid"));
-            return false;
+            return fail(
+                self,
+                "Select a smaller passage of text and try again.".into(),
+            );
         }
         let argv = match self.resolve_spawn_argv(&pending.argv, Some(text)) {
             Ok((argv, false)) => argv,
             Ok(_) => {
-                self.set_status_text(QString::from("Spawn selection could not be resolved"));
-                return false;
+                return fail(
+                    self,
+                    "Could not prepare the selected text. Try again.".into(),
+                );
             }
             Err(error) => {
-                self.set_status_text(QString::from(error));
-                return false;
+                return fail(self, error);
             }
         };
-        match self.as_mut().start_spawn_process(&argv) {
-            Ok(operation_id) => {
-                self.set_status_text(QString::from(format!("Spawn started: {operation_id}")));
+        match self
+            .as_mut()
+            .start_spawn_process(&argv, Some(pending.operation_id.clone()))
+        {
+            Ok(_) => {
+                self.set_status_text(QString::from("External command started"));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Spawn failed: {error}")));
-                false
-            }
+            Err(error) => fail(
+                self,
+                format!("Could not start the external command: {error}"),
+            ),
         }
     }
 

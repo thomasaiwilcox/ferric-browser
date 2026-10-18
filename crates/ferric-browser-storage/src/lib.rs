@@ -35,14 +35,18 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, params, params_from_ite
 use serde::Serialize;
 
 pub use contexts::{
-    ContextMember, ContextRecord, ContextRegistry, ContextRegistryError, ContextTabDescriptor,
+    ContextDefinitionUpdate, ContextMember, ContextRecord, ContextRegistry, ContextRegistryError,
+    ContextTabDescriptor,
 };
 pub use downloads::{
     CollisionPolicy, DownloadPathError, choose_download_path, create_download_file,
     sanitize_download_filename,
 };
 pub use lifecycle::{CrashMarker, CrashMarkerError, crash_diagnostics, transient_marker_scan};
-pub use permissions::{PermissionRule, normalize_permission_origin};
+pub use permissions::{
+    PermissionRule, PermissionRulesSnapshot, is_rememberable_permission,
+    normalize_permission_origin,
+};
 pub use profiles::{
     ProfileDataError, ProfileDeletionError, ProfileDeletionOutcome, ProfileLock, ProfileLockError,
     ProfilePrivacy, ProfileRecord, ProfileRegistry, RegistryError, delete_profile_data,
@@ -833,6 +837,13 @@ fn prune_journey(
         )?;
     }
     Ok(())
+}
+
+/// Addresses allowed in bounded tab restore descriptors, including the exact
+/// native start and blank pages. Visit history uses `is_safe_history_url`.
+#[must_use]
+pub fn is_safe_tab_descriptor_url(url: &str) -> bool {
+    matches!(url, "rb://start" | "rb://blank") || is_safe_history_url(url)
 }
 
 /// Applies the storage boundary's conservative history policy. This is

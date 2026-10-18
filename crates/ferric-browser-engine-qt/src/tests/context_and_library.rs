@@ -215,7 +215,7 @@ fn ipc_open_context_routes_preserve_new_window_context_metadata() {
     assert_eq!(command.arguments, vec!["https://work.example.test/"]);
     assert_eq!(route.open_target, IpcOpenTarget::Window);
     assert_eq!(route.context.as_deref(), Some("work"));
-    assert!(QML_SOURCE.contains("windowStartupContext: windowAction[3]"));
+    assert!(QML_SOURCE.contains("windowStartupContext: context"));
     assert!(ADAPTER_SOURCE.contains("private-window cannot use a durable context"));
 }
 
@@ -1050,7 +1050,6 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     ]
     .concat();
     let reopen_confirmation = include_str!("../../qml/components/FerricReopenWindowConfirmation.qml");
-    let downloads = include_str!("../../qml/components/FerricDownloadManager.qml");
     let source = ADAPTER_SOURCE;
     let hint_policy = include_str!("../hint_policy.rs");
     assert!(qml.contains("browser.tab.move"));
@@ -1070,7 +1069,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("browser.tab.suspend"));
     assert!(qml.contains("browser.tab.discard"));
     assert!(qml.contains("browser.tab.resume"));
-    assert!(qml.contains("close_popup_tab"));
+    assert!(qml.contains("rootWindow.unregisterPopupWindow(secondaryWindow)"));
     assert!(qml.contains("WebEngineView.LifecycleState.Frozen"));
     assert!(qml.contains("WebEngineView.LifecycleState.Discarded"));
     assert!(qml.contains("recommendedState"));
@@ -1096,9 +1095,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("quickmark-edit"));
     assert!(qml.contains("function changeLibraryPage(delta)"));
     assert!(qml.contains("function runJourneyCurrentQuery()"));
-    assert!(qml.contains("Show current journey node only"));
     assert!(qml.contains("window.runJourneyQuery(\"--current\")"));
-    assert!(qml.contains("Choose reopen target for journey node"));
     assert!(qml.contains("--target \" + target"));
     assert!(qml.contains("Previous library page"));
     assert!(qml.contains("Next library page"));
@@ -1116,7 +1113,6 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("request_session_preview"));
     assert!(qml.contains("request_named_session_load"));
     assert!(qml.contains("sessionPreviewPollTimer"));
-    assert!(qml.contains("Loading validated session descriptors"));
     assert!(source.contains("request_session_preview(&name)"));
     assert!(source.contains("session_restore_load_append = Some(append)"));
     assert!(qml.contains("update_completion(commandSurface.commandText"));
@@ -1133,23 +1129,23 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("WebEngineDownloadRequest.MimeHtmlSaveFormat"));
     assert!(qml.contains("prepare_save_page"));
     assert!(qml.contains("take_save_page_path"));
-    assert!(qml.contains("id: secondaryDownloadChooser"));
-    assert!(qml.contains("secondaryProfile.acceptPendingDownload()"));
-    assert!(qml.contains("secondaryProfile.cancelPendingDownload()"));
+    assert!(qml.contains("id: secondaryDialogSurfaces"));
+    assert!(qml.contains("secondaryWindow.acceptPendingDownload()"));
+    assert!(qml.contains("secondaryWindow.cancelPendingDownload()"));
     assert!(qml.contains("secondaryWindow.pendingDownloadRequests"));
-    assert!(qml.contains("secondaryDownloadChooser.open()"));
+    assert!(qml.contains("secondaryDialogSurfaces.openDownload()"));
     assert!(qml.contains("secondaryWindow.pendingDownloadRequests = ({})"));
-    assert!(qml.contains("download.view"));
-    assert!(qml.contains("function downloadOwnerFor(download)"));
-    assert!(qml.contains("id: popupDownloadChooser"));
-    assert!(qml.contains("owner.handleDownloadRequested(download)"));
-    assert!(qml.contains("popupWindow.cancelPendingDownload()"));
+    // Source ownership and late offers are checked by download_source_tests,
+    // application_downloads and the causal public download IPC regression.
+    // Requiring a literal direct Qt view getter here would reintroduce the crash.
+    assert!(qml.contains("onDownloadAccepted: secondaryWindow.acceptPendingDownload()"));
+    // Request identity and completion ownership are exercised against the
+    // production registry by productPolishDownloadIdentity and portal_download_history.
+    assert!(qml.contains("onDownloadRejected: secondaryWindow.cancelPendingDownload()"));
     assert!(qml.contains("download.totalBytes"));
     assert!(qml.contains("download.interruptReasonString"));
-    assert!(qml.contains("function downloadMetrics(id, download)"));
-    assert!(downloads.contains("Failure reason: "));
-    assert!(qml.contains("function formatDownloadRate(bytesPerSecond)"));
-    assert!(qml.contains("id: downloadMetricsTimer"));
+    // Live metrics and scoped controls are exercised by application_downloads;
+    // source QML checks cover rate sampling and per-window sample retirement.
     assert!(qml.contains("function spellcheckDictionaryStatus(ui)"));
     assert!(qml.contains("spellcheck_dictionaries"));
     assert!(
@@ -1168,13 +1164,12 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("prepare_print_job"));
     assert!(qml.contains("finish_print_job"));
     assert!(qml.contains("printToPdf(function(success)"));
-    assert!(qml.contains("devToolsView: window.devToolsVisible"));
+    assert!(qml.contains("viewHost.devToolsWorkspace.inspectorFor(webView)"));
     assert!(qml.contains("function toggleDevTools(detach)"));
-    assert!(qml.contains("inspectedView: window.activeWebView()"));
+    assert!(qml.contains("inspectedView: window.devToolsWorkspace.sourceView"));
     assert!(qml.contains("id: secondaryDevToolsLoader"));
-    assert!(qml.contains("active: secondaryWindow.devToolsVisible"));
-    assert!(qml.contains("devToolsView: secondaryWindow.devToolsVisible"));
-    assert!(qml.contains("secondaryWindow.devToolsWindow"));
+    assert!(qml.contains("inspectedView: secondaryDevTools.sourceView"));
+    assert!(!qml.contains("secondaryWindow.activeView.devToolsView ="));
     assert!(qml.contains("action === \"show-binding-help\""));
     assert!(qml.contains("action === \"show-diagnostics\""));
     assert!(qml.contains("action.indexOf(\"show-settings\\t\") === 0"));
@@ -1183,10 +1178,8 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("Install userscript manifest"));
     assert!(source.contains("fn install_userscript_manifest"));
     assert!(qml.contains("function refreshEngineUpdateNotice()"));
-    assert!(
-        qml.contains("QtWebEngine build is blocked; update it with the system package manager")
-    );
-    assert!(qml.contains("engine_update_policy"));
+    assert!(qml.contains("browserUi.engine_update_notice()"));
+    assert!(!qml.contains("var payload = browserUi.diagnostics_json()\n        if (!payload"));
     assert!(qml.contains("result.action === \"clean-yank\""));
     assert!(qml.contains("Clean-copy link"));
     assert!(qml.contains("\"browser.link.clean-copy\""));

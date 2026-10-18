@@ -201,6 +201,11 @@ impl RuntimeOverrides {
     /// validation bounds.
     pub fn set_setting(&mut self, key: &str, value: toml::Value) -> Result<(), ConfigError> {
         validate_runtime_key(key)?;
+        let value = if key == "downloads.directory" {
+            super::download_directory::normalize(value)?
+        } else {
+            value
+        };
         let encoded = value.to_string();
         if encoded.len() > MAX_RUNTIME_VALUE_BYTES {
             return Err(ConfigError::Validation(
@@ -213,7 +218,8 @@ impl RuntimeOverrides {
             && !value.is_bool()
             && !value.is_str()
             && !value.is_array()
-            && !(value.is_table() && selector_setting_family(key).is_some())
+            && !(value.is_table()
+                && (selector_setting_family(key).is_some() || key == "downloads.directory"))
         {
             return Err(ConfigError::Validation(
                 "runtime override value must be a TOML scalar or array".into(),
@@ -703,6 +709,14 @@ pub fn load(path: impl AsRef<Path>) -> Result<LoadedConfig, ConfigError> {
         config,
         sources: state.sources,
     })
+}
+
+/// Validates an in-memory context document using the same rules as TOML loading.
+///
+/// # Errors
+/// Rejects schema, definition and routing errors without reading or writing files.
+pub fn validate_contexts_configuration(config: &ContextsConfig) -> Result<(), ConfigError> {
+    validate_contexts(config)
 }
 
 /// Loads and validates a separate user-maintained `contexts.toml` document.

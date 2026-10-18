@@ -4,6 +4,49 @@ use super::{
 };
 
 impl ProfileStore {
+    /// Atomically saves up to 32 complete download records. A snapshot can be
+    /// the first write for a download; no separate create/destination ordering
+    /// is required when the metadata worker is busy.
+    ///
+    /// # Errors
+    /// Rejects invalid records, duplicate IDs, oversized batches and database
+    /// errors without committing any part of the batch.
+    pub fn save_download_batch(&self, records: &[DownloadRecord]) -> Result<(), StoreError> {
+        let mut ids = std::collections::BTreeSet::new();
+        if records.is_empty() || records.len() > 32 {
+            return Err(StoreError::InvalidInput("download save batch is invalid"));
+        }
+        for record in records {
+            if !valid_stored_text(&record.id, MAX_STORED_IDENTIFIER_BYTES)
+                || !valid_stored_text(&record.source_url, 16 * 1024)
+                || record.destination.len() > 16 * 1024
+                || record.destination.chars().any(char::is_control)
+                || (!record.destination.is_empty()
+                    && !std::path::Path::new(&record.destination).is_absolute())
+                || record.bytes_received < 0
+                || (record.completed_at.is_some() && record.state != DownloadState::Completed)
+                || !ids.insert(&record.id)
+            {
+                return Err(StoreError::InvalidInput("download record is invalid"));
+            }
+        }
+        let transaction = self.connection.unchecked_transaction()?;
+        for record in records {
+            transaction.execute(
+                "INSERT INTO downloads (id, source_url, destination, state, bytes_received, created_at, completed_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(id) DO UPDATE SET source_url = excluded.source_url,
+                 destination = excluded.destination, state = excluded.state,
+                 bytes_received = excluded.bytes_received, created_at = excluded.created_at,
+                 completed_at = excluded.completed_at",
+                params![record.id, record.source_url, record.destination, record.state.as_str(),
+                    record.bytes_received, record.created_at, record.completed_at],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     /// Creates or replaces the durable record for a normal-profile download.
     /// The engine request and file contents remain owned by Qt; this row is
     /// only the Rust metadata index.
@@ -156,5 +199,56 @@ impl ProfileStore {
         let rows = statement.query_map([], download_from_row)?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(StoreError::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{RootSpec, StorageRoots, StoreMode};
+
+    fn record(id: &str, bytes: i64) -> DownloadRecord {
+        DownloadRecord {
+            id: id.into(),
+            source_url: "https://example.test/report".into(),
+            destination: "/owned/Report.pdf".into(),
+            state: DownloadState::Paused,
+            bytes_received: bytes,
+            created_at: 1,
+            completed_at: None,
+        }
+    }
+
+    #[test]
+    fn complete_snapshots_insert_without_create_and_failed_batches_roll_back_updates() {
+        let roots = StorageRoots::resolve(RootSpec::Temporary).unwrap();
+        roots.ensure().unwrap();
+        let store =
+            ProfileStore::open(roots.data.join("downloads.sqlite"), StoreMode::Normal).unwrap();
+        store.save_download_batch(&[record("first", 128)]).unwrap();
+        assert_eq!(store.download("first").unwrap(), Some(record("first", 128)));
+        store.connection.execute_batch("CREATE TRIGGER fail_download_save BEFORE INSERT ON downloads WHEN NEW.id = 'bad' BEGIN SELECT RAISE(FAIL, 'controlled save failure'); END;").unwrap();
+        assert!(
+            store
+                .save_download_batch(&[record("first", 256), record("bad", 1)])
+                .is_err()
+        );
+        assert_eq!(store.download("first").unwrap(), Some(record("first", 128)));
+        assert!(store.download("bad").unwrap().is_none());
+        assert!(
+            store
+                .save_download_batch(&[record("first", 256), record("first", 512)])
+                .is_err()
+        );
+        let mut invalid = record("invalid", 1);
+        invalid.destination = "relative/file".into();
+        assert!(
+            store
+                .save_download_batch(&[record("first", 256), invalid])
+                .is_err()
+        );
+        assert_eq!(store.download("first").unwrap(), Some(record("first", 128)));
+        drop(store);
+        roots.cleanup().unwrap();
     }
 }

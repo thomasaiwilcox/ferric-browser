@@ -6,6 +6,7 @@ Item {
     id: inventory
     required property var browserWindow
     required property var rows
+    property bool changesAvailable: !browserWindow.temporaryProfile && browserWindow.ephemeralProfile !== true
     property var enabledOverrides: ({})
     signal enabledRequested(string name, bool enabled)
     signal removalRequested(string name)
@@ -20,10 +21,12 @@ Item {
         next[name] = enabled
         enabledOverrides = next
     }
+    function clearEnabledOverrides() { enabledOverrides = ({}) }
 
     implicitHeight: Math.min(Math.max(150, browserWindow.chromeRowHeight * 4),
                              Math.max(42, userscriptList.contentHeight))
-    visible: !browserWindow.temporaryProfile
+    visible: rows.length > 0
+    enabled: changesAvailable
 
     ListView {
         id: userscriptList
@@ -53,8 +56,10 @@ Item {
                 Label {
                     Layout.fillWidth: true
                     text: userscriptRow.scriptName
-                          + " · " + Number(userscriptRow.modelData.actions || 0) + " action(s)"
-                          + (userscriptRow.modelData.page_world ? " · page world" : "")
+                          + " · " + Number(userscriptRow.modelData.actions || 0)
+                          + (Number(userscriptRow.modelData.actions || 0) === 1 ? " browser action" : " browser actions")
+                          + (userscriptRow.modelData.page_world ? " · Runs with page scripts" : "")
+                    textFormat: Text.PlainText
                     color: inventory.browserWindow.secondaryTextColor
                     wrapMode: Text.WordWrap
                 }
@@ -62,6 +67,7 @@ Item {
                     Layout.fillWidth: true
                     CheckBox {
                         id: enabledToggle
+                        objectName: "userscriptEnableToggle"
                         checked: inventory.enabledFor(userscriptRow.scriptName,
                                                     !!userscriptRow.modelData.enabled)
                         text: checked ? "Enabled" : "Disabled"
@@ -70,6 +76,7 @@ Item {
                     }
                     Item { Layout.fillWidth: true }
                     Button {
+                        objectName: "userscriptRemoveButton"
                         text: "Remove"
                         Accessible.name: "Remove userscript " + userscriptRow.scriptName
                         onClicked: inventory.removalRequested(userscriptRow.scriptName)

@@ -9,6 +9,7 @@ ApplicationWindow {
 
     required property var browserWindow
     property var inspectView: null
+    required property var inspectionProfile
     property var ownerWindow: null
     property alias inspectorView: detachedDevToolsView
 
@@ -19,8 +20,9 @@ ApplicationWindow {
     height: 620
     visible: false
     title: "Ferric Browser · DevTools"
-    color: ownerWindow ? ownerWindow.backgroundColor : "#1e1e2e"
-    palette: browserWindow.palette
+    color: ownerWindow ? ownerWindow.color : browserWindow.backgroundColor
+    palette: ownerWindow ? ownerWindow.palette : browserWindow.palette
+    font: ownerWindow ? ownerWindow.font : browserWindow.font
 
     FerricWebEngineSurfaceRecovery {
         hostWindow: devToolsWindow
@@ -29,6 +31,7 @@ ApplicationWindow {
     }
 
     onClosing: {
+        browserWindow.profileResourceRegistry.releaseView(detachedDevToolsView)
         if (ownerWindow) {
             ownerWindowClosed()
         } else if (inspectView) {
@@ -38,9 +41,16 @@ ApplicationWindow {
 
     WebEngineView {
         id: detachedDevToolsView
+        property var viewHost: devToolsWindow.inspectView ? devToolsWindow.inspectView.viewHost : devToolsWindow.ownerWindow
+        property var viewUi: devToolsWindow.inspectView ? devToolsWindow.inspectView.viewUi : null
         anchors.fill: parent
-        profile: devToolsWindow.inspectView ? devToolsWindow.inspectView.profile : null
+        profile: devToolsWindow.inspectionProfile
         inspectedView: devToolsWindow.inspectView
         Accessible.name: "Detached developer tools"
+        Component.onCompleted: browserWindow.profileResourceRegistry.trackView(detachedDevToolsView,viewHost,viewUi)
+    }
+    Component.onDestruction: {
+        if (browserWindow && !browserWindow.runtimeDisposing)
+            browserWindow.profileResourceRegistry.releaseView(detachedDevToolsView)
     }
 }

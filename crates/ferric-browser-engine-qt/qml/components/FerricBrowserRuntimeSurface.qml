@@ -143,14 +143,14 @@ FerricBrowserRuntimeChrome {
             destination = view.viewUi.content_traverse(view.tabIndex >= 0 ? view.tabIndex : view.viewUi.active_tab_index, backwards ? -step : step, view.engineHistoryIndex)
             if (destination.length > 0) break
         }
-        if (destination.length === 0) { view.viewUi.status_text = "History boundary reached"; return }
+        if (destination.length === 0) { view.viewUi.status_text = backwards ? "No earlier history" : "No later history"; return }
         var fields = destination.split("\t")
         var offset = Number(fields[0])
         var url = fields.slice(1).join("\t")
         if (url !== "rb://start" && url !== "rb://blank") offset = view.contentEngineOffset(url, offset, backwards)
         if (offset === null) {
             view.viewUi.content_history_import(view.tabIndex >= 0 ? view.tabIndex : view.viewUi.active_tab_index, originalHistory)
-            view.viewUi.status_text = "That engine history entry is no longer available"
+            view.viewUi.status_text = "That history entry is no longer available."
             return
         }
         view.setContentUrl(url, true, offset !== 0)
@@ -195,23 +195,7 @@ FerricBrowserRuntimeChrome {
             return
         }
         if (action.indexOf("window-focus\t") === 0) {
-            var focusParts = action.split("\t")
-            var focusTarget = focusParts.length >= 2 ? focusParts[1] : ""
-            var focusOperationId = focusParts.length >= 3 ? focusParts[2] : ""
-            var focusEntry = window.browserWindowEntryForTarget(focusTarget)
-            if (!focusEntry || !focusEntry.host || !focusEntry.ui) {
-                browserUi.status_text = "Window focus target is stale"
-                if (focusOperationId.length > 0) {
-                    browserUi.complete_window_focus(focusOperationId, "stale")
-                }
-                return
-            }
-            if (!window.activateBrowserWindow(
-                        focusEntry.host, focusEntry.ui, focusOperationId)) {
-                focusEntry.ui.status_text = "Window activation outcome unknown"
-            } else {
-                focusEntry.ui.status_text = "Window focused"
-            }
+            window.executeWindowFocusAction(browserUi, action)
             return
         }
         if (action.indexOf("window-move\t") === 0) {
@@ -220,7 +204,7 @@ FerricBrowserRuntimeChrome {
             var moveWorkspace = moveParts.length >= 3 ? moveParts[2] : ""
             var moveEntry = window.browserWindowEntryForTarget(moveTarget)
             if (!moveEntry || !moveEntry.host || !moveEntry.ui || !moveWorkspace) {
-                browserUi.status_text = "Window move target is stale"
+                browserUi.status_text = "This window is no longer available. Choose an open window and try again."
                 return
             }
             if (!window.activateBrowserWindow(moveEntry.host, moveEntry.ui)) {
@@ -257,7 +241,7 @@ FerricBrowserRuntimeChrome {
             }
             suspendView.lifecycleState = WebEngineView.LifecycleState.Frozen
             tabs.setProperty(suspendIndex, "suspended", true)
-            browserUi.status_text = "Tab suspended; engine lifecycle frozen"
+            browserUi.status_text = "Tab suspended; background activity paused."
             return
         }
         if (action.indexOf("tab-discard\t") === 0) {
@@ -281,7 +265,7 @@ FerricBrowserRuntimeChrome {
             var resumeIndex = browserUi.tab_index_for_id(resumeId)
             var resumeView = tabViewAt(resumeIndex)
             if (!resumeView) {
-                browserUi.status_text = "Tab resume target is stale"
+                browserUi.status_text = "This tab is no longer available. Select an open tab and try again."
                 return
             }
             var wasDiscarded = resumeIndex >= 0 && resumeIndex < tabs.count
@@ -305,7 +289,7 @@ FerricBrowserRuntimeChrome {
             var muteIndex = browserUi.tab_index_for_id(muteId)
             var muted = muteParts.length >= 3 && muteParts[2] === "true"
             if (muteIndex < 0 || muteIndex >= tabs.count) {
-                browserUi.status_text = "Tab mute target is stale"
+                browserUi.status_text = "This tab is no longer available. Select an open tab and try again."
                 return
             }
             tabs.setProperty(muteIndex, "muted", muted)
@@ -314,16 +298,8 @@ FerricBrowserRuntimeChrome {
         }
         if (action.indexOf("permission-reset\t") === 0) {
             var permissionParts = action.split("\t")
-            if (permissionParts.length >= 3) {
-                var permissionOrigin = permissionParts[1]
-                if (permissionParts[2] === "notifications") {
-                    window.closeWebNotificationsForOrigin(permissionOrigin)
-                }
-                var reloaded = window.reloadViewsForPermission(permissionOrigin)
-                browserUi.status_text = reloaded > 0
-                        ? "Permission revoked; reloaded " + reloaded + " matching view(s)"
-                        : "Permission revoked; no matching active view"
-            }
+            if (permissionParts.length === 3)
+                window.applyPermissionReset(browserUi, permissionParts[1], permissionParts[2])
             return
         }
         if (action.indexOf("print-pdf\t") === 0) {
@@ -351,7 +327,7 @@ FerricBrowserRuntimeChrome {
                     browserUi.status_text = "Page save requested; completion is tracked in Downloads"
                 } else {
                     browserUi.take_save_page_path()
-                    browserUi.status_text = "Page save target is stale"
+                    browserUi.status_text = "Couldn't save this page. Check the page and destination, then try again."
                 }
             }
             return
@@ -365,7 +341,7 @@ FerricBrowserRuntimeChrome {
                     sourceView.url = "view-source:" + sourceParts.slice(2).join("\t")
                     browserUi.status_text = "Viewing page source"
                 } else {
-                    browserUi.status_text = "Source view target is stale"
+                    browserUi.status_text = "The page is no longer available. Select an open tab to view its source."
                 }
             }
             return
@@ -377,7 +353,7 @@ FerricBrowserRuntimeChrome {
             var evalWorld = browserUi.jseval_world === "page"
                     ? WebEngineScript.MainWorld : window.browserScriptWorld
             if (!evalView || evalScript.length === 0 || evalScript.length > 65536) {
-                browserUi.status_text = "JavaScript evaluation target is stale or invalid"
+                browserUi.status_text = "Cannot run JavaScript here. Check the page and script, then try :jseval again."
                 return
             }
             window.runBrowserScript(evalView, evalScript, function() {
@@ -405,9 +381,7 @@ FerricBrowserRuntimeChrome {
             return
         }
         if (action === "show-downloads") {
-            window.openInternalSurface()
-            window.downloadManagerVisible = true
-            window.refreshDownloads()
+            window.downloadWorkspaceObject.show()
             return
         }
         if (action === "show-switcher") {
@@ -421,7 +395,7 @@ FerricBrowserRuntimeChrome {
             var tabCloseId = tabCloseParts.length >= 2 ? tabCloseParts[1] : ""
             var tabCloseIndex = browserUi.tab_index_for_id(tabCloseId)
             if (tabCloseIndex < 0) {
-                browserUi.status_text = "Tab close target is stale"
+                browserUi.status_text = "This tab is no longer available. Select an open tab and try again."
                 return
             }
             if (!window.closeTabAtIndex(tabCloseIndex)) {
@@ -554,6 +528,18 @@ FerricBrowserRuntimeChrome {
             window.showSettings()
             return
         }
+        if (action === "show-profiles") {
+            window.refreshProfiles()
+            window.openInternalSurface()
+            window.profileManagerVisible = true
+            return
+        }
+        if (action === "show-sessions") {
+            window.refreshSessions()
+            window.openInternalSurface()
+            window.sessionManagerVisible = true
+            return
+        }
         if (action.indexOf("show-settings\t") === 0) {
             window.showSettings(action.split("\t").slice(1).join("\t"))
             return
@@ -621,32 +607,10 @@ FerricBrowserRuntimeChrome {
             }
             return
         }
-        if (action.indexOf("download-cancel\t") === 0) {
-            var cancelParts = action.split("\t")
-            var pendingDownload = window.activeDownloads[cancelParts[1]]
-            if (pendingDownload) {
-                window.resolveQtRequest(browserUi, pendingDownload, "download", "cancel", [])
-            }
-            return
-        }
-        if (action.indexOf("download-pause\t") === 0 || action.indexOf("download-resume\t") === 0) {
-            var pauseParts = action.split("\t")
-            var pauseDownload = window.activeDownloads[pauseParts[1]]
-            if (pauseDownload) {
-                if (action.indexOf("download-pause\t") === 0) {
-                    pauseDownload.pause()
-                } else {
-                    pauseDownload.resume()
-                }
-            }
-            return
-        }
-        if (action.indexOf("download-retry\t") === 0) {
-            var retryParts = action.split("\t")
-            var retryView = window.activeWebView()
-            if (retryParts.length >= 2 && retryView) {
-                window.runBrowserScript(retryView, window.downloadLinkScript(retryParts.slice(1).join("\t")))
-            }
+        if (action.indexOf("download-cancel\t") === 0 || action.indexOf("download-pause\t") === 0
+                || action.indexOf("download-resume\t") === 0) {
+            var control = action.split("\t")
+            window.profileResourceRegistry.controlDownload(browserUi, control[1], control[0].slice("download-".length))
             return
         }
         if (action.indexOf("fullscreen\t") === 0) {
@@ -663,24 +627,8 @@ FerricBrowserRuntimeChrome {
             }
             return
         }
-        if (action.indexOf("new-window\t") === 0) {
-            var windowAction = action.split("\t")
-            if (windowAction.length >= 5) {
-                window.browserWindowFactory.createObject(null, {
-                    windowStartupUrl: windowAction.slice(4).join("\t"),
-                    windowProfileName: windowAction[2],
-                    windowProfileLabel: windowAction[2],
-                    windowStartupContext: windowAction[3],
-                    windowPrivateProfile: windowAction[1] === "true"
-                })
-            } else if (windowAction.length >= 4) {
-                window.browserWindowFactory.createObject(null, {
-                    windowStartupUrl: windowAction.slice(3).join("\t"),
-                    windowProfileName: windowAction[2],
-                    windowProfileLabel: windowAction[2],
-                    windowPrivateProfile: windowAction[1] === "true"
-                })
-            }
+        if (action.indexOf("new-window\t") === 0 || action.indexOf("context-window\t") === 0) {
+            window.executeNewWindowAction(browserUi, action)
             return
         }
         if (action.indexOf("profile-delete\t") === 0) {
@@ -702,20 +650,6 @@ FerricBrowserRuntimeChrome {
         }
         if (action.indexOf("ephemeral-window\t") === 0) {
             window.openEphemeralWindow(action.split("\t").slice(1).join("\t"))
-            return
-        }
-        if (action.indexOf("context-window\t") === 0) {
-            var contextWindowAction = action.split("\t")
-            if (contextWindowAction.length >= 5) {
-                window.browserWindowFactory.createObject(null, {
-                    windowStartupUrl: contextWindowAction.slice(4).join("\t"),
-                    windowProfileName: contextWindowAction[2],
-                    windowProfileLabel: contextWindowAction[2],
-                    windowStartupContext: contextWindowAction[3],
-                    windowStartupContextRestore: true,
-                    windowPrivateProfile: contextWindowAction[1] === "true"
-                })
-            }
             return
         }
         if (action.indexOf("navigate\t") === 0) {
@@ -814,172 +748,10 @@ FerricBrowserRuntimeChrome {
     }
 
     function applyRestorePayload(payload, hasModeLine) {
-        var lines = payload.split("\n")
-        var append = hasModeLine && lines.shift() === "append"
-        var previousCount = tabs.count
-        if (!append) {
-            tabs.clear()
-            previousCount = 0
-        }
-        for (var i = 0; i < lines.length; ++i) {
-            if (lines[i].length === 0) {
-                continue
-            }
-            var fields = lines[i].split("\t")
-            var tabIndex = previousCount + i
-            tabs.append({
-                url: fields[0],
-                title: fields.length > 4 && fields[4].length > 0 && !hasModeLine
-                       ? fields[4]
-                       : (i === 0 ? "Recovered tab" : "Recovered tab " + (i + 1)),
-                loaded: tabIndex === browserUi.active_tab_index,
-                pinned: fields.length > 1 && fields[1] === "true",
-                muted: fields.length > 2 && fields[2] === "true",
-                zoom: fields.length > 3 ? Number(fields[3]) : 1.0,
-                scrollX: hasModeLine && fields.length > 4 ? Number(fields[4]) : -1,
-                scrollY: hasModeLine && fields.length > 5 ? Number(fields[5]) : -1,
-                suspended: false,
-                discarded: false
-            })
-        }
+        window.tabViewControllerObject.applyRestorePayload(payload, hasModeLine)
     }
 
-    function syncTabModel() {
-        var pending = browserUi.take_session_restore_values()
-        if (pending.length > 0) {
-            window.applyRestorePayload(pending, true)
-        }
-        var coreIds = []
-        for (var coreIndex = 0; coreIndex < browserUi.tab_count; ++coreIndex) {
-            coreIds.push(browserUi.tab_id_for_index(coreIndex))
-        }
-        var aligned = pending.length === 0
-                && tabs.count === coreIds.length
-                && tabViews.length === coreIds.length
-        if (aligned) {
-            for (var alignedIndex = 0; alignedIndex < coreIds.length; ++alignedIndex) {
-                if (tabs.get(alignedIndex).tabId !== coreIds[alignedIndex]
-                        || tabViews[alignedIndex].stableTabId !== coreIds[alignedIndex]) {
-                    aligned = false
-                    break
-                }
-            }
-        }
-        var activeBeforeSync = browserUi.active_tab_index
-        if (aligned && activeBeforeSync >= 0 && activeBeforeSync < tabs.count
-                && !tabs.get(activeBeforeSync).loaded) {
-            aligned = false
-        }
-        if (aligned) {
-            return
-        }
-        var identitySignature = coreIds.join("\n")
-        if (window.tabIdentitySignature.length > 0
-                && window.tabIdentitySignature !== identitySignature) {
-            window.noteTabActivity()
-        }
-        window.tabIdentitySignature = identitySignature
-        for (var modelIndex = 0; modelIndex < coreIds.length; ++modelIndex) {
-            var wantedId = coreIds[modelIndex]
-            var foundIndex = -1
-            for (var searchIndex = modelIndex; searchIndex < tabs.count; ++searchIndex) {
-                if (tabs.get(searchIndex).tabId === wantedId) {
-                    foundIndex = searchIndex
-                    break
-                }
-            }
-            if (foundIndex >= 0) {
-                if (foundIndex !== modelIndex) {
-                    tabs.move(foundIndex, modelIndex, 1)
-                }
-            } else if (modelIndex < tabs.count
-                       && String(tabs.get(modelIndex).tabId || "").length === 0) {
-                tabs.setProperty(modelIndex, "tabId", wantedId)
-            } else {
-                // Native descriptors must be present before constructing the
-                // view: committing a placeholder can overwrite a queued undo
-                // or clone destination through the active-tab callbacks.
-                var descriptor = {}
-                try { descriptor = JSON.parse(browserUi.tab_transfer_payload(wantedId)) } catch (error) {}
-                var nativeDescriptor = descriptor.url === "rb://start" || descriptor.url === "rb://blank"
-                tabs.insert(modelIndex, {
-                    tabId: wantedId,
-                    url: nativeDescriptor ? descriptor.url : "about:blank",
-                    title: nativeDescriptor ? (descriptor.url === "rb://start" ? "Start page" : "Blank") : "New tab",
-                    loaded: true,
-                    pinned: false,
-                    muted: false,
-                    zoom: 1.0,
-                    suspended: false,
-                    discarded: false
-                })
-            }
-        }
-        while (tabs.count > coreIds.length) {
-            tabs.remove(tabs.count - 1)
-        }
-        var active = browserUi.active_tab_index
-        if (active >= 0 && active < tabs.count && !tabs.get(active).loaded) {
-            tabs.setProperty(active, "loaded", true)
-        }
-        var remainingViews = tabViews.slice(0)
-        var orderedViews = []
-        for (var index = 0; index < tabs.count; ++index) {
-            var tabId = coreIds[index]
-            var view = null
-            for (var viewSearch = 0; viewSearch < remainingViews.length; ++viewSearch) {
-                if (remainingViews[viewSearch].stableTabId === tabId) {
-                    view = remainingViews.splice(viewSearch, 1)[0]
-                    break
-                }
-            }
-            if (!view && remainingViews.length > 0
-                    && String(remainingViews[0].stableTabId || "").length === 0) {
-                view = remainingViews.shift()
-            }
-            if (!view) {
-                view = window.webViewFactory.createObject(window.webViewsObject, {
-                tabIndex: index,
-                stableTabId: tabId,
-                viewUi: browserUi,
-                viewTabs: tabs,
-                viewModel: tabs.get(index),
-                viewProfile: browserProfile,
-                viewInterceptor: requestInterceptor,
-                viewTransientProfile: window.temporaryProfile,
-                viewTransferred: false
-                })
-            }
-            if (!view) {
-                browserUi.status_text = "Could not create tab view"
-                break
-            }
-            view.stableTabId = tabId
-            orderedViews.push(view)
-        }
-        for (var staleIndex = 0; staleIndex < remainingViews.length; ++staleIndex) {
-            remainingViews[staleIndex].destroy()
-        }
-        tabViews = orderedViews
-        for (var viewIndex = 0; viewIndex < tabViews.length; ++viewIndex) {
-            tabViews[viewIndex].tabIndex = viewIndex
-            tabViews[viewIndex].viewModel = tabs.get(viewIndex)
-        }
-        if (tabViews.length !== tabs.count || tabs.count !== browserUi.tab_count) {
-            browserUi.status_text = "Tab model/view invariant failed"
-            console.error("tab count invariant failed", tabViews.length,
-                          tabs.count, browserUi.tab_count)
-            return
-        }
-        for (var verifyIndex = 0; verifyIndex < tabs.count; ++verifyIndex) {
-            if (tabs.get(verifyIndex).tabId !== coreIds[verifyIndex]
-                    || tabViews[verifyIndex].stableTabId !== coreIds[verifyIndex]) {
-                browserUi.status_text = "Tab identity invariant failed"
-                console.error("tab identity invariant failed", verifyIndex)
-                return
-            }
-        }
-    }
+    function syncTabModel() { window.tabViewControllerObject.syncTabModel() }
 
     function scheduleRuntimeWork(delay) {
         var boundedDelay = Math.max(0, Math.min(60000, Number(delay) || 0))
@@ -994,7 +766,7 @@ FerricBrowserRuntimeChrome {
             window.syncTabModel()
             window.executePendingEngineAction()
             browserUi.poll_config()
-            window.maybeOpenPendingEngineFileDialog()
+            window.profileSessionWorkspaceObject.presentCommandRequest()
             window.maybeOpenPendingDesktopMediaRequest()
             browserUi.refresh_operations()
             browserUi.tick_bindings()
@@ -1056,16 +828,7 @@ FerricBrowserRuntimeChrome {
                     browserUi.deliver_selection(selectionToken, JSON.stringify({error: "document view unavailable"}))
                 }
             }
-            if (browserUi.take_download_request()) {
-                var downloadView = window.activeWebView()
-                if (downloadView) {
-                    window.runBrowserScript(downloadView, window.downloadLinkScript(browserUi.download_request_url), function() {
-                        browserUi.complete_download_request(browserUi.download_request_token, true)
-                    })
-                } else {
-                    browserUi.complete_download_request(browserUi.download_request_token, false)
-                }
-            }
+            window.downloadWorkspaceObject.dispatchRequest()
             var clipboardRequest = browserUi.take_clipboard_request()
             if (clipboardRequest.length > 0) {
                 window.copyToClipboard(
@@ -1175,6 +938,8 @@ FerricBrowserRuntimeChrome {
             return false
         }
         var nativeView = host && host.activeView !== undefined ? host.activeView : (ui === browserUi ? window.activeWebView() : null)
+        var hints = host && host.hintWorkspace && host.hintWorkspace.browserUi === ui
+                ? host.hintWorkspace : null
         var logicalText = window.logicalNormalKeyText(event)
         var handled = false
         var passing = ui.mode === "pass-through" || ui.mode === "pass-through-once"
@@ -1210,8 +975,8 @@ FerricBrowserRuntimeChrome {
             if (ui.mode === "grid" && event.modifiers !== Qt.NoModifier) {
                 // Unsupported modified Escape is consumed while Grid owns the
                 // keyboard, but does not mutate the spatial session.
-            } else if (ui === browserUi && ui.mode === "hint") {
-                window.closeHints()
+            } else if (hints && ui.mode === "hint") {
+                hints.closeHints()
             } else {
                 ui.escape()
             }
@@ -1246,39 +1011,39 @@ FerricBrowserRuntimeChrome {
                 ui.enter_search(logicalText === "?")
             }
             handled = true
-        } else if (ui === browserUi && ui.mode === "hint"
+        } else if (hints && ui.mode === "hint"
                    && ui.hint_pointer_mode
                    && ui.hint_pointer_state !== "selecting") {
             // Enter release owns preflight. While it is pending, Escape above
             // cancels and all other target input is consumed.
             handled = true
-        } else if (ui === browserUi && ui.mode === "hint") {
+        } else if (hints && ui.mode === "hint") {
             var control = (event.modifiers & Qt.ControlModifier) !== 0
             var shift = (event.modifiers & Qt.ShiftModifier) !== 0
             if (control && event.key === Qt.Key_U) {
-                window.applyHintInteraction("clear", "")
+                hints.applyHintInteraction("clear", "")
             } else if (event.key === Qt.Key_Backspace) {
-                window.applyHintInteraction("backspace", "")
+                hints.applyHintInteraction("backspace", "")
             } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Right
                        || event.key === Qt.Key_Down) {
-                window.applyHintInteraction(shift ? "previous" : "next", "")
+                hints.applyHintInteraction(shift ? "previous" : "next", "")
             } else if (event.key === Qt.Key_Backtab || event.key === Qt.Key_Left
                        || event.key === Qt.Key_Up) {
-                window.applyHintInteraction("previous", "")
+                hints.applyHintInteraction("previous", "")
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                 if (ui.hint_pointer_mode) {
-                    if (!event.isAutoRepeat) window.beginHintPointerConfirmation()
+                    if (!event.isAutoRepeat) hints.beginHintPointerConfirmation()
                 } else {
-                    window.applyHintInteraction("activate", "")
+                    hints.applyHintInteraction("activate", "")
                 }
             } else if (control && event.key === Qt.Key_Space) {
-                window.applyHintInteraction("rotate", "")
-            } else if (logicalText === "/" && window.hintState.mode === "label") {
-                window.applyHintInteraction("text-mode", "")
-            } else if (logicalText === " " && window.hintState.mode === "label") {
-                window.applyHintInteraction("rotate", "")
+                hints.applyHintInteraction("rotate", "")
+            } else if (logicalText === "/" && hints.hintState.mode === "label") {
+                hints.applyHintInteraction("text-mode", "")
+            } else if (logicalText === " " && hints.hintState.mode === "label") {
+                hints.applyHintInteraction("rotate", "")
             } else if (logicalText.length === 1) {
-                window.applyHintInteraction("character", logicalText)
+                hints.applyHintInteraction("character", logicalText)
             }
             handled = true
         } else if (ui.mode === "caret" && (logicalText === "Ctrl+x" || logicalText === "Ctrl+v" || logicalText === "Ctrl+Shift+v")) {
@@ -1330,10 +1095,12 @@ FerricBrowserRuntimeChrome {
     }
 
     function handleBrowserKeyRelease(ui, host, key, modifiers) {
-        if (ui === browserUi && ui.mode === "hint" && ui.hint_pointer_mode
+        var hints = host && host.hintWorkspace && host.hintWorkspace.browserUi === ui
+                ? host.hintWorkspace : null
+        if (hints && ui.mode === "hint" && ui.hint_pointer_mode
                 && ui.hint_pointer_state === "awaiting-confirmation-release"
                 && (key === Qt.Key_Return || key === Qt.Key_Enter)) {
-            window.releaseHintPointerConfirmation()
+            hints.releaseHintPointerConfirmation()
             return true
         }
         return false
@@ -1426,12 +1193,11 @@ FerricBrowserRuntimeChrome {
         commandText: ":quit"
         title: "Browser shutdown is taking longer than expected"
         message: window.applicationShutdownStage
-                 + ". Continue waiting, or force quit? Force quit leaves the "
-                 + "unclean-exit marker for recovery on the next launch."
+                 + ". Continue waiting, or force quit? Recent changes may not be saved if you force quit."
         keepLabel: "Continue waiting"
-        proceedLabel: "Force quit (unclean)"
+        proceedLabel: "Force quit"
         keepAccessibleName: "Continue waiting for shutdown"
-        proceedAccessibleName: "Force quit and preserve the unclean marker"
+        proceedAccessibleName: "Force quit; recent changes may not be saved"
         dialogBorderColor: window.errorColor
         dialogHeight: 250 * window.chromeScale
         stackingOrder: 110
@@ -1502,6 +1268,8 @@ FerricBrowserRuntimeChrome {
     }
 
     function completeProfileBootstrap() {
+        if (window.runtimeDisposing || window.profileBootstrapComplete
+                || browserUi.profile_bootstrap_pending || !browserUi.profile_available()) return
         window.refreshSpellcheckInventory(browserUi)
         browserProfile.spellCheckEnabled = window.spellcheckEnabled(browserUi)
         browserProfile.spellCheckLanguages = window.spellcheckLanguages(browserUi)
@@ -1515,6 +1283,12 @@ FerricBrowserRuntimeChrome {
         if (window.ephemeralProfile && window.ephemeralInvocationToken.length === 0) {
             window.ephemeralInvocationToken = window.profileName
         }
+        if (!requestInterceptor.attach(browserProfile)) {
+            browserUi.status_text = "Request interceptor unavailable"
+        }
+        window.profileResourceRegistry.activateWindow(window)
+        window.profileBootstrapComplete = true
+        window.syncTabModel()
         window.registerBrowserWindow(
                     window, browserUi, window.activeWebView(), browserProfile,
                     window.profileName,
@@ -1524,16 +1298,15 @@ FerricBrowserRuntimeChrome {
             browserUi.execute_command("context-enter " + window.startupContext)
             window.routeContextWorkspace(browserUi)
         }
-        if (!requestInterceptor.attach(browserProfile)) {
-            browserUi.status_text = "Request interceptor unavailable"
-        }
         if (window.startupBackground) {
             browserUi.status_text = "Opening startup URL in a background tab"
         } else if (window.startupCleanLink) {
+            // Hold startup previews over native blank content. The engine's
+            // initial about:blank load is not the requested navigation.
+            var previewView = window.activeWebView()
+            if (previewView) previewView.setContentUrl("rb://blank", false)
             if (browserUi.execute_command("open --clean-link " + window.startupUrl)) {
-                if (browserUi.link_preview_visible) {
-                    window.showLinkPreview()
-                } else {
+                if (!browserUi.link_preview_visible) {
                     window.executePendingEngineAction()
                 }
             }
@@ -1578,6 +1351,7 @@ FerricBrowserRuntimeChrome {
     }
 
     FerricSelectorValidationSurface {
+        browserWindow: window
         browserUi: window.primaryBrowserUi
     }
 
@@ -1585,6 +1359,15 @@ FerricBrowserRuntimeChrome {
         window.browserProfile = window.browserProfilePrototypeObject.instance()
         if (!window.browserProfile) {
             console.error("WebEngine profile instance was unavailable")
+            Qt.quit()
+            return
+        }
+        window.primaryProfileResources=window.profileResourceRegistry.ensure(
+                    window.profileName,window.temporaryProfile,window.storageBasePath,
+                    window.browserProfile,window.primaryRequestInterceptor,
+                    window.browserProfilePrototypeObject)
+        if (!window.profileResourceRegistry.retainWindow(window.primaryProfileResources,window,browserUi)) {
+            console.error("The primary profile resources could not be initialized")
             Qt.quit()
             return
         }
@@ -1622,6 +1405,18 @@ FerricBrowserRuntimeChrome {
         window.scheduleFocusProbe(3)
     }
     Component.onDestruction: {
+        // Resolve live child requests while this creation context is callable.
+        // Descendant destructors must not call back after it has been released.
+        window.runtimeDisposing = true
+        window.downloadWorkspaceObject.shutdown()
+        window.scriptRunnerObject.cancelAll()
+        var children = (window.browserWindowRegistry || []).concat(window.popupWindowRegistry || [])
+        for (var i = 0; i < children.length; ++i) {
+            var host = children[i] && children[i].host
+            if (host && host !== window && host.releaseWindowResources) host.releaseWindowResources()
+        }
+        window.clearPageDialog(true)
+        window.clearSiteDataClearForView(window.siteDataClearView)
         notificationPresenter.closeAll()
         window.closeWebNotifications()
         window.cancelPendingExternalUris("External action cancelled with the window")
@@ -1646,6 +1441,8 @@ FerricBrowserRuntimeChrome {
             window.rendererFailureSurface.destroy()
             window.rendererFailureSurface = null
         }
+        window.profileResourceRegistry.releaseWindow(window)
+        window.profileResourceRegistry.shutdown()
         browserUi.view_closed()
         browserUi.release_transient_resources()
     }

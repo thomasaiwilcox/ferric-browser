@@ -1,5 +1,10 @@
 schema = 1
 
+[[dependency]]
+name = "pkg-config"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io locked system library discovery build dependency"
+
 # Direct or distribution-facing dependencies whose license/provenance must be
 # reviewed when the locked graph or system package baseline changes.
 [[dependency]]

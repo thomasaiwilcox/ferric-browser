@@ -9,9 +9,12 @@ TestCase {
     ApplicationWindow { id: host; width: 480; height: 320; visible: true }
     ListModel { id: backItems; ListElement { url: "https://a.test"; offset: -1 } }
     ListModel { id: forwardItems }
+    ListModel { id: provisionalTabs }
     QtObject {
         id: web
         property int tabIndex: 0
+        property bool ownerValid: true
+        function ownsTab() { return ownerValid && tabIndex >= 0 }
         property var history: ({ backItems: backItems, forwardItems: forwardItems })
         property url url: "https://a.test"
         property string title: "Example"
@@ -81,6 +84,7 @@ TestCase {
         id: theme
         property color backgroundColor: "#181825"
         property int browserScriptWorld: 1
+        function runBrowserScript(view, script, callback, world) { view.runJavaScript(script, world, callback); return true }
     }
     Component {
         id: fixture
@@ -90,6 +94,8 @@ TestCase {
         }
     }
     function init() {
+        web.tabIndex = 0; web.ownerValid = true; ui.active_tab_index = 0
+        provisionalTabs.clear(); provisionalTabs.append({url:"https://a.test",loaded:true})
         ui.entries = []; ui.snapshot = null; ui.begunSameDocumentChanges = []
         ui.completedSameDocumentChanges = []; ui.urlChanges = []; ui.documentIdentities = []
         ui.committedCount = 0; ui.input_epoch = 7; web.loading = false; web.url = "https://a.test"
@@ -338,4 +344,45 @@ TestCase {
         compare(ui.snapshot.cursor, 0)
         compare(ui.snapshot.entries.length, 1)
     }
+    function test_unowned_initializer_cannot_update_an_active_tab_data() {
+        return [{tag:"web",url:"about:blank",index:-1,owned:true},
+                {tag:"native",url:"rb://blank",index:-1,owned:true},
+                {tag:"retired-web",url:"about:blank",index:0,owned:false},
+                {tag:"retired-native",url:"rb://blank",index:0,owned:false}]
+    }
+    function test_unowned_initializer_cannot_update_an_active_tab(row) {
+        web.tabIndex=row.index
+        web.ownerValid=row.owned
+        ui.active_tab_index=0
+        var content=createTemporaryObject(fixture,host.contentItem,{tabsModel:provisionalTabs})
+        verify(content)
+        content.setContentUrl(row.url,false)
+        compare(provisionalTabs.get(0).url,"https://a.test")
+        compare(ui.entries.length,0)
+        compare(ui.committedCount,0)
+    }
+
+    function test_delayed_history_fact_is_ignored_after_ownership_is_lost_data() {
+        return [{tag:"detached",indexLost:true},{tag:"retired",indexLost:false}]
+    }
+    function test_delayed_history_fact_is_ignored_after_ownership_is_lost(row) {
+        var content=createTemporaryObject(fixture,host.contentItem)
+        verify(content)
+        web.deferProbe=true
+        content.synchronizeHistory()
+        var callback=web.probeCallback
+        verify(typeof callback==="function")
+        if (row.indexLost) web.tabIndex=-1; else web.ownerValid=false
+        callback({document:"old-document",sequence:0,url:web.url.toString()})
+        compare(ui.documentIdentities.length,0)
+        compare(ui.completedSameDocumentChanges.length,0)
+        compare(ui.entries.length,0)
+        web.tabIndex=0;web.ownerValid=true
+        content.synchronizeHistory()
+        verify(web.probeCallback!==callback,"A valid owner must be able to launch a fresh probe")
+        web.probeCallback({document:"new-document",sequence:0,url:web.url.toString()})
+        compare(ui.documentIdentities.length,1)
+        compare(ui.documentIdentities[0].document,"new-document")
+    }
+
 }

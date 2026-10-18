@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <QtCore/QByteArray>
+#include <QtCore/QDir>
 #include <QtCore/QtGlobal>
 #include <QtCore/QUrl>
 #include <QtGui/QClipboard>

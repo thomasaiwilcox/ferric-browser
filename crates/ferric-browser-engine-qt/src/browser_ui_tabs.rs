@@ -5,6 +5,18 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn tab_pinned_at(&self, index: i32) -> bool {
+        self.tab_for_index(index)
+            .and_then(|tab| self.rust().state.as_ref()?.tabs().get(&tab))
+            .is_some_and(|tab| tab.pinned)
+    }
+
+    pub(super) fn tab_muted_at(&self, index: i32) -> bool {
+        self.tab_for_index(index)
+            .and_then(|tab| self.rust().state.as_ref()?.tabs().get(&tab))
+            .is_some_and(|tab| tab.muted)
+    }
+
     pub(super) fn new_tab(mut self: Pin<&mut Self>) -> i32 {
         let Some(window) = self.as_ref().rust().window else {
             self.set_status_text(QString::from("No active window"));
@@ -247,11 +259,15 @@ impl qobject::BrowserUi {
         }
         let index = self.as_mut().tab_index_for_id(&QString::from(id.as_str()));
         if index < 0 {
-            self.set_status_text(QString::from("Tab suspension target is stale"));
+            self.set_status_text(QString::from(
+                "This tab is no longer available here. Select an open tab.",
+            ));
             return false;
         }
         let Some(tab) = self.as_ref().tab_for_index(index) else {
-            self.set_status_text(QString::from("Tab suspension target is stale"));
+            self.set_status_text(QString::from(
+                "This tab is no longer available here. Select an open tab.",
+            ));
             return false;
         };
         if self
@@ -269,9 +285,7 @@ impl qobject::BrowserUi {
             .as_mut()
             .get_mut()
             .pending_engine_action = Some(format!("tab-suspend\t{id}"));
-        self.set_status_text(QString::from(
-            "Tab suspension approved by the browser engine",
-        ));
+        self.set_status_text(QString::from("Tab suspension requested"));
         true
     }
 
@@ -283,11 +297,15 @@ impl qobject::BrowserUi {
         }
         let index = self.as_mut().tab_index_for_id(&QString::from(id.as_str()));
         if index < 0 {
-            self.set_status_text(QString::from("Tab discard target is stale"));
+            self.set_status_text(QString::from(
+                "This tab is no longer available here. Select an open tab.",
+            ));
             return false;
         }
         let Some(tab) = self.as_ref().tab_for_index(index) else {
-            self.set_status_text(QString::from("Tab discard target is stale"));
+            self.set_status_text(QString::from(
+                "This tab is no longer available here. Select an open tab.",
+            ));
             return false;
         };
         if self
@@ -305,7 +323,7 @@ impl qobject::BrowserUi {
             .as_mut()
             .get_mut()
             .pending_engine_action = Some(format!("tab-discard\t{id}"));
-        self.set_status_text(QString::from("Tab discard approved by the browser engine"));
+        self.set_status_text(QString::from("Tab unload requested"));
         true
     }
 
@@ -788,11 +806,15 @@ impl qobject::BrowserUi {
         if id.is_empty() || id.len() > 128 || id.chars().any(char::is_control) {
             return Err("window action ID is invalid".into());
         }
+        let id = super::WindowId::from_display(id)
+            .map(|id| id.to_string())
+            .or_else(|| Uuid::parse_str(id).ok().map(|id| id.to_string()))
+            .unwrap_or_else(|| id.clone());
         let local_target = self.as_ref().rust().state.as_ref().and_then(|state| {
             state
                 .windows()
                 .values()
-                .find(|window| window.id.to_string() == *id)
+                .find(|window| window.id.to_string() == id)
                 .map(|window| (window.id, window.active_tab))
         });
         if let Some((window, active_tab)) = local_target {
@@ -805,8 +827,8 @@ impl qobject::BrowserUi {
                     .map_err(|error| error.to_string())?;
             }
             self.as_mut().sync_tab_order_from_core();
-        } else if Uuid::parse_str(id).is_err() {
-            return Err("window action target is stale".into());
+        } else if !super::live_ipc_owners::has_window_target(&id) {
+            return Err("The requested browser window is no longer available.".into());
         }
         self.as_mut()
             .rust_mut()

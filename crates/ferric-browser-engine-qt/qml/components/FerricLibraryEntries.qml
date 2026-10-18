@@ -8,6 +8,9 @@ FocusScope {
     required property var entries
     required property string libraryKind
     required property string pendingDelete
+    property Component controlsHeader
+    property bool operationPending: false
+    property string completedEditValue: ""
     property int completedEditToken: 0
     property string completedEditKey: ""
     signal favouriteRequested(string id)
@@ -20,7 +23,8 @@ FocusScope {
 
     readonly property alias currentIndex: libraryList.currentIndex
 
-    function markEditSaved(entryKind, entryId) {
+    function markEditSaved(entryKind, entryId, value) {
+        completedEditValue = value
         completedEditKey = entryKind + "\t" + entryId
         completedEditToken += 1
     }
@@ -81,15 +85,18 @@ FocusScope {
             return
         if (entry.entryKind === "journey") {
             libraryEntries.journeyReopenRequested(entry.nodeId, "current")
-        } else {
+        } else if (["history", "bookmark", "quickmark"].indexOf(entry.entryKind) >= 0) {
             libraryEntries.openRequested(entry.entryKind, entry.entryId)
+        } else if (libraryList.currentItem) {
+            libraryList.currentItem.detailsExpanded = !libraryList.currentItem.detailsExpanded
         }
     }
 
     function handleNavigationKey(event) {
-        var plainKey = !(event.modifiers & (Qt.ControlModifier
-                                             | Qt.AltModifier
-                                             | Qt.MetaModifier))
+        var host = libraryList.Window.window
+        if (!host || (host.activeFocusItem !== libraryList && host.activeFocusItem !== libraryList.currentItem)) return false
+        var plainKey = event.modifiers === Qt.NoModifier
+        if (!plainKey && !(event.key === Qt.Key_G && event.modifiers === Qt.ShiftModifier)) return false
         if (event.key === Qt.Key_Up || (plainKey && event.key === Qt.Key_K)) {
             moveSelection(-1)
         } else if (event.key === Qt.Key_Down || (plainKey && event.key === Qt.Key_J)) {
@@ -103,11 +110,10 @@ FocusScope {
                        && !(event.modifiers & Qt.ShiftModifier))) {
             moveToBeginning()
         } else if (event.key === Qt.Key_End
-                   || (plainKey && event.key === Qt.Key_G
-                       && (event.modifiers & Qt.ShiftModifier))) {
+                   || (event.key === Qt.Key_G && event.modifiers === Qt.ShiftModifier)) {
             moveToEnd()
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            activateCurrent()
+            if (!event.isAutoRepeat) activateCurrent()
         } else {
             return false
         }
@@ -115,12 +121,14 @@ FocusScope {
         return true
     }
 
-    ListView {
+    FerricManagerList {
         id: libraryList
+        hostWindow: libraryEntries.Window.window
         objectName: "libraryEntryList"
         anchors.fill: parent
-        clip: true
         model: libraryEntries.entries
+        header: libraryEntries.controlsHeader
+        spacing: 8
         currentIndex: -1
         focus: visible
         activeFocusOnTab: true
@@ -141,9 +149,8 @@ FocusScope {
                    ? libraryEntries.browserWindow.selectionColor : "transparent"
             radius: 3
             property bool editing: false
-            property bool journeyTargetPickerVisible: false
-            property string editValue: model.entryKind === "quickmark"
-                    ? model.secondary : model.label
+            property bool detailsExpanded: false
+            property string editValue: ""
             readonly property string entryKey: model.entryKind + "\t" + model.entryId
             Accessible.role: Accessible.ListItem
             Accessible.name: model.label + ", " + model.secondary
@@ -152,8 +159,10 @@ FocusScope {
             Connections {
                 target: libraryEntries
                 function onCompletedEditTokenChanged() {
-                    if (libraryEntries.completedEditKey === libraryRow.entryKey) {
+                    if (libraryEntries.completedEditKey === libraryRow.entryKey && libraryRow.editValue === libraryEntries.completedEditValue) {
+                        var hadFocus = editInput.activeFocus
                         libraryRow.editing = false
+                        if (hadFocus) editButton.forceActiveFocus()
                     }
                 }
             }
@@ -164,28 +173,46 @@ FocusScope {
                 anchors.margins: 4
                 spacing: 2
 
-                RowLayout {
+                Label {
+                    objectName: "libraryEntryTitle"
                     Layout.fillWidth: true
-                    Label {
-                        Layout.fillWidth: !libraryRow.editing
-                        text: model.label
-                        color: libraryEntries.browserWindow.primaryTextColor
-                        elide: Text.ElideRight
-                    }
-                    FerricTextField {
-                        visible: libraryRow.editing
-                        Layout.fillWidth: true
-                        text: libraryRow.editValue
-                        Accessible.name: "Edit " + model.entryKind + " " + model.entryId
-                        onTextChanged: libraryRow.editValue = text
-                        onAccepted: libraryEntries.editRequested(model.entryKind, model.entryId, text)
-                    }
+                    text: model.label || model.secondary || "Untitled item"
+                    textFormat: Text.PlainText
+                    color: libraryEntries.browserWindow.primaryTextColor
+                    font.bold: true
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                }
+                Label {
+                    objectName: "libraryEntrySummary"
+                    Layout.fillWidth: true
+                    text: model.secondary
+                    textFormat: Text.PlainText
+                    color: libraryEntries.browserWindow.mutedTextColor
+                    elide: Text.ElideMiddle
+                }
+                FerricTextField {
+                    id: editInput
+                    objectName: "libraryEntryEdit"
+                    visible: libraryRow.editing
+                    Layout.fillWidth: true
+                    text: libraryRow.editValue
+                    readOnly: libraryEntries.operationPending
+                    Accessible.name: (model.entryKind === "quickmark" ? "Quickmark address for " : "Bookmark title for ") + model.label
+                    onTextEdited: libraryRow.editValue = text
+                    onAccepted: if (!libraryEntries.operationPending) libraryEntries.editRequested(model.entryKind, model.entryId, text)
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: childrenRect.height
+                    spacing: 6
                     Button {
                         visible: model.entryKind === "history"
                                  || model.entryKind === "bookmark"
                                  || model.entryKind === "quickmark"
                         text: "Open"
-                        Accessible.name: "Open " + model.entryKind + " " + model.entryId
+                        Accessible.name: "Open " + model.label
                         onClicked: {
                             libraryList.currentIndex = index
                             libraryEntries.openRequested(model.entryKind, model.entryId)
@@ -207,9 +234,12 @@ FocusScope {
                     }
                     Button {
                         visible: model.entryKind === "bookmark" || model.entryKind === "quickmark"
+                        id: editButton
+                        objectName: "libraryEntryEditButton"
                         text: libraryRow.editing ? "Save" : "Edit"
+                        enabled: !libraryEntries.operationPending
                         Accessible.name: (libraryRow.editing ? "Save " : "Edit ")
-                                         + model.entryKind + " " + model.entryId
+                                         + model.label
                         onClicked: {
                             if (libraryRow.editing) {
                                 libraryEntries.editRequested(
@@ -218,53 +248,67 @@ FocusScope {
                                 libraryRow.editValue = model.entryKind === "quickmark"
                                         ? model.secondary : model.label
                                 libraryRow.editing = true
+                                editInput.forceActiveFocus()
                             }
                         }
                     }
                     Button {
+                        objectName: "libraryEntryDeleteButton"
+                        enabled: !libraryEntries.operationPending
                         visible: (model.entryKind === "bookmark" || model.entryKind === "quickmark")
                                  && !libraryRow.editing
                         text: libraryEntries.pendingDelete === libraryRow.entryKey
                               ? "Confirm delete" : "Delete"
                         Accessible.name: (text === "Delete" ? "Delete " : "Confirm delete ")
-                                         + model.entryKind + " " + model.entryId
+                                         + model.label
                         onClicked: libraryEntries.deleteRequested(model.entryKind, model.entryId)
                     }
                     Button {
-                        visible: libraryEntries.libraryKind === "journey"
-                        text: "Reopen target"
-                        Accessible.name: "Choose reopen target for journey node " + model.nodeId
-                        onClicked: libraryRow.journeyTargetPickerVisible = !libraryRow.journeyTargetPickerVisible
+                        text: "Cancel edit"
+                        visible: libraryRow.editing
+                        enabled: !libraryEntries.operationPending
+                        onClicked: { libraryRow.editing = false; editButton.forceActiveFocus() }
                     }
                     ComboBox {
                         id: journeyTargetSelector
                         visible: libraryEntries.libraryKind === "journey"
-                                 && libraryRow.journeyTargetPickerVisible
-                        model: ["current", "tab", "window"]
-                        Accessible.name: "Journey reopen target"
-                        ToolTip.visible: hovered
-                        ToolTip.text: "Choose where this safe GET will open"
+                        model: [{label: "Current tab", value: "current"}, {label: "New tab", value: "tab"}, {label: "New window", value: "window"}]
+                        textRole: "label"
+                        valueRole: "value"
+                        Accessible.name: "Reopen destination"
                     }
                     Button {
                         visible: libraryEntries.libraryKind === "journey"
                         text: "Reopen"
-                        Accessible.name: "Reopen journey node " + model.nodeId
-                                + " in " + journeyTargetSelector.currentText
+                        Accessible.name: "Reopen " + model.label + " in " + journeyTargetSelector.currentText
                         onClicked: libraryEntries.journeyReopenRequested(
-                                       model.nodeId, journeyTargetSelector.currentText)
+                                       model.nodeId, journeyTargetSelector.currentValue)
                     }
                     Button {
                         visible: libraryEntries.libraryKind === "journey"
-                        text: "Expand"
-                        Accessible.name: "Expand journey node " + model.nodeId
+                        text: "Nearby pages"
+                        Accessible.name: "Show nearby pages for " + model.label
                         onClicked: libraryEntries.journeyExpandRequested(model.nodeId)
                     }
+                    ToolButton {
+                        objectName: "libraryEntryDetailsButton"
+                        text: libraryRow.detailsExpanded ? "Hide details" : "Details"
+                        onClicked: libraryRow.detailsExpanded = !libraryRow.detailsExpanded
+                    }
                 }
-                Label {
+                TextArea {
+                    objectName: "libraryEntryDetails"
                     Layout.fillWidth: true
-                    text: model.secondary
-                    color: libraryEntries.browserWindow.mutedTextColor
-                    elide: Text.ElideMiddle
+                    visible: libraryRow.detailsExpanded
+                    text: model.detail || (model.label + "\n" + model.secondary)
+                    textFormat: TextEdit.PlainText
+                    readOnly: true
+                    selectByMouse: true
+                    selectByKeyboard: true
+                    wrapMode: TextEdit.Wrap
+                    color: libraryEntries.browserWindow.secondaryTextColor
+                    background: Rectangle { color: libraryEntries.browserWindow.surfaceColor }
+                    Accessible.name: "Item details"
                 }
             }
         }

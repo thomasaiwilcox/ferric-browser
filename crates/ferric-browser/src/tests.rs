@@ -4,6 +4,70 @@ use crate::cli_parse::log_level_rank;
 use crate::ipc_client::{add_cli_context, storage_diagnostics};
 
 #[test]
+fn live_diagnostics_can_outlast_the_ordinary_ipc_response_timeout() {
+    let base = std::env::temp_dir().join(format!("ferric-diag-{}", Uuid::new_v4().simple()));
+    let paths = instance_paths(&base, &base, "test");
+    fs::create_dir_all(&paths.directory).expect("disposable instance directory");
+    let listener = std::os::unix::net::UnixListener::bind(&paths.socket).expect("listener");
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("connection");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("server timeout");
+        let hello: Request = serde_json::from_slice(
+            &read_frame(&mut stream)
+                .expect("hello frame")
+                .expect("hello"),
+        )
+        .expect("hello request");
+        assert_eq!(hello.method, "hello");
+        let response = Response::success(
+            hello.id,
+            serde_json::json!({
+                "protocol_major": PROTOCOL_MAJOR, "protocol_minor": PROTOCOL_MINOR,
+                "instance_id": "delayed-diagnostics", "capabilities": []
+            }),
+        );
+        write_frame(
+            &mut stream,
+            &serde_json::to_vec(&response).expect("hello JSON"),
+        )
+        .expect("hello response");
+        let request: Request = serde_json::from_slice(
+            &read_frame(&mut stream)
+                .expect("request frame")
+                .expect("request"),
+        )
+        .expect("diagnostics request");
+        assert_eq!(request.method, "diagnostics.get");
+        std::thread::sleep(Duration::from_millis(5_250));
+        let response = Response::success(
+            request.id,
+            serde_json::json!({"collection":{"status":"complete"},"source":"delayed-live"}),
+        );
+        write_frame(
+            &mut stream,
+            &serde_json::to_vec(&response).expect("report JSON"),
+        )
+        .expect("delayed response");
+    });
+    let response = crate::ipc_client::instance_request(
+        &paths,
+        &Request {
+            id: "delayed-report".into(),
+            method: "diagnostics.get".into(),
+            params: serde_json::Value::Null,
+        },
+    );
+    let server_result = server.join();
+    fs::remove_dir_all(base).expect("remove disposable instance");
+    server_result.expect("server completed");
+    let response = response.expect("live response after the ordinary five-second deadline");
+    assert_eq!(response.id, "delayed-report");
+    assert_eq!(response.result.expect("report")["source"], "delayed-live");
+}
+
+#[test]
 fn generated_command_usage_preserves_typed_flag_shapes() {
     let registry = CommandRegistry::default_v1();
     let open = registry.resolve("open").expect("open definition");
@@ -1062,6 +1126,45 @@ fn cli_query_exposes_live_window_registry() {
         CliAction::Query { method, params, format }
             if method == "windows.query" && params == serde_json::json!({}) && format == "json"
     ));
+}
+
+#[test]
+fn cli_window_queries_preserve_explicit_ids_and_private_opt_in() {
+    for kind in ["tabs", "active-tab", "windows", "operations"] {
+        let mut arguments = vec![
+            "query".into(),
+            kind.into(),
+            "--window".into(),
+            "windowid-22".into(),
+            "--format".into(),
+            "json".into(),
+        ];
+        if kind != "windows" {
+            arguments.push("--private".into());
+        }
+        let (_, action) = parse_cli(&arguments).expect("explicit window query");
+        let CliAction::Query {
+            method,
+            params,
+            format,
+        } = action
+        else {
+            panic!("query")
+        };
+        assert_eq!(
+            method,
+            match kind {
+                "windows" => "windows.query",
+                "operations" => "operations.query",
+                _ => "tabs.query",
+            }
+        );
+        assert_eq!(params["window"], "windowid-22");
+        assert_eq!(format, "json");
+        if kind != "windows" {
+            assert_eq!(params["include_private"], true);
+        }
+    }
 }
 
 #[test]
@@ -2223,27 +2326,106 @@ fn software_rendering_is_a_gui_only_startup_option() {
 }
 
 #[test]
+fn incompatible_selected_roots_preserve_files_and_offer_nondestructive_recovery() {
+    let roots = StorageRoots::resolve(RootSpec::Temporary).expect("owned roots");
+    roots.ensure().expect("owned directories");
+    let base = roots.data.parent().expect("temporary base");
+    let data_file = roots.data.join("keep-existing-data");
+    let config_file = roots.config.join("keep-existing-config");
+    fs::write(&data_file, "selected data sentinel").expect("data sentinel");
+    fs::write(&config_file, "selected config sentinel").expect("config sentinel");
+    let error = run(&[
+        "--basedir".into(),
+        base.to_string_lossy().into_owned(),
+        "query".into(),
+        "tabs".into(),
+    ])
+    .expect_err("unmarked populated roots must be refused");
+    let data = fs::read(&data_file).expect("data retained");
+    let config = fs::read(&config_file).expect("config retained");
+    roots.cleanup().expect("remove owned fixture");
+    let error = error.into_protocol();
+    assert_eq!(error.code, ErrorCode::Storage.as_str());
+    assert!(error.message.contains("unknown or incompatible"));
+    let details = error.details.expect("public recovery metadata");
+    assert!(
+        details["next_action"]
+            .as_str()
+            .unwrap()
+            .contains("--basedir")
+    );
+    assert!(!details.to_string().contains("reset-data"));
+    assert!(!details.to_string().contains("diagnostics"));
+    assert_eq!(data, b"selected data sentinel");
+    assert_eq!(config, b"selected config sentinel");
+}
+
+#[test]
+fn startup_and_client_socket_failures_offer_path_recovery() {
+    let roots = StorageRoots::resolve(RootSpec::Temporary).expect("owned roots");
+    roots.ensure().expect("owned directories");
+    let base = roots
+        .data
+        .parent()
+        .expect("temporary base")
+        .join("a".repeat(64))
+        .join("b".repeat(64));
+    let paths = existing_instance_paths(Some(&base), Some("long-address-test"))
+        .expect("valid filesystem roots");
+    let startup = match acquire_instance(Some(&base), Some("long-address-test")) {
+        Err(error) => error.into_protocol(),
+        Ok(_) => panic!("overlong Unix socket must not open an instance"),
+    };
+    let client = crate::ipc_client::instance_request(
+        &paths,
+        &Request {
+            id: "long-address-test".into(),
+            method: "query.tabs".into(),
+            params: serde_json::json!({}),
+        },
+    )
+    .expect_err("overlong client address must fail")
+    .into_protocol();
+    roots.cleanup().expect("remove owned fixture");
+    for error in [startup, client] {
+        assert_eq!(error.code, ErrorCode::Config.as_str());
+        let details = error.details.expect("public recovery metadata");
+        assert!(
+            details["next_action"]
+                .as_str()
+                .unwrap()
+                .contains("shorter --basedir")
+        );
+        assert!(!details.to_string().contains("storage health"));
+        assert!(!error.message.contains("a".repeat(64).as_str()));
+    }
+}
+
+#[test]
 fn cli_errors_use_stable_codes() {
     let error = run(&["--unknown".into()]).expect_err("unknown option is rejected");
-    assert_eq!(error.code, ErrorCode::InvalidArgument);
+    assert_eq!(error.code(), ErrorCode::InvalidArgument);
     assert_eq!(error.status(), 2);
-    let config_error = CliError::from_run(RunError::config("invalid test config"));
-    assert_eq!(config_error.code, ErrorCode::Config);
+    let config_error = CliError::config("invalid test config");
+    assert_eq!(config_error.code(), ErrorCode::Config);
     assert_eq!(config_error.status(), 2);
-    let storage_error = CliError::from_run(RunError::storage("unavailable test storage"));
-    assert_eq!(storage_error.code, ErrorCode::Storage);
+    let storage_error = CliError::storage("unavailable test storage");
+    assert_eq!(storage_error.code(), ErrorCode::Storage);
     assert_eq!(storage_error.status(), 1);
-    let instance_error = CliError::from_run(RunError::no_instance("missing test instance"));
-    assert_eq!(instance_error.code, ErrorCode::NoInstance);
+    let instance_error = CliError::no_instance("missing test instance");
+    assert_eq!(instance_error.code(), ErrorCode::NoInstance);
     assert_eq!(instance_error.status(), 3);
-    assert_eq!(error.user_message, "The command-line request is invalid.");
+    assert_eq!(
+        error.into_protocol().message,
+        "The command-line request is invalid."
+    );
     let error = run(&[
         "--safe-mode".into(),
         "--basedir".into(),
         "/tmp/ferric-invalid-combination".into(),
     ])
     .expect_err("post-parse option conflict is rejected");
-    assert_eq!(error.code, ErrorCode::InvalidArgument);
+    assert_eq!(error.code(), ErrorCode::InvalidArgument);
     assert_eq!(error.status(), 2);
     assert!(wants_structured_error(&[
         "query".into(),
@@ -2252,24 +2434,21 @@ fn cli_errors_use_stable_codes() {
         "json".into(),
     ]));
     assert!(!wants_structured_error(&["query".into(), "tabs".into()]));
-    let structured = serde_json::from_str::<serde_json::Value>(&structured_cli_error_with_id(
-        ErrorCode::Timeout,
-        6,
-        "slow",
-        "err-test",
-    ))
-    .expect("structured CLI errors are JSON");
+    let protocol =
+        CliError::local(ErrorCode::Timeout, "slow", "sensitive local cause").into_protocol();
+    let structured = cli_error::structured(&protocol);
     assert_eq!(structured["error"]["code"], "E_TIMEOUT");
     assert_eq!(structured["error"]["status"], 6);
     assert_eq!(structured["error"]["message"], "slow");
     assert_eq!(
         structured["error"]["preserved"],
-        "the timed-out operation was not committed"
+        "request completion is unconfirmed"
     );
     assert_eq!(
         structured["error"]["next_action"],
-        "check the target and retry"
+        "check current state before retrying"
     );
+    assert!(!structured.to_string().contains("sensitive local cause"));
     assert!(
         structured["error"]["correlation_id"]
             .as_str()
@@ -2341,7 +2520,7 @@ fn forwarded_cli_context_preserves_cli_source() {
         "command": "back",
         "arguments": {}
     });
-    add_cli_context(&mut params, &CliOptions::default(), None);
+    add_cli_context(&mut params, &CliOptions::default(), None).expect("CLI context");
     assert_eq!(params["context"]["source"], "cli");
 }
 

@@ -29,8 +29,14 @@ pub fn snapshot() -> Value {
 /// Adds runtime clipboard capability evidence when a live Qt application is
 /// available. The display-free CLI intentionally leaves this capability
 /// unprobed because it has no `QGuiApplication` or compositor session.
+#[cfg(test)]
 pub fn snapshot_with_primary_selection(available: Option<bool>) -> Value {
     let mut snapshot = snapshot();
+    apply_primary_selection(&mut snapshot, available);
+    snapshot
+}
+
+pub(super) fn apply_primary_selection(snapshot: &mut Value, available: Option<bool>) {
     if let Some(available) = available {
         snapshot["capabilities"]["primary_selection"] = if available {
             fact(
@@ -48,7 +54,6 @@ pub fn snapshot_with_primary_selection(available: Option<bool>) -> Value {
             )
         };
     }
-    snapshot
 }
 
 /// Builds a snapshot with a caller-supplied compositor fact. The live Qt
@@ -57,12 +62,101 @@ pub fn snapshot_with_primary_selection(available: Option<bool>) -> Value {
 #[must_use]
 #[allow(clippy::too_many_lines)]
 pub fn snapshot_with_compositor(compositor: Value) -> Value {
-    let portal = portal_probe();
-    let pipewire = pipewire_probe();
-    let qt_runtime = qt_runtime_fact();
-    let engine_package = installed_engine_package_fact();
+    snapshot_from_probes(compositor, ProbeFacts::collect())
+}
+
+/// A report-shaped placeholder for asynchronous GUI/IPC collection. No probes
+/// or profile files are read while the UI is waiting for the worker.
+pub(super) fn pending_snapshot() -> Value {
+    snapshot_from_probes(unknown_compositor_fact(), ProbeFacts::pending())
+}
+
+/// Site tools use only these cheap process/Qt facts, not the full probe report.
+pub(super) fn site_snapshot() -> Value {
+    json!({
+        "application": application_fact(),
+        "capabilities": {"webengine": webengine_fact()},
+        "runtime": {
+            "display": display_fact(),
+            "compositor": unknown_compositor_fact(),
+            "graphics_backend": fact("unknown", None,
+                "Qt selected backend is not exposed by this adapter", "not-probed"),
+            "software_rendering": software_rendering_fact()
+        }
+    })
+}
+
+struct ProbeFacts {
+    portal: Value,
+    pipewire: Value,
+    qt_runtime: Value,
+    engine_package: Value,
+    dictionaries: Value,
+    gpu_driver: Value,
+    sandbox: Value,
+}
+
+impl ProbeFacts {
+    fn collect() -> Self {
+        Self {
+            portal: portal_probe(),
+            pipewire: pipewire_probe(),
+            qt_runtime: qt_runtime_fact(),
+            engine_package: installed_engine_package_fact(),
+            dictionaries: dictionary_probe(),
+            gpu_driver: gpu_driver_fact(),
+            sandbox: sandbox_fact(),
+        }
+    }
+
+    fn pending() -> Self {
+        let pending = fact(
+            "not-tested",
+            None,
+            "Diagnostic collection is pending",
+            "not-probed",
+        );
+        Self {
+            portal: json!({"service":pending,"interfaces":{
+                "file_chooser":pending,"screen_cast":pending,"open_uri":pending,"notifications":pending}}),
+            pipewire: pending.clone(),
+            qt_runtime: pending.clone(),
+            engine_package: pending.clone(),
+            dictionaries: pending.clone(),
+            gpu_driver: pending.clone(),
+            sandbox: pending,
+        }
+    }
+}
+
+fn application_fact() -> Value {
+    json!({
+        "name": "ferric-browser", "version": env!("CARGO_PKG_VERSION"),
+        "commit": fact("not-tested", None, "release metadata was not supplied to this build", "not-probed")
+    })
+}
+
+fn webengine_fact() -> Value {
+    fact(
+        "available",
+        Some("QtWebEngineQuick"),
+        "the compiled adapter links the public WebEngineView module",
+        "observed",
+    )
+}
+
+#[allow(clippy::too_many_lines)]
+fn snapshot_from_probes(compositor: Value, probes: ProbeFacts) -> Value {
+    let ProbeFacts {
+        portal,
+        pipewire,
+        qt_runtime,
+        engine_package,
+        dictionaries,
+        gpu_driver,
+        sandbox,
+    } = probes;
     let engine_policy = engine_update_policy(&qt_runtime);
-    let dictionaries = dictionary_probe();
     let theme_contrast = serde_json::to_value(theme_contrast_report(&ThemePalette::default()))
         .unwrap_or_else(|_| {
             json!({
@@ -74,16 +168,7 @@ pub fn snapshot_with_compositor(compositor: Value) -> Value {
         });
     json!({
         "schema": SCHEMA_VERSION,
-        "application": {
-            "name": "ferric-browser",
-            "version": env!("CARGO_PKG_VERSION"),
-            "commit": fact(
-                "not-tested",
-                None,
-                "release metadata was not supplied to this build",
-                "not-probed"
-            )
-        },
+        "application": application_fact(),
         "build": {
             "rust": fact(
                 "configured",
@@ -136,18 +221,13 @@ pub fn snapshot_with_compositor(compositor: Value) -> Value {
                 "not-probed"
             ),
             "software_rendering": software_rendering_fact(),
-            "gpu_driver": gpu_driver_fact(),
-            "sandbox": sandbox_fact(),
+            "gpu_driver": gpu_driver,
+            "sandbox": sandbox,
             "portal": portal["service"].clone(),
             "pipewire": pipewire.clone()
         },
         "capabilities": {
-            "webengine": fact(
-                "available",
-                Some("QtWebEngineQuick"),
-                "the compiled adapter links the public WebEngineView module",
-                "observed"
-            ),
+            "webengine": webengine_fact(),
             "request_interception": fact(
                 "available",
                 Some("QWebEngineUrlRequestInterceptor"),

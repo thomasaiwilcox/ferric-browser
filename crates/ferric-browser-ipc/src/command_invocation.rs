@@ -33,6 +33,34 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn browser_panels_round_trip_without_accepting_payloads() {
+        for name in ["settings", "profiles", "sessions"] {
+            let command = ferric_browser_core::ParsedCommand {
+                name: name.into(),
+                arguments: Vec::new(),
+            };
+            let envelope = encode_command(&command).unwrap();
+            assert_eq!(
+                decode_command_invocation(&envelope).unwrap().command,
+                command
+            );
+            assert!(
+                decode_command_invocation(&json!({
+                    "command": name, "arguments": {"unexpected": "value"}
+                }))
+                .is_err()
+            );
+            assert!(
+                encode_command(&ferric_browser_core::ParsedCommand {
+                    name: name.into(),
+                    arguments: vec!["unexpected".into()]
+                })
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn native_edit_round_trips_and_rejects_payloads() {
         for operation in ["copy", "cut", "paste", "paste-plain"] {
             let command = ferric_browser_core::ParsedCommand {

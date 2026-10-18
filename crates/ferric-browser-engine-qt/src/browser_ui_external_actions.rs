@@ -48,31 +48,10 @@ impl qobject::BrowserUi {
             .as_ref()
             .is_some_and(|request| request.created_at.elapsed() >= PAGE_SCRIPT_DEADLINE);
         if expired {
-            let operation_id = this
-                .pending_selection
-                .as_ref()
-                .and_then(|request| request.operation_id.clone());
-            this.pending_selection = None;
-            this.pending_spawn = None;
-            if let Some(operation_id) = operation_id {
-                this.operation_states.insert(
-                    operation_id,
-                    "failed (selection extraction timed out)".into(),
-                );
-            }
-            if let Some(pending) = this.pending_action_target.take() {
-                this.operation_states.insert(
-                    pending.operation_id,
-                    "failed (selection extraction timed out)".into(),
-                );
-            }
-            if let Some(pending) = this.pending_userscript.take() {
-                this.operation_states.insert(
-                    pending.operation_id,
-                    "failed (selection extraction timed out)".into(),
-                );
-            }
-            self.set_status_text(QString::from("Selection extraction timed out"));
+            finish_pending_selection_operation(this, "failed (selection extraction timed out)");
+            self.set_status_text(QString::from(
+                "Reading the selected text took too long. Try again.",
+            ));
             return QString::default();
         }
         let Some(request) = this.pending_selection.as_mut() else {
@@ -97,15 +76,14 @@ impl qobject::BrowserUi {
                 return false;
             };
             if pending.token != token {
-                self.set_status_text(QString::from("Action target selection is stale"));
                 return false;
             }
             let pending = this.pending_action_target.take();
-            finish_pending_selection_operation(this, "cancelled");
+            this.pending_selection = None;
             pending
         };
         let Some(pending) = pending else {
-            self.set_status_text(QString::from("Action target selection expired"));
+            self.set_status_text(QString::from("Select text on the page and try again."));
             return false;
         };
         let fail = |mut this: Pin<&mut Self>, message: String| {
@@ -123,31 +101,44 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         ) != Some(pending.target)
         {
-            return fail(self, "Action target selection is stale".into());
+            return fail(
+                self,
+                "The page changed. Select the text again and retry.".into(),
+            );
         }
         if pending.created_at.elapsed() >= PAGE_SCRIPT_DEADLINE {
-            return fail(self, "Action target selection timed out".into());
+            return fail(
+                self,
+                "Reading the selected text took too long. Try again.".into(),
+            );
         }
         let value: Value = match serde_json::from_str(&result.to_string()) {
             Ok(value) => value,
-            Err(_) => return fail(self, "Action target selection extraction failed".into()),
+            Err(_) => {
+                return fail(
+                    self,
+                    "Could not read the selected text. Select it again and retry.".into(),
+                );
+            }
         };
         if let Some(error) = value.get("error").and_then(Value::as_str) {
-            return fail(
-                self,
-                format!("Action target selection unavailable: {error}"),
-            );
+            let failed = fail(self.as_mut(), format!("selection extraction: {error}"));
+            self.set_status_text(QString::from(super::selection_failure_message(error)));
+            return failed;
         }
         let Some(selection) = value.get("text").and_then(Value::as_str) else {
-            return fail(self, "Action target selection returned invalid text".into());
+            return fail(
+                self,
+                "Could not read the selected text. Select it again and retry.".into(),
+            );
         };
         if selection.is_empty() {
-            return fail(self, "Action target selection is empty".into());
+            return fail(self, "Select text on the page and try again.".into());
         }
         if selection.len() > 1024 * 1024 || selection.contains('\0') {
             return fail(
                 self,
-                "Action target selection is too large or invalid".into(),
+                "Select a smaller passage of text and try again.".into(),
             );
         }
         let url = {
@@ -183,15 +174,13 @@ impl qobject::BrowserUi {
                 _ => argument.clone(),
             });
         }
-        match self
-            .as_mut()
-            .start_action_target_process(&argv, pending.target_config.detach)
-        {
-            Ok(operation_id) => {
-                self.set_status_text(QString::from(format!(
-                    "Sent selection to {}: {operation_id}",
-                    pending.target_name
-                )));
+        match self.as_mut().start_action_target_process(
+            &argv,
+            pending.target_config.detach,
+            Some(pending.operation_id.clone()),
+        ) {
+            Ok(_) => {
+                self.set_status_text(QString::from(format!("Started: {}", pending.target_name)));
                 true
             }
             Err(error) => fail(self, format!("action target failed: {error}")),
@@ -204,6 +193,27 @@ impl qobject::BrowserUi {
         result: &QString,
     ) -> bool {
         let token = token.to_string();
+        // The current request is the authority for every consumer. Check it
+        // before routing a page reply to a process, script, search or copy.
+        let binding = self.as_ref();
+        let Some(request) = binding.rust().pending_selection.as_ref() else {
+            return false;
+        };
+        if request.token != token {
+            return false;
+        }
+        if request.created_at.elapsed() >= PAGE_SCRIPT_DEADLINE {
+            let mut rust = self.as_mut().rust_mut();
+            finish_pending_selection_operation(
+                rust.as_mut().get_mut(),
+                "failed (selection extraction timed out)",
+            );
+            drop(rust);
+            self.set_status_text(QString::from(
+                "Reading the selected text took too long. Try again.",
+            ));
+            return false;
+        }
         if self
             .as_ref()
             .rust()
@@ -255,11 +265,13 @@ impl qobject::BrowserUi {
             this.pending_selection.take()
         };
         let Some(pending) = pending else {
-            self.set_status_text(QString::from("Selection request expired"));
+            self.set_status_text(QString::from("Select text on the page and try again."));
             return false;
         };
         if pending.created_at.elapsed() >= PAGE_SCRIPT_DEADLINE {
-            self.set_status_text(QString::from("Selection extraction timed out"));
+            self.set_status_text(QString::from(
+                "Reading the selected text took too long. Try again.",
+            ));
             return false;
         }
         let current = current_target(
@@ -267,33 +279,43 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         );
         if current != Some(pending.target) {
-            self.set_status_text(QString::from("Selection request is stale"));
+            self.set_status_text(QString::from(
+                "The page changed. Select the text again and retry.",
+            ));
             return false;
         }
         let value: Value = if let Ok(value) = serde_json::from_str(&result.to_string()) {
             value
         } else {
-            self.set_status_text(QString::from("Selection extraction failed"));
+            self.set_status_text(QString::from(
+                "Could not read the selected text. Select it again and retry.",
+            ));
             return false;
         };
         let Some(object) = value.as_object() else {
-            self.set_status_text(QString::from("Selection extraction returned invalid data"));
+            self.set_status_text(QString::from(
+                "Could not read the selected text. Select it again and retry.",
+            ));
             return false;
         };
         if let Some(error) = object.get("error").and_then(Value::as_str) {
-            self.set_status_text(QString::from(format!("Selection not copied: {error}")));
+            self.set_status_text(QString::from(super::selection_failure_message(error)));
             return false;
         }
         let Some(text) = object.get("text").and_then(Value::as_str) else {
-            self.set_status_text(QString::from("Selection extraction returned invalid text"));
+            self.set_status_text(QString::from(
+                "Could not read the selected text. Select it again and retry.",
+            ));
             return false;
         };
         if text.is_empty() {
-            self.set_status_text(QString::from("No document selection"));
+            self.set_status_text(QString::from("Select text on the page and try again."));
             return false;
         }
         if text.len() > 1024 * 1024 || text.contains('\0') {
-            self.set_status_text(QString::from("Selection is too large or invalid"));
+            self.set_status_text(QString::from(
+                "Select a smaller passage of text and try again.",
+            ));
             return false;
         }
         let primary = pending.primary;
@@ -318,11 +340,10 @@ impl qobject::BrowserUi {
                 return false;
             };
             if pending.token != token {
-                self.set_status_text(QString::from("Userscript selection is stale"));
                 return false;
             }
             let pending = this.pending_userscript.take();
-            finish_pending_selection_operation(this, "cancelled");
+            this.pending_selection = None;
             pending
         };
         let Some(pending) = pending else {
@@ -344,23 +365,39 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         ) != Some(pending.target)
         {
-            return fail(self, "Userscript selection target is stale".into());
+            return fail(
+                self,
+                "The page changed. Select the text again and retry.".into(),
+            );
         }
         let value: Value = match serde_json::from_str(&result.to_string()) {
             Ok(value) => value,
-            Err(_) => return fail(self, "Userscript selection extraction failed".into()),
+            Err(_) => {
+                return fail(
+                    self,
+                    "Could not read the selected text. Select it again and retry.".into(),
+                );
+            }
         };
         if let Some(error) = value.get("error").and_then(Value::as_str) {
-            return fail(self, format!("Userscript selection unavailable: {error}"));
+            let failed = fail(self.as_mut(), format!("selection extraction: {error}"));
+            self.set_status_text(QString::from(super::selection_failure_message(error)));
+            return failed;
         }
         let Some(text) = value.get("text").and_then(Value::as_str) else {
-            return fail(self, "Userscript selection returned invalid text".into());
+            return fail(
+                self,
+                "Could not read the selected text. Select it again and retry.".into(),
+            );
         };
         if text.is_empty() {
-            return fail(self, "Userscript selection is empty".into());
+            return fail(self, "Select text on the page and try again.".into());
         }
         if text.len() > 1024 * 1024 || text.contains('\0') {
-            return fail(self, "Userscript selection is too large or invalid".into());
+            return fail(
+                self,
+                "Select a smaller passage of text and try again.".into(),
+            );
         }
         match self.as_mut().execute_userscript_with_context(
             &pending.name,
@@ -372,7 +409,7 @@ impl qobject::BrowserUi {
             None,
         ) {
             Ok(_) => {
-                self.set_status_text(QString::from("Userscript selection started"));
+                self.set_status_text(QString::from(format!("Started: {}", pending.label)));
                 true
             }
             Err(error) => fail(self, format!("Userscript selection failed: {error}")),
@@ -830,7 +867,9 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         ) != Some(pending.target)
         {
-            self.set_status_text(QString::from("Editor target is stale"));
+            self.set_status_text(QString::from(
+                "The page changed; edited text was not applied. Check the current field.",
+            ));
             return false;
         }
         let value: Value = if let Ok(value) = serde_json::from_str(&result.to_string()) {

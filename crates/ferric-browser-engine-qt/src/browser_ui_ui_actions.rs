@@ -1,6 +1,6 @@
 use super::{
     ActionRegistry, BTreeMap, CommandRegistry, CommandSource, CxxQtType, ParsedCommand, PathBuf,
-    Pin, PublicError, QString, QStringList, UserscriptManagerRequest, ValidatedUrl, Value,
+    Pin, PublicError, QString, QStringList, UserscriptManagerRequest, Value,
     action_failure_category, action_operation_id, current_target, external_action_presentations,
     is_bounded_untrusted_text, is_safe_history_url, parse_external_action_id, qobject,
     safe_ipc_url, typed_ipc_action, ui_action_arguments, userscript, userscript_subject_target,
@@ -47,8 +47,6 @@ impl qobject::BrowserUi {
                 Ok(_) => {
                     self.as_mut()
                         .record_action_audit(&action_id, &operation_id, "accepted", None);
-                    self.as_mut()
-                        .set_status_text(QString::from(format!("Executing {action_id}")));
                     true
                 }
                 Err(error) => {
@@ -59,7 +57,7 @@ impl qobject::BrowserUi {
                         "failed",
                         Some(action_failure_category(error.code())),
                     );
-                    self.set_status_text(QString::from(format!("{action_id} failed: {error}")));
+                    self.set_status_text(QString::from(error.to_string()));
                     false
                 }
             };
@@ -73,19 +71,16 @@ impl qobject::BrowserUi {
                 Ok(_) => {
                     self.as_mut()
                         .record_action_audit(&action_id, &operation_id, "accepted", None);
-                    self.as_mut()
-                        .set_status_text(QString::from(format!("Executing {action_id}")));
                     true
                 }
                 Err(error) => {
-                    let error = PublicError::engine(error);
                     self.as_mut().record_action_audit(
                         &action_id,
                         &operation_id,
                         "failed",
                         Some(action_failure_category(error.code())),
                     );
-                    self.set_status_text(QString::from(format!("{action_id} failed: {error}")));
+                    self.set_status_text(QString::from(error.to_string()));
                     false
                 }
             };
@@ -113,27 +108,34 @@ impl qobject::BrowserUi {
             .as_ref()
             .validate_action_availability(&resolved_id, route.source)
         {
-            self.set_status_text(QString::from(error));
+            let operation_id = action_operation_id(None, "ui-action");
+            self.as_mut().record_action_audit(
+                &resolved_id,
+                &operation_id,
+                "failed",
+                Some(action_failure_category(error.code())),
+            );
+            self.set_status_text(QString::from(error.to_string()));
             return false;
         }
-        let result = self.as_mut().execute_ipc_command(command, &route);
+        let result = self
+            .as_mut()
+            .execute_ipc_command_with_operation(command, &route, None);
         let operation_id = action_operation_id(result.as_ref().ok(), "ui-action");
         match result {
             Ok(_) => {
                 self.as_mut()
                     .record_action_audit(&resolved_id, &operation_id, "accepted", None);
-                self.set_status_text(QString::from(format!("Executing {resolved_id}")));
                 true
             }
             Err(error) => {
-                let error = PublicError::engine(error);
                 self.as_mut().record_action_audit(
                     &resolved_id,
                     &operation_id,
                     "failed",
                     Some(action_failure_category(error.code())),
                 );
-                self.set_status_text(QString::from(format!("{resolved_id} failed: {error}")));
+                self.set_status_text(QString::from(error.to_string()));
                 false
             }
         }
@@ -188,16 +190,16 @@ impl qobject::BrowserUi {
     pub(super) fn install_userscript_manifest(mut self: Pin<&mut Self>, path: &QString) -> bool {
         let path = path.to_string();
         if path.is_empty() || path.len() > 4096 || path.chars().any(char::is_control) {
-            self.as_mut().set_userscript_install_state(QString::from(
-                "error:userscript manifest path is empty or invalid",
-            ));
-            return false;
+            return self.userscript_update_failed(
+                "Choose a local userscript manifest.",
+                "The userscript manifest path is empty or invalid.",
+            );
         }
         if self.as_ref().active_profile_is_transient() {
-            self.as_mut().set_userscript_install_state(QString::from(
-                "error:userscript installation is unavailable in private or ephemeral profiles",
-            ));
-            return false;
+            return self.userscript_update_failed(
+                "Userscript installation needs a regular profile.",
+                "Userscript installation is unavailable in private or temporary profiles.",
+            );
         }
         let Some(root) = self
             .as_ref()
@@ -206,10 +208,10 @@ impl qobject::BrowserUi {
             .as_ref()
             .map(|roots| roots.config.clone())
         else {
-            self.as_mut().set_userscript_install_state(QString::from(
-                "error:userscripts are unavailable without configured storage",
-            ));
-            return false;
+            return self.userscript_update_failed(
+                "Userscript installation needs available storage.",
+                "Userscript storage is unavailable for this profile.",
+            );
         };
         let result = self
             .as_mut()
@@ -233,21 +235,17 @@ impl qobject::BrowserUi {
                     .set_status_text(QString::from("Installing userscript…"));
                 true
             }
-            Err(error) => {
-                self.as_mut()
-                    .set_userscript_install_state(QString::from(format!("error:{error}")));
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Userscript installation failed: {error}"
-                )));
-                false
-            }
+            Err(error) => self.userscript_update_failed(
+                "The script couldn't be installed. See Settings for details.",
+                &error,
+            ),
         }
     }
 
     pub(super) fn execute_userscript_action_command(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         command: &ParsedCommand,
-    ) -> Result<Option<(Value, String)>, String> {
+    ) -> Result<Option<(Value, String)>, PublicError> {
         let [subject, verb, arguments @ ..] = command.arguments.as_slice() else {
             return Ok(None);
         };
@@ -272,28 +270,31 @@ impl qobject::BrowserUi {
                 let [url] = arguments else {
                     return Err("userscript link actions require one URL".into());
                 };
-                self.execute_registered_userscript_action(&action_id, url)?
+                self.as_mut()
+                    .execute_registered_userscript_action(&action_id, url)?
             }
             "selection" => {
                 if !arguments.is_empty() {
                     return Err("userscript selection actions take no arguments".into());
                 }
-                self.execute_userscript(&action.script)?
+                self.as_mut().execute_userscript(&action.script)?
             }
             "url" => {
                 if !arguments.is_empty() {
                     return Err("userscript URL actions take no arguments".into());
                 }
-                self.execute_registered_userscript_action(&action_id, "")?
+                self.as_mut()
+                    .execute_registered_userscript_action(&action_id, "")?
             }
             "tab" | "window" | "context" => {
                 if arguments.len() > 1 {
                     return Err(format!(
                         "userscript {} actions accept at most one subject target",
                         action.subject
-                    ));
+                    )
+                    .into());
                 }
-                self.execute_registered_userscript_action(
+                self.as_mut().execute_registered_userscript_action(
                     &action_id,
                     arguments.first().map(String::as_str).unwrap_or_default(),
                 )?
@@ -303,9 +304,11 @@ impl qobject::BrowserUi {
                     return Err(format!(
                         "userscript {} actions require one typed target",
                         action.subject
-                    ));
+                    )
+                    .into());
                 };
-                self.execute_registered_userscript_action(&action_id, value)?
+                self.as_mut()
+                    .execute_registered_userscript_action(&action_id, value)?
             }
             _ => {
                 return Err(
@@ -313,6 +316,17 @@ impl qobject::BrowserUi {
                     );
             }
         };
+        if result.get("selection_required").and_then(Value::as_bool) == Some(true) {
+            let mut rust = self.as_mut().rust_mut();
+            if let Some(pending) = rust.as_mut().get_mut().pending_userscript.as_mut() {
+                pending.label = action.label.clone();
+            }
+            drop(rust);
+            self.as_mut().set_status_text(QString::from(format!(
+                "Preparing selection for {}…",
+                action.label
+            )));
+        }
         Ok(Some((result, action_id)))
     }
 
@@ -320,7 +334,7 @@ impl qobject::BrowserUi {
         self: Pin<&mut Self>,
         action_id: &str,
         value: &str,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, PublicError> {
         self.execute_registered_userscript_action_with_source(action_id, value, false)
     }
 
@@ -328,7 +342,7 @@ impl qobject::BrowserUi {
         self: Pin<&mut Self>,
         action_id: &str,
         value: &str,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, PublicError> {
         self.execute_registered_userscript_action_with_source(action_id, value, true)
     }
 
@@ -337,7 +351,7 @@ impl qobject::BrowserUi {
         action_id: &str,
         value: &str,
         hint_activation: bool,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, PublicError> {
         let registry = ActionRegistry::default_v1();
         if registry.resolve(action_id).is_some() {
             return Err("userscript action cannot replace a built-in action".into());
@@ -382,6 +396,18 @@ impl qobject::BrowserUi {
         if current_profile != target_profile {
             return Err("userscript action target belongs to another profile".into());
         }
+        if state
+            .profiles()
+            .get(&target_profile)
+            .is_some_and(|profile| profile.privacy.is_transient())
+            && !manifest.allow_private
+        {
+            return Err(PublicError::new(
+                ferric_browser_ipc::ErrorCode::Denied,
+                "This userscript isn't enabled for private or temporary profiles.",
+                "userscript manifest forbids private execution",
+            ));
+        }
         let bounded_value = || {
             is_bounded_untrusted_text(value)
                 .then_some(value)
@@ -402,12 +428,8 @@ impl qobject::BrowserUi {
                             .into(),
                     );
                 }
-                let url = ValidatedUrl::parse(bounded_value()?.to_owned())
-                    .map_err(|error| format!("userscript action link URL is invalid: {error}"))?;
-                if !is_safe_history_url(url.as_str()) {
-                    return Err("userscript action link URL is not eligible".into());
-                }
-                (Some(safe_ipc_url(url.as_str())), None)
+                let url = super::userscript_catalog::link_context_url(bounded_value()?)?;
+                (Some(url), None)
             }
             "selection" => {
                 if !action
@@ -483,20 +505,13 @@ impl qobject::BrowserUi {
                     );
                 }
                 let id = bounded_value()?;
-                let library = self
-                    .as_ref()
-                    .rust()
-                    .storage_library
-                    .clone()
-                    .filter(|_| !self.as_ref().rust().storage_library_dirty.get())
-                    .ok_or_else(|| {
-                        "download metadata is unavailable; retry the action".to_owned()
-                    })?;
-                let download = library
-                    .downloads
-                    .iter()
-                    .find(|download| download.id == id)
-                    .ok_or_else(|| "download userscript action target is stale".to_owned())?;
+                let download = self.as_ref().get_ref().current_download_rows()?
+                    .into_iter().find(|row| row.record.id == id)
+                    .ok_or_else(|| PublicError::new(
+                        ferric_browser_ipc::ErrorCode::StaleTarget,
+                        "This download is no longer available. Refresh Downloads and try again.",
+                        "download subject is absent from this profile session",
+                    ))?.record;
                 subject_fields.insert("download_id".into(), Value::String(id.to_owned()));
                 let url = is_safe_history_url(&download.source_url)
                     .then(|| safe_ipc_url(&download.source_url));
@@ -617,7 +632,7 @@ impl qobject::BrowserUi {
                     return Err("named session catalog is still loading; retry the action".into());
                 }
                 if self.as_ref().rust().profile_id.is_none() {
-                    return Err("named sessions are unavailable in this profile".to_owned());
+                    return Err("named sessions are unavailable in this profile".into());
                 }
                 if !self
                     .as_ref()
@@ -665,7 +680,7 @@ impl qobject::BrowserUi {
         } else {
             None
         };
-        self.execute_userscript_with_context(
+        let result = self.as_mut().execute_userscript_with_context(
             &action.script,
             target,
             hint_url,
@@ -673,6 +688,8 @@ impl qobject::BrowserUi {
             None,
             subject_url,
             Some(subject_fields),
-        )
+        )?;
+        self.set_status_text(QString::from(format!("Started: {}", action.label)));
+        Ok(result)
     }
 }

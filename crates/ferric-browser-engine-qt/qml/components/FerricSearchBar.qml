@@ -36,6 +36,7 @@ Rectangle {
         color: searchBar.browserWindow.warningColor
 
         Label {
+            textFormat: Text.PlainText
             id: searchPrefix
             anchors.centerIn: parent
             text: searchBar.searchBackward ? "?" : "/"

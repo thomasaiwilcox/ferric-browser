@@ -1,5 +1,6 @@
 use super::{
-    CxxQtType, ParseInput, ParsedCommand, Pin, QString, is_safe_history_url, parse_chain, qobject,
+    CxxQtType, Event, Mode, ParseInput, ParsedCommand, Pin, QString, is_safe_history_url,
+    parse_chain, qobject,
 };
 
 fn durable_history_commands(commands: &[ParsedCommand]) -> bool {
@@ -15,12 +16,12 @@ fn durable_history_commands(commands: &[ParsedCommand]) -> bool {
 }
 
 fn secondary_command_supported(command: &ParsedCommand) -> bool {
+    if command.name == "help" {
+        return matches!(command.arguments.as_slice(), [topic] if super::setting_metadata(topic).is_some());
+    }
     if command.name == "open" {
         return !command.arguments.iter().any(|argument| {
-            matches!(
-                argument.as_str(),
-                "--clean-link" | "--ephemeral" | "--profile" | "--context"
-            )
+            matches!(argument.as_str(), "--ephemeral" | "--profile" | "--context")
         }) && !command
             .arguments
             .windows(2)
@@ -52,51 +53,78 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
             | "context-list"
             | "context-route"
             | "context-save"
-            | "diagnostics"
-            | "download-cancel"
-            | "download-pause"
-            | "download-resume"
-            | "download-retry"
-            | "downloads"
-            | "help"
-            | "hint"
             | "history"
             | "journey"
             | "link-cleaning-update"
             | "macro-play"
-            | "permission-reset"
             | "permissions"
-            | "profile-create"
-            | "profile-delete"
-            | "profile-list"
-            | "profile-open"
             | "quickmark-list"
             | "repeat"
-            | "session-delete"
-            | "session-list"
-            | "session-load"
-            | "session-save"
             | "site-data-clear"
             | "site-doctor"
             | "site-doctor-undo"
             | "site-status"
-            | "switcher"
-            | "tab-close"
-            | "tab-clone"
-            | "tab-focus"
-            | "tab-move"
-            | "tab-next"
-            | "tab-open"
-            | "tab-pin"
-            | "tab-prev"
-            | "tab-select"
-            | "tab-undo"
-            | "url-clean"
-            | "url-explain"
             | "window-focus"
             | "window-move"
-            | "window-new"
     )
+}
+
+#[cfg(test)]
+mod settings_surface_tests {
+    use super::*;
+
+    #[test]
+    fn secondary_commands_require_a_supported_surface() {
+        let command = |name: &str, arguments: &[&str]| ParsedCommand {
+            name: name.into(),
+            arguments: arguments.iter().map(|value| (*value).to_owned()).collect(),
+        };
+        assert!(secondary_command_supported(&command("settings", &[])));
+        for arguments in [vec![], vec!["--private"], vec!["--profile", "work"]] {
+            assert!(secondary_command_supported(&command(
+                "window-new",
+                &arguments
+            )));
+        }
+        assert!(secondary_command_supported(&command(
+            "url-clean",
+            &["https://example.test/?utm_source=demo"]
+        )));
+        assert!(secondary_command_supported(&command("url-explain", &[])));
+        assert!(secondary_command_supported(&command(
+            "open",
+            &["--clean-link", "https://example.test/?utm_source=demo"]
+        )));
+        assert!(!secondary_command_supported(&command(
+            "open",
+            &[
+                "--clean-link",
+                "--target",
+                "new-window",
+                "https://example.test/"
+            ]
+        )));
+        for arguments in [
+            vec!["links"],
+            vec!["--target", "pointer", "links"],
+            vec!["--target", "choose"],
+        ] {
+            assert!(secondary_command_supported(&command("hint", &arguments)));
+        }
+        assert!(secondary_command_supported(&command("grid", &[])));
+        assert!(secondary_command_supported(&command("target-search", &[])));
+        assert!(secondary_command_supported(&command(
+            "help",
+            &["ui.font_size_pt"]
+        )));
+        for unavailable in [
+            command("help", &[]),
+            command("help", &["open"]),
+            command("help", &["ui.font_size_pt", "extra"]),
+        ] {
+            assert!(!secondary_command_supported(&unavailable));
+        }
+    }
 }
 
 impl qobject::BrowserUi {
@@ -141,7 +169,7 @@ impl qobject::BrowserUi {
             })
         {
             self.set_status_text(QString::from(format!(
-                "{} requires full browser chrome and is unavailable in this window",
+                "Use {} in the main browser window for this request.",
                 command.name
             )));
             return false;
@@ -185,7 +213,23 @@ impl qobject::BrowserUi {
                 self.as_mut().queue_command_history_write(text.to_owned());
             }
         }
+        self.as_mut().finish_command_entry();
+        self.as_mut().runtime_work_available();
         true
+    }
+
+    /// Close successful command entry without cancelling accepted work. The
+    /// window also uses this when focusing an already open context consumes
+    /// submission before command dispatch.
+    pub(super) fn finish_command_entry(mut self: Pin<&mut Self>) {
+        if self.as_ref().rust().core_mode == Mode::Command {
+            if let Some(window) = self.as_ref().rust().window {
+                let _ = self.as_mut().reduce_event(Event::Escape { window });
+            }
+            self.as_mut().set_core_mode(Mode::Normal);
+            self.as_mut().set_mode(QString::from("normal"));
+            self.as_mut().clear_completion();
+        }
     }
 
     pub(super) fn command_history_previous(mut self: Pin<&mut Self>, current: &QString) -> QString {
@@ -272,17 +316,27 @@ mod tests {
 
     #[test]
     fn secondary_windows_reject_commands_their_chrome_cannot_present() {
-        for name in [
-            "history",
-            "downloads",
-            "help",
-            "diagnostics",
-            "switcher",
-            "tab-close",
-        ] {
+        for name in ["history", "help"] {
             assert!(!secondary_command_supported(&command(name, &[])), "{name}");
         }
-        for name in ["reload", "zoom", "get", "version", "history-open"] {
+        for name in [
+            "downloads",
+            "download-pause",
+            "download-resume",
+            "download-cancel",
+            "download-retry",
+            "reload",
+            "zoom",
+            "get",
+            "version",
+            "diagnostics",
+            "switcher",
+            "history-open",
+            "tab-close",
+            "tab-open",
+            "tab-next",
+            "tab-prev",
+        ] {
             assert!(secondary_command_supported(&command(name, &[])), "{name}");
         }
         assert!(secondary_command_supported(&command(

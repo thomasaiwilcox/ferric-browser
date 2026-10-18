@@ -1,0 +1,24 @@
+# Maintained source releases for Ubuntu CI. Arch uses kwindowsystem >= 6.28.
+[[source]]
+name = "extra-cmake-modules-6.28.0"
+url = "https://download.kde.org/stable/frameworks/6.28/extra-cmake-modules-6.28.0.tar.xz"
+sha256 = "a32e24b267e8528d0253bc8df18bdc00e676560a43b796533e1b1406f4eef4db"
+build = "cmake"
+
+[[source]]
+name = "wayland-protocols-1.46"
+url = "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/1.46/downloads/wayland-protocols-1.46.tar.xz"
+sha256 = "fd0de056a895fa48bd1aa5f0b8dfeed454101b88bc7e1c61a953422eb71db167"
+build = "meson"
+
+[[source]]
+name = "plasma-wayland-protocols-1.20.0"
+url = "https://download.kde.org/stable/plasma-wayland-protocols/plasma-wayland-protocols-1.20.0.tar.xz"
+sha256 = "9818bb1462211ce5982e670abf0d964eb11fe1d0c02a1c26084db30695a79d6a"
+build = "cmake"
+
+[[source]]
+name = "kwindowsystem-6.28.0"
+url = "https://download.kde.org/stable/frameworks/6.28/kwindowsystem-6.28.0.tar.xz"
+sha256 = "5adbdf9c82b1ecbb92bda6498ea1b8f88c08f9ec57dbff70d582e2453bf16b12"
+build = "cmake"

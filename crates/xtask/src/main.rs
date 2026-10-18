@@ -292,6 +292,7 @@ fn render_user_docs() -> Result<(String, String, String, String), String> {
         "\n## Runtime persistence\n\n",
         "Runtime settings and bindings are prepared and validated before their generated override file is replaced. A rejected validation or write before replacement leaves the old effective configuration and interaction sessions intact. Accepted command results and `config.changed` events include `persistence`: `memory-only`, `durable`, or `durability-uncertain`. The last outcome means replacement committed and memory matches the visible file, but the final directory sync could not confirm crash durability. It is not a rejected change and does not trigger automatic rollback or retry. Selector commands can first return `pending-validation`; their eventual publication is reported by `config.changed`, while rejection is shown in browser status.\n",
     ));
+    append_download_folder_docs(&mut configuration);
     append_hint_selector_docs(&mut configuration);
     configuration.push_str(concat!(
         "\n## Validated hint proxies\n\n",
@@ -308,6 +309,27 @@ fn render_user_docs() -> Result<(String, String, String, String), String> {
         render_binding_docs()?,
         render_action_docs()?,
     ))
+}
+
+fn append_download_folder_docs(output: &mut String) {
+    output.push_str(r#"
+## Download folder
+
+`downloads.directory` accepts `xdg-downloads` or an absolute folder path, including spaces and Unicode:
+
+```toml
+[downloads]
+directory = "/home/user/Downloads/Reports"
+```
+
+For a temporary change in the current window:
+
+```text
+:set --temp downloads.directory="/home/user/Downloads/Reports"
+```
+
+Use `:set --temp downloads.directory=xdg-downloads` for the desktop Downloads folder. The existing tagged form `{ path = "/absolute/folder" }` remains supported. Relative paths and control characters are rejected; a rejected change leaves the current folder unchanged.
+"#);
 }
 
 fn append_hint_selector_docs(configuration: &mut String) {
@@ -378,6 +400,8 @@ fn run_check() -> Result<(), String> {
     check_capability_matrix(Path::new("docs/architecture/capabilities.md"))?;
     run_qml_lint()?;
     run_qml_ui_tests()?;
+    run_profile_lifetime_tests()?;
+    run_download_source_tests()?;
     check_generated_docs()?;
     check_architecture_boundaries()?;
     validate_release_artifacts()?;
@@ -531,6 +555,10 @@ fn run_qml_ui_tests() -> Result<(), String> {
         .env("QT_QPA_PLATFORM", "offscreen")
         .env("QT_QPA_PLATFORMTHEME", "")
         .env("QT_QUICK_BACKEND", "software")
+        .env(
+            "QTWEBENGINE_CHROMIUM_FLAGS",
+            "--disable-gpu --js-flags=--expose-gc",
+        )
         .status()
         .map_err(|error| format!("failed to run {executable}: {error}"))?;
     if status.success() {
@@ -540,6 +568,59 @@ fn run_qml_ui_tests() -> Result<(), String> {
             "{executable} QML interaction tests exited with {status}"
         ))
     }
+}
+
+fn run_profile_lifetime_tests() -> Result<(), String> {
+    run(
+        "cmake",
+        &[
+            "-S",
+            "crates/ferric-browser-engine-qt/tests/profile-lifetime",
+            "-B",
+            "target/profile-lifetime-tests",
+        ],
+    )?;
+    run(
+        "cmake",
+        &[
+            "--build",
+            "target/profile-lifetime-tests",
+            "--parallel",
+            "2",
+        ],
+    )?;
+    run(
+        "ctest",
+        &[
+            "--test-dir",
+            "target/profile-lifetime-tests",
+            "--output-on-failure",
+        ],
+    )
+}
+
+fn run_download_source_tests() -> Result<(), String> {
+    run(
+        "cmake",
+        &[
+            "-S",
+            "crates/ferric-browser-engine-qt/tests/download-source",
+            "-B",
+            "target/download-source-tests",
+        ],
+    )?;
+    run(
+        "cmake",
+        &["--build", "target/download-source-tests", "--parallel", "2"],
+    )?;
+    run(
+        "ctest",
+        &[
+            "--test-dir",
+            "target/download-source-tests",
+            "--output-on-failure",
+        ],
+    )
 }
 
 fn run_native_insert_tests() -> Result<(), String> {
@@ -605,6 +686,10 @@ fn run_application_tests() -> Result<(), String> {
     run(
         "python3",
         &["crates/ferric-browser-engine-qt/tests/application/run_ipc_probe.py"],
+    )?;
+    run(
+        "python3",
+        &["crates/ferric-browser-engine-qt/tests/application/run_window_ipc_probe.py"],
     )
 }
 
@@ -732,17 +817,24 @@ fn check_identity_and_layer_boundaries() -> Result<(), String> {
     Ok(())
 }
 
-fn check_qt_adapter_boundaries() -> Result<(), String> {
-    let reducer_mutation_markers = [
+fn qt_adapter_core_mutation_marker(source: &str) -> Option<&'static str> {
+    // The adapter's `state` field now holds the opaque BrowserApplication.
+    // Mutable application-service calls (including download metadata) are
+    // legitimate. Raw reducer ownership and model writes remain forbidden.
+    [
         ".tabs.get_mut(",
         ".windows.get_mut(",
         ".profiles.get_mut(",
         ".journey.clear_matching(",
         ".active_window =",
         ".last_focused_window =",
-        ".state.as_mut(",
         ".state.handle(",
-    ];
+    ]
+    .into_iter()
+    .find(|marker| source.contains(marker))
+}
+
+fn check_qt_adapter_boundaries() -> Result<(), String> {
     let reducer_ownership_markers = ["ApplicationState", "RuntimeOwner", "StateView"];
     let prose_error_markers = ["error.contains(", "error.starts_with(", "error.ends_with("];
     visit_files(
@@ -755,10 +847,7 @@ fn check_qt_adapter_boundaries() -> Result<(), String> {
                 return Ok(());
             }
             let production_source = source.split("#[cfg(test)]").next().unwrap_or(source);
-            if let Some(marker) = reducer_mutation_markers
-                .iter()
-                .find(|marker| production_source.contains(**marker))
-            {
+            if let Some(marker) = qt_adapter_core_mutation_marker(production_source) {
                 return Err(format!(
                     "Qt adapter mutates application state outside the reducer: {} contains {marker}",
                     path.display()
@@ -801,6 +890,11 @@ fn check_qt_adapter_root() -> Result<(), String> {
         .split_once("\n#[cfg(test)]\nmod tests;")
         .map(|(production, _)| production)
         .ok_or_else(|| "could not locate Qt adapter test-module boundary".to_owned())?;
+    if !production_adapter.contains("state: Option<BrowserApplication>") {
+        return Err(
+            "Qt adapter must retain the opaque BrowserApplication service boundary".to_owned(),
+        );
+    }
     for marker in [
         "dispatch_command(",
         "dispatch_command_for(",
@@ -1303,7 +1397,7 @@ fn check_accessibility_contract() -> Result<(), String> {
         "Accessible.role: Accessible.PageTabList",
         "Accessible.role: Accessible.PageTab",
         "Accessible.role: Accessible.StatusBar",
-        "Accessible.description: \"Current universal switcher result count\"",
+        "Accessible.description: \"Current result count\"",
         "Accessible.selected:",
         "focus: visible",
         "event.key === Qt.Key_Escape",
@@ -3422,5 +3516,34 @@ mod requirement_tests {
     fn csv_record_parser_rejects_malformed_quotes() {
         assert!(parse_csv_record(r#""id,"title""#).is_err());
         assert!(parse_csv_record(r#""id"tail,"title""#).is_err());
+    }
+}
+
+#[cfg(test)]
+mod adapter_boundary_tests {
+    use super::qt_adapter_core_mutation_marker;
+
+    #[test]
+    fn opaque_application_metadata_services_are_allowed() {
+        let source = "if let Some(application) = this.state.as_mut() { application.retry_download_history(); }";
+        assert_eq!(qt_adapter_core_mutation_marker(source), None);
+    }
+
+    #[test]
+    fn direct_model_writes_and_reducer_bypasses_remain_rejected() {
+        for source in [
+            "model.tabs.get_mut(&tab)",
+            "model.windows.get_mut(&window)",
+            "model.profiles.get_mut(&profile)",
+            "model.journey.clear_matching(filter)",
+            "model.active_window = selected",
+            "model.last_focused_window = selected",
+            "this.state.handle(event)",
+        ] {
+            assert!(
+                qt_adapter_core_mutation_marker(source).is_some(),
+                "{source}"
+            );
+        }
     }
 }

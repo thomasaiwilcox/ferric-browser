@@ -16,6 +16,17 @@ pub(super) struct SwitcherLibraryCandidate {
     pub(super) fields: Vec<String>,
 }
 
+impl SwitcherLibraryCandidate {
+    pub(super) fn matches_scope(&self, scope: &str) -> bool {
+        match self.kind.as_str() {
+            "history" => matches!(scope, "all" | "history"),
+            "bookmark" | "quickmark" => matches!(scope, "all" | "marks"),
+            "download" => matches!(scope, "all" | "downloads"),
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub(super) struct SwitcherLibraryIndex {
     pub(super) profile_name: String,
@@ -127,6 +138,72 @@ mod tests {
     use std::sync::atomic::AtomicBool;
 
     #[test]
+    fn indexed_sources_do_not_escape_the_requested_scope() {
+        use ferric_browser_storage::{
+            BookmarkRecord, DownloadRecord, DownloadState, HistoryRecord,
+        };
+
+        let snapshot = ProfileLibrarySnapshot {
+            history: vec![HistoryRecord {
+                id: 1,
+                url: "https://example.test/page".into(),
+                title: "Page".into(),
+                visit_count: 1,
+                last_visit: 1,
+            }],
+            command_history: Vec::new(),
+            bookmarks: vec![BookmarkRecord {
+                id: "bookmark".into(),
+                url: "https://example.test/mark".into(),
+                title: "Bookmark".into(),
+                updated_at: 1,
+            }],
+            quickmarks: vec![Quickmark {
+                name: "docs".into(),
+                url: "https://example.test/docs".into(),
+            }],
+            downloads: vec![DownloadRecord {
+                id: "download".into(),
+                source_url: "https://example.test/file".into(),
+                destination: "/owned-fixture/file".into(),
+                state: DownloadState::Completed,
+                bytes_received: 1,
+                created_at: 1,
+                completed_at: Some(1),
+            }],
+            permissions: Vec::new(),
+            permissions_complete: true,
+        };
+        let index = build_switcher_library_index(&snapshot, "work".into(), &AtomicBool::new(false))
+            .expect("uncancelled index builds");
+        for (scope, expected) in [
+            ("all", vec!["history", "bookmark", "quickmark", "download"]),
+            ("history", vec!["history"]),
+            ("marks", vec!["bookmark", "quickmark"]),
+            ("downloads", vec!["download"]),
+        ] {
+            let actual: Vec<_> = index
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.matches_scope(scope))
+                .map(|candidate| candidate.kind.as_str())
+                .collect();
+            assert_eq!(actual, expected, "scope {scope}");
+        }
+        for scope in [
+            "tabs", "windows", "contexts", "commands", "sessions", "closed", "actions", "unknown",
+        ] {
+            assert!(
+                !index
+                    .candidates
+                    .iter()
+                    .any(|candidate| candidate.matches_scope(scope)),
+                "library entry escaped into {scope}"
+            );
+        }
+    }
+
+    #[test]
     fn index_is_profile_scoped_and_cancellation_aware() {
         let snapshot = ProfileLibrarySnapshot {
             history: Vec::new(),
@@ -138,6 +215,7 @@ mod tests {
             }],
             downloads: Vec::new(),
             permissions: Vec::new(),
+            permissions_complete: true,
         };
         let index = build_switcher_library_index(&snapshot, "work".into(), &AtomicBool::new(false))
             .expect("uncancelled index builds");

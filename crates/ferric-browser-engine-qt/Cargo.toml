@@ -30,6 +30,7 @@ uuid.workspace = true
 
 [build-dependencies]
 cxx-qt-build.workspace = true
+pkg-config.workspace = true
 
 [lints]
 workspace = true

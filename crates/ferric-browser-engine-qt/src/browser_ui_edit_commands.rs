@@ -3,8 +3,9 @@ use super::{
     PAGE_SCRIPT_DEADLINE, ParsedCommand, Path, PathBuf, PendingCaret, PendingConfigEdit,
     PendingEditor, PendingLinkNavigation, PendingSelection, PendingSpawn, Pin, QString, Stdio,
     Uuid, ValidatedUrl, Value, clean_link, clean_open_input, configured_search_url, current_target,
-    fs, link_cleaning_policy, link_result_value, qobject, read_bounded, resolve_input,
-    safe_ipc_url, sanitize_untrusted_title, thread, validate_jseval_script,
+    finish_pending_selection_operation, fs, link_cleaning_policy, link_result_value, qobject,
+    read_bounded, resolve_input, safe_ipc_url, sanitize_untrusted_title, thread,
+    validate_jseval_script,
 };
 
 impl qobject::BrowserUi {
@@ -160,14 +161,19 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         ) != Some(pending.target)
         {
-            return fail(self, "Selection search target is stale".into());
+            return fail(
+                self,
+                "The page changed. Select the text again to search.".into(),
+            );
         }
         let value: Value = match serde_json::from_str(&result.to_string()) {
             Ok(value) => value,
             Err(_) => return fail(self, "Selection search extraction failed".into()),
         };
         if let Some(error) = value.get("error").and_then(Value::as_str) {
-            return fail(self, format!("Selection search unavailable: {error}"));
+            let failed = fail(self.as_mut(), format!("selection extraction: {error}"));
+            self.set_status_text(QString::from(super::selection_failure_message(error)));
+            return failed;
         }
         let Some(text) = value.get("text").and_then(Value::as_str) else {
             return fail(self, "Selection search returned invalid text".into());
@@ -225,11 +231,10 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         )
         .ok_or_else(|| "current document is unavailable".to_owned())?;
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_selection = Some(PendingSelection {
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        finish_pending_selection_operation(this, "cancelled");
+        this.pending_selection = Some(PendingSelection {
             token: format!("selection-{}", Uuid::new_v4()),
             target,
             primary,
@@ -238,6 +243,7 @@ impl qobject::BrowserUi {
             search_engine: None,
             operation_id: None,
         });
+        drop(rust);
         if self.as_ref().rust().core_mode == Mode::Caret {
             if let Some(window) = self.as_ref().rust().window {
                 let _ = self.as_mut().reduce_event(Event::Escape { window });
@@ -592,12 +598,15 @@ impl qobject::BrowserUi {
             )
             .ok_or_else(|| "current document is unavailable".to_owned())?;
             let token = format!("spawn-{}", Uuid::new_v4());
+            let operation_id = format!("op-{}", Uuid::new_v4());
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
+            finish_pending_selection_operation(this, "cancelled");
             this.pending_spawn = Some(PendingSpawn {
                 token: token.clone(),
                 target,
                 argv,
+                operation_id: operation_id.clone(),
             });
             this.pending_selection = Some(PendingSelection {
                 token,
@@ -606,13 +615,18 @@ impl qobject::BrowserUi {
                 issued: false,
                 created_at: Instant::now(),
                 search_engine: None,
-                operation_id: None,
+                operation_id: Some(operation_id.clone()),
             });
-            self.set_status_text(QString::from("Spawn selection requested"));
-            return Ok(serde_json::json!({"status": "accepted", "pending": true}));
+            this.operation_states
+                .insert(operation_id.clone(), "selection pending".into());
+            drop(rust);
+            self.set_status_text(QString::from("Preparing the selected text…"));
+            return Ok(
+                serde_json::json!({"status": "accepted", "pending": true, "operation_id": operation_id}),
+            );
         }
-        let operation_id = self.as_mut().start_spawn_process(&resolved)?;
-        self.set_status_text(QString::from(format!("Spawn started: {operation_id}")));
+        let operation_id = self.as_mut().start_spawn_process(&resolved, None)?;
+        self.set_status_text(QString::from("External command started"));
         Ok(serde_json::json!({
             "status": "accepted",
             "operation_id": operation_id

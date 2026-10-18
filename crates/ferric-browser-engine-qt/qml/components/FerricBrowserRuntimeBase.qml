@@ -10,6 +10,14 @@ import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
 ApplicationWindow {
     id: window
+    readonly property var modalInputScope: FerricModalInputController { hostWindow: window }
+    property bool runtimeDisposing: false
+    property bool profileBootstrapComplete: false
+    property var primaryProfileResources: null
+    readonly property alias profileResourceRegistry: profileResources
+    FerricProfileResourceRegistry { id: profileResources; rootWindow: window }
+    readonly property alias scriptRunnerObject: scriptRunner
+    FerricScriptRunner { id: scriptRunner }
     readonly property alias primaryBrowserUi: browserUi
     readonly property alias blocklistUpdaterObject: blocklistUpdater
     readonly property alias linkRuleUpdaterObject: linkRuleUpdater
@@ -104,7 +112,6 @@ ApplicationWindow {
     property string tabsMode: "multiple"
     property string tabPosition: "top"
     property bool tabSwitchingVisible: false
-    property string tabIdentitySignature: ""
     readonly property bool tabStripVisible:
         tabsMode === "always"
         || (tabsMode === "multiple" && browserUi.tab_count > 1)
@@ -116,9 +123,12 @@ ApplicationWindow {
     readonly property bool statusBarVisible:
         (window.commandNoticeVisible && !window.inputBarActive)
         || statusBarVisibleForMode(browserUi.mode)
+    readonly property real bottomControlsHeight:
+        inputBarActive ? inputBarHeight : (statusBarVisible ? statusBarHeight : 0)
+    property real profileNoticeHeight: 0
+    property bool profileNoticeInputActive: false
     readonly property real bottomChromeHeight:
-        (inputBarActive ? inputBarHeight
-         : (statusBarVisible ? statusBarHeight : 0))
+        bottomControlsHeight + profileNoticeHeight
         + (tabStripVisible && tabPosition === "bottom"
            ? tabBarHeight : 0)
     readonly property real chromeOpacity: 1.0
@@ -126,15 +136,27 @@ ApplicationWindow {
     property var popupWindowRegistry: []
     property bool applicationShutdownInProgress: false
     property bool applicationShutdownForcePromptVisible: false
-    property bool devToolsVisible: false
-    property bool devToolsDetached: false
-    property var devToolsExternalView: null
-    property var devToolsDetachedWindow: null
+    property var attachedDevToolsView: null
+    readonly property alias devToolsWorkspace: primaryDevTools
+    readonly property bool devToolsVisible: primaryDevTools.visible
+    readonly property bool devToolsDetached: primaryDevTools.detached
+    readonly property var devToolsExternalView: primaryDevTools.detached ? primaryDevTools.inspector : null
+    readonly property var devToolsDetachedWindow: primaryDevTools.detachedWindow
+    FerricDevToolsWorkspace {
+        id: primaryDevTools
+        browserWindow: window
+        hostWindow: window
+        browserUi: primaryBrowserUi
+        activeView: window.activeWebView()
+        windowFactory: window.devToolsWindowFactory
+        attachedInspector: window.attachedDevToolsView
+    }
     property real devToolsPanelHeight: 280
     property string applicationShutdownStage: ""
     property double applicationShutdownStartedAt: 0
     property int applicationShutdownGeneration: 0
     property alias ephemeralProfileOwners: windowRegistryController.ephemeralProfileOwners
+    readonly property alias switcherRegistry: windowRegistryController
     property bool libraryJourneyGraphMode: false
     property bool libraryJourneyCurrentOnly: false
     property string libraryJourneySearchText: ""
@@ -169,9 +191,8 @@ ApplicationWindow {
                                          ? Screen.devicePixelRatio : 1.0
     readonly property real logicalPixelDensity: Screen.logicalPixelDensity > 0
                                                 ? Screen.logicalPixelDensity : 1.0
-    readonly property string displayScaleLabel: Math.round(window.displayScale * 100)
-                                               + "% (" + Math.round(window.logicalPixelDensity)
-                                               + " logical dpi)"
+    readonly property string displayScaleLabel: ChromePresentation.displayScaleLabel(
+                                                   window.displayScale, window.logicalPixelDensity)
     FontMetrics {
         id: chromeFontMetrics
         font: window.font
@@ -374,105 +395,35 @@ ApplicationWindow {
     }
 
     function closeWebNotifications() {
-        var active = window.activeWebNotifications || ({})
-        for (var key in active) {
-            if (active[key]) {
-                active[key].close()
-            }
-        }
-        window.activeWebNotifications = ({})
-        window.notificationOwners = []
-        var pending = window.pendingPortalNotifications || []
-        for (var pendingIndex = 0; pendingIndex < pending.length; ++pendingIndex) {
-            if (pending[pendingIndex].notification) {
-                pending[pendingIndex].notification.close()
-            }
-        }
-        window.pendingPortalNotifications = []
+        return webNotificationController.closeWebNotifications()
     }
 
     function removePendingPortalNotification(notification) {
-        var pending = window.pendingPortalNotifications || []
-        window.pendingPortalNotifications = pending.filter(function(entry) {
-            return entry && entry.notification !== notification
-        })
+        return webNotificationController.removePendingPortalNotification(notification)
     }
 
-    function notificationOwnerFor(notification) {
-        var owners = window.notificationOwners || []
-        for (var index = 0; index < owners.length; ++index) {
-            if (owners[index] && owners[index].notification === notification) {
-                return owners[index].ui || browserUi
-            }
-        }
-        return browserUi
+    function notificationOwnerFor(notification, requireKnown) {
+        return webNotificationController.notificationOwnerFor(notification, requireKnown)
     }
 
     function rememberNotificationOwner(notification, ui) {
-        var owners = (window.notificationOwners || []).filter(function(entry) {
-            return entry && entry.notification !== notification
-        })
-        owners.push({ notification: notification, ui: ui || browserUi })
-        window.notificationOwners = owners.slice(-64)
+        return webNotificationController.rememberNotificationOwner(notification, ui)
     }
 
     function forgetNotificationOwner(notification) {
-        window.notificationOwners = (window.notificationOwners || []).filter(function(entry) {
-            return entry && entry.notification !== notification
-        })
+        return webNotificationController.forgetNotificationOwner(notification)
     }
 
-    function deferNotificationUntilPortal(ui, notification, privateProfile) {
-        var pending = window.pendingPortalNotifications || []
-        window.removePendingPortalNotification(notification)
-        pending = window.pendingPortalNotifications || []
-        pending.push({
-            ui: ui || browserUi,
-            notification: notification,
-            privateProfile: privateProfile,
-            deadlineMs: Date.now() + 5000
-        })
-        window.pendingPortalNotifications = pending.slice(-32)
-        notification.closed.connect(function() {
-            window.removePendingPortalNotification(notification)
-        })
-        notificationPortalTimer.start()
+    function deferredNotificationOwnerValid(entry) {
+        return webNotificationController.deferredNotificationOwnerValid(entry)
+    }
+
+    function deferNotificationUntilPortal(ui, notification, privateProfile, previous) {
+        return webNotificationController.deferNotificationUntilPortal(ui, notification, privateProfile, previous)
     }
 
     function processPendingPortalNotifications() {
-        var pending = (window.pendingPortalNotifications || []).slice(0)
-        if (pending.length === 0) {
-            notificationPortalTimer.stop()
-            return
-        }
-        var remaining = []
-        for (var index = 0; index < pending.length; ++index) {
-            var entry = pending[index]
-            if (!entry || !entry.notification) {
-                continue
-            }
-            var status = window.desktopPortalCapabilityStatus(entry.ui, "notifications")
-            if (Date.now() >= Number(entry.deadlineMs)
-                    || (status !== "pending" && status !== "not-probed"
-                        && status !== "available")) {
-                entry.notification.close()
-                if (entry.ui) {
-                    entry.ui.status_text = Date.now() >= Number(entry.deadlineMs)
-                            ? "Desktop portal check timed out; notification cancelled"
-                            : "Required Notification portal unavailable; notification cancelled"
-                }
-                continue
-            }
-            if (status === "pending" || status === "not-probed") {
-                remaining.push(entry)
-                continue
-            }
-            window.presentWebNotification(entry.ui, entry.notification, entry.privateProfile)
-        }
-        window.pendingPortalNotifications = remaining
-        if (remaining.length === 0) {
-            notificationPortalTimer.stop()
-        }
+        return webNotificationController.processPendingPortalNotifications()
     }
 
     function cancelPendingExternalUris(message) {
@@ -523,127 +474,26 @@ ApplicationWindow {
         }
     }
 
-    function closeWebNotificationsForOrigin(origin) {
-        var expected = String(origin || "").toLowerCase()
-        if (expected.length === 0) {
-            return
-        }
-        var active = window.activeWebNotifications || ({})
-        for (var key in active) {
-            var parts = String(key).split("\n")
-            if (parts.length >= 3 && parts[1].toLowerCase() === expected) {
-                if (active[key]) {
-                    active[key].close()
-                }
-                delete active[key]
-            }
-        }
-        window.activeWebNotifications = active
-        var pending = window.pendingPortalNotifications || []
-        var retained = []
-        for (var pendingIndex = 0; pendingIndex < pending.length; ++pendingIndex) {
-            var entry = pending[pendingIndex]
-            var pendingOrigin = window.safeNotificationOrigin(
-                        entry && entry.notification ? entry.notification : null)
-            if (pendingOrigin.toLowerCase() === expected) {
-                if (entry.notification) {
-                    entry.notification.close()
-                }
-                if (entry.ui) {
-                    entry.ui.status_text = "Desktop notification revoked for " + pendingOrigin
-                }
-            } else {
-                retained.push(entry)
-            }
-        }
-        window.pendingPortalNotifications = retained
-        if (retained.length === 0) {
-            notificationPortalTimer.stop()
-        }
+    FerricPopupOwnerBridge { id: permissionScopeBridge }
+
+    function sharesPermissionSession(left, right) {
+        return !!left && !!right && permissionScopeBridge.sharesPermissionSession(left, right)
+    }
+
+    function closeWebNotificationsForOrigin(origin, sourceUi) {
+        return webNotificationController.closeWebNotificationsForOrigin(origin, sourceUi)
     }
 
     function activeWebNotification(notification) {
-        var active = window.activeWebNotifications || ({})
-        var keys = Object.keys(active)
-        for (var index = 0; index < keys.length; ++index) {
-            if (active[keys[index]] === notification) {
-                return true
-            }
-        }
-        return false
+        return webNotificationController.activeWebNotification(notification)
     }
 
     function notificationProfileScope(ui, privateProfile) {
-        var kind = privateProfile ? "private" : "normal"
-        var name = ui && ui.profile_name ? String(ui.profile_name) : "default"
-        name = window.boundedPageDialogText(name).replace(/[\u0000-\u001f\u007f\n\r]/g, "�")
-        return kind + ":" + (name.length > 0 ? name : "default")
+        return webNotificationController.notificationProfileScope(ui, privateProfile)
     }
 
-    function presentWebNotification(ui, notification, privateProfile) {
-        if (!notification) {
-            return
-        }
-        var origin = window.safeNotificationOrigin(notification)
-        var decision = ui && ui.permission_decision
-                ? String(ui.permission_decision(origin, "notifications")) : "deny"
-        if (origin === "opaque or unavailable origin"
-                || decision !== "allow"
-                || !window.desktopNotificationsEnabled(ui)) {
-            notification.close()
-            if (ui) {
-                ui.status_text = "Desktop notification blocked for " + origin
-            }
-            return
-        }
-        if (window.desktopPortalMode(ui) === "required") {
-            var portalStatus = window.desktopPortalCapabilityStatus(ui, "notifications")
-            if (portalStatus === "not-probed") {
-                browserUi.probe_desktop_portals()
-                portalStatus = window.desktopPortalCapabilityStatus(ui, "notifications")
-            }
-            if (portalStatus === "pending" || portalStatus === "not-probed") {
-                window.deferNotificationUntilPortal(ui, notification, privateProfile)
-                ui.status_text = "Checking required Notification portal…"
-                return
-            }
-            if (portalStatus !== "available") {
-                notification.close()
-                ui.status_text = "Required Notification portal unavailable; notification cancelled"
-                return
-            }
-        }
-        var tag = notification.tag ? String(notification.tag) : ""
-        var profileScope = window.notificationProfileScope(ui, privateProfile)
-        var notificationKey = tag.length > 0
-                ? profileScope + "\n" + origin + "\n" + window.boundedPageDialogText(tag)
-                : profileScope + "\n" + origin + "\n#" + (++window.webNotificationSequence)
-        var active = window.activeWebNotifications || ({})
-        var previous = active[notificationKey]
-        if (previous && previous !== notification) {
-            previous.close()
-        }
-        active[notificationKey] = notification
-        window.activeWebNotifications = active
-        window.rememberNotificationOwner(notification, ui)
-        notification.closed.connect(function() {
-            var current = window.activeWebNotifications || ({})
-            if (current[notificationKey] === notification) {
-                delete current[notificationKey]
-                window.activeWebNotifications = current
-            }
-            window.forgetNotificationOwner(notification)
-        })
-        if (notificationPresenter.present(notification, profileScope, origin)) {
-            ui.status_text = privateProfile
-                    ? "Private desktop notification shown for " + origin
-                    : "Desktop notification shown for " + origin
-            return
-        }
-        notification.show()
-        ui.status_text = privateProfile
-                ? "Private desktop notification shown for " + origin
-                : "Desktop notification shown for " + origin
+    function presentWebNotification(ui, notification, privateProfile, previous) {
+        return webNotificationController.presentWebNotification(ui, notification, privateProfile, previous)
     }
 
     function focusTargetAvailable(target) {
@@ -672,7 +522,10 @@ ApplicationWindow {
             return false
         }
         var needsFocusProbe = ui.complete_native_prompt_lease(String(token))
-        if (needsFocusProbe) {
+        if (needsFocusProbe && (window.runtimeDisposing
+                || (view && view.viewHost && view.viewHost.runtimeReleased))) {
+            ui.finish_native_prompt_focus_probe(String(token))
+        } else if (needsFocusProbe) {
             Qt.callLater(function() {
                 if (window.probeNativePromptFocus) {
                     window.probeNativePromptFocus(ui, view, String(token))
@@ -698,7 +551,15 @@ ApplicationWindow {
                 return true
             }
         }
-        return (window.pendingFileDialogUi === ui
+        return window.presentedPromptActiveFor(ui)
+    }
+
+    // Bindings need observable presentation properties. The opaque runtime
+    // lease query remains in nativePromptActiveFor for each dispatched key.
+    function presentedPromptActiveFor(ui) {
+        if (!ui) return false
+        return (window.switcherVisible && window.switcherUi === ui)
+                || ui.link_preview_visible || (window.pendingFileDialogUi === ui
                     && (!!window.pendingFileDialogRequest
                         || window.pendingFileDialogLeaseToken.length > 0))
                 || (window.pendingPermissionUi === ui
@@ -723,14 +584,20 @@ ApplicationWindow {
                 || (window.pendingContextMenuUi === ui
                     && (!!window.pendingContextMenuRequest
                         || window.pendingContextMenuLeaseToken.length > 0))
+                || (window.contextRouteUi === ui && window.contextRouteVisible)
+                || (window.diagnosticsUi === ui && window.diagnosticsVisible)
     }
 
     function captureOverlayFocus(hostWindow, fallbackTarget) {
         focusOverlayController.captureOverlayFocus(hostWindow, fallbackTarget)
     }
 
-    function restoreOverlayFocus() {
-        focusOverlayController.restoreOverlayFocus()
+    function restoreOverlayFocus(hostWindow) {
+        focusOverlayController.restoreOverlayFocus(hostWindow || window)
+    }
+
+    function discardOverlayFocus(hostWindow) {
+        focusOverlayController.discardHost(hostWindow || window)
     }
 
     function captureModeFocus() {
@@ -754,17 +621,22 @@ ApplicationWindow {
                 || !ui.context_route_profile || !ui.context_route_url) {
             return
         }
+        var owner = window.browserWindowEntryForUi(ui)
+        if (!owner) return
         window.contextRouteUi = ui
+        window.contextRouteHost = owner.host
         window.contextRouteVisible = true
-        window.captureOverlayFocus(window, window.activeWebView())
+        window.captureOverlayFocus(owner.host, owner.view)
     }
 
     function closeContextRoutePrompt() {
         var wasVisible = window.contextRouteVisible
+        var host = window.contextRouteHost
         window.contextRouteVisible = false
         window.contextRouteUi = null
+        window.contextRouteHost = null
         if (wasVisible) {
-            window.restoreOverlayFocus()
+            window.restoreOverlayFocus(host)
         }
     }
 
@@ -816,21 +688,58 @@ ApplicationWindow {
         return true
     }
 
-    function executeContextRouteWindowAction(ui) {
-        var action = ui ? ui.take_engine_action() : ""
-        if (action.indexOf("new-window\t") !== 0) {
-            return
-        }
+    function executeNewWindowAction(ui, action) {
         var fields = action.split("\t")
-        if (fields.length >= 5) {
-            browserWindowComponent.createObject(null, {
-                windowStartupUrl: fields.slice(4).join("\t"),
-                windowProfileName: fields[2],
-                windowProfileLabel: fields[2],
-                windowPrivateProfile: fields[1] === "true",
-                windowStartupContext: fields[3]
-            })
+        var restoreContext = fields[0] === "context-window"
+        var owner = window.browserWindowEntryForUi(ui)
+        if (!owner || !owner.host || owner.host.runtimeReleased === true
+                || (fields.length !== 4 && fields.length !== 5 && fields.length !== 6)
+                || (fields[0] !== "new-window" && !restoreContext)
+                || (restoreContext && fields.length !== 5)
+                || (fields[1] !== "true" && fields[1] !== "false")
+                || (fields.length === 6 && fields[4] !== "true" && fields[4] !== "false")
+                || !fields[2] || !fields[fields.length - 1]) {
+            if (ui) ui.status_text = "This window request is no longer available. Try again."
+            return false
         }
+        var inherit = fields[1] === "false" && fields[2] === owner.profileName
+                && (fields.length === 6 ? fields[4] === "true"
+                    : (fields.length === 4 || (!owner.privateProfile && !owner.ephemeralProfile)))
+        if (fields.length === 6 && fields[4] === "true"
+                && !inherit) {
+            ui.status_text = "The source profile changed. Request the new window again."
+            return false
+        }
+        var privateProfile = fields[1] === "true" || (inherit && owner.privateProfile)
+        var temporaryProfile = inherit && owner.ephemeralProfile
+        var context = fields.length >= 5 && fields[3].length > 0 ? fields[3]
+                    : (inherit && !privateProfile && !temporaryProfile ? String(ui.context_name || "") : "")
+        var child = window.browserWindowFactory.createObject(null, {
+            windowStartupUrl: fields[fields.length - 1],
+            windowProfileName: fields[2],
+            windowProfileLabel: inherit
+                ? (owner.host === window ? window.profileLabel : owner.host.windowProfileLabel) : fields[2],
+            windowStorageBasePath: owner.host === window
+                ? window.storageBasePath : owner.host.windowStorageBasePath,
+            windowPrivateProfile: privateProfile,
+            windowEphemeralProfile: temporaryProfile,
+            windowEphemeralInvocationToken: temporaryProfile ? owner.ephemeralInvocationToken : "",
+            windowSharedProfile: inherit ? owner.profile : null,
+            windowInheritedUi: inherit ? ui : null,
+            windowStartupContext: context,
+            windowStartupContextRestore: restoreContext,
+            windowStartupRoutePreflighted: true
+        })
+        if (!child) {
+            ui.status_text = "The window couldn't be opened. Try again."
+            return false
+        }
+        return true
+    }
+
+    function executeContextRouteWindowAction(ui) {
+        var owner = window.browserWindowEntryForUi(ui)
+        if (owner) window.completeBrowserKeyAction(ui, owner.host)
     }
 
     function acceptContextRoute() {
@@ -848,17 +757,18 @@ ApplicationWindow {
 
     function dismissContextRoute() {
         var ui = window.contextRouteUi
-        if (ui) {
-            ui.dismiss_context_route()
-        }
+        var accepted = ui && ui.dismiss_context_route()
         window.closeContextRoutePrompt()
+        if (accepted) window.executeContextRouteWindowAction(ui)
     }
 
     function registerBrowserWindow(hostWindow, ui, view, profile, profileName,
                                    invocationToken, isEphemeral) {
-        if (!hostWindow || !ui) {
+        if (!hostWindow || !ui || !ui.profile_available()) {
             return false
         }
+        if (!ui.register_ipc_owner()) return false
+        ui.set_ipc_window_active(!!hostWindow.active)
         var existing = (window.browserWindowRegistry || []).filter(function(entry) {
             return entry && entry.ui === ui
         })
@@ -871,11 +781,11 @@ ApplicationWindow {
         }
         var token = String(invocationToken || "")
         if (isEphemeral && !window.retainEphemeralProfileOwner(profile, token)) {
-            ui.status_text = "Ephemeral profile owner token is already bound to another live profile"
+            ui.status_text = "This temporary window couldn't be opened. Close it and try opening a new temporary window."
             return false
         }
         if (profile && profile.offTheRecord && ui && ui.set_private_start_owner) {
-            var owner = (window.browserWindowRegistry || []).find(function(entry) { return entry && entry.profile === profile && entry.ui && entry.ui.start_page_owner_token.length > 0 })
+            var owner = window.liveWindowEntries().find(function(entry) { return entry.profile === profile && entry.ui.start_page_owner_token.length > 0 })
             ui.set_private_start_owner(owner ? owner.ui.start_page_owner_token : ui.window_token)
         }
         var entries = (window.browserWindowRegistry || []).filter(function(entry) {
@@ -900,6 +810,11 @@ ApplicationWindow {
         return true
     }
 
+    function liveWindowEntries() {
+        return (window.browserWindowRegistry || []).concat(window.popupWindowRegistry || [])
+                .filter(function(entry) { return entry && entry.host && entry.ui && !entry.host.runtimeReleased })
+    }
+
     function publishBrowserWindowRegistry() {
         var ids = []
         var ownerTokens = []
@@ -907,7 +822,7 @@ ApplicationWindow {
         var privateFlags = []
         var ephemeralFlags = []
         var tabCounts = []
-        var entries = window.browserWindowRegistry || []
+        var entries = window.liveWindowEntries()
         for (var i = 0; i < entries.length && ids.length < 64; ++i) {
             var entry = entries[i]
             if (!entry || !entry.ui || !entry.host) {
@@ -927,13 +842,17 @@ ApplicationWindow {
     }
 
     function updateBrowserWindowView(ui, view) {
-        var entries = window.browserWindowRegistry || []
-        for (var i = 0; i < entries.length; ++i) {
-            if (entries[i] && entries[i].ui === ui) {
-                entries[i].view = view || null
-                window.browserWindowRegistry = entries
-                window.publishBrowserWindowRegistry()
-                return true
+        var groups = [window.browserWindowRegistry || [],window.popupWindowRegistry || []]
+        for (var groupIndex=0;groupIndex<groups.length;++groupIndex) {
+            var entries=groups[groupIndex]
+            for (var i=0;i<entries.length;++i) {
+                if (entries[i] && entries[i].ui===ui) {
+                    entries[i].view=view || null
+                    if (groupIndex===0) window.browserWindowRegistry=entries
+                    else window.popupWindowRegistry=entries
+                    window.publishBrowserWindowRegistry()
+                    return true
+                }
             }
         }
         return false
@@ -941,18 +860,14 @@ ApplicationWindow {
 
     function browserWindowEntryForTarget(target) {
         var requested = String(target || "")
-        if (requested.length === 0) {
-            return null
-        }
-        var entries = window.browserWindowRegistry || []
-        for (var i = 0; i < entries.length; ++i) {
-            var entry = entries[i]
-            if (entry && entry.host && entry.ui
-                    && (entry.coreWindowId === requested || entry.windowToken === requested)) {
-                return entry
-            }
-        }
-        return null
+        if (requested.length === 0) return null
+        var entries = window.liveWindowEntries()
+        var exact = entries.filter(function(entry) { return entry.windowToken === requested })
+        if (exact.length === 1) return exact[0]
+        // Core IDs are local to each BrowserUi runtime. Keep a unique alias
+        // usable, but never choose the first of several matching windows.
+        var aliases = entries.filter(function(entry) { return entry.coreWindowId === requested })
+        return aliases.length === 1 ? aliases[0] : null
     }
 
     function browserWindowEntryForContext(contextName, sourceEntry) {
@@ -960,7 +875,7 @@ ApplicationWindow {
         if (requested.length === 0 || !sourceEntry) {
             return null
         }
-        var entries = window.browserWindowRegistry || []
+        var entries = window.liveWindowEntries()
         for (var i = 0; i < entries.length; ++i) {
             var entry = entries[i]
             if (entry && entry.host && entry.ui && entry !== sourceEntry
@@ -975,7 +890,7 @@ ApplicationWindow {
     }
 
     function browserWindowEntryForUi(ui) {
-        var entries = window.browserWindowRegistry || []
+        var entries = window.liveWindowEntries()
         for (var i = 0; i < entries.length; ++i) {
             if (entries[i] && entries[i].ui === ui) {
                 return entries[i]
@@ -989,7 +904,7 @@ ApplicationWindow {
         if (preferred && (!preferredHost || preferred.host === preferredHost)) {
             return preferred
         }
-        var entries = window.browserWindowRegistry || []
+        var entries = window.liveWindowEntries()
         for (var i = 0; i < entries.length; ++i) {
             var entry = entries[i]
             if (entry && entry.host && entry.ui && entry.host.active) {
@@ -1000,6 +915,8 @@ ApplicationWindow {
     }
 
     function unregisterBrowserWindow(ui) {
+        if (window.diagnosticsUi === ui) window.closeDiagnostics()
+        if (ui) ui.release_ipc_owner()
         var entries = window.browserWindowRegistry || []
         for (var i = 0; i < entries.length; ++i) {
             if (entries[i] && entries[i].ui === ui && entries[i].ephemeralProfile) {
@@ -1012,21 +929,42 @@ ApplicationWindow {
         window.publishBrowserWindowRegistry()
     }
 
-    function registerPopupWindow(hostWindow, openerUi, view) {
-        if (!hostWindow) {
+    function registerPopupWindow(hostWindow, ui, view) {
+        if (!hostWindow || !ui || !ui.profile_available() || !ui.register_ipc_owner()) return false
+        ui.set_ipc_window_active(!!hostWindow.active)
+        var previous=(window.popupWindowRegistry || []).find(function(entry) { return entry && entry.host===hostWindow })
+        var profile=hostWindow.windowWebEngineProfile
+        var token=String(hostWindow.windowEphemeralInvocationToken || "")
+        if (previous && previous.ephemeralProfile)
+            window.releaseEphemeralProfileOwner(previous.profile,previous.ephemeralInvocationToken)
+        if (hostWindow.windowEphemeralProfile && !window.retainEphemeralProfileOwner(profile,token))
             return false
+        if (profile && profile.offTheRecord && ui.set_private_start_owner) {
+            var owner=window.liveWindowEntries().find(function(entry) { return entry.profile===profile && entry.ui!==ui && entry.ui.start_page_owner_token.length>0 })
+            ui.set_private_start_owner(owner ? owner.ui.start_page_owner_token : ui.window_token)
         }
         var entries = (window.popupWindowRegistry || []).filter(function(entry) {
             return entry && entry.host && entry.host !== hostWindow
         })
-        entries.push({ host: hostWindow, ui: openerUi || browserUi, view: view || null })
+        entries.push({host:hostWindow,ui:ui,view:view || null,profile:profile,
+            coreWindowId:String(ui.core_window_id || ""),windowToken:String(ui.window_token || ""),
+            profileName:String(hostWindow.windowProfileName || ""),
+            privateProfile:!!hostWindow.windowPrivateProfile,
+            ephemeralProfile:!!hostWindow.windowEphemeralProfile,ephemeralInvocationToken:token})
         window.popupWindowRegistry = entries
+        window.publishBrowserWindowRegistry()
         return true
     }
 
     function unregisterPopupWindow(hostWindow) {
+        if (window.diagnosticsHost === hostWindow) window.closeDiagnostics()
+        var previous=(window.popupWindowRegistry || []).find(function(entry) { return entry && entry.host===hostWindow })
+        if (previous && previous.ui) previous.ui.release_ipc_owner()
+        if (previous && previous.ephemeralProfile)
+            window.releaseEphemeralProfileOwner(previous.profile,previous.ephemeralInvocationToken)
         window.popupWindowRegistry = (window.popupWindowRegistry || []).filter(
                     function(entry) { return entry && entry.host && entry.host !== hostWindow })
+        window.publishBrowserWindowRegistry()
     }
 
     function shutdownParticipantCount() {
@@ -1092,14 +1030,14 @@ ApplicationWindow {
                 || window.shutdownParticipantCount() > 0) {
             return
         }
-        window.applicationShutdownStage = "Flushing Rust metadata"
+        window.applicationShutdownStage = "Saving browser data"
         if (!browserUi.flush_durable_state()) {
-            window.applicationShutdownStage = "Durable metadata flush failed"
+            window.applicationShutdownStage = "Browser data couldn't be saved"
             window.applicationShutdownForcePromptVisible = true
             return
         }
         if (!browserUi.request_shutdown()) {
-            window.applicationShutdownStage = "Rust shutdown request failed"
+            window.applicationShutdownStage = "Shutdown couldn't finish"
             window.applicationShutdownForcePromptVisible = true
             return
         }
@@ -1120,7 +1058,7 @@ ApplicationWindow {
         var elapsed = Date.now() - window.applicationShutdownStartedAt
         window.applicationShutdownStage = remaining > 0
                 ? "Closing " + remaining + " browser window(s)"
-                : "Flushing Rust metadata"
+                : "Saving browser data"
         if (remaining === 0) {
             window.finishApplicationShutdown()
             return
@@ -1168,7 +1106,7 @@ ApplicationWindow {
         if (!window.applicationShutdownInProgress) {
             return
         }
-        window.applicationShutdownStage = "Forced quit; crash marker preserved"
+        window.applicationShutdownStage = "Force quitting. Recent changes may not be saved."
         browserUi.force_quit()
         window.applicationShutdownInProgress = false
         window.applicationShutdownForcePromptVisible = false
@@ -1196,6 +1134,21 @@ ApplicationWindow {
         return windowRegistryController.ephemeralTokenForUi(ui)
     }
 
+    function executeWindowFocusAction(sourceUi, action) {
+        var parts = action.split("\t")
+        var target = parts.length >= 2 ? parts[1] : ""
+        var operationId = parts.length >= 3 ? parts[2] : ""
+        var entry = window.browserWindowEntryForTarget(target)
+        if (!entry || !entry.host || !entry.ui) {
+            sourceUi.status_text = "The requested window is no longer open"
+            if (operationId.length > 0) sourceUi.complete_window_focus(operationId, "stale")
+            return
+        }
+        // The issuing UI owns the operation, even when another window receives focus.
+        if (window.activateBrowserWindow(entry.host, sourceUi, operationId) && entry.host.active)
+            sourceUi.status_text = "Window focused"
+    }
+
     function activateBrowserWindow(hostWindow, targetUi, operationId) {
         if (!hostWindow) {
             return false
@@ -1208,7 +1161,6 @@ ApplicationWindow {
             hostWindow.requestActivate()
             if (hostWindow.active) {
                 window.activationStatus = "activated"
-                hostWindow.forceActiveFocus()
                 if (focusOperationId.length > 0) {
                     ui.complete_window_focus(focusOperationId, "activated")
                 }
@@ -1402,6 +1354,9 @@ ApplicationWindow {
         var inProgress = 0
         var paused = 0
         var selecting = 0
+        var finishing = window.profileResourceRegistry.finishingForHost(hostWindow)
+        count += finishing.count
+        bytes += finishing.bytes
         for (var key in active) {
             var download = active[key]
             if (!download || download.isFinished === true) {
@@ -1425,6 +1380,7 @@ ApplicationWindow {
             return ""
         }
         var lifecycle = []
+        if (finishing.count > 0) lifecycle.push(finishing.count + " finishing")
         if (inProgress > 0) {
             lifecycle.push(inProgress + " active")
         }
@@ -1530,6 +1486,7 @@ ApplicationWindow {
     property string startupContextsJson: ""
     property bool contextRouteVisible: false
     property var contextRouteUi: null
+    property var contextRouteHost: null
     property bool contextMoveVisible: false
     property string contextMoveTabId: ""
     property var contextMoveChoices: []
@@ -1544,21 +1501,17 @@ ApplicationWindow {
     property string reopenWindowConfirmationAction: ""
     property var reopenWindowConfirmationUi: null
     property var reopenWindowConfirmationHost: null
-    property string pendingDeleteName: ""
     property bool profileManagerVisible: false
-    property int profileRefreshAttempts: 0
     property bool profileDeletePreviewVisible: false
     property string profileDeleteName: ""
-    property string profileDeletePreviewText: ""
     property bool downloadManagerVisible: false
-    property var downloadSamples: ({})
     property var spellcheckInventory: []
-    property var activeWebNotifications: ({})
-    property int webNotificationSequence: 0
+    property alias activeWebNotifications: webNotificationController.activeWebNotifications
+    property alias webNotificationSequence: webNotificationController.webNotificationSequence
     property var activeDownloads: ({})
     property var pendingDownloadRequests: ({})
-    property var notificationOwners: []
-    property var pendingPortalNotifications: []
+    property alias notificationOwners: webNotificationController.notificationOwners
+    property alias pendingPortalNotifications: webNotificationController.pendingPortalNotifications
     property var pendingExternalUris: []
     property string pendingDownloadId: ""
     property string pendingDownloadSuggestedName: ""
@@ -1566,8 +1519,6 @@ ApplicationWindow {
     property var pendingFileDialogView: null
     property var pendingFileDialogUi: null
     property string pendingFileDialogLeaseToken: ""
-    property bool pendingFileDialogWaitingForPortal: false
-    property double pendingFileDialogPortalDeadlineMs: 0
     property var pendingPermissionRequest: null
     property var pendingPermissionUi: null
     property string pendingPermissionLeaseToken: ""
@@ -1577,6 +1528,7 @@ ApplicationWindow {
     property int pendingPermissionTabIndex: -1
     property string pendingPermissionOrigin: ""
     property string pendingPermissionName: ""
+    property string pendingPermissionPolicyNotice: ""
     property bool pendingPermissionPrivate: false
     property bool permissionPromptVisible: false
     property var permissionPromptQueue: []
@@ -1645,10 +1597,18 @@ ApplicationWindow {
     property int shutdownPageProbeGeneration: 0
     property bool shutdownApproved: false
     property bool switcherVisible: false
+    property var switcherUi: null
+    property var switcherHost: null
+    property var switcherProfile: null
+    property string switcherOwnerToken: ""
     property var switcherResults: []
+    property var switcherResultContext: null
     property string switcherScope: "all"
     property var switcherBatchEntries: []
     property var switcherBatchMerged: []
+    property var switcherBatchSources: []
+    property var switcherBatchPrevious: []
+    property var switcherSourceState: ({pending: false, failed: false, retryable: false, notice: "", detail: ""})
     property int switcherBatchIndex: 0
     property int switcherBatchGeneration: 0
     property int switcherBatchScheduledGeneration: 0
@@ -1662,8 +1622,16 @@ ApplicationWindow {
         site_doctor: ({ active: ({ kind: "" }), experiments: [] }),
         interaction: ({})
     })
+    property var diagnosticsUi: null
+    property var diagnosticsHost: null
+    readonly property var diagnosticsAppearance: diagnosticsHost && diagnosticsHost !== window
+                                               ? diagnosticsHost.chromeAppearance : window
+    property var diagnosticsExportUi: null
+    property string diagnosticsStartupDetails: ""
     property bool diagnosticsVisible: false
     property string diagnosticsText: ""
+    property string diagnosticsExportNotice: ""
+    property string diagnosticsExportDetail: ""
     property string engineUpdateStatus: ""
     property string engineUpdateNotice: ""
     property var resolvedQtRequests: []
@@ -1703,7 +1671,7 @@ ApplicationWindow {
             window.noteQtResolution(ui, kind, "error")
             return false
         }
-        resolved.push({ request: request, kind: String(kind) })
+        resolved.push({ request: request, kind: String(kind), method: String(method) })
         if (resolved.length > 256) {
             resolved.shift()
         }
@@ -1726,6 +1694,30 @@ ApplicationWindow {
     property string pendingUserscriptRemoval: ""
     property bool libraryManagerVisible: false
     property string pendingLibraryDelete: ""
+    property var privateBookmarkTransferUi: null
+    property var privateBookmarkTransferWindow: null
+    property string privateBookmarkTransferReceipt: ""
+    property string privateBookmarkTransferLabel: ""
+    property string privateBookmarkTransferMessage: ""
+    property string privateBookmarkTransferDetail: ""
+    property bool privateBookmarkTransferPending: false
+    property bool privateBookmarkTransferFailed: false
+    onPrivateBookmarkTransferUiChanged: if (!privateBookmarkTransferUi && privateBookmarkTransferPending && privateBookmarkTransferReceipt.length > 0) finishPrivateBookmarkTransfer(false, "The destination closed before the save could be confirmed. Check its bookmarks before trying again.", "")
+    onPrivateBookmarkTransferWindowChanged: if (!privateBookmarkTransferWindow && privateBookmarkTransferPending && privateBookmarkTransferReceipt.length === 0) finishPrivateBookmarkTransfer(false, "The destination closed before the save could be confirmed. Check its bookmarks before trying again.", "")
+    Connections {
+        target: window.privateBookmarkTransferUi
+        function onBookmark_transfer_stateChanged() { window.checkPrivateBookmarkTransfer() }
+    }
+    Connections {
+        target: window.privateBookmarkTransferWindow
+        function onBookmarkTransferStarted(ui, queued) {
+            if (!window.privateBookmarkTransferPending) return
+            if (!queued) { window.finishPrivateBookmarkTransfer(false, "The bookmark couldn't be saved. Check the destination profile and try again.", ui.status_text); return }
+            window.privateBookmarkTransferUi = ui
+            window.privateBookmarkTransferReceipt = String(ui.bookmark_transfer_id)
+            window.checkPrivateBookmarkTransfer()
+        }
+    }
     property bool privateHistoryTransferVisible: false
     property string privateHistoryTransferId: ""
     property string privateHistoryTransferTitle: ""
@@ -1733,38 +1725,90 @@ ApplicationWindow {
     property int libraryPage: 0
     property int libraryPageSize: 100
     property int libraryTotalEntries: 0
-    property bool linkPreviewVisible: false
-    property var hintResults: []
-    property var hintViewport: ({ width: 0, height: 0 })
-    property string hintInput: ""
-    property var hintState: ({ mode: "label", prefix: "", query: "", matching_labels: [], active_label: "", remaining: 0, total: 0 })
-    property string targetSearchSelectedIdentity: ""
-    property string targetSearchSelectedMeaning: ""
-    property bool targetSearchSelectionInitialized: false
-    property string hintScopeHandoffLeaseId: ""
-    property var scopedGridHandoffView: null
-    property string scopedGridHandoffLeaseId: ""
-    property bool hintCollectionTruncated: false
-    property int hintDirtyRevision: 0
-    property bool hintRefreshPending: false
-    property int hintCollectionEpoch: 0
-    property var hintTrackingView: null
-    readonly property alias hintFrameProvider: hintFrameProviderObject
-    FerricHintFrameProvider { id: hintFrameProviderObject; browserWindow: window }
-    property bool rapidHintConfirmationVisible: false
+    readonly property bool linkPreviewVisible: primaryBrowserUi.link_preview_visible
+    property alias hintResults: primaryHintWorkspace.hintResults
+    property alias hintViewport: primaryHintWorkspace.hintViewport
+    property alias hintInput: primaryHintWorkspace.hintInput
+    property alias hintState: primaryHintWorkspace.hintState
+    property alias targetSearchSelectedIdentity: primaryHintWorkspace.targetSearchSelectedIdentity
+    property alias targetSearchSelectedMeaning: primaryHintWorkspace.targetSearchSelectedMeaning
+    property alias targetSearchSelectionInitialized: primaryHintWorkspace.targetSearchSelectionInitialized
+    property alias hintScopeHandoffLeaseId: primaryHintWorkspace.hintScopeHandoffLeaseId
+    property alias scopedGridHandoffView: primaryHintWorkspace.scopedGridHandoffView
+    property alias scopedGridHandoffLeaseId: primaryHintWorkspace.scopedGridHandoffLeaseId
+    property alias hintCollectionTruncated: primaryHintWorkspace.hintCollectionTruncated
+    property alias hintDirtyRevision: primaryHintWorkspace.hintDirtyRevision
+    property alias hintRefreshPending: primaryHintWorkspace.hintRefreshPending
+    property alias hintCollectionEpoch: primaryHintWorkspace.hintCollectionEpoch
+    property alias hintTrackingView: primaryHintWorkspace.hintTrackingView
+    property alias rapidHintConfirmationVisible: primaryHintWorkspace.rapidHintConfirmationVisible
+    property alias activeHintScopeLeaseId: primaryHintWorkspace.activeHintScopeLeaseId
+    property alias activeSpatialScopeLeaseId: primaryHintWorkspace.activeSpatialScopeLeaseId
+    property alias activeSpatialScopeView: primaryHintWorkspace.activeSpatialScopeView
+    property alias spatialAdapterEnabled: primaryHintWorkspace.spatialAdapterEnabled
+    property alias spatialAdapterTargetItem: primaryHintWorkspace.spatialAdapterTargetItem
+    property alias spatialAdapterSurfaceSerial: primaryHintWorkspace.spatialAdapterSurfaceSerial
+    property alias spatialAdapterSurfaceRevision: primaryHintWorkspace.spatialAdapterSurfaceRevision
+    readonly property alias hintWorkspace: primaryHintWorkspace
+    readonly property alias hintFrameProvider: primaryHintWorkspace.hintFrameProvider
+    FerricHintWorkspace {
+        id: primaryHintWorkspace
+        hostWindow: window
+        rootWindow: window
+        browserUi: window.primaryBrowserUi
+        activeView: window.activeWebView()
+        appearance: window
+        anchors.fill: window.webViewsObject
+    }
     property string copiedText: ""
     property string copiedValue: ""
-    onCopyNoticeVisibleChanged: if (!copyNoticeVisible) { copiedValue = ""; copiedText = "" }
     property bool copyNoticeSensitive: false
     property bool copyNoticeVisible: false
+    property bool copyNoticePrimary: false
+    property var copyNoticeUi: null
+    property var copyNoticeHost: null
+    property var copyNoticeView: null
+    property string copyNoticeWindowId: ""
+    property var copyNoticeSurfaceObject: null
+    readonly property bool copyNoticeInputActive: !!copyNoticeSurfaceObject && copyNoticeSurfaceObject.inputActive
+    readonly property var copyNoticeAppearance: copyNoticeHost && copyNoticeHost.chromeAppearance
+                                               ? copyNoticeHost.chromeAppearance : window
+    readonly property bool copyNoticeOwnerCurrent: {
+        if (!copyNoticeUi || !copyNoticeHost || runtimeDisposing
+                || copyNoticeHost.runtimeReleased === true || copyNoticeHost.runtimeDisposing === true
+                || String(copyNoticeUi.core_window_id) !== copyNoticeWindowId
+                || copyNoticeHost.activeWebView() !== copyNoticeView) return false
+        var owner = window.browserWindowEntryForUi(copyNoticeUi)
+        return !!owner && owner.host === copyNoticeHost
+    }
+    onCopyNoticeOwnerCurrentChanged: {
+        if (copyNoticeVisible && !copyNoticeOwnerCurrent) Qt.callLater(function() {
+            // Clear outside the binding evaluation that detected invalidation.
+            if (window.copyNoticeVisible && !window.copyNoticeOwnerCurrent) window.copyNoticeVisible = false
+        })
+    }
+    onCopyNoticeVisibleChanged: {
+        if (!copyNoticeVisible) {
+            copiedValue = ""; copiedText = ""; copyNoticeSensitive = false
+            copyNoticeUi = null; copyNoticeHost = null; copyNoticeView = null
+            copyNoticeWindowId = ""; copyNoticePrimary = false
+        }
+    }
     readonly property bool browserChromeInputActive:
-        window.inputBarActive
+        window.profileNoticeInputActive
+        || !!window.modalInputScope.activeSurface
+        || (window.copyNoticeInputActive && window.copyNoticeHost === window)
+        || window.inputBarActive
         || (window.activeWebView() && window.activeWebView().nativeUrl === "rb://start" && window.activeWebView().startPage && window.activeWebView().startPage.inputActive)
         || window.applicationShutdownForcePromptVisible
-        || window.devToolsVisible
+        || primaryDevTools.inputActive
         || window.journeyExportPreviewVisible
-        || window.rendererFailureVisible
-        || window.contextRouteVisible
+        || (window.rendererFailureVisible && (window.rendererFailureHost || window) === window)
+        || window.recoveryAvailable
+        || window.rapidHintConfirmationVisible
+        || browserUi.target_search_active
+        || browserUi.navigation_failure_visible
+        || (window.contextRouteVisible && (window.contextRouteHost || window) === window)
         || window.contextMoveVisible
         || window.sessionManagerVisible
         || window.sessionPreviewVisible
@@ -1772,14 +1816,12 @@ ApplicationWindow {
         || window.profileManagerVisible
         || window.profileDeletePreviewVisible
         || window.downloadManagerVisible
-        || window.permissionPromptVisible
-        || window.desktopMediaPromptVisible
         || window.shutdownConfirmationVisible
         || window.shutdownPromptVisible
         || window.shutdownPagePromptVisible
-        || window.switcherVisible
+        || (window.switcherVisible && window.switcherHost === window)
         || window.siteLedgerVisible
-        || window.diagnosticsVisible
+        || (window.diagnosticsVisible && (window.diagnosticsHost || window) === window)
         || window.bindingHelpVisible
         || window.settingsVisible
         || window.libraryManagerVisible
@@ -1787,12 +1829,7 @@ ApplicationWindow {
         || window.linkPreviewVisible
         || window.siteDataClearPending
         || browserUi.external_navigation_visible
-        || window.pendingPageDialogRequest !== null
-        || window.pendingAuthenticationRequest !== null
-        || window.pendingClientCertificateSelection !== null
-        || window.pendingCertificateError !== null
-        || window.pendingWebAuthRequest !== null
-        || window.pendingContextMenuRequest !== null
+        || window.presentedPromptActiveFor(browserUi)
     property bool caretSelecting: false
     property bool blocklistInstallFailed: false
     property string blocklistInstallError: ""
@@ -1831,20 +1868,6 @@ ApplicationWindow {
 
     property var browserProfile: null
 
-    Connections {
-        target: browserProfile
-
-        function onDownloadRequested(download) {
-            window.handleDownloadRequested(download)
-        }
-        function onDownloadFinished(download) {
-            window.handleDownloadFinished(download)
-        }
-        function onPresentNotification(notification) {
-            window.presentWebNotification(browserUi, notification, window.temporaryProfile)
-        }
-    }
-
     RequestInterceptor {
         id: requestInterceptor
         enabled: browserUi.blocking_enabled || securityDenyHosts.length > 0
@@ -1876,19 +1899,6 @@ ApplicationWindow {
 
     NotificationPresenter {
         id: notificationPresenter
-        onNotificationClicked: function(profileScope, origin) {
-            window.focusNotificationOrigin(profileScope, origin)
-        }
-        onNotificationUnavailable: function(notification, profileScope, origin) {
-            if (!notification || !window.activeWebNotification(notification)) {
-                return
-            }
-            notification.show()
-            var ui = window.notificationOwnerFor(notification)
-            if (ui) {
-                ui.status_text = "Desktop notification service unavailable; using Qt fallback"
-            }
-        }
     }
 
     BlocklistUpdater {
@@ -1910,11 +1920,10 @@ ApplicationWindow {
         onRaiseRequested: window.raise()
     }
 
-    Timer {
-        id: notificationPortalTimer
-        interval: 50
-        repeat: true
-        onTriggered: window.processPendingPortalNotifications()
+    FerricWebNotificationController {
+        id: webNotificationController
+        rootWindow: window
+        notificationPresenter: window.notificationPresenterObject
     }
 
     Timer {
@@ -1952,16 +1961,21 @@ ApplicationWindow {
         id: storageLibraryPollTimer
         interval: 50
         repeat: true
-        running: !window.temporaryProfile
+        // Completion belongs to every durable window, including destinations
+        // opened from a private primary window.
+        running: !window.temporaryProfile || window.liveWindowEntries().some(function(entry) {
+            return entry && entry.ui && !entry.privateProfile && !entry.ephemeralProfile
+        })
         onTriggered: {
-            var entries = window.browserWindowRegistry || []
+            var entries = window.liveWindowEntries() || []
             if (entries.length === 0) {
                 entries = [{ ui: browserUi }]
             }
             var consumed = false
             for (var i = 0; i < entries.length; ++i) {
                 var entry = entries[i]
-                if (entry && entry.ui && entry.ui.poll_storage_library()) {
+                if (entry && entry.ui && !entry.privateProfile && !entry.ephemeralProfile
+                        && entry.ui.poll_storage_library()) {
                     consumed = true
                 }
             }
@@ -1970,12 +1984,6 @@ ApplicationWindow {
             }
             if (consumed && window.downloadManagerVisible) {
                 window.refreshDownloads()
-            }
-            if (consumed && window.sessionManagerVisible) {
-                window.refreshSessions()
-            }
-            if (consumed && window.libraryManagerVisible) {
-                window.refreshLibraryManager()
             }
             if (window.journeyExportAwaiting
                     && browserUi.journey_export_preview_text.length > 0) {
@@ -2005,9 +2013,8 @@ ApplicationWindow {
                 window.siteDataClearOrigin = ""
                 return
             }
-            view.runJavaScript(
+            window.runBrowserScript(view,
                         BrowserScripts.siteDataClearResult(),
-                        window.browserScriptWorld,
                         function(value) {
                             if (typeof value !== "string" || value.length === 0) {
                                 return
@@ -2030,7 +2037,7 @@ ApplicationWindow {
                             } catch (error) {
                                 // Keep polling until the isolated-world result is complete.
                             }
-                        })
+                        }, window.browserScriptWorld)
         }
     }
 
@@ -2096,24 +2103,7 @@ ApplicationWindow {
     Component {
         id: devToolsWindowComponent
 
-        FerricDevToolsWindow {
-            id: devToolsWindow
-            browserWindow: window
-            onOwnerWindowClosed: {
-                if (ownerWindow.devToolsDetachedWindow === devToolsWindow) {
-                    ownerWindow.devToolsDetachedWindow = null
-                    ownerWindow.devToolsExternalView = null
-                    ownerWindow.devToolsDetached = false
-                    ownerWindow.devToolsVisible = false
-                    ownerWindow.browserUi.status_text = "DevTools closed"
-                }
-            }
-            onInspectedViewClosed: {
-                if (inspectView) {
-                    inspectView.devToolsView = null
-                }
-            }
-        }
+        FerricDevToolsWindow { browserWindow: window }
     }
 
     BrowserUi {
@@ -2188,47 +2178,14 @@ ApplicationWindow {
     }
 
     onActiveChanged: {
-        if (!active) window.copyNoticeVisible = false
+        browserUi.set_ipc_window_active(active)
+        if (!active && window.copyNoticeHost === window) window.copyNoticeVisible = false
         if (!active && browserUi.hint_pointer_mode) {
             browserUi.hint_pointer_invalidated("window-inactive")
         }
         if (!active && browserUi.mode === "pass-through-once") {
             window.cancelFocusProbes()
             browserUi.escape()
-        }
-    }
-
-    Timer {
-        id: sessionPreviewPollTimer
-        interval: 50
-        repeat: true
-        running: window.sessionPreviewLoading
-        onTriggered: {
-            var preview = browserUi.take_session_preview()
-            if (preview.length > 0) {
-                if (preview.indexOf("ERROR\t") === 0) {
-                    window.sessionPreviewText = preview.slice(6)
-                    window.sessionPreviewError = true
-                } else {
-                    window.sessionPreviewText = preview
-                }
-                window.sessionPreviewLoading = false
-            }
-            var restored = browserUi.take_session_restore_values()
-            if (restored.length > 0) {
-                if (window.recoveryAvailable) {
-                    tabs.clear()
-                    window.applyRestorePayload(restored, true)
-                    window.recoveryAvailable = false
-                } else {
-                    window.sessionPreviewVisible = false
-                    window.sessionManagerVisible = false
-                    window.sessionPreviewError = false
-                    window.closeInternalSurface()
-                }
-                window.sessionPreviewLoading = false
-                window.syncTabModel()
-            }
         }
     }
 

@@ -108,6 +108,15 @@ TestCase {
             browserUi: ui; browserWindow: theme; browserHost: host; contentView: mockView
         }
     }
+    Component { id: lifecycleFixture; Loader { sourceComponent: fixture } }
+    function test_guide_focus_callbacks_do_not_outlive_the_view() {
+        failOnWarning(/TypeError|ReferenceError/)
+        var loader = createTemporaryObject(lifecycleFixture, host.contentItem)
+        verify(loader && loader.item)
+        loader.item.guideSurface.focusEntries()
+        loader.active = false
+        wait(0)
+    }
     function init() {
         host.width = 1000; host.height = 760; ui.multipleBindings = false; ui.twoFeatures = false
         ui.start_page_view = "guide"; ui.start_page_revision = 0; ui.navigations = 0
@@ -201,6 +210,15 @@ TestCase {
         compare(page.topTiles[0], null)
         compare(page.topTiles[1].url, "https://b.test")
         ui.start_page_urls = ["https://a.test", "https://b.test", "https://pinned.test"]
+    }
+    function test_open_favourite_editor_is_retained_by_the_close_check() {
+        var page = createPage()
+        compare(page.closeNeedsConfirmation, false)
+        page.editSlot(0, "pin", null)
+        tryCompare(page, "closeNeedsConfirmation", true)
+        keyClick(Qt.Key_Escape)
+        tryCompare(page, "closeNeedsConfirmation", false)
+        compare(ui.actions.length, 0)
     }
     function test_guide_filter_keeps_a_useful_empty_state() {
         var page = createPage()

@@ -72,7 +72,7 @@ Item {
             next = result.findIndex(function(row) { return row.identity === "mode-enter" })
         entries.currentIndex = next >= 0 ? next : result.findIndex(function(row) { return !row.heading })
         if (!currentRow) readerActive = false
-        Qt.callLater(function() { if (entries.currentIndex >= 0) entries.positionViewAtIndex(entries.currentIndex, ListView.Contain) })
+        positionCurrentTimer.restart()
     }
     function refresh() { browserUi.refresh_guide(searchText); rebuild() }
     function focusEntries() {
@@ -80,9 +80,8 @@ Item {
         readerActive = false
         entries.forceActiveFocus()
         if (entries.currentIndex < 0) move(1)
-        Qt.callLater(function() {
-            if (entries.visible && !readerActive && (entries.focus || (returning && !search.activeFocus && !sectionFilter.activeFocus && !sectionFilter.popup.visible))) entries.forceActiveFocus()
-        })
+        focusEntriesTimer.returning = returning
+        focusEntriesTimer.restart()
     }
     function focusReader() {
         if (!currentRow) return
@@ -90,7 +89,28 @@ Item {
         if (activeTextSelection) activeTextSelection.focus = false
         backToIndex.focus = false; advanced.focus = false
         articlePane.forceActiveFocus()
-        Qt.callLater(function() { if (readerActive && articlePane.visible && !inputActive) articlePane.forceActiveFocus() })
+        focusReaderTimer.restart()
+    }
+    // Owned timers cancel deferred layout/focus work when this view unloads.
+    Timer {
+        id: positionCurrentTimer
+        interval: 0
+        onTriggered: if (entries.currentIndex >= 0) entries.positionViewAtIndex(entries.currentIndex, ListView.Contain)
+    }
+    Timer {
+        id: focusEntriesTimer
+        property bool returning: false
+        interval: 0
+        onTriggered: {
+            if (entries.visible && !guide.readerActive && (entries.focus
+                    || (returning && !search.activeFocus && !sectionFilter.activeFocus && !sectionFilter.popup.visible)))
+                entries.forceActiveFocus()
+        }
+    }
+    Timer {
+        id: focusReaderTimer
+        interval: 0
+        onTriggered: if (guide.readerActive && articlePane.visible && !guide.inputActive) articlePane.forceActiveFocus()
     }
     function move(delta) {
         var next = entries.currentIndex + delta
@@ -176,6 +196,7 @@ Item {
                 onActivated: { guide.selectedCategory = currentIndex > 0 ? guide.categories[currentIndex - 1] : ""; guide.rebuild() }
             }
             Label {
+                textFormat: Text.PlainText
                 visible: guide.rows.length === 0
                 Layout.fillWidth: true
                 text: "No matching features. Try a different word or shortcut."
@@ -213,6 +234,7 @@ Item {
                     Accessible.description: modelData.summary || ""
                     Accessible.onPressAction: { entries.currentIndex = index; if (guide.compact) guide.focusReader(); else guide.focusEntries() }
                     Label {
+                        textFormat: Text.PlainText
                         id: sectionLabel
                         visible: modelData.heading
                         x: 12; y: 16; width: parent.width - 24
@@ -290,6 +312,7 @@ Item {
                     spacing: 22
                     FerricStartButton { id: backToIndex; objectName: "ferricGuideBack"; visible: guide.compact; text: "‹  All features"; quiet: true; browserWindow: guide.browserWindow; onClicked: guide.focusEntries() }
                     Label {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         text: guide.currentRow ? guide.currentRow.category : "Ferric Guide"
                         color: guide.browserWindow.mutedTextColor
@@ -307,6 +330,7 @@ Item {
                         Accessible.role: Accessible.Heading
                     }
                     Label {
+                        textFormat: Text.PlainText
                         visible: !guide.currentRow
                         Layout.fillWidth: true
                         text: "Try another feature name, command, or shortcut. Clear the search to browse all sections."
@@ -339,7 +363,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: 14
                         TapHandler { onTapped: guide.focusReader() }
-                        Label { text: "How it works"; color: guide.inkColor; font.pointSize: guide.fontSize + 1; font.weight: Font.DemiBold; Accessible.role: Accessible.Heading }
+                        Label { textFormat: Text.PlainText; text: "How it works"; color: guide.inkColor; font.pointSize: guide.fontSize + 1; font.weight: Font.DemiBold; Accessible.role: Accessible.Heading }
                         Repeater {
                             model: guide.currentRow ? guide.paragraphs(guide.currentRow.explanation) : []
                             Label {
@@ -359,7 +383,7 @@ Item {
                         visible: guide.articleOpen && guide.currentRow !== null
                         Layout.fillWidth: true
                         spacing: 12
-                        Label { text: "Shortcuts & commands"; color: guide.inkColor; font.pointSize: guide.fontSize + 1; font.weight: Font.DemiBold }
+                        Label { textFormat: Text.PlainText; text: "Shortcuts & commands"; color: guide.inkColor; font.pointSize: guide.fontSize + 1; font.weight: Font.DemiBold }
                         Repeater {
                             model: guide.currentRow ? guide.currentRow.bindings : []
                             RowLayout {
@@ -400,7 +424,7 @@ Item {
                         visible: guide.articleOpen && guide.currentRow && guide.currentRow.examples.length > 0
                         Layout.fillWidth: true
                         spacing: 10
-                        Label { text: "Try it"; color: guide.inkColor; font.pointSize: guide.fontSize + 1; font.weight: Font.DemiBold }
+                        Label { textFormat: Text.PlainText; text: "Try it"; color: guide.inkColor; font.pointSize: guide.fontSize + 1; font.weight: Font.DemiBold }
                         TextArea {
                             Layout.fillWidth: true
                             text: guide.currentRow ? guide.currentRow.examples : ""
@@ -425,7 +449,7 @@ Item {
                             id: recoveryContent
                             x: 14; y: 14; width: parent.width - 28
                             spacing: 6
-                            Label { text: "Exit & recovery"; color: guide.inkColor; font.pointSize: guide.fontSize; font.weight: Font.DemiBold }
+                            Label { textFormat: Text.PlainText; text: "Exit & recovery"; color: guide.inkColor; font.pointSize: guide.fontSize; font.weight: Font.DemiBold }
                             Label { Layout.fillWidth: true; text: guide.currentRow ? guide.currentRow.recovery : ""; color: guide.browserWindow.secondaryTextColor; font.pointSize: guide.fontSize; wrapMode: Text.WordWrap; lineHeight: 1.45; textFormat: Text.PlainText }
                         }
                     }

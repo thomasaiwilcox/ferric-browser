@@ -1,12 +1,15 @@
 extern crate ferric_browser_engine_qt;
 
+mod cli_error;
 mod cli_parse;
 mod ipc_client;
+#[cfg(test)]
+mod ipc_client_tests;
 
+use cli_error::CliError;
 use cli_parse::{cli_action_name, emit_structured_log, parse_cli, validate_format};
 use cxx_qt_lib::{
-    QGuiApplication, QMap, QMapPair_QString_QVariant, QQmlApplicationEngine, QString, QStringList,
-    QUrl, QVariant,
+    QMap, QMapPair_QString_QVariant, QQmlApplicationEngine, QString, QStringList, QUrl, QVariant,
 };
 use ferric_browser_config::{
     Config, ContextsConfig, ProfilesConfig, RuntimeOverrides, apply_runtime_overrides, load,
@@ -114,130 +117,27 @@ const MAX_STARTUP_INPUTS: usize = 32;
 const MAX_DIAGNOSTIC_PROFILES: usize = 128;
 const MAX_STARTUP_SETTINGS: usize = 256;
 
-/// A CLI-visible failure with a stable public code.
-///
-/// The diagnostic context is intentionally kept separate from the message
-/// presented to users and IPC callers.  The CLI must not reconstruct a code
-/// by searching the diagnostic prose.
-#[derive(Debug)]
-struct CliError {
-    code: ErrorCode,
-    user_message: &'static str,
-    // Kept separate from the public message so future local diagnostics can
-    // retain cause context without turning that prose into a public protocol.
-    #[allow(dead_code)]
-    diagnostic_context: String,
-}
-
-impl CliError {
-    fn invalid(diagnostic_context: impl Into<String>) -> Self {
-        Self {
-            code: ErrorCode::InvalidArgument,
-            user_message: "The command-line request is invalid.",
-            diagnostic_context: diagnostic_context.into(),
-        }
-    }
-
-    fn engine(diagnostic_context: impl Into<String>) -> Self {
-        Self {
-            code: ErrorCode::Engine,
-            user_message: "Ferric Browser could not complete that request.",
-            diagnostic_context: diagnostic_context.into(),
-        }
-    }
-
-    fn from_run(error: RunError) -> Self {
-        match error {
-            RunError::Config(context) => Self {
-                code: ErrorCode::Config,
-                user_message: "Ferric Browser configuration is invalid.",
-                diagnostic_context: context,
-            },
-            RunError::Storage(context) => Self {
-                code: ErrorCode::Storage,
-                user_message: "Ferric Browser storage is unavailable.",
-                diagnostic_context: context,
-            },
-            RunError::NoInstance(context) => Self {
-                code: ErrorCode::NoInstance,
-                user_message: "No running Ferric Browser instance was found.",
-                diagnostic_context: context,
-            },
-            RunError::Engine(context) => Self::engine(context),
-        }
-    }
-
-    const fn status(&self) -> i32 {
-        match self.code {
-            ErrorCode::InvalidArgument | ErrorCode::Config => 2,
-            ErrorCode::NotFound | ErrorCode::NoInstance | ErrorCode::StaleTarget => 3,
-            ErrorCode::Denied => 4,
-            ErrorCode::Unsupported => 5,
-            ErrorCode::Busy | ErrorCode::Timeout => 6,
-            ErrorCode::Protocol => 7,
-            ErrorCode::ConfirmationRequired
-            | ErrorCode::Io
-            | ErrorCode::Storage
-            | ErrorCode::Engine
-            | ErrorCode::Cancelled => 1,
-        }
-    }
-}
-
-#[derive(Debug)]
-enum RunError {
-    Config(String),
-    Storage(String),
-    NoInstance(String),
-    Engine(String),
-}
-
-impl RunError {
-    fn config(context: impl Into<String>) -> Self {
-        Self::Config(context.into())
-    }
-
-    fn storage(context: impl Into<String>) -> Self {
-        Self::Storage(context.into())
-    }
-
-    fn no_instance(context: impl Into<String>) -> Self {
-        Self::NoInstance(context.into())
-    }
-}
-
-impl From<String> for RunError {
-    fn from(context: String) -> Self {
-        Self::Engine(context)
-    }
-}
-
-impl From<&str> for RunError {
-    fn from(context: &str) -> Self {
-        Self::Engine(context.into())
-    }
-}
-
 fn main() {
     let arguments = std::env::args().skip(1).collect::<Vec<_>>();
     if let Err(error) = run(&arguments) {
-        let code = error.code;
+        let code = error.code();
         let status = error.status();
-        let correlation_id = format!("err-{}", Uuid::new_v4());
+        let error = error.into_protocol();
         if wants_structured_error(&arguments) {
-            eprintln!(
-                "{}",
-                structured_cli_error_with_id(code, status, error.user_message, &correlation_id)
-            );
+            eprintln!("{}", cli_error::structured(&error));
         } else {
-            let (preserved, next_action) = code.guidance();
-            eprintln!(
-                "ferric-browser: {}: {} Preserved: {preserved}. Next action: {next_action}. [correlation {correlation_id}]",
-                code.as_str(),
-                error.user_message,
-            );
+            eprintln!("{}", cli_error::text(&error));
         }
-        emit_structured_log(None, "error", &format!("cli.failure: {}", code.as_str()));
+        let reference = error
+            .details
+            .as_ref()
+            .and_then(|details| details["correlation_id"].as_str())
+            .unwrap_or_default();
+        emit_structured_log(
+            None,
+            "error",
+            &format!("cli.failure: {} reference={reference}", code.as_str()),
+        );
         std::process::exit(status);
     }
 }
@@ -246,26 +146,6 @@ fn wants_structured_error(arguments: &[String]) -> bool {
     arguments
         .windows(2)
         .any(|window| window[0] == "--format" && window[1] == "json")
-}
-
-fn structured_cli_error_with_id(
-    code: ErrorCode,
-    status: i32,
-    message: &str,
-    correlation_id: &str,
-) -> String {
-    let (preserved, next_action) = code.guidance();
-    serde_json::json!({
-        "error": {
-            "code": code.as_str(),
-            "status": status,
-            "message": message,
-            "correlation_id": correlation_id,
-            "preserved": preserved,
-            "next_action": next_action,
-        }
-    })
-    .to_string()
 }
 
 fn select_startup_profile(
@@ -343,7 +223,7 @@ fn run(arguments: &[String]) -> Result<(), CliError> {
     }
     let request = parse_cli(arguments).map_err(CliError::invalid)?;
     validate_cli_request(&request.0, &request.1).map_err(CliError::invalid)?;
-    run_parsed(request).map_err(CliError::from_run)
+    run_parsed(request)
 }
 
 fn validate_cli_request(options: &CliOptions, action: &CliAction) -> Result<(), String> {
@@ -450,7 +330,7 @@ fn validate_cli_request(options: &CliOptions, action: &CliAction) -> Result<(), 
 }
 
 #[allow(clippy::too_many_lines)]
-fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError> {
+fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError> {
     emit_structured_log(
         options.log_level.as_deref(),
         "debug",
@@ -465,18 +345,18 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
             .or_else(|| default_config_path(&options))
     };
     if let CliAction::ConfigCheck = action {
-        check_config(config_path.as_deref()).map_err(RunError::config)?;
+        check_config(config_path.as_deref()).map_err(CliError::config)?;
         return Ok(());
     }
     if let CliAction::ResetData = action {
         let roots = StorageRoots::resolve(RootSpec::Xdg).map_err(|error| {
-            RunError::storage(format!("could not resolve Ferric storage roots: {error}"))
+            CliError::storage(format!("could not resolve Ferric storage roots: {error}"))
         })?;
         let report = roots
             .reset_owned_contents()
-            .map_err(|error| RunError::storage(format!("could not reset Ferric data: {error}")))?;
+            .map_err(|error| CliError::storage(format!("could not reset Ferric data: {error}")))?;
         roots.initialize_current_schema().map_err(|error| {
-            RunError::storage(format!("could not initialize Ferric data: {error}"))
+            CliError::storage(format!("could not initialize Ferric data: {error}"))
         })?;
         println!(
             "Reset Ferric Browser data: cleared {} roots and removed {} entries. Legacy browser data was not modified.",
@@ -485,7 +365,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
         return Ok(());
     }
     if let CliAction::DefaultBrowser { operation } = &action {
-        return run_default_browser_operation(*operation).map_err(RunError::from);
+        return run_default_browser_operation(*operation).map_err(CliError::from);
     }
     let temporary_storage = options.temp_basedir
         || options.safe_mode
@@ -510,18 +390,15 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
             StorageRoots::resolve(RootSpec::Xdg)
         }
         .map_err(|error| {
-            RunError::storage(format!("could not resolve Ferric storage roots: {error}"))
+            CliError::storage(format!("could not resolve Ferric storage roots: {error}"))
         })?;
         if roots.requires_schema_reset().map_err(|error| {
-            format!("could not inspect Ferric data for the clean-break schema: {error}")
+            CliError::storage(format!("could not inspect Ferric data schema: {error}"))
         })? {
-            return Err(
-                "existing Ferric Browser data is incompatible with this pre-alpha release; run `ferric-browser reset-data --confirm` to erase Ferric-owned data before starting. Legacy browser data will not be touched"
-                    .into(),
-            );
+            return Err(CliError::incompatible_data(options.basedir.is_some()));
         }
         roots.initialize_current_schema().map_err(|error| {
-            RunError::storage(format!("could not initialize Ferric data schema: {error}"))
+            CliError::storage(format!("could not initialize Ferric data schema: {error}"))
         })?;
     }
     let (
@@ -534,12 +411,12 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
         profiles,
     ) = if let Some(path) = config_path.as_deref() {
         let loaded = load(path)
-            .map_err(|error| RunError::config(format!("configuration is invalid: {error}")))?;
+            .map_err(|error| CliError::config(format!("configuration is invalid: {error}")))?;
         let config_directory = Path::new(path).parent().unwrap_or_else(|| Path::new("."));
         let contexts_path = config_directory.join("contexts.toml");
         let contexts = if contexts_path.exists() {
             load_contexts(&contexts_path).map_err(|error| {
-                RunError::config(format!("contexts configuration is invalid: {error}"))
+                CliError::config(format!("contexts configuration is invalid: {error}"))
             })?
         } else {
             ContextsConfig::default()
@@ -547,7 +424,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
         let profiles_path = config_directory.join("profiles.toml");
         let profiles = if profiles_path.exists() {
             load_profiles(&profiles_path).map_err(|error| {
-                RunError::config(format!("profiles configuration is invalid: {error}"))
+                CliError::config(format!("profiles configuration is invalid: {error}"))
             })?
         } else {
             ProfilesConfig::default()
@@ -556,7 +433,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
             if let Some(profile) = profiles.default_profile() {
                 (
                     profile_override_layer(profile).map_err(|error| {
-                        RunError::config(format!("profile overrides are invalid: {error}"))
+                        CliError::config(format!("profile overrides are invalid: {error}"))
                     })?,
                     profile.name.clone(),
                     profile.label.clone(),
@@ -572,7 +449,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
             loaded.config,
             "user",
             serde_json::to_string(&contexts).map_err(|error| {
-                RunError::config(format!(
+                CliError::config(format!(
                     "could not serialize contexts configuration: {error}"
                 ))
             })?,
@@ -586,7 +463,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
             Config::default(),
             "built-in",
             serde_json::to_string(&ContextsConfig::default()).map_err(|error| {
-                RunError::config(format!("could not serialize default contexts: {error}"))
+                CliError::config(format!("could not serialize default contexts: {error}"))
             })?,
             RuntimeOverrides::default(),
             "default".into(),
@@ -600,8 +477,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
             options.basedir.as_deref(),
             options.instance.as_deref(),
             !options.temp_basedir,
-        )
-        .map_err(RunError::from);
+        );
     }
 
     let (profile_overrides, normal_profile_name, normal_profile_label, startup_context) =
@@ -610,12 +486,12 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
                 &options,
                 &profiles,
                 &serde_json::from_str(&contexts_json).map_err(|error| {
-                    RunError::config(format!("contexts configuration is invalid: {error}"))
+                    CliError::config(format!("contexts configuration is invalid: {error}"))
                 })?,
                 &normal_profile_name,
                 &normal_profile_label,
             )
-            .map_err(RunError::config)?
+            .map_err(CliError::config)?
         } else {
             (
                 profile_overrides,
@@ -625,10 +501,10 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
             )
         };
     let base_config_json = serde_json::to_string(&config).map_err(|error| {
-        RunError::config(format!("could not serialize base configuration: {error}"))
+        CliError::config(format!("could not serialize base configuration: {error}"))
     })?;
     config = apply_runtime_overrides(&config, &profile_overrides)
-        .map_err(|error| RunError::config(format!("profile overrides are invalid: {error}")))?;
+        .map_err(|error| CliError::config(format!("profile overrides are invalid: {error}")))?;
 
     let ephemeral_profile = match &action {
         CliAction::Open { ephemeral, .. } => *ephemeral,
@@ -660,20 +536,20 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
             options.basedir.clone()
         },
     )
-    .map_err(RunError::storage)?;
+    .map_err(CliError::storage)?;
     let runtime_roots = if let Some(base) = storage_base.as_deref() {
         StorageRoots::resolve(RootSpec::Base(base.to_owned()))
     } else {
         StorageRoots::resolve(RootSpec::Xdg)
     }
     .map_err(|error| {
-        RunError::storage(format!("could not resolve runtime override roots: {error}"))
+        CliError::storage(format!("could not resolve runtime override roots: {error}"))
     })?;
     let runtime_overrides = if temporary_profile {
         RuntimeOverrides::default()
     } else {
         load_runtime_overrides(runtime_roots.state.join("runtime-overrides.toml"))
-            .map_err(|error| RunError::config(format!("runtime overrides are invalid: {error}")))?
+            .map_err(|error| CliError::config(format!("runtime overrides are invalid: {error}")))?
     };
     let mut cli_overrides = RuntimeOverrides::default();
     for setting in &options.settings {
@@ -681,19 +557,19 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
             .split_once('=')
             .ok_or_else(|| "--set requires KEY=VALUE without control characters".to_owned())?;
         cli_overrides.set_literal(key, literal).map_err(|error| {
-            RunError::config(format!("invalid runtime setting {key:?}: {error}"))
+            CliError::config(format!("invalid runtime setting {key:?}: {error}"))
         })?;
     }
     config = apply_runtime_overrides(&config, &runtime_overrides)
-        .map_err(|error| RunError::config(format!("runtime overrides are invalid: {error}")))?;
+        .map_err(|error| CliError::config(format!("runtime overrides are invalid: {error}")))?;
     config = apply_runtime_overrides(&config, &cli_overrides)
-        .map_err(|error| RunError::config(format!("CLI runtime overrides are invalid: {error}")))?;
+        .map_err(|error| CliError::config(format!("CLI runtime overrides are invalid: {error}")))?;
     let config_json = serde_json::to_string(&config)
-        .map_err(|error| RunError::config(format!("could not serialize configuration: {error}")))?;
+        .map_err(|error| CliError::config(format!("could not serialize configuration: {error}")))?;
     let cli_overrides_json = serde_json::to_string(&cli_overrides)
-        .map_err(|error| RunError::config(format!("could not serialize CLI overrides: {error}")))?;
+        .map_err(|error| CliError::config(format!("could not serialize CLI overrides: {error}")))?;
     let profile_overrides_json = serde_json::to_string(&profile_overrides).map_err(|error| {
-        RunError::config(format!("could not serialize profile overrides: {error}"))
+        CliError::config(format!("could not serialize profile overrides: {error}"))
     })?;
     if let CliAction::Open {
         mut input,
@@ -709,8 +585,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
             input = pages.next().cloned().unwrap_or_else(|| "rb://start".into());
             additional_inputs = pages.cloned().collect();
         }
-        let instance = match acquire_instance(storage_base.as_deref(), options.instance.as_deref())
-            .map_err(RunError::storage)?
+        let instance = match acquire_instance(storage_base.as_deref(), options.instance.as_deref())?
         {
             InstanceStart::Owner(instance) => instance,
             InstanceStart::Existing(paths) => {
@@ -718,8 +593,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
                     return finish_forward(
                         Err("software-rendering startup requested but another instance is already running".into()),
                         temporary_roots,
-                    )
-                    .map_err(RunError::from);
+                    );
                 }
                 if !explicit_input {
                     let result = if ephemeral_profile {
@@ -727,7 +601,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
                     } else {
                         forward_focus(&paths)
                     };
-                    return finish_forward(result, temporary_roots).map_err(RunError::from);
+                    return finish_forward(result, temporary_roots);
                 }
                 let result = if ephemeral_profile {
                     Err("ephemeral open requires a fresh GUI owner; the running instance was not changed".into())
@@ -741,7 +615,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
                         &options,
                     )
                 };
-                return finish_forward(result, temporary_roots).map_err(RunError::from);
+                return finish_forward(result, temporary_roots);
             }
         };
         if options.software_rendering {
@@ -749,7 +623,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
         }
         if let Err(error) = validate_engine_security_environment() {
             drop(instance);
-            return finish_forward(Err(error), temporary_roots).map_err(RunError::from);
+            return finish_forward(Err(error.into()), temporary_roots);
         }
         let startup_background = target.as_deref() == Some("tab-bg");
         let startup_url = if startup_background {
@@ -771,7 +645,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
                 if let Some(roots) = temporary_roots {
                     let _ = roots.cleanup();
                 }
-                return Err(RunError::storage(format!(
+                return Err(CliError::storage(format!(
                     "could not create crash marker: {error}"
                 )));
             }
@@ -826,11 +700,11 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
             instance,
             ferric_browser_engine_qt::shutdown_was_forced(),
         )
-        .map_err(RunError::from);
+        .map_err(CliError::from);
     }
 
     let paths = existing_instance_paths(storage_base.as_deref(), options.instance.as_deref())
-        .map_err(RunError::no_instance)?;
+        .map_err(CliError::storage)?;
     let result = match action {
         CliAction::Command { text, window } => {
             forward_command(&paths, &text, window.as_deref(), &options)
@@ -851,7 +725,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
             unreachable!("default-browser was handled before instance setup")
         }
     };
-    finish_forward(result, temporary_roots).map_err(RunError::from)
+    finish_forward(result, temporary_roots)
 }
 
 fn run_default_browser_operation(operation: DefaultBrowserOperation) -> Result<(), String> {
@@ -1122,7 +996,10 @@ fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
     ferric_browser_engine_qt::register_internal_scheme();
     cxx_qt::init_crate!(ferric_browser_engine_qt);
     cxx_qt::init_qml_module!("io.github.ferricbrowser");
-    let mut app = QGuiApplication::new();
+    let mut app = ferric_browser_engine_qt::new_gui_application();
+    if app.is_null() {
+        return Err("The browser couldn't prepare its desktop interface. Check that temporary storage is available, then try again.".into());
+    }
     let mut native_wayland = false;
     if let Some(_app) = app.as_mut() {
         ferric_browser_engine_qt::set_desktop_identity();

@@ -1,40 +1,44 @@
 # M0-33 TLS certificate errors
 
-Date: 2026-09-16  
+Updated: 2026-10-15
+
 Status: in-progress
 
-## Task card
+Requirement: AUTH-004. The request lifecycle lives in
+`FerricBrowserRuntimeRequests.qml`; native presentation lives in
+`FerricCertificatePrompts.qml`. URL normalization remains in the Rust adapter.
 
-- Requirement: AUTH-004.
-- Files: `crates/ferric-browser-engine-qt/qml/Main.qml` and
-  `crates/ferric-browser-engine-qt/src/lib.rs`.
-- Observable result: Qt WebEngine certificate errors are blocking by default.
-  Non-overridable errors, subresource errors, and Google-host errors are
-  rejected without a bypass surface. An engine-marked overridable main-frame
-  error for another host gets a browser-owned prompt showing a bounded exact
-  host and error description.
+Certificate failures block by default. Non-overridable errors, subresources,
+protected Google hosts and unavailable origins have no bypass surface.
+An engine-marked overridable main-frame error for another host shows its full
+canonical origin and bounded, literal error description in the requesting window.
+The actual Qt request is deferred while the decision is pending; Enter initially
+chooses Go back and Escape rejects the request.
 
-The prompt's `Accept once` action calls Qt's `acceptCertificate()` for that
-request only. There is no persistent exception, system trust-store write,
-HSTS bypass, global ignore flag, or certificate-error setting in browser
-configuration. Navigation, tab close, view destruction, and application
-teardown reject a pending error and restore focus.
+Continue for this session invokes Qt's `acceptCertificate()`. Qt retains
+host/certificate/error allowances in memory and may reuse them during the browser
+session. The prompt states this scope; it no longer promises a request-only
+exception. The browser writes no persistent certificate exception and does not
+change the system trust store or introduce a global ignore flag. See
+[Qt's decision API](https://doc.qt.io/qt-6.11/qml-webenginecertificateerror.html) and
+[its in-memory certificate policy](https://raw.githubusercontent.com/qt/qtwebengine/6.11/src/core/net/ssl_host_state_delegate_qt.cpp).
 
-The host label is derived from the URL host only; paths, credentials, query,
-and fragments are not displayed. Error descriptions are bounded and control
-character sanitized before entering the native surface.
+Origins exclude credentials, paths, queries and fragments. Client-certificate
+requests use a separate adapter for Qt's scheme-less TLS authority; page URLs
+never use that transport-specific interpretation.
 
-## Verification
+## Current evidence
 
-```text
-cargo fmt --all -- --check
-cargo test -p ferric-browser-engine-qt --locked
-cargo xtask check
-cargo build -p ferric-browser --locked
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
-```
+The 2026-10-15 debug offscreen production runner passes all six local HTTPS
+cases: cancellation and explicit continuation in primary, secondary and popup
+windows. A disposable QSslServer uses a newly generated self-signed certificate;
+no trust-store setup or external site is involved. Continuation also verifies a
+second navigation using the session allowance. Cancellation sends no HTTP
+request. Separate request guards cover protected hosts, non-overridable errors,
+subresources and unavailable origins. Full integration records live in
+`docs/implementation/product-polish-2026-10-15.md`.
 
-The smoke is expected to end with timeout status 124 after remaining alive
-with an empty startup log. Local self-signed HTTPS fixture coverage, exact
-Qt overridable/non-overridable error behavior, HSTS and mixed-content tests,
-and platform trust-store qualification remain manual work.
+These checks do not establish the complete TLS release gate. Real HSTS,
+mixed-content, OS trust-store interoperability and supported Wayland/compositor
+qualification remain distinct work. Client-certificate selection and physical
+security-key authentication also need their own real-credential evidence.

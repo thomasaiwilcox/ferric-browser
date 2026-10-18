@@ -93,6 +93,7 @@ Item {
                 color: commandSurface.browserWindow.accentColor
 
                 Label {
+                    textFormat: Text.PlainText
                     id: commandPrefix
                     anchors.centerIn: parent
                     text: ":"

@@ -442,7 +442,9 @@ impl qobject::BrowserUi {
                 })
         };
         let Some(target) = target else {
-            self.set_status_text(QString::from("Popup edit destination is stale"));
+            self.set_status_text(QString::from(
+                "The popup page changed. Focus the field and try again.",
+            ));
             return QString::default();
         };
         let navigation = self.as_ref().navigation_context();

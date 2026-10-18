@@ -48,20 +48,10 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             finish_pending_selection_operation(this, "failed (document target invalidated)");
             this.pending_caret = None;
-            this.pending_spawn = None;
-            if let Some(pending) = this.pending_action_target.take() {
-                this.operation_states.insert(
-                    pending.operation_id,
-                    "failed (document target invalidated)".into(),
-                );
-            }
-            this.pending_download = None;
-            if let Some(pending) = this.pending_userscript.take() {
-                this.operation_states.insert(
-                    pending.operation_id,
-                    "failed (document target invalidated)".into(),
-                );
-            }
+            super::browser_ui_download_requests::finish_pending_download_operation(
+                this,
+                "cancelled",
+            );
         }
         self.as_mut().update_current_url(url);
         self.as_mut().set_load_state(QString::from("provisional"));
@@ -102,20 +92,10 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             finish_pending_selection_operation(this, "failed (document target invalidated)");
             this.pending_caret = None;
-            this.pending_spawn = None;
-            if let Some(pending) = this.pending_action_target.take() {
-                this.operation_states.insert(
-                    pending.operation_id,
-                    "failed (document target invalidated)".into(),
-                );
-            }
-            this.pending_download = None;
-            if let Some(pending) = this.pending_userscript.take() {
-                this.operation_states.insert(
-                    pending.operation_id,
-                    "failed (document target invalidated)".into(),
-                );
-            }
+            super::browser_ui_download_requests::finish_pending_download_operation(
+                this,
+                "cancelled",
+            );
         }
         if index == self.as_ref().rust().active_tab_index {
             self.as_mut().update_current_url(url);
@@ -128,8 +108,9 @@ impl qobject::BrowserUi {
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
             Err(error) => {
-                self.as_mut()
-                    .set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                self.as_mut().set_status_text(QString::from(format!(
+                    "Address could not be opened: {error}"
+                )));
                 return;
             }
         };
@@ -223,8 +204,9 @@ impl qobject::BrowserUi {
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
             Err(error) => {
-                self.as_mut()
-                    .set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                self.as_mut().set_status_text(QString::from(format!(
+                    "Address could not be opened: {error}"
+                )));
                 self.as_mut()
                     .rust_mut()
                     .as_mut()
@@ -405,7 +387,9 @@ impl qobject::BrowserUi {
             Ok(url) => QString::from(url),
             Err(error) => {
                 if index == self.as_ref().rust().active_tab_index {
-                    self.set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                    self.set_status_text(QString::from(format!(
+                        "Address could not be opened: {error}"
+                    )));
                 }
                 return;
             }
@@ -483,7 +467,9 @@ impl qobject::BrowserUi {
         let canonical_url = match canonical_engine_url(url) {
             Ok(url) => url,
             Err(error) => {
-                self.set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                self.set_status_text(QString::from(format!(
+                    "Address could not be opened: {error}"
+                )));
                 return;
             }
         };
@@ -549,7 +535,9 @@ impl qobject::BrowserUi {
             Ok(url) => url,
             Err(error) => {
                 if index == self.as_ref().rust().active_tab_index {
-                    self.set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                    self.set_status_text(QString::from(format!(
+                        "Address could not be opened: {error}"
+                    )));
                 }
                 return;
             }
@@ -608,12 +596,20 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn release_transient_resources(mut self: Pin<&mut Self>) -> bool {
+        self.as_mut().release_ipc_owner();
         let has_state = self.as_ref().rust().state.is_some();
         if has_state && !self.as_ref().active_profile_is_transient() {
             self.set_status_text(QString::from(
                 "Durable profile resources remain owned until the application exits",
             ));
             return false;
+        }
+        self.as_mut().cancel_diagnostics();
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.diagnostics_collector.clear();
+            this.pending_diagnostic_requests.clear();
         }
         if !has_state {
             return true;
@@ -624,15 +620,6 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             finish_pending_selection_operation(this, "cancelled");
             this.pending_caret = None;
-            this.pending_spawn = None;
-            if let Some(pending) = this.pending_action_target.take() {
-                this.operation_states
-                    .insert(pending.operation_id, "cancelled".into());
-            }
-            if let Some(pending) = this.pending_userscript.take() {
-                this.operation_states
-                    .insert(pending.operation_id, "cancelled".into());
-            }
             if let Some(editor) = this.pending_editor.take() {
                 discard_editor_request(editor);
             }
@@ -651,7 +638,10 @@ impl qobject::BrowserUi {
             if let Some(editor) = this.pending_config_edit.take() {
                 discard_config_edit(editor);
             }
-            this.pending_download = None;
+            super::browser_ui_download_requests::finish_pending_download_operation(
+                this,
+                "cancelled",
+            );
             cleanup_staged_downloads(&mut this.staged_downloads);
             this.pending_link_navigation = None;
             this.pending_external_navigation = None;
@@ -663,6 +653,10 @@ impl qobject::BrowserUi {
             // the pending handoff before dropping workers so a late result
             // cannot recreate state after the final owner has gone away.
             this.pending_profile_configuration = None;
+            this.session_saves.clear();
+            this.pending_context_reload = None;
+            this.config_reload_requested_by_user = false;
+            this.context_reload_worker = None;
             this.config_reload_worker = None;
             this.config_write_worker = None;
             this.profile_delete_worker = None;
@@ -691,7 +685,6 @@ impl qobject::BrowserUi {
             this.journey_durable_ids.borrow_mut().clear();
             this.journey_export_payload = None;
             this.journey_export_preview_text = QString::default();
-            this.session_permissions.clear();
             this.operation_states.clear();
             this.operation_stderr.clear();
             this.action_audit.clear();
@@ -753,6 +746,7 @@ impl qobject::BrowserUi {
                 cancellations.clear();
             }
         }
+        self.as_mut().sync_context_choices();
         self.as_mut().sync_macro_status_text();
         self.as_mut().set_active_tab_index(0);
         self.as_mut().set_tab_count(0);
@@ -761,7 +755,7 @@ impl qobject::BrowserUi {
         self.as_mut().set_page_title(QString::default());
         self.as_mut().set_view_alive(false);
         self.as_mut().set_load_state(QString::from("released"));
-        self.set_status_text(QString::from("Transient profile resources released"));
+        self.set_status_text(QString::from("Private session closed"));
         true
     }
 

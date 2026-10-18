@@ -5,8 +5,22 @@
 //! and effective configuration to presentation rows.
 
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, QVariant};
-use ferric_browser_config::setting_metadata_all;
+use ferric_browser_config::{PendingSettingChange, setting_metadata_all};
 use serde_json::Value;
+
+pub(super) fn configuration_status(status: &str, pending: &[PendingSettingChange]) -> String {
+    let mut status = status.to_owned();
+    if pending.iter().any(|change| change.apply_time == "reload") {
+        status.push_str("; some changes need :config-reload");
+    }
+    if pending
+        .iter()
+        .any(|change| matches!(change.apply_time, "startup" | "restart"))
+    {
+        status.push_str("; some changes need a browser restart");
+    }
+    status
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct SettingsRow {
@@ -92,7 +106,7 @@ const NO_OPTIONS: &[&str] = &[];
 const SETTINGS_SURFACE: &[SettingsSurfaceDefinition] = &[
     SettingsSurfaceDefinition {
         key: "hints.proxy_targets",
-        label: "Validated editor and label hints",
+        label: "Hints for custom editors and labels",
         editor_type: "enum",
         options: &["off", "validated"],
     },
@@ -104,13 +118,13 @@ const SETTINGS_SURFACE: &[SettingsSurfaceDefinition] = &[
     },
     SettingsSurfaceDefinition {
         key: "ui.font_family",
-        label: "Chrome font family",
+        label: "Interface font family",
         editor_type: "text",
         options: NO_OPTIONS,
     },
     SettingsSurfaceDefinition {
         key: "ui.font_size_pt",
-        label: "Chrome font size (pt)",
+        label: "Interface font size (pt)",
         editor_type: "number",
         options: NO_OPTIONS,
     },
@@ -194,7 +208,7 @@ const SETTINGS_SURFACE: &[SettingsSurfaceDefinition] = &[
     },
     SettingsSurfaceDefinition {
         key: "downloads.collision",
-        label: "Download collision policy",
+        label: "When a filename already exists",
         editor_type: "enum",
         options: &["ask", "rename"],
     },

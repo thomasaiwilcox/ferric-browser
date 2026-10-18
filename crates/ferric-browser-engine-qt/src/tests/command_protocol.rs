@@ -97,7 +97,9 @@ fn scroll_target_command_uses_the_shared_executor_and_owned_view_actions() {
     assert!(secondary.contains("secondaryUi.tab_index_for_id(scrollTargetParts[1])"));
     assert!(secondary.contains("secondaryUi, scrollTargetView,"));
     assert!(qml.contains("id: secondaryUi"));
-    assert!(qml.contains("hint_chrome_available: false"));
+    assert!(secondary.contains("hint_chrome_available: true"));
+    assert!(secondary.contains("FerricHintWorkspace {"));
+    assert!(secondary.contains("browserUi: secondaryUi"));
     let primary_scroll_target = primary
         .find("if (action.indexOf(\"scroll-target\\t\") === 0)")
         .expect("primary scroll-target branch");
@@ -387,11 +389,8 @@ fn switcher_input_coalesces_refreshes_and_cancels_on_close() {
     assert!(qml.contains("switcherBatchTimer.start()"));
     assert!(qml.contains("switcherBatchGeneration += 1"));
     assert!(qml.contains("switcherBatchQuery !== switcherSurface.query"));
-    assert!(qml.contains("function switcherMaxResults()"));
-    assert!(qml.contains("return browserUi.feature_switcher_max_results"));
-    assert!(qml.contains("Search up to \" + browserWindow.switcherMaxResults()"));
-    assert!(qml.contains("Number(right.rank || 0)"));
-    assert!(qml.contains("String(left.id || \"\").localeCompare"));
+    // Ranking, combined limits and retained selection have executable QML
+    // coverage. Their implementation need not live beside the input timers.
     assert!(qml.contains("if (window.switcherVisible)"));
 }
 
@@ -1451,7 +1450,7 @@ fn ipc_support_commands_use_typed_help_and_empty_arguments() {
     assert_eq!(command.name, "help");
     assert_eq!(command.arguments, vec!["content.zoom"]);
     assert_eq!(route.open_target, IpcOpenTarget::Tab);
-    for name in ["version", "diagnostics"] {
+    for name in ["version", "diagnostics", "settings", "profiles", "sessions"] {
         let (command, _) = typed_ipc_command(&serde_json::json!({
             "command": name,
             "arguments": {}
@@ -1459,6 +1458,10 @@ fn ipc_support_commands_use_typed_help_and_empty_arguments() {
         .expect("typed support command");
         assert_eq!(command.name, name);
         assert_eq!(command.arguments, Vec::<String>::new());
+        assert!(typed_ipc_command(&serde_json::json!({
+            "command": name,
+            "arguments": {"unexpected": true}
+        })).is_err());
     }
     assert!(
         typed_ipc_command(&serde_json::json!({

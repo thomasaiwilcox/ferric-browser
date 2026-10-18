@@ -4,14 +4,23 @@ use super::{
     NetworkPolicyWorker, PathBuf, PendingProfileConfiguration, Pin, PrintWorker, PrivacyKind,
     ProfileDeleteWorker, ProfileListWorker, ProfileOpenEffect, ProfileOpenRequest,
     ProfilePersistence, ProfilePreviewWorker, ProfileStorage, QString, QStringList, RootSpec,
-    RuntimeOverrides, UserscriptManagerWorker, Uuid, Value, atomic_write_private,
-    bootstrap_runtime, bounded_header, cleanup_editor_artifact, cleanup_print_artifact,
-    cleanup_staged_downloads, configured_bindings, desktop_portals, discard_config_edit,
-    discard_editor_request, finish_pending_selection_operation, hyprland, link_cleaning_policy,
-    logging, network_policy, qobject, resolve_browser_roots,
+    RuntimeOverrides, SessionCheckpoint, UserscriptManagerWorker, Uuid, Value,
+    atomic_write_private, bootstrap_runtime, bounded_header, cleanup_editor_artifact,
+    cleanup_print_artifact, cleanup_staged_downloads, configured_bindings, desktop_portals,
+    discard_config_edit, discard_editor_request, finish_pending_selection_operation, hyprland,
+    link_cleaning_policy, logging, network_policy, profile_startup::FailureStage, qobject,
+    resolve_browser_roots,
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn profile_available(&self) -> bool {
+        self.rust()
+            .state
+            .as_ref()
+            .and_then(BrowserApplication::profile_snapshot)
+            .is_some()
+    }
+
     #[allow(clippy::too_many_lines)]
     pub(super) fn configure_profile(
         mut self: Pin<&mut Self>,
@@ -21,6 +30,21 @@ impl qobject::BrowserUi {
         profile_name: &QString,
         storage_base: &QString,
     ) {
+        let context_catalog_revision = super::live_ipc_owners::context_catalog_revision();
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .profile_startup
+            .begin();
+        self.as_mut().sync_profile_startup_notice();
+        self.as_mut().cancel_diagnostics();
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .diagnostics_collector
+            .clear();
         let profile_label = profile_label.to_string();
         let profile_name = profile_name.to_string();
         let storage_base = storage_base.to_string();
@@ -35,10 +59,23 @@ impl qobject::BrowserUi {
         };
         let Some((runtime, window, tab)) = bootstrap_runtime(privacy, &profile_label) else {
             self.as_mut().set_profile_bootstrap_pending(false);
-            self.set_status_text(QString::from("Core profile setup failed"));
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .profile_startup
+                .fail(
+                    FailureStage::Runtime,
+                    "The initial browser runtime could not be created",
+                );
+            self.as_mut().sync_profile_startup_notice();
+            self.set_status_text(QString::from(
+                "The profile couldn't be opened. Open :diagnostics for details.",
+            ));
             return;
         };
         self.as_mut().set_profile_bootstrap_pending(true);
+        self.as_mut().refresh_ipc_owner();
         let startup_config =
             serde_json::from_str::<Config>(&self.as_ref().rust().config_json.to_string())
                 .unwrap_or_default();
@@ -82,7 +119,16 @@ impl qobject::BrowserUi {
             .map_err(|error| error.to_string());
         if let Err(error) = request_result {
             self.as_mut().set_profile_bootstrap_pending(false);
-            self.set_status_text(QString::from(format!("Profile bootstrap failed: {error}")));
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .profile_startup
+                .fail(FailureStage::ProfileOpen, &error);
+            self.as_mut().sync_profile_startup_notice();
+            self.set_status_text(QString::from(
+                "The profile couldn't be opened. Open :diagnostics for details.",
+            ));
             return;
         }
         self.as_mut()
@@ -90,6 +136,7 @@ impl qobject::BrowserUi {
             .as_mut()
             .get_mut()
             .pending_profile_configuration = Some(PendingProfileConfiguration {
+            context_catalog_revision,
             private_profile,
             profile_name,
             storage_base,
@@ -98,7 +145,7 @@ impl qobject::BrowserUi {
             tab,
         });
         self.as_mut()
-            .set_status_text(QString::from("Profile bootstrap requested"));
+            .set_status_text(QString::from("Opening profile…"));
     }
 
     #[allow(clippy::too_many_lines)]
@@ -108,6 +155,7 @@ impl qobject::BrowserUi {
         setup: Result<ProfileOpenEffect, String>,
     ) {
         let PendingProfileConfiguration {
+            context_catalog_revision,
             private_profile,
             profile_name,
             storage_base,
@@ -123,16 +171,41 @@ impl qobject::BrowserUi {
             Err(error) => {
                 self.as_mut().set_profile_bootstrap_pending(false);
                 self.as_mut()
-                    .set_status_text(QString::from(format!("Profile bootstrap failed: {error}")));
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .profile_startup
+                    .fail(FailureStage::ProfileOpen, &error);
+                self.as_mut().sync_profile_startup_notice();
+                self.as_mut().set_status_text(QString::from(
+                    "The profile couldn't be opened. Open :diagnostics for details.",
+                ));
                 return;
             }
         };
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.profile_startup.activate(
+                effect.storage_error.as_deref(),
+                effect.configuration_error.as_deref(),
+                effect.context_error.as_deref(),
+            );
+            this.profile_open_effect = Some(effect.clone());
+            this.profile_storage_base.clone_from(&storage_base);
+        }
+        self.as_mut().sync_profile_startup_notice();
+        self.as_mut().clear_session_preview_rows();
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .session_preview_request = None;
+        self.as_mut().reset_management_feedback();
         let profile_id = effect.profile.id;
         let session_path = effect.session_path;
         let session_state_root = effect.session_state_root;
         let storage_roots = effect.profile.roots.clone();
-        let storage_ready = effect.storage_error.is_none();
-        let storage_error = effect.storage_error;
         let base_config =
             serde_json::from_str::<Value>(&self.as_ref().rust().config_base_json.to_string())
                 .ok()
@@ -145,7 +218,6 @@ impl qobject::BrowserUi {
         let profile_overrides = effect.profile_overrides;
         let runtime_overrides = effect.runtime_overrides;
         let config_path = self.as_ref().rust().config_path.to_string();
-        let config_layer_error = effect.configuration_error;
         let presentation_config = effect.configuration.effective;
         let config =
             serde_json::to_value(&presentation_config).unwrap_or_else(|_| startup_config.clone());
@@ -188,13 +260,12 @@ impl qobject::BrowserUi {
         let desktop_portal_mode = desktop_portals::mode_name(&presentation_config.desktop.portals);
         let profile_overrides_json =
             serde_json::to_string(&profile_overrides).unwrap_or_else(|_| "{}".into());
-        let context_config_error = effect.context_error;
         let profile_snapshot = effect.profile;
-        let storage_worker_error: Option<String> = None;
         let status = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.state = Some(state);
+            this.context_catalog_revision = context_catalog_revision;
             this.journey_durable_ids.borrow_mut().clear();
             this.journey_export_payload = None;
             this.journey_export_preview_text = QString::default();
@@ -260,11 +331,17 @@ impl qobject::BrowserUi {
             this.private_history_next_id = -1;
             this.session_names.clear();
             this.session_names_dirty.set(true);
+            this.session_names_refresh_again = false;
+            this.storage_library_refresh_again = false;
+            this.storage_library_read_state = super::CatalogReadState::Unrequested;
+            this.session_catalog_read_state = super::CatalogReadState::Unrequested;
+            this.journey_read_pending = false;
+            this.profile_list_refresh_again = false;
             this.session_restore_preview_pending = false;
             this.session_restore_load_append = None;
             this.session_restore_recovery_pending = false;
-            this.session_save_pending = false;
-            this.session_save_checkpoint = false;
+            this.session_saves.clear();
+            this.checkpoint = SessionCheckpoint::default();
             this.session_checkpoint_clear_pending = false;
             this.storage_flush_pending = false;
             this.storage_flush_error = None;
@@ -284,21 +361,15 @@ impl qobject::BrowserUi {
             this.clipboard_request_primary = false;
             finish_pending_selection_operation(this, "cancelled");
             this.pending_caret = None;
-            this.pending_spawn = None;
-            if let Some(pending) = this.pending_action_target.take() {
-                this.operation_states
-                    .insert(pending.operation_id, "cancelled".into());
-            }
-            this.pending_download = None;
+            super::browser_ui_download_requests::finish_pending_download_operation(
+                this,
+                "cancelled",
+            );
+            drop(this.download_finalizer.take());
+            drop(this.download_stream_writer.take());
             cleanup_staged_downloads(&mut this.staged_downloads);
             this.macro_key_prefix = None;
             this.macro_key_started_ms = None;
-            if let Some(pending) = this.pending_userscript.take() {
-                this.operation_states.insert(
-                    pending.operation_id,
-                    "failed (document target invalidated)".into(),
-                );
-            }
             if let Some(editor) = this.pending_editor.take() {
                 discard_editor_request(editor);
             }
@@ -373,6 +444,9 @@ impl qobject::BrowserUi {
                 .unwrap_or_default();
             this.binding_overlay = QString::default();
             this.config_watch = config_watch;
+            this.pending_context_reload = None;
+            this.config_reload_requested_by_user = false;
+            this.context_reload_worker = None;
             this.config_reload_worker = ConfigReloadWorker::spawn().ok();
             this.config_write_worker = ConfigWriteWorker::spawn().ok();
             this.print_worker = PrintWorker::spawn().ok();
@@ -381,6 +455,7 @@ impl qobject::BrowserUi {
             this.profile_list_worker = ProfileListWorker::spawn().ok();
             this.profile_preview_worker = ProfilePreviewWorker::spawn().ok();
             this.userscript_manager_worker = UserscriptManagerWorker::spawn().ok();
+            this.userscript_inventory_refresh_again = false;
             this.focus_observations.clear();
             this.focus_suppressions.clear();
             this.profile_name.clone_from(&profile_name);
@@ -411,7 +486,6 @@ impl qobject::BrowserUi {
             } else {
                 ProfilePersistence::Transient
             };
-            this.session_permissions.clear();
             this.pending_permission_reset_session = None;
             let logging_config = serde_json::from_value::<LoggingConfig>(
                 this.config.get("logging").cloned().unwrap_or(Value::Null),
@@ -431,30 +505,17 @@ impl qobject::BrowserUi {
             if let Some(bindings) = this.bindings.as_mut() {
                 bindings.set_mode(Mode::Normal);
             }
-            let status = if private_profile {
-                QString::from("Private profile ready")
-            } else if let Some(error) = storage_error {
-                QString::from(format!(
-                    "Profile ready (durable storage unavailable: {error})"
-                ))
-            } else if let Some(error) = storage_worker_error {
-                QString::from(format!(
-                    "Profile ready (metadata worker unavailable: {error})"
-                ))
-            } else if let Some(error) = config_layer_error.as_deref() {
-                QString::from(format!("Profile ready (configuration issue: {error})"))
-            } else if let Some(error) = context_config_error.as_deref() {
-                QString::from(format!(
-                    "Profile ready (context configuration issue: {error})"
-                ))
-            } else if storage_ready {
-                QString::from("Profile ready")
-            } else {
-                QString::from("Profile ready (history unavailable)")
-            };
+            let status = QString::from(this.profile_startup.ready_message(private_profile));
             this.status_text = status.clone();
             status
         };
+        self.as_mut().clear_userscript_inventory_rows();
+        self.as_mut().set_userscript_inventory_ready(false);
+        self.as_mut().set_userscript_inventory_pending(false);
+        self.as_mut()
+            .set_userscript_inventory_error(QString::default());
+        self.as_mut()
+            .set_userscript_install_state(QString::from("idle"));
         let revision = self
             .as_ref()
             .rust()
@@ -485,6 +546,7 @@ impl qobject::BrowserUi {
         self.as_mut().set_learning_mode(learning_mode);
         self.as_mut()
             .set_profile_overrides_json(QString::from(profile_overrides_json));
+        self.as_mut().set_blocking_policy_ready(false);
         self.as_mut().set_blocking_hosts(QStringList::default());
         self.as_mut()
             .set_blocking_exceptions(QStringList::default());
@@ -525,23 +587,30 @@ impl qobject::BrowserUi {
         self.as_mut().set_active_tab_index(0);
         self.as_mut().set_tab_count(1);
         self.as_mut().set_status_text(status);
+        self.as_mut().sync_context_choices();
         self.as_mut().sync_context_metadata();
-        let policy_request = {
+        let policy_request = (|| {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let policy_roots = this.userscript_roots.clone();
-            let policy_config = this.config.clone();
             if this.network_policy_worker.is_none() {
-                this.network_policy_worker = NetworkPolicyWorker::spawn().ok();
+                this.network_policy_worker = Some(NetworkPolicyWorker::spawn()?);
             }
             this.network_policy_worker
                 .as_mut()
-                .map(|worker| worker.request(policy_roots, policy_config))
-        };
-        if !matches!(policy_request, Some(Ok(()))) {
+                .ok_or_else(|| "Network policy service is unavailable".to_owned())?
+                .request(this.userscript_roots.clone(), this.config.clone())
+        })();
+        if let Err(error) = policy_request {
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .profile_startup
+                .network_result(Some(&error));
+            self.as_mut().sync_profile_startup_notice();
             self.as_mut().set_profile_bootstrap_pending(false);
             self.as_mut().set_status_text(QString::from(
-                "Profile ready (network policy worker unavailable)",
+                "Network filtering couldn't be prepared. Open :diagnostics for details.",
             ));
         }
     }

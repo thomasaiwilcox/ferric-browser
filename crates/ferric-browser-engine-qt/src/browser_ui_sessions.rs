@@ -1,13 +1,103 @@
 use super::{
-    CleanLinkResult, ClosedTabDescriptor, ClosedTabSnapshot, ContextMember, CxxQtType, Event,
-    ExistenceState, JourneyEdgeKind, PathBuf, PendingExternalNavigation, Pin, QString, QStringList,
-    RestoreSafety, SessionSnapshot, SnapshotTabInput, SnapshotWindowInput, StorageRequest, Uuid,
-    ValidatedUrl, configured_undo_limit, current_target, elapsed_ms, is_bounded_untrusted_text,
-    link_preview_presentation, named_session_path, qobject, restore_entry_line,
-    sanitize_untrusted_title, unix_timestamp,
+    CatalogReadState, CleanLinkResult, ClosedTabDescriptor, ClosedTabSnapshot, ContextMember,
+    CxxQtType, Event, FeedbackLane, FeedbackState, JourneyEdgeKind, PendingExternalNavigation, Pin,
+    QString, QStringList, StorageRequest, ValidatedUrl, configured_undo_limit, current_target,
+    elapsed_ms, is_bounded_untrusted_text, link_preview_presentation, qobject, restore_entry_line,
+    sanitize_untrusted_title,
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn request_session_names(mut self: Pin<&mut Self>) {
+        if !self.as_ref().rust().session_names_dirty.get()
+            || self
+                .as_ref()
+                .rust()
+                .session_catalog_read_state
+                .is_in_flight()
+        {
+            return;
+        }
+        let context = {
+            let pinned = self.as_ref();
+            let rust = pinned.rust();
+            let transient = rust.state.as_ref().and_then(|state| {
+                let tab = state.active_tab()?;
+                state
+                    .profiles()
+                    .get(&tab.profile)
+                    .map(|profile| profile.privacy.is_transient())
+            }) == Some(true);
+            if transient {
+                None
+            } else {
+                rust.session_state_root.clone().zip(rust.profile_id)
+            }
+        };
+        let Some((root, profile_id)) = context else {
+            let transient = self.as_ref().active_profile_is_transient();
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.session_names.clear();
+            this.session_names_dirty.set(false);
+            this.session_catalog_read_state = if transient {
+                CatalogReadState::Ready
+            } else {
+                CatalogReadState::Failed(
+                    "The saved-session location is unavailable. Reopen the profile to try again."
+                        .into(),
+                )
+            };
+            drop(rust);
+            self.as_mut()
+                .set_session_names_values(super::QStringList::default());
+            self.as_mut().set_session_names_pending(false);
+            return;
+        };
+        match self
+            .as_mut()
+            .submit_storage(StorageRequest::SessionList { root, profile_id })
+        {
+            Ok(()) => {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .session_names_refresh_again = false;
+                self.as_mut().set_session_names_error(QString::default());
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .session_catalog_read_state = CatalogReadState::Pending;
+                self.as_mut().set_session_names_pending(true);
+            }
+            Err(
+                ferric_browser_storage::StorageWorkerError::Busy
+                | ferric_browser_storage::StorageWorkerError::QueueFull,
+            ) => {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .session_catalog_read_state = CatalogReadState::Queued;
+                self.as_mut().set_session_names_pending(true);
+            }
+            Err(error) => {
+                let detail = error.to_string();
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .session_catalog_read_state = CatalogReadState::Failed(detail.clone());
+                self.as_mut().set_session_names_pending(false);
+                self.as_mut().set_session_names_error(QString::from(detail));
+                self.as_mut().set_status_text(QString::from(
+                    "Saved sessions couldn't be loaded. Refresh the session list to try again.",
+                ));
+            }
+        }
+    }
+
     pub(super) fn recover_session(mut self: Pin<&mut Self>) -> QString {
         let (root, profile_id) = {
             let pinned = self.as_ref();
@@ -39,7 +129,9 @@ impl qobject::BrowserUi {
                 QString::default()
             }
             None => {
-                self.set_status_text(QString::from("Recovery worker is unavailable"));
+                self.set_status_text(QString::from(
+                    "Recovery is unavailable in this window. Reopen the window and try again.",
+                ));
                 QString::default()
             }
         }
@@ -406,145 +498,10 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.checkpoint.restore_pending = None;
-            this.checkpoint.dirty = true;
-            this.checkpoint.dirty_since_ms = Some(elapsed_ms(this.binding_clock));
+            this.checkpoint.mark_dirty(elapsed_ms(this.binding_clock));
         }
         self.set_status_text(QString::from(format!("Recovered {} tab(s)", urls.len())));
         QString::from(urls.join("\n"))
-    }
-
-    pub(super) fn build_session_snapshot(
-        &self,
-        name: &str,
-        path: PathBuf,
-    ) -> Option<(PathBuf, SessionSnapshot)> {
-        let rust = self.rust();
-        let (Some(state), Some(profile_id)) = (rust.state.as_ref(), rust.profile_id) else {
-            return None;
-        };
-        let window_id = rust.window?;
-        let window = state.windows().get(&window_id)?;
-        let core_profile_id = window.profile;
-        let mut tab_ids = std::collections::HashMap::new();
-        for tab_id in &window.tabs {
-            if let Some(tab) = state.tabs().get(tab_id)
-                && tab.profile == core_profile_id
-                && tab.existence == ExistenceState::Live
-            {
-                tab_ids.insert(*tab_id, Uuid::new_v4());
-            }
-        }
-        let tabs = window
-            .tabs
-            .iter()
-            .filter_map(|tab_id| {
-                let durable_id = tab_ids.get(tab_id).copied()?;
-                let tab = state.tabs().get(tab_id)?;
-                let url = tab.url.clone().unwrap_or_else(|| "about:blank".into());
-                Some(SnapshotTabInput {
-                    id: durable_id,
-                    url,
-                    safety: RestoreSafety::SafeGet,
-                    private: false,
-                    pinned: tab.pinned,
-                    muted: tab.muted,
-                    zoom: tab.zoom,
-                    scroll_position: rust.scroll_positions.get(tab_id).copied(),
-                })
-            })
-            .collect::<Vec<_>>();
-        let selected_tab = window
-            .active_tab
-            .and_then(|tab_id| tab_ids.get(&tab_id).copied());
-        let Ok(mut snapshot) = SessionSnapshot::new(
-            rust.session_id,
-            name,
-            profile_id,
-            state.revision(),
-            unix_timestamp().to_string(),
-            vec![SnapshotWindowInput {
-                selected_tab,
-                workspace: None,
-                tabs,
-            }],
-        ) else {
-            return None;
-        };
-        snapshot.closed_tabs = rust
-            .closed_tabs
-            .iter()
-            .filter(|closed| {
-                !closed.private && super::url_safety::is_safe_tab_descriptor(&closed.url)
-            })
-            .take(configured_undo_limit(&rust.config))
-            .map(|closed| ClosedTabSnapshot {
-                id: closed.id,
-                url: closed.url.clone(),
-                title: closed.title.clone(),
-                closed_at: closed.closed_at,
-            })
-            .collect();
-        Some((path, snapshot))
-    }
-
-    pub(super) fn request_session_snapshot_save(
-        mut self: Pin<&mut Self>,
-        name: &str,
-        path: PathBuf,
-        checkpoint: bool,
-    ) -> bool {
-        if self.as_ref().rust().session_save_pending {
-            return false;
-        }
-        let Some((path, snapshot)) = self.as_ref().get_ref().build_session_snapshot(name, path)
-        else {
-            return false;
-        };
-        let result = Some(
-            self.as_mut()
-                .submit_storage(StorageRequest::SessionSave { path, snapshot }),
-        );
-        match result {
-            Some(Ok(())) => {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.session_save_pending = true;
-                this.session_save_checkpoint = checkpoint;
-                true
-            }
-            _ => false,
-        }
-    }
-
-    pub(super) fn named_session_path(&self, name: &str) -> Option<PathBuf> {
-        let rust = self.rust();
-        named_session_path(rust.session_state_root.as_ref()?, rust.profile_id?, name).ok()
-    }
-
-    pub(super) fn save_named_session(mut self: Pin<&mut Self>, name: &QString) -> bool {
-        if self.as_ref().active_profile_is_transient() {
-            self.set_status_text(QString::from(
-                "Ephemeral and private profiles cannot save durable sessions",
-            ));
-            return false;
-        }
-        let Some(path) = self
-            .as_ref()
-            .get_ref()
-            .named_session_path(&name.to_string())
-        else {
-            self.set_status_text(QString::from("Invalid session name or profile"));
-            return false;
-        };
-        let saved = self
-            .as_mut()
-            .request_session_snapshot_save(&name.to_string(), path, false);
-        self.set_status_text(QString::from(if saved {
-            "Session save queued"
-        } else {
-            "Session save is busy or unavailable"
-        }));
-        saved
     }
 
     pub(super) fn request_named_session_load(
@@ -597,10 +554,64 @@ impl qobject::BrowserUi {
                 false
             }
             None => {
-                self.set_status_text(QString::from("Session restore worker is unavailable"));
+                self.set_status_text(QString::from("Session restore is unavailable in this window. Reopen the window and try again."));
                 false
             }
         }
+    }
+
+    pub(super) fn clear_session_preview_rows(mut self: Pin<&mut Self>) {
+        self.as_mut()
+            .set_session_preview_labels(QStringList::default());
+        self.as_mut()
+            .set_session_preview_urls(QStringList::default());
+        self.as_mut()
+            .set_session_preview_pinned(QStringList::default());
+        self.as_mut()
+            .set_session_preview_muted(QStringList::default());
+    }
+
+    pub(super) fn publish_session_preview_rows(
+        mut self: Pin<&mut Self>,
+        entries: &[ferric_browser_storage::RestorePlanEntry],
+    ) {
+        self.as_mut().set_session_preview_labels(
+            entries
+                .iter()
+                .map(|entry| {
+                    QString::from(
+                        entry
+                            .url
+                            .as_deref()
+                            .and_then(super::safe_site_origin)
+                            .and_then(|origin| super::safe_site_host(&origin))
+                            .unwrap_or_else(|| match entry.url.as_deref() {
+                                Some("rb://start") => "Start page".into(),
+                                Some("rb://blank" | "about:blank") => "Blank tab".into(),
+                                _ => "Saved tab".into(),
+                            }),
+                    )
+                })
+                .collect(),
+        );
+        self.as_mut().set_session_preview_urls(
+            entries
+                .iter()
+                .map(|entry| QString::from(entry.url.as_deref().unwrap_or_default()))
+                .collect(),
+        );
+        self.as_mut().set_session_preview_pinned(
+            entries
+                .iter()
+                .map(|entry| QString::from(if entry.pinned { "true" } else { "false" }))
+                .collect(),
+        );
+        self.as_mut().set_session_preview_muted(
+            entries
+                .iter()
+                .map(|entry| QString::from(if entry.muted { "true" } else { "false" }))
+                .collect(),
+        );
     }
 
     pub(super) fn request_session_preview(mut self: Pin<&mut Self>, name: &QString) -> bool {
@@ -629,6 +640,7 @@ impl qobject::BrowserUi {
                 this.session_restore_preview_pending = true;
                 this.session_preview = QString::default();
                 drop(rust);
+                self.as_mut().clear_session_preview_rows();
                 self.set_status_text(QString::from("Loading session preview"));
                 true
             }
@@ -648,13 +660,14 @@ impl qobject::BrowserUi {
                 false
             }
             None => {
-                self.set_status_text(QString::from("Session preview worker is unavailable"));
+                self.set_status_text(QString::from("Session preview is unavailable in this window. Reopen the window and try again."));
                 false
             }
         }
     }
 
     pub(super) fn list_named_sessions(mut self: Pin<&mut Self>) -> QString {
+        self.as_ref().rust().session_names_dirty.set(true);
         self.as_mut().request_session_names();
         QString::from(self.as_ref().rust().session_names.join("\n"))
     }
@@ -689,6 +702,12 @@ impl qobject::BrowserUi {
         }));
         match result {
             Some(Ok(())) => {
+                self.as_mut().publish_management_feedback(
+                    FeedbackLane::SessionDelete,
+                    FeedbackState::Pending,
+                    "Deleting session…",
+                    "",
+                );
                 self.set_status_text(QString::from("Session deletion queued"));
                 true
             }
@@ -699,7 +718,7 @@ impl qobject::BrowserUi {
                 false
             }
             None => {
-                self.set_status_text(QString::from("Session deletion worker is unavailable"));
+                self.set_status_text(QString::from("Session deletion is unavailable in this window. Reopen the window and try again."));
                 false
             }
         }
@@ -713,6 +732,23 @@ impl qobject::BrowserUi {
     pub(super) fn take_session_preview(mut self: Pin<&mut Self>) -> QString {
         let mut rust = self.as_mut().rust_mut();
         std::mem::take(&mut rust.as_mut().get_mut().session_preview)
+    }
+
+    pub(super) fn take_session_preview_request(mut self: Pin<&mut Self>) -> QStringList {
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .session_preview_request
+            .take()
+            .map_or_else(QStringList::default, |(name, append)| {
+                [
+                    QString::from(name),
+                    QString::from(if append { "true" } else { "false" }),
+                ]
+                .into_iter()
+                .collect()
+            })
     }
 
     pub(super) fn clear_link_preview(mut self: Pin<&mut Self>) {

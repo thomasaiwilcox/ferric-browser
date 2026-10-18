@@ -162,6 +162,27 @@ pub(super) fn typed_ipc_action(
     typed_ipc_command(&command).map(|(command, route)| (command, route, action_id))
 }
 
+/// Registered actions share the command envelope's bounded context schema and
+/// IPC source policy; their subject arguments are validated by the manifest.
+pub(super) fn typed_registered_action_route(params: &Value) -> Result<IpcRoute, IpcCommandError> {
+    let object = params
+        .as_object()
+        .ok_or("action.execute params must be an object")?;
+    if object
+        .keys()
+        .any(|key| !matches!(key.as_str(), "action" | "arguments" | "context"))
+    {
+        return Err("action request contains an unknown field".into());
+    }
+    let mut command = serde_json::json!({"command": "action"});
+    if let Some(context) = object.get("context") {
+        command["context"] = context.clone();
+    }
+    let envelope =
+        ferric_browser_ipc::decode_command_envelope(&command).map_err(IpcCommandError::from)?;
+    crate::ipc_route::typed_ipc_route(&envelope).map_err(IpcCommandError::from)
+}
+
 fn validate_action_arguments(
     definition: &ActionDefinition,
     arguments: &Value,

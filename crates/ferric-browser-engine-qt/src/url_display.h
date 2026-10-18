@@ -2,6 +2,8 @@
 #define FERRIC_BROWSER_URL_DISPLAY_H
 
 #include <QtCore/QString>
+#include <QtCore/QUrl>
+#include "local_file_url.h"
 
 QString ferric_browser_to_ascii_host(const QString &host);
 QString ferric_browser_canonicalize_url(const QString &value);

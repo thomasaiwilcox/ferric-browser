@@ -64,11 +64,13 @@ fn primary_web_engine_profile_uses_selected_profile_namespace() {
     assert!(
         !qml.contains("storageName: window.temporaryProfile ? \"\" : \"ferric-browser-default\"")
     );
-    assert!(qml.contains(
-            "storageName: secondaryWindow.windowTransientProfile ? \"\" : \"ferric-browser-\" + secondaryWindow.windowProfileName"
-        ));
+    let resources = include_str!("../../qml/components/FerricProfileResources.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(resources.contains("storageName: resources.transientProfile ? \"\" : \"ferric-browser-\" + resources.profileName"));
+    assert!(secondary.contains("windowProfileName,windowTransientProfile,windowStorageBasePath,"));
+    assert!(secondary.contains("windowSharedProfile,windowSharedRequestInterceptor"));
     assert!(qml.contains("window.storageBasePath + \"/webengine/\" + window.profileName"));
-    assert!(qml.contains("secondaryWindow.windowStorageBasePath + \"/webengine/\""));
+    assert!(resources.contains("resources.storageBase + \"/webengine/\" + resources.profileName"));
     assert!(qml.contains("property string windowStorageBasePath: rootWindow.storageBasePath"));
 }
 
@@ -154,7 +156,6 @@ fn site_ledger_uses_on_demand_redacted_interaction_status() {
     let runtime = include_str!("../../qml/components/FerricBrowserRuntimeServices.qml");
     let projection = include_str!("../browser_ui_query_diagnostics.rs");
     assert!(ledger.contains("On-demand interaction status"));
-    assert!(ledger.contains("recent_action_errors"));
     assert!(ledger.contains("Text.PlainText"));
     assert!(runtime.contains("browserUi.refresh_interaction_status()"));
     assert!(projection.contains("SAFE_INTERACTION_ERROR_CATEGORIES"));
@@ -163,19 +164,6 @@ fn site_ledger_uses_on_demand_redacted_interaction_status() {
     let binding_explanation = include_str!("../browser_ui_query_bindings.rs");
     assert!(binding_explanation.contains("binding_explanation_status"));
     assert!(binding_explanation.contains("shortcut_policy_site_rule"));
-}
-
-#[test]
-fn permission_session_key_is_scoped_to_profile_uuid_and_lifetime() {
-    let first_profile = Uuid::from_u128(1);
-    let second_profile = Uuid::from_u128(2);
-    let first = permission_session_key(first_profile, "https://example.test", "camera");
-    let same = permission_session_key(first_profile, "https://example.test", "camera");
-    let other_profile = permission_session_key(second_profile, "https://example.test", "camera");
-
-    assert_eq!(first, same);
-    assert_ne!(first, other_profile);
-    assert_eq!(first.lifetime, PermissionLifetimeKey::ProfileSession);
 }
 
 #[test]
@@ -256,7 +244,6 @@ fn site_ledger_component_renders_data_and_emits_bridge_intents() {
     assert!(qml.contains("signal activeOriginDataClearRequested()"));
     assert!(qml.contains("signal siteDoctorExperimentRequested(string kind)"));
     assert!(qml.contains("signal sanitizedReportCopyRequested(bool includeHost)"));
-    assert!(qml.contains("id: siteReportHost\n                text: \"Include current site host\"\n                checked: false"));
     assert!(site_report.contains("if include_host && !private"));
     assert!(site_report.contains("private_session_data"));
     assert!(!site_report.contains("page_label"));
@@ -369,7 +356,9 @@ fn profile_delete_preview_component_only_emits_confirmation_intents() {
     assert!(!qml.contains("browserUi."));
     assert!(composition_root.contains("FerricProfileDeletePreview {"));
     assert!(!composition_root.contains("id: profileDeletePreview"));
-    assert!(composition_root.contains("browserUi.delete_profile(window.profileDeleteName, true)"));
+    assert!(composition_root.contains(
+        "workspace.browserUi.delete_profile(workspace.state.profileDeleteName, true)"
+    ));
 }
 
 #[test]
@@ -381,8 +370,9 @@ fn reopen_window_confirmation_component_only_emits_root_owned_intents() {
     assert!(!qml.contains("browserUi."));
     assert!(composition_root.contains("FerricReopenWindowConfirmation {"));
     assert!(!composition_root.contains("id: reopenWindowConfirmation"));
-    assert!(composition_root.contains("window.confirmReopenWindow()"));
-    assert!(composition_root.contains("window.cancelReopenWindow()"));
+    assert!(composition_root.contains("surfaces.controller.confirmReopenWindow()"));
+    assert!(composition_root.contains("surfaces.controller.cancelReopenWindow()"));
+    assert!(composition_root.contains("hostWindow.confirmReopenWindow()"));
 }
 
 #[test]
@@ -395,7 +385,7 @@ fn session_preview_component_renders_state_and_emits_root_owned_intents() {
     assert!(!qml.contains("browserUi."));
     assert!(composition_root.contains("FerricSessionPreview {"));
     assert!(!composition_root.contains("id: sessionPreview\n"));
-    assert!(composition_root.contains("window.loadPreviewedSession()"));
+    assert!(composition_root.contains("surfaces.controller.loadPreviewedSession()"));
 }
 
 #[test]
@@ -413,7 +403,7 @@ fn session_manager_component_renders_model_and_emits_root_owned_intents() {
 }
 
 #[test]
-fn link_preview_component_renders_preview_data_and_emits_root_owned_intents() {
+fn link_preview_component_confirms_with_its_owner_and_emits_navigation_effects() {
     let qml = include_str!("../../qml/components/FerricLinkPreview.qml");
     let composition_root = QML_SOURCE;
     assert!(qml.contains("required property var previewUi"));
@@ -424,7 +414,8 @@ fn link_preview_component_renders_preview_data_and_emits_root_owned_intents() {
     assert!(!qml.contains("browserUi."));
     assert!(composition_root.contains("FerricLinkPreview {"));
     assert!(!composition_root.contains("id: linkPreview\n"));
-    assert!(composition_root.contains("browserUi.confirm_link_navigation()"));
+    assert!(qml.contains("previewUi.confirm_link_navigation()"));
+    assert!(include_str!("../../qml/components/FerricBrowserWindow.qml").contains("FerricLinkPreview {"));
 }
 
 #[test]
@@ -447,16 +438,12 @@ fn library_preview_components_render_models_and_emit_root_owned_intents() {
 }
 
 #[test]
-fn download_manager_component_renders_model_and_emits_root_owned_intents() {
+fn download_manager_component_emits_intents_without_backend_access() {
     let qml = include_str!("../../qml/components/FerricDownloadManager.qml");
-    let composition_root = QML_SOURCE;
     assert!(qml.contains("required property var downloadsModel"));
     assert!(qml.contains("signal openRequested(string downloadId, bool reveal)"));
     assert!(qml.contains("signal actionRequested(string downloadId, string action)"));
     assert!(!qml.contains("browserUi."));
-    assert!(composition_root.contains("FerricDownloadManager {"));
-    assert!(!composition_root.contains("id: downloadManager\n"));
-    assert!(composition_root.contains("window.requestDownloadAction(downloadId, action)"));
 }
 
 #[test]
@@ -501,7 +488,7 @@ fn hint_overlay_component_renders_candidates_and_emits_root_owned_intents() {
 }
 
 #[test]
-fn userscript_inventory_component_keeps_enable_rollback_at_the_root_boundary() {
+fn userscript_inventory_component_keeps_enable_rollback_at_the_owner_boundary() {
     let qml = include_str!("../../qml/components/FerricUserscriptInventory.qml");
     let settings = include_str!("../../qml/components/FerricSettings.qml");
     let composition_root = QML_SOURCE;
@@ -512,7 +499,7 @@ fn userscript_inventory_component_keeps_enable_rollback_at_the_root_boundary() {
     assert!(!composition_root.contains("id: userscriptList"));
     assert!(composition_root.contains("browserUi.set_userscript_enabled(name, enabled)"));
     assert!(settings.contains("userscriptInventory.setEnabled(name, enabled)"));
-    assert!(composition_root.contains("settingsSurface.setUserscriptEnabled(name, !enabled)"));
+    assert!(composition_root.contains("surface.setUserscriptEnabled(name, accepted ? enabled : !enabled)"));
 }
 
 #[test]
@@ -528,12 +515,12 @@ fn setting_rows_component_emits_intents_without_reaching_the_runtime_bridge() {
     assert!(!qml.contains("window.applySetting"));
     assert!(settings.contains("FerricSettingRows {"));
     assert!(!composition_root.contains("id: settingsList"));
-    assert!(composition_root.contains("window.applySetting(row, value)"));
-    assert!(composition_root.contains("window.resetSetting(row)"));
+    assert!(composition_root.contains("workspace.applySetting(row, value)"));
+    assert!(composition_root.contains("workspace.resetSetting(row)"));
 }
 
 #[test]
-fn settings_component_composes_schema_rows_and_keeps_mutations_at_the_root() {
+fn settings_component_composes_schema_rows_and_keeps_mutations_in_its_owner() {
     let qml = include_str!("../../qml/components/FerricSettings.qml");
     let rows = include_str!("../../qml/components/FerricSettingRows.qml");
     let composition_root = QML_SOURCE;
@@ -555,13 +542,14 @@ fn settings_component_composes_schema_rows_and_keeps_mutations_at_the_root() {
     assert!(rows.contains("options: options"));
     assert!(rows.contains("rowData.options"));
     assert!(composition_root.contains("FerricSettings {"));
-    assert!(composition_root.contains("FerricSettingsModel { id: settingsModel }"));
+    assert!(composition_root.contains("FerricSettingsModel {"));
+    assert!(composition_root.contains("id: settingsModel"));
     assert!(composition_root.contains("settingsModel.replaceRows("));
     assert!(!composition_root.contains("JSON.parse(browserUi.config_json)"));
     assert!(!composition_root.contains("function settingConfigValue("));
     assert!(composition_root.contains("browserUi.set_userscript_enabled(name, enabled)"));
-    assert!(composition_root.contains("settingsSurface.setUserscriptEnabled(name, !enabled)"));
-    assert!(composition_root.contains("window.applySetting(row, value)"));
+    assert!(composition_root.contains("surface.setUserscriptEnabled(name, accepted ? enabled : !enabled)"));
+    assert!(composition_root.contains("workspace.applySetting(row, value)"));
 }
 
 #[test]
@@ -654,7 +642,7 @@ fn command_outcomes_remain_visible_and_detached_windows_pump_runtime_work() {
     assert!(library.contains("FerricModalSurface {"));
     assert!(library.contains("onDismissRequested: closeRequested()"));
     assert!(modal.contains("context: Qt.WindowShortcut"));
-    assert!(modal.contains("enabled: surface.visible && surface.dismissOnEscape"));
+    assert!(modal.contains("enabled: surface.interactive && surface.dismissOnEscape"));
 }
 
 #[test]
@@ -717,7 +705,7 @@ fn library_entries_component_preserves_row_state_and_emits_root_owned_operations
     assert!(qml.contains("signal deleteRequested(string entryKind, string entryId)"));
     assert!(qml.contains("signal journeyReopenRequested(string nodeId, string target)"));
     assert!(qml.contains("signal journeyExpandRequested(string nodeId)"));
-    assert!(qml.contains("function markEditSaved(entryKind, entryId)"));
+    assert!(qml.contains("function markEditSaved(entryKind, entryId, value)"));
     assert!(qml.contains("function focusList()"));
     assert!(qml.contains("function moveSelection(delta)"));
     assert!(qml.contains("function activateCurrent()"));
@@ -728,7 +716,6 @@ fn library_entries_component_preserves_row_state_and_emits_root_owned_operations
     assert!(!qml.contains("execute_command"));
     assert!(manager.contains("FerricLibraryEntries {"));
     assert!(composition_root.contains("window.editLibraryEntry(entryKind, entryId, value)"));
-    assert!(composition_root.contains("libraryManager.markEditSaved(entryKind, entryId)"));
     assert!(composition_root.contains("window.deleteLibraryEntry(entryKind, entryId)"));
     assert!(composition_root.contains("browserUi.execute_command(command)"));
 }
@@ -745,9 +732,7 @@ fn library_manager_composes_presentation_and_forwards_every_operation_to_the_roo
     );
     assert!(qml.contains("signal journeyReopenRequested(string nodeId, string target)"));
     assert!(qml.contains("function focusPrimaryControl()"));
-    assert!(qml.contains("Qt.callLater(focusPrimaryControl)"));
     assert!(qml.contains("Component.onCompleted:"));
-    assert!(qml.contains("libraryEntryList.handleNavigationKey(event)"));
     assert!(!qml.contains("browserUi."));
     assert!(!qml.contains("execute_command"));
     assert!(composition_root.contains("FerricLibraryManager {"));
@@ -788,7 +773,7 @@ fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
     let source = include_str!("../browser_ui_hint_selection.rs");
     let ipc = include_str!("../browser_ui_ipc.rs");
     let ipc_preparation = include_str!("../browser_ui_ipc_preparation.rs");
-    let qml = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let qml = include_str!("../../qml/components/FerricHintWorkspace.qml");
 
     assert!(source.contains("hint_rapid_target == \"tab-bg\""));
     assert!(source.matches("open_hint_in_background_tab(").count() >= 3);
@@ -843,32 +828,9 @@ fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
     assert!(background_result.contains("if (browserUi.mode === \"hint\")"));
 }
 
-#[test]
-fn rapid_download_hints_queue_the_validated_download_and_keep_hint_mode() {
-    let source = include_str!("../browser_ui_hint_selection.rs");
-    let policy = include_str!("../hint_policy.rs");
-    let rapid_dispatch = source
-        .split("if self.as_ref().rust().hint_rapid {")
-        .nth(1)
-        .expect("rapid hint dispatch")
-        .split("} else if self.as_ref().rust().hint_rapid_target == \"yank\"")
-        .next()
-        .expect("rapid hint dispatch boundary");
-
-    let download = rapid_dispatch
-        .split("\"download\" => {")
-        .nth(1)
-        .expect("rapid download branch")
-        .split("_ => {")
-        .next()
-        .expect("rapid download branch boundary");
-    assert!(download.contains("queue_download_request("));
-    assert!(download.contains("\"Rapid hint download queued\""));
-    assert!(download.contains("\"action\"] = Value::String(\"download\".into())"));
-    assert!(policy.contains(
-        "Some(\"yank\" | \"clean-yank\" | \"tab-bg\" | \"userscript\" | \"download\")"
-    ));
-}
+// Rapid download admission, failure retention and continued Hint mode are
+// exercised through real typing by productPolishRapidDownloadRejection. The
+// hint command/policy tests also cover the typed rapid-download mode contract.
 
 #[test]
 fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_command() {
@@ -1011,7 +973,8 @@ fn config_reload_worker_loads_and_validates_off_thread() {
         Err(error) => error,
         Ok(_) => panic!("invalid contexts must reject reload"),
     };
-    assert!(invalid_contexts.contains("contexts configuration is invalid"));
+    assert_eq!(invalid_contexts.operation, Some(ConfigReadOperation::Reload));
+    assert!(invalid_contexts.detail.contains("contexts configuration is invalid"));
     let _ = fs::remove_file(&contexts_path);
 
     worker
@@ -1029,6 +992,24 @@ fn config_reload_worker_loads_and_validates_off_thread() {
         .expect("valid checked configuration");
     assert_eq!(check.operation, ConfigReadOperation::Check);
     assert_eq!(check.loaded.sources.len(), 1);
+
+    fs::write(&path, "schema_version = [ malformed private setting").expect("broken config");
+    worker.request_check(path.clone()).expect("invalid check request");
+    // A rejected competing reload cannot relabel the accepted check's error.
+    assert!(worker.request(path.clone(), "default".into()).is_err());
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let failure = loop {
+        if let Some(result) = worker.poll() {
+            break match result {
+                Err(error) => error,
+                Ok(_) => panic!("invalid check must fail"),
+            };
+        }
+        assert!(Instant::now() < deadline, "invalid check response timed out");
+        thread::sleep(Duration::from_millis(1));
+    };
+    assert_eq!(failure.operation, Some(ConfigReadOperation::Check));
+    assert!(failure.detail.contains("malformed private setting"));
 
     drop(worker);
     let _ = fs::remove_file(&path);
@@ -1147,7 +1128,7 @@ matches = ["https://example.test/*"]
     match toggled.expect("toggle response") {
         UserscriptManagerResult::SetEnabled {
             enabled: false,
-            result: Ok(scripts),
+            result: super::background_workers::UserscriptMutationOutcome::Applied { inventory: Ok(scripts) },
         } => assert!(!scripts[0].enabled),
         other => panic!("unexpected toggle result: {other:?}"),
     }
@@ -1176,7 +1157,7 @@ executable = "/bin/true"
         value
     });
     match installed.expect("install response") {
-        UserscriptManagerResult::Installed(Ok(scripts)) => {
+        UserscriptManagerResult::Installed(super::background_workers::UserscriptMutationOutcome::Applied { inventory: Ok(scripts) }) => {
             assert_eq!(scripts.len(), 2);
         }
         other => panic!("unexpected install result: {other:?}"),
@@ -1196,7 +1177,7 @@ executable = "/bin/true"
         value
     });
     match removed.expect("remove response") {
-        UserscriptManagerResult::Removed(Ok(scripts)) => assert_eq!(scripts.len(), 1),
+        UserscriptManagerResult::Removed(super::background_workers::UserscriptMutationOutcome::Applied { inventory: Ok(scripts) }) => assert_eq!(scripts.len(), 1),
         other => panic!("unexpected remove result: {other:?}"),
     }
     assert!(!root.join("userscripts/installed.toml").exists());

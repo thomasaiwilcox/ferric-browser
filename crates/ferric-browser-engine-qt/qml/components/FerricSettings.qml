@@ -9,8 +9,17 @@ FerricModalSurface {
     required property bool temporary
     required property string searchText
     required property string notice
+    readonly property bool filtering: searchText.trim().length > 0
+    property string noticeDetail: ""
+    property bool noticeFailed: false
+    property bool noticePending: false
+    property string profileLabel: ""
+    property bool transientProfile: browserWindow.temporaryProfile === true || browserWindow.ephemeralProfile === true
     required property string spellcheckStatus
     required property bool spellcheckDictionariesMissing
+    property bool userscriptInventoryReady: false
+    property bool userscriptInventoryPending: false
+    property string userscriptInventoryError: ""
     required property var userscriptRows
     required property var settingsModel
     signal closeRequested
@@ -26,73 +35,54 @@ FerricModalSurface {
     function setUserscriptEnabled(name, enabled) {
         userscriptInventory.setEnabled(name, enabled);
     }
+    function clearUserscriptOverrides() {
+        userscriptInventory.clearEnabledOverrides();
+    }
 
     visible: settingsVisible
     commandText: ":settings"
     title: "Settings"
-    message: "Validated runtime settings for the active global or profile layer."
+    message: profileLabel.length > 0 ? "Profile: " + profileLabel : "Browsing and interface preferences"
     keyHelp: "type to filter  ·  tab/shift-tab controls  ·  esc close"
     dialogWidth: 980 * scale
     dialogHeight: 680 * scale
     stackingOrder: 76
+    initialFocusItem: sections.currentIndex === 0 ? settingsSearchInput : scriptInstall
+    onSearchTextChanged: if (searchText.length > 0)
+        sections.currentIndex = 0
     onDismissRequested: closeRequested()
 
-    ScrollView {
-        id: settingsScroll
-        objectName: "settingsScroll"
+    ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 0
-        clip: true
+        spacing: 8 * settings.scale
 
-        ColumnLayout {
-            width: settingsScroll.availableWidth
-            spacing: 8
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                Flow {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: childrenRect.height
-                    spacing: 8
-                    Button {
-                        text: "Refresh"
-                        Accessible.name: "Refresh settings"
-                        onClicked: settings.refreshRequested()
-                    }
-                    Button {
-                        text: "Install script"
-                        Accessible.name: "Install userscript manifest"
-                        onClicked: settings.installUserscriptRequested()
-                    }
-                    Button {
-                        text: "Close"
-                        Accessible.name: "Close settings"
-                        onClicked: settings.closeRequested()
-                    }
-                }
+        TabBar {
+            id: sections
+            Layout.fillWidth: true
+            TabButton {
+                objectName: "settingsPreferencesTab"
+                text: "Settings"
             }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                CheckBox {
-                    text: "Temporary"
-                    checked: settings.temporary
-                    Accessible.name: "Apply settings temporarily"
-                    Accessible.description: "Changes remain in memory for this session"
-                    onToggled: settings.temporaryChangeRequested(checked)
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "Temporary changes stay in memory. Persistent edits do not rewrite config.toml."
-                    color: settings.browserWindow.secondaryTextColor
-                    wrapMode: Text.WordWrap
-                }
+            TabButton {
+                objectName: "settingsScriptsTab"
+                text: "Scripts"
+                Accessible.name: "Installed userscripts"
             }
-
+        }
+        FerricScrollColumn {
+            id: settingsScroll
+            objectName: "settingsScroll"
+            visible: sections.currentIndex === 0
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: 0
+            hostWindow: settings.hostWindow
             FerricTextField {
+                id: settingsSearchInput
+                objectName: "settingsSearchInput"
                 Layout.fillWidth: true
                 text: settings.searchText
-                placeholderText: "Filter settings by key, description, scope, or apply time"
+                placeholderText: "Search settings by name or configuration key"
                 Accessible.name: "Search settings"
                 Accessible.role: Accessible.EditableText
                 onTextChanged: settings.searchChanged(text)
@@ -104,43 +94,127 @@ FerricModalSurface {
                 }
             }
 
-            Label {
+            ColumnLayout {
                 Layout.fillWidth: true
-                text: "Supported fields below use the validated typed schema. Site-scoped values remain available through explicit site-rule commands; this manager edits the active global/profile runtime layer."
+                CheckBox {
+                    id: sessionScope
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    text: "Session only"
+                    checked: settings.temporary || settings.transientProfile
+                    enabled: !settings.transientProfile
+                    Accessible.name: "Apply settings temporarily"
+                    Accessible.description: "Changes remain in memory for this session"
+                    onToggled: settings.temporaryChangeRequested(checked)
+                    contentItem: Label {
+                        objectName: "settingsSessionScopeLabel"
+                        text: sessionScope.text
+                        font: sessionScope.font
+                        color: settings.browserWindow.primaryTextColor
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        leftPadding: !sessionScope.mirrored && sessionScope.indicator ? sessionScope.indicator.width + sessionScope.spacing : 0
+                        rightPadding: sessionScope.mirrored && sessionScope.indicator ? sessionScope.indicator.width + sessionScope.spacing : 0
+                    }
+                }
+                Label {
+                    textFormat: Text.PlainText
+                    visible: !settings.filtering
+                    Layout.fillWidth: true
+                    text: settings.transientProfile ? "Changes stay in memory and are forgotten when this private or temporary profile closes." : "Session changes are forgotten when Ferric closes. Turn this off to save changes; your config.toml file stays intact."
+                    color: settings.browserWindow.secondaryTextColor
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            FerricSettingRows {
+                id: settingRows
+                Layout.fillWidth: true
+                Layout.preferredHeight: implicitHeight
+                browserWindow: settings.browserWindow
+                settingsModel: settings.settingsModel
+                onApplyRequested: function (row, value) {
+                    settings.settingApplyRequested(row, value);
+                }
+                onResetRequested: function (row) {
+                    settings.settingResetRequested(row);
+                }
+            }
+            Label {
+                objectName: "settingsEmptyResults"
+                Layout.fillWidth: true
+                visible: settingRows.count === 0
+                text: settings.filtering ? "No settings match this search. Try a different name or configuration key." : "No settings are available. Refresh to try again."
+                textFormat: Text.PlainText
+                color: settings.browserWindow.secondaryTextColor
+                wrapMode: Text.Wrap
+            }
+            Label {
+                textFormat: Text.PlainText
+                visible: !settings.filtering
+                Layout.fillWidth: true
+                text: "For settings that apply to one site, use the site-rule commands."
                 color: settings.browserWindow.secondaryTextColor
                 wrapMode: Text.WordWrap
             }
 
             Label {
-                Layout.fillWidth: true
-                visible: settings.notice.length > 0
-                text: settings.notice
-                color: settings.notice.indexOf("error") >= 0 ? settings.browserWindow.errorColor : settings.browserWindow.successColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "Settings status"
-            }
-
-            Label {
+                textFormat: Text.PlainText
+                visible: !settings.filtering
                 Layout.fillWidth: true
                 text: settings.spellcheckStatus
                 color: settings.spellcheckDictionariesMissing ? settings.browserWindow.warningColor : settings.browserWindow.mutedTextColor
                 wrapMode: Text.WordWrap
                 Accessible.name: "Spellcheck dictionary status"
             }
-
+        }
+        FerricScrollColumn {
+            objectName: "settingsScriptsScroll"
+            visible: sections.currentIndex === 1
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: 0
+            hostWindow: settings.hostWindow
             Label {
                 Layout.fillWidth: true
-                text: "Installed userscripts"
-                color: settings.browserWindow.primaryTextColor
-                font.bold: true
-                Accessible.name: "Installed userscripts"
+                text: "Installed scripts are shared by regular profiles."
+                textFormat: Text.PlainText
+                color: settings.browserWindow.secondaryTextColor
+                wrapMode: Text.Wrap
             }
 
+            FerricManagerFeedback {
+                objectName: "userscriptInventoryFeedback"
+                Layout.fillWidth: true
+                browserWindow: settings.browserWindow
+                visible: !settings.transientProfile && (settings.userscriptInventoryPending
+                    || settings.userscriptInventoryError.length > 0 || !settings.userscriptInventoryReady)
+                message: settings.userscriptInventoryPending ? "Loading installed scripts…"
+                    : settings.userscriptInventoryError.length > 0 ? "Installed scripts couldn't be loaded. Refresh to try again."
+                    : "Refresh to load installed scripts."
+                detail: settings.userscriptInventoryError
+                pending: settings.userscriptInventoryPending
+                failed: settings.userscriptInventoryError.length > 0
+            }
+            Label {
+                objectName: "userscriptInventoryPreviousResults"
+                Layout.fillWidth: true
+                visible: !settings.transientProfile && settings.userscriptRows.length > 0
+                    && (settings.userscriptInventoryPending || settings.userscriptInventoryError.length > 0)
+                text: "Showing the last loaded list. Changes are available after a successful refresh."
+                textFormat: Text.PlainText
+                color: settings.browserWindow.secondaryTextColor
+                wrapMode: Text.Wrap
+            }
             FerricUserscriptInventory {
                 id: userscriptInventory
                 Layout.fillWidth: true
                 Layout.preferredHeight: implicitHeight
                 browserWindow: settings.browserWindow
+                changesAvailable: !settings.transientProfile && !settings.noticePending
+                                  && settings.userscriptInventoryReady && !settings.userscriptInventoryPending
+                                  && settings.userscriptInventoryError.length === 0
+                visible: !settings.transientProfile && settings.userscriptRows.length > 0
                 rows: settings.userscriptRows
                 onEnabledRequested: function (name, enabled) {
                     settings.userscriptEnabledRequested(name, enabled);
@@ -151,23 +225,71 @@ FerricModalSurface {
             }
 
             Label {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
-                visible: settings.browserWindow.temporaryProfile
-                text: "Userscript installation and enable changes are unavailable in private or ephemeral profiles."
+                visible: settings.transientProfile
+                text: "Userscript changes are unavailable in private and temporary profiles."
                 color: settings.browserWindow.mutedTextColor
                 wrapMode: Text.WordWrap
             }
-
-            FerricSettingRows {
+            Label {
                 Layout.fillWidth: true
-                Layout.preferredHeight: implicitHeight
+                objectName: "userscriptInventoryEmpty"
+                visible: !settings.transientProfile && settings.userscriptInventoryReady
+                    && !settings.userscriptInventoryPending && settings.userscriptInventoryError.length === 0
+                    && settings.userscriptRows.length === 0
+                text: "No userscripts installed. Choose Install script to add a manifest."
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: settings.browserWindow.secondaryTextColor
+            }
+        }
+        FerricScrollColumn {
+            objectName: "settingsFeedbackViewport"
+            Layout.fillWidth: true
+            Layout.minimumHeight: 0
+            Layout.preferredHeight: Math.min(contentLayout.implicitHeight, settings.bodyItem.height * 0.3)
+            Layout.maximumHeight: settings.bodyItem.height * 0.3
+            visible: settings.notice.length > 0
+            hostWindow: settings.hostWindow
+            FerricManagerFeedback {
+                objectName: "settingsOperationFeedback"
+                Layout.fillWidth: true
                 browserWindow: settings.browserWindow
-                settingsModel: settings.settingsModel
-                onApplyRequested: function (row, value) {
-                    settings.settingApplyRequested(row, value);
+                message: settings.notice
+                detail: settings.noticeDetail
+                failed: settings.noticeFailed
+                pending: settings.noticePending
+                Accessible.name: "Settings status"
+            }
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Flow {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.maximumWidth: settings.bodyItem.width
+                Layout.preferredHeight: childrenRect.height
+                spacing: 8
+                FerricWrappingButton {
+                    text: "Refresh"
+                    Accessible.name: "Refresh settings"
+                    onClicked: settings.refreshRequested()
                 }
-                onResetRequested: function (row) {
-                    settings.settingResetRequested(row);
+                FerricWrappingButton {
+                    id: scriptInstall
+                    objectName: "settingsInstallScript"
+                    visible: sections.currentIndex === 1
+                    text: "Install script"
+                    enabled: !settings.transientProfile && !settings.noticePending && !settings.userscriptInventoryPending
+                    Accessible.name: "Install userscript manifest"
+                    onClicked: settings.installUserscriptRequested()
+                }
+                FerricWrappingButton {
+                    text: "Close"
+                    Accessible.name: "Close settings"
+                    onClicked: settings.closeRequested()
                 }
             }
         }

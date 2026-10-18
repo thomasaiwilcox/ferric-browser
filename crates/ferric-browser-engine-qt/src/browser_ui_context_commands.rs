@@ -5,6 +5,47 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn assign_window_context(mut self: Pin<&mut Self>, name: &QString) -> bool {
+        let name = name.to_string();
+        let target = {
+            let binding = self.as_ref();
+            let rust = binding.rust();
+            if rust.profile_bootstrap_pending
+                || !rust.view_alive
+                || binding.active_profile_is_transient()
+                || !rust.contexts.as_ref().is_some_and(|contexts| {
+                    contexts
+                        .contexts()
+                        .iter()
+                        .any(|context| context.name == name && context.profile == rust.profile_name)
+                })
+            {
+                None
+            } else {
+                rust.window
+            }
+        };
+        let Some(window) = target else {
+            self.set_status_text(QString::from("This context can't be used in this window."));
+            return false;
+        };
+        if self
+            .as_mut()
+            .reduce_event(super::Event::SetWindowContext {
+                window,
+                context: Some(name),
+            })
+            .is_err()
+        {
+            self.set_status_text(QString::from(
+                "The context couldn't be assigned to this window.",
+            ));
+            return false;
+        }
+        self.as_mut().sync_context_metadata();
+        true
+    }
+
     pub(super) fn execute_session_save_command(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
@@ -89,11 +130,11 @@ impl qobject::BrowserUi {
         if !self.as_mut().request_session_preview(&name) {
             return Err("named session preview is unavailable or busy".into());
         }
-        self.as_mut().set_session_preview(QString::from(format!(
-            "{}\n{}",
-            if append { "append" } else { "replace" },
-            name
-        )));
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .session_preview_request = Some((name.to_string(), append));
         self.as_mut()
             .set_status_text(QString::from("Session preview requested"));
         Ok(serde_json::json!({
@@ -150,20 +191,22 @@ impl qobject::BrowserUi {
                 "profile": name,
                 "private": private
             }));
-        } else if self.as_ref().rust().storage_roots.is_some() {
-            self.as_ref().rust().profile_name.clone()
         } else if private {
             "private".into()
         } else {
-            return Err("normal window creation requires a named profile".into());
+            self.as_ref().rust().profile_name.clone()
         };
 
         self.as_mut()
             .rust_mut()
             .as_mut()
             .get_mut()
-            .pending_engine_action = Some(format!(
-            "new-window\t{private}\t{profile_name}\tabout:blank"
+            .pending_engine_action = Some(super::browser_ui_ipc_preparation::window_open_action(
+            private,
+            &profile_name,
+            None,
+            !private,
+            "about:blank",
         ));
         self.as_mut().set_status_text(QString::from(if private {
             "Private window requested"
@@ -176,6 +219,19 @@ impl qobject::BrowserUi {
             "profile": profile_name,
             "private": private
         }))
+    }
+
+    pub(super) fn request_profile_window(mut self: Pin<&mut Self>, name: &QString) -> bool {
+        let mut arguments = vec![name.to_string()];
+        if self.as_ref().active_profile_is_transient() {
+            // Opening a profile from its manager must not copy a private page
+            // into regular browsing. Use the existing explicit-URL command path.
+            arguments.push("rb://start".into());
+        }
+        self.as_mut().handle_profile_command(&ParsedCommand {
+            name: "profile-open".into(),
+            arguments,
+        })
     }
 
     pub(super) fn handle_profile_command(
@@ -482,27 +538,6 @@ impl qobject::BrowserUi {
         let json = serde_json::to_string(config)
             .map_err(|error| format!("could not serialize contexts configuration: {error}"))?;
         self.as_mut().set_contexts_json(QString::from(json));
-        self.as_mut().set_context_choice_names(
-            config
-                .contexts
-                .iter()
-                .map(|context| QString::from(&context.name))
-                .collect(),
-        );
-        self.as_mut().set_context_choice_labels(
-            config
-                .contexts
-                .iter()
-                .map(|context| QString::from(&context.label))
-                .collect(),
-        );
-        self.as_mut().set_context_choice_profiles(
-            config
-                .contexts
-                .iter()
-                .map(|context| QString::from(&context.profile))
-                .collect(),
-        );
         Ok(())
     }
 
@@ -634,20 +669,19 @@ impl qobject::BrowserUi {
                     }
                     index += 2;
                 }
-                let context_exists =
-                    self.as_ref()
-                        .rust()
-                        .contexts
-                        .as_ref()
-                        .is_some_and(|contexts| {
-                            contexts
-                                .contexts()
-                                .iter()
-                                .any(|context| context.name == *context_name)
-                        });
-                if !context_exists {
-                    return Err(format!("context not found: {context_name}"));
-                }
+                let context_label = self
+                    .as_ref()
+                    .rust()
+                    .contexts
+                    .as_ref()
+                    .and_then(|contexts| {
+                        contexts
+                            .contexts()
+                            .iter()
+                            .find(|context| context.name == *context_name)
+                            .map(|context| context.label.clone())
+                    })
+                    .ok_or_else(|| format!("context not found: {context_name}"))?;
                 if config
                     .routes
                     .iter()
@@ -717,7 +751,7 @@ impl qobject::BrowserUi {
                 save_contexts_atomic(&path, &config).map_err(|error| error.to_string())?;
                 self.as_mut().publish_contexts_config(&config)?;
                 self.as_mut().set_status_text(QString::from(format!(
-                    "Context route {id} added; prompt applies before navigation only"
+                    "Route added for {context_label}. It applies to pages opened next."
                 )));
                 Ok(serde_json::json!({
                     "status": "queued",
@@ -746,9 +780,9 @@ impl qobject::BrowserUi {
                 let path = self.as_ref().context_routes_path()?;
                 save_contexts_atomic(&path, &config).map_err(|error| error.to_string())?;
                 self.as_mut().publish_contexts_config(&config)?;
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Context route {route_id} removed; existing navigation chains were not changed"
-                )));
+                self.as_mut().set_status_text(QString::from(
+                    "Context route removed. Pages already open keep their current context.",
+                ));
                 Ok(serde_json::json!({
                     "status": "removed",
                     "route": removed,

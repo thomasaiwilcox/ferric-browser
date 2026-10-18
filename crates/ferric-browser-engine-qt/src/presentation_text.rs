@@ -5,6 +5,22 @@ use std::fmt::Write as _;
 pub(super) const MAX_PAGE_TITLE_BYTES: usize = 4 * 1024;
 const MAX_NAVIGATION_FAILURE_DETAIL_BYTES: usize = 2 * 1024;
 
+/// Shortens a UTF-8 preview without splitting a character. The original report
+/// remains separate so saving never exports a truncated or invalid JSON file.
+pub(super) fn report_preview(value: &str, limit: usize) -> String {
+    if value.len() <= limit {
+        return value.to_owned();
+    }
+    let mut end = limit;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!(
+        "{}\n… Preview shortened. Saving includes the full report.",
+        &value[..end]
+    )
+}
+
 #[must_use]
 pub(super) fn normalized_navigation_failure_kind(value: &str) -> &'static str {
     match value {
@@ -79,5 +95,19 @@ mod tests {
     fn bounds_preserve_utf8_boundaries() {
         assert!(bounded_navigation_failure_detail(&"é".repeat(2_000)).is_char_boundary(0));
         assert!(sanitize_untrusted_title(&"é".repeat(4_000)).len() <= 4 * 1024);
+    }
+
+    #[test]
+    fn report_previews_bound_multibyte_text_without_changing_the_report() {
+        let report = format!("a{}", "界".repeat(20_000));
+        let preview = super::report_preview(&report, 48 * 1024);
+        assert!(preview.starts_with('a'));
+        assert!(preview.ends_with("Saving includes the full report."));
+        assert_eq!(report.chars().count(), 20_001);
+        assert_eq!(
+            super::report_preview("界", 0),
+            "\n… Preview shortened. Saving includes the full report."
+        );
+        assert_eq!(super::report_preview("界", 3), "界");
     }
 }

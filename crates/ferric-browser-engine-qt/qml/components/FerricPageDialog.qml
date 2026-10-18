@@ -12,61 +12,75 @@ FerricModalSurface {
     property alias passwordText: pageDialogPassword.text
 
     visible: false
-    commandText: ":page-dialog"
+    commandText: "From this page"
     title: browserWindow.pageDialogTitle
-    message: browserWindow.pageDialogMessage
-    keyHelp: "tab/shift-tab controls  ·  enter accept  ·  esc reject"
+    message: "From: " + (browserWindow.pageDialogOrigin || "Origin unavailable") + "\n\n"
+             + browserWindow.pageDialogMessage
+    keyHelp: "tab/shift-tab controls  ·  enter activate  ·  esc cancel"
+    compactKeyHelp: "esc cancel"
     dialogWidth: 620 * scale
-    dialogHeight: 470 * scale
-    initialFocusItem: browserWindow.pageDialogKind() === "prompt"
-                      ? pageDialogInput
-                      : (browserWindow.pageDialogKind() === "authentication"
-                         ? pageDialogUsername : acceptButton)
+    dialogHeight: Math.min(470 * scale,fittedDialogHeight(pageForm.contentLayout.implicitHeight))
+    initialFocusItem: browserWindow.pageDialogKind() === "prompt" ? pageDialogInput : (
+                                                                        browserWindow.pageDialogKind(
+                                                                            ) === "authentication"
+                                                                        ? pageDialogUsername : (
+                                                                              browserWindow.pageDialogKind(
+                                                                                  ) === "alert"
+                                                                              ? acceptButton :
+                                                                                cancelButton))
 
-    function open() { visible = true }
-    function close() { visible = false }
+    function open(host) {
+        hostWindow = host || browserWindow;
+        parent = hostWindow.contentItem;
+        visible = true;
+    }
+    function close() {
+        visible = false;
+        parent = browserWindow.contentItem;
+        hostWindow = browserWindow;
+    }
 
     onDismissRequested: browserWindow.rejectPageDialog()
 
-    Keys.onPressed: function(event) {
-        if (!dialog.visible) return
-        if (event.key === Qt.Key_Escape) {
-            event.accepted = true
-            dialog.browserWindow.rejectPageDialog()
-        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            event.accepted = true
-            dialog.browserWindow.acceptPageDialog()
-        }
+    function activateDefault() {
+        if (browserWindow.pageDialogKind() === "beforeunload" || browserWindow.pageDialogKind()
+                === "confirm")
+            browserWindow.rejectPageDialog();
+        else
+            browserWindow.acceptPageDialog();
     }
 
     Shortcut {
         sequence: "Return"
         context: Qt.WindowShortcut
-        enabled: dialog.visible
-        onActivated: dialog.browserWindow.acceptPageDialog()
+        enabled: dialog.interactive && !dialog.containsActiveFocus
+        autoRepeat: false
+        onActivated: dialog.activateDefault()
     }
     Shortcut {
         sequence: "Enter"
         context: Qt.WindowShortcut
-        enabled: dialog.visible
-        onActivated: dialog.browserWindow.acceptPageDialog()
+        enabled: dialog.interactive && !dialog.containsActiveFocus
+        autoRepeat: false
+        onActivated: dialog.activateDefault()
     }
 
-    ColumnLayout {
+    FerricScrollColumn {
+        id: pageForm
         anchors.fill: parent
+        hostWindow: dialog.hostWindow
         spacing: 8 * dialog.scale
-
-        Label {
-            Layout.fillWidth: true
-            text: "Origin: " + (dialog.browserWindow.pageDialogOrigin
-                                || "opaque or unavailable origin")
-            color: dialog.browserWindow.mutedTextColor
-            elide: Text.ElideMiddle
-            Accessible.name: "Page dialog origin"
-        }
         FerricTextField {
             id: pageDialogInput
-            Keys.forwardTo: [dialog]
+            objectName: "pageDialogInput"
+            Keys.onReturnPressed: function (event) {
+                if (dialog.interactive && !event.isAutoRepeat && event.modifiers === Qt.NoModifier)
+                    dialog.browserWindow.acceptPageDialog();
+            }
+            Keys.onEnterPressed: function (event) {
+                if (dialog.interactive && !event.isAutoRepeat && event.modifiers === Qt.NoModifier)
+                    dialog.browserWindow.acceptPageDialog();
+            }
             Layout.fillWidth: true
             visible: dialog.browserWindow.pageDialogKind() === "prompt"
             Accessible.name: "Page dialog response"
@@ -75,7 +89,15 @@ FerricModalSurface {
         }
         FerricTextField {
             id: pageDialogUsername
-            Keys.forwardTo: [dialog]
+            objectName: "pageDialogUsername"
+            Keys.onReturnPressed: function (event) {
+                if (dialog.interactive && !event.isAutoRepeat && event.modifiers === Qt.NoModifier)
+                    dialog.browserWindow.acceptPageDialog();
+            }
+            Keys.onEnterPressed: function (event) {
+                if (dialog.interactive && !event.isAutoRepeat && event.modifiers === Qt.NoModifier)
+                    dialog.browserWindow.acceptPageDialog();
+            }
             Layout.fillWidth: true
             visible: dialog.browserWindow.pageDialogKind() === "authentication"
             placeholderText: "Username"
@@ -85,7 +107,15 @@ FerricModalSurface {
         }
         FerricTextField {
             id: pageDialogPassword
-            Keys.forwardTo: [dialog]
+            objectName: "pageDialogPassword"
+            Keys.onReturnPressed: function (event) {
+                if (dialog.interactive && !event.isAutoRepeat && event.modifiers === Qt.NoModifier)
+                    dialog.browserWindow.acceptPageDialog();
+            }
+            Keys.onEnterPressed: function (event) {
+                if (dialog.interactive && !event.isAutoRepeat && event.modifiers === Qt.NoModifier)
+                    dialog.browserWindow.acceptPageDialog();
+            }
             Layout.fillWidth: true
             visible: dialog.browserWindow.pageDialogKind() === "authentication"
             placeholderText: "Password"
@@ -95,34 +125,47 @@ FerricModalSurface {
             Accessible.editable: true
         }
         CheckBox {
+            id: suppressDialogs
+            objectName: "pageDialogSuppress"
             Layout.fillWidth: true
             text: "Suppress future dialogs from this page"
             checked: dialog.browserWindow.pageDialogSuppressChecked
             visible: dialog.browserWindow.pendingPageDialogRequest !== null
             onToggled: dialog.browserWindow.pageDialogSuppressChecked = checked
             Accessible.name: text
+            contentItem: Label {
+                text: suppressDialogs.text
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                leftPadding: suppressDialogs.indicator.width + suppressDialogs.spacing
+                color: dialog.browserWindow.primaryTextColor
+                verticalAlignment: Text.AlignVCenter
+            }
         }
-        Item { Layout.fillHeight: true }
+        Item {
+            Layout.fillHeight: true
+        }
         FerricCommandAction {
+            id: cancelButton
+            objectName: "pageDialogCancel"
             Layout.fillWidth: true
             visible: dialog.browserWindow.pageDialogKind() !== "alert"
             browserWindow: dialog.browserWindow
             keyHint: "esc"
-            Keys.forwardTo: [dialog]
-            actionLabel: dialog.browserWindow.pageDialogKind() === "beforeunload"
-                         ? "Stay" : "Cancel"
+            actionLabel: dialog.browserWindow.pageDialogKind() === "beforeunload" ? "Stay" :
+                                                                                    "Cancel"
             safe: true
+            selected: activeFocus
             onClicked: dialog.browserWindow.rejectPageDialog()
         }
         FerricCommandAction {
             id: acceptButton
-            Keys.forwardTo: [dialog]
+            objectName: "pageDialogAccept"
             Layout.fillWidth: true
             browserWindow: dialog.browserWindow
             keyHint: "enter"
-            actionLabel: dialog.browserWindow.pageDialogKind() === "beforeunload"
-                         ? "Leave page" : "OK"
-            selected: true
+            actionLabel: dialog.browserWindow.pageDialogKind() === "beforeunload" ? "Leave page" : dialog.browserWindow.pageDialogKind() === "authentication" ? "Sign in" : "OK"
+            selected: activeFocus
             onClicked: dialog.browserWindow.acceptPageDialog()
         }
     }

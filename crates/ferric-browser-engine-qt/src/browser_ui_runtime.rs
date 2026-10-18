@@ -209,7 +209,9 @@ impl qobject::BrowserUi {
                 .find(|closed| closed.id.to_string() == id)
                 .cloned()
             else {
-                self.set_status_text(QString::from("Closed tab descriptor is stale"));
+                self.set_status_text(QString::from(
+                    "That closed tab is no longer available to reopen.",
+                ));
                 return false;
             };
             let Some(window) = self.as_ref().rust().window else {
@@ -267,9 +269,7 @@ impl qobject::BrowserUi {
                     .as_ref()
                     .validate_action_availability(id, CommandSource::Switcher)
                 {
-                    self.set_status_text(QString::from(format!(
-                        "Switcher action unavailable: {error}"
-                    )));
+                    self.set_status_text(QString::from(error.to_string()));
                     return false;
                 }
                 let available = configured_switcher_action_values(
@@ -284,7 +284,7 @@ impl qobject::BrowserUi {
                 });
                 if !available {
                     self.as_mut().set_status_text(QString::from(
-                        "Configured switcher action is stale or unavailable",
+                        "That action is no longer available. Reopen the switcher and choose another action.",
                     ));
                     return false;
                 }
@@ -296,7 +296,7 @@ impl qobject::BrowserUi {
             }
             let registry = ActionRegistry::default_v1();
             let Some(definition) = registry.resolve(id) else {
-                self.set_status_text(QString::from("Switcher action is stale"));
+                self.set_status_text(QString::from("That action is no longer available. Reopen the switcher and choose another action."));
                 return false;
             };
             if !definition.sources.contains(&ActionSource::Switcher)
@@ -314,9 +314,7 @@ impl qobject::BrowserUi {
                 .as_ref()
                 .validate_action_availability(&definition.id, CommandSource::Switcher)
             {
-                self.set_status_text(QString::from(format!(
-                    "Switcher action unavailable: {error}"
-                )));
+                self.set_status_text(QString::from(error.to_string()));
                 return false;
             }
             let params = serde_json::json!({
@@ -358,7 +356,9 @@ impl qobject::BrowserUi {
                 _ => None,
             };
             let Some((window, tab)) = target else {
-                self.set_status_text(QString::from("Switcher target is stale or unsupported"));
+                self.set_status_text(QString::from(
+                    "This choice is no longer available. Reopen the switcher and choose again.",
+                ));
                 return false;
             };
             if let Some(expected_generation) = generation {
@@ -463,7 +463,9 @@ impl qobject::BrowserUi {
                 self.as_ref().rust().state.as_ref(),
                 self.as_ref().rust().tab,
             ) else {
-                self.set_status_text(QString::from("Current tab is stale"));
+                self.set_status_text(QString::from(
+                    "The selected tab is no longer available. Select a tab and try again.",
+                ));
                 return false;
             };
             let Ok(effects) = self.as_mut().reduce_event(Event::StartNavigation {
@@ -496,7 +498,9 @@ impl qobject::BrowserUi {
                 })
                 .cloned()
             else {
-                self.set_status_text(QString::from("Context is stale"));
+                self.set_status_text(QString::from(
+                    "That context is no longer available. Choose another context.",
+                ));
                 return false;
             };
             if context.profile != self.as_ref().rust().profile_name {
@@ -542,7 +546,7 @@ impl qobject::BrowserUi {
                     .as_mut()
                     .get_mut()
                     .pending_engine_action = Some("show-downloads".into());
-                self.set_status_text(QString::from("Downloads manager requested"));
+                self.set_status_text(QString::from("Downloads"));
                 true
             } else {
                 let id = QString::from(id);
@@ -583,7 +587,9 @@ impl qobject::BrowserUi {
                 .find(|definition| definition.action.to_string() == id)
                 .cloned()
             else {
-                self.set_status_text(QString::from("Command is stale"));
+                self.set_status_text(QString::from(
+                    "That command is no longer available. Reopen the command list and try again.",
+                ));
                 return false;
             };
             if action == "help" {
@@ -602,7 +608,9 @@ impl qobject::BrowserUi {
                 }])
             }
         } else {
-            self.set_status_text(QString::from("Switcher target is stale or unsupported"));
+            self.set_status_text(QString::from(
+                "This choice is no longer available. Reopen the switcher and choose again.",
+            ));
             false
         }
     }
@@ -625,10 +633,7 @@ impl qobject::BrowserUi {
             return true;
         }
         this.scroll_positions.insert(tab, (x, y));
-        this.checkpoint.dirty = true;
-        if this.checkpoint.dirty_since_ms.is_none() {
-            this.checkpoint.dirty_since_ms = Some(elapsed_ms(this.binding_clock));
-        }
+        this.checkpoint.mark_dirty(elapsed_ms(this.binding_clock));
         true
     }
 
@@ -637,7 +642,7 @@ impl qobject::BrowserUi {
         let due = {
             let pinned = self.as_ref();
             let rust = pinned.rust();
-            !rust.session_save_pending
+            rust.session_saves.is_empty()
                 && rust.checkpoint.restore_pending.is_none()
                 && rust.checkpoint.dirty
                 && (rust
@@ -660,7 +665,7 @@ impl qobject::BrowserUi {
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
             self.as_mut().poll_storage_library();
-            if !self.as_ref().rust().session_save_pending {
+            if self.as_ref().rust().session_saves.is_empty() {
                 return !self.as_ref().rust().checkpoint.dirty;
             }
             if Instant::now() >= deadline {
@@ -700,7 +705,7 @@ impl qobject::BrowserUi {
             }
             if !self.as_ref().storage_is_open() {
                 self.set_status_text(QString::from(
-                    "Durable metadata flush unavailable; worker stopped",
+                    "Profile changes could not be saved because storage is unavailable.",
                 ));
                 return false;
             }
@@ -736,12 +741,6 @@ impl qobject::BrowserUi {
             return false;
         }
         if !self.as_mut().wait_for_history_clear() {
-            return false;
-        }
-        if !self.as_mut().wait_for_download_destination() {
-            return false;
-        }
-        if !self.as_mut().wait_for_download_create() {
             return false;
         }
         if !self.as_mut().wait_for_journey_write() {

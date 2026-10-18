@@ -57,9 +57,10 @@ pub struct ContextEffect {
     pub generation: u64,
     pub change: ContextChange,
     pub context: ContextRecord,
+    pub runtime_effects: Vec<ferric_browser_runtime::RuntimeEffect>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct ActiveProfile {
     pub(crate) generation: u64,
     name: String,
@@ -69,11 +70,14 @@ pub(crate) struct ActiveProfile {
     _lock: Option<ProfileLock>,
     pub(crate) contexts: Option<ContextRegistry>,
     storage_path: Option<PathBuf>,
+    pub(crate) session: crate::profile_session::ProfileSession,
 }
 
 impl ActiveProfile {
     pub(crate) fn activate(generation: u64, activation: ProfileActivation) -> Self {
+        let session = crate::profile_session::ProfileSession::new(&activation);
         Self {
+            session,
             generation,
             name: activation.name,
             id: activation.id,

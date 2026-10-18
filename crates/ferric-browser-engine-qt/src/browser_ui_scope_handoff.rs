@@ -154,7 +154,7 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             let Some(owner) = local_hint_owner(this) else {
                 self.set_status_text(QString::from(
-                    "Scoped interaction rejected: local session is unavailable",
+                    "The page is not ready for region selection. Start it again.",
                 ));
                 return Err(QString::from(r#"{"error":"local-session-unavailable"}"#));
             };
@@ -165,14 +165,12 @@ impl qobject::BrowserUi {
                 parent.owner.target != owner.target
                     || parent.owner.configuration_revision != owner.configuration_revision
             }) {
-                self.set_status_text(QString::from(
-                    "Scoped interaction rejected: parent scope is stale",
-                ));
+                self.set_status_text(QString::from("The parent region changed. Select it again."));
                 return Err(QString::from(r#"{"error":"stale-scope"}"#));
             }
             let Some(next_id) = this.next_hint_scope_lease_id.checked_add(1) else {
                 self.set_status_text(QString::from(
-                    "Scoped interaction rejected: lease capacity exhausted",
+                    "The region could not be selected. Restart region selection.",
                 ));
                 return Err(QString::from(r#"{"error":"scope-lease-capacity"}"#));
             };
@@ -235,12 +233,12 @@ impl qobject::BrowserUi {
                 parent.owner.target != owner.target
                     || parent.owner.configuration_revision != owner.configuration_revision
             }) {
-                self.set_status_text(QString::from("Scoped Grid rejected: parent scope is stale"));
+                self.set_status_text(QString::from("The parent region changed. Select it again."));
                 return Err(QString::from(r#"{"error":"stale-scope"}"#));
             }
             let Some(next_id) = this.next_hint_scope_lease_id.checked_add(1) else {
                 self.set_status_text(QString::from(
-                    "Scoped Grid rejected: lease capacity exhausted",
+                    "The region could not be selected. Restart region selection.",
                 ));
                 return Err(QString::from(r#"{"error":"scope-lease-capacity"}"#));
             };
@@ -298,7 +296,9 @@ impl qobject::BrowserUi {
         let receipt = match serde_json::from_str::<Value>(&receipt_json.to_string()) {
             Ok(Value::Object(receipt)) => Value::Object(receipt),
             _ => {
-                self.set_status_text(QString::from("Scoped Hint rejected: invalid lease receipt"));
+                self.set_status_text(QString::from(
+                    "The region could not be confirmed. Select it again.",
+                ));
                 return false;
             }
         };
@@ -345,7 +345,7 @@ impl qobject::BrowserUi {
             HintScopePurpose::Hint | HintScopePurpose::Search
         ) || !hint_scope_handoff_is_valid(&binding, &lease_id, &receipt, context)
         {
-            self.set_status_text(QString::from("Scoped Hint rejected: lease became stale"));
+            self.set_status_text(QString::from("The region changed. Select it again."));
             return false;
         }
         let purpose = binding.purpose;
@@ -394,7 +394,9 @@ impl qobject::BrowserUi {
         let receipt = match serde_json::from_str::<Value>(&receipt_json.to_string()) {
             Ok(Value::Object(receipt)) => Value::Object(receipt),
             _ => {
-                self.set_status_text(QString::from("Scoped Grid rejected: invalid lease receipt"));
+                self.set_status_text(QString::from(
+                    "The region could not be confirmed. Select it again.",
+                ));
                 return false;
             }
         };
@@ -444,7 +446,7 @@ impl qobject::BrowserUi {
         if binding.purpose != HintScopePurpose::Grid
             || !hint_scope_handoff_is_valid(&binding, &lease_id, &receipt, context)
         {
-            self.set_status_text(QString::from("Scoped Grid rejected: lease became stale"));
+            self.set_status_text(QString::from("The region changed. Select it again."));
             return false;
         }
         let permit_valid = {
@@ -460,7 +462,9 @@ impl qobject::BrowserUi {
             })
         };
         if !permit_valid {
-            self.set_status_text(QString::from("Scoped Grid rejected: local permit is stale"));
+            self.set_status_text(QString::from(
+                "The page changed. Start grid selection again.",
+            ));
             return false;
         }
 
@@ -507,7 +511,7 @@ impl qobject::BrowserUi {
             || zoom_factor <= 0.0
         {
             self.set_status_text(QString::from(
-                "Scoped Grid rejected: scope geometry is stale",
+                "The selected region changed. Select the region again.",
             ));
             return false;
         }
@@ -525,11 +529,11 @@ impl qobject::BrowserUi {
             serial.to_string().parse::<u64>().ok(),
             revision.to_string().parse::<u64>().ok(),
         ) else {
-            self.set_status_text(QString::from("Scoped Grid rejected: page surface is stale"));
+            self.set_status_text(QString::from("The page changed. Select the region again."));
             return false;
         };
         let Some(surface) = SurfaceStamp::new(serial, revision) else {
-            self.set_status_text(QString::from("Scoped Grid rejected: page surface is stale"));
+            self.set_status_text(QString::from("The page changed. Select the region again."));
             return false;
         };
         let scope = SpatialScope {

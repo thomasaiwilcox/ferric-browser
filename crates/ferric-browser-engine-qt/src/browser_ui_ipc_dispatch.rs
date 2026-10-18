@@ -1,8 +1,8 @@
 use super::{
-    ActionRegistry, CxxQtType, Pin, PublicError, Request, Response, Uuid, Value,
-    action_failure_category, ipc_action_failure, ipc_action_failure_with_context,
-    ipc_command_context, ipc_command_count, ipc_command_failure_with_context, ipc_failure,
-    is_mutating_ipc_method, parse_external_action_id, qobject, typed_ipc_action, typed_ipc_command,
+    ActionRegistry, CxxQtType, Pin, Request, Response, Uuid, Value, action_failure_category,
+    ipc_action_failure, ipc_action_failure_with_context, ipc_command_context, ipc_command_count,
+    ipc_command_failure_with_context, ipc_failure, is_mutating_ipc_method,
+    parse_external_action_id, qobject, typed_ipc_action, typed_ipc_command,
 };
 
 impl qobject::BrowserUi {
@@ -27,7 +27,7 @@ impl qobject::BrowserUi {
                 };
                 let operation_id = format!("op-{}", Uuid::new_v4());
                 let count = ipc_command_count(&command);
-                let command_context = ipc_command_context(
+                let mut command_context = ipc_command_context(
                     self.as_ref().rust().state.as_ref(),
                     &route,
                     &operation_id,
@@ -39,6 +39,15 @@ impl qobject::BrowserUi {
                     Some(&operation_id),
                 ) {
                     Ok(mut result) => {
+                        // An asynchronous provider already owns the operation.
+                        // Return that identity instead of leaving a second,
+                        // untracked request permanently accepted.
+                        let operation_id = result
+                            .get("operation_id")
+                            .and_then(Value::as_str)
+                            .map(str::to_owned)
+                            .unwrap_or(operation_id);
+                        command_context["operation_id"] = Value::String(operation_id.clone());
                         result["operation_id"] = Value::String(operation_id.clone());
                         result["command_context"] = command_context;
                         self.as_mut()
@@ -46,7 +55,8 @@ impl qobject::BrowserUi {
                             .as_mut()
                             .get_mut()
                             .operation_states
-                            .insert(operation_id, "accepted".into());
+                            .entry(operation_id)
+                            .or_insert_with(|| "accepted".into());
                         Response::success(request.id.clone(), result)
                     }
                     Err(error) => {
@@ -95,7 +105,7 @@ impl qobject::BrowserUi {
                 };
                 let operation_id = format!("op-{}", Uuid::new_v4());
                 let count = ipc_command_count(&command);
-                let command_context = ipc_command_context(
+                let mut command_context = ipc_command_context(
                     self.as_ref().rust().state.as_ref(),
                     &route,
                     &operation_id,
@@ -105,7 +115,6 @@ impl qobject::BrowserUi {
                     .as_ref()
                     .validate_action_availability(&action_id, route.source)
                 {
-                    let error = PublicError::engine(error);
                     let category = action_failure_category(error.code());
                     self.as_mut().record_action_audit(
                         &action_id,
@@ -127,6 +136,12 @@ impl qobject::BrowserUi {
                     Some(&operation_id),
                 ) {
                     Ok(mut result) => {
+                        let operation_id = result
+                            .get("operation_id")
+                            .and_then(Value::as_str)
+                            .map(str::to_owned)
+                            .unwrap_or(operation_id);
+                        command_context["operation_id"] = Value::String(operation_id.clone());
                         self.as_mut().record_action_audit(
                             &action_id,
                             &operation_id,
@@ -141,11 +156,11 @@ impl qobject::BrowserUi {
                             .as_mut()
                             .get_mut()
                             .operation_states
-                            .insert(operation_id, "accepted".into());
+                            .entry(operation_id)
+                            .or_insert_with(|| "accepted".into());
                         Response::success(request.id.clone(), result)
                     }
                     Err(error) => {
-                        let error = PublicError::engine(error);
                         let category = action_failure_category(error.code());
                         self.as_mut().record_action_audit(
                             &action_id,
@@ -198,12 +213,7 @@ impl qobject::BrowserUi {
                 Err(error) => ipc_failure(&request.id, "E_INVALID_PARAMS", error),
             },
             "downloads.query" => {
-                if self.as_ref().rust().profile_persistence.is_durable()
-                    && (self.as_ref().rust().storage_library.is_none()
-                        || self.as_ref().rust().storage_library_dirty.get())
-                {
-                    self.as_mut().request_storage_library();
-                }
+                self.as_mut().prepare_download_history();
                 match self.as_ref().ipc_downloads_query(&request.params) {
                     Ok(result) => Response::success(request.id.clone(), result),
                     Err(error) => {
@@ -232,16 +242,24 @@ impl qobject::BrowserUi {
                 Err(error) => ipc_failure(&request.id, "E_INVALID_PARAMS", error),
             },
             "switcher.query" => {
-                if self.as_ref().rust().profile_persistence.is_durable()
-                    && (self.as_ref().rust().storage_library.is_none()
-                        || self.as_ref().rust().storage_library_dirty.get())
-                {
-                    self.as_mut().request_storage_library();
-                }
-                self.as_mut().request_session_names();
                 match self.as_ref().ipc_switcher_query(&request.params) {
-                    Ok(result) => Response::success(request.id.clone(), result),
-                    Err(error) => ipc_failure(&request.id, "E_INVALID_PARAMS", error),
+                    Ok(mut result) => {
+                        let scope = request
+                            .params
+                            .get("scope")
+                            .and_then(Value::as_str)
+                            .unwrap_or("all");
+                        // Admit catalog work only after the query and its authority are valid.
+                        self.as_mut().prepare_switcher_sources(scope);
+                        // Readiness belongs to this response, never the cached row projection.
+                        if let Some(status) = self.as_ref().switcher_availability_value(scope) {
+                            result["availability"] = status;
+                        }
+                        Response::success(request.id.clone(), result)
+                    }
+                    Err(error) => {
+                        Response::failure(request.id.clone(), error.into_protocol_error())
+                    }
                 }
             }
             "switcher.activate" => match self.as_mut().ipc_switcher_activate(&request.params) {
@@ -272,7 +290,7 @@ impl qobject::BrowserUi {
                 Ok(result) => Response::success(request.id.clone(), result),
                 Err(error) => ipc_failure(&request.id, "E_NOT_FOUND", error),
             },
-            "diagnostics.get" => match self.as_ref().ipc_diagnostics(&request.params) {
+            "diagnostics.get" => match self.as_mut().ipc_diagnostics(&request.params) {
                 Ok(result) => Response::success(request.id.clone(), result),
                 Err(error) => ipc_failure(&request.id, "E_INVALID_PARAMS", error),
             },

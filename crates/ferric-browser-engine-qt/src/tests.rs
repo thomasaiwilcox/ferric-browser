@@ -7,6 +7,7 @@ use std::thread;
 
 const ADAPTER_SOURCE: &str = concat!(
     include_str!("lib.rs"),
+    include_str!("browser_ui_defaults.rs"),
     include_str!("browser_ui_browsing_commands.rs"),
     include_str!("browser_ui_command_dispatch.rs"),
     include_str!("browser_ui_command_workflows.rs"),
@@ -16,6 +17,7 @@ const ADAPTER_SOURCE: &str = concat!(
     include_str!("browser_ui_contexts.rs"),
     include_str!("browser_ui_controls.rs"),
     include_str!("browser_ui_downloads_permissions.rs"),
+    include_str!("browser_ui_download_requests.rs"),
     include_str!("browser_ui_edit_commands.rs"),
     include_str!("browser_ui_external_actions.rs"),
     include_str!("browser_ui_input.rs"),
@@ -28,16 +30,19 @@ const ADAPTER_SOURCE: &str = concat!(
     include_str!("browser_ui_library.rs"),
     include_str!("browser_ui_journey_commands.rs"),
     include_str!("browser_ui_maintenance.rs"),
+    include_str!("browser_ui_management_feedback.rs"),
     include_str!("browser_ui_navigation.rs"),
     include_str!("browser_ui_navigation_lifecycle.rs"),
     include_str!("browser_ui_process_actions.rs"),
     include_str!("browser_ui_persistence.rs"),
     include_str!("browser_ui_popups.rs"),
+    include_str!("browser_ui_popup_owner.rs"),
     include_str!("browser_ui_profile_setup.rs"),
     include_str!("browser_ui_queries.rs"),
     include_str!("browser_ui_query_bindings.rs"),
     include_str!("browser_ui_query_configuration.rs"),
     include_str!("browser_ui_query_diagnostics.rs"),
+    include_str!("browser_ui_diagnostics.rs"),
     include_str!("browser_ui_query_permissions.rs"),
     include_str!("browser_ui_query_profiles.rs"),
     include_str!("browser_ui_query_site.rs"),
@@ -46,6 +51,7 @@ const ADAPTER_SOURCE: &str = concat!(
     include_str!("browser_ui_runtime.rs"),
     include_str!("browser_ui_runtime_config.rs"),
     include_str!("browser_ui_runtime_settings.rs"),
+    include_str!("browser_ui_session_save.rs"),
     include_str!("browser_ui_sessions.rs"),
     include_str!("browser_ui_site.rs"),
     include_str!("browser_ui_spatial.rs"),
@@ -71,11 +77,13 @@ const QML_SOURCE: &str = concat!(
     include_str!("../qml/Main.qml"),
     include_str!("../qml/components/FerricPrimaryBrowserWindow.qml"),
     include_str!("../qml/components/FerricBrowserRuntimeBase.qml"),
+    include_str!("../qml/components/FerricWebNotificationController.qml"),
     include_str!("../qml/components/FerricBrowserRuntimeServices.qml"),
     include_str!("../qml/components/FerricBrowserRuntimePresentation.qml"),
     include_str!("../qml/components/FerricBrowserRuntimeRequests.qml"),
     include_str!("../qml/components/FerricBrowserRuntimeChrome.qml"),
     include_str!("../qml/components/FerricBrowserRuntimeSurface.qml"),
+    include_str!("../qml/components/FerricHintWorkspace.qml"),
     include_str!("../qml/components/FerricFocusOverlayController.qml"),
     include_str!("../qml/components/FerricChromePresentationController.qml"),
     include_str!("../qml/components/FerricWindowRegistryController.qml"),
@@ -83,7 +91,13 @@ const QML_SOURCE: &str = concat!(
     include_str!("../qml/components/FerricWebEngineSurfaceRecovery.qml"),
     include_str!("../qml/components/FerricSpatialGridOverlay.qml"),
     include_str!("../qml/components/FerricProfileSessionSurfaces.qml"),
+    include_str!("../qml/components/FerricProfileSessionWorkspace.qml"),
+    include_str!("../qml/components/FerricDownloadWorkspace.qml"),
+    include_str!("../qml/components/FerricProfileResources.qml"),
+    include_str!("../qml/components/FerricProfileResourceRegistry.qml"),
+    include_str!("../qml/components/FerricSettingsWorkspace.qml"),
     include_str!("../qml/components/FerricBrowserWindow.qml"),
+    include_str!("../qml/components/FerricTabViewController.qml"),
     include_str!("../qml/components/FerricNativeTabContent.qml"),
     include_str!("../qml/components/FerricStartPage.qml"),
     include_str!("../qml/components/FerricGuide.qml"),
@@ -109,6 +123,7 @@ include!("tests/commands_and_actions.rs");
 include!("tests/presentation_boundaries.rs");
 include!("tests/context_and_library.rs");
 include!("tests/action_runtime.rs");
+include!("tests/selection_operations.rs");
 
 #[path = "tests/performance.rs"]
 mod performance;

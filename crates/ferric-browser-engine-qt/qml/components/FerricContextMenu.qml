@@ -106,6 +106,7 @@ Item {
                 onTriggered: root.itemActivated(itemDelegate.modelData)
 
                 contentItem: Label {
+                    textFormat: Text.PlainText
                     id: menuLabel
                     text: itemDelegate.modelData.label
                     color: itemDelegate.highlighted

@@ -97,6 +97,20 @@ impl ConfigWatch {
         self.pending_since = None;
     }
 
+    /// Rebind a completed reload without acknowledging edits observed while
+    /// it was pending, including edits during the watcher handoff itself.
+    pub(super) fn refresh_sources(&mut self, root: &Path, sources: &[PathBuf]) {
+        let pending = self.pending_since;
+        let signatures = std::mem::take(&mut self.signatures);
+        self.set_sources(root, sources);
+        for (path, signature) in signatures {
+            if let Some(current) = self.signatures.get_mut(&path) {
+                *current = signature;
+            }
+        }
+        self.pending_since = pending;
+    }
+
     #[cfg(target_os = "linux")]
     fn start_inotify(&mut self, paths: &[PathBuf]) {
         self.stop_inotify();
@@ -247,4 +261,69 @@ fn spawn_inotify_watcher(
         })
         .ok()?;
     Some((receiver, stop, thread))
+}
+
+#[cfg(test)]
+mod reload_tests {
+    use super::*;
+
+    struct TestDirectory(PathBuf);
+    impl TestDirectory {
+        fn new(name: &str) -> Self {
+            let stamp = std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "ferric-watch-{name}-{}-{stamp}",
+                std::process::id()
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn reload_retains_a_debounced_edit() {
+        let directory = TestDirectory::new("pending");
+        let path = directory.0.join("config.toml");
+        fs::write(&path, "before").unwrap();
+        let mut watch = ConfigWatch::default();
+        watch.set_sources(&path, &[]);
+        let pending = Instant::now();
+        watch.mark_pending(pending);
+        watch.refresh_sources(&path, &[]);
+        assert_eq!(watch.pending_since(), Some(pending));
+    }
+
+    #[test]
+    fn reload_does_not_acknowledge_a_change_during_handoff() {
+        let directory = TestDirectory::new("handoff");
+        let path = directory.0.join("config.toml");
+        fs::write(&path, "before").unwrap();
+        let mut watch = ConfigWatch::default();
+        watch.set_sources(&path, &[]);
+        fs::write(&path, "after with a different length").unwrap();
+        watch.refresh_sources(&path, &[]);
+        assert!(watch.changed());
+    }
+
+    #[test]
+    fn changing_profile_still_resets_old_pending_work() {
+        let directory = TestDirectory::new("profile");
+        let before = directory.0.join("before.toml");
+        let after = directory.0.join("after.toml");
+        fs::write(&before, "before").unwrap();
+        fs::write(&after, "after").unwrap();
+        let mut watch = ConfigWatch::default();
+        watch.set_sources(&before, &[]);
+        watch.mark_pending(Instant::now());
+        watch.set_sources(&after, &[]);
+        assert_eq!(watch.pending_since(), None);
+    }
 }

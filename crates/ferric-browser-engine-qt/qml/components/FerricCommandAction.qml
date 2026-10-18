@@ -11,8 +11,6 @@ Button {
     property bool selected: false
     property bool destructive: false
     property bool safe: false
-    readonly property real scale: browserWindow.chromeScale === undefined
-                                  ? 1 : browserWindow.chromeScale
 
     signal selectionRequested()
 
@@ -23,9 +21,10 @@ Button {
     onHoveredChanged: if (hovered) selectionRequested()
 
     contentItem: RowLayout {
-        spacing: 10 * action.scale
+        spacing: 10
 
         Label {
+            textFormat: Text.PlainText
             text: action.selected ? "›" : " "
             color: action.destructive
                    ? action.browserWindow.errorColor
@@ -33,14 +32,20 @@ Button {
             font.bold: true
         }
         Label {
+            textFormat: Text.PlainText
             text: action.keyHint
             color: action.browserWindow.mutedTextColor
             font.family: action.browserWindow.font.family
-            Layout.preferredWidth: Math.max(54 * action.scale, implicitWidth)
+            // Natural text width grows with the font; the minimum gutter
+            // stays in logical units instead of being scaled a second time.
+            Layout.preferredWidth: Math.max(54, implicitWidth)
         }
         Label {
+            objectName: "commandActionLabel"
             Layout.fillWidth: true
             text: action.actionLabel
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
             color: action.selected
                    ? action.browserWindow.selectionTextColor
                    : action.browserWindow.primaryTextColor
@@ -58,6 +63,6 @@ Button {
                          : action.browserWindow.accentColor)
                       : action.browserWindow.borderColor
         border.width: 1
-        radius: 4 * action.scale
+        radius: 4
     }
 }

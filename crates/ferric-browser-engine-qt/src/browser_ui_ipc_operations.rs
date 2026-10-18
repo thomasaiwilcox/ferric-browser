@@ -38,24 +38,24 @@ impl qobject::BrowserUi {
         {
             cancellation.store(true, Ordering::Release);
         }
-        if this
-            .pending_userscript
+        let download_cancelled = this
+            .pending_download
             .as_ref()
-            .is_some_and(|pending| pending.operation_id == id)
-        {
-            this.pending_userscript = None;
-            this.pending_selection = None;
+            .is_some_and(|request| request.operation_id == id);
+        if download_cancelled {
+            super::browser_ui_download_requests::finish_pending_download_operation(
+                this,
+                "cancelled",
+            );
         }
-        if this
-            .pending_selection
-            .as_ref()
-            .and_then(|pending| pending.operation_id.as_deref())
-            == Some(id)
-        {
-            finish_pending_selection_operation(this, "cancelled");
-        }
+        cancel_pending_selection_operation(this, id);
         if let Some(status) = this.operation_states.get_mut(id) {
             *status = "cancelled".into();
+        }
+        drop(rust);
+        if download_cancelled {
+            self.as_mut()
+                .set_status_text(QString::from("Download request cancelled"));
         }
         Ok(serde_json::json!({"operation_id": id, "status": "cancelled"}))
     }

@@ -7,36 +7,45 @@ FerricCommandDialog {
     id: dialog
 
     required property var browserUi
-    property var confirmedActionHandler: function() {
-        browserWindow.executePendingEngineAction()
+    property var confirmedActionHandler: function () {
+        browserWindow.executePendingEngineAction();
     }
 
     visible: browserUi.external_navigation_visible
-    commandText: ":open-external"
+    commandText: "Open another application"
     title: "Open with system handler?"
-    message: "This URI will leave Ferric Browser and may launch another application."
+    message: "This address will leave Ferric Browser and may launch another application."
     dialogWidth: 620 * scale
     dialogHeight: 360 * scale
     dialogBorderColor: browserWindow.warningColor
     cancelAction: "cancel"
     actions: [
-        { id: "cancel", key: "n", label: "Stay in Ferric", safe: true,
-          shortcuts: ["N"] },
-        { id: "open", key: "y", label: "Open with system handler",
-          shortcuts: ["Y"] }
+        {
+            id: "cancel",
+            key: "n",
+            label: "Stay in Ferric",
+            safe: true,
+            shortcuts: ["N"]
+        },
+        {
+            id: "open",
+            key: "y",
+            label: "Open with system handler",
+            shortcuts: ["Y"]
+        }
     ]
 
     function confirm() {
         if (browserUi.confirm_external_navigation()) {
-            confirmedActionHandler()
+            confirmedActionHandler();
         }
     }
 
-    onActionRequested: function(action) {
+    onActionRequested: function (action) {
         if (action === "open") {
-            dialog.confirm()
+            dialog.confirm();
         } else {
-            browserUi.cancel_external_navigation()
+            browserUi.cancel_external_navigation();
         }
     }
 
@@ -47,17 +56,23 @@ FerricCommandDialog {
         Label {
             Layout.fillWidth: true
             text: "Scheme: " + dialog.browserUi.external_navigation_scheme
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
             color: dialog.browserWindow.mutedTextColor
         }
-        Label {
+        TextArea {
+            objectName: "externalNavigationAddress"
             Layout.fillWidth: true
-            Layout.fillHeight: true
             text: dialog.browserUi.external_navigation_uri
+            textFormat: TextEdit.PlainText
+            readOnly: true
+            selectByMouse: true
+            selectByKeyboard: true
+            padding: 0
+            background: null
             color: dialog.browserWindow.primaryTextColor
-            wrapMode: Text.WrapAnywhere
-            maximumLineCount: 8
-            elide: Text.ElideRight
-            Accessible.name: "External URI"
+            wrapMode: TextEdit.Wrap
+            Accessible.name: "Address to open in another application"
         }
     }
 }

@@ -9,7 +9,7 @@ use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
 
-use crate::qobject;
+use crate::{FeedbackLane, FeedbackState, qobject};
 
 impl qobject::BrowserUi {
     pub(super) fn list_profiles(self: Pin<&mut Self>) -> QString {
@@ -20,6 +20,21 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         command_request: bool,
     ) -> bool {
+        if self
+            .as_ref()
+            .rust()
+            .profile_list_worker
+            .as_ref()
+            .is_some_and(super::ProfileListWorker::is_pending)
+        {
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .profile_list_command_pending |= command_request;
+            self.as_mut().set_profile_values_pending(true);
+            return true;
+        }
         self.as_mut()
             .rust_mut()
             .as_mut()
@@ -37,7 +52,8 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .get_mut()
                 .profile_list_command_pending = false;
-            self.as_mut().set_profile_values(QString::default());
+            self.as_mut()
+                .set_profile_list_error(QString::from("No durable profile registry is available"));
             self.as_mut().set_profile_values_pending(false);
             return false;
         };
@@ -52,6 +68,7 @@ impl qobject::BrowserUi {
         };
         match result {
             Ok(()) => {
+                self.as_mut().set_profile_list_error(QString::default());
                 self.as_mut().set_profile_values_pending(true);
                 true
             }
@@ -61,6 +78,7 @@ impl qobject::BrowserUi {
                     .as_mut()
                     .get_mut()
                     .profile_list_command_pending = false;
+                self.as_mut().set_profile_list_error(QString::from(&error));
                 self.as_mut().set_profile_values_pending(false);
                 self.as_mut()
                     .set_status_text(QString::from(format!("Profile list failed: {error}")));
@@ -95,6 +113,12 @@ impl qobject::BrowserUi {
             .and_then(|worker| worker.request_create(roots, name.to_string(), label.to_string()));
         match result {
             Ok(()) => {
+                self.as_mut().publish_management_feedback(
+                    FeedbackLane::Profile,
+                    FeedbackState::Pending,
+                    "Creating profile…",
+                    "",
+                );
                 self.set_status_text(QString::from("Profile creation queued"));
                 true
             }
@@ -127,6 +151,12 @@ impl qobject::BrowserUi {
             .and_then(|worker| worker.request_rename(roots, name.to_string(), label.to_string()));
         match result {
             Ok(()) => {
+                self.as_mut().publish_management_feedback(
+                    FeedbackLane::Profile,
+                    FeedbackState::Pending,
+                    "Updating profile name…",
+                    "",
+                );
                 self.set_status_text(QString::from("Profile rename queued"));
                 true
             }
@@ -142,13 +172,25 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn request_profile_delete_preview(mut self: Pin<&mut Self>, name: &QString) -> bool {
+        if self
+            .as_ref()
+            .rust()
+            .profile_preview_worker
+            .as_ref()
+            .is_some_and(super::ProfilePreviewWorker::is_pending)
+        {
+            self.set_status_text(QString::from(
+                "Profile folders are already being checked. Try again when the check finishes.",
+            ));
+            return false;
+        }
         let Some(roots) = self.as_ref().rust().storage_roots.clone() else {
             self.as_mut().set_profile_preview_pending(false);
             self.as_mut().set_profile_preview_text(QString::default());
             return false;
         };
-        self.as_mut()
-            .set_profile_preview_text(QString::from("Loading validated profile deletion preview…"));
+        self.as_mut().set_profile_preview_error(QString::default());
+        self.as_mut().set_profile_preview_text(QString::default());
         let result = {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut()
@@ -166,6 +208,8 @@ impl qobject::BrowserUi {
             Err(error) => {
                 self.as_mut().set_profile_preview_pending(false);
                 self.as_mut().set_profile_preview_text(QString::default());
+                self.as_mut()
+                    .set_profile_preview_error(QString::from(&error));
                 self.as_mut()
                     .set_status_text(QString::from(format!("Profile preview failed: {error}")));
                 false
@@ -203,6 +247,12 @@ impl qobject::BrowserUi {
             .and_then(|worker| worker.request_delete(roots, name, active_profile_id));
         match result {
             Ok(()) => {
+                self.as_mut().publish_management_feedback(
+                    FeedbackLane::Profile,
+                    FeedbackState::Pending,
+                    "Deleting profile metadata…",
+                    "",
+                );
                 self.set_status_text(QString::from("Profile deletion queued"));
                 true
             }

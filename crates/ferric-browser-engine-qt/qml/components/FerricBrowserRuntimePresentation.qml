@@ -1,3 +1,5 @@
+import "../scripts/SwitcherSources.js" as SwitcherSources
+import "../scripts/SwitcherResults.js" as SwitcherResults
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -5,15 +7,14 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
+import "../scripts/CloseRequests.js" as CloseRequests
+import "../scripts/ChromePresentation.js" as ChromePresentation
 import "../scripts/TargetSearchPresentation.js" as TargetSearchPresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
 FerricBrowserRuntimeServices {
     id: window
 
-    property string activeHintScopeLeaseId: ""
-    property string activeSpatialScopeLeaseId: ""
-    property var activeSpatialScopeView: null
 
     readonly property var clipboardBridge: window.clipboardBridgeObject
     readonly property var activationOutcomeTimer: window.activationOutcomeTimerObject
@@ -32,107 +33,7 @@ FerricBrowserRuntimeServices {
     readonly property alias switcherRefreshTimerObject: switcherRefreshTimer
     readonly property alias switcherBatchTimerObject: switcherBatchTimer
 
-    function refreshDownloads() {
-        downloads.clear()
-        var values = browserUi.list_downloads()
-        if (values.length === 0) {
-            return
-        }
-        var lines = values.split("\n")
-        for (var i = 0; i < lines.length; ++i) {
-            var fields = lines[i].split("\t")
-            if (fields.length >= 4) {
-                var live = window.liveDownloadForId(fields[0])
-                var metrics = window.downloadMetrics(fields[0], live)
-                downloads.append({
-                    id: fields[0], state: fields[1], bytes: fields[2], destination: fields[3],
-                    total: metrics.total, speed: metrics.speed, reason: metrics.reason
-                })
-            }
-        }
-    }
-
-    function liveDownloadForId(id) {
-        var requested = String(id)
-        function find(host) {
-            if (!host) {
-                return null
-            }
-            var active = host.activeDownloads || ({})
-            if (active[requested]) {
-                return active[requested]
-            }
-            var pending = host.pendingDownloadRequests || ({})
-            return pending[requested] || null
-        }
-        var result = find(window)
-        if (result) {
-            return result
-        }
-        var entries = window.browserWindowRegistry || []
-        for (var i = 0; i < entries.length; ++i) {
-            result = find(entries[i] && entries[i].host)
-            if (result) {
-                return result
-            }
-        }
-        var popups = window.popupWindowRegistry || []
-        for (var j = 0; j < popups.length; ++j) {
-            result = find(popups[j] && popups[j].host)
-            if (result) {
-                return result
-            }
-        }
-        return null
-    }
-
-    function downloadMetrics(id, download) {
-        var requested = String(id)
-        if (!download) {
-            delete window.downloadSamples[requested]
-            return { total: -1, speed: 0, reason: "" }
-        }
-        var now = Date.now()
-        var bytes = Math.max(0, Number(download.receivedBytes || 0))
-        var sample = window.downloadSamples[requested]
-        var speed = 0
-        if (sample && now > sample.at && bytes >= sample.bytes) {
-            var elapsed = now - sample.at
-            if (elapsed >= 200) {
-                speed = Math.max(0, Math.round((bytes - sample.bytes) * 1000 / elapsed))
-            }
-        }
-        window.downloadSamples[requested] = { at: now, bytes: bytes }
-        var total = Number(download.totalBytes)
-        return {
-            total: isFinite(total) && total >= 0 ? total : -1,
-            speed: speed,
-            reason: window.boundedPageDialogText(download.interruptReasonString)
-        }
-    }
-
-    function formatDownloadRate(bytesPerSecond) {
-        var value = Number(bytesPerSecond)
-        if (!isFinite(value) || value <= 0) {
-            return ""
-        }
-        var units = ["B/s", "KiB/s", "MiB/s", "GiB/s"]
-        var index = 0
-        while (value >= 1024 && index < units.length - 1) {
-            value /= 1024
-            index += 1
-        }
-        return value.toFixed(index === 0 ? 0 : 1) + " " + units[index]
-    }
-
-    function openDownload(id, reveal) {
-        if (!browserUi.download_desktop_action(id, reveal)) {
-            return
-        }
-        if (browserUi.download_desktop_uri.length > 0) {
-            window.openExternalUri(browserUi, browserUi.download_desktop_uri)
-        }
-    }
+    function refreshDownloads() { window.downloadWorkspaceObject.refresh() }
 
     function externalUriAllowed(uri) {
         var value = String(uri || "")
@@ -190,24 +91,8 @@ FerricBrowserRuntimeServices {
         return true
     }
 
-    function requestDownloadAction(id, action) {
-        var actionIds = {
-            pause: "browser.download.pause",
-            resume: "browser.download.resume",
-            cancel: "browser.download.cancel",
-            retry: "browser.download.retry"
-        }
-        var actionId = actionIds[action]
-        if (!actionId) {
-            browserUi.status_text = "Unknown download action"
-            return
-        }
-        if (browserUi.execute_ui_action(actionId, id)) {
-            window.executePendingEngineAction()
-        }
-    }
-
     function hasActiveDownloads() {
+        if (browserUi.has_finalizing_downloads && browserUi.has_finalizing_downloads()) return true
         if (window.pendingDownloadId.length > 0) {
             return true
         }
@@ -314,13 +199,13 @@ FerricBrowserRuntimeServices {
 
     function tabSuspensionBlockReason(index, id, view) {
         if (index < 0 || !id || id.length === 0) {
-            return "tab target is stale"
+            return "this tab is no longer available"
         }
         if (index === browserUi.active_tab_index) {
             return "only hidden tabs may be suspended"
         }
         if (!view) {
-            return "tab view is not ready"
+            return "the page is still getting ready. Try again in a moment"
         }
         if (view.devToolsView) {
             return "DevTools is attached"
@@ -355,7 +240,7 @@ FerricBrowserRuntimeServices {
             return
         }
         var probe = BrowserScripts.formStateProbe()
-        view.runJavaScript(probe, function(result) {
+        window.runBrowserScript(view, probe, function(result) {
             if (result !== "safe") {
                 browserUi.status_text = "Tab suspension refused: editable page state is not safely empty"
                 return
@@ -364,18 +249,18 @@ FerricBrowserRuntimeServices {
                 return
             }
             window.executePendingEngineAction()
-        })
+        }, 0)
     }
 
     function tabDiscardBlockReason(index, id, view) {
         if (index < 0 || !id || id.length === 0) {
-            return "tab target is stale"
+            return "this tab is no longer available"
         }
         if (index === browserUi.active_tab_index) {
             return "only hidden tabs may be discarded"
         }
         if (!view) {
-            return "tab view is not ready"
+            return "the page is still getting ready. Try again in a moment"
         }
         if (view.devToolsView) {
             return "DevTools is attached"
@@ -410,7 +295,7 @@ FerricBrowserRuntimeServices {
             return
         }
         var probe = BrowserScripts.formStateProbe()
-        view.runJavaScript(probe, function(result) {
+        window.runBrowserScript(view, probe, function(result) {
             if (result !== "safe") {
                 browserUi.status_text = "Tab discard refused: editable page state is not safely empty"
                 return
@@ -419,7 +304,7 @@ FerricBrowserRuntimeServices {
                 return
             }
             window.executePendingEngineAction()
-        })
+        }, 0)
     }
 
     function shutdownPageProbeScript() {
@@ -432,39 +317,22 @@ FerricBrowserRuntimeServices {
         var candidates = []
         for (var i = 0; i < tabViews.length; ++i) {
             var view = tabViewAt(i)
-            if (view && view.lifecycleState === WebEngineView.LifecycleState.Active) {
+            if (view && view.lifecycleState === WebEngineView.LifecycleState.Active)
                 candidates.push(view)
-            }
         }
-        var probe = function(position) {
-            if (generation !== window.shutdownPageProbeGeneration) {
-                return
-            }
-            if (position >= candidates.length) {
+        CloseRequests.probePages(candidates,
+            function() { return generation === window.shutdownPageProbeGeneration },
+            function(view, reply) {
+                return window.runBrowserScript(view, window.shutdownPageProbeScript(), reply, 0)
+            },
+            function(result) {
                 shutdownPageProbeTimer.stop()
-                window.finalizeQuit()
-                return
-            }
-            candidates[position].runJavaScript(window.shutdownPageProbeScript(), function(result) {
-                if (generation !== window.shutdownPageProbeGeneration) {
-                    return
-                }
-                if (result === "dirty") {
-                    shutdownPageProbeTimer.stop()
-                    window.shutdownPagePromptReason = "A page has unsaved form or editor state."
+                if (result.state === "clean") window.finalizeQuit()
+                else {
+                    window.shutdownPagePromptReason = result.reason
                     window.shutdownPagePromptVisible = true
-                    return
                 }
-                if (result !== "clean") {
-                    shutdownPageProbeTimer.stop()
-                    window.shutdownPagePromptReason = "Ferric Browser could not verify every page before closing."
-                    window.shutdownPagePromptVisible = true
-                    return
-                }
-                probe(position + 1)
             })
-        }
-        probe(0)
     }
 
     function beginQuitRequest(commandText) {
@@ -499,6 +367,7 @@ FerricBrowserRuntimeServices {
     }
 
     function cancelDownloadsAndQuit() {
+        window.profileResourceRegistry.cancelFinalizationsForHost(window)
         if (window.pendingDownloadId.length > 0) {
             window.cancelPendingDownload()
         }
@@ -522,19 +391,60 @@ FerricBrowserRuntimeServices {
         window.continueQuitRequest()
     }
 
+    Timer {
+        id: libraryPublicationTimer
+        interval: 0
+        onTriggered: window.refreshLibraryManager()
+    }
+    Connections {
+        target: browserUi
+        function onLibrary_valuesChanged() { libraryPublicationTimer.restart() }
+        function onLibrary_pendingChanged() {
+            if (!browserUi.library_pending) Qt.callLater(function() {
+                if (window.downloadManagerVisible && !browserUi.library_pending
+                        && browserUi.library_error.length === 0) window.refreshDownloads()
+            })
+        }
+        function onLibrary_kindChanged() { libraryPublicationTimer.restart() }
+        function onLibrary_graph_edge_sourcesChanged() { libraryPublicationTimer.restart() }
+        function onLibrary_graph_edge_targetsChanged() { libraryPublicationTimer.restart() }
+        function onLibrary_graph_edge_transitionsChanged() { libraryPublicationTimer.restart() }
+    }
+    function updateLibraryRows(rows) {
+        // Retain delegates and drafts for stable records during asynchronous reads.
+        for (var i = 0; i < rows.length; ++i) {
+            var found = -1
+            for (var j = i; j < libraryEntries.count; ++j) {
+                var current = libraryEntries.get(j)
+                if (current.entryKind === rows[i].entryKind && current.entryId === rows[i].entryId) { found = j; break }
+            }
+            if (found < 0) libraryEntries.insert(i, rows[i])
+            else {
+                if (found !== i) libraryEntries.move(found, i, 1)
+                libraryEntries.set(i, rows[i])
+            }
+        }
+        if (libraryEntries.count > rows.length) libraryEntries.remove(rows.length, libraryEntries.count - rows.length)
+    }
+    function refreshActiveLibrary() {
+        window.pendingLibraryDelete = ""
+        if (browserUi.library_kind === "journey") {
+            if (window.libraryJourneyCurrentOnly) window.runJourneyCurrentQuery()
+            else window.runJourneyQuery(window.libraryJourneyExpandedNode.length > 0
+                ? window.journeyExpandArgument(window.libraryJourneyExpandedNode)
+                : window.journeySearchArgument(window.libraryJourneySearchText))
+        } else if (browserUi.library_kind === "actions") return browserUi.execute_command(":action-list")
+        else if (browserUi.library_kind === "context-routes") return browserUi.execute_command(":context-route list")
+        else browserUi.refresh_library()
+    }
     function refreshLibraryManager() {
-        libraryEntries.clear()
+        window.pendingLibraryDelete = ""
         libraryGraphEntries.clear()
         libraryGraphNodes.clear()
         window.libraryGraphLineData = []
         var kind = browserUi.library_kind
         var values = browserUi.library_values
-        if (values.length === 0) {
-            window.libraryTotalEntries = 0
-            window.libraryPage = 0
-            return
-        }
-        var lines = values.split("\n")
+        var lines = values.length > 0 ? values.split("\n") : []
         window.libraryTotalEntries = lines.length
         var visibleLines = lines
         if (kind !== "journey") {
@@ -543,38 +453,32 @@ FerricBrowserRuntimeServices {
             var pageStart = window.libraryPage * window.libraryPageSize
             visibleLines = lines.slice(pageStart, pageStart + window.libraryPageSize)
         }
+        var rows = []
         for (var i = 0; i < visibleLines.length; ++i) {
             var fields = visibleLines[i].split("\t")
+            var row = {label: "", secondary: "", detail: "", entryId: fields[0], entryKind: "", nodeId: ""}
             if ((kind === "history" || kind === "bookmarks") && fields.length >= 3) {
-                libraryEntries.append({
-                    label: fields[1],
-                    secondary: fields[2],
-                    entryId: fields[0],
-                    entryKind: kind === "history" ? "history" : "bookmark"
-                })
+                row.label = fields[1] || fields[2]
+                row.secondary = fields[2]
+                row.entryKind = kind === "history" ? "history" : "bookmark"
             } else if (kind === "journey" && fields.length >= 4) {
-                var journeyLabel = fields[1].length > 0 ? fields[1] : fields[2]
-                libraryEntries.append({
-                    label: journeyLabel + " · " + fields[3],
-                    secondary: fields[2] + (fields.length >= 5 && fields[4].length > 0
-                                           ? " · " + fields[4] : ""),
-                    nodeId: fields[0]
-                })
+                row.label = fields[1] || fields[2]
+                row.secondary = fields[2] + " · " + ChromePresentation.journeyTransitionLabel(fields[3])
+                row.detail = row.label + "\n" + fields[2] + "\nTransition: " + fields[3]
+                    + (fields[4] ? "\nSource: " + fields[4] : "") + "\nRecord: " + fields[0]
+                row.entryKind = "journey"; row.nodeId = fields[0]
             } else if (kind === "quickmarks" && fields.length >= 2) {
-                libraryEntries.append({
-                    label: fields[0],
-                    secondary: fields[1],
-                    entryId: fields[0],
-                    entryKind: "quickmark"
-                })
+                row.label = fields[0]; row.secondary = fields[1]; row.entryKind = "quickmark"
             } else if (kind === "actions" && fields.length >= 3) {
-                libraryEntries.append({
-                    label: fields[0] + " · " + fields[1],
-                    secondary: fields[2] + (fields.length >= 4 && fields[3].length > 0
-                                           ? " · Example: " + fields[3] : "")
-                })
-            }
+                row.label = fields[1]; row.secondary = fields[2]; row.entryKind = "action"
+                row.detail = fields[0] + "\n" + fields[2] + (fields[3] ? "\nExample: " + fields[3] : "")
+            } else if (kind === "context-routes" && fields.length >= 6) {
+                row.label = fields[1]; row.secondary = "Open in context " + fields[2]; row.entryKind = "route"
+                row.detail = "Rule: " + fields[0] + "\n" + fields[3] + "\n" + fields[4] + "\nEntry points: " + fields[5]
+            } else continue
+            rows.push(row)
         }
+        window.updateLibraryRows(rows)
         if (kind === "journey") {
             var edgeSources = browserUi.library_graph_edge_sources
             var edgeTargets = browserUi.library_graph_edge_targets
@@ -596,8 +500,8 @@ FerricBrowserRuntimeServices {
                 }
                 var nodeIndex = ({})
                 var graphNodeLimit = Math.min(lines.length, 120)
-                var graphNodeWidth = 170
-                var graphNodeHeight = 48
+                var graphNodeWidth = libraryManager.graphNodeWidth
+                var graphNodeHeight = libraryManager.graphNodeHeight
                 var graphNodeGapX = 24
                 var graphNodeGapY = 18
                 var graphColumns = 4
@@ -625,11 +529,11 @@ FerricBrowserRuntimeServices {
                     var sourceId = String(edgeSources[e])
                     var targetId = String(edgeTargets[e])
                     var transition = String(edgeTransitions[e] || "navigate")
-                    var source = nodeLabels[sourceId] || sourceId
-                    var target = nodeLabels[targetId] || targetId
+                    var source = nodeLabels[sourceId] || "Earlier page"
+                    var target = nodeLabels[targetId] || "Another page"
                     libraryGraphEntries.append({
                         label: source + " → " + target,
-                        secondary: transition
+                        secondary: ChromePresentation.journeyTransitionLabel(transition)
                     })
                     if (nodeIndex[sourceId] !== undefined
                             && nodeIndex[targetId] !== undefined) {
@@ -646,14 +550,14 @@ FerricBrowserRuntimeServices {
                 }
                 if (lines.length > graphNodeLimit) {
                     libraryGraphEntries.insert(0, {
-                        label: "Graph layout capped at " + graphNodeLimit + " nodes",
-                        secondary: "Use Search or Expand for a smaller neighborhood"
+                        label: "Showing " + graphNodeLimit + " pages on the map",
+                        secondary: "Search or choose Nearby pages to narrow the view"
                     })
                 }
                 if (libraryGraphEntries.count === 0) {
                     libraryGraphEntries.append({
-                        label: "No retained relationships",
-                        secondary: "The current node has no visible edge in this bounded view"
+                        label: "No connections to show",
+                        secondary: "Try showing all pages or searching for another page"
                     })
                 }
             }
@@ -666,6 +570,7 @@ FerricBrowserRuntimeServices {
     }
 
     function changeLibraryPage(delta) {
+        window.pendingLibraryDelete = ""
         var next = window.libraryPage + delta
         if (next < 0 || next >= window.libraryPageCount()) {
             return
@@ -711,7 +616,9 @@ FerricBrowserRuntimeServices {
             window.executePendingEngineAction()
             window.libraryManagerVisible = false
             window.closeInternalSurface()
+            return true
         }
+        return false
     }
 
     function showPrivateHistoryTransfer(entryId, title, url) {
@@ -719,6 +626,15 @@ FerricBrowserRuntimeServices {
             browserUi.status_text = "Private history transfer is unavailable"
             return
         }
+        if (window.privateBookmarkTransferPending) {
+            var message = "A bookmark is still saving. Wait before choosing another page."
+            browserUi.status_text = message
+            window.showCommandNotice(message, false)
+            return
+        }
+        window.privateBookmarkTransferMessage = ""
+        window.privateBookmarkTransferDetail = ""
+        window.privateBookmarkTransferFailed = false
         window.privateHistoryTransferId = String(entryId)
         window.privateHistoryTransferTitle = String(title || "")
         window.privateHistoryTransferUrl = String(url)
@@ -750,37 +666,64 @@ FerricBrowserRuntimeServices {
         Qt.callLater(function() { window.executePendingEngineAction() })
     }
 
+    function checkPrivateBookmarkTransfer() {
+        var ui = window.privateBookmarkTransferUi
+        if (!window.privateBookmarkTransferPending || !ui) return
+        var state = String(ui.bookmark_transfer_state)
+        if (String(ui.bookmark_transfer_id) !== window.privateBookmarkTransferReceipt) {
+            if (state === "idle") window.finishPrivateBookmarkTransfer(false, "The save could not be confirmed. Check the destination's bookmarks before trying again.", "")
+            return
+        }
+        if (state === "succeeded") window.finishPrivateBookmarkTransfer(true, "Bookmark saved in " + window.privateBookmarkTransferLabel, "")
+        else if (state === "failed") window.finishPrivateBookmarkTransfer(false, "The bookmark couldn't be saved. Your private page is still here. Try again.", String(ui.bookmark_transfer_detail || ""))
+        else if (state === "idle") window.finishPrivateBookmarkTransfer(false, "The save could not be confirmed. Check the destination's bookmarks before trying again.", "")
+    }
+
+    function finishPrivateBookmarkTransfer(succeeded, message, detail) {
+        window.privateBookmarkTransferPending = false
+        window.privateBookmarkTransferReceipt = ""
+        window.privateBookmarkTransferUi = null
+        window.privateBookmarkTransferWindow = null
+        window.privateBookmarkTransferMessage = message
+        window.privateBookmarkTransferDetail = detail
+        window.privateBookmarkTransferFailed = !succeeded
+        browserUi.status_text = message
+        if (!window.privateHistoryTransferVisible) window.showCommandNotice(message, !succeeded)
+    }
+
     function confirmPrivateHistoryBookmark(profileName, profileLabel) {
+        if (window.privateBookmarkTransferPending) return
+        window.privateBookmarkTransferLabel = String(profileLabel || profileName)
+        window.privateBookmarkTransferMessage = "Saving bookmark in " + window.privateBookmarkTransferLabel + "…"
+        window.privateBookmarkTransferDetail = ""
+        window.privateBookmarkTransferFailed = false
         var entries = window.browserWindowRegistry || []
         for (var index = 0; index < entries.length; ++index) {
             var entry = entries[index]
-            if (entry && entry.ui && !entry.ephemeralProfile
-                    && String(entry.profileName || "") === String(profileName)) {
-                if (!entry.ui.queue_bookmark_transfer(
-                            window.privateHistoryTransferUrl,
-                            window.privateHistoryTransferTitle)) {
-                    browserUi.status_text = "Destination profile is not ready for bookmark transfer"
+            if (entry && entry.ui && !entry.ephemeralProfile && String(entry.profileName || "") === String(profileName)) {
+                if (!entry.ui.queue_bookmark_transfer(window.privateHistoryTransferUrl, window.privateHistoryTransferTitle)) {
+                    window.finishPrivateBookmarkTransfer(false, "The bookmark couldn't be queued. Check the destination profile and try again.", String(entry.ui.status_text || ""))
                     return
                 }
-                window.activateBrowserWindow(entry.host, entry.ui)
-                window.cancelPrivateHistoryTransfer()
+                window.privateBookmarkTransferUi = entry.ui
+                window.privateBookmarkTransferReceipt = String(entry.ui.bookmark_transfer_id)
+                window.privateBookmarkTransferPending = true
+                window.checkPrivateBookmarkTransfer()
                 return
             }
         }
-        window.browserWindowFactory.createObject(null, {
-            windowStartupUrl: window.privateHistoryTransferUrl,
+        window.privateBookmarkTransferPending = true
+        var destination = window.browserWindowFactory.createObject(null, {
+            windowStartupUrl: "rb://start",
             windowProfileName: profileName,
-            windowProfileLabel: profileLabel,
+            windowProfileLabel: String(profileLabel || profileName),
             windowPrivateProfile: false,
             windowBookmarkTransferUrl: window.privateHistoryTransferUrl,
             windowBookmarkTransferTitle: window.privateHistoryTransferTitle
         })
-        window.privateHistoryTransferVisible = false
-        window.privateHistoryTransferId = ""
-        window.privateHistoryTransferTitle = ""
-        window.privateHistoryTransferUrl = ""
-        window.libraryManagerVisible = false
-        window.closeInternalSurface()
+        if (!destination) { window.finishPrivateBookmarkTransfer(false, "The destination profile couldn't be opened. Try again.", ""); return }
+        window.privateBookmarkTransferWindow = destination
+        window.requestActivate()
     }
 
     function deleteLibraryEntry(entryKind, entryId) {
@@ -792,8 +735,9 @@ FerricBrowserRuntimeServices {
         }
         if (browserUi.execute_command(":" + command + " " + libraryCommandArgument(entryId))) {
             window.pendingLibraryDelete = ""
-            window.refreshLibraryManager()
+            return true
         }
+        return false
     }
 
     function editLibraryEntry(entryKind, entryId, value) {
@@ -808,7 +752,6 @@ FerricBrowserRuntimeServices {
                 : libraryCommandArgument(entryId) + " " + libraryCommandArgument(trimmed)
         if (browserUi.execute_command(":" + command + " " + argumentsText)) {
             window.pendingLibraryDelete = ""
-            window.refreshLibraryManager()
             return true
         }
         return false
@@ -827,7 +770,7 @@ FerricBrowserRuntimeServices {
 
     function finishJourneyExport() {
         var selected = fileDialogSurfaces.journeyExportSelectedFile
-        var path = selected && selected.scheme === "file" ? selected.toLocalFile() : ""
+        var path = browserUi.local_file_path(selected || "")
         if (path.length === 0 || !browserUi.export_journey(path)) {
             window.journeyExportPreviewVisible = true
             return
@@ -837,10 +780,18 @@ FerricBrowserRuntimeServices {
 
     function finishDiagnosticsExport() {
         var selected = fileDialogSurfaces.diagnosticsExportSelectedFile
-        var path = selected && selected.scheme === "file" ? selected.toLocalFile() : ""
-        if (!path || !browserUi.export_diagnostics(path)) {
-            window.diagnosticsVisible = true
+        var ui = window.diagnosticsUi
+        if (!window.diagnosticsOwner(ui, window.diagnosticsHost)
+                || (window.diagnosticsExportUi && window.diagnosticsExportUi !== ui)) return
+        var path = ui.local_file_path(selected || "")
+        if (!path || !ui.export_diagnostics(path)) {
+            window.diagnosticsExportNotice = "The report couldn't be saved. Review the details and try again."
+            window.diagnosticsExportDetail = path ? String(ui.status_text) : "Choose a local file on this computer."
+        } else {
+            window.diagnosticsExportDetail = ""
+            window.diagnosticsExportNotice = "Report saved. Refresh to prepare another report."
         }
+        window.diagnosticsVisible = true
     }
 
     function journeySearchArgument(value) {
@@ -856,29 +807,46 @@ FerricBrowserRuntimeServices {
         switcherBatchTimer.stop()
         switcherBatchEntries = []
         switcherBatchMerged = []
+        switcherBatchSources = []
+        switcherBatchPrevious = []
         switcherBatchIndex = 0
     }
 
+    // A query edit invalidates the old rows before the debounce timer runs.
+    // Guard activation at the owner boundary as well as in the presentation.
+    function switcherResultsCurrent() {
+        return window.switcherVisible && !!window.switcherRegistry.switcherInvocation()
+                && window.switcherResultContext !== null
+                && window.switcherResultContext.owner === window.switcherOwnerToken
+                && window.switcherResultContext.query === switcherSurface.query
+                && window.switcherResultContext.scope === window.switcherScope
+    }
+
     function switcherMaxResults() {
-        return browserUi.feature_switcher_max_results
+        return (window.switcherUi || browserUi).feature_switcher_max_results
     }
 
     function processSwitcherBatch() {
         if (switcherBatchScheduledGeneration !== switcherBatchGeneration
                 || !window.switcherVisible
+                || !window.switcherRegistry.switcherInvocation()
                 || switcherBatchQuery !== switcherSurface.query
                 || switcherBatchScope !== window.switcherScope) {
             window.cancelSwitcherBatch()
             return
         }
         if (switcherBatchIndex >= switcherBatchEntries.length) {
-            switcherResults = switcherBatchMerged
+            switcherResults = window.publishedSwitcherBatch()
+            switcherSourceState = SwitcherSources.aggregate(switcherBatchSources, false)
+            switcherResultContext = {query: switcherBatchQuery, scope: switcherBatchScope, owner: window.switcherOwnerToken}
             return
         }
         var entry = switcherBatchEntries[switcherBatchIndex]
         switcherBatchIndex += 1
-        if (entry && entry.ui) {
-            if (entry.ui.switcher_query(switcherBatchQuery, switcherBatchScope)) {
+        if (window.switcherRegistry.switcherEntryLive(entry)) {
+            var accepted = entry.ui.switcher_query(switcherBatchQuery, switcherBatchScope)
+            switcherBatchSources.push(SwitcherSources.fromUi(entry.ui, accepted))
+            if (accepted) {
                 var kinds = entry.ui.switcher_result_kinds || []
                 var ids = entry.ui.switcher_result_ids || []
                 var generations = entry.ui.switcher_result_generations || []
@@ -917,29 +885,58 @@ FerricBrowserRuntimeServices {
         // Publish each source as it arrives. The next source is scheduled on
         // the GUI event loop, so a large multi-window search cannot monopolize
         // keyboard, focus, or portal callbacks.
-        switcherBatchMerged.sort(function(left, right) {
-            return Number(right.rank || 0) - Number(left.rank || 0)
-                    || Number(right.recency || 0) - Number(left.recency || 0)
-                    || String(left.kind || "").localeCompare(String(right.kind || ""))
-                    || String(left.id || "").localeCompare(String(right.id || ""))
-        })
-        switcherResults = switcherBatchMerged.slice(0)
+        switcherResults = window.publishedSwitcherBatch()
+        switcherSourceState = SwitcherSources.aggregate(switcherBatchSources,
+            switcherBatchIndex < switcherBatchEntries.length)
+        switcherResultContext = {query: switcherBatchQuery, scope: switcherBatchScope, owner: window.switcherOwnerToken}
         switcherBatchTimer.start()
     }
 
+    function publishedSwitcherBatch() {
+        var pending = switcherBatchEntries.slice(switcherBatchIndex).map(function(entry) {
+            return entry && entry.ui ? String(entry.ui.window_token) : ""
+        })
+        function live(row) { return !!window.switcherOwner(row) }
+        return SwitcherResults.publish(switcherBatchMerged.filter(live),
+            switcherBatchPrevious.filter(live), pending, window.switcherMaxResults())
+    }
+
+    function retrySwitcherSources() {
+        if (!window.switcherRegistry.switcherInvocation()) return
+        var entries = window.switcherRegistry.switcherEntries()
+        for (var i = 0; i < entries.length; ++i)
+            entries[i].ui.refresh_switcher_sources(window.switcherScope)
+        window.refreshSwitcher()
+    }
+
     function refreshSwitcher() {
+        var keepCurrentRows = window.switcherResultsCurrent()
         window.cancelSwitcherBatch()
-        var entries = window.browserWindowRegistry || []
-        if (entries.length === 0) {
-            entries = [{ host: window, ui: browserUi }]
+        if (!window.switcherRegistry.switcherInvocation()) {
+            window.closeSwitcher()
+            return
         }
+        var entries = window.switcherRegistry.switcherEntries()
+        // Commands act in the invoking window. Prefer its duplicate catalog
+        // rows as well, without changing the captured owner of any result.
+        entries.sort(function(left, right) {
+            return Number(right.ui === window.switcherUi) - Number(left.ui === window.switcherUi)
+        })
         switcherBatchEntries = entries.slice(0)
         switcherBatchMerged = []
+        switcherBatchSources = []
+        switcherBatchPrevious = keepCurrentRows ? switcherResults.slice(0) : []
         switcherBatchIndex = 0
         switcherBatchQuery = switcherSurface.query
         switcherBatchScope = window.switcherScope
         switcherBatchScheduledGeneration = switcherBatchGeneration
-        switcherResults = []
+        // A metadata completion must not erase usable results for the same
+        // input while the next source batch is scheduled. New input is cleared
+        // immediately at its edit boundary.
+        if (!keepCurrentRows) {
+            switcherResultContext = null
+            switcherResults = []
+        }
         switcherBatchTimer.start()
     }
 
@@ -965,8 +962,20 @@ FerricBrowserRuntimeServices {
         onTriggered: window.processSwitcherBatch()
     }
 
-    function showSwitcherWith(scope, query) {
-        window.captureOverlayFocus(window, window.activeWebView())
+    function showSwitcherWith(scope, query, ownerUi, ownerHost) {
+        var ui = ownerUi || browserUi
+        var entry = window.browserWindowEntryForUi(ui)
+        if (!entry || !window.switcherRegistry.switcherEntryLive(entry)
+                || (ownerHost && entry.host !== ownerHost)) {
+            ui.status_text = "This window is still opening. Try the Switcher again when it is ready."
+            return false
+        }
+        if (window.switcherVisible) window.closeSwitcher()
+        window.switcherUi = ui
+        window.switcherHost = entry.host
+        window.switcherProfile = entry.profile
+        window.switcherOwnerToken = String(ui.window_token)
+        window.captureOverlayFocus(entry.host, entry.view)
         switcherVisible = true
         switcherScope = scope && scope.length > 0 ? scope : "all"
         switcherRefreshTimer.stop()
@@ -981,12 +990,18 @@ FerricBrowserRuntimeServices {
 
     function closeSwitcher() {
         var wasVisible = switcherVisible
+        var host = window.switcherHost
         switcherRefreshTimer.stop()
         window.cancelSwitcherBatch()
         switcherVisible = false
+        switcherResultContext = null
         switcherResults = []
+        window.switcherUi = null
+        window.switcherHost = null
+        window.switcherProfile = null
+        window.switcherOwnerToken = ""
         if (wasVisible) {
-            window.restoreOverlayFocus()
+            window.restoreOverlayFocus(host)
         }
     }
 
@@ -1001,104 +1016,56 @@ FerricBrowserRuntimeServices {
         switcherSurface.focusInput()
     }
 
-    function showLinkPreview() {
-        if (!linkPreviewVisible && browserUi.link_preview_visible) {
-            window.openInternalSurface()
-        }
-        linkPreviewVisible = browserUi.link_preview_visible
-    }
-
-    function closeLinkPreview() {
-        var wasVisible = linkPreviewVisible
-        linkPreviewVisible = false
-        browserUi.clear_link_preview()
-        if (wasVisible) {
-            window.closeInternalSurface()
-        }
-    }
-
     function hintSelectorPolicySnapshot(family) {
-        return browserUi.hint_selector_policy(family)
+        return window.hintWorkspace.hintSelectorPolicySnapshot(family)
     }
 
     function hintCollectorScript(family, selectorSnapshot, scopeLeaseId, includeFacets) {
-        return BrowserScripts.hintCollector(
-                    family, browserUi.hint_proxy_targets_enabled, selectorSnapshot,
-                    scopeLeaseId, includeFacets)
+        return window.hintWorkspace.hintCollectorScript(family, selectorSnapshot, scopeLeaseId, includeFacets)
     }
 
     function targetSearchIdentity(candidate) {
-        return TargetSearchPresentation.identity(candidate)
+        return window.hintWorkspace.targetSearchIdentity(candidate)
     }
 
     function targetSearchMeaning(candidate) {
-        return TargetSearchPresentation.meaning(candidate)
+        return window.hintWorkspace.targetSearchMeaning(candidate)
     }
 
     function targetSearchRows() {
-        return TargetSearchPresentation.rows(
-                    window.hintResults,
-                    window.hintState && window.hintState.matching_labels || [])
+        return window.hintWorkspace.targetSearchRows()
     }
 
     function reconcileTargetSearchSelection() {
-        if (!browserUi.target_search_active) return
-        var next = TargetSearchPresentation.reconcile(window.targetSearchRows(), {
-            identity: window.targetSearchSelectedIdentity,
-            meaning: window.targetSearchSelectedMeaning,
-            initialized: window.targetSearchSelectionInitialized
-        })
-        window.targetSearchSelectedIdentity = next.identity
-        window.targetSearchSelectedMeaning = next.meaning
-        window.targetSearchSelectionInitialized = next.initialized
+        return window.hintWorkspace.reconcileTargetSearchSelection()
     }
 
     function applyTargetSearchQuery(query) {
-        window.applyHintInteraction("set-query", String(query || ""))
-        window.reconcileTargetSearchSelection()
+        return window.hintWorkspace.applyTargetSearchQuery(query)
     }
 
     function selectTargetSearchIdentity(identity) {
-        var next = TargetSearchPresentation.select(window.targetSearchRows(), identity)
-        if (!next) return
-        window.targetSearchSelectedIdentity = next.identity
-        window.targetSearchSelectedMeaning = next.meaning
-        window.targetSearchSelectionInitialized = next.initialized
+        return window.hintWorkspace.selectTargetSearchIdentity(identity)
     }
 
     function moveTargetSearchSelection(delta) {
-        var rows = window.targetSearchRows()
-        if (rows.length === 0) return
-        var next = TargetSearchPresentation.move(rows, {
-            identity: window.targetSearchSelectedIdentity,
-            meaning: window.targetSearchSelectedMeaning
-        }, delta)
-        if (!next) return
-        window.targetSearchSelectedIdentity = next.identity
-        window.targetSearchSelectedMeaning = next.meaning
-        window.targetSearchSelectionInitialized = next.initialized
+        return window.hintWorkspace.moveTargetSearchSelection(delta)
     }
 
     function confirmTargetSearchSelection() {
-        var selected = TargetSearchPresentation.selectedRow(window.targetSearchRows(), {
-            identity: window.targetSearchSelectedIdentity,
-            meaning: window.targetSearchSelectedMeaning
-        })
-        if (!selected) return false
-        window.activateHint(selected.label, "", true)
-        return true
+        return window.hintWorkspace.confirmTargetSearchSelection()
     }
 
     function hintDirtyRevisionScript() {
-        return BrowserScripts.hintDirtyRevision()
+        return window.hintWorkspace.hintDirtyRevisionScript()
     }
 
     function hintStopTrackingScript(scopeLeaseId) {
-        return BrowserScripts.hintStopTracking(scopeLeaseId)
+        return window.hintWorkspace.hintStopTrackingScript(scopeLeaseId)
     }
 
     function spatialScopeGeometryScript(scopeLeaseId) {
-        return BrowserScripts.spatialScopeGeometry(scopeLeaseId)
+        return window.hintWorkspace.spatialScopeGeometryScript(scopeLeaseId)
     }
 
     function selectionScript() {
@@ -1122,464 +1089,59 @@ FerricBrowserRuntimeServices {
     }
 
     function hintFreshScript(candidate) {
-        return BrowserScripts.hintFresh(
-                    candidate, hintSelectorPolicySnapshot(browserUi.hint_family))
+        return window.hintWorkspace.hintFreshScript(candidate)
     }
 
     function completeHintScopeHandoff(view, request, candidate, actionEpoch) {
-        if (!request || typeof request.lease_id !== "string"
-                || window.activeWebView() !== view
-                || window.hintTrackingView !== view
-                || browserUi.mode !== "hint") {
-            window.closeHints()
-            return
-        }
-        window.hintScopeHandoffLeaseId = request.lease_id
-        var finishHandoff = function() {
-            if (window.hintScopeHandoffLeaseId === request.lease_id) window.hintScopeHandoffLeaseId = ""
-        }
-        var selectorSnapshot = window.hintSelectorPolicySnapshot(browserUi.hint_family)
-        var acquireStarted = window.runBrowserScript(
-                    view,
-                    "JSON.stringify(" + BrowserScripts.hintAcquireScopeLease(request, candidate, selectorSnapshot) + ")",
-                    function(receiptJson) {
-            // Preserve explicit null fields across WebEngine's QVariant bridge.
-            var receipt = null
-            try { receipt = JSON.parse(receiptJson) } catch (error) {}
-            if (window.hintCollectionEpoch !== actionEpoch
-                    || window.activeWebView() !== view
-                    || window.hintTrackingView !== view
-                    || browserUi.mode !== "hint") {
-                if (receipt && receipt.ok === true) {
-                    window.runBrowserScript(
-                                view, BrowserScripts.hintClearScopeLease(request.lease_id),
-                                function(value) {})
-                }
-                finishHandoff()
-                return
-            }
-            if (!receipt || receipt.ok !== true) {
-                var reason = receipt && receipt.error === "weak-reference-unavailable"
-                        ? "Scoped Hint needs weak references; use full-page Grid instead"
-                        : "Scoped Hint failed closed: the selected region is stale"
-                window.closeHints()
-                browserUi.status_text = reason
-                window.showCommandNotice(reason, true)
-                return
-            }
-            var stopStarted = window.runBrowserScript(
-                        view, window.hintStopTrackingScript(request.lease_id), function(stopped) {
-                if (window.hintCollectionEpoch !== actionEpoch
-                        || window.activeWebView() !== view
-                        || window.hintTrackingView !== view
-                        || browserUi.mode !== "hint") {
-                    window.runBrowserScript(
-                                view, BrowserScripts.hintClearScopeLease(request.lease_id),
-                                function(value) {})
-                    finishHandoff()
-                    return
-                }
-                if (stopped !== true
-                        || !browserUi.complete_hint_scope_handoff(
-                            request.lease_id, JSON.stringify(receipt))) {
-                    window.runBrowserScript(
-                                view, BrowserScripts.hintClearScopeLease(request.lease_id),
-                                function(value) {})
-                    window.closeHints()
-                    browserUi.status_text = "Scoped Hint failed closed: the lease became stale"
-                    window.showCommandNotice(browserUi.status_text, true)
-                    return
-                }
-                window.activeHintScopeLeaseId = request.lease_id
-                finishHandoff()
-                window.hintResults = []
-                window.hintInput = ""
-                window.hintRefreshPending = false
-                window.startHintCollection()
-            })
-            if (!stopStarted && window.hintCollectionEpoch === actionEpoch) {
-                window.closeHints()
-                browserUi.status_text = "Scoped Hint source registry could not be released"
-                window.showCommandNotice(browserUi.status_text, true)
-            }
-        })
-        if (!acquireStarted && window.hintCollectionEpoch === actionEpoch) {
-            window.closeHints()
-            browserUi.status_text = "Scoped Hint lease could not be acquired"
-            window.showCommandNotice(browserUi.status_text, true)
-        }
+        return window.hintWorkspace.completeHintScopeHandoff(view, request, candidate, actionEpoch)
     }
 
     function completeGridScopeHandoff(view, request, candidate, actionEpoch) {
-        if (!request || typeof request.lease_id !== "string"
-                || window.activeWebView() !== view
-                || window.hintTrackingView !== view
-                || browserUi.mode !== "hint") {
-            window.closeHints()
-            return
-        }
-        window.scopedGridHandoffView = view
-        window.scopedGridHandoffLeaseId = request.lease_id
-        var finishSurfaceHandoff = function() {
-            if (window.scopedGridHandoffLeaseId === request.lease_id) {
-                window.scopedGridHandoffView = null
-                window.scopedGridHandoffLeaseId = ""
-            }
-        }
-        var selectorSnapshot = window.hintSelectorPolicySnapshot(browserUi.hint_family)
-        var acquireStarted = window.runBrowserScript(
-                    view,
-                    "JSON.stringify(" + BrowserScripts.hintAcquireScopeLease(
-                        request, candidate, selectorSnapshot) + ")", function(receiptJson) {
-            var receipt = null
-            try { receipt = JSON.parse(receiptJson) } catch (error) {}
-            var clearLease = function() {
-                finishSurfaceHandoff()
-                window.runBrowserScript(
-                            view, BrowserScripts.hintClearScopeLease(request.lease_id),
-                            function(value) {})
-            }
-            if (window.hintCollectionEpoch !== actionEpoch
-                    || window.activeWebView() !== view
-                    || window.hintTrackingView !== view
-                    || browserUi.mode !== "hint") {
-                if (receipt && receipt.ok === true) clearLease()
-                else finishSurfaceHandoff()
-                return
-            }
-            if (!receipt || receipt.ok !== true) {
-                finishSurfaceHandoff()
-                window.closeHints()
-                browserUi.status_text = receipt && receipt.error === "weak-reference-unavailable"
-                        ? "Scoped Grid needs weak references; use full-page Grid instead"
-                        : "Scoped Grid failed closed: the selected surface is stale"
-                window.showCommandNotice(browserUi.status_text, true)
-                return
-            }
-            var stopStarted = window.runBrowserScript(
-                        view, window.hintStopTrackingScript(request.lease_id), function(stopped) {
-                if (window.hintCollectionEpoch !== actionEpoch
-                        || window.activeWebView() !== view
-                        || window.hintTrackingView !== view
-                        || browserUi.mode !== "hint") {
-                    clearLease()
-                    return
-                }
-                if (stopped !== true || !window.spatialAdapterEnabled
-                        || window.spatialAdapterTargetItem !== view
-                        || view.width <= 0 || view.height <= 0) {
-                    clearLease()
-                    window.closeHints()
-                    browserUi.status_text = "Scoped Grid failed closed: page surface changed"
-                    window.showCommandNotice(browserUi.status_text, true)
-                    return
-                }
-                var zoomFactor = Number(view.zoomFactor)
-                var started = window.runBrowserScript(
-                            view, window.spatialScopeGeometryScript(request.lease_id), function(value) {
-                    if (window.hintCollectionEpoch !== actionEpoch
-                            || window.activeWebView() !== view
-                            || window.hintTrackingView !== view
-                            || browserUi.mode !== "hint"
-                            || window.spatialAdapterTargetItem !== view
-                            || Number(view.zoomFactor) !== zoomFactor) {
-                        clearLease()
-                        return
-                    }
-                    var accepted = false
-                    try {
-                        accepted = browserUi.complete_grid_scope_handoff(
-                                    request.lease_id, JSON.stringify(receipt),
-                                    JSON.stringify(value || {}),
-                                    window.spatialAdapterSurfaceSerial,
-                                    window.spatialAdapterSurfaceRevision,
-                                    view.width, view.height, zoomFactor)
-                    } catch (error) {
-                        accepted = false
-                    }
-                    if (!accepted) {
-                        clearLease()
-                        window.closeHints()
-                        browserUi.status_text = "Scoped Grid failed closed: scope geometry was stale"
-                        window.showCommandNotice(browserUi.status_text, true)
-                        return
-                    }
-                    finishSurfaceHandoff()
-                    window.activeSpatialScopeLeaseId = request.lease_id
-                    window.activeSpatialScopeView = view
-                    window.activeHintScopeLeaseId = ""
-                    window.hintTrackingView = null
-                    window.hintCollectionEpoch += 1
-                    window.hintResults = []
-                    window.hintInput = ""
-                    window.hintRefreshPending = false
-                })
-                if (!started) {
-                    clearLease()
-                    window.closeHints()
-                    browserUi.status_text = "Scoped Grid failed closed: renderer unavailable"
-                    window.showCommandNotice(browserUi.status_text, true)
-                }
-            })
-            if (!stopStarted && window.hintCollectionEpoch === actionEpoch) {
-                clearLease()
-                window.closeHints()
-                browserUi.status_text = "Scoped Grid could not release the source Hint registry"
-                window.showCommandNotice(browserUi.status_text, true)
-            }
-        })
-        if (!acquireStarted && window.hintCollectionEpoch === actionEpoch) {
-            finishSurfaceHandoff()
-            window.closeHints()
-            browserUi.status_text = "Scoped Grid lease could not be acquired"
-            window.showCommandNotice(browserUi.status_text, true)
-        }
+        return window.hintWorkspace.completeGridScopeHandoff(view, request, candidate, actionEpoch)
     }
 
     function hintPointerPreflightScript(candidate, viewWidth, viewHeight) {
-        return BrowserScripts.hintPointerPreflight(
-                    candidate, viewWidth, viewHeight,
-                    hintSelectorPolicySnapshot(browserUi.hint_family))
+        return window.hintWorkspace.hintPointerPreflightScript(candidate, viewWidth, viewHeight)
     }
 
     function hintFocusScript(candidate) {
-        return BrowserScripts.hintFocus(
-                    candidate, hintSelectorPolicySnapshot(browserUi.hint_family))
+        return window.hintWorkspace.hintFocusScript(candidate)
     }
 
     function hintClickScript(candidate) {
-        return BrowserScripts.hintClick(
-                    candidate, hintSelectorPolicySnapshot(browserUi.hint_family))
+        return window.hintWorkspace.hintClickScript(candidate)
     }
 
     function hintSetScrollTargetScript(elementId, framePath) {
-        return BrowserScripts.hintSetScrollTarget(elementId, framePath)
+        return window.hintWorkspace.hintSetScrollTargetScript(elementId, framePath)
     }
 
     function startHintCollection() {
-        if (window.pendingContextMenuRequest && window.pendingContextMenuRequest.hintAction) return
-        if (browserUi.hint_pointer_mode
-                && browserUi.hint_pointer_state !== "selecting") {
-            return
-        }
-        var view = window.activeWebView()
-        if (!view) {
-            window.closeHints()
-            return
-        }
-        if (window.hintRefreshPending) {
-            return
-        }
-        if (window.hintTrackingView && window.hintTrackingView !== view) {
-            window.closeHints()
-            return
-        }
-        window.hintTrackingView = view
-        var collectionEpoch = window.hintCollectionEpoch + 1
-        window.hintCollectionEpoch = collectionEpoch
-        window.hintRefreshPending = true
-        var selectorSnapshot = window.hintSelectorPolicySnapshot(browserUi.hint_family)
-        if (!selectorSnapshot) {
-            window.hintRefreshPending = false
-            window.closeHints()
-            var selectorFailure = "Hint selectors unavailable"
-            browserUi.status_text = selectorFailure
-            window.showCommandNotice(selectorFailure, true)
-            return
-        }
-        window.hintFrameProvider.collect(
-                    view,
-                    window.hintCollectorScript(
-                        browserUi.hint_family, selectorSnapshot,
-                        window.activeHintScopeLeaseId,
-                        browserUi.target_search_active
-                            && browserUi.target_search_scope === "all"),
-                    {family:browserUi.hint_family,proxy:browserUi.hint_proxy_targets_enabled,selectors:selectorSnapshot,scope:window.activeHintScopeLeaseId,pointer:browserUi.hint_pointer_mode}, function(value) {
-            if (window.hintCollectionEpoch !== collectionEpoch) {
-                return
-            }
-            window.hintRefreshPending = false
-            if (browserUi.mode !== "hint" || window.hintTrackingView !== view) {
-                return
-            }
-            if (value && value.error) {
-                window.hintResults = []
-                window.closeHints()
-                browserUi.status_text = "Hint collection failed closed: " + String(value.error)
-                window.showCommandNotice(browserUi.status_text, true)
-                return
-            }
-            window.hintDirtyRevision = Number(value && value.revision || 0)
-            var wasTruncated = window.hintCollectionTruncated
-            window.hintCollectionTruncated = !!(value && value.truncated)
-            var collectedViewport = value && value.viewport ? value.viewport : ({})
-            var collectedWidth = Number(collectedViewport.width || 0)
-            var collectedHeight = Number(collectedViewport.height || 0)
-            window.hintViewport = ({
-                width: Number.isFinite(collectedWidth) && collectedWidth > 0
-                       ? collectedWidth : 0,
-                height: Number.isFinite(collectedHeight) && collectedHeight > 0
-                        ? collectedHeight : 0
-            })
-            var payload = value && value.candidates !== undefined
-                    ? {candidates: value.candidates,
-                       selector_revision: value.selector_revision}
-                    : {candidates: value || []}
-            if (window.activeHintScopeLeaseId.length > 0) {
-                payload.scope_lease_id = window.activeHintScopeLeaseId
-            }
-            var response = {}
-            try {
-                response = JSON.parse(browserUi.begin_hint_session(JSON.stringify(payload)))
-            } catch (error) {
-                response = {}
-            }
-            if (browserUi.target_search_active && !response.error) {
-                window.hintState = response.state || window.hintState
-                window.hintInput = window.hintState.query || ""
-                window.hintResults = response.hints || []
-                window.reconcileTargetSearchSelection()
-                if (window.hintResults.length === 0) {
-                    browserUi.status_text = window.hintCollectionTruncated
-                            ? "Visible target collection reached its inspection limit"
-                            : "No visible targets"
-                }
-                return
-            }
-            if (!response.hints || response.hints.length === 0) {
-                var hintFailure = response.state && response.state.refresh_required
-                        ? "New controls available—restart hints"
-                        : window.hintCollectionTruncated
-                        ? "Hint collection truncated at resource limits; no visible targets were found in the inspected region"
-                        : response.error
-                        ? browserUi.status_text : "No visible hint targets"
-                window.hintResults = []
-                window.closeHints()
-                browserUi.status_text = hintFailure
-                window.showCommandNotice(hintFailure, true)
-                return
-            }
-            var requiredRestart = !!(window.hintState && window.hintState.refresh_required)
-            window.hintState = response.state || window.hintState
-            window.hintInput = window.hintState.mode === "text"
-                    ? "/" + window.hintState.query : window.hintState.prefix
-            window.hintResults = response.hints
-            if (window.hintState.refresh_required) {
-                browserUi.status_text = "New controls available—restart hints"
-                if (!requiredRestart) window.showCommandNotice(browserUi.status_text,false)
-            } else if (window.hintCollectionTruncated) {
-                var truncationNotice = "Some targets may be missing · narrow hints or select a region"
-                browserUi.status_text = truncationNotice
-                if (!wasTruncated) window.showCommandNotice(truncationNotice, false)
-            }
-            if (response.first_label) {
-                Qt.callLater(function() { window.activateHint(String(response.first_label)) })
-            }
-        })
+        return window.hintWorkspace.startHintCollection()
     }
 
     function pollHintRefresh() {
-        var view = window.activeWebView()
-        if (!view || !browserUi.hint_visible || window.hintRefreshPending
-                || (browserUi.hint_pointer_mode
-                    && browserUi.hint_pointer_state !== "selecting")) {
-            return
-        }
-        window.hintFrameProvider.dirty(function(value) {
-            // A palette captures one session. Refreshing underneath it would
-            // invalidate its permit; final selection still checks fresh DOM.
-            if (window.pendingContextMenuRequest && window.pendingContextMenuRequest.hintAction) return
-            if (value && value.dirty === true
-                    && Number(value.revision || 0) !== window.hintDirtyRevision) {
-                window.startHintCollection()
-            }
-        })
+        return window.hintWorkspace.pollHintRefresh()
     }
 
     function applyHintInteraction(action, text) {
-        var response = {}
-        try {
-            response = JSON.parse(browserUi.update_hint_interaction(action, text || ""))
-        } catch (error) {
-            return false
-        }
-        if (response.state) {
-            window.hintState = response.state
-            window.hintInput = response.state.mode === "text"
-                    ? "/" + response.state.query : response.state.prefix
-        }
-        if (browserUi.target_search_active && response.outcome !== "activate") {
-            window.reconcileTargetSearchSelection()
-        }
-        if (response.outcome === "activate") {
-            window.activateHint(String(response.label || ""), "", true)
-        } else if (response.outcome === "cancel") {
-            window.closeHints()
-        } else if (response.outcome === "rotate") {
-            window.rotateHintCollision()
-        }
-        return true
+        return window.hintWorkspace.applyHintInteraction(action, text)
     }
 
     function beginHintPointerConfirmation() {
-        try {
-            var response = JSON.parse(browserUi.hint_pointer_confirmation_pressed())
-            if (response.ok !== true) return false
-            // Freeze the displayed session for this explicit gesture. An older
-            // passive callback must not replace its freshly checked authority.
-            // Enter release still performs full DOM and native preflight.
-            window.hintCollectionEpoch += 1
-            window.hintRefreshPending = false
-            return true
-        } catch (error) {
-            return false
-        }
+        return window.hintWorkspace.beginHintPointerConfirmation()
     }
 
     function rotateHintCollision() {
-        var active = String(window.hintState.active_label || "")
-        var labels = window.hintCollisionLabels(active)
-        if (labels.length < 2) return
-        var next = labels[(labels.indexOf(active)+1)%labels.length]
-        window.applyHintInteraction("select",String(next))
-        window.expandHintStack()
+        return window.hintWorkspace.rotateHintCollision()
     }
 
     function closeHints() {
-        window.hintScopeHandoffLeaseId = ""
-        window.scopedGridHandoffView = null
-        window.scopedGridHandoffLeaseId = ""
-        if (window.pendingContextMenuRequest && window.pendingContextMenuRequest.hintAction) {
-            window.clearContextMenuRequest()
-        }
-        window.hintCollectionEpoch += 1
-        window.activeHintScopeLeaseId = ""
-        window.stopHintTracking()
-        window.hintRefreshPending = false
-        window.hintCollectionTruncated = false
-        window.hintInput = ""
-        window.hintViewport = ({ width: 0, height: 0 })
-        window.hintState = ({ mode: "label", prefix: "", query: "", matching_labels: [], active_label: "", remaining: 0, total: 0 })
-        window.hintResults = []
-        window.targetSearchSelectedIdentity = ""
-        window.targetSearchSelectedMeaning = ""
-        window.targetSearchSelectionInitialized = false
-        window.rapidHintConfirmationVisible = false
-        browserUi.cancel_hints()
+        return window.hintWorkspace.closeHints()
     }
 
     function stopHintTracking() {
-        window.hintFrameProvider.stop()
-        var view = window.hintTrackingView
-        window.hintTrackingView = null
-        if (view) {
-            var preservedLease = window.hintScopeHandoffLeaseId || window.scopedGridHandoffLeaseId
-            if (!preservedLease && browserUi.spatial_visible
-                    && window.activeSpatialScopeView === view) {
-                preservedLease = window.activeSpatialScopeLeaseId
-            }
-            window.runBrowserScript(view, window.hintStopTrackingScript(preservedLease), function(value) {})
-        }
+        return window.hintWorkspace.stopHintTracking()
     }
 
     function openEphemeralWindow(url, requestedToken) {
@@ -1675,11 +1237,17 @@ FerricBrowserRuntimeServices {
             return false
         }
         if (sourceHost === window) {
-            var index = sourceUi ? sourceUi.active_tab_index : -1
+            if (tabViews.indexOf(view) >= 0) return true
+            var index = sourceUi ? sourceUi.tab_index_for_id(view.stableTabId) : -1
             if (index < 0 || index > tabViews.length) {
                 index = tabViews.length
             }
-            tabViews.splice(index, 0, view)
+            if (tabViewAt(index) && tabViewAt(index).stableTabId === view.stableTabId)
+                window.removeTabViewAt(index, null)
+            view.viewUi = sourceUi
+            view.viewHost = window
+            view.viewTabs = tabs
+            tabViews = tabViews.slice(0, index).concat([view], tabViews.slice(index))
             view.parent = window.webViewsObject
             view.visible = true
             for (var restoredIndex = index; restoredIndex < tabViews.length; ++restoredIndex) {
@@ -1704,6 +1272,7 @@ FerricBrowserRuntimeServices {
         if (!view || typeof payload !== "string" || payload.length === 0) {
             return false
         }
+        var sourceTabId = view.stableTabId
         var sourceUrl = view.url ? view.url.toString() : "about:blank"
         var contentHistory = sourceUi.content_history_export(view.tabIndex >= 0 ? view.tabIndex : sourceUi.active_tab_index)
         var transferData = null
@@ -1722,7 +1291,6 @@ FerricBrowserRuntimeServices {
         if (index < 0 || index >= tabs.count) {
             browserUi.rollback_tab_transfer(adoptedTabId)
             window.syncTabModel()
-            window.restoreSourceView(sourceUi, sourceHost, view)
             return false
         }
         tabs.setProperty(index, "url", transferData.url || "about:blank")
@@ -1734,7 +1302,6 @@ FerricBrowserRuntimeServices {
         if (!placeholder) {
             browserUi.rollback_tab_transfer(adoptedTabId)
             window.syncTabModel()
-            window.restoreSourceView(sourceUi, sourceHost, view)
             return false
         }
         window.removeTabViewAt(index, null)
@@ -1754,18 +1321,19 @@ FerricBrowserRuntimeServices {
         view.anchors.fill = undefined
         view.parent = window.webViewsObject
         view.visible = true
-        tabViews.splice(index, 0, view)
+        tabViews = tabViews.slice(0, index).concat([view], tabViews.slice(index))
         for (var reindex = index; reindex < tabViews.length; ++reindex) {
             tabViews[reindex].tabIndex = reindex
             tabViews[reindex].viewModel = tabs.get(reindex)
         }
         window.updateBrowserWindowView(browserUi, view)
         if (!window.completeDetachedSource(sourceUi, sourceHost, payload)) {
+            tabViews = tabViews.slice(0, index).concat(tabViews.slice(index + 1))
             view.parent = null
             view.visible = false
+            view.stableTabId = sourceTabId
             browserUi.rollback_tab_transfer(adoptedTabId)
             window.syncTabModel()
-            window.restoreSourceView(sourceUi, sourceHost, view)
             return false
         }
         if (arguments.length >= 5 && typeof arguments[4] === "string"
@@ -1824,6 +1392,8 @@ FerricBrowserRuntimeServices {
                     : (kind === "tab-move-context"
                             ? "Context move requires a different same-profile window"
                     : "Tab give requires a different same-profile window")
+            if (operationId.length > 0)
+                sourceUi.complete_transfer_operation(operationId, false)
             return false
         }
         var view = window.detachSourceView(sourceUi, sourceHost)
@@ -1963,7 +1533,7 @@ FerricBrowserRuntimeServices {
                 tabs.setProperty(0, "tabId", fallback.stableTabId)
                 fallback.parent = window.webViewsObject
                 fallback.visible = true
-                tabViews.push(fallback)
+                tabViews = tabViews.concat([fallback])
                 browserUi.status_text = "Live tab moved; blank fallback tab created"
             } else {
                 window.syncTabModel()
@@ -1977,19 +1547,22 @@ FerricBrowserRuntimeServices {
     }
 
     function showHintActions(label) {
-        window.activateHint(label, "hint.choose")
+        return window.hintWorkspace.showHintActions(label)
     }
 
-    function openHintActionPalette(label, capabilities) {
-        var view = window.activeWebView()
+    function openHintActionPalette(label, capabilities, workspace) {
+        workspace = workspace || window.hintWorkspace
+        var browserUi = workspace.browserUi
+        var host = workspace.hostWindow
+        var view = workspace.activeWebView()
         if (!view) {
-            window.closeHints()
+            workspace.closeHints()
             return
         }
         var selected = null
-        for (var candidateIndex = 0; candidateIndex < window.hintResults.length; ++candidateIndex) {
-            if (String(window.hintResults[candidateIndex].label) === String(label)) {
-                selected = window.hintResults[candidateIndex]
+        for (var candidateIndex = 0; candidateIndex < workspace.hintResults.length; ++candidateIndex) {
+            if (String(workspace.hintResults[candidateIndex].label) === String(label)) {
+                selected = workspace.hintResults[candidateIndex]
                 break
             }
         }
@@ -2039,313 +1612,16 @@ FerricBrowserRuntimeServices {
         window.pendingContextMenuRequest = { hintAction: true }
         window.pendingContextMenuView = view
         window.pendingContextMenuUi = browserUi
-        window.pendingContextMenuHost = window
+        window.pendingContextMenuHost = host
         window.contextMenuItems = items
-        window.captureOverlayFocus(window, view)
-        contextMenu.openAt(window, Math.round(window.width / 2),
-                           Math.round(window.height / 2))
+        window.captureOverlayFocus(host, view)
+        contextMenu.openAt(host, Math.round(host.width / 2),
+                           Math.round(host.height / 2))
         browserUi.status_text = "Hint actions"
     }
 
     function activateHint(label, actionId, localSelection) {
-        if (browserUi.hint_pointer_mode) {
-            // Pointer mode treats marker activation as selection only. Enter
-            // release owns the separate preflight and native dispatch gesture.
-            window.applyHintInteraction("select", String(label))
-            return
-        }
-        var selected = null
-        for (var i = 0; i < window.hintResults.length; ++i) {
-            if (window.hintResults[i].label === label) {
-                selected = window.hintResults[i]
-                break
-            }
-        }
-        var view = window.activeWebView()
-        var explicitSelection = localSelection === true || !!actionId
-        if (!selected || !view || window.hintRefreshPending && !explicitSelection) {
-            if (!selected || !view) {
-                window.closeHints()
-            } else if (actionId && actionId !== "hint.choose") {
-                browserUi.cancel_hint_palette()
-            }
-            return
-        }
-        // A local confirmation freezes the displayed identity even if a passive
-        // collection is pending. Its late result cannot overwrite this request;
-        // the exact retained receiver still has to pass fresh validation below.
-        if (window.hintRefreshPending) window.hintCollectionEpoch += 1
-        // A keyboard/overlay selection is a new local palette entry. An
-        // automatic --first completion cannot acquire that authority.
-        if (!actionId && localSelection === true
-                && (browserUi.hint_target === "choose"
-                    || selected.kind === "region" || selected.kind === "scrollable-region"
-                    || selected.kind === "surface" || selected.kind === "focusable-surface" || selected.kind === "frame")) {
-            actionId = "hint.choose"
-        }
-        var activationEpoch = window.hintCollectionEpoch
-        var frameEntrySelectors = window.hintSelectorPolicySnapshot(browserUi.hint_family)
-        window.hintRefreshPending = true
-        var activationStarted = window.hintFrameProvider.fresh(
-                    selected, window.hintFreshScript(selected), function(value) {
-            if (window.hintCollectionEpoch !== activationEpoch
-                    || window.activeWebView() !== view
-                    || window.hintTrackingView !== view
-                    || browserUi.mode !== "hint") {
-                if (window.hintCollectionEpoch === activationEpoch) {
-                    window.hintRefreshPending = false
-                }
-                return
-            }
-            // Consume this callback token before asking Rust to select the label.
-            // A duplicate completion from the same page operation cannot dispatch twice.
-            window.hintCollectionEpoch += 1
-            var actionEpoch = window.hintCollectionEpoch
-            var result = {}
-            try {
-                if (actionId && actionId.length > 0) {
-                    result = JSON.parse(browserUi.select_hint_action(
-                                label, JSON.stringify(value), actionId))
-                } else {
-                    result = JSON.parse(browserUi.select_hint(label, JSON.stringify(value)))
-                }
-            } catch (error) {
-                result = {}
-            }
-            if (result.error === "stale-selector-policy") {
-                window.closeHints()
-                browserUi.status_text = "Hint selector policy changed; targets were refreshed"
-                window.showCommandNotice(browserUi.status_text, true)
-                return
-            }
-            var pageActionPending = result.action === "hint-inside-frame" || result.action === "focus"
-                    || result.action === "click" || result.action === "scroll-target"
-                    || result.action === "hint-within"
-                    || result.action === "target-search-within"
-                    || result.action === "grid-within"
-            if (!pageActionPending && browserUi.mode !== "hint") {
-                window.activeHintScopeLeaseId = ""
-                window.stopHintTracking()
-            }
-            if (!pageActionPending) {
-                window.hintRefreshPending = false
-            }
-            if ((result.action === "hint-inside-frame" || result.action === "focus" || result.action === "click"
-                 || result.action === "scroll-target" || result.action === "hint-within"
-                 || result.action === "target-search-within"
-                 || result.action === "grid-within")
-                    && (window.hintCollectionEpoch !== actionEpoch
-                        || window.activeWebView() !== view
-                        || window.hintTrackingView !== view
-                        || browserUi.mode !== "hint")) {
-                if (window.hintCollectionEpoch === actionEpoch
-                        && window.hintTrackingView === view) {
-                    window.closeHints()
-                }
-                return
-            }
-            if (result.action === "hint-within"
-                    || result.action === "target-search-within") {
-                window.completeHintScopeHandoff(
-                            view, result.scope_lease, value, actionEpoch)
-            } else if (result.action === "grid-within") {
-                window.completeGridScopeHandoff(
-                            view, result.scope_lease, value, actionEpoch)
-            } else if (result.action === "navigate") {
-                window.hintResults = []
-                window.hintInput = ""
-                window.executePendingEngineAction()
-            } else if (result.action === "choose") {
-                var capabilities = result.capabilities
-                if (selected.frame_owner && capabilities) capabilities = capabilities.filter(function(capability) {return capability.id === "hint-inside-frame" || capability.id === "focus"})
-                window.openHintActionPalette(label, capabilities)
-            } else if (result.action === "tab") {
-                window.hintResults = []
-                window.hintInput = ""
-                // The engine has already inserted and selected the new tab.
-                // Materialize its QML view before applying the queued load.
-                window.syncTabModel()
-                window.executePendingEngineAction()
-            } else if (result.action === "window") {
-                window.hintResults = []
-                window.hintInput = ""
-                window.executePendingEngineAction()
-            } else if (result.action === "yank") {
-                if (browserUi.mode === "hint") {
-                    window.hintResults = window.hintResults.filter(function(candidate) {
-                        return String(candidate.label) !== String(label)
-                    })
-                    Qt.callLater(window.startHintCollection)
-                } else {
-                    window.hintResults = []
-                    window.hintInput = ""
-                }
-            } else if (result.action === "clean-yank") {
-                if (browserUi.mode === "hint") {
-                    window.hintResults = window.hintResults.filter(function(candidate) {
-                        return String(candidate.label) !== String(label)
-                    })
-                    Qt.callLater(window.startHintCollection)
-                } else {
-                    window.hintResults = []
-                    window.hintInput = ""
-                }
-            } else if (result.action === "tab-bg") {
-                window.hintResults = []
-                window.hintInput = ""
-                window.syncTabModel()
-                window.executePendingEngineAction()
-                // Only rapid background hints remain in Hint mode. A one-shot
-                // `;b` selection must return to Normal mode after opening.
-                if (browserUi.mode === "hint") {
-                    window.hintResults = window.hintResults.filter(function(candidate) {
-                        return String(candidate.label) !== String(label)
-                    })
-                    Qt.callLater(window.startHintCollection)
-                }
-            } else if (result.action === "userscript") {
-                if (browserUi.mode === "hint") {
-                    window.hintResults = window.hintResults.filter(function(candidate) {
-                        return String(candidate.label) !== String(label)
-                    })
-                    Qt.callLater(window.startHintCollection)
-                } else {
-                    window.hintResults = []
-                    window.hintInput = ""
-                }
-            } else if (result.action === "download") {
-                if (browserUi.mode === "hint") {
-                    window.hintResults = window.hintResults.filter(function(candidate) {
-                        return String(candidate.label) !== String(label)
-                    })
-                    Qt.callLater(window.startHintCollection)
-                } else {
-                    window.hintResults = []
-                    window.hintInput = ""
-                }
-            } else if (result.action === "ephemeral") {
-                window.hintResults = []
-                window.hintInput = ""
-                window.openEphemeralWindow(
-                            result.url, window.ephemeralTokenForUi(browserUi))
-            } else if (result.error === "rapid-tab-limit") {
-                window.hintResults = []
-                window.hintInput = ""
-                window.rapidHintConfirmationVisible = true
-            } else if (result.action === "hint-inside-frame") {
-                window.hintFrameProvider.enter(value, frameEntrySelectors, function(entered) {
-                    if (window.hintCollectionEpoch !== actionEpoch || window.activeWebView() !== view || browserUi.mode !== "hint") return
-                    window.hintRefreshPending = false
-                    if (!entered || !entered.ok) {
-                        window.closeHints()
-                        browserUi.status_text = "Cannot hint inside this frame; use Focus then pass-through, or Grid"
-                        window.showCommandNotice(browserUi.status_text, true)
-                        return
-                    }
-                    browserUi.cancel_hint_palette()
-                    window.hintResults = []
-                    window.startHintCollection()
-                })
-            } else if (result.action === "focus") {
-                var focusScript = window.hintFocusScript(value)
-                var focusStarted = window.hintFrameProvider.action(value, focusScript, function(value) {
-                    if (window.hintCollectionEpoch !== actionEpoch
-                            || window.activeWebView() !== view
-                            || window.hintTrackingView !== view
-                            || browserUi.mode !== "hint") {
-                        if (window.hintCollectionEpoch === actionEpoch
-                                && window.hintTrackingView === view) {
-                            window.closeHints()
-                        }
-                        return
-                    }
-                    window.closeHints()
-                    if (value !== true) {
-                        browserUi.status_text = "Hint focus target is no longer available"
-                        window.showCommandNotice(browserUi.status_text, true)
-                        return
-                    }
-                    browserUi.enter_insert()
-                })
-                if (!focusStarted) {
-                    if (window.hintCollectionEpoch !== actionEpoch) {
-                        return
-                    }
-                    window.closeHints()
-                    browserUi.status_text = "Hint focus target is no longer available"
-                    window.showCommandNotice(browserUi.status_text, true)
-                }
-            } else if (result.action === "scroll-target") {
-                var targetScript = window.hintSetScrollTargetScript(
-                            result.element_id, result.frame_path)
-                var targetStarted = window.runBrowserScript(view, targetScript, function(value) {
-                    if (window.hintCollectionEpoch !== actionEpoch
-                            || window.activeWebView() !== view
-                            || window.hintTrackingView !== view
-                            || browserUi.mode !== "hint") {
-                        if (window.hintCollectionEpoch === actionEpoch
-                                && window.hintTrackingView === view) {
-                            window.closeHints()
-                        }
-                        return
-                    }
-                    window.closeHints()
-                    var targetSelected = value && typeof value === "object"
-                            && value.ok === true && value.policy === "element"
-                    browserUi.status_text = targetSelected
-                            ? "Scroll target: selected region"
-                            : "Scroll target selection failed: region is no longer available"
-                    window.showCommandNotice(browserUi.status_text, !targetSelected)
-                }, window.browserScriptWorld)
-                if (!targetStarted) {
-                    if (window.hintCollectionEpoch !== actionEpoch) {
-                        return
-                    }
-                    window.closeHints()
-                    browserUi.status_text =
-                            "Scroll target selection failed: region is no longer available"
-                    window.showCommandNotice(browserUi.status_text, true)
-                }
-            } else if (result.action === "click") {
-                var clickScript = window.hintClickScript(value)
-                var clickStarted = window.hintFrameProvider.action(value, clickScript, function(value) {
-                    if (window.hintCollectionEpoch !== actionEpoch
-                            || window.activeWebView() !== view
-                            || window.hintTrackingView !== view
-                            || browserUi.mode !== "hint") {
-                        if (window.hintCollectionEpoch === actionEpoch
-                                && window.hintTrackingView === view) {
-                            window.closeHints()
-                        }
-                        return
-                    }
-                    window.closeHints()
-                    browserUi.status_text = value === true
-                            ? "Hint target activated"
-                            : value === false ? "Hint target is no longer clickable"
-                            : "Activation result unavailable; check the page before trying again"
-                    window.showCommandNotice(browserUi.status_text, value !== true)
-                })
-                if (!clickStarted) {
-                    if (window.hintCollectionEpoch !== actionEpoch) {
-                        return
-                    }
-                    window.closeHints()
-                    browserUi.status_text = "Hint target is no longer clickable"
-                    window.showCommandNotice(browserUi.status_text, true)
-                }
-            } else {
-                window.hintResults = []
-                window.hintInput = ""
-                var rejectionStatus = browserUi.status_text
-                window.closeHints()
-                browserUi.status_text = rejectionStatus
-            }
-        })
-        if (!activationStarted && window.hintCollectionEpoch === activationEpoch) {
-            window.hintRefreshPending = false
-            window.closeHints()
-        }
+        return window.hintWorkspace.activateHint(label, actionId, localSelection)
     }
 
 }

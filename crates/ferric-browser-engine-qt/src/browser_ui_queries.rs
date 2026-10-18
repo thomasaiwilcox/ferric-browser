@@ -6,6 +6,57 @@ use super::{
     configured_action_target_values, configured_action_targets, hyprland, live_document_available,
     parse_external_action_id, qobject, query_empty_object_or_null, userscript_action_values,
 };
+use ferric_browser_ipc::{ErrorCode, PublicError};
+
+fn unavailable_action(reason: &str) -> PublicError {
+    let (code, message) = match reason {
+        "durable-storage-unavailable" => (
+            ErrorCode::Unsupported,
+            "Use a regular profile with available storage for this action.",
+        ),
+        "download-session-unavailable" => (
+            ErrorCode::Busy,
+            "Downloads aren't available in this window. Reopen the window and try again.",
+        ),
+        "durable-context-unavailable" => (
+            ErrorCode::Unsupported,
+            "Use a regular profile with available contexts for this action.",
+        ),
+        "no-configured-target-for-subject" => (
+            ErrorCode::Unsupported,
+            "Configure an external command for this type of item before using this action.",
+        ),
+        "compositor-window-move-unavailable" => (
+            ErrorCode::Unsupported,
+            "Moving windows between workspaces isn't available in this desktop session.",
+        ),
+        "no-live-document" => (
+            ErrorCode::StaleTarget,
+            "The page is no longer available. Choose an open page and try again.",
+        ),
+        "no-live-tab-to-transfer" => (
+            ErrorCode::StaleTarget,
+            "Choose an open tab before moving it to another window.",
+        ),
+        "live-window-reparent-unsupported" => (
+            ErrorCode::Unsupported,
+            "Moving this tab between windows isn't supported.",
+        ),
+        "core-state-unavailable" => (
+            ErrorCode::Busy,
+            "This browser window isn't ready for this action.",
+        ),
+        _ => (
+            ErrorCode::Unsupported,
+            "This action isn't available in this browser window.",
+        ),
+    };
+    PublicError::new(
+        code,
+        message,
+        format!("action capability unavailable: {reason}"),
+    )
+}
 
 impl qobject::BrowserUi {
     #[allow(clippy::unused_self)]
@@ -44,9 +95,7 @@ impl qobject::BrowserUi {
                 .as_ref()
                 .map(|roots| roots.config.as_path()),
             None,
-            self.rust().state.is_some(),
-            self.rust().profile_persistence.is_durable(),
-            self.active_profile_is_transient(),
+            self.userscript_availability(),
         )?);
         Ok(serde_json::json!({
             "sequence": self.rust().ipc_sequence,
@@ -71,10 +120,20 @@ impl qobject::BrowserUi {
                     },
                 )
             }
-            capabilities
-                if capabilities.contains(&"durable-profile-storage")
-                    || capabilities.contains(&"durable-download-index") =>
-            {
+            capabilities if capabilities.contains(&"profile-session-downloads") => {
+                let available = self.rust().state.as_ref().is_some_and(
+                    ferric_browser_application::BrowserApplication::session_downloads_available,
+                );
+                (
+                    available,
+                    if available {
+                        "ready"
+                    } else {
+                        "download-session-unavailable"
+                    },
+                )
+            }
+            capabilities if capabilities.contains(&"durable-profile-storage") => {
                 let available = self.rust().profile_persistence.is_durable();
                 (
                     available,
@@ -164,7 +223,7 @@ impl qobject::BrowserUi {
         &self,
         action_id: &str,
         source: CommandSource,
-    ) -> Result<(), String> {
+    ) -> Result<(), PublicError> {
         let registry = ActionRegistry::default_v1();
         let Some(definition) = registry.resolve(action_id) else {
             if let Some((_, subject)) = parse_external_action_id(action_id) {
@@ -172,9 +231,13 @@ impl qobject::BrowserUi {
                     source,
                     CommandSource::Ui | CommandSource::Ipc | CommandSource::Switcher
                 ) {
-                    return Err(format!(
-                        "configured external action is not allowed from {}",
-                        source.as_str()
+                    return Err(PublicError::new(
+                        ErrorCode::Denied,
+                        "This action can't run from here.",
+                        format!(
+                            "configured external action is not allowed from {}",
+                            source.as_str()
+                        ),
                     ));
                 }
                 let available = configured_action_targets(&self.rust().config)
@@ -201,10 +264,18 @@ impl qobject::BrowserUi {
                 return if available {
                     Ok(())
                 } else {
-                    Err("configured external action is unavailable".to_owned())
+                    Err(PublicError::new(
+                        ErrorCode::Unsupported,
+                        "That external command isn't available in this profile. Check its configuration.",
+                        "configured external action is unavailable",
+                    ))
                 };
             }
-            return Err("action is not registered".to_owned());
+            return Err(PublicError::new(
+                ErrorCode::NotFound,
+                "That action is no longer available. Refresh the action list and try again.",
+                "action is not registered",
+            ));
         };
         if !definition.sources.contains(&match source {
             CommandSource::Ui => ActionSource::Ui,
@@ -215,18 +286,45 @@ impl qobject::BrowserUi {
             CommandSource::Cli => ActionSource::Ipc,
             CommandSource::Macro => ActionSource::Ui,
         }) {
-            return Err(format!("action is not allowed from {}", source.as_str()));
+            return Err(PublicError::new(
+                ErrorCode::Denied,
+                "This action can't run from here.",
+                format!("action is not allowed from {}", source.as_str()),
+            ));
         }
         let availability = self.action_availability(definition);
         if availability.get("state").and_then(Value::as_str) == Some("unavailable") {
-            return Err(format!(
-                "action capability unavailable: {}",
+            return Err(unavailable_action(
                 availability
                     .get("reason")
                     .and_then(Value::as_str)
-                    .unwrap_or("unknown")
+                    .unwrap_or("unknown"),
             ));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unavailable_actions_keep_machine_reasons_out_of_the_safe_message() {
+        for (reason, code) in [
+            ("durable-storage-unavailable", ErrorCode::Unsupported),
+            ("compositor-window-move-unavailable", ErrorCode::Unsupported),
+            ("no-live-document", ErrorCode::StaleTarget),
+            ("core-state-unavailable", ErrorCode::Busy),
+            ("download-session-unavailable", ErrorCode::Busy),
+        ] {
+            let error = unavailable_action(reason);
+            assert_eq!(error.code(), code);
+            assert!(!error.user_message().contains(reason));
+            assert_eq!(
+                error.diagnostic_context(),
+                format!("action capability unavailable: {reason}")
+            );
+        }
     }
 }

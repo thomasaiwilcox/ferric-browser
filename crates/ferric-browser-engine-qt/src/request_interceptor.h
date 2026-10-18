@@ -3,6 +3,8 @@
 
 #include <QtCore/QPointer>
 #include <QtCore/QHash>
+#include <QtCore/QMutex>
+#include <QtCore/QUrl>
 #include <QtCore/QReadWriteLock>
 #include <QtCore/QList>
 #include <QtCore/QStringList>
@@ -96,6 +98,11 @@ public:
     Q_INVOKABLE bool attach(QObject *profile);
     Q_INVOKABLE bool detach(QObject *profile);
 
+    Q_INVOKABLE bool registerDownloadController(const QString &controller, const QString &expected);
+    Q_INVOKABLE void revokeDownloadController(const QString &controller);
+    Q_INVOKABLE QString takeDownloadControllerTarget(const QString &controller);
+    Q_INVOKABLE bool downloadControllerBlocked(const QString &controller) const;
+
     void interceptRequest(QWebEngineUrlRequestInfo &info) override;
 
     signals:
@@ -115,6 +122,19 @@ public:
     void blockedSiteCountsChanged();
 
 private:
+    struct DownloadController {
+        QUrl expected;
+        QString proposed;
+        bool active = true;
+        bool started = false;
+        bool blocked = false;
+        unsigned attempts = 0;
+    };
+    bool admitDownloadController(QWebEngineUrlRequestInfo &info, bool &download);
+    void markDownloadControllerBlocked(const QUrl &controller);
+    mutable QMutex downloadControllersLock_;
+    QHash<QUrl, DownloadController> downloadControllers_;
+
     struct PolicySnapshot {
         QStringList blockedHosts;
         QStringList exceptionHosts;

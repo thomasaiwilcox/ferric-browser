@@ -4,43 +4,31 @@ use super::{
     is_library_command, is_link_clean_command, is_reopen_in_window_command, is_scroll_command,
     is_scroll_target_command, is_search_next_command, is_tab_clone_command, is_tab_detach_command,
     is_tab_give_command, is_tab_undo_command, is_yank_command, is_zoom_command,
-    learning_mode_request, normalize_active_tab_command, parse_action_invocation,
-    parse_hint_options, qobject, resolve_input, selection_yank_command,
+    learning_mode_request, normalize_active_tab_command, parse_hint_options, qobject,
+    resolve_input, selection_yank_command,
 };
 
 impl qobject::BrowserUi {
-    pub(super) fn execute_ipc_command_with_operation(
+    // Existing effect handlers retain their own validation and safe fallback
+    // classification until they can supply a more specific public error.
+    pub(super) fn execute_adapter_ipc_command(
         mut self: Pin<&mut Self>,
-        command: ParsedCommand,
+        mut command: ParsedCommand,
         route: &IpcRoute,
         operation_id: Option<&str>,
     ) -> Result<Value, String> {
-        let expanded = self
-            .as_ref()
-            .rust()
-            .registry
-            .expand_command(command)
-            .map_err(|error| error.to_string())?;
-        super::browser_ui_hint_pointer::reject_external_hint_interaction_chain(&expanded)?;
-        if expanded.len() != 1 {
-            let mut result = None;
-            for command in expanded {
-                result = Some(self.as_mut().execute_ipc_command_with_operation(
-                    command,
-                    route,
-                    operation_id,
-                )?);
-            }
-            return Ok(result.unwrap_or_else(|| serde_json::json!({"status": "accepted"})));
-        }
-        let mut command = expanded.into_iter().next().expect("one expanded command");
         if matches!(
             command.name.as_str(),
             "tab-new" | "start-page" | "start-page-view" | "start-page-cycle" | "favourite-add"
         ) {
             self.as_ref().validate_ipc_route(route)?;
-            if route.selector != DispatchTarget::Active {
-                return Err("start-page commands require the active tab".into());
+            if Some(
+                self.as_ref()
+                    .ipc_route_window(route)
+                    .map_err(|error| error.to_string())?,
+            ) != self.as_ref().rust().window
+            {
+                return Err("Choose the active tab in the requested window.".into());
             }
             return match self.as_mut().dispatch_start_page_command(&command) {
                 Some(true) => Ok(serde_json::json!({"status": "accepted"})),
@@ -60,14 +48,17 @@ impl qobject::BrowserUi {
             if current_url.is_empty() {
                 return Err("open-current requires a committed URL".into());
             }
-            return self.as_mut().execute_ipc_command_with_operation(
-                ParsedCommand {
-                    name: target.into(),
-                    arguments: vec![current_url],
-                },
-                route,
-                operation_id,
-            );
+            return self
+                .as_mut()
+                .execute_ipc_command_with_operation(
+                    ParsedCommand {
+                        name: target.into(),
+                        arguments: vec![current_url],
+                    },
+                    route,
+                    operation_id,
+                )
+                .map_err(|error| error.to_string());
         }
         if matches!(command.name.as_str(), "quit" | "window-close") {
             if route.context.is_some() || !command.arguments.is_empty() {
@@ -117,25 +108,6 @@ impl qobject::BrowserUi {
                 "config-write-defaults" => self.execute_config_write_defaults_command(&command),
                 "theme-reload" => self.execute_theme_reload_command(&command),
                 _ => unreachable!("configuration command was matched above"),
-            };
-        }
-        if command.name == "get" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for configuration queries".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_config_get_command(&command);
-        }
-        if matches!(command.name.as_str(), "help" | "version" | "diagnostics") {
-            if route.context.is_some() {
-                return Err(format!("context routing is not valid for {}", command.name));
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return match command.name.as_str() {
-                "help" => self.as_mut().execute_help_command(&command),
-                "version" => self.as_mut().execute_version_command(&command),
-                "diagnostics" => self.as_mut().execute_diagnostics_command(&command),
-                _ => unreachable!("support command was matched above"),
             };
         }
         if command.name == "config-export" {
@@ -554,7 +526,20 @@ impl qobject::BrowserUi {
                 return Err("context routing is not valid for window actions".into());
             }
             self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_window_action(&command);
+            let result = self.as_mut().execute_window_action(&command)?;
+            if let Some(operation_id) = operation_id
+                && let Some(action) = self
+                    .as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .pending_engine_action
+                    .as_mut()
+            {
+                action.push('\t');
+                action.push_str(operation_id);
+            }
+            return Ok(result);
         }
         if command.name == "window-move" {
             if route.context.is_some() {
@@ -577,13 +562,6 @@ impl qobject::BrowserUi {
             self.as_ref().validate_ipc_route(route)?;
             self.as_mut().execute_editor_command(&command)?;
             return Ok(serde_json::json!({"status": "accepted", "pending": true}));
-        }
-        if command.name == "download" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for downloads".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_download_command(&command);
         }
         if command.name == "print-pdf" {
             if route.context.is_some() {
@@ -652,16 +630,6 @@ impl qobject::BrowserUi {
             }
             self.as_ref().validate_ipc_route(route)?;
             return self.as_mut().execute_download_desktop_command(&command);
-        }
-        if matches!(
-            command.name.as_str(),
-            "download-cancel" | "download-pause" | "download-resume" | "download-retry"
-        ) {
-            if route.context.is_some() {
-                return Err("context routing is not valid for download controls".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_download_control_command(&command);
         }
         if command.name == "spawn" {
             if route.context.is_some() {
@@ -765,23 +733,6 @@ impl qobject::BrowserUi {
             let actions = self.as_mut().show_action_list(subject)?;
             return Ok(serde_json::json!({"status": "accepted", "actions": actions}));
         }
-        if command.name == "action" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for actions".into());
-            }
-            if let Some((mut result, action_id)) =
-                self.as_mut().execute_userscript_action_command(&command)?
-            {
-                result["action_id"] = Value::String(action_id);
-                return Ok(result);
-            }
-            let (mapped, action_id) = parse_action_invocation(&command)?;
-            let mut result =
-                self.as_mut()
-                    .execute_ipc_command_with_operation(mapped, route, operation_id)?;
-            result["action_id"] = Value::String(action_id);
-            return Ok(result);
-        }
         if command.name == "tab-open" {
             if route.context.is_some() || route.profile.is_some() {
                 return Err("tab-open does not accept context or profile routing".into());
@@ -804,6 +755,8 @@ impl qobject::BrowserUi {
         }
         if command.name == "open"
             && route.context.is_none()
+            && route.profile.is_none()
+            && route.open_target != IpcOpenTarget::PrivateWindow
             && command.arguments.first().is_some_and(|input| {
                 self.as_mut().queue_context_route_for_input(
                     input,
@@ -815,6 +768,16 @@ impl qobject::BrowserUi {
                 )
             })
         {
+            if let Some(pending) = self
+                .as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_context_route
+                .as_mut()
+            {
+                pending.new_window = route.open_target == IpcOpenTarget::Window;
+            }
             self.as_mut()
                 .set_status_text(QString::from("Context route confirmation required"));
             return Ok(serde_json::json!({
@@ -842,48 +805,13 @@ impl qobject::BrowserUi {
                 )
                 .map_err(|error| error.to_string())?;
                 let private = route.open_target == IpcOpenTarget::PrivateWindow;
-                if private && route.profile.is_some() {
-                    return Err("private-window cannot select a durable profile".into());
-                }
-                let context_profile = route.context.as_deref().and_then(|context_name| {
-                    self.as_ref()
-                        .rust()
-                        .contexts
-                        .as_ref()?
-                        .contexts()
-                        .iter()
-                        .find(|context| context.name == context_name)
-                        .map(|context| context.profile.clone())
-                });
-                let profile = route
-                    .profile
-                    .clone()
-                    .or(context_profile)
-                    .unwrap_or_else(|| {
-                        if private {
-                            "private".into()
-                        } else {
-                            "secondary".into()
-                        }
-                    });
-                let pending_action = route.context.as_deref().map_or_else(
-                    || {
-                        format!(
-                            "new-window\t{}\t{}\t{}",
-                            private,
-                            profile,
-                            navigation.url.as_str()
-                        )
-                    },
-                    |context| {
-                        format!(
-                            "new-window\t{}\t{}\t{}\t{}",
-                            private,
-                            profile,
-                            context,
-                            navigation.url.as_str()
-                        )
-                    },
+                let profile = self.as_ref().get_ref().new_window_profile_name(route)?;
+                let pending_action = super::browser_ui_ipc_preparation::window_open_action(
+                    private,
+                    &profile,
+                    route.context.as_deref(),
+                    !private && route.profile.is_none() && route.context.is_none(),
+                    navigation.url.as_str(),
                 );
                 self.as_mut()
                     .rust_mut()

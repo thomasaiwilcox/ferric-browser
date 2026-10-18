@@ -49,16 +49,48 @@ QtObject {
         return true
     }
 
+    function switcherEntryLive(entry) {
+        return !!entry && !!entry.ui && !!entry.host && !!entry.profile
+                && entry.host.runtimeReleased !== true && entry.host.runtimeDisposing !== true
+                && entry.ui.profile_bootstrap_pending !== true
+    }
+
+    function switcherInvocation() {
+        var root = controller.browserWindow
+        var token = root.switcherOwnerToken
+        if (!token || !root.switcherUi || !root.switcherHost || !root.switcherProfile) return null
+        return root.liveWindowEntries().find(function(entry) {
+            return controller.switcherEntryLive(entry) && entry.ui === root.switcherUi
+                    && entry.host === root.switcherHost && entry.profile === root.switcherProfile
+                    && String(entry.ui.window_token) === token
+        }) || null
+    }
+
+    function switcherEntryTransient(entry) {
+        return !!entry.privateProfile || !!entry.ephemeralProfile || !!entry.profile.offTheRecord
+    }
+
+    function switcherEntries() {
+        var invocation = controller.switcherInvocation()
+        if (!invocation) return []
+        var transient = controller.switcherEntryTransient(invocation)
+        return controller.browserWindow.liveWindowEntries().filter(function(entry) {
+            if (!controller.switcherEntryLive(entry)) return false
+            if (!transient) return !controller.switcherEntryTransient(entry)
+            return controller.switcherEntryTransient(entry)
+                    && entry.profile === invocation.profile
+                    && !!entry.ephemeralProfile === !!invocation.ephemeralProfile
+                    && (!invocation.ephemeralProfile
+                        || entry.ephemeralInvocationToken === invocation.ephemeralInvocationToken)
+        })
+    }
+
     function switcherOwner(result) {
-        var ownerToken = result && result.owner_token ? String(result.owner_token) : ""
-        var entries = controller.browserWindow.browserWindowRegistry || []
-        for (var i = 0; i < entries.length; ++i) {
-            if (entries[i] && entries[i].ui
-                    && String(entries[i].ui.window_token) === ownerToken) {
-                return entries[i]
-            }
-        }
-        return { host: controller.browserWindow, ui: controller.browserUi }
+        var token = result && result.owner_token ? String(result.owner_token) : ""
+        if (!token) return null
+        return controller.switcherEntries().find(function(entry) {
+            return String(entry.ui.window_token) === token
+        }) || null
     }
 
     function ephemeralProfileForToken(token) {
