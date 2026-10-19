@@ -718,6 +718,14 @@ ApplicationWindow {
     property alias spatialAdapterTargetItem: primaryHintWorkspace.spatialAdapterTargetItem
     property alias spatialAdapterSurfaceSerial: primaryHintWorkspace.spatialAdapterSurfaceSerial
     property alias spatialAdapterSurfaceRevision: primaryHintWorkspace.spatialAdapterSurfaceRevision
+    readonly property alias searchWorkspace: primaryPageSearch
+    FerricPageSearch {
+        id: primaryPageSearch
+        appearance: window
+        browserUi: window.browserUi
+        hostWindow: window
+        activeView: window.activeWebView()
+    }
     readonly property alias hintWorkspace: primaryHintWorkspace
     readonly property alias hintFrameProvider: primaryHintWorkspace.hintFrameProvider
     FerricHintWorkspace {
@@ -3493,6 +3501,8 @@ GridLayout {
                     }
                 }
                 onNewWindowRequested: function(request) {
+                    var pageSearch = viewHost && viewHost.searchWorkspace
+                    if (pageSearch && pageSearch.acceptNewTabRequest(webView, request)) return
                     var popupAllowed = viewTabs && tabIndex >= 0
                             ? viewUi.popup_allowed_for(
                                 tabIndex, request.requestedUrl.toString(), request.userInitiated)
@@ -3568,7 +3578,7 @@ GridLayout {
         statusVisible: window.statusBarVisible
         mode: browserUi.mode
         displayUrl: browserUi.display_url
-        hintPreviewText: browserUi.mode === "hint" && !browserUi.target_search_active ? window.hintWorkspace.previewText : ""
+        hintPreviewText: browserUi.mode === "hint" && !browserUi.target_search_active ? window.hintWorkspace.previewText : primaryPageSearch.previewText
         statusText: window.commandNoticeVisible
                     ? window.commandNoticeText : browserUi.status_text
         statusError: window.commandNoticeVisible && window.commandNoticeError
@@ -3628,14 +3638,13 @@ GridLayout {
         searchText: browserUi.search_text
         onSearchChanged: function(text) { browserUi.search_changed(text) }
         onAccepted: {
-            browserUi.search_next(browserUi.search_backward)
+            primaryPageSearch.accept()
             browserUi.accept_search()
             window.executePendingEngineAction()
         }
         onEscapeRequested: browserUi.escape()
         onNextRequested: function(backward) {
-            browserUi.execute_ui_action(
-                        "browser.tab.search-next", backward ? "backward" : "forward")
+            browserUi.search_next(backward)
             window.executePendingEngineAction()
         }
     }

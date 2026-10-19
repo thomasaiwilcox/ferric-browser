@@ -77,7 +77,7 @@ jobs:
         run: cargo xtask test application-clipboard
       - name: Production browser surface regressions
         run: |
-          ctest --test-dir target/application-tests --output-on-failure -R '^(application_(product_polish|context_reload|switcher|close_requests|downloads|download_finalization|download_runtime_guard|notification_transport|native_notifications|notification_consent|file_chooser_backend|file_chooser_privacy|action_feedback|navigation_usability|hint_controls|hint_controls_dpr2)|portal_(browser|download_history))$'
+          ctest --test-dir target/application-tests --output-on-failure -R '^(application_(product_polish|context_reload|switcher|close_requests|downloads|download_finalization|download_runtime_guard|notification_transport|native_notifications|notification_consent|file_chooser_backend|file_chooser_privacy|action_feedback|navigation_usability|page_search|hint_controls|hint_controls_dpr2)|portal_(browser|download_history))$'
           python3 crates/ferric-browser-engine-qt/tests/application/run_ipc_probe.py
           python3 crates/ferric-browser-engine-qt/tests/application/run_startup_recovery_probe.py --executable target/release/ferric-browser --artifacts "$RUNNER_TEMP/startup-recovery-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           python3 crates/ferric-browser-engine-qt/tests/application/run_context_delete_probe.py

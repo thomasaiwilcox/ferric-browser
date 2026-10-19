@@ -58,6 +58,12 @@ searchable keyboard Guide. Press `g s` to return to it and `Ctrl+Shift+Space` to
 switch views. A focused site grid supports `1–8`, arrows/hjkl, and Enter; Alt+1–8
 continues to select tabs. See [the start-page guide](docs/user/start-page.md).
 
+Page search uses Chromium's native text search: type `/words`, press Enter to
+keep the highlighted match, and use `n`/`N` to move. Press Enter again to activate
+the selected page result, including links with wrapped titles and buttons.
+Shift+Enter requests a foreground tab for links. Escape clears the search.
+Use `:target-search links` for the full link-list interface.
+
 Press `i` for transient text entry: ordinary Enter reaches the webpage and
 returns to Normal mode, so `j` and `k` immediately navigate again. Shift+Enter
 keeps composing. Press `I` (Shift+i) for locked editing with repeated Enter,

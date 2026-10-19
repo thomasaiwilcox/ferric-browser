@@ -1,3 +1,4 @@
+use super::engine_requests::NativeRequest;
 use super::{
     CompletionCandidate, CompletionCategory, CxxQtType, DEFAULT_COMPLETION_LIMIT, Effect,
     EngineEffect, Event, ExistenceState, JourneyEdgeKind, JourneyNodeId, LoadingState,
@@ -526,9 +527,30 @@ impl qobject::BrowserUi {
         for effect in effects {
             if let Effect::Engine(effect) = effect {
                 if super::engine_requests::target(effect).is_some() {
-                    this.pending_engine_actions.push_back(
-                        super::engine_requests::NativeRequest::Engine(effect.clone()),
-                    );
+                    match effect {
+                        EngineEffect::ClearFindText { target } => {
+                            // Escape must also cancel searches not yet handed to
+                            // QML; otherwise they can reopen a retired session.
+                            this.pending_engine_actions.retain(|request| {
+                                !matches!(request, NativeRequest::Engine(EngineEffect::FindText { target: queued, .. }) if queued == target)
+                            });
+                        }
+                        EngineEffect::FindText {
+                            target,
+                            new_search: true,
+                            ..
+                        } => {
+                            // Coalesce query edits, preserving explicit step
+                            // counts and intervening non-search command effects.
+                            while matches!(this.pending_engine_actions.back(), Some(NativeRequest::Engine(EngineEffect::FindText { target: queued, .. })) if queued == target)
+                            {
+                                let _ = this.pending_engine_actions.pop_back();
+                            }
+                        }
+                        _ => {}
+                    }
+                    this.pending_engine_actions
+                        .push_back(NativeRequest::Engine(effect.clone()));
                 }
             }
         }
@@ -898,7 +920,11 @@ impl qobject::BrowserUi {
         }) {
             Ok(effects) => {
                 self.as_mut().set_pending_engine_action(&effects);
-                self.set_status_text(QString::from("Searching"));
+                self.as_mut().set_status_text(QString::from("Searching"));
+                // Search-bar typing bypasses the normal-mode key router's
+                // wakeup. Do not wait for the idle maintenance timer to deliver
+                // the latest native find request.
+                self.runtime_work_available();
             }
             Err(error) => self.set_status_text(QString::from(error)),
         }
@@ -926,6 +952,37 @@ impl qobject::BrowserUi {
         }
     }
 
+    pub(super) fn key_has_binding(&self, key: &QString) -> bool {
+        self.rust()
+            .bindings
+            .as_ref()
+            .is_some_and(|bindings| bindings.has_initial_key(&key.to_string()))
+    }
+
+    pub(super) fn search_activation_ready(
+        self: Pin<&mut Self>,
+        tab: &QString,
+        generation: &QString,
+        document: &QString,
+    ) -> bool {
+        if self.as_ref().rust().core_mode != Mode::Normal
+            || self.as_ref().rust().tab.map(|id| id.to_string()).as_deref()
+                != Some(tab.to_string().as_str())
+            || !self
+                .as_ref()
+                .request_target_current(tab, generation, document)
+        {
+            self.set_status_text(QString::from("Search source is no longer active"));
+            return false;
+        }
+        let binding = self.as_ref();
+        let rust = binding.rust();
+        let current = current_target(rust.state.as_ref(), rust.tab);
+        !rust.pending_engine_actions.iter().any(|request| {
+            matches!(request, NativeRequest::Engine(EngineEffect::FindText { target, .. }) if Some(*target) == current)
+        })
+    }
+
     pub(super) fn accept_search(mut self: Pin<&mut Self>) {
         let Some(window) = self.as_ref().rust().window else {
             return;
@@ -943,7 +1000,9 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn set_active_tab_properties(mut self: Pin<&mut Self>, index: i32, tab: TabId) {
-        if self.as_ref().rust().active_tab_index != index || self.as_ref().rust().tab != Some(tab) {
+        let changed =
+            self.as_ref().rust().active_tab_index != index || self.as_ref().rust().tab != Some(tab);
+        if changed {
             self.as_mut().reset_editing_session();
         }
         if self.as_ref().rust().core_mode == Mode::Grid {
@@ -967,6 +1026,20 @@ impl qobject::BrowserUi {
                 format!("{:?}", tab_state.loading).to_ascii_lowercase(),
             )
         };
+        if self.as_ref().rust().core_mode != Mode::Search {
+            let search = self
+                .as_ref()
+                .rust()
+                .state
+                .as_ref()
+                .and_then(|state| state.tabs().get(&tab))
+                .and_then(|tab| tab.search.clone());
+            self.as_mut().set_search_text(QString::from(
+                search.as_ref().map_or("", |search| search.query.as_str()),
+            ));
+            self.as_mut()
+                .set_search_backward(search.is_some_and(|search| search.backward));
+        }
         self.as_mut().set_active_tab_index(index);
         self.as_mut().update_current_url(QString::from(&url));
         self.as_mut().set_initial_url(QString::from(&url));

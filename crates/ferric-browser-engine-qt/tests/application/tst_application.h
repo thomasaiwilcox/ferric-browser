@@ -39,6 +39,13 @@ class ApplicationTests final : public QObject {
     Q_INVOKABLE void accept(const QVariant &value);
     Q_INVOKABLE void frameOperationComplete(const QVariant &value);
   private slots:
+    void pageSearchFollowing_data();
+    void pageSearchFollowing();
+    void pageSearchNativeText_data();
+    void pageSearchNativeText();
+    void pageSearchCrossOriginFrames_data();
+    void pageSearchCrossOriginFrames();
+    void pageSearchCancellationAndBindings();
     void urlCopyStatusBar_data();
     void urlCopyStatusBar();
     void hintNavigationLifecycle_data();

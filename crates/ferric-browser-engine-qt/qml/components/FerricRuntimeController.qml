@@ -678,6 +678,7 @@ QtObject {
         var nativeView = host && host.activeView !== undefined ? host.activeView : (ui === window.browserUi ? window.activeWebView() : null)
         var hints = host && host.hintWorkspace && host.hintWorkspace.browserUi === ui
                 ? host.hintWorkspace : null
+        var pageSearch = host && host.searchWorkspace ? host.searchWorkspace : null
         var logicalText = window.logicalNormalKeyText(event)
         var handled = false
         var passing = ui.mode === "pass-through" || ui.mode === "pass-through-once"
@@ -812,7 +813,13 @@ QtObject {
             ui.search_next(logicalText === "N")
             window.completeBrowserKeyAction(ui, host)
             handled = true
+        } else if (ui.mode === "normal" && pageSearch && pageSearch.retained && pageSearch.accepted
+                   && (logicalText === "Enter" || logicalText === "Shift+Enter")
+                   && !ui.key_has_binding(logicalText)) {
+            if (!event.isAutoRepeat) pageSearch.follow(logicalText === "Shift+Enter")
+            handled = true
         } else if (ui.mode === "normal" && logicalText.length > 0
+                   && ((logicalText !== "Enter" && logicalText !== "Shift+Enter") || ui.key_has_binding(logicalText))
                    && ui.handle_key(logicalText)) {
             window.completeBrowserKeyAction(ui, host)
             handled = true

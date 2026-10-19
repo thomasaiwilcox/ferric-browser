@@ -243,6 +243,8 @@ pub enum EngineEffect {
         offset: i32,
     },
     FindText {
+        /// Query edits supersede pending finds; explicit SearchNext steps stay ordered.
+        new_search: bool,
         target: Target,
         query: String,
         backward: bool,
@@ -1007,6 +1009,7 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                     case,
                 });
                 effects.push(Effect::Engine(EngineEffect::FindText {
+                    new_search: true,
                     target,
                     query,
                     backward,
@@ -1030,6 +1033,7 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                 return Ok(effects);
             };
             effects.push(Effect::Engine(EngineEffect::FindText {
+                new_search: false,
                 target,
                 query: search.query,
                 backward,
@@ -1765,6 +1769,7 @@ mod tests {
             )
             .unwrap(),
             vec![Effect::Engine(EngineEffect::FindText {
+                new_search: true,
                 target,
                 query: "needle".into(),
                 backward: false,
@@ -1782,6 +1787,7 @@ mod tests {
             )
             .unwrap(),
             vec![Effect::Engine(EngineEffect::FindText {
+                new_search: false,
                 target,
                 query: "needle".into(),
                 backward: true,

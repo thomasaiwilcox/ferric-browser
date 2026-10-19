@@ -641,6 +641,18 @@ pub(crate) mod qobject {
         #[qinvokable]
         fn accept_search(self: Pin<&mut BrowserUi>);
 
+        /// Checks the captured native-search source and pending work before activation.
+        #[qinvokable]
+        fn search_activation_ready(
+            self: Pin<&mut BrowserUi>,
+            tab: &QString,
+            generation: &QString,
+            document: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn key_has_binding(self: &BrowserUi, key: &QString) -> bool;
+
         #[qinvokable]
         fn recover_session(self: Pin<&mut BrowserUi>) -> QString;
 

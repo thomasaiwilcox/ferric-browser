@@ -24,9 +24,13 @@ function execute(request, ui, host, services, source) {
         services.executeHistoryTraversal(view, request.offset < 0, Math.abs(request.offset))
         break
     case "find":
-        view.findText(request.query, services.searchFindFlags(request.query, request.caseMode, request.backward))
+        if (host.searchWorkspace) host.searchWorkspace.execute(request, view)
+        else view.findText(request.query, services.searchFindFlags(request.query, request.caseMode, request.backward))
         break
-    case "clear-find": view.findText(""); break
+    case "clear-find":
+        if (host.searchWorkspace) host.searchWorkspace.clear(view)
+        else view.findText("")
+        break
     case "scroll": case "scroll-page": case "scroll-to":
         services.runBrowserScript(view, services.scrollScript(request.kind, request.direction,
             request.half === true, request.count || 1))

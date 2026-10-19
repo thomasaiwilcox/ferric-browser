@@ -85,11 +85,14 @@ void ApplicationTests::urlCopyStatusBar() {
         QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),2);
         owner = "testWindow.browserWindowRegistry[1].host";
         ui = "testWindow.browserWindowRegistry[1].ui";
-        QTRY_VERIFY(evaluate(owner + ".profileBootstrapComplete").toBool());
+        QTRY_VERIFY(evaluate(owner + ".profileBootstrapComplete && !" + ui + ".profile_bootstrap_pending").toBool());
         hostWindow = qobject_cast<QQuickWindow *>(evaluate(owner).value<QObject *>());
         QVERIFY(hostWindow);
         QTRY_COMPARE(evaluate(ui + ".current_url").toString(),expected);
         QTRY_VERIFY(evaluate(owner + ".activeView && " + owner + ".activeView.ownsTab() && !" + owner + ".activeView.loading && String(" + owner + ".activeView.url)===" + quoted(expected)).toBool());
+        pageReceiver = owner + ".activeView";
+        QTRY_VERIFY(page("location.href===" + quoted(expected) + " && document.readyState==='complete'").toBool());
+        QTRY_COMPARE(evaluate(ui + ".load_state").toString(),"complete");
     }
     QCOMPARE(evaluate(ui + ".tab_count").toInt(),1);
     auto button = hostWindow->findChild<QQuickItem *>("copyCurrentUrlButton");
@@ -144,6 +147,8 @@ void ApplicationTests::hintNavigationLifecycle() {
         QTRY_VERIFY(evaluate(pageReceiver + ".ownsTab() && !" + pageReceiver
             + ".loading && " + pageReceiver + ".mainFrame.isValid && String("
             + pageReceiver + ".url)===" + quoted(first)).toBool());
+        QTRY_VERIFY(page("location.href===" + quoted(first) + " && document.readyState==='complete'").toBool());
+        QTRY_COMPARE(evaluate(ui + ".load_state").toString(),"complete");
     }
     if (method == "background") {
         QVERIFY(evaluate(ui + ".execute_command(" + quoted("tab-open --background " + destination) + ")").toBool());

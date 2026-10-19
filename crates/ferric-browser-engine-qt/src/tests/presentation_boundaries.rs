@@ -1505,7 +1505,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"25\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"27\""));
     assert!(
         BROWSER_SCRIPT_FACADE
             .contains(".import \"PageInteractionScripts.js\" as PageInteractionScripts")

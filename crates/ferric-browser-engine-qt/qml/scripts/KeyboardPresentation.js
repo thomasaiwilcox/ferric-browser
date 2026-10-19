@@ -112,6 +112,7 @@ function logicalNormalKeyText(event) {
         return ""
     }
     if (!control && !alt && !meta) {
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) return shift ? "Shift+Enter" : "Enter"
         if (event.key === Qt.Key_F5) {
             return "F5"
         }

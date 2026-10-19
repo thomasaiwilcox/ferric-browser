@@ -644,7 +644,7 @@ not a privileged WebChannel shared with arbitrary web pages.
 | Normal | Startup/default; explicit escape | Browser bindings consume matched keys | `i`, `:`, `/`, `f`, `v`, pass-through binding |
 | Insert | User focuses an editable element, a hint selects one, or `i` | Page receives ordinary keys, shortcuts, and IME | Escape or explicit normal-mode command |
 | Command | `:` | Native editable command line and completion | Enter executes; Escape cancels |
-| Search | `/` or `?` | Incremental engine text search | Enter retains match; Escape restores prior state |
+| Search | `/` or `?` | Incremental page text search | Enter retains match; Escape clears search |
 | Hint | `f` or hint command | Label selection/filtering, no text into page | Selection/cancel/navigation |
 | Grid | `:grid` or `;g` | Keyboard-only 3×3 point selection; explicit native click/hover; qualified double-click request is currently disabled | Click acknowledgement, Escape, or invalidated page view; hover resets to root and remains in Grid |
 | Caret | `v` | Text movement/selection commands | Escape returns normal |
@@ -807,8 +807,22 @@ shortcuts unless a user explicitly changes those mode-specific bindings.
 In caret mode, `h/j/k/l` move by character/line, `w/b` move by word, `0/$` move
 to line start/end, `v` toggles selection extension, and `y` copies selection and
 returns to normal mode. Search Enter retains the match and returns to the
-prior base mode; normal-mode `n/N` operate on that retained search. Prompt
-bindings are generated from the actual choices and never inherit normal-mode
+prior base mode without advancing; normal-mode `n/N` operate on that retained
+search. Matching, highlighting, scrolling and frame traversal use Qt/Chromium's
+native find directly. Query edits supersede pending native finds immediately;
+explicit next/previous steps remain ordered. No DOM search or frame-discovery
+work may delay typing.
+A subsequent Enter hands the native active result to page selection/focus and
+activates it with native keyboard semantics. This supports wrapped links and
+controls, including many buttons. Shift+Enter sends the native foreground-tab
+link gesture. Configured Enter bindings, Mixed routing and native prompts take
+precedence. Native activation can invoke page handlers, just like keyboard
+activation; this is not a separately verified URL-navigation operation. A bounded
+renderer round trip on activation prevents the key from racing the asynchronous
+selection handoff. Changing the query, tab, document, mode or prompt scope cancels
+pending activation. Escape clears the retained search. The `target-search links`
+palette remains a separate list view.
+Prompt bindings are generated from the actual choices and never inherit normal-mode
 macros or repeat handlers.
 
 ## 10. Command language and command inventory

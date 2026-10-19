@@ -92,6 +92,14 @@ ApplicationWindow {
                        : (statusBarVisible ? secondaryAppearance.statusBarHeight : 0)
     readonly property real bottomChromeHeight: bottomControlsHeight + secondaryProfileNotice.height
     readonly property var activeView: tabViewAt(secondaryUi.active_tab_index)
+    readonly property alias searchWorkspace: secondaryPageSearch
+    FerricPageSearch {
+        id: secondaryPageSearch
+        appearance: secondaryAppearance
+        browserUi: secondaryUi
+        hostWindow: secondaryWindow
+        activeView: secondaryWindow.activeView
+    }
     readonly property alias hintWorkspace: secondaryHintWorkspace
     readonly property bool rapidHintConfirmationVisible: secondaryHintWorkspace.rapidHintConfirmationVisible
     readonly property alias tabsModel: secondaryTabs
@@ -1571,63 +1579,22 @@ function onContext_workspaceChanged() {
         onDetailsRequested: rootWindow.showDiagnostics(secondaryUi, secondaryWindow)
     }
 
-    Rectangle {
+    FerricSearchBar {
         id: secondarySearchBar
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: secondaryAppearance.inputBarHeight
-        z: 20
-        visible: secondaryUi.mode === "search"
-        color: secondaryAppearance.surfaceColor
-
-        Label {
-            textFormat: Text.PlainText
-            id: secondarySearchPrefix
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            width: secondaryAppearance.inputBarHeight
-            text: secondaryUi.search_backward ? "?" : "/"
-            color: rootWindow.warningColor
-            font.bold: true
-            horizontalAlignment: Text.AlignHCenter
-            Accessible.ignored: true
+        browserWindow: secondaryAppearance
+        searchVisible: secondaryUi.mode === "search"
+        searchBackward: secondaryUi.search_backward
+        searchText: secondaryUi.search_text
+        onSearchChanged: function(text) { secondaryUi.search_changed(text) }
+        onAccepted: {
+            secondaryPageSearch.accept()
+            secondaryUi.accept_search()
+            secondaryWindow.applySwitcherEngineAction()
         }
-
-        FerricTextField {
-            id: secondarySearchLine
-            anchors.left: secondarySearchPrefix.right
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            leftPadding: 8
-            rightPadding: 8
-            topPadding: 0
-            bottomPadding: 0
-            text: secondaryUi.search_text
-            color: secondaryAppearance.primaryTextColor
-            selectionColor: secondaryAppearance.selectionColor
-            selectedTextColor: secondaryAppearance.selectionTextColor
-            placeholderText: "search"
-            placeholderTextColor: secondaryAppearance.mutedTextColor
-            background: Rectangle { color: "transparent" }
-            focus: secondarySearchBar.visible
-            Accessible.name: "Search"
-            Accessible.role: Accessible.EditableText
-            Accessible.editable: true
-            onVisibleChanged: if (visible) forceActiveFocus()
-            onTextChanged: secondaryUi.search_changed(text)
-            onAccepted: {
-                secondaryUi.search_next(secondaryUi.search_backward)
-                secondaryUi.accept_search()
-                secondaryWindow.applySwitcherEngineAction()
-            }
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    secondaryUi.escape()
-                    event.accepted = true
-                }
-            }
+        onEscapeRequested: secondaryUi.escape()
+        onNextRequested: function(backward) {
+            secondaryUi.search_next(backward)
+            secondaryWindow.applySwitcherEngineAction()
         }
     }
 
@@ -1637,7 +1604,7 @@ function onContext_workspaceChanged() {
         statusVisible: secondaryWindow.statusBarVisible
         mode: secondaryUi.mode
         displayUrl: secondaryUi.display_url
-        hintPreviewText: secondaryUi.mode === "hint" && !secondaryUi.target_search_active ? secondaryHintWorkspace.previewText : ""
+        hintPreviewText: secondaryUi.mode === "hint" && !secondaryUi.target_search_active ? secondaryHintWorkspace.previewText : secondaryPageSearch.previewText
         statusText: secondaryWindow.commandNoticeVisible
                     ? secondaryWindow.commandNoticeText : secondaryUi.status_text
         profileLabel: secondaryWindow.windowEphemeralProfile ? "EPHEMERAL"

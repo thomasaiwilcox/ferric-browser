@@ -69,7 +69,17 @@ impl qobject::BrowserUi {
             this.macro_key_prefix = None;
             this.macro_key_started_ms = None;
         }
-        let is_search = self.as_ref().rust().core_mode == Mode::Search;
+        let is_search = {
+            let binding = self.as_ref();
+            let rust = binding.rust();
+            rust.core_mode == Mode::Search
+                || (rust.core_mode == Mode::Normal
+                    && rust
+                        .state
+                        .as_ref()
+                        .and_then(|state| rust.tab.and_then(|tab| state.tabs().get(&tab)))
+                        .is_some_and(|tab| tab.search.is_some()))
+        };
         let is_hint = self.as_ref().rust().core_mode == Mode::Hint;
         self.as_mut().suppress_current_focus_observations();
         {

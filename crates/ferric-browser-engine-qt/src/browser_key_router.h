@@ -6,6 +6,7 @@
 #include <QtGui/QWindow>
 #include <QtQml/qqmlregistration.h>
 #include <QtCore/QSet>
+#include <QtQuick/QQuickItem>
 #include <optional>
 
 class FerricBrowserKeyRouter : public QObject {
@@ -39,6 +40,7 @@ public:
 
     Q_INVOKABLE void acceptCurrentEvent();
     Q_INVOKABLE void pageOwnsCurrentEvent();
+    Q_INVOKABLE bool activateSearchResult(QQuickItem *view, bool newTab);
 
 signals:
     void transientInsertChanged();

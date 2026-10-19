@@ -3,7 +3,7 @@
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "25"
+var VERSION = "27"
 
 // Page userscripts are trusted local content, but their failure boundary is
 // browser policy. Keeping the wrappers here prevents QML from assembling page

@@ -5,6 +5,9 @@
 #include <QtGui/QGuiApplication>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QInputMethodEvent>
+#include <QtCore/QScopedValueRollback>
+#include <QtQuick/QQuickItem>
+#include <QtQuick/QQuickWindow>
 
 namespace {
 quint64 keyIdentity(const QKeyEvent *event)
@@ -120,6 +123,35 @@ void FerricBrowserKeyRouter::pageOwnsCurrentEvent()
 {
     if (dispatching_)
         pageOwnedCurrentEvent_ = true;
+}
+
+bool FerricBrowserKeyRouter::activateSearchResult(QQuickItem *view, bool newTab)
+{
+    auto *window = qobject_cast<QQuickWindow *>(targetWindow_.data());
+    if (!enabled_ || !window || !view || view->window() != window
+        || QGuiApplication::focusWindow() != window || !view->isVisible())
+        return false;
+    view->forceActiveFocus(Qt::OtherFocusReason);
+    auto *receiver = window->activeFocusItem();
+    if (!receiver || (receiver != view && !view->isAncestorOf(receiver)))
+        return false;
+
+    // Qt's empty findText hands the active native match to page selection and
+    // focus. Activate that receiver as a browser key gesture, without guessing
+    // a URL from DOM text, ancestry, coordinates, or match ordinals.
+    const QPointer<QQuickWindow> owner(window);
+    const auto modifiers = newTab ? Qt::ControlModifier | Qt::ShiftModifier : Qt::NoModifier;
+    QKeyEvent press(QEvent::KeyPress, Qt::Key_Return, modifiers, QStringLiteral("\r"));
+    {
+        QScopedValueRollback<QEvent *> forwarding(forwardingEvent_, &press);
+        QCoreApplication::sendEvent(owner.data(), &press);
+    }
+    if (owner) {
+        QKeyEvent release(QEvent::KeyRelease, Qt::Key_Return, modifiers, QStringLiteral("\r"));
+        QScopedValueRollback<QEvent *> forwarding(forwardingEvent_, &release);
+        QCoreApplication::sendEvent(owner.data(), &release);
+    }
+    return true;
 }
 
 bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)

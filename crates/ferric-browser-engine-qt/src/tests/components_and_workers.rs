@@ -673,7 +673,7 @@ fn search_bar_component_emits_intents_without_page_or_engine_policy() {
     assert!(!qml.contains("execute_ui_action"));
     assert!(composition_root.contains("FerricSearchBar {"));
     assert!(composition_root.contains("browserUi.search_changed(text)"));
-    assert!(composition_root.contains("browserUi.search_next(browserUi.search_backward)"));
+    assert!(composition_root.contains("primaryPageSearch.accept()"));
     assert!(composition_root.contains("browserUi.execute_ui_action("));
 }
 

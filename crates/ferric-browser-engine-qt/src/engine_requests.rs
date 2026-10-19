@@ -48,6 +48,7 @@ pub(super) fn project(effect: &EngineEffect) -> QVariant {
             row.insert(QString::from("offset"), QVariant::from(offset));
         }
         EngineEffect::FindText {
+            new_search,
             query,
             backward,
             case,
@@ -63,6 +64,7 @@ pub(super) fn project(effect: &EngineEffect) -> QVariant {
                     SearchCase::Insensitive => "insensitive",
                 },
             );
+            row.insert(QString::from("newSearch"), QVariant::from(new_search));
             row.insert(QString::from("backward"), QVariant::from(backward));
         }
         EngineEffect::ClearFindText { .. } => text("kind", "clear-find"),

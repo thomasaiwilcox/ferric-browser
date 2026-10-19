@@ -1087,7 +1087,6 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("function refreshEffectiveSiteSettings()"));
     assert!(qml.contains("Navigation-scoped content settings are snapshotted"));
     assert!(!qml.contains("var configGeneration = viewUi.config_json"));
-    assert!(qml.contains("browser.tab.search-next"));
     assert!(qml.contains("function openLibraryEntry(entryKind, entryId)"));
     assert!(qml.contains("function deleteLibraryEntry(entryKind, entryId)"));
     assert!(qml.contains("function editLibraryEntry(entryKind, entryId, value)"));
@@ -1321,4 +1320,19 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
         })
         .is_err()
     );
+}
+
+#[test]
+fn compact_link_destinations_use_the_existing_typed_navigation_contract() {
+    for (action, value, command_name) in [
+        ("browser.link.open", "current\thttps://example.test/link", "open"),
+        ("browser.tab.open", "https://example.test/link", "tab-open"),
+    ] {
+        let arguments = ui_action_arguments(action, value).expect("local navigation arguments");
+        let (command, route, _) = typed_ipc_action(&serde_json::json!({"action":action,"arguments":arguments}))
+            .expect("typed navigation action");
+        assert_eq!(command.name, command_name);
+        assert_eq!(command.arguments, vec!["https://example.test/link"]);
+        assert_eq!(route.open_target, IpcOpenTarget::Tab);
+    }
 }

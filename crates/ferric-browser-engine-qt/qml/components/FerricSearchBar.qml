@@ -5,6 +5,7 @@ import QtQuick.Controls
 // Search execution and page-engine effects stay at the composition root.
 Rectangle {
     id: searchBar
+    objectName: "pageSearchBar"
     required property var browserWindow
     required property bool searchVisible
     required property bool searchBackward

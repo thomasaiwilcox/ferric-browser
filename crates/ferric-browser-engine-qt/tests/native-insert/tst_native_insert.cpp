@@ -353,6 +353,15 @@ WebEngineView {
             if (!window.isActive() && router.passNextKey())
                 normal();
         });
+        // Match the application's ownership check at ShortcutOverride too:
+        // these fake Normal-mode V bindings take priority over native paste.
+        connect(&router, &FerricBrowserKeyRouter::clipboardShortcutOverride, this,
+                [this](int key, int modifiers) {
+            if (view->property("ferricMode").toString() == "normal" && key == Qt::Key_V
+                && (modifiers == Qt::ControlModifier
+                    || modifiers == (Qt::ControlModifier | Qt::ShiftModifier)))
+                router.acceptCurrentEvent();
+        });
         connect(&router, &FerricBrowserKeyRouter::keyPressed, this,
                 [this](const QString &, int key, int modifiers, bool, bool browserOwnedRepeat) {
             const auto mode = view->property("ferricMode").toString();

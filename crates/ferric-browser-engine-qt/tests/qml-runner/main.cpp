@@ -9,6 +9,7 @@
 #include <QStringList>
 #include <QtQml/qqml.h>
 #include "../../src/script_runner.h"
+#include "../../src/browser_key_router.h"
 #include "../../src/settings_model.h"
 #include "../../src/native_file_chooser.h"
 #include "../../src/gui_application.h"
@@ -53,7 +54,9 @@ int main(int argc, char **argv)
     for (int index = 0; index < argc; ++index) arguments.append(QByteArray(argv[index]));
     auto application = ferric_browser_gui_application(arguments);
     if (!application) return 1;
+    qmlRegisterType<FerricBrowserKeyRouter>("io.github.ferricbrowser", 1, 0, "BrowserKeyRouter");
     qmlRegisterType<FerricScriptRunner>("Ferric.Testing", 1, 0, "ScriptRunner");
+    qmlRegisterType<FerricScriptRunner>("io.github.ferricbrowser", 1, 0, "FerricScriptRunner");
     qmlRegisterType<FerricBrowserSettingsModel>("io.github.ferricbrowser", 1, 0, "FerricSettingsModel");
     qmlRegisterType<FerricNativeFileChooser>("io.github.ferricbrowser", 1, 0, "NativeFileChooser");
     qmlRegisterType<FerricDownloadSource>("io.github.ferricbrowser", 1, 0, "FerricDownloadSource");
