@@ -147,6 +147,8 @@ fn validate_hint_arguments(arguments: &serde_json::Map<String, Value>) -> Result
                 kind,
                 "links"
                     | "all"
+                    | "actions"
+                    | "focus"
                     | "inputs"
                     | "buttons"
                     | "images"
@@ -194,6 +196,15 @@ fn validate_hint_arguments(arguments: &serde_json::Map<String, Value>) -> Result
     }
     let first = arguments.get("first").and_then(Value::as_bool) == Some(true);
     let rapid = arguments.get("rapid").and_then(Value::as_bool) == Some(true);
+    if arguments.get("kind").and_then(Value::as_str) == Some("focus")
+        && (rapid
+            || arguments.contains_key("script")
+            || target.is_some_and(|target| target != "current"))
+    {
+        return Err(
+            "hint focus supports only current-target focus and cannot use rapid or script".into(),
+        );
+    }
     let region_surface = arguments
         .get("kind")
         .and_then(Value::as_str)

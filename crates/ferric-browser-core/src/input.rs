@@ -232,13 +232,13 @@ impl BindingTrie {
                 binding(Mode::Normal, &["Ctrl+b"], "scroll-page up"),
                 binding(Mode::Normal, &["g", "g"], "scroll-to top"),
                 binding(Mode::Normal, &["G"], "scroll-to bottom"),
-                binding(Mode::Normal, &["f"], "hint all"),
-                binding(Mode::Normal, &["F"], "hint --target tab all"),
+                binding(Mode::Normal, &["f"], "hint actions"),
+                binding(Mode::Normal, &["F"], "hint --target tab actions"),
                 binding(Mode::Normal, &[";", "g"], "grid"),
                 binding(Mode::Normal, &[";", "s"], "scroll-target select"),
                 binding(Mode::Normal, &[";", "S"], "scroll-target auto"),
-                binding(Mode::Normal, &[";", "b"], "hint --target tab-bg all"),
-                binding(Mode::Normal, &[";", "f"], "hint --target tab all"),
+                binding(Mode::Normal, &[";", "b"], "hint --target tab-bg actions"),
+                binding(Mode::Normal, &[";", "f"], "hint --target tab actions"),
                 binding(Mode::Normal, &[";", "d"], "hint --target download links"),
                 binding(
                     Mode::Normal,
@@ -246,7 +246,7 @@ impl BindingTrie {
                     "hint --rapid --target tab-bg links",
                 ),
                 binding(Mode::Normal, &[";", "y"], "hint --target yank links"),
-                binding(Mode::Normal, &[";", "a"], "hint --target choose all"),
+                binding(Mode::Normal, &[";", "a"], "hint --target choose actions"),
                 binding(Mode::Normal, &["g", "i"], "hint --first inputs"),
                 binding(Mode::Normal, &["i"], "mode-enter insert"),
                 binding(Mode::Normal, &["I"], "mode-enter insert-locked"),
@@ -852,7 +852,7 @@ mod tests {
         let trie = BindingTrie::default_v1(CommandRegistry::default_v1()).unwrap();
         let definitions = trie.definitions();
         assert!(definitions.iter().any(|binding| {
-            binding.keys == [";", "a"] && binding.command == "hint --target choose all"
+            binding.keys == [";", "a"] && binding.command == "hint --target choose actions"
         }));
         assert!(definitions.iter().any(|binding| {
             binding.keys == ["g", "i"] && binding.command == "hint --first inputs"
@@ -862,7 +862,7 @@ mod tests {
         assert_eq!(
             resolver.feed("f", 0),
             BindingOutcome::Execute {
-                command: "hint all".into(),
+                command: "hint actions".into(),
                 count: 1,
             }
         );
@@ -906,8 +906,8 @@ mod tests {
                 "open-current --target tab",
             ),
             (vec!["R".to_owned()], "reload --bypass-cache"),
-            (vec!["f".to_owned()], "hint all"),
-            (vec!["F".to_owned()], "hint --target tab all"),
+            (vec!["f".to_owned()], "hint actions"),
+            (vec!["F".to_owned()], "hint --target tab actions"),
             (vec!["i".to_owned()], "mode-enter insert"),
             (vec!["v".to_owned()], "mode-enter caret"),
             (
@@ -916,7 +916,7 @@ mod tests {
             ),
             (
                 vec![";".to_owned(), "f".to_owned()],
-                "hint --target tab all",
+                "hint --target tab actions",
             ),
             (vec!["y".to_owned(), "y".to_owned()], "yank url"),
             (vec!["y".to_owned(), "t".to_owned()], "yank title"),
@@ -954,7 +954,7 @@ mod tests {
         let trie = BindingTrie::default_v1(CommandRegistry::default_v1()).unwrap();
         let definitions = trie.definitions();
         for (keys, command) in [
-            (vec!["f".to_owned()], "hint all"),
+            (vec!["f".to_owned()], "hint actions"),
             (vec!["g".to_owned(), "o".to_owned()], "open-current"),
             (
                 vec!["g".to_owned(), "O".to_owned()],

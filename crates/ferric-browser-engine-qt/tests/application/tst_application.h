@@ -39,6 +39,12 @@ class ApplicationTests final : public QObject {
     Q_INVOKABLE void accept(const QVariant &value);
     Q_INVOKABLE void frameOperationComplete(const QVariant &value);
   private slots:
+    void urlCopyStatusBar_data();
+    void urlCopyStatusBar();
+    void hintNavigationLifecycle_data();
+    void hintNavigationLifecycle();
+    void navigationJourneys_data();
+    void navigationJourneys();
     void spawnCommandModeValidation_data();
     void spawnCommandModeValidation();
     void scrollTargetCommandChain_data();
@@ -188,6 +194,8 @@ class ApplicationTests final : public QObject {
     void startupAndConfigPublication();
     void reservedCommandRecovery();
     void realHintKeyboardActivation();
+    void hintNativeControls_data();
+    void hintNativeControls();
     void mixedReservedKeysAndUnmappedDelivery();
     void heldPageKeyRetainsOwnerAcrossPolicyChange();
     void nativePointerRequiresLocalEntryAndClicksOnce();

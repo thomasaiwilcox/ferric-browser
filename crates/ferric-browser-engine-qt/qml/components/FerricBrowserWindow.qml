@@ -1632,6 +1632,7 @@ function onContext_workspaceChanged() {
     }
 
     FerricWindowStatusBar {
+        onCopyUrlRequested: secondaryUi.execute_ui_action("browser.url.copy", "")
         browserWindow: secondaryAppearance
         statusVisible: secondaryWindow.statusBarVisible
         mode: secondaryUi.mode

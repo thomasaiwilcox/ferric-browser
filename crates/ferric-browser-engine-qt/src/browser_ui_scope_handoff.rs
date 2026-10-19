@@ -72,11 +72,14 @@ pub(super) fn hint_scope_handoff_is_valid(
         (HintScopePurpose::Grid, HintKind::Region | HintKind::ScrollableRegion) => {
             matches!(binding.source_family.as_str(), "regions" | "all")
         }
-        (
-            HintScopePurpose::Grid,
-            HintKind::Surface | HintKind::FocusableSurface | HintKind::Frame,
-        ) => {
+        (HintScopePurpose::Grid, HintKind::Surface | HintKind::FocusableSurface) => {
             matches!(binding.source_family.as_str(), "surfaces" | "all")
+        }
+        (HintScopePurpose::Grid, HintKind::Frame) => {
+            matches!(
+                binding.source_family.as_str(),
+                "surfaces" | "all" | "actions"
+            )
         }
         _ => false,
     };
@@ -384,8 +387,18 @@ impl qobject::BrowserUi {
                 .hint_local_interaction_authority
                 .clear_session_requests();
         }
-        self.as_mut()
-            .set_hint_options("all", false, "current", None, false, 1);
+        self.as_mut().set_hint_options(
+            if purpose == HintScopePurpose::Search {
+                "all"
+            } else {
+                "actions"
+            },
+            false,
+            "current",
+            None,
+            false,
+            1,
+        );
         self.as_mut().set_hint_visible(false);
         if purpose == HintScopePurpose::Search {
             self.as_mut().set_target_search_scope(QString::from("all"));
@@ -691,7 +704,12 @@ impl qobject::BrowserUi {
 
 impl qobject::BrowserUi {
     pub(super) fn reset_frame_hint_session(mut self: Pin<&mut Self>) {
-        self.as_mut().set_hint_family(QString::from("all"));
+        let family = if self.as_ref().rust().hint_family.to_string() == "all" {
+            "all"
+        } else {
+            "actions"
+        };
+        self.as_mut().set_hint_family(QString::from(family));
         self.as_mut().set_hint_target(QString::from("current"));
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();

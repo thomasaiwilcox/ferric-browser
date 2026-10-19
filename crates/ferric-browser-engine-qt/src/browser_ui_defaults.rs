@@ -264,7 +264,7 @@ impl Default for BrowserUiRust {
             hint_links_only: false,
             hint_rapid: false,
             hint_target: QString::from("current"),
-            hint_family: QString::from("all"),
+            hint_family: QString::from("actions"),
             hint_proxy_targets_enabled: false,
             hint_unmatched_policy: QString::from("hide"),
             hint_chrome_available: true,

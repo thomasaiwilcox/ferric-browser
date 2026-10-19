@@ -171,6 +171,26 @@ TestCase {
         }
     }
 
+    function test_copy_url_is_visible_without_tab_strip() {
+        for (var fixture of [primaryStatusFixture, secondaryStatusFixture]) {
+            var bar = createTemporaryObject(fixture, testWindow.contentItem, {mode:"normal"})
+            verify(bar !== null)
+            var copies = 0
+            bar.copyUrlRequested.connect(function() { copies++ })
+            var button = findChild(bar, "copyCurrentUrlButton")
+            verify(button !== null && button.visible && button.enabled)
+            compare(button.Accessible.name, "Copy current page URL")
+            mouseClick(button, button.width/2, button.height/2)
+            compare(copies, 1)
+            bar.displayUrl = ""
+            verify(!button.enabled)
+            mouseClick(button, button.width/2, button.height/2)
+            compare(copies, 1)
+            bar.destroy()
+            wait(0)
+        }
+    }
+
     function test_passthrough_status_feedback_in_both_windows() {
         for (var fixture of [primaryStatusFixture, secondaryStatusFixture]) {
             var bar = createTemporaryObject(fixture, testWindow.contentItem)

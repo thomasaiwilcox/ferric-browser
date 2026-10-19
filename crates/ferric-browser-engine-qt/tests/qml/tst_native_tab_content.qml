@@ -241,6 +241,16 @@ TestCase {
         compare(ui.snapshot.entries.length, 2)
         compare(ui.snapshot.entries[1].engine_index, 2)
     }
+    function test_first_same_url_state_keeps_the_original_entry() {
+        backItems.clear(); backItems.append({url:"https://a.test",offset:-1})
+        ui.snapshot = {entries:[{url:"https://a.test",engine_index:0}],cursor:0}
+        var content = createTemporaryObject(fixture, host.contentItem)
+        content.synchronizeHistory()
+        compare(ui.snapshot.entries.length,2)
+        compare(ui.snapshot.entries[0].engine_index,0)
+        compare(ui.snapshot.entries[1].engine_index,1)
+        compare(ui.snapshot.cursor,1)
+    }
     function test_same_url_engine_state_keeps_both_history_positions() {
         backItems.clear(); backItems.append({url: "https://a.test", offset: -2}); backItems.append({url: "https://b.test", offset: -1})
         web.url = "https://b.test"

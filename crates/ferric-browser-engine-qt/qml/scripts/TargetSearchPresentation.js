@@ -3,7 +3,7 @@
 function kindLabel(kind) {
     var labels = {link:"Link",button:"Button",input:"Text field",select:"Choice",textarea:"Text area",
         contenteditable:"Editable text",image:"Image",media:"Media",scrollable:"Scroll area",
-        aria:"Control",focusable:"Control","editor-focus":"Editor","label-control":"Labelled control",
+        aria:"Control",focusable:"Keyboard region","editor-focus":"Editor","label-control":"Labelled control",
         region:"Region","scrollable-region":"Scroll region",surface:"Surface","focusable-surface":"Surface",frame:"Embedded page"}
     return labels[kind] || "Page control"
 }

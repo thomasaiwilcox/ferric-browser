@@ -52,6 +52,20 @@ Item {
         model: content.webView.history.forwardItems
         delegate: QtObject { required property url url; required property int offset }
     }
+    // Own the complete side-button gesture in Normal mode. Letting WebEngine
+    // handle it independently bypasses native-page anchors and can traverse
+    // twice as the event crosses the Quick/renderer boundary.
+    MouseArea {
+        anchors.fill: parent
+        z: 4
+        enabled: content.hasLiveOwner() && content.browserUi.mode === "normal"
+        acceptedButtons: Qt.BackButton | Qt.ForwardButton
+        onClicked: function(mouse) {
+            content.browserHost.submitInteractiveCommand(
+                mouse.button === Qt.BackButton ? "back" : "forward")
+        }
+    }
+
     function engineOffset(destination, expected, backwards) {
         if (webView.url.toString() === destination && expected === 0) return 0
         // WebEngine can publish its history model after the URL notification.
@@ -212,7 +226,10 @@ Item {
             previous.engine_index = baseline
         }
         var old = engineEntry(current.engine_index)
-        var preserveCurrent = old && old.url === current.url && baseline < current.engine_index
+        // The first engine entry has no earlier logical baseline. A push
+        // of the same URL still creates a distinct, traversable state there.
+        var preserveCurrent = old && old.url === current.url
+                && (baseline < current.engine_index || snapshot.cursor === 0)
         if (preserveCurrent && engineHistoryIndex > current.engine_index) {
             // A new pushState branches here, even if its URL matches an old
             // forward entry. A trusted popstate was handled above instead.

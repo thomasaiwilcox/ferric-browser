@@ -12,8 +12,8 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             let mut index = 0;
             while index < command.arguments.len() {
                 match command.arguments[index].as_str() {
-                    "links" | "all" | "inputs" | "buttons" | "images" | "media" | "scrollables"
-                    | "regions" | "surfaces" => {
+                    "links" | "all" | "actions" | "focus" | "inputs" | "buttons" | "images"
+                    | "media" | "scrollables" | "regions" | "surfaces" => {
                         if object.contains_key("kind") {
                             return Err("hint kind was specified more than once".into());
                         }
@@ -160,6 +160,19 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             }
             if object.contains_key("index") && !first {
                 return Err("hint --index requires --first".into());
+            }
+            if object.get("kind").and_then(serde_json::Value::as_str) == Some("focus")
+                && (rapid
+                    || object.contains_key("script")
+                    || object
+                        .get("target")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|target| target != "current"))
+            {
+                return Err(
+                    "hint focus supports only current-target focus and cannot use rapid or script"
+                        .into(),
+                );
             }
             let region_surface = object
                 .get("kind")

@@ -1505,14 +1505,15 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"22\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"25\""));
     assert!(
         BROWSER_SCRIPT_FACADE
             .contains(".import \"PageInteractionScripts.js\" as PageInteractionScripts")
     );
     assert!(BROWSER_SCRIPT_FACADE.contains("asset.VERSION !== PAGE_INTERACTION_VERSION"));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var PAGE_INTERACTION_VERSION = \"7\""));
     assert!(BROWSER_SCRIPT_FACADE.contains("script-version-mismatch"));
-    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"4\""));
+    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"7\""));
     let manifest: serde_json::Value = serde_json::from_str(BROWSER_SCRIPT_MANIFEST).unwrap();
     let entry = manifest["resources"]
         .as_array()
@@ -1623,7 +1624,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("kind==='link'&&href===null"));
     assert!(script.contains("function linkedSurface(el,r)"));
     assert!(script.contains(
-        "candidateFamily==='all'&&(kind==='image'||kind==='media')&&linkedSurface(el,r)"
+        "(candidateFamily==='all'||candidateFamily==='actions')&&(kind==='image'||kind==='media')&&linkedSurface(el,r)"
     ));
     assert!(script.contains("function hasPreferredLink(el,r)"));
     assert!(script.contains("summary.get(href)+1<r.width*r.height"));

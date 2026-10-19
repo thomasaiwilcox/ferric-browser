@@ -325,7 +325,7 @@ TestCase {
         compare(evaluate("document.documentElement.dataset.radioChanges"), "1")
         var visibleControl = values.filter(function(item) { return item.text === "Visible option" })
         compare(visibleControl.length, 1)
-        compare(visibleControl[0].kind, "input")
+        compare(visibleControl[0].kind, "aria")
         verify(!values.some(function(item) { return item.kind === "label-control" && item.text === "Visible option" }), "Normally visible checkbox is deduplicated")
         var allValues = evaluate(BrowserScripts.hintCollector("all", true)).candidates
         verify(allValues.some(function(item) { return item.kind === "label-control" && item.text === "Enable feature" }), "The all family includes validated label pairs")
@@ -694,6 +694,12 @@ TestCase {
         var child = scoped.candidates.filter(function(item) { return item.text === "Inside button" })[0]
         verify(evaluate(BrowserScripts.hintFresh(child, allSnapshot)).visible,
                "A scoped child remains freshly revalidatable")
+        var actionSnapshot = selectorSnapshot("all", "merge", [], "actions-in-scope")
+        var scopedActions = evaluate(BrowserScripts.hintCollector("actions", false, actionSnapshot, request.lease_id))
+        verify(scopedActions.candidates.some(function(item) { return item.text === "Inside button" }))
+        verify(!scopedActions.candidates.some(function(item) { return item.text === "Outside target" || item.kind === "focusable" }))
+        var actionChild = scopedActions.candidates.filter(function(item) { return item.text === "Inside button" })[0]
+        verify(evaluate(BrowserScripts.hintFresh(actionChild, actionSnapshot)).visible)
         var after = evaluate("({focus:document.activeElement.id,scrollX:scrollX,scrollY:scrollY,scopeTop:document.getElementById('scope').scrollTop})")
         compare(after, before, "Scoped entry and collection do not change focus or scroll")
         cleanup()

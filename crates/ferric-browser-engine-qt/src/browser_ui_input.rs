@@ -102,10 +102,6 @@ impl qobject::BrowserUi {
                     self.set_status_text(QString::from("scroll-target does not accept a count"));
                     return;
                 }
-                if parsed.name == "hint" && parsed.arguments.is_empty() {
-                    self.as_mut().set_hint_mode_kind(true);
-                    return;
-                }
                 if parsed.name == "hint" && count > 1 {
                     if parsed
                         .arguments
@@ -191,7 +187,13 @@ impl qobject::BrowserUi {
                         return;
                     }
                 };
-                if let Some(action) = effects.iter().find_map(engine_action_name) {
+                // Captured engine effects must use the typed request queue, just
+                // like command-bar dispatch. Presentation names no longer execute
+                // navigation, reload or stop operations in the QML dispatcher.
+                self.as_mut().set_pending_engine_action(&effects);
+                if let Some(action) = effects.iter().filter(|effect| {
+                    !matches!(effect, super::Effect::Engine(engine) if super::engine_requests::target(engine).is_some())
+                }).find_map(engine_action_name) {
                     let mut rust = self.as_mut().rust_mut();
                     rust.as_mut().get_mut().pending_engine_action = Some(action.to_owned());
                 }

@@ -110,6 +110,7 @@ fn local_empty_binding_commands_use_the_full_executor() {
         "devtools",
         "fullscreen",
         "history",
+        "hint",
         "print",
         "tab-clone",
         "tab-move",

@@ -43,7 +43,9 @@ impl qobject::BrowserUi {
             self.as_mut()
                 .spatial_invalidated(&QString::from("target-changed"));
         }
-        self.as_mut().clear_hint_session_state();
+        // Document replacement retires page callbacks. Navigation must also
+        // exit Hint mode instead of waiting for an activation callback to do it.
+        self.as_mut().cancel_hints();
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -88,8 +90,9 @@ impl qobject::BrowserUi {
             self.as_mut()
                 .spatial_invalidated(&QString::from("target-changed"));
         }
-        self.as_mut().clear_hint_session_state();
         if index == self.as_ref().rust().active_tab_index {
+            // A background document owns no part of the active hint session.
+            self.as_mut().cancel_hints();
             self.as_mut().clear_navigation_failure();
             self.as_mut()
                 .set_navigation_failure_requested_url(QString::from(safe_ipc_url(

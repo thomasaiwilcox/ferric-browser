@@ -412,7 +412,7 @@ impl qobject::BrowserUi {
             this.hint_visible = false;
             this.hint_links_only = false;
             this.hint_rapid = false;
-            this.hint_family = QString::from("all");
+            this.hint_family = QString::from("actions");
             this.hint_unmatched_policy = QString::from("hide");
             this.hint_marker_scale = 1.0;
             this.hint_rapid_target = "current".into();

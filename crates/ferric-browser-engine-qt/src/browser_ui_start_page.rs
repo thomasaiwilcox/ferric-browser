@@ -912,6 +912,12 @@ impl qobject::BrowserUi {
             .navigation
             .content_histories
             .insert(tab, history);
+        let revision = self
+            .as_ref()
+            .rust()
+            .content_history_revision
+            .wrapping_add(1);
+        self.as_mut().set_content_history_revision(revision);
         true
     }
 

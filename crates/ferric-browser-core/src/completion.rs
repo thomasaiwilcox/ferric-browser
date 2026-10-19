@@ -136,6 +136,8 @@ fn enum_candidates(command_prefix: &str, prefix: &str) -> Option<Vec<CompletionC
                         "choose",
                     ],
                     _ => &[
+                        "actions",
+                        "focus",
                         "links",
                         "all",
                         "inputs",

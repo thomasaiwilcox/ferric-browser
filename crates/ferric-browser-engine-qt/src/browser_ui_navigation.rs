@@ -18,7 +18,8 @@ pub(super) fn effective_hint_selector_snapshot(
     family: &str,
 ) -> Result<Value, String> {
     let selector_family = HintSelectorFamily::parse(family);
-    if selector_family.is_none() && !matches!(family, "regions" | "surfaces") {
+    if selector_family.is_none() && !matches!(family, "regions" | "surfaces" | "actions" | "focus")
+    {
         return Err(format!("unsupported hint selector family: {family}"));
     }
     let config = serde_json::from_str::<Config>(config_json)
@@ -113,17 +114,6 @@ impl qobject::BrowserUi {
     pub(super) fn set_hint_mode(mut self: Pin<&mut Self>) {
         self.as_mut()
             .set_hint_options("all", false, "current", None, false, 1);
-    }
-
-    pub(super) fn set_hint_mode_kind(mut self: Pin<&mut Self>, links_only: bool) {
-        self.as_mut().set_hint_options(
-            if links_only { "links" } else { "all" },
-            false,
-            "current",
-            None,
-            false,
-            1,
-        );
     }
 
     pub(super) fn set_hint_options(
@@ -344,7 +334,7 @@ impl qobject::BrowserUi {
                     && scope.owner.target.generation == target.generation
                     && scope.owner.target.document == target.document
                     && scope.owner.configuration_revision == configuration_revision
-                    && family == "all"
+                    && matches!(family.as_str(), "all" | "actions")
             });
         if !scope_is_authorized {
             self.set_status_text(QString::from(
@@ -910,6 +900,18 @@ mod tests {
         let next_configuration =
             effective_hint_selector_snapshot(&config_json, "https://example.test/page", 8, "all")
                 .expect("new config revision snapshot");
+        for family in ["actions", "focus"] {
+            let filtered = effective_hint_selector_snapshot(
+                &config_json,
+                "https://example.test/page",
+                7,
+                family,
+            )
+            .unwrap();
+            assert_eq!(filtered["family"], family);
+            assert_eq!(filtered["policies"], all["policies"]);
+            assert_ne!(filtered["selector_revision"], all["selector_revision"]);
+        }
         assert_eq!(all["selector_revision"], repeated["selector_revision"]);
         assert_ne!(all["selector_revision"], buttons["selector_revision"]);
         assert_ne!(
@@ -1129,6 +1131,26 @@ mod tests {
             surface_context,
         ));
 
+        binding.source_family = "actions".into();
+        let action_context = HintScopeHandoffContext {
+            family: "actions",
+            ..surface_context
+        };
+        assert!(!hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            action_context
+        ));
+        binding.kind = HintKind::Frame;
+        receipt["kind"] = Value::String("frame".into());
+        assert!(hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            action_context
+        ));
+        binding.source_family = "surfaces".into();
         binding.kind = HintKind::Button;
         receipt["kind"] = Value::String(hint_kind_name(binding.kind).into());
         assert!(!hint_scope_handoff_is_valid(

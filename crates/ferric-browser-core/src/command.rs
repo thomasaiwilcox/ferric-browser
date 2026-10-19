@@ -2749,9 +2749,12 @@ impl CommandRegistry {
                 },
             ];
             command.examples = vec![
+                "hint actions".into(),
+                "hint focus".into(),
+                "hint all".into(),
                 "hint links".into(),
                 "hint --rapid --target tab-bg links".into(),
-                "hint --target choose all".into(),
+                "hint --target choose actions".into(),
                 "hint --first --index 3 inputs".into(),
                 "hint regions".into(),
                 "hint surfaces".into(),

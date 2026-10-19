@@ -3563,6 +3563,7 @@ GridLayout {
     }
 
     FerricStatusBar {
+        onCopyUrlRequested: browserUi.execute_ui_action("browser.url.copy", "")
         browserWindow: window
         statusVisible: window.statusBarVisible
         mode: browserUi.mode

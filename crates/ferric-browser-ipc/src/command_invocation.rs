@@ -164,6 +164,49 @@ mod tests {
     }
 
     #[test]
+    fn action_and_focus_hints_round_trip_with_matching_restrictions() {
+        for text in [
+            "hint actions",
+            "hint all",
+            "hint focus",
+            "hint --first --index 2 focus",
+            "hint --target current focus",
+        ] {
+            let command = parse_chain(text, ParseInput::Cli).unwrap().remove(0);
+            let envelope = encode_command(&command).unwrap();
+            assert_eq!(
+                decode_command_invocation(&envelope).unwrap().command,
+                command
+            );
+        }
+        for target in [
+            "tab",
+            "tab-bg",
+            "window",
+            "choose",
+            "yank",
+            "download",
+            "ephemeral",
+        ] {
+            let envelope = json!({"command":"hint","arguments":{"kind":"focus","target":target}});
+            assert!(decode_command_invocation(&envelope).is_err(), "{target}");
+            let command = parse_chain(&format!("hint focus --target {target}"), ParseInput::Cli)
+                .unwrap()
+                .remove(0);
+            assert!(encode_command(&command).is_err(), "{target}");
+        }
+        for arguments in [
+            json!({"kind":"focus","rapid":true}),
+            json!({"kind":"focus","script":"reader"}),
+        ] {
+            assert!(
+                decode_command_invocation(&json!({"command":"hint","arguments":arguments}))
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn region_surface_hint_families_round_trip_and_reject_other_actions() {
         for family in ["regions", "surfaces"] {
             let command = ferric_browser_core::ParsedCommand {
