@@ -243,7 +243,7 @@ pub enum EngineEffect {
         offset: i32,
     },
     FindText {
-        /// Query edits supersede pending finds; explicit SearchNext steps stay ordered.
+        /// Query edits supersede pending finds; explicit `SearchNext` steps stay ordered.
         new_search: bool,
         target: Target,
         query: String,
