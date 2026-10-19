@@ -1,6 +1,7 @@
 //! Read-only userscript inventory, registered actions, and page matching.
 
 use std::{
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -157,80 +158,174 @@ pub fn matching_page_scripts(
     if !is_http_url(url) {
         return Ok(Vec::new());
     }
-    let directory = root.join("userscripts");
-    let mut names = Vec::new();
-    let entries = match fs::read_dir(&directory) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(format!("could not list userscripts: {error}")),
-    };
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("could not inspect userscript: {error}"))?;
-        let path = entry.path();
-        if path.extension().and_then(|value| value.to_str()) != Some("toml") {
-            continue;
-        }
-        let Some(name) = path.file_stem().and_then(|value| value.to_str()) else {
-            continue;
-        };
-        validate_name(name)?;
-        names.push(name.to_owned());
-        if names.len() > MAX_PAGE_SCRIPT_MANIFESTS {
-            return Err("userscript directory exceeds 256 manifests".into());
-        }
-    }
-    names.sort_unstable();
+    Ok(UserscriptCatalog::load(root)?.matching(url, private_profile))
+}
 
-    let mut scripts = Vec::new();
-    for name in names {
-        let loaded = load(root, &name)?;
-        let manifest = &loaded.manifest;
-        if !manifest.enabled {
-            continue;
-        }
-        if !manifest.page_world
-            || (private_profile && !manifest.allow_private)
-            || !manifest
-                .matches
-                .iter()
-                .any(|pattern| url_pattern_matches(pattern, url))
-            || manifest
-                .excludes
-                .iter()
-                .any(|pattern| url_pattern_matches(pattern, url))
-        {
-            continue;
-        }
-        let source_name = manifest
-            .source
-            .as_deref()
-            .ok_or_else(|| "page-world userscript source path is missing".to_owned())?;
-        let source_path = resolve_manifest_path(root, &loaded.path, source_name);
-        let metadata = fs::metadata(&source_path)
-            .map_err(|error| format!("userscript source is unavailable: {error}"))?;
-        if !metadata.is_file() {
-            return Err("userscript source is not a regular file".into());
-        }
-        if metadata.len() > MAX_PAGE_SCRIPT_BYTES {
-            return Err("userscript source exceeds 256 KiB".into());
-        }
-        let source = fs::read_to_string(&source_path)
-            .map_err(|error| format!("could not read userscript source: {error}"))?;
-        if source.contains('\0') {
-            return Err("userscript source contains a NUL byte".into());
-        }
-        scripts.push(PageScript {
-            name,
-            source,
-            run_at: match manifest.run_at {
-                RunAt::Start => "document_start",
-                RunAt::End => "document_end",
-                RunAt::Idle => "document_idle",
-            },
-            runs_on_sub_frames: manifest.frames == FrameScope::All,
-        });
+#[derive(Clone, Debug, Default)]
+pub struct UserscriptCatalog {
+    entries: Vec<PageScriptEntry>,
+    sources: Vec<PathBuf>,
+    manifests: BTreeMap<String, crate::userscript::LoadedManifest>,
+    actions: Vec<RegisteredAction>,
+    inventory: Vec<InstalledScript>,
+}
+
+#[derive(Clone, Debug)]
+struct PageScriptEntry {
+    matches: Vec<String>,
+    excludes: Vec<String>,
+    allow_private: bool,
+    script: PageScript,
+}
+
+impl UserscriptCatalog {
+    #[must_use]
+    pub fn actions(&self) -> &[RegisteredAction] {
+        &self.actions
     }
-    Ok(scripts)
+
+    #[must_use]
+    pub fn inventory(&self) -> &[InstalledScript] {
+        &self.inventory
+    }
+
+    #[must_use]
+    pub fn manifest(&self, name: &str) -> Option<&crate::userscript::LoadedManifest> {
+        self.manifests.get(name)
+    }
+
+    #[must_use]
+    pub fn sources(&self) -> &[PathBuf] {
+        &self.sources
+    }
+
+    #[must_use]
+    pub fn matching(&self, url: &str, private_profile: bool) -> Vec<PageScript> {
+        if !is_http_url(url) {
+            return Vec::new();
+        }
+        self.entries
+            .iter()
+            .filter(|entry| {
+                (!private_profile || entry.allow_private)
+                    && entry
+                        .matches
+                        .iter()
+                        .any(|pattern| url_pattern_matches(pattern, url))
+                    && !entry
+                        .excludes
+                        .iter()
+                        .any(|pattern| url_pattern_matches(pattern, url))
+            })
+            .map(|entry| entry.script.clone())
+            .collect()
+    }
+
+    /// Loads a complete immutable catalog on an owned filesystem worker.
+    /// # Errors
+    /// Rejects unreadable, invalid, and oversized catalogs without partial publication.
+    pub fn load(root: &Path) -> Result<Self, String> {
+        let directory = root.join("userscripts");
+        let mut sources = vec![directory.join(".catalog-watch")];
+        let names = catalog_manifest_names(&directory)?;
+
+        let mut scripts = Vec::new();
+        let mut manifests = BTreeMap::new();
+        let mut actions = Vec::new();
+        let mut inventory = Vec::new();
+        for name in names {
+            let loaded = load(root, &name)?;
+            let manifest = &loaded.manifest;
+            sources.push(loaded.path.clone());
+            manifests.insert(name.clone(), loaded.clone());
+            inventory.push(InstalledScript {
+                name: name.clone(),
+                enabled: manifest.enabled,
+                page_world: manifest.page_world,
+                run_at: manifest.run_at,
+                allow_private: manifest.allow_private,
+                matches: manifest.matches.clone(),
+                actions: manifest.actions.len(),
+            });
+            if manifest.enabled {
+                for action in &manifest.actions {
+                    actions.push(RegisteredAction {
+                        script: name.clone(),
+                        id: action.id.clone(),
+                        subject: action.subject.clone(),
+                        verb: action.verb.clone(),
+                        label: action.label.clone(),
+                        required_fields: action.required_fields.clone(),
+                        allow_private: manifest.allow_private,
+                    });
+                    if actions.len() > MAX_REGISTERED_ACTIONS {
+                        return Err("installed userscripts register more than 512 actions".into());
+                    }
+                }
+            }
+            if !manifest.enabled {
+                continue;
+            }
+            if !manifest.page_world {
+                continue;
+            }
+            let source_name = manifest
+                .source
+                .as_deref()
+                .ok_or_else(|| "page-world userscript source path is missing".to_owned())?;
+            let source_path = resolve_manifest_path(root, &loaded.path, source_name);
+            sources.push(source_path.clone());
+            sources.push(loaded.path.clone());
+            let metadata = fs::metadata(&source_path)
+                .map_err(|error| format!("userscript source is unavailable: {error}"))?;
+            if !metadata.is_file() {
+                return Err("userscript source is not a regular file".into());
+            }
+            if metadata.len() > MAX_PAGE_SCRIPT_BYTES {
+                return Err("userscript source exceeds 256 KiB".into());
+            }
+            let source = crate::userscript_io::read_text(&source_path, MAX_PAGE_SCRIPT_BYTES)
+                .map_err(|error| format!("could not read userscript source: {error}"))?;
+            if source.contains('\0') {
+                return Err("userscript source contains a NUL byte".into());
+            }
+            if scripts
+                .iter()
+                .map(|entry: &PageScriptEntry| entry.script.source.len())
+                .sum::<usize>()
+                + source.len()
+                > 16 * 1024 * 1024
+            {
+                return Err("page-script catalog exceeds 16 MiB".into());
+            }
+            scripts.push(PageScriptEntry {
+                matches: manifest.matches.clone(),
+                excludes: manifest.excludes.clone(),
+                allow_private: manifest.allow_private,
+                script: PageScript {
+                    name,
+                    source,
+                    run_at: match manifest.run_at {
+                        RunAt::Start => "document_start",
+                        RunAt::End => "document_end",
+                        RunAt::Idle => "document_idle",
+                    },
+                    runs_on_sub_frames: manifest.frames == FrameScope::All,
+                },
+            });
+        }
+        actions.sort_unstable_by(|left, right| left.id.cmp(&right.id));
+        if actions.windows(2).any(|pair| pair[0].id == pair[1].id) {
+            return Err("installed userscripts register duplicate action IDs".into());
+        }
+        Ok(UserscriptCatalog {
+            entries: scripts,
+            sources,
+            manifests,
+            actions,
+            inventory,
+        })
+    }
 }
 
 fn resolve_manifest_path(root: &Path, manifest_path: &Path, value: &str) -> PathBuf {
@@ -302,4 +397,33 @@ fn glob_matches(pattern: &str, value: &str) -> bool {
         pattern_index += 1;
     }
     pattern_index == pattern.len()
+}
+
+fn catalog_manifest_names(directory: &Path) -> Result<Vec<String>, String> {
+    let mut names = Vec::new();
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Vec::new());
+        }
+        Err(error) => return Err(format!("could not list userscripts: {error}")),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("could not inspect userscript: {error}"))?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("toml") {
+            continue;
+        }
+        let Some(name) = path.file_stem().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        validate_name(name)?;
+        names.push(name.to_owned());
+        if names.len() > MAX_PAGE_SCRIPT_MANIFESTS {
+            return Err("userscript directory exceeds 256 manifests".into());
+        }
+    }
+    names.sort_unstable();
+
+    Ok(names)
 }

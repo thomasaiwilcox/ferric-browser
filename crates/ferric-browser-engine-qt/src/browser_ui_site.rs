@@ -1,10 +1,9 @@
 use super::{
-    Config, CxxQtType, FocusObservation, Instant, MAX_DIAGNOSTICS_EXPORT_BYTES, Mode,
-    ParsedCommand, Path, Pin, PrivacyKind, QString, QStringList, SITE_DOCTOR_EXPERIMENT_TIMEOUT,
-    SiteExperiment, Uuid, Value, atomic_write_private, diagnostics, display_url,
-    focus_mode_transition, matching_site_rules, qobject, safe_ipc_url, safe_site_host,
-    safe_site_origin, setting_supports_site_scope, site_doctor_remaining_seconds,
-    toml_string_array_literal, userscript,
+    CxxQtType, FocusObservation, Instant, MAX_DIAGNOSTICS_EXPORT_BYTES, Mode, ParsedCommand, Path,
+    Pin, PrivacyKind, QString, QStringList, SITE_DOCTOR_EXPERIMENT_TIMEOUT, SiteExperiment, Uuid,
+    Value, atomic_write_private, diagnostics, display_url, focus_mode_transition,
+    matching_site_rules, qobject, safe_ipc_url, safe_site_host, safe_site_origin,
+    setting_supports_site_scope, site_doctor_remaining_seconds, toml_string_array_literal,
 };
 
 impl qobject::BrowserUi {
@@ -68,6 +67,7 @@ impl qobject::BrowserUi {
         let native_prompt_revalidation = self
             .as_ref()
             .rust()
+            .interaction
             .native_prompt_leases
             .top()
             .is_some_and(|lease| {
@@ -95,6 +95,7 @@ impl qobject::BrowserUi {
         if self
             .as_ref()
             .rust()
+            .interaction
             .focus_suppressions
             .get(&key)
             .is_some_and(|suppressed| sequence <= *suppressed)
@@ -105,6 +106,7 @@ impl qobject::BrowserUi {
         if self
             .as_ref()
             .rust()
+            .interaction
             .focus_observations
             .get(&key)
             .is_some_and(|observation| {
@@ -119,6 +121,7 @@ impl qobject::BrowserUi {
         let context_ended = self
             .as_ref()
             .rust()
+            .interaction
             .focus_observations
             .get(&key)
             .is_some_and(|old| {
@@ -127,8 +130,8 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.focus_suppressions.remove(&key);
-            this.focus_observations.insert(
+            this.interaction.focus_suppressions.remove(&key);
+            this.interaction.focus_observations.insert(
                 key.clone(),
                 FocusObservation {
                     url: url.clone(),
@@ -150,6 +153,7 @@ impl qobject::BrowserUi {
         let (focused_editable, user_activated) = self
             .as_ref()
             .rust()
+            .interaction
             .focus_observations
             .iter()
             .filter(|((candidate, _), observation)| {
@@ -182,8 +186,8 @@ impl qobject::BrowserUi {
 
     pub(super) fn refresh_site_status(mut self: Pin<&mut Self>) -> QString {
         if self.as_ref().rust().profile_persistence.is_durable()
-            && (self.as_ref().rust().storage_library.is_none()
-                || self.as_ref().rust().storage_library_dirty.get())
+            && (self.as_ref().rust().library.storage_library.is_none()
+                || self.as_ref().rust().library.storage_library_dirty.get())
         {
             self.as_mut().request_storage_library();
         }
@@ -214,8 +218,8 @@ impl qobject::BrowserUi {
 
     pub(super) fn site_report(mut self: Pin<&mut Self>, include_host: bool) -> QString {
         if self.as_ref().rust().profile_persistence.is_durable()
-            && (self.as_ref().rust().storage_library.is_none()
-                || self.as_ref().rust().storage_library_dirty.get())
+            && (self.as_ref().rust().library.storage_library.is_none()
+                || self.as_ref().rust().library.storage_library_dirty.get())
         {
             self.as_mut().request_storage_library();
         }
@@ -328,14 +332,15 @@ impl qobject::BrowserUi {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let config = match serde_json::from_value::<Config>(self.as_ref().rust().config.clone()) {
-            Ok(config) => config,
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Site Doctor proposal could not read effective config: {error}"
-                )));
-                return false;
-            }
+        let Some(config) = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .map(|state| state.configuration().clone())
+        else {
+            self.set_status_text(QString::from("Site Doctor configuration is unavailable"));
+            return false;
         };
         if config.blocking.bypass_sites != before {
             self.set_status_text(QString::from(
@@ -542,7 +547,12 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn export_diagnostics(mut self: Pin<&mut Self>, path: &QString) -> bool {
-        if !self.as_ref().rust().diagnostics_preview_ready {
+        if !self
+            .as_ref()
+            .rust()
+            .diagnostic_work
+            .diagnostics_preview_ready
+        {
             self.set_status_text(QString::from(
                 "Diagnostics export requires reviewing the visible preview first",
             ));
@@ -566,7 +576,13 @@ impl qobject::BrowserUi {
             ));
             return false;
         }
-        let Some(payload) = self.as_ref().rust().diagnostics_preview_payload.clone() else {
+        let Some(payload) = self
+            .as_ref()
+            .rust()
+            .diagnostic_work
+            .diagnostics_preview_payload
+            .clone()
+        else {
             self.set_status_text(QString::from("Diagnostics export is unavailable"));
             return false;
         };
@@ -582,11 +598,13 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .diagnostic_work
                     .diagnostics_preview_ready = false;
                 self.as_mut()
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .diagnostic_work
                     .diagnostics_preview_payload = None;
                 self.as_mut().set_diagnostics_available(false);
                 self.set_status_text(QString::from(
@@ -690,10 +708,10 @@ impl qobject::BrowserUi {
                     .as_deref()
                     .map_or_else(|| rust.current_url.to_string(), ToOwned::to_owned);
                 let origin = safe_site_origin(&url)?;
-                Some((tab_id, safe_ipc_url(&url), origin, rust.active_tab_index))
+                Some((tab_id, safe_ipc_url(&url), origin))
             })
         };
-        let Some((tab, url, origin, tab_index)) = details else {
+        let Some((tab, url, origin)) = details else {
             self.set_status_text(QString::from(
                 "Site Doctor requires an active HTTP(S) document",
             ));
@@ -701,15 +719,11 @@ impl qobject::BrowserUi {
         };
         if kind == "userscripts-off" {
             let current_url = self.as_ref().rust().current_url.to_string();
-            let has_matching_scripts =
-                self.as_ref()
-                    .rust()
-                    .userscript_roots
-                    .as_ref()
-                    .is_some_and(|roots| {
-                        userscript::matching_page_scripts(&roots.config, &current_url, false)
-                            .is_ok_and(|scripts| !scripts.is_empty())
-                    });
+            let has_matching_scripts = self.as_ref().rust().state.as_ref().is_some_and(|state| {
+                state
+                    .matching_page_scripts(&current_url, false)
+                    .is_ok_and(|scripts| !scripts.is_empty())
+            });
             if !has_matching_scripts {
                 self.set_status_text(QString::from(
                     "No matching page userscripts are available for this site",
@@ -718,11 +732,9 @@ impl qobject::BrowserUi {
             }
         }
         if compiled_defaults_experiment {
-            let has_site_settings = serde_json::from_value::<Config>(
-                self.as_ref().rust().config.clone(),
-            )
-            .is_ok_and(|config| {
-                matching_site_rules(&config, &url)
+            let has_site_settings = self.as_ref().rust().state.as_ref().is_some_and(|state| {
+                let config = state.configuration();
+                matching_site_rules(config, &url)
                     .iter()
                     .any(|rule| rule.set.keys().any(|key| setting_supports_site_scope(key)))
             });
@@ -733,7 +745,7 @@ impl qobject::BrowserUi {
                 return QString::default();
             }
         }
-        let (temporary_tab, temporary_index) = if fresh_view_experiment {
+        let temporary_tab = if fresh_view_experiment {
             let index = self.as_mut().new_tab();
             if index < 0 {
                 self.set_status_text(QString::from(
@@ -747,9 +759,9 @@ impl qobject::BrowserUi {
                 ));
                 return QString::default();
             };
-            (Some(temporary_tab), Some(index))
+            Some(temporary_tab)
         } else {
-            (None, None)
+            None
         };
         let mut sites = self
             .as_ref()
@@ -807,16 +819,26 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.active_site_experiment = Some(experiment);
-            this.pending_engine_action = Some(if fresh_view_experiment {
-                format!(
-                    "site-doctor-fresh-view\t{}\t{}\t{}",
-                    temporary_index.unwrap_or(-1),
-                    id,
-                    url
-                )
-            } else {
-                format!("site-doctor-reload\t{tab_index}\t{id}")
-            });
+        }
+        let command = if fresh_view_experiment {
+            ferric_browser_application::ViewCommand::SiteDoctorFreshView {
+                experiment_id: id.clone(),
+                url: ferric_browser_core::ValidatedUrl::parse(url)
+                    .expect("validated HTTP(S) experiment URL"),
+            }
+        } else {
+            ferric_browser_application::ViewCommand::SiteDoctorReload {
+                experiment_id: id.clone(),
+            }
+        };
+        if self
+            .as_mut()
+            .queue_view_command_for(command, temporary_tab.unwrap_or(tab))
+            .is_err()
+        {
+            self.as_mut()
+                .finish_site_doctor_experiment(&QString::from(id), false);
+            return QString::default();
         }
         if blocking_experiment {
             self.as_mut()
@@ -875,19 +897,12 @@ impl qobject::BrowserUi {
                 );
             }
         }
-        let cleanup_index = experiment.temporary_tab.and_then(|tab| {
-            self.as_ref()
-                .rust()
-                .tab_ids
-                .iter()
-                .position(|candidate| *candidate == tab)
-        });
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.active_site_experiment = None;
-            if let Some(index) = cleanup_index {
-                this.pending_engine_action = Some(format!("site-doctor-close\t{index}"));
+            if let Some(tab) = experiment.temporary_tab {
+                this.pending_engine_action = Some(format!("site-doctor-close\t{tab}"));
             }
         }
         self.as_mut().clear_site_experiment_presentation();

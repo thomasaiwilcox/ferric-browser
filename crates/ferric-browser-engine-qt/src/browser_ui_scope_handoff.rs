@@ -158,23 +158,28 @@ impl qobject::BrowserUi {
                 ));
                 return Err(QString::from(r#"{"error":"local-session-unavailable"}"#));
             };
-            let Some(session) = this.hint_session.as_ref() else {
+            let Some(session) = this.interaction.hint_session.as_ref() else {
                 return Err(QString::from(r#"{"error":"no-session"}"#));
             };
-            if this.active_hint_scope.as_ref().is_some_and(|parent| {
-                parent.owner.target != owner.target
-                    || parent.owner.configuration_revision != owner.configuration_revision
-            }) {
+            if this
+                .interaction
+                .active_hint_scope
+                .as_ref()
+                .is_some_and(|parent| {
+                    parent.owner.target != owner.target
+                        || parent.owner.configuration_revision != owner.configuration_revision
+                })
+            {
                 self.set_status_text(QString::from("The parent region changed. Select it again."));
                 return Err(QString::from(r#"{"error":"stale-scope"}"#));
             }
-            let Some(next_id) = this.next_hint_scope_lease_id.checked_add(1) else {
+            let Some(next_id) = this.interaction.next_hint_scope_lease_id.checked_add(1) else {
                 self.set_status_text(QString::from(
                     "The region could not be selected. Restart region selection.",
                 ));
                 return Err(QString::from(r#"{"error":"scope-lease-capacity"}"#));
             };
-            this.next_hint_scope_lease_id = next_id;
+            this.interaction.next_hint_scope_lease_id = next_id;
             let binding = super::hint_policy::HintScopeBinding {
                 purpose,
                 source_family: this.hint_family.to_string(),
@@ -185,11 +190,12 @@ impl qobject::BrowserUi {
                 kind: selected.kind,
                 selector_policy_revision: session.selector_policy_revision,
                 parent_scope_lease_id: this
+                    .interaction
                     .active_hint_scope
                     .as_ref()
                     .map(|scope| scope.lease_id.clone()),
             };
-            this.pending_hint_scope_handoff = Some(binding.clone());
+            this.interaction.pending_hint_scope_handoff = Some(binding.clone());
             binding
         };
         let action = match purpose {
@@ -226,25 +232,30 @@ impl qobject::BrowserUi {
                 ));
                 return Err(QString::from(r#"{"error":"local-session-unavailable"}"#));
             };
-            let Some(session) = this.hint_session.as_ref() else {
+            let Some(session) = this.interaction.hint_session.as_ref() else {
                 return Err(QString::from(r#"{"error":"no-session"}"#));
             };
-            if this.active_hint_scope.as_ref().is_some_and(|parent| {
-                parent.owner.target != owner.target
-                    || parent.owner.configuration_revision != owner.configuration_revision
-            }) {
+            if this
+                .interaction
+                .active_hint_scope
+                .as_ref()
+                .is_some_and(|parent| {
+                    parent.owner.target != owner.target
+                        || parent.owner.configuration_revision != owner.configuration_revision
+                })
+            {
                 self.set_status_text(QString::from("The parent region changed. Select it again."));
                 return Err(QString::from(r#"{"error":"stale-scope"}"#));
             }
-            let Some(next_id) = this.next_hint_scope_lease_id.checked_add(1) else {
+            let Some(next_id) = this.interaction.next_hint_scope_lease_id.checked_add(1) else {
                 self.set_status_text(QString::from(
                     "The region could not be selected. Restart region selection.",
                 ));
                 return Err(QString::from(r#"{"error":"scope-lease-capacity"}"#));
             };
-            this.next_hint_scope_lease_id = next_id;
+            this.interaction.next_hint_scope_lease_id = next_id;
             let selector_policy_revision = session.selector_policy_revision;
-            let Some(permit) = this.hint_local_interaction_authority.mint(
+            let Some(permit) = this.interaction.hint_local_interaction_authority.mint(
                 super::CommandSource::Ui,
                 owner,
                 LocalInteractionOperation::GridWithinHandoff,
@@ -254,7 +265,7 @@ impl qobject::BrowserUi {
                 ));
                 return Err(QString::from(r#"{"error":"local-authority-unavailable"}"#));
             };
-            this.pending_grid_scope_permit = Some(permit);
+            this.interaction.pending_grid_scope_permit = Some(permit);
             let binding = super::hint_policy::HintScopeBinding {
                 purpose: HintScopePurpose::Grid,
                 source_family: this.hint_family.to_string(),
@@ -265,11 +276,12 @@ impl qobject::BrowserUi {
                 kind: selected.kind,
                 selector_policy_revision,
                 parent_scope_lease_id: this
+                    .interaction
                     .active_hint_scope
                     .as_ref()
                     .map(|scope| scope.lease_id.clone()),
             };
-            this.pending_hint_scope_handoff = Some(binding.clone());
+            this.interaction.pending_hint_scope_handoff = Some(binding.clone());
             binding
         };
         Ok(serde_json::json!({
@@ -302,7 +314,13 @@ impl qobject::BrowserUi {
                 return false;
             }
         };
-        let Some(binding) = self.as_ref().rust().pending_hint_scope_handoff.clone() else {
+        let Some(binding) = self
+            .as_ref()
+            .rust()
+            .interaction
+            .pending_hint_scope_handoff
+            .clone()
+        else {
             self.set_status_text(QString::from(
                 "Scoped Hint rejected: no pending local handoff",
             ));
@@ -316,7 +334,7 @@ impl qobject::BrowserUi {
             effective_hint_selector_snapshot(
                 &rust.config_json.to_string(),
                 &rust.current_url.to_string(),
-                rust.hint_configuration_revision,
+                rust.interaction.hint_configuration_revision,
                 &rust.hint_family.to_string(),
             )
             .ok()
@@ -328,6 +346,7 @@ impl qobject::BrowserUi {
             })
         };
         let current_scope_lease_id = rust
+            .interaction
             .active_hint_scope
             .as_ref()
             .map(|scope| scope.lease_id.as_str());
@@ -336,7 +355,7 @@ impl qobject::BrowserUi {
             owner: local_hint_owner(rust),
             scope_lease_id: current_scope_lease_id,
             selector_policy_revision: current_selector_policy_revision,
-            session: rust.hint_session.as_ref(),
+            session: rust.interaction.hint_session.as_ref(),
             family: &current_family,
             mode: rust.core_mode,
         };
@@ -352,16 +371,17 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.pending_hint_scope_handoff = None;
-            this.active_hint_scope = Some(binding);
-            this.hint_session = None;
-            this.hint_interaction = None;
-            this.hint_consumed.clear();
+            this.interaction.pending_hint_scope_handoff = None;
+            this.interaction.active_hint_scope = Some(binding);
+            this.interaction.hint_session = None;
+            this.interaction.hint_interaction = None;
+            this.interaction.hint_consumed.clear();
             this.hint_values = QString::default();
             this.pending_hint_action = None;
-            this.pending_hint_palette_permit = None;
-            this.pending_grid_scope_permit = None;
-            this.hint_local_interaction_authority
+            this.interaction.pending_hint_palette_permit = None;
+            this.interaction.pending_grid_scope_permit = None;
+            this.interaction
+                .hint_local_interaction_authority
                 .clear_session_requests();
         }
         self.as_mut()
@@ -407,7 +427,13 @@ impl qobject::BrowserUi {
                 return false;
             }
         };
-        let Some(binding) = self.as_ref().rust().pending_hint_scope_handoff.clone() else {
+        let Some(binding) = self
+            .as_ref()
+            .rust()
+            .interaction
+            .pending_hint_scope_handoff
+            .clone()
+        else {
             self.set_status_text(QString::from("Scoped Grid rejected: no local handoff"));
             return false;
         };
@@ -417,7 +443,7 @@ impl qobject::BrowserUi {
             effective_hint_selector_snapshot(
                 &rust.config_json.to_string(),
                 &rust.current_url.to_string(),
-                rust.hint_configuration_revision,
+                rust.interaction.hint_configuration_revision,
                 &rust.hint_family.to_string(),
             )
             .ok()
@@ -431,6 +457,7 @@ impl qobject::BrowserUi {
         let binding_ref = self.as_ref();
         let rust = binding_ref.rust();
         let current_scope_lease_id = rust
+            .interaction
             .active_hint_scope
             .as_ref()
             .map(|scope| scope.lease_id.as_str());
@@ -439,7 +466,7 @@ impl qobject::BrowserUi {
             owner: local_hint_owner(rust),
             scope_lease_id: current_scope_lease_id,
             selector_policy_revision: current_selector_policy_revision,
-            session: rust.hint_session.as_ref(),
+            session: rust.interaction.hint_session.as_ref(),
             family: &current_family,
             mode: rust.core_mode,
         };
@@ -452,14 +479,17 @@ impl qobject::BrowserUi {
         let permit_valid = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.pending_grid_scope_permit.take().is_some_and(|permit| {
-                this.hint_local_interaction_authority.consume(
-                    permit,
-                    super::CommandSource::Ui,
-                    binding.owner,
-                    LocalInteractionOperation::GridWithinHandoff,
-                )
-            })
+            this.interaction
+                .pending_grid_scope_permit
+                .take()
+                .is_some_and(|permit| {
+                    this.interaction.hint_local_interaction_authority.consume(
+                        permit,
+                        super::CommandSource::Ui,
+                        binding.owner,
+                        LocalInteractionOperation::GridWithinHandoff,
+                    )
+                })
         };
         if !permit_valid {
             self.set_status_text(QString::from(
@@ -573,7 +603,7 @@ impl qobject::BrowserUi {
         let current_owner_matches = {
             let ui_binding = self.as_ref();
             let rust = ui_binding.rust();
-            rust.spatial_session.is_none()
+            rust.interaction.spatial_session.is_none()
                 && rust.window == Some(binding.owner.window)
                 && current_target(rust.state.as_ref(), rust.tab) == Some(target.target)
         };
@@ -584,7 +614,8 @@ impl qobject::BrowserUi {
         let session = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let mut session = SpatialSession::new_scoped(&mut this.spatial_ids, target, scope);
+            let mut session =
+                SpatialSession::new_scoped(&mut this.interaction.spatial_ids, target, scope);
             if session
                 .observe_scoped_surface(owner, viewport, interaction)
                 .is_err()
@@ -624,18 +655,19 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.pending_hint_scope_handoff = None;
-            this.active_hint_scope = None;
-            this.hint_session = None;
-            this.hint_interaction = None;
-            this.hint_consumed.clear();
+            this.interaction.pending_hint_scope_handoff = None;
+            this.interaction.active_hint_scope = None;
+            this.interaction.hint_session = None;
+            this.interaction.hint_interaction = None;
+            this.interaction.hint_consumed.clear();
             this.hint_values = QString::default();
             this.pending_hint_action = None;
-            this.pending_hint_palette_permit = None;
-            this.pending_grid_scope_permit = None;
-            this.hint_local_interaction_authority
+            this.interaction.pending_hint_palette_permit = None;
+            this.interaction.pending_grid_scope_permit = None;
+            this.interaction
+                .hint_local_interaction_authority
                 .clear_session_requests();
-            this.spatial_session = Some(session);
+            this.interaction.spatial_session = Some(session);
         }
         self.as_mut()
             .set_hint_options("all", false, "current", None, false, 1);
@@ -663,9 +695,9 @@ impl qobject::BrowserUi {
         self.as_mut().set_hint_target(QString::from("current"));
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        this.hint_session = None;
-        this.hint_interaction = None;
-        this.hint_consumed.clear();
+        this.interaction.hint_session = None;
+        this.interaction.hint_interaction = None;
+        this.interaction.hint_consumed.clear();
         "current".clone_into(&mut this.hint_rapid_target);
     }
 }

@@ -45,10 +45,14 @@ def inject_native(action):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--inject", choices=["copy", "paste", "yank", "command"])
+    parser.add_argument("--executable", type=Path,
+                        default=ROOT / "target/application-tests/application_tests",
+                        help="Native application test executable to qualify")
     args = parser.parse_args()
     if args.inject:
         inject_native(args.inject)
         return
+    executable = args.executable.resolve(strict=True)
 
     for tool in ("weston", "wl-copy", "wl-paste", "wtype"):
         if not shutil.which(tool):
@@ -86,7 +90,7 @@ def main():
                            FERRIC_CLIPBOARD_HOST_RUNTIME=host_runtime,
                            FERRIC_CLIPBOARD_HOST_DISPLAY=str(parent_socket),
                            FERRIC_CLIPBOARD_INJECTOR=str(Path(__file__).resolve()))
-                subprocess.run([str(ROOT / "target/application-tests/application_tests"),
+                subprocess.run([str(executable),
                                 "clipboardWaylandTransport"], env=env, check=True, timeout=60)
                 print("Private Wayland clipboard transfers passed with compositor-delivered input; "
                       "physical keyboard input is a separate qualification.")

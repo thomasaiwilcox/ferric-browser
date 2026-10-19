@@ -3,7 +3,7 @@
 //! This module owns profile-listing, mutation, and deletion-preview work. The
 //! Qt bridge only submits requests and presents their bounded results.
 
-use crate::single_flight::{Poll as WorkerPoll, SingleFlightWorker, SubmitError};
+use ferric_browser_runtime::worker::{Poll as WorkerPoll, SingleFlightWorker, SubmitError};
 use ferric_browser_storage::{
     ProfileDeletionOutcome, ProfileLock, ProfilePrivacy, ProfileRegistry, StorageRoots,
     delete_profile_transaction,

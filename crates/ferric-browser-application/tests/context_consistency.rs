@@ -47,6 +47,7 @@ fn open(roots: &TestRoots, contexts: ContextsConfig) -> BrowserApplication {
         initial_profile_overrides: RuntimeOverrides::default(),
         command_line_overrides: RuntimeOverrides::default(),
         config_path: None,
+        script_catalog_root: None,
         contexts,
         context_configuration_error: None,
     })

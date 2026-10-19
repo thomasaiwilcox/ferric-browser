@@ -87,6 +87,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .library
             .mark_feedback_tickets
             .clear();
         for lane in [
@@ -112,8 +113,8 @@ impl qobject::BrowserUi {
     pub(super) fn invalidate_session_catalog(mut self: Pin<&mut Self>) {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        this.session_names_dirty.set(true);
-        this.session_names_refresh_again |= this.session_names_pending;
+        this.library.session_names_dirty.set(true);
+        this.library.session_names_refresh_again |= this.session_names_pending;
     }
 
     pub(super) fn refresh_profiles_after_mutation(mut self: Pin<&mut Self>) {

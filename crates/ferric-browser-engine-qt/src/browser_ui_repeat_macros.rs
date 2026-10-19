@@ -5,6 +5,7 @@ use super::{
     is_repeatable_command, macro_status_text, qobject, userscript_action_values,
     valid_macro_register,
 };
+use crate::OperationUpdate;
 
 impl qobject::BrowserUi {
     pub(super) fn show_action_list(
@@ -44,11 +45,7 @@ impl qobject::BrowserUi {
         }
         if let Some(values) = actions.as_array_mut() {
             values.extend(userscript_action_values(
-                self.as_ref()
-                    .rust()
-                    .userscript_roots
-                    .as_ref()
-                    .map(|roots| roots.config.as_path()),
+                self.as_ref().rust().cached_userscript_actions(),
                 subject,
                 self.as_ref().userscript_availability(),
             )?);
@@ -261,22 +258,25 @@ impl qobject::BrowserUi {
                     true
                 }
                 Err(error) => {
-                    self.set_status_text(QString::from(error));
+                    self.set_status_text(QString::from(error.to_string()));
                     false
                 }
             };
         }
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        finish_pending_selection_operation(this, "cancelled");
-        this.pending_caret = None;
-        if let Some(pending) = this.pending_editor.take() {
+        finish_pending_selection_operation(this, OperationUpdate::cancelled());
+        this.processes.pending_caret = None;
+        if let Some(pending) = this.processes.pending_editor.take() {
             discard_editor_request(pending);
         }
-        if let Some(pending) = this.pending_config_edit.take() {
+        if let Some(pending) = this.processes.pending_config_edit.take() {
             discard_config_edit(pending);
         }
-        super::browser_ui_download_requests::finish_pending_download_operation(this, "cancelled");
+        super::browser_ui_download_requests::finish_pending_download_operation(
+            this,
+            OperationUpdate::cancelled(),
+        );
         self.set_status_text(QString::from("Pending browser work cancelled"));
         true
     }

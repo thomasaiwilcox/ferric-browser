@@ -44,6 +44,7 @@ impl qobject::BrowserUi {
             return Err("the window profile is not ready".into());
         }
         let (_, target, requested_url, _) = source
+            .navigation
             .popup_journey_targets
             .iter()
             .find(|(candidate, _, _, claimed)| candidate == &token && *claimed)
@@ -78,6 +79,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .popup_journey_targets
             .push((token.clone(), popup_target, requested_url.clone(), true));
         destination
@@ -95,9 +97,13 @@ impl qobject::BrowserUi {
                 .popup_tab_ids
                 .retain(|candidate| *candidate != target.tab);
             source
+                .navigation
                 .popup_journey_targets
                 .retain(|(candidate, _, _, _)| candidate != &token);
-            source.pending_navigation_urls.remove(&target.tab);
+            source
+                .navigation
+                .pending_navigation_urls
+                .remove(&target.tab);
         }
         Ok(())
     }

@@ -166,10 +166,11 @@ pub(super) fn parse_subcommand(
         }
         value => {
             if CommandRegistry::default_v1().resolve(value).is_ok() {
-                let mut command_arguments = Vec::with_capacity(tail.len() + 1);
-                command_arguments.push(value.to_owned());
-                command_arguments.extend(tail.iter().cloned());
-                let text = command_arguments.join(" ");
+                let text = ferric_browser_core::ParsedCommand {
+                    name: value.to_owned(),
+                    arguments: tail.to_vec(),
+                }
+                .to_text();
                 validate_cli_text(&text, "command text")?;
                 return Ok((
                     std::mem::take(options),
@@ -414,6 +415,8 @@ pub(super) fn query_from_values(
     let mut switcher_scope = None;
     let mut switcher_limit = None;
     let mut include_private = false;
+    let mut operation_cursor = None;
+    let mut operation_stderr = false;
     let mut index = 0;
     while index < values.len() {
         match values[index].as_str() {
@@ -433,6 +436,16 @@ pub(super) fn query_from_values(
                         .ok_or_else(|| "--window requires a value".to_owned())?,
                 );
             }
+            "--cursor" => {
+                index += 1;
+                operation_cursor = Some(
+                    values
+                        .get(index)
+                        .cloned()
+                        .ok_or_else(|| "--cursor requires a value".to_owned())?,
+                );
+            }
+            "--stderr" => operation_stderr = true,
             "--mode" => {
                 index += 1;
                 mode = Some(
@@ -491,6 +504,9 @@ pub(super) fn query_from_values(
     if kind != "config" && url.is_some() {
         return Err("--url is only supported by config queries".into());
     }
+    if kind != "operations" && (operation_cursor.is_some() || operation_stderr) {
+        return Err("--cursor and --stderr require operations query".into());
+    }
     let (method, params) = match kind.as_str() {
         "tabs" => {
             if mode.is_some() || key.is_some() || explain || include_members {
@@ -538,17 +554,39 @@ pub(super) fn query_from_values(
             ("windows.query", params)
         }
         "operations" => {
-            if mode.is_some() || key.is_some() || explain || include_members {
-                return Err(
-                    "operations query accepts only --window, --private and --format".into(),
-                );
+            if mode.is_some()
+                || explain
+                || include_members
+                || switcher_scope.is_some()
+                || url.is_some()
+            {
+                return Err("operations query accepts an operation ID, --window, --private, --stderr, --limit, --cursor and --format".into());
             }
             let mut params = serde_json::json!({});
             if let Some(window) = window {
-                params["window"] = serde_json::Value::String(window);
+                params["window"] = window.into();
             }
             if include_private {
-                params["include_private"] = serde_json::Value::Bool(true);
+                params["include_private"] = true.into();
+            }
+            if operation_stderr {
+                params["include_stderr"] = true.into();
+            }
+            if let Some(id) = key {
+                validate_cli_text(&id, "operation ID")?;
+                params["operation_id"] = id.into();
+            }
+            if let Some(cursor) = operation_cursor {
+                validate_cli_text(&cursor, "operation cursor")?;
+                params["cursor"] = cursor.into();
+            }
+            if let Some(limit) = switcher_limit {
+                let limit = limit
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|limit| (1..=100).contains(limit))
+                    .ok_or_else(|| "operation limit must be 1 to 100".to_owned())?;
+                params["limit"] = limit.into();
             }
             ("operations.query", params)
         }

@@ -54,6 +54,7 @@ pub struct ConfigurationSnapshot {
 #[derive(Debug)]
 pub struct PreparedConfigurationUpdate {
     pub(crate) expected_revision: u64,
+    pub(crate) profile_revision: u64,
     pub(crate) state: ConfigurationState,
 }
 
@@ -80,6 +81,10 @@ impl ConfigurationState {
             revision: 0,
             pending_changes: Vec::new(),
         }
+    }
+
+    pub(crate) const fn layers(&self) -> &ConfigurationLayers {
+        &self.layers
     }
 
     pub(crate) const fn effective(&self) -> &Config {
@@ -116,13 +121,6 @@ impl ConfigurationState {
         Ok(self.commit(effective, Vec::new()))
     }
 
-    pub(crate) fn update_layers(
-        &mut self,
-        layers: ConfigurationLayers,
-    ) -> Result<ConfigurationSnapshot, ConfigError> {
-        self.update_layers_at(layers, ConfigurationApplyBoundary::RuntimeUpdate)
-    }
-
     pub(crate) fn update_layers_at(
         &mut self,
         layers: ConfigurationLayers,
@@ -145,15 +143,6 @@ impl ConfigurationState {
         ferric_browser_config::validate(&effective)?;
         self.layers = layers;
         Ok(self.commit(effective, pending))
-    }
-
-    pub(crate) fn replace_temporary(
-        &mut self,
-        temporary: RuntimeOverrides,
-    ) -> Result<ConfigurationSnapshot, ConfigError> {
-        let mut layers = self.layers.clone();
-        layers.temporary = temporary;
-        self.update_layers(layers)
     }
 
     fn commit(

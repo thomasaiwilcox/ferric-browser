@@ -42,7 +42,7 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.spatial_session = None;
+            this.interaction.spatial_session = None;
         }
         self.as_mut().set_spatial_visible(false);
         self.as_mut().set_spatial_selecting(false);
@@ -102,6 +102,7 @@ impl qobject::BrowserUi {
         let projection = self
             .as_ref()
             .rust()
+            .interaction
             .spatial_session
             .as_ref()
             .and_then(SpatialSession::projection);
@@ -145,7 +146,7 @@ impl qobject::BrowserUi {
 
     pub(super) fn begin_spatial_navigation(mut self: Pin<&mut Self>) -> bool {
         if self.as_ref().rust().core_mode == Mode::Grid {
-            if self.as_ref().rust().spatial_session.is_some() {
+            if self.as_ref().rust().interaction.spatial_session.is_some() {
                 return true;
             }
             self.as_mut()
@@ -195,13 +196,13 @@ impl qobject::BrowserUi {
         let session = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            SpatialSession::new(&mut this.spatial_ids, spatial_target)
+            SpatialSession::new(&mut this.interaction.spatial_ids, spatial_target)
         };
         let session_id = session.id().to_string();
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.spatial_session = Some(session);
+            this.interaction.spatial_session = Some(session);
         }
         self.as_mut().set_core_mode(Mode::Grid);
         self.as_mut().set_mode(QString::from("grid"));
@@ -221,13 +222,14 @@ impl qobject::BrowserUi {
 
     pub(super) fn cancel_spatial_navigation(mut self: Pin<&mut Self>, reason: SpatialCancelReason) {
         let was_grid = self.as_ref().rust().core_mode == Mode::Grid;
-        let had_session = self.as_ref().rust().spatial_session.is_some();
+        let had_session = self.as_ref().rust().interaction.spatial_session.is_some();
         if !was_grid && !had_session {
             return;
         }
         let lifecycle = self
             .as_ref()
             .rust()
+            .interaction
             .spatial_session
             .as_ref()
             .and_then(SpatialSession::lifecycle);
@@ -237,6 +239,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .interaction
             .spatial_session
             .as_mut()
         {
@@ -298,7 +301,7 @@ impl qobject::BrowserUi {
         let result = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(session) = this.spatial_session.as_mut() else {
+            let Some(session) = this.interaction.spatial_session.as_mut() else {
                 return false;
             };
             let owner = SpatialOwner::new(session.target(), surface);
@@ -336,6 +339,7 @@ impl qobject::BrowserUi {
             && !self
                 .as_ref()
                 .rust()
+                .interaction
                 .spatial_session
                 .as_ref()
                 .is_some_and(|session| session.lifecycle() == Some(SpatialLifecycle::Selecting))
@@ -396,7 +400,7 @@ impl qobject::BrowserUi {
             };
             let binding = self.as_ref();
             let rust = binding.rust();
-            let Some(session) = rust.spatial_session.as_ref() else {
+            let Some(session) = rust.interaction.spatial_session.as_ref() else {
                 return false;
             };
             let Some(scope) = session.scope() else {
@@ -426,7 +430,7 @@ impl qobject::BrowserUi {
                 && target_is_current
                 && view_matches
                 && owner.surface == stamp
-                && rust.hint_configuration_revision == scope.configuration_revision
+                && rust.interaction.hint_configuration_revision == scope.configuration_revision
                 && rust.spatial_scope_lease_id.to_string() == scope.lease_id
                 && scope.scroll_revision == integer("scroll_revision").unwrap_or(u64::MAX)
                 && scope.css_viewport_width_bits == css_viewport_width.to_bits()
@@ -453,10 +457,10 @@ impl qobject::BrowserUi {
         let request = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(session) = this.spatial_session.as_mut() else {
+            let Some(session) = this.interaction.spatial_session.as_mut() else {
                 return false;
             };
-            session.request(&mut this.spatial_ids, action)
+            session.request(&mut this.interaction.spatial_ids, action)
         };
         let request = match request {
             Ok(request) => request,
@@ -478,7 +482,7 @@ impl qobject::BrowserUi {
             "scope_lease_id": self
                 .as_ref()
                 .rust()
-                .spatial_session
+                .interaction.spatial_session
                 .as_ref()
                 .and_then(SpatialSession::scope)
                 .map(|scope| scope.lease_id.as_str()),
@@ -578,6 +582,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .interaction
                     .spatial_session
                     .as_mut()
                     .ok_or(SpatialError::Inactive)
@@ -639,6 +644,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .interaction
                     .spatial_session
                     .as_mut()
                     .ok_or(SpatialError::Inactive)
@@ -656,6 +662,7 @@ impl qobject::BrowserUi {
                 let status = if self
                     .as_ref()
                     .rust()
+                    .interaction
                     .spatial_session
                     .as_ref()
                     .is_some_and(|session| session.scope().is_some())
@@ -669,6 +676,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .interaction
                     .spatial_session
                     .as_mut()
                     .ok_or(SpatialError::Inactive)
@@ -685,6 +693,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .interaction
                     .spatial_session
                     .as_mut()
                     .ok_or(SpatialError::Inactive)
@@ -738,7 +747,7 @@ impl qobject::BrowserUi {
         let result = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(session) = this.spatial_session.as_mut() else {
+            let Some(session) = this.interaction.spatial_session.as_mut() else {
                 return false;
             };
             if session.id() != session_id {

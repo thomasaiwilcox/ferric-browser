@@ -31,7 +31,13 @@ impl qobject::BrowserUi {
             _ => None,
         } {
             if target == "choose" {
-                if self.as_ref().rust().pending_hint_palette_permit.is_some() {
+                if self
+                    .as_ref()
+                    .rust()
+                    .interaction
+                    .pending_hint_palette_permit
+                    .is_some()
+                {
                     self.set_status_text(QString::from("Hint action palette is already open"));
                     return QString::from(r#"{"error":"palette-already-open"}"#);
                 }
@@ -112,7 +118,7 @@ impl qobject::BrowserUi {
     pub(super) fn cancel_hint_palette(mut self: Pin<&mut Self>) {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        this.pending_hint_palette_permit = None;
+        this.interaction.pending_hint_palette_permit = None;
         if this.hint_rapid_target == "choose" {
             "current".clone_into(&mut this.hint_rapid_target);
         }
@@ -256,10 +262,11 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Tab unavailable. Start hints again."));
             return QString::from(r#"{"error":"stale-target"}"#);
         };
-        let configuration_revision = self.as_ref().rust().hint_configuration_revision;
+        let configuration_revision = self.as_ref().rust().interaction.hint_configuration_revision;
         if self
             .as_ref()
             .rust()
+            .interaction
             .hint_session
             .as_ref()
             .is_some_and(|session| session.configuration_revision != configuration_revision)
@@ -290,6 +297,7 @@ impl qobject::BrowserUi {
         if self
             .as_ref()
             .rust()
+            .interaction
             .hint_session
             .as_ref()
             .is_some_and(|session| {
@@ -303,7 +311,7 @@ impl qobject::BrowserUi {
         }
         let selected = {
             let binding = self.as_ref();
-            let Some(session) = binding.rust().hint_session.as_ref() else {
+            let Some(session) = binding.rust().interaction.hint_session.as_ref() else {
                 self.set_status_text(QString::from("Hint session has expired"));
                 return QString::from(r#"{"error":"no-session"}"#);
             };
@@ -366,7 +374,7 @@ impl qobject::BrowserUi {
             &self.as_ref().rust().hint_rapid_target,
             pending_action.is_some(),
         );
-        if self.as_ref().rust().hint_consumed.contains(&(
+        if self.as_ref().rust().interaction.hint_consumed.contains(&(
             selected.frame_owner.clone(),
             selected.frame_path.clone(),
             selected.element_id,
@@ -904,12 +912,12 @@ impl qobject::BrowserUi {
         if keeps_hint_mode {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.hint_consumed.insert((
+            this.interaction.hint_consumed.insert((
                 selected.frame_owner.clone(),
                 selected.frame_path.clone(),
                 selected.element_id,
             ));
-            if let Some(interaction) = this.hint_interaction.as_mut() {
+            if let Some(interaction) = this.interaction.hint_interaction.as_mut() {
                 interaction.consume(&selected);
             }
             this.pending_hint_action = None;
@@ -935,7 +943,7 @@ impl qobject::BrowserUi {
             let Some(owner) = local_hint_owner(this) else {
                 return false;
             };
-            this.hint_local_interaction_authority.mint(
+            this.interaction.hint_local_interaction_authority.mint(
                 CommandSource::Ui,
                 owner,
                 LocalInteractionOperation::HintPaletteSelection,
@@ -948,6 +956,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .interaction
             .pending_hint_palette_permit = Some(permit);
         true
     }
@@ -956,13 +965,13 @@ impl qobject::BrowserUi {
         let permit = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(permit) = this.pending_hint_palette_permit.take() else {
+            let Some(permit) = this.interaction.pending_hint_palette_permit.take() else {
                 return false;
             };
             let Some(owner) = local_hint_owner(this) else {
                 return false;
             };
-            this.hint_local_interaction_authority.consume(
+            this.interaction.hint_local_interaction_authority.consume(
                 permit,
                 CommandSource::Ui,
                 owner,
@@ -974,11 +983,11 @@ impl qobject::BrowserUi {
 }
 
 pub(super) fn local_hint_owner(rust: &super::BrowserUiRust) -> Option<LocalInteractionOwner> {
-    let session = rust.hint_session.as_ref()?;
+    let session = rust.interaction.hint_session.as_ref()?;
     Some(LocalInteractionOwner {
         window: rust.window?,
         session: session.id,
         target: session.target,
-        configuration_revision: rust.hint_configuration_revision,
+        configuration_revision: rust.interaction.hint_configuration_revision,
     })
 }

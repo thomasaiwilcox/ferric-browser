@@ -2280,7 +2280,7 @@ Handshake request and response:
 {
   "id": "hello-1",
   "method": "hello",
-  "params": {"protocol_major": 2, "protocol_minor": 0, "client": "ferric-browser-cli"}
+  "params": {"protocol_major": 3, "protocol_minor": 0, "client": "ferric-browser-cli"}
 }
 ```
 
@@ -2288,7 +2288,7 @@ Handshake request and response:
 {
   "id": "hello-1",
   "result": {
-    "protocol_major": 2,
+    "protocol_major": 3,
     "protocol_minor": 0,
     "instance_id": "c6346caf-e69d-4919-99ca-510c89bb7d32",
     "capabilities": ["command.execute", "tabs.query", "events.subscribe"]
@@ -2335,7 +2335,7 @@ Error response:
 }
 ```
 
-**IPC-003 — Method surface.** V1 supports `hello`, `command.execute`,
+**IPC-003 — Method surface.** Protocol 3 supports `hello`, `command.execute`,
 `action.execute`, `actions.query`, `windows.query`, `tabs.query`,
 `profiles.query`, `contexts.query`, `switcher.query`, `site.status`,
 `bindings.query`, `downloads.query`, `config.get`, `diagnostics.get`,
@@ -2364,6 +2364,18 @@ validation still applies after native routing.
 Operation queries follow the same private-query opt-in and configuration rule,
 including status and explicitly requested stderr. Scoped operation queries use
 the same live window selector as tab queries.
+Protocol 3 operation pages accept `limit` (1–100, default 50) and an opaque
+`cursor`; responses return `next_cursor` when more retained records remain.
+Pages are bounded to 500 KiB of operation rows and cross-window queries paginate
+after aggregation. A cursor is a continuation through retained history, not a
+snapshot lease; expired records and retired owners may disappear between pages.
+Each application admits at most 64 active operations and retains at most 256
+terminal records. Stderr is limited to 16 KiB per operation and 1 MiB in total.
+Terminal completion events carry identity, state and failure category; output
+requires an authorized query. Completion backpressure rejects new admission
+before effects start, and terminal records never become active again.
+The version 2 handshake is rejected; persisted profile/session formats are
+unchanged by this wire-version transition.
 Download activation commands report a preparation operation. That operation
 completes only when the matching native-profile offer has been admitted; it does
 not claim that the file has finished. Cancellation invalidates its request token

@@ -97,20 +97,8 @@ The following formerly JSON-encoded policy/presentation data must remain typed:
 - settings and their mutation results, context choices, theme tokens, link-preview fields, and site-doctor
   status.
 
-`tests::qml_json_contract_allowlist_is_explicit` records the current number of
-JSON calls in the window runtime and native-page components (20 parses and 40
-stringifications). Adding a new call requires a deliberate update to
-this document and a review that it is an opaque page-script, diagnostic,
-export contract, or the narrowly documented local scalar identity encoding—not
-a presentation or policy model.
-
-## QML write boundary
-
-QML submits application changes through a named bridge request or a registered
-command. It must not assign runtime properties directly. `status_text` is the
-sole exception: it is transient native-callback narration for the visible
-status surface, not application or policy state. The
-`qml_submits_runtime_intents_instead_of_writing_runtime_state` architecture
-test enforces this boundary.
-
-Scope acquisition receipts are serialized inside WebEngine before crossing its QVariant result bridge, then decoded in QML and passed unchanged to Rust's strict receipt validator. The two scoped Hint/Grid handoff paths preserve explicit nullable parent-lease fields; a QVariant object conversion must not turn a valid null into an omitted field. These are bounded opaque page-script results, not presentation models.
+`tests::qml_json_contract_allowlist_is_explicit` rejects the prohibited bridge
+payloads independently of file layout and call counts. The production
+`deferredNativeRequestsKeepCapturedTargets` test also checks actual Qt property
+and return types, then consumes structured native requests without JSON parsing.
+New opaque contracts still require review against the allowlist above.

@@ -8,24 +8,6 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 #[must_use]
-pub(super) fn operation_status_kind(status: &str) -> &'static str {
-    if status.starts_with("failed") {
-        "failed"
-    } else if status == "cancelled" {
-        "cancelled"
-    } else {
-        "completed"
-    }
-}
-
-#[must_use]
-pub(super) fn operation_is_terminal(status: &str) -> bool {
-    matches!(status, "cancelled" | "detached" | "completed")
-        || status.starts_with("completed: ")
-        || status.starts_with("failed")
-}
-
-#[must_use]
 pub(super) fn action_operation_id(result: Option<&Value>, prefix: &str) -> String {
     result
         .and_then(|value| value.get("operation_id"))
@@ -53,16 +35,6 @@ pub(super) fn action_audit_record(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn status_classification_and_terminal_states_are_stable() {
-        assert_eq!(operation_status_kind("failed (timeout)"), "failed");
-        assert_eq!(operation_status_kind("cancelled"), "cancelled");
-        assert_eq!(operation_status_kind("running"), "completed");
-        assert!(operation_is_terminal("completed: saved"));
-        assert!(operation_is_terminal("failed (timeout)"));
-        assert!(!operation_is_terminal("selection pending"));
-    }
 
     #[test]
     fn action_ids_accept_only_bounded_untrusted_values() {

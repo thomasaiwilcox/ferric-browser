@@ -20,6 +20,7 @@ fn candidate(bytes: &[u8], index: usize) -> HintCandidate {
         related_element_id: None,
         kind,
         frame_path: format!("frame-{}", second % 4),
+        frame_owner: String::new(),
         text: format!("candidate-{index}-{}", first % 16),
         href: (kind == HintKind::Link).then(|| "https://example.test/".to_owned()),
         geometry: HintGeometry {
@@ -28,6 +29,7 @@ fn candidate(bytes: &[u8], index: usize) -> HintCandidate {
             width: 1.0 + f64::from(bytes.get(2).copied().unwrap_or_default()) / 16.0,
             height: 1.0 + f64::from(bytes.get(3).copied().unwrap_or_default()) / 16.0,
         },
+        presentation: None,
     }
 }
 

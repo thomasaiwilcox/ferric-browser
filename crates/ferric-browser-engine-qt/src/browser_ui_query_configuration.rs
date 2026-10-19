@@ -125,6 +125,7 @@ impl qobject::BrowserUi {
         })?;
         let pending_value = self
             .rust()
+            .configuration_io
             .pending_config
             .as_ref()
             .and_then(|pending| config_value_at_path(pending, key))
@@ -159,13 +160,13 @@ impl qobject::BrowserUi {
             }
         }
         if let Some(url) = requested_url {
-            let config =
-                serde_json::from_value::<Config>(self.rust().config.clone()).map_err(|error| {
-                    IpcQueryError::Invalid(format!(
-                        "validated configuration could not be decoded: {error}"
-                    ))
-                })?;
-            for rule in matching_site_rules(&config, url) {
+            let config = self
+                .rust()
+                .state
+                .as_ref()
+                .ok_or_else(|| IpcQueryError::Invalid("application is unavailable".into()))?
+                .configuration();
+            for rule in matching_site_rules(config, url) {
                 if let Some(site_value) = rule.set.get(key)
                     && let Ok(site_value) = serde_json::to_value(site_value)
                 {

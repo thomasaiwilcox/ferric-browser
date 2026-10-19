@@ -6,6 +6,14 @@
 //! returned effects; they do not own application state or persistence
 //! scheduling.
 
+pub mod userscript;
+mod userscript_discovery;
+mod userscript_install;
+pub mod userscript_io;
+mod userscript_manifest;
+mod userscript_protocol;
+mod userscript_storage;
+
 use std::{
     collections::BTreeMap,
     sync::{Arc, atomic::AtomicBool},
@@ -23,12 +31,31 @@ use ferric_browser_storage::{
     ContextRecord, ContextRegistry, ContextRegistryError, StorageWorkerError,
 };
 
+mod view_requests;
+pub use view_requests::{
+    ScriptWorld, ScrollDirection, ScrollEdge, ScrollTargetPolicy, VerticalDirection, ViewCommand,
+    ViewRequest,
+};
+mod operations;
+pub use operations::{
+    OperationCatalog, OperationCompletion, OperationFailure, OperationRecord, OperationState,
+    OperationUpdate,
+};
+
+mod configuration_write;
+pub use configuration_write::PersistedConfigurationUpdate;
+
 mod configuration;
 mod configuration_reservation;
 pub use configuration_reservation::ConfigurationReservation;
 mod contexts;
 mod download_catalog;
 mod profile;
+mod profile_configuration;
+mod userscript_jobs;
+pub use userscript_jobs::{
+    UserscriptManagerRequest, UserscriptManagerResult, UserscriptMutationOutcome,
+};
 mod profile_open;
 mod profile_session;
 pub use download_catalog::{
@@ -60,9 +87,14 @@ pub use storage::{StorageEffect, StorageTicket};
 /// The Qt-independent owner of runtime state, effective configuration, and
 /// optional durable metadata work.
 pub struct BrowserApplication {
+    operations: OperationCatalog,
+    page_scripts: Result<Arc<userscript::UserscriptCatalog>, String>,
+    userscript_root: Option<std::path::PathBuf>,
+    userscript_worker: Option<userscript_jobs::UserscriptManagerWorker>,
     runtime: BrowserRuntime,
     configuration: ConfigurationState,
     configuration_reservation: Arc<AtomicBool>,
+    configuration_write: Option<configuration_write::ConfigurationWrite>,
     active_profile: Option<ActiveProfile>,
     next_profile_generation: u64,
     download_owner: uuid::Uuid,
@@ -80,9 +112,14 @@ impl BrowserApplication {
     #[must_use]
     pub fn new(configuration: Config) -> Self {
         Self {
+            operations: OperationCatalog::default(),
+            page_scripts: Ok(Arc::default()),
+            userscript_root: None,
+            userscript_worker: None,
             runtime: BrowserRuntime::new(),
             configuration: ConfigurationState::new(configuration),
             configuration_reservation: Arc::default(),
+            configuration_write: None,
             active_profile: None,
             next_profile_generation: 1,
             download_owner: uuid::Uuid::new_v4(),
@@ -98,9 +135,14 @@ impl BrowserApplication {
     #[must_use]
     pub fn from_runtime(runtime: BrowserRuntime, configuration: Config) -> Self {
         Self {
+            operations: OperationCatalog::default(),
+            page_scripts: Ok(Arc::default()),
+            userscript_root: None,
+            userscript_worker: None,
             runtime,
             configuration: ConfigurationState::new(configuration),
             configuration_reservation: Arc::default(),
+            configuration_write: None,
             active_profile: None,
             next_profile_generation: 1,
             download_owner: uuid::Uuid::new_v4(),
@@ -143,9 +185,14 @@ impl BrowserApplication {
             .replace(profile.storage_path())
             .map_err(|error| ProfileOpenError::InvalidRequest(error.to_string()))?;
         Ok(Self {
+            operations: OperationCatalog::default(),
+            page_scripts: self.page_scripts.clone(),
+            userscript_root: self.userscript_root.clone(),
+            userscript_worker: None,
             runtime,
             configuration: self.configuration.clone(),
-            configuration_reservation: Arc::default(),
+            configuration_reservation: self.configuration_reservation.clone(),
+            configuration_write: None,
             active_profile: Some(profile.clone()),
             next_profile_generation: self.next_profile_generation,
             download_owner: uuid::Uuid::new_v4(),
@@ -169,9 +216,14 @@ impl BrowserApplication {
         let (runtime, window, tab) = BrowserRuntime::bootstrap(privacy, profile_label)?;
         Ok((
             Self {
+                operations: OperationCatalog::default(),
+                page_scripts: Ok(Arc::default()),
+                userscript_root: None,
+                userscript_worker: None,
                 runtime,
                 configuration: ConfigurationState::new(configuration),
                 configuration_reservation: Arc::default(),
+                configuration_write: None,
                 active_profile: None,
                 next_profile_generation: 1,
                 download_owner: uuid::Uuid::new_v4(),
@@ -181,6 +233,69 @@ impl BrowserApplication {
             window,
             tab,
         ))
+    }
+
+    /// Root selected by profile bootstrap; adapters may watch it but cannot
+    /// redirect discovery or mutation jobs to another directory.
+    #[must_use]
+    pub fn userscript_root(&self) -> Option<&std::path::Path> {
+        self.userscript_root.as_deref()
+    }
+
+    /// Borrows the validated manifest and source catalog without filesystem I/O.
+    /// # Errors
+    /// Returns the last catalog loading failure without publishing partial data.
+    pub fn userscript_catalog(&self) -> Result<&userscript::UserscriptCatalog, String> {
+        self.page_scripts
+            .as_ref()
+            .map(AsRef::as_ref)
+            .map_err(Clone::clone)
+    }
+
+    /// Matches an already loaded catalog without performing filesystem I/O.
+    /// # Errors
+    /// Reports a catalog loading failure; invalid catalogs never partially apply.
+    pub fn matching_page_scripts(
+        &self,
+        url: &str,
+        private: bool,
+    ) -> Result<Vec<userscript::PageScript>, String> {
+        self.page_scripts
+            .as_ref()
+            .map(|catalog| catalog.matching(url, private))
+            .map_err(Clone::clone)
+    }
+
+    #[must_use]
+    pub fn userscript_watch_sources(&self) -> Vec<std::path::PathBuf> {
+        let mut sources = self
+            .page_scripts
+            .as_ref()
+            .map_or_else(|_| Vec::new(), |catalog| catalog.sources().to_vec());
+        // A failed catalog must remain observable so correcting or adding a
+        // manifest can recover it, including when the directory is created later.
+        if let Some(root) = &self.userscript_root {
+            sources.push(root.join("userscripts/.catalog-watch"));
+        }
+        sources.sort();
+        sources.dedup();
+        sources
+    }
+
+    pub fn replace_page_script_catalog(
+        &mut self,
+        catalog: Result<Arc<userscript::UserscriptCatalog>, String>,
+    ) {
+        self.page_scripts = catalog;
+    }
+
+    #[must_use]
+    pub const fn operations(&self) -> &OperationCatalog {
+        &self.operations
+    }
+
+    pub fn operations_mut(&mut self) -> &mut OperationCatalog {
+        &mut self.operations
     }
 
     #[must_use]
@@ -256,6 +371,11 @@ impl BrowserApplication {
     }
 
     #[must_use]
+    pub fn configuration_layers(&self) -> &ConfigurationLayers {
+        self.configuration.layers()
+    }
+
+    #[must_use]
     pub const fn configuration(&self) -> &Config {
         self.configuration.effective()
     }
@@ -294,8 +414,9 @@ impl BrowserApplication {
         &mut self,
         overrides: &RuntimeOverrides,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
-        self.ensure_configuration_writable()?;
-        self.configuration.replace_temporary(overrides.clone())
+        let mut layers = self.configuration.layers().clone();
+        layers.temporary = overrides.clone();
+        self.update_configuration(layers)
     }
 
     /// Applies one runtime input and returns only runtime effects.
@@ -335,8 +456,8 @@ impl BrowserApplication {
         &mut self,
         layers: ConfigurationLayers,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
-        self.ensure_configuration_writable()?;
-        self.configuration.update_layers(layers)
+        let prepared = self.prepare_configuration_update(layers)?;
+        self.publish_configuration_update(prepared, || Ok(()))
     }
 
     /// Prepares a runtime update without publishing it or its revision.
@@ -367,10 +488,12 @@ impl BrowserApplication {
         boundary: ConfigurationApplyBoundary,
     ) -> Result<PreparedConfigurationUpdate, ConfigError> {
         self.ensure_configuration_writable()?;
+        self.check_profile_configuration(&layers)?;
         let mut state = self.configuration.clone();
         state.update_layers_at(layers, boundary)?;
         Ok(PreparedConfigurationUpdate {
             expected_revision: self.configuration.revision(),
+            profile_revision: self.profile_configuration_revision()?,
             state,
         })
     }
@@ -387,12 +510,33 @@ impl BrowserApplication {
         persist: impl FnOnce() -> Result<(), ConfigError>,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
         self.ensure_configuration_writable()?;
-        if self.configuration.revision() != prepared.expected_revision {
+        let session = self
+            .active_profile
+            .as_ref()
+            .map(|profile| profile.session.clone());
+        let mut shared = session
+            .as_ref()
+            .map(|session| {
+                session.0.configuration.state.lock().map_err(|_| {
+                    ConfigError::Validation("Profile settings are unavailable.".into())
+                })
+            })
+            .transpose()?;
+        if self.configuration.revision() != prepared.expected_revision
+            || shared.as_ref().map_or(0, |shared| shared.revision) != prepared.profile_revision
+        {
             return Err(ConfigError::Validation(
                 "prepared configuration became stale".into(),
             ));
         }
         persist()?;
+        if let Some(shared) = shared.as_mut() {
+            let runtime = &prepared.state.layers().runtime;
+            if shared.runtime.as_ref() != Some(runtime) {
+                shared.runtime = Some(runtime.clone());
+                shared.revision = shared.revision.saturating_add(1);
+            }
+        }
         self.configuration = prepared.state;
         Ok(self.configuration.snapshot())
     }
@@ -428,6 +572,16 @@ impl BrowserApplication {
         let generation = self.next_profile_generation;
         self.next_profile_generation = self.next_profile_generation.saturating_add(1);
         self.active_profile = Some(ActiveProfile::activate(generation, activation));
+        self.configuration_reservation = self
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .session
+            .0
+            .configuration_gate
+            .clone();
+        self.initialize_profile_configuration()
+            .map_err(|error| StorageWorkerError::Spawn(error.to_string()))?;
         self.profile_snapshot().ok_or(StorageWorkerError::Stopped)
     }
 
@@ -461,13 +615,14 @@ impl BrowserApplication {
         &mut self,
         mut prepared: PreparedProfile,
     ) -> Result<ProfileOpenEffect, ProfileOpenError> {
-        let configuration = match self.activate_configuration(prepared.layers) {
+        let configuration = match self.configuration.activate_layers(prepared.layers) {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 prepared
                     .configuration_error
                     .get_or_insert_with(|| error.to_string());
-                self.replace_configuration(prepared.fallback_configuration)
+                self.configuration
+                    .replace_effective(prepared.fallback_configuration)
                     .map_err(|error| ProfileOpenError::InvalidRequest(error.to_string()))?
             }
         };
@@ -483,9 +638,23 @@ impl BrowserApplication {
             prepared.activation.storage_path = None;
             self.storage.close();
         }
+        self.page_scripts = prepared.page_scripts;
+        self.userscript_root = prepared.userscript_root;
+        self.userscript_worker = None;
         let generation = self.next_profile_generation;
         self.next_profile_generation = self.next_profile_generation.saturating_add(1);
         self.active_profile = Some(ActiveProfile::activate(generation, prepared.activation));
+        self.configuration_reservation = self
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .session
+            .0
+            .configuration_gate
+            .clone();
+        if let Err(error) = self.initialize_profile_configuration() {
+            prepared.configuration_error = Some(error.to_string());
+        }
         let profile = self
             .profile_snapshot()
             .ok_or(ProfileOpenError::WorkerStopped)?;
@@ -505,6 +674,11 @@ impl BrowserApplication {
 
     /// Closes the active profile after draining its durable worker.
     pub fn close_profile(&mut self) {
+        self.operations.retire();
+        self.configuration_write.take();
+        self.userscript_worker.take();
+        self.userscript_root.take();
+        self.page_scripts = Ok(Arc::default());
         self.close_session_storage();
         self.active_profile = None;
     }
@@ -661,7 +835,7 @@ mod tests {
         assert!(
             effects
                 .iter()
-                .any(|effect| matches!(effect, RuntimeEffect::UiModelUpdated(_)))
+                .any(|effect| matches!(effect, RuntimeEffect::UiModelChanged { .. }))
         );
         assert_eq!(
             application.runtime_view().windows()[&window].modes.last(),
@@ -772,6 +946,7 @@ mod tests {
                 initial_profile_overrides: RuntimeOverrides::default(),
                 command_line_overrides: command_line,
                 config_path: None,
+                script_catalog_root: None,
                 contexts: toml::from_str(
                     "schema_version = 3\n[[contexts]]\nname = \"worker-context\"\nlabel = \"Worker context\"\nprofile = \"default\"\n",
                 )

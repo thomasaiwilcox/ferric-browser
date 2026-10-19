@@ -1,7 +1,6 @@
 use super::{
-    Config, CxxQtType, Event, ExistenceState, IpcRoute, ParsedCommand, Pin, QString,
-    ResourceLifecycle, Uuid, Value, hyprland, is_bounded_untrusted_text, qobject,
-    typed_ipc_command,
+    CxxQtType, Event, ExistenceState, IpcRoute, ParsedCommand, Pin, QString, ResourceLifecycle,
+    Uuid, Value, hyprland, is_bounded_untrusted_text, qobject, typed_ipc_command,
 };
 
 impl qobject::BrowserUi {
@@ -209,26 +208,32 @@ impl qobject::BrowserUi {
             .and_then(|pending| pending.target)
             .is_some_and(|target| target.tab == tab)
             || rust
+                .processes
                 .pending_selection
                 .as_ref()
                 .is_some_and(|pending| pending.target.tab == tab)
             || rust
+                .processes
                 .pending_caret
                 .as_ref()
                 .is_some_and(|pending| pending.target.tab == tab)
             || rust
+                .processes
                 .pending_editor
                 .as_ref()
                 .is_some_and(|pending| pending.target.tab == tab)
             || rust
+                .processes
                 .pending_spawn
                 .as_ref()
                 .is_some_and(|pending| pending.target.tab == tab)
             || rust
+                .processes
                 .pending_action_target
                 .as_ref()
                 .is_some_and(|pending| pending.target.tab == tab)
             || rust
+                .processes
                 .pending_userscript
                 .as_ref()
                 .is_some_and(|pending| pending.target.tab == tab)
@@ -236,10 +241,11 @@ impl qobject::BrowserUi {
                 .pending_download
                 .as_ref()
                 .is_some_and(|pending| pending.target.tab == tab)
-            || rust.pending_navigation_urls.contains_key(&tab)
-            || rust.pending_redirect_tabs.contains(&tab)
-            || rust.pending_redirect_hops.contains_key(&tab)
+            || rust.navigation.pending_navigation_urls.contains_key(&tab)
+            || rust.navigation.pending_redirect_tabs.contains(&tab)
+            || rust.navigation.pending_redirect_hops.contains_key(&tab)
             || rust
+                .navigation
                 .popup_journey_targets
                 .iter()
                 .any(|(_, target, _, _)| target.tab == tab)
@@ -720,10 +726,13 @@ impl qobject::BrowserUi {
                     {
                         return Err("tab-move context could not select the requested tab".into());
                     }
-                    let action = operation_id.map_or_else(
-                        || format!("tab-move-context\t{context}\t{id}"),
-                        |operation_id| format!("tab-move-context\t{context}\t{id}\t{operation_id}"),
-                    );
+                    let operation_id = self
+                        .as_mut()
+                        .rust_mut()
+                        .as_mut()
+                        .get_mut()
+                        .start_native_handoff(operation_id)?;
+                    let action = format!("tab-move-context\t{context}\t{id}\t{operation_id}");
                     self.as_mut()
                         .rust_mut()
                         .as_mut()
@@ -738,9 +747,7 @@ impl qobject::BrowserUi {
                         "context": context,
                         "pending": true
                     });
-                    if let Some(operation_id) = operation_id {
-                        result["operation_id"] = serde_json::Value::String(operation_id.to_owned());
-                    }
+                    result["operation_id"] = serde_json::Value::String(operation_id);
                     return Ok(result);
                 }
                 let [direction] = direction.as_slice() else {
@@ -858,8 +865,12 @@ impl qobject::BrowserUi {
         if !hyprland::valid_workspace_selector(workspace) {
             return Err("window move workspace selector is invalid".into());
         }
-        let config =
-            serde_json::from_value::<Config>(self.rust().config.clone()).unwrap_or_default();
+        let config = self
+            .rust()
+            .state
+            .as_ref()
+            .ok_or("application is unavailable")?
+            .configuration();
         let adapter = hyprland::HyprlandAdapter::from_config(&config.hyprland);
         if !adapter.workspace_routing_enabled() || adapter.status() != "ready" {
             return Err("compositor window movement unavailable".into());

@@ -2,6 +2,7 @@ use super::{
     CxxQtType, Event, Mode, Pin, QString, SpatialCancelReason, current_target,
     finish_pending_selection_operation, qobject,
 };
+use crate::OperationUpdate;
 
 impl qobject::BrowserUi {
     pub(super) fn back(mut self: Pin<&mut Self>) {
@@ -74,8 +75,8 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            finish_pending_selection_operation(this, "cancelled");
-            this.pending_caret = None;
+            finish_pending_selection_operation(this, OperationUpdate::cancelled());
+            this.processes.pending_caret = None;
         }
         self.as_mut().set_caret_selecting(false);
         if is_hint {
@@ -118,8 +119,8 @@ impl qobject::BrowserUi {
         }
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        this.focus_observations.clear();
-        this.focus_suppressions.clear();
+        this.interaction.focus_observations.clear();
+        this.interaction.focus_suppressions.clear();
     }
 
     pub(super) fn enter_command(mut self: Pin<&mut Self>) {
@@ -155,6 +156,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .interaction
             .focus_suppressions
             .retain(|(index, _), _| *index != active);
         self.set_status_text(QString::from(if mode == Mode::InsertLocked {

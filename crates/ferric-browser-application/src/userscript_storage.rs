@@ -43,7 +43,7 @@ pub fn set_enabled(root: &Path, name: &str, enabled: bool) -> Result<(), String>
     validate(&manifest, name)?;
     let encoded = toml::to_string(&manifest)
         .map_err(|error| format!("could not encode userscript manifest: {error}"))?;
-    if encoded.len() > MAX_MANIFEST_BYTES as usize {
+    if u64::try_from(encoded.len()).unwrap_or(u64::MAX) > MAX_MANIFEST_BYTES {
         return Err("userscript manifest exceeds 64 KiB".into());
     }
     let stamp = std::time::SystemTime::now()

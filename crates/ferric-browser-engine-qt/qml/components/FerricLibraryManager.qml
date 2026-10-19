@@ -23,7 +23,10 @@ FerricModalSurface {
     required property bool profilesLoading
     property bool listPending: false
     property string listError: ""
-    property var feedback: ({id: "", state: "idle", message: "", detail: ""})
+    property string feedbackId: ""
+    property string feedbackState: "idle"
+    property string feedbackMessage: ""
+    property string feedbackDetail: ""
     property string submittedId: ""
     property string submittedKind: ""
     property string submittedKey: ""
@@ -31,7 +34,7 @@ FerricModalSurface {
     property bool submittedDelete: false
     property string rejectionMessage: ""
     property string rejectionDetail: ""
-    readonly property bool operationPending: feedback.state === "pending"
+    readonly property bool operationPending: feedbackState === "pending"
     readonly property real graphNodeWidth: journeyGraph.nodeWidth
     readonly property real graphNodeHeight: journeyGraph.nodeHeight
     signal graphLayoutRequested()
@@ -65,8 +68,8 @@ FerricModalSurface {
     }
     function requestRejected(message, detail) { rejectionMessage = message; rejectionDetail = detail }
     function applyFeedback() {
-        if (!submittedId || feedback.id !== submittedId || (feedback.state !== "succeeded" && feedback.state !== "failed")) return
-        if (feedback.state === "succeeded") {
+        if (!submittedId || feedbackId !== submittedId || (feedbackState !== "succeeded" && feedbackState !== "failed")) return
+        if (feedbackState === "succeeded") {
             libraryEntryList.markEditSaved(submittedKind, submittedKey, submittedValue)
             if (submittedDelete) focusTimer.restart()
         }
@@ -78,7 +81,8 @@ FerricModalSurface {
         if (libraryEntryList.visible) libraryEntryList.focusList()
         else { journeyGraph.showBeginning(); journeyGraph.forceActiveFocus() }
     }
-    onFeedbackChanged: applyFeedback()
+    onFeedbackIdChanged: applyFeedback()
+    onFeedbackStateChanged: applyFeedback()
     onLibraryKindChanged: deleteCancelled()
     onGraphModeChanged: if (visible) focusTimer.restart()
     onGraphNodeWidthChanged: graphLayoutRequested()
@@ -121,10 +125,10 @@ FerricModalSurface {
                 objectName: "libraryOperationFeedback"
                 Layout.fillWidth: true
                 browserWindow: libraryManager.browserWindow
-                message: libraryManager.rejectionMessage || libraryManager.feedback.message || ""
-                detail: libraryManager.rejectionMessage ? libraryManager.rejectionDetail : libraryManager.feedback.detail || ""
+                message: libraryManager.rejectionMessage || libraryManager.feedbackMessage || ""
+                detail: libraryManager.rejectionMessage ? libraryManager.rejectionDetail : libraryManager.feedbackDetail || ""
                 pending: libraryManager.operationPending
-                failed: libraryManager.rejectionMessage.length > 0 || libraryManager.feedback.state === "failed"
+                failed: libraryManager.rejectionMessage.length > 0 || libraryManager.feedbackState === "failed"
             }
             FerricManagerFeedback {
                 objectName: "libraryLoadingFeedback"

@@ -1,10 +1,11 @@
 use super::{
     BindingOutcome, CommandInvocation, CommandSource, CxxQtType, DispatchTarget, Mode, ParseInput,
     ParsedCommand, Pin, QString, RuntimeDispatch, binding_uses_full_command_executor, elapsed_ms,
-    engine_action_name, modal_command_prefill, operation_is_terminal, operation_status_kind,
-    parse_chain, parse_hint_options, publish_ipc_event, qobject, valid_macro_register,
+    engine_action_name, modal_command_prefill, parse_chain, parse_hint_options, qobject,
+    valid_macro_register,
 };
 use crate::hint_policy::hint_requests_pointer;
+use crate::{FailureKind, OperationUpdate};
 
 impl qobject::BrowserUi {
     pub(super) fn execute_command(self: Pin<&mut Self>, input: &QString) -> bool {
@@ -41,10 +42,11 @@ impl qobject::BrowserUi {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         if let Some(action) = this.pending_engine_action.take() {
-            this.pending_engine_actions.push_back(action);
+            this.pending_engine_actions
+                .push_back(super::engine_requests::NativeRequest::Presentation(action));
         }
-        if let Some(target) = this.pending_journey_traversal.take() {
-            this.pending_journey_traversals.push_back(target);
+        if let Some(target) = this.navigation.pending_journey_traversal.take() {
+            this.navigation.pending_journey_traversals.push_back(target);
         }
     }
 
@@ -396,9 +398,11 @@ impl qobject::BrowserUi {
         let this = binding.rust();
         let token = popup_token.to_string();
         let target = if token.is_empty() {
-            super::current_target(this.state.as_ref(), this.tab)
+            super::TabId::from_display(&tab.to_string())
+                .and_then(|tab| this.state.as_ref()?.capture_target(tab))
         } else {
-            this.popup_journey_targets
+            this.navigation
+                .popup_journey_targets
                 .iter()
                 .find(|(candidate, _, _, claimed)| candidate == &token && *claimed)
                 .map(|(_, target, _, _)| *target)
@@ -420,17 +424,18 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         token: &QString,
         operation: &QString,
-    ) -> QString {
+    ) -> super::QVariant {
         let operation = operation.to_string();
         if ferric_browser_core::ClipboardEdit::parse(&operation).is_none() {
             self.set_status_text(QString::from("Unsupported native edit operation"));
-            return QString::default();
+            return super::QVariant::default();
         }
         let token = token.to_string();
         let target = {
             let binding = self.as_ref();
             let this = binding.rust();
-            this.popup_journey_targets
+            this.navigation
+                .popup_journey_targets
                 .iter()
                 .find(|(candidate, _, _, claimed)| candidate == &token && *claimed)
                 .map(|(_, target, _, _)| *target)
@@ -445,7 +450,7 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from(
                 "The popup page changed. Focus the field and try again.",
             ));
-            return QString::default();
+            return super::QVariant::default();
         };
         let navigation = self.as_ref().navigation_context();
         let command = ParsedCommand {
@@ -462,22 +467,15 @@ impl qobject::BrowserUi {
             Ok(effects) => effects
                 .iter()
                 .find_map(|effect| match effect {
-                    super::Effect::Engine(super::EngineEffect::ClipboardEdit {
-                        target,
-                        operation,
-                    }) => Some(QString::from(format!(
-                        "edit\t{}\t{}\t{}\t{}",
-                        target.tab,
-                        target.generation,
-                        target.document,
-                        operation.as_str()
-                    ))),
+                    super::Effect::Engine(effect @ super::EngineEffect::ClipboardEdit { .. }) => {
+                        Some(super::engine_requests::project(effect))
+                    }
                     _ => None,
                 })
                 .unwrap_or_default(),
             Err(error) => {
                 self.set_status_text(QString::from(error));
-                QString::default()
+                super::QVariant::default()
             }
         }
     }
@@ -486,10 +484,21 @@ impl qobject::BrowserUi {
         let (action, more_pending) = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let action = this
-                .pending_engine_actions
-                .pop_front()
-                .or_else(|| this.pending_engine_action.take());
+            let action = match this.pending_engine_actions.front() {
+                Some(super::engine_requests::NativeRequest::Presentation(_)) => {
+                    match this.pending_engine_actions.pop_front() {
+                        Some(super::engine_requests::NativeRequest::Presentation(action)) => {
+                            Some(action)
+                        }
+                        _ => unreachable!("queue front was a presentation request"),
+                    }
+                }
+                Some(
+                    super::engine_requests::NativeRequest::Engine(_)
+                    | super::engine_requests::NativeRequest::View(_),
+                ) => None,
+                None => this.pending_engine_action.take(),
+            };
             let more_pending =
                 !this.pending_engine_actions.is_empty() || this.pending_engine_action.is_some();
             (action, more_pending)
@@ -511,33 +520,18 @@ impl qobject::BrowserUi {
         }
         let outcome = outcome.to_string();
         let status = match outcome.as_str() {
-            "activated" => "completed: activated",
-            "unknown" => "completed: unknown",
-            "stale" => "failed (stale activation target)",
+            "activated" => OperationUpdate::completed("activated"),
+            "unknown" => OperationUpdate::completed("activation outcome unknown"),
+            "stale" => {
+                OperationUpdate::failed(FailureKind::StaleTarget, "activation target changed")
+            }
             _ => return false,
         };
-        let mut rust = self.as_mut().rust_mut();
-        let this = rust.as_mut().get_mut();
-        if !this.operation_states.contains_key(&operation_id)
-            || this
-                .operation_states
-                .get(&operation_id)
-                .is_some_and(|current| operation_is_terminal(current))
-        {
-            return false;
-        }
-        this.operation_states
-            .insert(operation_id.clone(), status.into());
-        publish_ipc_event(
-            &mut this.ipc_sequence,
-            "operation.completed",
-            serde_json::json!({
-                "operation_id": operation_id,
-                "status": operation_status_kind(status),
-                "activation": outcome
-            }),
-        );
-        true
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .set_operation(operation_id, status)
     }
 
     pub(super) fn complete_transfer_operation(
@@ -550,31 +544,14 @@ impl qobject::BrowserUi {
             return false;
         }
         let status = if succeeded {
-            "completed: transferred"
+            OperationUpdate::completed("transferred")
         } else {
-            "failed (live tab transfer failed)"
+            OperationUpdate::failed(FailureKind::Engine, "live tab transfer failed")
         };
-        let mut rust = self.as_mut().rust_mut();
-        let this = rust.as_mut().get_mut();
-        if !this.operation_states.contains_key(&operation_id)
-            || this
-                .operation_states
-                .get(&operation_id)
-                .is_some_and(|current| operation_is_terminal(current))
-        {
-            return false;
-        }
-        this.operation_states
-            .insert(operation_id.clone(), status.into());
-        publish_ipc_event(
-            &mut this.ipc_sequence,
-            "operation.completed",
-            serde_json::json!({
-                "operation_id": operation_id,
-                "status": operation_status_kind(status),
-                "transfer": succeeded
-            }),
-        );
-        true
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .set_operation(operation_id, status)
     }
 }

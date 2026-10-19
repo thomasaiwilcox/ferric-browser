@@ -3,11 +3,11 @@
 //! Qt submits work here and applies the completed typed result; parsing and
 //! filesystem policy never execute on the GUI thread.
 
-use crate::single_flight::{Poll as WorkerPoll, SingleFlightWorker, SubmitError};
 use ferric_browser_config::{
     ContextsConfig, LoadedConfig, ProfilesConfig, RuntimeOverrides, load, load_contexts,
     load_profile_runtime_overrides, load_profiles, profile_config_path,
 };
+use ferric_browser_runtime::worker::{Poll as WorkerPoll, SingleFlightWorker, SubmitError};
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 use std::{

@@ -1,10 +1,10 @@
 //! Read-only IPC queries and diagnostic projections for `BrowserUi`.
 
 use super::{
-    ActionDefinition, ActionRegistry, ActionSource, CommandSource, Config, CxxQtType,
-    ExistenceState, Value, configured_action_target_supports_subject,
-    configured_action_target_values, configured_action_targets, hyprland, live_document_available,
-    parse_external_action_id, qobject, query_empty_object_or_null, userscript_action_values,
+    ActionDefinition, ActionRegistry, ActionSource, CommandSource, CxxQtType, ExistenceState,
+    Value, configured_action_target_supports_subject, configured_action_target_values,
+    configured_action_targets, hyprland, live_document_available, parse_external_action_id,
+    qobject, query_empty_object_or_null, userscript_action_values,
 };
 use ferric_browser_ipc::{ErrorCode, PublicError};
 
@@ -90,10 +90,7 @@ impl qobject::BrowserUi {
             configured_action_target_values(name, target, self.active_profile_is_transient())
         }));
         values.extend(userscript_action_values(
-            self.rust()
-                .userscript_roots
-                .as_ref()
-                .map(|roots| roots.config.as_path()),
+            self.rust().cached_userscript_actions(),
             None,
             self.userscript_availability(),
         )?);
@@ -157,10 +154,11 @@ impl qobject::BrowserUi {
                 )
             }
             capabilities if capabilities.contains(&"compositor-window-move") => {
-                let config = serde_json::from_value::<Config>(self.rust().config.clone())
-                    .unwrap_or_default();
-                let adapter = hyprland::HyprlandAdapter::from_config(&config.hyprland);
-                let available = adapter.workspace_routing_enabled() && adapter.status() == "ready";
+                let available = self.rust().state.as_ref().is_some_and(|state| {
+                    let adapter =
+                        hyprland::HyprlandAdapter::from_config(&state.configuration().hyprland);
+                    adapter.workspace_routing_enabled() && adapter.status() == "ready"
+                });
                 (
                     available,
                     if available {

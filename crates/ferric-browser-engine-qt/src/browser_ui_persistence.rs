@@ -23,7 +23,7 @@ impl qobject::BrowserUi {
             .submit_storage(StorageRequest::PermissionBatch { rules })
         {
             Ok(()) => {
-                self.as_ref().rust().storage_library_dirty.set(true);
+                self.as_ref().rust().library.storage_library_dirty.set(true);
                 true
             }
             Err(error) => {
@@ -43,7 +43,7 @@ impl qobject::BrowserUi {
         match self.as_mut().submit_storage(StorageRequest::HistoryBatch {
             visits: vec![visit],
         }) {
-            Ok(()) => self.as_ref().rust().storage_library_dirty.set(true),
+            Ok(()) => self.as_ref().rust().library.storage_library_dirty.set(true),
             Err(error) => self.set_status_text(QString::from(format!(
                 "History write could not be scheduled: {error}"
             ))),
@@ -102,7 +102,12 @@ impl qobject::BrowserUi {
         loop {
             self.as_mut().poll_storage_library();
             let pending = self.as_ref().rust().pending_history_clear.is_some();
-            let journey_pending = !self.as_ref().rust().pending_journey_mappings.is_empty();
+            let journey_pending = !self
+                .as_ref()
+                .rust()
+                .navigation
+                .pending_journey_mappings
+                .is_empty();
             if !pending && !journey_pending {
                 return true;
             }
@@ -121,7 +126,13 @@ impl qobject::BrowserUi {
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
             self.as_mut().poll_storage_library();
-            if self.as_ref().rust().pending_journey_mappings.is_empty() {
+            if self
+                .as_ref()
+                .rust()
+                .navigation
+                .pending_journey_mappings
+                .is_empty()
+            {
                 return true;
             }
             let now = Instant::now();
@@ -276,6 +287,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .journey_durable_ids
             .replace(BTreeMap::new());
         self.as_mut().refresh_start_page_metadata();
@@ -324,6 +336,7 @@ impl qobject::BrowserUi {
                 let write = if let Some(state) = rust.state.as_ref()
                     && let Some(core_node_id) = state.journey().current_node(tab)
                     && let Some(durable_node_id) = rust
+                        .navigation
                         .journey_durable_ids
                         .borrow()
                         .get(&core_node_id)
@@ -346,8 +359,13 @@ impl qobject::BrowserUi {
             {
                 let timestamp = unix_timestamp();
                 let durable_node_id = Uuid::new_v4().to_string();
-                let durable_parent_id = journey_parent
-                    .and_then(|parent| rust.journey_durable_ids.borrow().get(&parent).cloned());
+                let durable_parent_id = journey_parent.and_then(|parent| {
+                    rust.navigation
+                        .journey_durable_ids
+                        .borrow()
+                        .get(&parent)
+                        .cloned()
+                });
                 let write = JourneyWrite::RecordNode {
                     id: durable_node_id.clone(),
                     profile_id: profile_id.to_string(),
@@ -381,6 +399,7 @@ impl qobject::BrowserUi {
                             .rust_mut()
                             .as_mut()
                             .get_mut()
+                            .navigation
                             .pending_journey_mappings
                             .insert(ticket, mapping);
                     }

@@ -2,6 +2,7 @@
 
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use crate::OperationUpdate;
 
 impl qobject::BrowserUi {
     pub(super) fn ipc_tabs_query(&self, params: &Value) -> Result<Value, String> {
@@ -162,8 +163,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
-            .operation_states
-            .insert(operation_id.clone(), "running".into());
+            .start_operation(operation_id.clone(), OperationUpdate::running("running"))?;
         self.as_mut()
             .rust_mut()
             .as_mut()

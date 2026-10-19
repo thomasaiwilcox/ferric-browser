@@ -21,7 +21,7 @@ fn configured_editor_argv_replaces_only_the_complete_file_argument() {
 }
 #[test]
 fn config_editor_captures_bounded_stderr() {
-    let io_source = include_str!("../userscript_io.rs");
+    let io_source = include_str!("../../../ferric-browser-application/src/userscript_io.rs");
     let process_source = include_str!("../editor_process.rs");
     assert!(io_source.contains("userscript pipe read failed"));
     assert!(io_source.contains("userscript output exceeds"));
@@ -31,7 +31,7 @@ fn config_editor_captures_bounded_stderr() {
 #[test]
 fn selector_validation_uses_a_browser_owned_webengine_document() {
     let validator = include_str!("../../qml/components/FerricSelectorValidationSurface.qml");
-    let primary = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let primary = concat!(include_str!("../../qml/components/FerricRuntimeController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     assert!(validator.contains("document.querySelector(item.selector)"));
     assert!(validator.contains("url: \"data:text/html;charset=utf-8,"));
@@ -153,7 +153,7 @@ fn ipc_site_status_accepts_an_optional_stable_tab_target() {
 #[test]
 fn site_ledger_uses_on_demand_redacted_interaction_status() {
     let ledger = include_str!("../../qml/components/FerricSiteLedger.qml");
-    let runtime = include_str!("../../qml/components/FerricBrowserRuntimeServices.qml");
+    let runtime = concat!(include_str!("../../qml/components/FerricPageServices.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let projection = include_str!("../browser_ui_query_diagnostics.rs");
     assert!(ledger.contains("On-demand interaction status"));
     assert!(ledger.contains("Text.PlainText"));
@@ -619,7 +619,7 @@ fn command_line_component_emits_editing_intents_without_executing_commands() {
     assert!(composition_root.contains("FerricCommandLine {"));
     assert!(composition_root.contains("browserUi.update_completion(text, cursorPosition)"));
     assert!(composition_root.contains("window.submitInteractiveCommand(text)"));
-    assert!(composition_root.contains("commandSurface.showFeedback(browserUi.status_text"));
+    assert!(composition_root.contains("window.commandSurface.showFeedback(window.browserUi.status_text"));
     assert!(composition_root.contains("browserUi.completion_move(delta)"));
 }
 
@@ -796,7 +796,7 @@ fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
     assert!(sync < navigate, "the background tab view must exist before navigation");
     assert!(ipc_preparation.contains("self.as_mut().sync_tab_order_from_core();"));
 
-    let runtime = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let runtime = concat!(include_str!("../../qml/components/FerricRuntimeController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let runtime_work = runtime
         .split("function processRuntimeWork()")
         .nth(1)
@@ -1069,121 +1069,6 @@ fn config_write_worker_creates_private_non_overwriting_file() {
     drop(worker);
     let _ = fs::remove_file(&path);
     let _ = fs::remove_dir(&directory);
-}
-
-#[test]
-fn userscript_manager_worker_reads_and_updates_off_thread() {
-    let root = std::env::temp_dir().join(format!(
-        "ferric-browser-userscript-worker-{}-{}",
-        std::process::id(),
-        Uuid::new_v4()
-    ));
-    let directory = root.join("userscripts");
-    fs::create_dir_all(&directory).expect("userscript worker directory");
-    fs::write(
-        directory.join("worker.toml"),
-        r#"
-schema_version = 1
-name = "worker"
-executable = "/bin/true"
-enabled = true
-matches = ["https://example.test/*"]
-"#,
-    )
-    .expect("userscript worker manifest");
-
-    let mut worker = UserscriptManagerWorker::spawn().expect("userscript manager");
-    worker
-        .request(UserscriptManagerRequest::Refresh { root: root.clone() })
-        .expect("inventory request");
-    let inventory = (0..100).find_map(|_| {
-        let value = worker.poll();
-        if value.is_none() {
-            thread::sleep(Duration::from_millis(1));
-        }
-        value
-    });
-    match inventory.expect("inventory response") {
-        UserscriptManagerResult::Inventory(Ok(scripts)) => {
-            assert_eq!(scripts.len(), 1);
-            assert!(scripts[0].enabled);
-        }
-        other => panic!("unexpected inventory result: {other:?}"),
-    }
-
-    worker
-        .request(UserscriptManagerRequest::SetEnabled {
-            root: root.clone(),
-            name: "worker".into(),
-            enabled: false,
-        })
-        .expect("toggle request");
-    let toggled = (0..100).find_map(|_| {
-        let value = worker.poll();
-        if value.is_none() {
-            thread::sleep(Duration::from_millis(1));
-        }
-        value
-    });
-    match toggled.expect("toggle response") {
-        UserscriptManagerResult::SetEnabled {
-            enabled: false,
-            result: super::background_workers::UserscriptMutationOutcome::Applied { inventory: Ok(scripts) },
-        } => assert!(!scripts[0].enabled),
-        other => panic!("unexpected toggle result: {other:?}"),
-    }
-
-    let source = root.join("installed.toml");
-    fs::write(
-        &source,
-        r#"
-schema_version = 1
-name = "installed"
-executable = "/bin/true"
-"#,
-    )
-    .expect("source userscript manifest");
-    worker
-        .request(UserscriptManagerRequest::Install {
-            root: root.clone(),
-            source,
-        })
-        .expect("install request");
-    let installed = (0..100).find_map(|_| {
-        let value = worker.poll();
-        if value.is_none() {
-            thread::sleep(Duration::from_millis(1));
-        }
-        value
-    });
-    match installed.expect("install response") {
-        UserscriptManagerResult::Installed(super::background_workers::UserscriptMutationOutcome::Applied { inventory: Ok(scripts) }) => {
-            assert_eq!(scripts.len(), 2);
-        }
-        other => panic!("unexpected install result: {other:?}"),
-    }
-
-    worker
-        .request(UserscriptManagerRequest::Remove {
-            root: root.clone(),
-            name: "installed".into(),
-        })
-        .expect("remove request");
-    let removed = (0..100).find_map(|_| {
-        let value = worker.poll();
-        if value.is_none() {
-            thread::sleep(Duration::from_millis(1));
-        }
-        value
-    });
-    match removed.expect("remove response") {
-        UserscriptManagerResult::Removed(super::background_workers::UserscriptMutationOutcome::Applied { inventory: Ok(scripts) }) => assert_eq!(scripts.len(), 1),
-        other => panic!("unexpected remove result: {other:?}"),
-    }
-    assert!(!root.join("userscripts/installed.toml").exists());
-
-    drop(worker);
-    let _ = fs::remove_dir_all(root);
 }
 
 #[test]

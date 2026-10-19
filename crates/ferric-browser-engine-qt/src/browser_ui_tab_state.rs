@@ -2,9 +2,9 @@ use super::{
     CompletionCandidate, CompletionCategory, CxxQtType, DEFAULT_COMPLETION_LIMIT, Effect,
     EngineEffect, Event, ExistenceState, JourneyEdgeKind, JourneyNodeId, LoadingState,
     MAX_JOURNEY_REDIRECT_HOPS, Mode, Pin, QString, SearchCase, TabId, TabTransfer, Target,
-    ValidatedUrl, Value, complete, current_target, engine_action_name, qobject,
-    recordable_same_document_change, safe_ipc_url, sanitize_untrusted_title,
-    scalar_cursor_to_utf16, setting_metadata_all, strip_url_fragment, utf16_cursor_to_scalar,
+    ValidatedUrl, Value, complete, current_target, qobject, recordable_same_document_change,
+    safe_ipc_url, sanitize_untrusted_title, scalar_cursor_to_utf16, setting_metadata_all,
+    strip_url_fragment, utf16_cursor_to_scalar,
 };
 
 impl qobject::BrowserUi {
@@ -17,11 +17,11 @@ impl qobject::BrowserUi {
         }
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        if !this.native_prompt_transition {
-            this.native_prompt_leases.clear("mode-change");
+        if !this.interaction.native_prompt_transition {
+            this.interaction.native_prompt_leases.clear("mode-change");
         }
         this.core_mode = mode;
-        this.pending_same_document_pass_through = None;
+        this.navigation.pending_same_document_pass_through = None;
         if let Some(bindings) = this.bindings.as_mut() {
             bindings.set_mode(mode);
         }
@@ -91,11 +91,10 @@ impl qobject::BrowserUi {
             "tab_id": tab.to_string(),
             "profile_name": self.as_ref().rust().profile_name,
             "url": tab_state.url.as_deref().or_else(|| {
-                let index = rust.tab_ids.iter().position(|candidate| *candidate == tab)?;
-                super::url_safety::pending_native_tab_url(
-                    rust.pending_engine_action.iter().chain(rust.pending_engine_actions.iter()).map(String::as_str),
-                    index,
-                )
+                rust.pending_engine_actions.iter().rev().find_map(|request| match request {
+                    super::engine_requests::NativeRequest::Engine(EngineEffect::Navigate { target, url }) if target.tab == tab => Some(url.as_str()),
+                    _ => None,
+                })
             }).map(safe_ipc_url),
             "title": tab_state.title,
             "loading": loading,
@@ -354,7 +353,7 @@ impl qobject::BrowserUi {
                 })
                 .collect::<Vec<_>>(),
         );
-        if let Some(library) = rust.storage_library.as_ref() {
+        if let Some(library) = rust.library.storage_library.as_ref() {
             catalog.extend(library.history.iter().map(|page| {
                 let safe_url = safe_ipc_url(&page.url);
                 CompletionCandidate {
@@ -438,8 +437,8 @@ impl qobject::BrowserUi {
             self.as_mut().clear_completion();
             return false;
         }
-        if self.as_ref().rust().storage_library.is_none()
-            || self.as_ref().rust().storage_library_dirty.get()
+        if self.as_ref().rust().library.storage_library.is_none()
+            || self.as_ref().rust().library.storage_library_dirty.get()
         {
             self.as_mut().request_storage_library();
         }
@@ -521,49 +520,107 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn set_pending_engine_action(mut self: Pin<&mut Self>, effects: &[Effect]) {
-        let traversal_target = effects.iter().find_map(|effect| match effect {
-            Effect::Engine(EngineEffect::TraverseHistory { target, .. }) => Some(*target),
-            _ => None,
-        });
-        let action = effects.iter().find_map(|effect| match effect {
-            Effect::Engine(EngineEffect::Navigate { target, url }) => {
-                let index = self
-                    .as_ref()
-                    .rust()
-                    .tab_ids
-                    .iter()
-                    .position(|tab| *tab == target.tab)?;
-                Some(format!("navigate\t{index}\t{}", url.as_str()))
-            }
-            Effect::Engine(EngineEffect::ClipboardEdit { target, operation }) => Some(format!(
-                "edit\t{}\t{}\t{}\t{}",
-                target.tab,
-                target.generation,
-                target.document,
-                operation.as_str()
-            )),
-            Effect::Engine(EngineEffect::Reload { bypass_cache, .. }) => {
-                Some(format!("reload\t{bypass_cache}"))
-            }
-            Effect::Engine(EngineEffect::TraverseHistory { offset, .. }) => {
-                let direction = if *offset < 0 { "back" } else { "forward" };
-                Some(format!("{direction}\t{}", offset.unsigned_abs()))
-            }
-            Effect::Engine(EngineEffect::FindText { backward, case, .. }) => Some(format!(
-                "find\t{backward}\t{}",
-                match case {
-                    SearchCase::Smart => "smart",
-                    SearchCase::Sensitive => "sensitive",
-                    SearchCase::Insensitive => "insensitive",
+        self.as_mut().queue_pending_engine_action();
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        for effect in effects {
+            if let Effect::Engine(effect) = effect {
+                if super::engine_requests::target(effect).is_some() {
+                    this.pending_engine_actions.push_back(
+                        super::engine_requests::NativeRequest::Engine(effect.clone()),
+                    );
                 }
-            )),
-            _ => engine_action_name(effect).map(ToOwned::to_owned),
-        });
-        if let Some(action) = action {
-            let mut rust = self.as_mut().rust_mut();
-            let rust = rust.as_mut().get_mut();
-            rust.pending_engine_action = Some(action);
-            rust.pending_journey_traversal = traversal_target;
+            }
+        }
+    }
+
+    pub(super) fn queue_view_command(
+        self: Pin<&mut Self>,
+        command: ferric_browser_application::ViewCommand,
+    ) -> Result<(), String> {
+        let tab = self
+            .as_ref()
+            .rust()
+            .tab
+            .ok_or_else(|| "current document is unavailable".to_owned())?;
+        self.queue_view_command_for(command, tab)
+    }
+
+    pub(super) fn queue_view_command_for(
+        mut self: Pin<&mut Self>,
+        command: ferric_browser_application::ViewCommand,
+        tab: TabId,
+    ) -> Result<(), String> {
+        let request = {
+            let owner = self.as_ref();
+            let rust = owner.rust();
+            rust.state
+                .as_ref()
+                .ok_or_else(|| "application is unavailable".to_owned())?
+                .capture_view_request(command, tab)
+                .map_err(|kind| format!("native request rejected: {kind:?}"))?
+        };
+        self.as_mut().queue_pending_engine_action();
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .pending_engine_actions
+            .push_back(super::engine_requests::NativeRequest::View(request));
+        self.as_mut().runtime_work_available();
+        Ok(())
+    }
+
+    pub(super) fn request_target_current(
+        &self,
+        tab: &QString,
+        generation: &QString,
+        document: &QString,
+    ) -> bool {
+        TabId::from_display(&tab.to_string())
+            .and_then(|tab| self.rust().state.as_ref()?.capture_target(tab))
+            .is_some_and(|target| {
+                target.generation.to_string() == generation.to_string()
+                    && target.document.to_string() == document.to_string()
+            })
+    }
+
+    pub(super) fn take_engine_request(mut self: Pin<&mut Self>) -> super::QVariant {
+        loop {
+            let request = {
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                if this.pending_engine_actions.front().is_none_or(|request| {
+                    matches!(
+                        request,
+                        super::engine_requests::NativeRequest::Presentation(_)
+                    )
+                }) {
+                    return super::QVariant::default();
+                }
+                this.pending_engine_actions
+                    .pop_front()
+                    .expect("a typed request is queued")
+            };
+            if request.captured_target().is_some_and(|target| {
+                super::captured_target_is_current(self.as_ref().rust().state.as_ref(), target)
+            }) {
+                if let super::engine_requests::NativeRequest::Engine(
+                    EngineEffect::TraverseHistory { target, .. },
+                ) = &request
+                {
+                    self.as_mut()
+                        .rust_mut()
+                        .as_mut()
+                        .get_mut()
+                        .navigation
+                        .pending_journey_traversal = Some(*target);
+                }
+                if !self.as_ref().rust().pending_engine_actions.is_empty() {
+                    self.as_mut().runtime_work_available();
+                }
+                return request.projection();
+            }
         }
     }
 
@@ -571,6 +628,7 @@ impl qobject::BrowserUi {
         let queued_target = self
             .as_ref()
             .rust()
+            .navigation
             .pending_journey_traversals
             .front()
             .copied();
@@ -582,6 +640,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .navigation
                 .pending_journey_traversals
                 .pop_front();
             return true;
@@ -589,6 +648,7 @@ impl qobject::BrowserUi {
         if self
             .as_ref()
             .rust()
+            .navigation
             .pending_journey_traversal
             .is_some_and(|pending| pending == target)
         {
@@ -596,6 +656,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .navigation
                 .pending_journey_traversal = None;
             true
         } else {
@@ -609,17 +670,24 @@ impl qobject::BrowserUi {
         }
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        this.page_document_identities.invalidate(target.tab);
-        this.pending_same_document_pass_through = None;
+        this.navigation
+            .page_document_identities
+            .invalidate(target.tab);
+        this.navigation.pending_same_document_pass_through = None;
         let previous = this
+            .navigation
             .pending_navigation_urls
             .insert(target.tab, url.to_owned());
         if previous
             .as_deref()
             .is_some_and(|previous| strip_url_fragment(previous) != strip_url_fragment(url))
         {
-            this.pending_redirect_tabs.insert(target.tab);
-            let hops = this.pending_redirect_hops.entry(target.tab).or_default();
+            this.navigation.pending_redirect_tabs.insert(target.tab);
+            let hops = this
+                .navigation
+                .pending_redirect_hops
+                .entry(target.tab)
+                .or_default();
             *hops = hops.saturating_add(1).min(MAX_JOURNEY_REDIRECT_HOPS);
         }
     }
@@ -639,21 +707,29 @@ impl qobject::BrowserUi {
         }
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        let Some(started_url) = this.pending_navigation_urls.get(&target.tab) else {
+        let Some(started_url) = this.navigation.pending_navigation_urls.get(&target.tab) else {
             return;
         };
         if strip_url_fragment(started_url) != strip_url_fragment(url) {
-            this.pending_redirect_tabs.insert(target.tab);
-            let hops = this.pending_redirect_hops.entry(target.tab).or_default();
+            this.navigation.pending_redirect_tabs.insert(target.tab);
+            let hops = this
+                .navigation
+                .pending_redirect_hops
+                .entry(target.tab)
+                .or_default();
             *hops = hops.saturating_add(1).min(MAX_JOURNEY_REDIRECT_HOPS);
-            this.pending_navigation_urls
+            this.navigation
+                .pending_navigation_urls
                 .insert(target.tab, url.to_owned());
         }
     }
 
     pub(super) fn should_record_same_document_visit(&self, target: Target, url: &str) -> bool {
         let rust = self.rust();
-        let pending = rust.pending_navigation_urls.contains_key(&target.tab);
+        let pending = rust
+            .navigation
+            .pending_navigation_urls
+            .contains_key(&target.tab);
         let previous = rust
             .state
             .as_ref()
@@ -665,9 +741,9 @@ impl qobject::BrowserUi {
     pub(super) fn take_journey_redirect(mut self: Pin<&mut Self>, target: Target) -> Option<u8> {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        this.pending_navigation_urls.remove(&target.tab);
-        let observed = this.pending_redirect_tabs.remove(&target.tab);
-        let hops = this.pending_redirect_hops.remove(&target.tab);
+        this.navigation.pending_navigation_urls.remove(&target.tab);
+        let observed = this.navigation.pending_redirect_tabs.remove(&target.tab);
+        let hops = this.navigation.pending_redirect_hops.remove(&target.tab);
         observed.then(|| hops.unwrap_or(1))
     }
 
@@ -678,10 +754,11 @@ impl qobject::BrowserUi {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         let position = this
+            .navigation
             .pending_journey_transitions
             .iter()
             .position(|(pending, _, _)| *pending == target)?;
-        let (_, transition, source) = this.pending_journey_transitions.remove(position);
+        let (_, transition, source) = this.navigation.pending_journey_transitions.remove(position);
         Some((transition, source))
     }
 
@@ -710,16 +787,20 @@ impl qobject::BrowserUi {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         if let Some(existing) = this
+            .navigation
             .pending_journey_transitions
             .iter_mut()
             .find(|(pending, _, _)| *pending == target)
         {
             *existing = (target, transition, source.to_owned());
         } else {
-            this.pending_journey_transitions
-                .push((target, transition, source.to_owned()));
-            if this.pending_journey_transitions.len() > 256 {
-                this.pending_journey_transitions.remove(0);
+            this.navigation.pending_journey_transitions.push((
+                target,
+                transition,
+                source.to_owned(),
+            ));
+            if this.navigation.pending_journey_transitions.len() > 256 {
+                this.navigation.pending_journey_transitions.remove(0);
             }
         }
     }
@@ -739,6 +820,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .pending_journey_parent = Some((target, parent));
     }
 
@@ -749,6 +831,7 @@ impl qobject::BrowserUi {
         if !self
             .as_ref()
             .rust()
+            .navigation
             .pending_journey_parent
             .as_ref()
             .is_some_and(|(pending, _)| *pending == target)
@@ -759,6 +842,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .pending_journey_parent
             .take()
             .map(|(_, parent)| parent)

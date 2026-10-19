@@ -24,8 +24,13 @@ impl qobject::BrowserUi {
     ) -> Result<Option<Value>, String> {
         let items = selector_validation_items(&layers);
         let fingerprint = selector_fingerprint(&items)?;
-        let needs_validation =
-            !items.is_empty() && fingerprint != self.as_ref().rust().active_selector_fingerprint;
+        let needs_validation = !items.is_empty()
+            && fingerprint
+                != self
+                    .as_ref()
+                    .rust()
+                    .configuration_io
+                    .active_selector_fingerprint;
         if needs_validation {
             self.as_mut().begin_selector_validation(
                 fingerprint,
@@ -61,6 +66,7 @@ impl qobject::BrowserUi {
         let generation = self
             .as_ref()
             .rust()
+            .configuration_io
             .selector_generation
             .wrapping_add(1)
             .max(1);
@@ -72,10 +78,16 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.selector_generation = generation;
-            this.pending_selector_validation = Some(PendingSelectorValidation {
+            if let Some(previous) = this.configuration_io.pending_selector_validation.take()
+                && let Some(operation_id) = previous.operation_id
+            {
+                this.set_operation(operation_id, crate::OperationUpdate::cancelled());
+            }
+            this.configuration_io.selector_generation = generation;
+            this.configuration_io.pending_selector_validation = Some(PendingSelectorValidation {
+                operation_id: None,
                 generation,
-                expected_revision: this.selector_config_revision,
+                expected_revision: this.configuration_io.selector_config_revision,
                 started_at: Instant::now(),
                 fingerprint,
                 action,
@@ -159,13 +171,14 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             let is_current = this
+                .configuration_io
                 .pending_selector_validation
                 .as_ref()
                 .is_some_and(|pending| pending.generation == generation);
             if !is_current {
                 return false;
             }
-            this.pending_selector_validation.take()
+            this.configuration_io.pending_selector_validation.take()
         };
         let Some(pending) = pending else {
             return false;
@@ -176,9 +189,23 @@ impl qobject::BrowserUi {
             generation,
             pending.generation,
             pending.expected_revision,
-            self.as_ref().rust().selector_config_revision,
+            self.as_ref()
+                .rust()
+                .configuration_io
+                .selector_config_revision,
             result.ok,
         );
+        if !matches!(decision, SelectorCallbackDecision::Accept) {
+            if let Some(operation_id) = pending.operation_id.as_ref() {
+                self.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                    operation_id.clone(),
+                    crate::OperationUpdate::failed(
+                        crate::FailureKind::Config,
+                        result.reason.clone(),
+                    ),
+                );
+            }
+        }
         match decision {
             SelectorCallbackDecision::Stale => self.as_mut().set_status_text(QString::from(
                 "Selector settings changed. Validate the rule again.",
@@ -195,6 +222,7 @@ impl qobject::BrowserUi {
         let expired = self
             .as_ref()
             .rust()
+            .configuration_io
             .pending_selector_validation
             .as_ref()
             .is_some_and(|pending| {
@@ -208,6 +236,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .configuration_io
             .pending_selector_validation
             .take();
         if let Some(pending) = pending {
@@ -220,12 +249,22 @@ impl qobject::BrowserUi {
                 rule: String::new(),
                 reason: "WebEngine selector validation timed out".into(),
             };
+            if let Some(operation_id) = pending.operation_id {
+                self.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                    operation_id,
+                    crate::OperationUpdate::failed(
+                        crate::FailureKind::Timeout,
+                        result.reason.clone(),
+                    ),
+                );
+            }
             self.as_mut()
                 .reject_selector_action(pending.action, &result);
         }
     }
 
     fn accept_selector_action(mut self: Pin<&mut Self>, pending: PendingSelectorValidation) {
+        let operation_id = pending.operation_id;
         match pending.action {
             PendingSelectorAction::RuntimeConfig {
                 candidate,
@@ -243,10 +282,30 @@ impl qobject::BrowserUi {
                         .map(|path| (path, &persistent_overrides)),
                     pending.fingerprint,
                 ) {
-                    Ok(_) => {}
-                    Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                        "Selector configuration commit rejected: {error}"
-                    ))),
+                    Ok(_) => {
+                        if let Some(operation_id) = operation_id {
+                            if !self.as_mut().bind_configuration_operation(&operation_id) {
+                                self.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                                    operation_id,
+                                    crate::OperationUpdate::completed("settings published"),
+                                );
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        if let Some(operation_id) = operation_id {
+                            self.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                                operation_id,
+                                crate::OperationUpdate::failed(
+                                    crate::FailureKind::Config,
+                                    error.clone(),
+                                ),
+                            );
+                        }
+                        self.as_mut().set_status_text(QString::from(format!(
+                            "Selector configuration commit rejected: {error}"
+                        )));
+                    }
                 }
             }
             PendingSelectorAction::Reload { publication } => {
@@ -320,8 +379,11 @@ impl qobject::BrowserUi {
     ) {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        this.active_selector_fingerprint = fingerprint;
-        this.selector_config_revision = this.selector_config_revision.wrapping_add(1);
+        this.configuration_io.active_selector_fingerprint = fingerprint;
+        this.configuration_io.selector_config_revision = this
+            .configuration_io
+            .selector_config_revision
+            .wrapping_add(1);
     }
 }
 

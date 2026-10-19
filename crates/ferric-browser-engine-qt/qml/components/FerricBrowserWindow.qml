@@ -1,3 +1,4 @@
+import "../scripts/EngineRequests.js" as EngineRequests
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -688,20 +689,6 @@ ApplicationWindow {
 
     Connections {
         target: rootWindow.primaryBrowserUi
-        function onConfig_jsonChanged() {
-            secondaryUi.set_startup_configuration(
-                        rootWindow.primaryBrowserUi.config_json, rootWindow.primaryBrowserUi.config_base_json,
-                        rootWindow.primaryBrowserUi.cli_overrides_json,
-                        secondaryUi.profile_overrides_json,
-                        rootWindow.primaryBrowserUi.config_path, secondaryUi.config_source)
-        }
-        function onConfig_base_jsonChanged() {
-            secondaryUi.set_startup_configuration(
-                        secondaryUi.config_json, rootWindow.primaryBrowserUi.config_base_json,
-                        secondaryUi.cli_overrides_json,
-                        secondaryUi.profile_overrides_json,
-                        secondaryUi.config_path, secondaryUi.config_source)
-        }
         function onContexts_jsonChanged() {
             secondaryUi.set_contexts_configuration(rootWindow.primaryBrowserUi.contexts_json)
         }
@@ -852,6 +839,7 @@ function onContext_workspaceChanged() {
     }
 
     function applySwitcherEngineAction() {
+        if (EngineRequests.execute(secondaryUi.take_engine_request(), secondaryUi, secondaryWindow, rootWindow)) return
         var action = secondaryUi.take_engine_action()
         if (!action || action.length === 0) {
             return
@@ -945,10 +933,6 @@ function onContext_workspaceChanged() {
             secondaryManagers.showSessionPreview(action.split("\t").slice(1).join("\t"), false)
             return
         }
-        if (action.indexOf("edit\t") === 0) {
-            rootWindow.applyNativeEditAction(secondaryUi, secondaryWindow.activeView, action)
-            return
-        }
         if (action.indexOf("command-prefill\t") === 0) {
             secondaryCommandBar.commandText = action.slice("command-prefill\t".length)
             secondaryCommandBar.cursorPosition = secondaryCommandBar.commandText.length
@@ -963,17 +947,7 @@ function onContext_workspaceChanged() {
             secondaryWindow.beginQuitRequest()
             return
         }
-        if (action.indexOf("scroll-target\t") === 0) {
-            var scrollTargetParts = action.split("\t")
-            var scrollTargetIndex = scrollTargetParts.length === 3
-                    ? secondaryUi.tab_index_for_id(scrollTargetParts[1]) : -1
-            var scrollTargetView = secondaryWindow.tabViewAt(scrollTargetIndex)
-            rootWindow.applyScrollTargetAction(
-                secondaryUi, scrollTargetView,
-                scrollTargetParts.length === 3 ? scrollTargetParts[2] : "",
-                secondaryWindow)
-            return
-        }
+
         if (action === "tab-detach" || action.indexOf("tab-detach\t") === 0
                 || action.indexOf("tab-give\t") === 0) {
             rootWindow.executeBrowserTransferAction(secondaryUi, secondaryWindow, action)
@@ -1009,24 +983,6 @@ function onContext_workspaceChanged() {
             secondaryUi.status_text = secondaryMuted ? "Tab muted" : "Tab unmuted"
             return
         }
-        if (action.indexOf("navigate\t") === 0) {
-            var navigation = action.split("\t")
-            if (navigation.length >= 3) {
-                var navigationIndex = Number(navigation[1])
-                // Interactive tab-open can deliver its navigation before the
-                // scheduled runtime pass has created the new tab's view.
-                secondaryWindow.syncTabModel()
-                var navigationView = secondaryWindow.tabViewAt(navigationIndex)
-                if (navigationView) {
-                    secondaryTabs.setProperty(navigationIndex, "loaded", true)
-                    navigationView.setContentUrl(navigation.slice(2).join("\t"), false)
-                } else {
-                    secondaryUi.status_text = "This tab couldn't be opened. Try reopening it."
-                    console.error("navigation view unavailable", navigationIndex, secondaryUi.tab_count)
-                }
-                return
-            }
-        }
         if (action === "start-page-cycle") {
             if (activeView.nativeUrl === "rb://start" && activeView.startPage) activeView.startPage.cycleView()
             return
@@ -1037,35 +993,6 @@ function onContext_workspaceChanged() {
                 if (startParts[0] === "start-page-view") activeView.startPage.chooseView(startParts[1])
                 else activeView.startPage.addCaptured(startParts[1], startParts.slice(2).join("\t"))
             }
-            return
-        }
-        if (action.indexOf("reload\t") === 0 && activeView.nativeUrl.length > 0) {
-            if (activeView.startPage) activeView.startPage.refresh()
-            return
-        }
-        if (action.indexOf("reload\t") === 0) {
-            var secondaryReloadParts = action.split("\t")
-            if (secondaryReloadParts[1] === "true") {
-                secondaryWindow.activeView.reloadAndBypassCache()
-            } else {
-                secondaryWindow.activeView.reload()
-            }
-            secondaryWindow.activeView.forceActiveFocus()
-            return
-        }
-        if (action === "back" || action.indexOf("back\t") === 0
-                || action === "forward" || action.indexOf("forward\t") === 0) {
-            var historyParts = action.split("\t")
-            var historyCount = Number(historyParts.length >= 2
-                                      ? historyParts[1] : 1)
-            var historyBack = historyParts[0] === "back"
-            rootWindow.executeHistoryTraversal(secondaryWindow.activeView, historyBack, historyCount)
-            secondaryWindow.activeView.forceActiveFocus()
-            return
-        }
-        if (action === "stop") {
-            secondaryWindow.activeView.stop()
-            secondaryWindow.activeView.forceActiveFocus()
             return
         }
         if (action.indexOf("fullscreen\t") === 0) {
@@ -1087,70 +1014,8 @@ function onContext_workspaceChanged() {
             secondaryWindow.activeView.forceActiveFocus()
             return
         }
-        if (action.indexOf("zoom\t") === 0) {
-            var zoomParts = action.split("\t")
-            if (zoomParts.length >= 3) {
-                var zoomTabIndex = secondaryUi.tab_index_for_id(zoomParts[1])
-                var zoomFactor = Number(zoomParts[2])
-                if (zoomTabIndex >= 0 && Number.isFinite(zoomFactor)
-                        && zoomFactor >= 0.25 && zoomFactor <= 5.0) {
-                    secondaryTabs.setProperty(zoomTabIndex, "zoom", zoomFactor)
-                    var zoomView = tabViewAt(zoomTabIndex)
-                    if (zoomView) {
-                        zoomView.zoomFactor = zoomFactor
-                    }
-                }
-            }
-            return
-        }
-        if (action.indexOf("find-next\t") === 0) {
-            var secondaryFindParts = action.split("\t")
-            var secondaryFindCount = Number(secondaryFindParts[1])
-            var secondaryFindBackward = secondaryFindParts[2] === "true"
-            if (Number.isFinite(secondaryFindCount)
-                    && secondaryFindCount >= 1 && secondaryFindCount <= 100) {
-                var secondaryFindFlags = rootWindow.searchFindFlags(
-                    secondaryUi.search_text, secondaryFindParts[3], secondaryFindBackward)
-                for (var secondaryFindIndex = 0;
-                     secondaryFindIndex < secondaryFindCount;
-                     ++secondaryFindIndex) {
-                    secondaryWindow.activeView.findText(secondaryUi.search_text, secondaryFindFlags)
-                }
-            }
-            secondaryWindow.activeView.forceActiveFocus()
-            return
-        }
-        if (action.indexOf("find\t") === 0) {
-            var secondaryFindRequest = action.split("\t")
-            var secondaryFindFlags = rootWindow.searchFindFlags(
-                secondaryUi.search_text, secondaryFindRequest[2],
-                secondaryFindRequest[1] === "true")
-            secondaryWindow.activeView.findText(secondaryUi.search_text, secondaryFindFlags)
-            secondaryWindow.activeView.forceActiveFocus()
-            return
-        }
-        if (action.indexOf("scroll\t") === 0
-                || action.indexOf("scroll-page\t") === 0
-                || action.indexOf("scroll-to\t") === 0) {
-            var secondaryScrollParts = action.split("\t")
-            if (secondaryScrollParts[0] === "scroll" && secondaryScrollParts.length >= 3) {
-                rootWindow.runBrowserScript(secondaryWindow.activeView, rootWindow.scrollScript(
-                    "scroll", secondaryScrollParts[1], false,
-                    Number(secondaryScrollParts[2])))
-            } else if (secondaryScrollParts[0] === "scroll-page"
-                       && secondaryScrollParts.length >= 4) {
-                rootWindow.runBrowserScript(secondaryWindow.activeView, rootWindow.scrollScript(
-                    "scroll-page", secondaryScrollParts[1],
-                    secondaryScrollParts[2] === "true",
-                    Number(secondaryScrollParts[3])))
-            } else if (secondaryScrollParts[0] === "scroll-to"
-                       && secondaryScrollParts.length >= 2) {
-                rootWindow.runBrowserScript(secondaryWindow.activeView, rootWindow.scrollScript(
-                    "scroll-to", secondaryScrollParts[1], false, 1))
-            }
-            secondaryWindow.activeView.forceActiveFocus()
-            return
-        }
+
+
         if (action === "show-downloads") { secondaryDownloads.show(); return }
         if (action.indexOf("download-pause\t") === 0 || action.indexOf("download-resume\t") === 0
                 || action.indexOf("download-cancel\t") === 0) {
@@ -1163,91 +1028,14 @@ function onContext_workspaceChanged() {
                                    action.split("\t").slice(1).join("\t"))
             return
         }
-        if (action.indexOf("save-page\t") === 0) {
-            var secondarySaveParts = action.split("\t")
-            if (secondarySaveParts.length >= 3) {
-                var secondarySavePath = secondaryUi.prepare_save_page(
-                    secondarySaveParts.slice(2).join("\t"))
-                if (secondarySavePath.length > 0) {
-                    secondaryWindow.activeView.save(
-                        secondarySavePath,
-                        WebEngineDownloadRequest.MimeHtmlSaveFormat)
-                    secondaryUi.status_text =
-                            "Page save requested; completion is tracked in Downloads"
-                } else {
-                    secondaryUi.take_save_page_path()
-                }
-            }
-            secondaryWindow.activeView.forceActiveFocus()
-            return
-        }
-        if (action.indexOf("view-source\t") === 0) {
-            var secondarySourceParts = action.split("\t")
-            if (secondarySourceParts.length >= 3) {
-                var secondarySourceUrl = secondarySourceParts.slice(2).join("\t")
-                secondaryWindow.activeView.url = "view-source:" + secondarySourceUrl
-                secondaryUi.status_text = "Viewing page source"
-            }
-            secondaryWindow.activeView.forceActiveFocus()
-            return
-        }
-        if (action === "jseval") {
-            var secondaryEvalId = String(secondaryUi.jseval_tab_id)
-            var secondaryEvalIndex = secondaryUi.tab_index_for_id(secondaryEvalId)
-            var secondaryEvalView = secondaryWindow.tabViewAt(secondaryEvalIndex)
-            var secondaryEvalScript = String(secondaryUi.jseval_script)
-            var secondaryEvalWorld = secondaryUi.jseval_world === "page"
-                    ? WebEngineScript.MainWorld : rootWindow.browserScriptWorld
-            if (!secondaryEvalView || secondaryEvalScript.length === 0
-                    || secondaryEvalScript.length > 65536) {
-                secondaryUi.status_text =
-                        "Cannot run JavaScript here. Check the page and script, then try :jseval again."
-                return
-            }
-            rootWindow.runBrowserScript(secondaryEvalView, secondaryEvalScript,
-                function() {
-                    secondaryUi.status_text = "JavaScript evaluation completed"
-                }, secondaryEvalWorld)
-            secondaryEvalView.forceActiveFocus()
-            return
-        }
+
         if (action.indexOf("permission-reset\t") === 0) {
             var permissionParts = action.split("\t")
             if (permissionParts.length === 3)
                 rootWindow.applyPermissionReset(secondaryUi, permissionParts[1], permissionParts[2])
             return
         }
-        if (action.indexOf("devtools\t") === 0) {
-            secondaryDevTools.toggle(action.split("\t")[1] === "true")
-            return
-        }
-        if (action.indexOf("print\t") === 0) {
-            var secondaryPrintParts = action.split("\t")
-            var secondaryPrintPath = secondaryUi.prepare_print_job()
-            if (secondaryPrintPath.length > 0 && secondaryWindow.activeView) {
-                secondaryWindow.activeView.printToPdf(function(success) {
-                    secondaryUi.finish_print_job(secondaryPrintPath, success)
-                })
-            } else {
-                secondaryUi.finish_print_job(secondaryPrintPath, false)
-            }
-            secondaryWindow.activeView.forceActiveFocus()
-            return
-        }
-        if (action.indexOf("print-pdf\t") === 0) {
-            var secondaryPdfParts = action.split("\t")
-            if (secondaryPdfParts.length >= 3) {
-                var secondaryPdfPath = secondaryUi.prepare_print_pdf(
-                    secondaryPdfParts.slice(2).join("\t"))
-                if (secondaryPdfPath.length > 0 && secondaryWindow.activeView) {
-                    secondaryWindow.activeView.printToPdf(secondaryPdfPath)
-                } else {
-                    secondaryUi.finish_print_pdf(
-                        secondaryPdfParts.slice(2).join("\t"), false)
-                }
-            }
-            return
-        }
+
         if (action.indexOf("external-open\t") === 0) {
             rootWindow.openExternalUri(secondaryUi,
                                    action.split("\t").slice(1).join("\t"))
@@ -1599,8 +1387,8 @@ function onContext_workspaceChanged() {
     }
 
     property int detachedTabIndex: -1
-    function detachActiveViewForTransfer() {
-        var index = secondaryUi.active_tab_index
+    function detachActiveViewForTransfer(sourceTabId) {
+        var index = secondaryUi.tab_index_for_id(sourceTabId)
         var view = tabViewAt(index)
         if (!view) return null
         secondaryDevTools.close()

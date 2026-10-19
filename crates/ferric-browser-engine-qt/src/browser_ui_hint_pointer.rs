@@ -172,6 +172,7 @@ impl qobject::BrowserUi {
         let Some(owner) = self
             .as_ref()
             .rust()
+            .interaction
             .hint_pointer_action
             .as_ref()
             .map(|a| a.owner)
@@ -190,6 +191,7 @@ impl qobject::BrowserUi {
             let binding = self.as_ref();
             binding
                 .rust()
+                .interaction
                 .hint_interaction
                 .as_ref()
                 .and_then(|interaction| interaction.snapshot().active_label)
@@ -201,6 +203,7 @@ impl qobject::BrowserUi {
         let session_has_label = self
             .as_ref()
             .rust()
+            .interaction
             .hint_session
             .as_ref()
             .is_some_and(|session| {
@@ -209,7 +212,7 @@ impl qobject::BrowserUi {
         let accepted = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(action) = this.hint_pointer_action.as_mut() else {
+            let Some(action) = this.interaction.hint_pointer_action.as_mut() else {
                 return QString::from(r#"{"error":"no-pointer-session"}"#);
             };
             if action.lifecycle != HintPointerLifecycle::Selecting || !session_has_label {
@@ -245,6 +248,7 @@ impl qobject::BrowserUi {
         let Some(owner) = self
             .as_ref()
             .rust()
+            .interaction
             .hint_pointer_action
             .as_ref()
             .map(|a| a.owner)
@@ -262,7 +266,7 @@ impl qobject::BrowserUi {
         let (label, accepted) = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let action = this.hint_pointer_action.as_mut();
+            let action = this.interaction.hint_pointer_action.as_mut();
             let Some(action) = action else {
                 return QString::from(r#"{"error":"no-pointer-session"}"#);
             };
@@ -281,6 +285,7 @@ impl qobject::BrowserUi {
         let request_id = self
             .as_ref()
             .rust()
+            .interaction
             .hint_pointer_action
             .as_ref()
             .map_or_else(String::new, |action| action.request_id.clone());
@@ -305,7 +310,7 @@ impl qobject::BrowserUi {
         let request_id = request_id.to_string();
         let (matches_current_request, request_is_live) = {
             let binding = self.as_ref();
-            let Some(action) = binding.rust().hint_pointer_action.as_ref() else {
+            let Some(action) = binding.rust().interaction.hint_pointer_action.as_ref() else {
                 return false;
             };
             (
@@ -426,7 +431,7 @@ impl qobject::BrowserUi {
             live,
         ) = {
             let binding = self.as_ref();
-            let Some(action) = binding.rust().hint_pointer_action.as_ref() else {
+            let Some(action) = binding.rust().interaction.hint_pointer_action.as_ref() else {
                 return false;
             };
             (
@@ -487,6 +492,7 @@ impl qobject::BrowserUi {
             let binding = self.as_ref();
             binding
                 .rust()
+                .interaction
                 .hint_session
                 .as_ref()
                 .filter(|session| {
@@ -523,17 +529,20 @@ impl qobject::BrowserUi {
         let dispatch_identity = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.hint_pointer_action.as_mut().and_then(|action| {
-                let permit = action.permit.take()?;
-                let consumed = this.hint_local_interaction_authority.consume(
-                    permit,
-                    action.source,
-                    action.owner,
-                    LocalInteractionOperation::HintPointerDispatch,
-                );
-                (consumed && action.mark_dispatch_pending())
-                    .then(|| (action.request_id.clone(), action.owner.session.to_string()))
-            })
+            this.interaction
+                .hint_pointer_action
+                .as_mut()
+                .and_then(|action| {
+                    let permit = action.permit.take()?;
+                    let consumed = this.interaction.hint_local_interaction_authority.consume(
+                        permit,
+                        action.source,
+                        action.owner,
+                        LocalInteractionOperation::HintPointerDispatch,
+                    );
+                    (consumed && action.mark_dispatch_pending())
+                        .then(|| (action.request_id.clone(), action.owner.session.to_string()))
+                })
         };
         let Some((request_id, session_id)) = dispatch_identity else {
             self.as_mut().finish_hint_pointer_action(
@@ -582,7 +591,7 @@ impl qobject::BrowserUi {
         let revision = canonical_nonzero_u64(&surface_revision.to_string());
         let action_is_current = {
             let binding = self.as_ref();
-            let Some(action) = binding.rust().hint_pointer_action.as_ref() else {
+            let Some(action) = binding.rust().interaction.hint_pointer_action.as_ref() else {
                 return;
             };
             action.lifecycle == HintPointerLifecycle::DispatchPending
@@ -606,6 +615,7 @@ impl qobject::BrowserUi {
         let lifecycle = self
             .as_ref()
             .rust()
+            .interaction
             .hint_pointer_action
             .as_ref()
             .map(|action| action.lifecycle);
@@ -626,6 +636,7 @@ impl qobject::BrowserUi {
         let lifecycle = self
             .as_ref()
             .rust()
+            .interaction
             .hint_pointer_action
             .as_ref()
             .map(|action| action.lifecycle);
@@ -647,12 +658,16 @@ impl qobject::BrowserUi {
             return false;
         };
         rust.window == Some(owner.window)
-            && rust.hint_configuration_revision == owner.configuration_revision
-            && rust.hint_session.as_ref().is_some_and(|session| {
-                session.id == owner.session
-                    && session.target == owner.target
-                    && session.configuration_revision == owner.configuration_revision
-            })
+            && rust.interaction.hint_configuration_revision == owner.configuration_revision
+            && rust
+                .interaction
+                .hint_session
+                .as_ref()
+                .is_some_and(|session| {
+                    session.id == owner.session
+                        && session.target == owner.target
+                        && session.configuration_revision == owner.configuration_revision
+                })
             && HintTarget {
                 tab: target.tab,
                 generation: target.generation,
@@ -666,6 +681,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .interaction
             .hint_pointer_action
             .as_mut()
         {
@@ -674,15 +690,16 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.hint_pointer_action = None;
-            this.hint_pointer_source = None;
-            this.hint_session = None;
-            this.hint_interaction = None;
-            this.hint_consumed.clear();
+            this.interaction.hint_pointer_action = None;
+            this.interaction.hint_pointer_source = None;
+            this.interaction.hint_session = None;
+            this.interaction.hint_interaction = None;
+            this.interaction.hint_consumed.clear();
             this.hint_values = QString::default();
             this.pending_hint_action = None;
-            this.pending_hint_palette_permit = None;
-            this.hint_local_interaction_authority
+            this.interaction.pending_hint_palette_permit = None;
+            this.interaction
+                .hint_local_interaction_authority
                 .clear_session_requests();
         }
         self.as_mut().set_hint_visible(false);

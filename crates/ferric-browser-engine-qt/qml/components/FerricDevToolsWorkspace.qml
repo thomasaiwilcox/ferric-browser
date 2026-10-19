@@ -78,22 +78,23 @@ QtObject {
         previous.destroy()
         if (notify) browserUi.status_text="Developer tools closed"
     }
-    function toggle(detach) {
+    function toggle(detach, targetView) {
+        var requestedView = targetView || activeView
         if (browserUi.profile_bootstrap_pending) {
             browserUi.status_text="This window is still starting. Try again in a moment."
             return false
         }
-        if (!activeView || hostWindow.runtimeReleased === true || !activeView.ownsTab()) {
+        if (!requestedView || hostWindow.runtimeReleased === true || !requestedView.ownsTab()) {
             browserUi.status_text="The page is no longer available. Select a tab and try again."
             return false
         }
-        if (visible && detached === detach && sourceView === activeView) {
+        if (visible && detached === detach && sourceView === requestedView) {
             close()
             browserUi.status_text="Developer tools closed"
             return true
         }
         close()
-        sourceView=activeView
+        sourceView=requestedView
         sourceProfile=sourceView.profile
         sourceWindowId=String(browserUi.core_window_id)
         focusReturn.captureOverlayFocus(hostWindow,sourceView)

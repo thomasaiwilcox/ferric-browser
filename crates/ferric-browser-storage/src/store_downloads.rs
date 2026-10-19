@@ -12,24 +12,7 @@ impl ProfileStore {
     /// Rejects invalid records, duplicate IDs, oversized batches and database
     /// errors without committing any part of the batch.
     pub fn save_download_batch(&self, records: &[DownloadRecord]) -> Result<(), StoreError> {
-        let mut ids = std::collections::BTreeSet::new();
-        if records.is_empty() || records.len() > 32 {
-            return Err(StoreError::InvalidInput("download save batch is invalid"));
-        }
-        for record in records {
-            if !valid_stored_text(&record.id, MAX_STORED_IDENTIFIER_BYTES)
-                || !valid_stored_text(&record.source_url, 16 * 1024)
-                || record.destination.len() > 16 * 1024
-                || record.destination.chars().any(char::is_control)
-                || (!record.destination.is_empty()
-                    && !std::path::Path::new(&record.destination).is_absolute())
-                || record.bytes_received < 0
-                || (record.completed_at.is_some() && record.state != DownloadState::Completed)
-                || !ids.insert(&record.id)
-            {
-                return Err(StoreError::InvalidInput("download record is invalid"));
-            }
-        }
+        validate_download_records(records)?;
         let transaction = self.connection.unchecked_transaction()?;
         for record in records {
             transaction.execute(
@@ -200,6 +183,28 @@ impl ProfileStore {
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(StoreError::from)
     }
+}
+
+pub(crate) fn validate_download_records(records: &[DownloadRecord]) -> Result<(), StoreError> {
+    let mut ids = std::collections::BTreeSet::new();
+    if records.is_empty() || records.len() > 32 {
+        return Err(StoreError::InvalidInput("download save batch is invalid"));
+    }
+    for record in records {
+        if !valid_stored_text(&record.id, MAX_STORED_IDENTIFIER_BYTES)
+            || !valid_stored_text(&record.source_url, 16 * 1024)
+            || record.destination.len() > 16 * 1024
+            || record.destination.chars().any(char::is_control)
+            || (!record.destination.is_empty()
+                && !std::path::Path::new(&record.destination).is_absolute())
+            || record.bytes_received < 0
+            || (record.completed_at.is_some() && record.state != DownloadState::Completed)
+            || !ids.insert(&record.id)
+        {
+            return Err(StoreError::InvalidInput("download record is invalid"));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -121,9 +121,9 @@ def main():
                 # Command-authored selectors must reach route validation; an
                 # unknown owner must never silently navigate the default one.
                 invoke('command', 'open --profile no-such-profile https://should-not-open.invalid/',
-                       accepted=False, error_code='E_ENGINE')
+                       accepted=False, error_code='E_DENIED')
                 invoke('command', 'open --context no-such-context https://should-not-open.invalid/',
-                       accepted=False, error_code='E_ENGINE')
+                       accepted=False, error_code='E_NOT_FOUND')
                 # Admission is asynchronous. A rejected destination must still
                 # finish the operation instead of remaining accepted forever.
                 retained = {row['operation_id'] for row in

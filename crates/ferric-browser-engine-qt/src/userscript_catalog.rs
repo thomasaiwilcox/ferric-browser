@@ -1,7 +1,7 @@
 //! Projection of installed userscript actions into the typed action catalog.
 //!
-//! Filesystem discovery and availability policy live here so the Qt bridge only
-//! publishes already-validated presentation records.
+//! Application-owned discovery supplies validated catalog records. This adapter
+//! combines them with native capability availability for presentation.
 
 use crate::userscript;
 use ferric_browser_application::BrowserApplication;
@@ -9,7 +9,6 @@ use ferric_browser_core::{
     ActionRegistry, ExistenceState, PrivacyKind, TabId, Target, ValidatedUrl, WindowId,
 };
 use serde_json::Value;
-use std::path::Path;
 
 #[derive(Debug)]
 pub(super) struct ActionPresentation {
@@ -94,15 +93,12 @@ pub(super) fn action_value(action: &userscript::RegisteredAction, available: boo
 }
 
 pub(super) fn action_values(
-    root: Option<&Path>,
+    actions: Result<Vec<userscript::RegisteredAction>, String>,
     subject: Option<&str>,
     availability: Availability,
 ) -> Result<Vec<Value>, String> {
-    let Some(root) = root else {
-        return Ok(Vec::new());
-    };
     let builtins = ActionRegistry::default_v1();
-    userscript::registered_actions(root).map(|actions| {
+    actions.map(|actions| {
         actions
             .into_iter()
             .filter(|action| {
@@ -118,15 +114,12 @@ pub(super) fn action_values(
 }
 
 pub(super) fn action_presentations(
-    root: Option<&Path>,
+    actions: Result<Vec<userscript::RegisteredAction>, String>,
     subject: &str,
     availability: Availability,
 ) -> Result<Vec<ActionPresentation>, String> {
-    let Some(root) = root else {
-        return Ok(Vec::new());
-    };
     let builtins = ActionRegistry::default_v1();
-    userscript::registered_actions(root).map(|actions| {
+    actions.map(|actions| {
         actions
             .into_iter()
             .filter(|action| action.subject == subject && builtins.resolve(&action.id).is_none())
@@ -243,6 +236,30 @@ pub(super) fn subject_target(
     state
         .capture_target(tab)
         .ok_or_else(|| "userscript action target is stale".to_owned())
+}
+
+impl crate::BrowserUiRust {
+    pub(super) fn cached_userscript_actions(
+        &self,
+    ) -> Result<Vec<userscript::RegisteredAction>, String> {
+        self.state.as_ref().map_or_else(
+            || Ok(Vec::new()),
+            |state| Ok(state.userscript_catalog()?.actions().to_vec()),
+        )
+    }
+
+    pub(super) fn cached_userscript(
+        &self,
+        name: &str,
+    ) -> Result<userscript::LoadedManifest, String> {
+        self.state
+            .as_ref()
+            .ok_or_else(|| "userscript owner is unavailable".to_owned())?
+            .userscript_catalog()?
+            .manifest(name)
+            .cloned()
+            .ok_or_else(|| format!("userscript {name} is not installed"))
+    }
 }
 
 #[cfg(test)]

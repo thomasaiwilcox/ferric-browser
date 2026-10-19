@@ -50,6 +50,7 @@ impl Drop for PendingConfigEdit {
     }
 }
 
+#[allow(unsafe_code)]
 pub(super) fn terminate_child_process(child: &mut Child) {
     #[cfg(unix)]
     {

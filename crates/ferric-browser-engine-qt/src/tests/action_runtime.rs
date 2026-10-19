@@ -655,30 +655,6 @@ fn switcher_actions_have_safe_defaults_and_kind_allowlists() {
 }
 
 #[test]
-fn operation_events_publish_only_bounded_status_categories() {
-    assert_eq!(operation_status_kind("running"), "completed");
-    assert_eq!(operation_status_kind("sent to editor: op-1"), "completed");
-    assert_eq!(operation_status_kind("failed (timeout)"), "failed");
-    assert_eq!(operation_status_kind("cancelled"), "cancelled");
-}
-
-#[test]
-fn terminal_operation_states_cannot_be_cancelled_again() {
-    for status in [
-        "completed",
-        "completed: message",
-        "failed (child)",
-        "cancelled",
-        "detached",
-    ] {
-        assert!(operation_is_terminal(status), "{status}");
-    }
-    for status in ["running", "selection pending", "accepted"] {
-        assert!(!operation_is_terminal(status), "{status}");
-    }
-}
-
-#[test]
 fn userscript_stderr_is_bounded_redacted_and_explicit() {
     let stderr =
         sanitize_process_stderr(b"password=secret https://example.test/?token=hidden\nmessage\x01");
@@ -688,10 +664,9 @@ fn userscript_stderr_is_bounded_redacted_and_explicit() {
     assert!(stderr.contains("message"));
 
     let mut rust = BrowserUiRust::default();
-    rust.operation_states
-        .insert("op-stderr".into(), "failed (child)".into());
-    rust.operation_stderr
-        .insert("op-stderr".into(), stderr.clone());
+    rust.admit_operation("op-stderr".into()).unwrap();
+    remember_operation_stderr(&mut rust, "op-stderr", stderr.clone());
+    rust.set_operation("op-stderr".into(), OperationUpdate::failed(FailureKind::Engine, "child"));
     let hidden =
         operations_query_value(&rust, &serde_json::json!({})).expect("default operation query");
     assert!(hidden["operations"][0].get("stderr").is_none());

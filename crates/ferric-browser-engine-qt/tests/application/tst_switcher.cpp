@@ -406,8 +406,15 @@ class SwitcherTests final : public QObject {
         for (int i = 0; i < 10; ++i)
             submitAt(child, ui, "tab-open rb://blank");
         QTRY_COMPARE(evaluate(ui + ".tab_count").toInt(), 11);
+        // Tab-count publication precedes native view activation. Let the last
+        // tab finish taking focus before driving another command-line gesture.
+        QTRY_VERIFY(evaluate("(()=>{const v=testWindow.browserWindowRegistry[1].host.activeWebView();"
+                             "return !!v && v.ownsTab() && !v.loading && v.mainFrame.isValid"
+                             " && String(v.nativeUrl)==='rb://blank'})()").toBool());
         submitAt(child, ui, "set --temp switcher.max_results=10");
-        QTRY_COMPARE(evaluate(ui + ".feature_switcher_max_results").toInt(), 10);
+        QTRY_VERIFY2(evaluate(ui + ".feature_switcher_max_results").toInt() == 10,
+                     qPrintable(evaluate("JSON.stringify({mode:" + ui + ".mode,status:" + ui
+                         + ".status_text,limit:" + ui + ".feature_switcher_max_results})").toString()));
         QCOMPARE(evaluate("testWindow.browserUi.feature_switcher_max_results").toInt(), 100);
         submitAt(child, ui, "switcher --scope tabs");
         QTRY_VERIFY(

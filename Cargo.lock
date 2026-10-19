@@ -371,6 +371,8 @@ dependencies = [
  "ferric-browser-core",
  "ferric-browser-runtime",
  "ferric-browser-storage",
+ "serde",
+ "serde_json",
  "toml",
  "uuid",
 ]
@@ -431,8 +433,6 @@ name = "ferric-browser-runtime"
 version = "0.1.0"
 dependencies = [
  "ferric-browser-core",
- "ferric-browser-ipc",
- "serde_json",
 ]
 
 [[package]]

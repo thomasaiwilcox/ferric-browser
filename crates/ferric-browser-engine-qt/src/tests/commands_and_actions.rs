@@ -162,7 +162,7 @@ fn window_new_command_uses_typed_profile_and_private_options() {
     );
     let qml = QML_SOURCE;
     assert!(qml.contains("action.indexOf(\"new-window\\t\") === 0"));
-    assert!(qml.contains("window.executeNewWindowAction(browserUi, action)"));
+    assert!(qml.contains("window.executeNewWindowAction(window.browserUi, action)"));
     assert!(qml.contains("rootWindow.executeNewWindowAction(secondaryUi, action)"));
     assert!(qml.contains("windowPrivateProfile: privateProfile"));
     assert!(qml.contains("windowInheritedUi: inherit ? ui : null"));
@@ -173,13 +173,11 @@ fn window_new_command_uses_typed_profile_and_private_options() {
 fn external_window_focus_reports_bounded_activation_outcome() {
     let source = ADAPTER_SOURCE;
     let qml = QML_SOURCE;
-    assert!(source.contains(
-        "operation_states\n            .insert(operation_id.clone(), \"running\".into())"
-    ));
+    assert!(source.contains("OperationUpdate::running"));
     assert!(source.contains("fn complete_window_focus("));
-    assert!(source.contains("\"activation\": outcome"));
+    assert!(source.contains("OperationUpdate::completed(\"activated\")"));
     assert!(qml.contains("function executeWindowFocusAction(sourceUi, action)"));
-    assert!(qml.contains("executeWindowFocusAction(browserUi, action)"));
+    assert!(qml.contains("executeWindowFocusAction(window.browserUi, action)"));
     assert!(qml.contains("window.activateBrowserWindow(entry.host, sourceUi, operationId)"));
     let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     assert!(secondary.contains("executeWindowFocusAction(secondaryUi, action)"));
@@ -232,8 +230,8 @@ fn tab_give_command_preserves_target_and_queues_live_transfer() {
     );
     let source = ADAPTER_SOURCE;
     assert!(source.contains("tab-give requires a bounded target window ID"));
-    assert!(source.contains("format!(\"tab-give\\t{window_id}\\t{operation_id}\")"));
-    assert!(source.contains("format!(\"tab-detach\\t{operation_id}\")"));
+    assert!(source.contains("format!(\"tab-give\\t{window_id}\\t{operation_id_field}\\t{tab}\")"));
+    assert!(source.contains("format!(\"tab-detach\\t{operation_id_field}\\t{tab}\")"));
     assert!(source.contains("fn complete_transfer_operation("));
     let qml = [
         QML_SOURCE,

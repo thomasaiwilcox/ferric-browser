@@ -4,7 +4,7 @@ use crate::action_request_decoder::typed_registered_action_route;
 
 use super::{
     CxxQtType, Pin, Request, Response, Value, action_failure_category, ipc_action_failure, qobject,
-    userscript, userscript_action_argument_name, userscript_action_is_hint_only,
+    userscript_action_argument_name, userscript_action_is_hint_only,
 };
 
 impl qobject::BrowserUi {
@@ -33,9 +33,9 @@ impl qobject::BrowserUi {
         let expected_argument = match self
             .as_ref()
             .rust()
-            .userscript_roots
+            .state
             .as_ref()
-            .map(|roots| userscript::registered_actions(&roots.config))
+            .map(|_| self.as_ref().rust().cached_userscript_actions())
         {
             None => {
                 return ipc_action_failure(

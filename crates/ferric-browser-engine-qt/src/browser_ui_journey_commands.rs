@@ -127,6 +127,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .navigation
                 .pending_journey_reopen = Some((
                 node_id.to_owned(),
                 target_kind.to_owned(),
@@ -414,8 +415,8 @@ impl qobject::BrowserUi {
                 .into());
             }
             if !private_history_command
-                && (self.as_ref().rust().storage_library.is_none()
-                    || self.as_ref().rust().storage_library_dirty.get())
+                && (self.as_ref().rust().library.storage_library.is_none()
+                    || self.as_ref().rust().library.storage_library_dirty.get())
             {
                 self.as_mut().request_storage_library();
                 self.as_mut().set_command_retryable(true);
@@ -606,6 +607,7 @@ impl qobject::BrowserUi {
                         } else {
                             self.as_ref()
                                 .rust()
+                                .library
                                 .storage_library
                                 .as_ref()
                                 .ok_or_else(|| {
@@ -622,6 +624,7 @@ impl qobject::BrowserUi {
                     "bookmark-open" => self
                         .as_ref()
                         .rust()
+                        .library
                         .storage_library
                         .as_ref()
                         .ok_or_else(|| "profile library metadata is unavailable".to_owned())?
@@ -632,6 +635,7 @@ impl qobject::BrowserUi {
                     "quickmark-open" => self
                         .as_ref()
                         .rust()
+                        .library
                         .storage_library
                         .as_ref()
                         .ok_or_else(|| "profile library metadata is unavailable".to_owned())?
@@ -697,7 +701,7 @@ impl qobject::BrowserUi {
                 | "quickmark-edit"
                 | "history-clear"
         ) {
-            self.as_ref().rust().storage_library_dirty.set(true);
+            self.as_ref().rust().library.storage_library_dirty.set(true);
         }
         if let Some(kind) = listed_kind {
             self.as_mut().set_library_kind(QString::from(kind));

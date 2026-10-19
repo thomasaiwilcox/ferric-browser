@@ -1,7 +1,7 @@
 //! Typed userscript inventory projection for QML settings components.
 
-use super::background_workers::UserscriptMutationOutcome;
 use super::{CxxQtType, Pin, QString, QStringList, qobject, userscript, userscript_catalog};
+use ferric_browser_application::UserscriptMutationOutcome;
 
 impl qobject::BrowserUi {
     pub(super) fn userscript_availability(&self) -> userscript_catalog::Availability {
@@ -66,9 +66,9 @@ impl qobject::BrowserUi {
         self.as_mut().set_userscript_inventory_pending(false);
         self.as_mut()
             .set_userscript_inventory_error(QString::from(detail));
-        self.set_status_text(QString::from(
-            "Installed scripts couldn't be loaded. Refresh in Settings to try again.",
-        ));
+        // Inventory refreshes also run in the background after a mutation.
+        // Their dedicated Settings feedback must not replace that operation's
+        // success/failure receipt in the ordinary status bar.
         false
     }
 
@@ -85,7 +85,7 @@ impl qobject::BrowserUi {
                     &error,
                 );
             }
-            UserscriptMutationOutcome::Applied { inventory } => {
+            UserscriptMutationOutcome::Applied { inventory, .. } => {
                 let notice = match inventory {
                     Ok(scripts) => {
                         self.as_mut().set_userscript_inventory_rows(&scripts);
@@ -119,11 +119,7 @@ impl qobject::BrowserUi {
     ) -> bool {
         let subject = subject.to_string();
         let values = userscript_catalog::action_presentations(
-            self.as_ref()
-                .rust()
-                .userscript_roots
-                .as_ref()
-                .map(|roots| roots.config.as_path()),
+            self.as_ref().rust().cached_userscript_actions(),
             &subject,
             self.as_ref().userscript_availability(),
         );

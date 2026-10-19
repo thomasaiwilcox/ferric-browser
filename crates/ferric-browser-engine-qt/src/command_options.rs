@@ -144,58 +144,8 @@ pub(super) fn scroll(command: &str, arguments: &[String]) -> Result<(bool, u32),
 }
 
 #[must_use]
-pub(super) fn is_tab_undo(name: &str) -> bool {
-    name == "tab-undo"
-}
-
-#[must_use]
-pub(super) fn is_tab_clone(name: &str) -> bool {
-    name == "tab-clone"
-}
-
-#[must_use]
-pub(super) fn is_reopen_in_window(name: &str) -> bool {
-    name == "reopen-in-window"
-}
-
-#[must_use]
-pub(super) fn is_tab_detach(name: &str) -> bool {
-    name == "tab-detach"
-}
-
-#[must_use]
-pub(super) fn is_tab_give(name: &str) -> bool {
-    name == "tab-give"
-}
-
-#[must_use]
 pub(super) fn is_zoom(name: &str) -> bool {
     name == "zoom"
-}
-
-#[must_use]
-pub(super) fn is_search_next(name: &str) -> bool {
-    name == "search-next"
-}
-
-#[must_use]
-pub(super) fn is_scroll(name: &str) -> bool {
-    matches!(name, "scroll" | "scroll-page" | "scroll-to")
-}
-
-#[must_use]
-pub(super) fn is_scroll_target(name: &str) -> bool {
-    name == "scroll-target"
-}
-
-#[must_use]
-pub(super) fn is_link_clean(name: &str) -> bool {
-    matches!(name, "url-clean" | "url-explain")
-}
-
-#[must_use]
-pub(super) fn is_yank(name: &str) -> bool {
-    name == "yank"
 }
 
 #[must_use]

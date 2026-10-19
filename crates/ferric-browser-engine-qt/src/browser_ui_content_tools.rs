@@ -1,7 +1,7 @@
 use super::{
-    CxxQtType, PathBuf, Pin, QString, QStringList, UserscriptManagerRequest,
-    UserscriptManagerWorker, Uuid, cleanup_print_artifact, fs, qobject, userscript,
-    validate_pdf_output_path, validate_print_pdf_path, validate_save_page_path,
+    CxxQtType, PathBuf, Pin, QString, QStringList, UserscriptManagerRequest, Uuid,
+    cleanup_print_artifact, fs, qobject, validate_pdf_output_path, validate_print_pdf_path,
+    validate_save_page_path,
 };
 
 impl qobject::BrowserUi {
@@ -10,18 +10,14 @@ impl qobject::BrowserUi {
         url: &QString,
         private_profile: bool,
     ) -> bool {
-        let Some(roots) = self.as_ref().rust().userscript_roots.clone() else {
-            self.as_mut()
-                .set_page_userscript_names(QStringList::default());
-            self.as_mut()
-                .set_page_userscript_sources(QStringList::default());
-            self.as_mut()
-                .set_page_userscript_run_at(QStringList::default());
-            self.as_mut()
-                .set_page_userscript_runs_on_sub_frames(QStringList::default());
-            return true;
-        };
-        match userscript::matching_page_scripts(&roots.config, &url.to_string(), private_profile) {
+        let scripts = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .ok_or_else(|| "application is unavailable".to_owned())
+            .and_then(|state| state.matching_page_scripts(&url.to_string(), private_profile));
+        match scripts {
             Ok(scripts) => {
                 self.as_mut().set_page_userscript_names(
                     scripts
@@ -67,23 +63,16 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn refresh_userscript_inventory(mut self: Pin<&mut Self>) -> bool {
-        if self.as_ref().active_profile_is_transient() {
-            self.as_mut().clear_userscript_inventory_rows();
-            self.as_mut().set_userscript_inventory_ready(false);
-            self.as_mut().set_userscript_inventory_pending(false);
-            self.as_mut()
-                .set_userscript_inventory_error(QString::default());
-            return true;
-        }
         if self.as_ref().rust().userscript_inventory_pending {
             return true;
         }
         let Some(root) = self
             .as_ref()
             .rust()
-            .userscript_roots
+            .state
             .as_ref()
-            .map(|roots| roots.config.clone())
+            .and_then(super::BrowserApplication::userscript_root)
+            .map(ToOwned::to_owned)
         else {
             return self.userscript_inventory_failed(
                 "Userscript storage is unavailable for this profile.",
@@ -92,24 +81,21 @@ impl qobject::BrowserUi {
         let result = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            (|| {
-                if this.userscript_manager_worker.is_none() {
-                    this.userscript_manager_worker = Some(UserscriptManagerWorker::spawn()?);
-                }
-                let worker = this
-                    .userscript_manager_worker
+            if this
+                .state
+                .as_ref()
+                .is_some_and(super::BrowserApplication::userscript_job_pending)
+            {
+                this.userscript_inventory_refresh_again = true;
+                Ok(())
+            } else {
+                this.state
                     .as_mut()
-                    .expect("worker initialized");
-                if worker.is_pending() {
-                    // Every mutation also reads the inventory, but a failed
-                    // mutation may not reach that read. Queue one real refresh
-                    // after its result rather than replacing operation feedback.
-                    this.userscript_inventory_refresh_again = true;
-                    Ok(())
-                } else {
-                    worker.request(UserscriptManagerRequest::Refresh { root })
-                }
-            })()
+                    .ok_or_else(|| "userscript owner is unavailable".to_owned())
+                    .and_then(|state| {
+                        state.request_userscript_job(UserscriptManagerRequest::Refresh { root })
+                    })
+            }
         };
         if let Err(error) = result {
             return self.userscript_inventory_failed(&error);
@@ -141,9 +127,10 @@ impl qobject::BrowserUi {
         let Some(root) = self
             .as_ref()
             .rust()
-            .userscript_roots
+            .state
             .as_ref()
-            .map(|roots| roots.config.clone())
+            .and_then(super::BrowserApplication::userscript_root)
+            .map(ToOwned::to_owned)
         else {
             return self.userscript_update_failed(
                 "Userscript changes need available storage.",
@@ -155,11 +142,11 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
-            .userscript_manager_worker
+            .state
             .as_mut()
-            .ok_or_else(|| "userscript manager is unavailable".to_owned())
+            .ok_or_else(|| "userscript owner is unavailable".to_owned())
             .and_then(|worker| {
-                worker.request(UserscriptManagerRequest::SetEnabled {
+                worker.request_userscript_job(UserscriptManagerRequest::SetEnabled {
                     root,
                     name,
                     enabled,
@@ -195,9 +182,10 @@ impl qobject::BrowserUi {
         let Some(root) = self
             .as_ref()
             .rust()
-            .userscript_roots
+            .state
             .as_ref()
-            .map(|roots| roots.config.clone())
+            .and_then(super::BrowserApplication::userscript_root)
+            .map(ToOwned::to_owned)
         else {
             return self.userscript_update_failed(
                 "Userscript changes need available storage.",
@@ -209,10 +197,12 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
-            .userscript_manager_worker
+            .state
             .as_mut()
-            .ok_or_else(|| "userscript manager is unavailable".to_owned())
-            .and_then(|worker| worker.request(UserscriptManagerRequest::Remove { root, name }));
+            .ok_or_else(|| "userscript owner is unavailable".to_owned())
+            .and_then(|worker| {
+                worker.request_userscript_job(UserscriptManagerRequest::Remove { root, name })
+            });
         if let Err(error) = result {
             return self.userscript_update_failed(
                 "The script couldn't be removed. See Settings for details.",

@@ -1083,7 +1083,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(reopen_confirmation.contains("Reopen tab in a same-profile window?"));
     assert!(source.contains("reopen-window-confirm\\t{source_url}"));
     assert!(qml.contains("browser.tab.zoom"));
-    assert!(qml.contains("zoom\\t"));
+    assert!(qml.contains("case \"zoom\""));
     assert!(qml.contains("function refreshEffectiveSiteSettings()"));
     assert!(qml.contains("Navigation-scoped content settings are snapshotted"));
     assert!(!qml.contains("var configGeneration = viewUi.config_json"));
@@ -1125,7 +1125,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("shutdownPagePromptVisible"));
     assert!(qml.contains("Close anyway despite page state"));
     assert!(qml.contains("release_transient_resources()"));
-    assert!(qml.contains("find-next\\t"));
+    assert!(qml.contains("case \"find\":"));
     assert!(qml.contains("WebEngineDownloadRequest.MimeHtmlSaveFormat"));
     assert!(qml.contains("prepare_save_page"));
     assert!(qml.contains("take_save_page_path"));
@@ -1157,8 +1157,8 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("rowData.type === \"languages\""));
     assert!(qml.contains("view-source:"));
     assert!(qml.contains("Viewing page source"));
-    assert!(qml.contains("action === \"jseval\""));
-    assert!(source.contains("set_jseval_tab_id"));
+    assert!(qml.contains("case \"evaluate\""));
+    assert!(source.contains("ViewCommand::Evaluate"));
     assert!(qml.contains("WebEngineScript.MainWorld"));
     assert!(source.contains("validate_jseval_script"));
     assert!(qml.contains("prepare_print_job"));

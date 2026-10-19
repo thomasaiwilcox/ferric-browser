@@ -7,26 +7,27 @@ use crate::{
 };
 use serde_json::{Value, json};
 
-pub(super) fn remember_operation_stderr(
-    rust: &mut BrowserUiRust,
-    operation_id: &str,
-    stderr: String,
-) {
-    const MAX_RETAINED_OPERATION_STDERR: usize = 256;
-    if !rust.operation_stderr.contains_key(operation_id)
-        && rust.operation_stderr.len() >= MAX_RETAINED_OPERATION_STDERR
-        && let Some(oldest) = rust.operation_stderr.keys().next().cloned()
-    {
-        rust.operation_stderr.remove(&oldest);
+pub(super) fn remember_operation_stderr(rust: &mut BrowserUiRust, id: &str, stderr: String) {
+    if let Some(application) = rust.state.as_mut() {
+        application.operations_mut().remember_stderr(id, stderr);
     }
-    rust.operation_stderr
-        .insert(operation_id.to_owned(), stderr);
 }
 
 pub(super) fn operations_query_value(
     rust: &BrowserUiRust,
     params: &Value,
 ) -> Result<Value, String> {
+    page_operations(operation_rows(rust, params)?, params, rust.ipc_sequence)
+}
+
+pub(super) fn operations_collection_value(
+    rust: &BrowserUiRust,
+    params: &Value,
+) -> Result<Value, String> {
+    Ok(json!({"operations": operation_rows(rust, params)?}))
+}
+
+fn operation_rows(rust: &BrowserUiRust, params: &Value) -> Result<Vec<Value>, String> {
     let object = query_object(
         params,
         "operations.query",
@@ -35,6 +36,8 @@ pub(super) fn operations_query_value(
             "include_stderr",
             "include_private",
             "window",
+            "limit",
+            "cursor",
         ],
     )?;
     if let Some(window) = query_optional_string(object, "operations.query", "window")?
@@ -59,24 +62,86 @@ pub(super) fn operations_query_value(
             .and_then(|window| state.profiles().get(&window.profile))
             .is_none_or(|profile| profile.privacy.is_transient())
     });
-    let operations = rust
-        .operation_states
-        .iter()
+    let window = rust.window.map_or_else(String::new, |id| id.to_string());
+    let rows = rust
+        .operation_records()
         .filter(|_| !transient || include_private)
-        .filter(|(id, _)| requested.is_none_or(|requested| requested == id.as_str()))
-        .map(|(id, status)| {
-            let mut operation = json!({"operation_id": id, "status": status});
-            if include_stderr {
-                operation["stderr"] = rust
-                    .operation_stderr
-                    .get(id)
-                    .cloned()
-                    .map_or(Value::Null, Value::String);
-            }
-            operation
+        .filter(|record| requested.is_none_or(|requested| requested == record.id))
+        .map(|record| {
+            let mut value = crate::browser_ui_operations::operation_value(record, include_stderr);
+            value["window_id"] = Value::String(window.clone());
+            value
         })
-        .collect::<Vec<_>>();
-    Ok(json!({"sequence": rust.ipc_sequence, "operations": operations}))
+        .collect();
+    Ok(rows)
+}
+
+pub(super) fn page_operations(
+    mut rows: Vec<Value>,
+    params: &Value,
+    sequence: u64,
+) -> Result<Value, String> {
+    let limit = match params.get("limit") {
+        None => 50,
+        Some(value) => value
+            .as_u64()
+            .filter(|limit| (1..=100).contains(limit))
+            .ok_or_else(|| "operations.query limit must be 1 to 100".to_owned())?
+            as usize,
+    };
+    let cursor = params
+        .get("cursor")
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|cursor| cursor.len() <= 128)
+                .ok_or_else(|| "invalid operation cursor".to_owned())
+        })
+        .transpose()?;
+    let after = cursor
+        .map(|cursor| {
+            let (owner, sequence) = cursor
+                .split_once('/')
+                .ok_or_else(|| "invalid operation cursor".to_owned())?;
+            let sequence = sequence
+                .parse::<u64>()
+                .map_err(|_| "invalid operation cursor".to_owned())?;
+            Ok::<_, String>((owner.to_owned(), sequence))
+        })
+        .transpose()?;
+    let key = |row: &Value| {
+        (
+            row["window_id"].as_str().unwrap_or_default().to_owned(),
+            row["sequence"].as_u64().unwrap_or(0),
+        )
+    };
+    rows.sort_by_key(&key);
+    let mut values = Vec::new();
+    let mut bytes = 0;
+    let mut more = false;
+    for row in rows {
+        if after.as_ref().is_some_and(|after| key(&row) <= *after) {
+            continue;
+        }
+        let row_bytes = serde_json::to_vec(&row)
+            .map_err(|error| error.to_string())?
+            .len();
+        if values.len() == limit || bytes + row_bytes > 500 * 1024 {
+            more = true;
+            break;
+        }
+        bytes += row_bytes;
+        values.push(row);
+    }
+    let next_cursor = if more {
+        values.last().map(|row| {
+            let (owner, sequence) = key(row);
+            format!("{owner}/{sequence}")
+        })
+    } else {
+        None
+    };
+    Ok(json!({"sequence": sequence, "operations": values, "next_cursor": next_cursor}))
 }
 
 #[cfg(test)]
@@ -98,8 +163,11 @@ mod tests {
             rust.state = Some(application);
             rust.window = Some(window);
             rust.config = json!({"ipc":{"private_queries":false}});
-            rust.operation_states
-                .insert("private-operation".into(), "failed (private detail)".into());
+            rust.admit_operation("private-operation".into()).unwrap();
+            rust.set_operation(
+                "private-operation".into(),
+                crate::OperationUpdate::failed(crate::FailureKind::Engine, "private detail"),
+            );
             remember_operation_stderr(
                 &mut rust,
                 "private-operation",
@@ -139,5 +207,19 @@ mod tests {
             );
             assert!(operations_query_value(&rust, &json!({"include_private":"yes"})).is_err());
         }
+    }
+    #[test]
+    fn pagination_respects_order_cursor_and_encoded_byte_budget() {
+        let rows = (0..200).rev().map(|sequence| json!({"window_id":"windowid-1",
+            "sequence":sequence, "operation_id":format!("op-{sequence}"), "detail":"x".repeat(4096)})).collect::<Vec<_>>();
+        let first = page_operations(rows.clone(), &json!({"limit":100}), 9).unwrap();
+        assert_eq!(first["operations"][0]["sequence"], 0);
+        assert!(serde_json::to_vec(&first).unwrap().len() < 512 * 1024);
+        let second =
+            page_operations(rows, &json!({"limit":100,"cursor":first["next_cursor"]}), 9).unwrap();
+        assert_eq!(second["operations"][0]["sequence"], 100);
+        assert!(second["next_cursor"].is_null());
+        assert!(page_operations(vec![], &json!({"limit":0}), 0).is_err());
+        assert!(page_operations(vec![], &json!({"cursor":"bad"}), 0).is_err());
     }
 }

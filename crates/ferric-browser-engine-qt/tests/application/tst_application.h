@@ -39,6 +39,11 @@ class ApplicationTests final : public QObject {
     Q_INVOKABLE void accept(const QVariant &value);
     Q_INVOKABLE void frameOperationComplete(const QVariant &value);
   private slots:
+    void spawnCommandModeValidation_data();
+    void spawnCommandModeValidation();
+    void scrollTargetCommandChain_data();
+    void scrollTargetCommandChain();
+    void deferredNativeRequestsKeepCapturedTargets();
     void productPolishPendingPermissionPolicy_data();
     void productPolishPendingPermissionPolicy();
     void productPolishPermissionQueueBound();

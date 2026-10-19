@@ -1,18 +1,27 @@
 use super::{
     Arc, AtomicBool, BTreeMap, Command, CommandExt, CxxQtType, DispatchTarget, Duration, Instant,
     MAX_UNTRUSTED_ARGUMENT_BYTES, Ordering, ParsedCommand, PendingActionTarget, PendingSelection,
-    PendingUserscript, Pin, QString, Stdio, Target, UserscriptCompletion, Uuid, Value, Write,
-    captured_target_is_current, configured_action_targets, current_target,
+    PendingUserscript, Pin, QString, Stdio, Target, UserscriptCompletion, Uuid, ValidatedUrl,
+    Value, Write, captured_target_is_current, configured_action_targets, current_target,
     finish_pending_selection_operation, ipc_mode_name, is_bounded_untrusted_text,
     is_safe_history_url, qobject, read_bounded, resolve_input, safe_ipc_url,
     sanitize_process_stderr, terminate_child_process, thread, typed_ipc_command, userscript,
     validate_print_pdf_path, validate_save_page_path,
 };
+use crate::{FailureKind, OperationState, OperationUpdate};
 
 impl qobject::BrowserUi {
     pub(super) fn execute_send_command(
+        self: Pin<&mut Self>,
+        command: &ParsedCommand,
+    ) -> Result<Value, String> {
+        self.execute_send_command_with_operation(command, None)
+    }
+
+    pub(super) fn execute_send_command_with_operation(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
+        requested_operation: Option<&str>,
     ) -> Result<Value, String> {
         let [target_name, input @ ..] = command.arguments.as_slice() else {
             return Err("send requires a target name".into());
@@ -81,12 +90,17 @@ impl qobject::BrowserUi {
             return Err("action target is disabled in private or ephemeral mode".into());
         }
         if selection_requested {
-            let operation_id = format!("op-{}", Uuid::new_v4());
+            let operation_id =
+                requested_operation.map_or_else(|| format!("op-{}", Uuid::new_v4()), str::to_owned);
             let token = format!("selection-{}", Uuid::new_v4());
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            finish_pending_selection_operation(this, "cancelled");
-            this.pending_action_target = Some(PendingActionTarget {
+            finish_pending_selection_operation(this, OperationUpdate::cancelled());
+            this.start_operation(
+                operation_id.clone(),
+                OperationUpdate::running("selection pending"),
+            )?;
+            this.processes.pending_action_target = Some(PendingActionTarget {
                 token: token.clone(),
                 target: current,
                 target_name: target_name.clone(),
@@ -94,7 +108,7 @@ impl qobject::BrowserUi {
                 operation_id: operation_id.clone(),
                 created_at: Instant::now(),
             });
-            this.pending_selection = Some(PendingSelection {
+            this.processes.pending_selection = Some(PendingSelection {
                 token,
                 target: current,
                 primary: false,
@@ -103,8 +117,7 @@ impl qobject::BrowserUi {
                 search_engine: None,
                 operation_id: Some(operation_id.clone()),
             });
-            this.operation_states
-                .insert(operation_id.clone(), "selection pending".into());
+
             drop(rust);
             self.as_mut().set_status_text(QString::from(format!(
                 "Preparing selection for {target_name}…"
@@ -151,9 +164,11 @@ impl qobject::BrowserUi {
                 _ => argument.clone(),
             });
         }
-        let operation_id = self
-            .as_mut()
-            .start_action_target_process(&argv, target.detach, None)?;
+        let operation_id = self.as_mut().start_action_target_process(
+            &argv,
+            target.detach,
+            requested_operation.map(str::to_owned),
+        )?;
         self.as_mut()
             .set_status_text(QString::from(format!("Started: {target_name}")));
         Ok(serde_json::json!({
@@ -223,13 +238,9 @@ impl qobject::BrowserUi {
         let path = validate_print_pdf_path(&command.arguments[0])?;
         let tab_index = self.as_ref().rust().active_tab_index;
         self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_engine_action = Some(format!(
-            "print-pdf\t{tab_index}\t{}",
-            path.to_string_lossy()
-        ));
+            .queue_view_command(ferric_browser_application::ViewCommand::PrintPdf {
+                path: path.clone(),
+            })?;
         self.as_mut()
             .set_status_text(QString::from("PDF generation requested"));
         Ok(serde_json::json!({
@@ -254,13 +265,9 @@ impl qobject::BrowserUi {
         let path = validate_save_page_path(&command.arguments[0])?;
         let tab_index = self.as_ref().rust().active_tab_index;
         self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_engine_action = Some(format!(
-            "save-page\t{tab_index}\t{}",
-            path.to_string_lossy()
-        ));
+            .queue_view_command(ferric_browser_application::ViewCommand::SavePage {
+                path: path.clone(),
+            })?;
         self.as_mut()
             .set_status_text(QString::from("Page save requested"));
         Ok(serde_json::json!({
@@ -290,10 +297,9 @@ impl qobject::BrowserUi {
         }
         let tab_index = self.as_ref().rust().active_tab_index;
         self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_engine_action = Some(format!("view-source\t{tab_index}\t{url}"));
+            .queue_view_command(ferric_browser_application::ViewCommand::ViewSource {
+                url: ValidatedUrl::parse(url.clone()).map_err(|error| error.to_string())?,
+            })?;
         self.as_mut()
             .set_status_text(QString::from("Source view requested"));
         Ok(serde_json::json!({
@@ -322,11 +328,9 @@ impl qobject::BrowserUi {
             .rust()
             .tab
             .ok_or_else(|| "devtools requires an active tab".to_owned())?;
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_engine_action = Some(format!("devtools\t{detach}"));
+        self.as_mut().queue_view_command(
+            ferric_browser_application::ViewCommand::DeveloperTools { detach },
+        )?;
         self.as_mut().set_status_text(QString::from(if detach {
             "DevTools detach requested"
         } else {
@@ -353,10 +357,7 @@ impl qobject::BrowserUi {
         }
         let tab_index = self.as_ref().rust().active_tab_index;
         self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_engine_action = Some(format!("print\t{tab_index}"));
+            .queue_view_command(ferric_browser_application::ViewCommand::Print)?;
         self.as_mut()
             .set_status_text(QString::from("Print requested"));
         Ok(serde_json::json!({
@@ -401,22 +402,21 @@ impl qobject::BrowserUi {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub(super) fn execute_userscript(
+    pub(super) fn execute_userscript(self: Pin<&mut Self>, name: &str) -> Result<Value, String> {
+        self.execute_userscript_with_operation(name, None)
+    }
+
+    pub(super) fn execute_userscript_with_operation(
         mut self: Pin<&mut Self>,
         name: &str,
+        requested_operation: Option<&str>,
     ) -> Result<Value, String> {
         let target = current_target(
             self.as_ref().rust().state.as_ref(),
             self.as_ref().rust().tab,
         )
         .ok_or_else(|| "current document is unavailable".to_owned())?;
-        let roots = self
-            .as_ref()
-            .rust()
-            .userscript_roots
-            .clone()
-            .ok_or_else(|| "userscripts are unavailable without configured storage".to_owned())?;
-        let loaded = userscript::load(&roots.config, name)?;
+        let loaded = self.as_ref().rust().cached_userscript(name)?;
         userscript::validate_executable(&loaded.executable)?;
         if loaded.manifest.argv.iter().any(|argument| {
             argument.len() > userscript::MAX_ARGV_VALUE_BYTES
@@ -450,12 +450,17 @@ impl qobject::BrowserUi {
             .iter()
             .any(|field| field == "selection")
         {
-            let operation_id = format!("op-{}", Uuid::new_v4());
+            let operation_id =
+                requested_operation.map_or_else(|| format!("op-{}", Uuid::new_v4()), str::to_owned);
             let token = format!("selection-{}", Uuid::new_v4());
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            finish_pending_selection_operation(this, "cancelled");
-            this.pending_selection = Some(PendingSelection {
+            finish_pending_selection_operation(this, OperationUpdate::cancelled());
+            this.start_operation(
+                operation_id.clone(),
+                OperationUpdate::running("selection pending"),
+            )?;
+            this.processes.pending_selection = Some(PendingSelection {
                 token: token.clone(),
                 target,
                 primary: false,
@@ -464,15 +469,14 @@ impl qobject::BrowserUi {
                 search_engine: None,
                 operation_id: Some(operation_id.clone()),
             });
-            this.pending_userscript = Some(PendingUserscript {
+            this.processes.pending_userscript = Some(PendingUserscript {
                 token,
                 target,
                 name: name.to_owned(),
                 label: name.to_owned(),
                 operation_id: operation_id.clone(),
             });
-            this.operation_states
-                .insert(operation_id.clone(), "selection pending".into());
+
             return Ok(serde_json::json!({
                 "status": "accepted",
                 "operation_id": operation_id,
@@ -480,7 +484,15 @@ impl qobject::BrowserUi {
                 "selection_required": true
             }));
         }
-        self.execute_userscript_with_context(name, target, None, None, None, None, None)
+        self.execute_userscript_with_context(
+            name,
+            target,
+            None,
+            None,
+            requested_operation.map(str::to_owned),
+            None,
+            None,
+        )
     }
 
     pub(super) fn execute_userscript_for_hint(
@@ -511,13 +523,7 @@ impl qobject::BrowserUi {
         subject_url: Option<String>,
         subject_fields: Option<BTreeMap<String, Value>>,
     ) -> Result<Value, String> {
-        let roots = self
-            .as_ref()
-            .rust()
-            .userscript_roots
-            .clone()
-            .ok_or_else(|| "userscripts are unavailable without configured storage".to_owned())?;
-        let loaded = userscript::load(&roots.config, name)?;
+        let loaded = self.as_ref().rust().cached_userscript(name)?;
         userscript::validate_executable(&loaded.executable)?;
         if loaded.manifest.argv.iter().any(|argument| {
             argument.len() > userscript::MAX_ARGV_VALUE_BYTES
@@ -631,7 +637,12 @@ impl qobject::BrowserUi {
         let mut command = Command::new(&loaded.executable);
         command
             .args(&loaded.manifest.argv)
-            .current_dir(loaded.path.parent().unwrap_or(&roots.config))
+            .current_dir(
+                loaded
+                    .path
+                    .parent()
+                    .ok_or_else(|| "userscript directory is unavailable".to_owned())?,
+            )
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -657,9 +668,22 @@ impl qobject::BrowserUi {
         }
         #[cfg(unix)]
         command.process_group(0);
-        let mut child = command
-            .spawn()
-            .map_err(|error| format!("could not start userscript: {error}"))?;
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .start_operation(operation_id.clone(), OperationUpdate::running("running"))?;
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                let message = format!("could not start userscript: {error}");
+                self.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                    operation_id,
+                    OperationUpdate::failed(FailureKind::Io, &message),
+                );
+                return Err(message);
+            }
+        };
         // A userscript may read its context slowly (or not at all). Keep the
         // bounded protocol write off the Qt thread so a full pipe cannot make
         // launching a script block the browser UI.
@@ -683,19 +707,13 @@ impl qobject::BrowserUi {
         let stdout_reader =
             thread::spawn(move || read_bounded(stdout, userscript::MAX_PROTOCOL_BYTES));
         let stderr_reader = thread::spawn(move || read_bounded(stderr, 64 * 1024));
-        let completions = Arc::clone(&self.as_ref().rust().userscript_completions);
+        let completions = Arc::clone(&self.as_ref().rust().processes.userscript_completions);
         let cancellation = Arc::new(AtomicBool::new(false));
-        let cancellations = Arc::clone(&self.as_ref().rust().userscript_cancellations);
+        let cancellations = Arc::clone(&self.as_ref().rust().processes.userscript_cancellations);
         let manifest = loaded.manifest;
         let completion_id = operation_id.clone();
         let completion_target = target;
         let timeout = Duration::from_secs(manifest.timeout_seconds);
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .operation_states
-            .insert(operation_id.clone(), "running".into());
         if let Ok(mut values) = cancellations.lock() {
             values.insert(operation_id.clone(), Arc::clone(&cancellation));
         }
@@ -704,7 +722,7 @@ impl qobject::BrowserUi {
             let (mut status, mut action) = loop {
                 if cancellation.load(Ordering::Acquire) {
                     terminate_child_process(&mut child);
-                    break ("cancelled".into(), None);
+                    break (OperationUpdate::cancelled(), None);
                 }
                 match child.try_wait() {
                     Ok(Some(status)) => {
@@ -720,39 +738,63 @@ impl qobject::BrowserUi {
                                     match userscript::parse_output(&output, &manifest) {
                                         Ok(output) => {
                                             let status = if output.message.is_empty() {
-                                                "completed".to_owned()
+                                                OperationUpdate::completed("script finished")
                                             } else {
-                                                format!("completed: {}", output.message)
+                                                OperationUpdate::completed(output.message)
                                             };
                                             (status, output.action)
                                         }
-                                        Err(error) => (format!("failed ({error})"), None),
+                                        Err(error) => (
+                                            OperationUpdate::failed(
+                                                FailureKind::Engine,
+                                                error.to_string(),
+                                            ),
+                                            None,
+                                        ),
                                     }
                                 }
-                                Ok(Err(error)) => (format!("failed ({error})"), None),
-                                Err(_) => {
-                                    ("failed (userscript output reader stopped)".into(), None)
-                                }
+                                Ok(Err(error)) => (
+                                    OperationUpdate::failed(FailureKind::Engine, error.to_string()),
+                                    None,
+                                ),
+                                Err(_) => (
+                                    OperationUpdate::failed(
+                                        FailureKind::Io,
+                                        "userscript output reader stopped",
+                                    ),
+                                    None,
+                                ),
                             }
                         } else {
-                            (format!("failed ({status})"), None)
+                            (
+                                OperationUpdate::failed(FailureKind::Engine, format!("{status}")),
+                                None,
+                            )
                         };
                     }
                     Ok(None) if started.elapsed() >= timeout => {
                         terminate_child_process(&mut child);
-                        break ("failed (userscript timed out)".into(), None);
+                        break (
+                            OperationUpdate::failed(FailureKind::Timeout, "userscript timed out"),
+                            None,
+                        );
                     }
                     Ok(None) => thread::sleep(Duration::from_millis(10)),
-                    Err(error) => break (format!("failed ({error})"), None),
+                    Err(error) => {
+                        break (
+                            OperationUpdate::failed(FailureKind::Engine, error.to_string()),
+                            None,
+                        );
+                    }
                 }
             };
             let input_result = input_writer
                 .join()
                 .ok()
                 .unwrap_or_else(|| Err("userscript context writer stopped".into()));
-            if status == "completed" || status.starts_with("completed: ") {
+            if status.state() == OperationState::Completed {
                 if let Err(error) = input_result {
-                    status = format!("failed ({error})");
+                    status = OperationUpdate::failed(FailureKind::Engine, error.to_string());
                     action = None;
                 }
             }
@@ -790,25 +832,23 @@ impl qobject::BrowserUi {
         let pending = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(pending) = this.pending_spawn.as_ref() else {
+            let Some(pending) = this.processes.pending_spawn.as_ref() else {
                 return false;
             };
             if pending.token != token {
                 return false;
             }
-            this.pending_selection = None;
-            this.pending_spawn.take()
+            this.processes.pending_selection = None;
+            this.processes.pending_spawn.take()
         };
         let Some(pending) = pending else {
             return false;
         };
         let fail = |mut ui: Pin<&mut Self>, message: String| {
-            ui.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .operation_states
-                .insert(pending.operation_id.clone(), format!("failed ({message})"));
+            ui.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                pending.operation_id.clone(),
+                OperationUpdate::failed(FailureKind::Engine, message.clone()),
+            );
             ui.set_status_text(QString::from(message));
             false
         };

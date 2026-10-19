@@ -506,22 +506,7 @@ impl ProfileStore {
         timestamp: i64,
         retention_before: Option<i64>,
     ) -> Result<PageRecord, StoreError> {
-        if url.is_empty() {
-            return Err(StoreError::InvalidInput("history URL cannot be empty"));
-        }
-        if !is_safe_history_url(url) {
-            return Err(StoreError::UnsafeHistoryUrl);
-        }
-        if !bounded_stored_text(title, MAX_STORED_TITLE_BYTES) {
-            return Err(StoreError::InvalidInput(
-                "history title is too large or contains a control character",
-            ));
-        }
-        if !valid_stored_text(transition, 64) {
-            return Err(StoreError::InvalidInput(
-                "history transition is empty, too large, or contains a control character",
-            ));
-        }
+        validate_visit_fields(url, title, transition)?;
         let transaction = self.connection.unchecked_transaction()?;
         transaction.execute(
             "INSERT INTO pages (normalized_url, safe_title, first_visit, last_visit, visit_count)
@@ -573,22 +558,7 @@ impl ProfileStore {
     pub fn record_visit_batch(&self, visits: &[VisitInput]) -> Result<(), StoreError> {
         let transaction = self.connection.unchecked_transaction()?;
         for visit in visits {
-            if visit.url.is_empty() {
-                return Err(StoreError::InvalidInput("history URL cannot be empty"));
-            }
-            if !is_safe_history_url(&visit.url) {
-                return Err(StoreError::UnsafeHistoryUrl);
-            }
-            if !bounded_stored_text(&visit.title, MAX_STORED_TITLE_BYTES) {
-                return Err(StoreError::InvalidInput(
-                    "history title is too large or contains a control character",
-                ));
-            }
-            if !valid_stored_text(&visit.transition, 64) {
-                return Err(StoreError::InvalidInput(
-                    "history transition is empty, too large, or contains a control character",
-                ));
-            }
+            validate_visit_fields(&visit.url, &visit.title, &visit.transition)?;
             transaction.execute(
                 "INSERT INTO pages (normalized_url, safe_title, first_visit, last_visit, visit_count)
                  VALUES (?1, ?2, ?3, ?3, 1)
@@ -1024,6 +994,26 @@ pub fn unix_timestamp() -> i64 {
         .ok()
         .and_then(|duration| i64::try_from(duration.as_secs()).ok())
         .unwrap_or(i64::MAX)
+}
+
+fn validate_visit_fields(url: &str, title: &str, transition: &str) -> Result<(), StoreError> {
+    if url.is_empty() {
+        return Err(StoreError::InvalidInput("history URL cannot be empty"));
+    }
+    if !is_safe_history_url(url) {
+        return Err(StoreError::UnsafeHistoryUrl);
+    }
+    if !bounded_stored_text(title, MAX_STORED_TITLE_BYTES) {
+        return Err(StoreError::InvalidInput(
+            "history title is too large or contains a control character",
+        ));
+    }
+    if !valid_stored_text(transition, 64) {
+        return Err(StoreError::InvalidInput(
+            "history transition is empty, too large, or contains a control character",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

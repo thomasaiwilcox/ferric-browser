@@ -148,8 +148,9 @@ impl qobject::BrowserUi {
         let userscripts_available = if private || origin.is_none() {
             false
         } else {
-            self.rust().userscript_roots.as_ref().is_some_and(|roots| {
-                userscript::matching_page_scripts(&roots.config, &current_site_url, false)
+            self.rust().state.as_ref().is_some_and(|state| {
+                state
+                    .matching_page_scripts(&current_site_url, false)
                     .is_ok_and(|scripts| !scripts.is_empty())
             })
         };
@@ -159,8 +160,11 @@ impl qobject::BrowserUi {
                 "reason": "private-session userscript metadata is withheld",
                 "provenance": "privacy-boundary"
             })
-        } else if let Some(roots) = self.rust().userscript_roots.as_ref() {
-            match userscript::installed_scripts(&roots.config) {
+        } else if let Some(state) = self.rust().state.as_ref() {
+            match state
+                .userscript_catalog()
+                .map(ferric_browser_application::userscript::UserscriptCatalog::inventory)
+            {
                 Ok(installed) => serde_json::json!({
                     "status": "available",
                     "installed": installed,
@@ -195,8 +199,9 @@ impl qobject::BrowserUi {
         let compiled_defaults_available = if private || origin.is_none() {
             false
         } else {
-            serde_json::from_value::<Config>(self.rust().config.clone()).is_ok_and(|config| {
-                matching_site_rules(&config, &current_site_url)
+            self.rust().state.as_ref().is_some_and(|state| {
+                let config = state.configuration();
+                matching_site_rules(config, &current_site_url)
                     .iter()
                     .any(|rule| rule.set.keys().any(|key| setting_supports_site_scope(key)))
             })

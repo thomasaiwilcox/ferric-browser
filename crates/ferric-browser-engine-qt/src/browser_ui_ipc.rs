@@ -1,11 +1,8 @@
 use super::{
     CxxQtType, DispatchTarget, Event, IpcOpenTarget, IpcRoute, ParsedCommand, Pin, QString, Value,
     binding_command_parameters, current_target, ipc_mode_name, is_context_command,
-    is_library_command, is_link_clean_command, is_reopen_in_window_command, is_scroll_command,
-    is_scroll_target_command, is_search_next_command, is_tab_clone_command, is_tab_detach_command,
-    is_tab_give_command, is_tab_undo_command, is_yank_command, is_zoom_command,
-    learning_mode_request, normalize_active_tab_command, parse_hint_options, qobject,
-    resolve_input, selection_yank_command,
+    is_library_command, is_zoom_command, learning_mode_request, normalize_active_tab_command,
+    parse_hint_options, qobject, resolve_input, selection_yank_command,
 };
 
 impl qobject::BrowserUi {
@@ -16,12 +13,30 @@ impl qobject::BrowserUi {
         mut command: ParsedCommand,
         route: &IpcRoute,
         operation_id: Option<&str>,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, super::PublicError> {
+        if let Some(executor) = self
+            .as_ref()
+            .rust()
+            .registry
+            .resolve(&command.name)
+            .ok()
+            .and_then(ferric_browser_core::CommandDefinition::common_executor)
+        {
+            if route.context.is_some() {
+                return Err(super::PublicError::new(
+                    ferric_browser_ipc::ErrorCode::InvalidArgument,
+                    "This command cannot be combined with a context selector.",
+                    "common executor context route",
+                ));
+            }
+            self.as_ref().validate_ipc_route_public(route)?;
+            return self.execute_common_command(executor, &command, operation_id);
+        }
         if matches!(
             command.name.as_str(),
             "tab-new" | "start-page" | "start-page-view" | "start-page-cycle" | "favourite-add"
         ) {
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             if Some(
                 self.as_ref()
                     .ipc_route_window(route)
@@ -32,7 +47,9 @@ impl qobject::BrowserUi {
             }
             return match self.as_mut().dispatch_start_page_command(&command) {
                 Some(true) => Ok(serde_json::json!({"status": "accepted"})),
-                _ => Err(self.as_ref().rust().status_text.to_string()),
+                _ => Err(super::PublicError::engine(
+                    self.as_ref().rust().status_text.to_string(),
+                )),
             };
         }
         if command.name == "open-current" {
@@ -48,7 +65,7 @@ impl qobject::BrowserUi {
             if current_url.is_empty() {
                 return Err("open-current requires a committed URL".into());
             }
-            return self
+            return (self
                 .as_mut()
                 .execute_ipc_command_with_operation(
                     ParsedCommand {
@@ -58,16 +75,18 @@ impl qobject::BrowserUi {
                     route,
                     operation_id,
                 )
-                .map_err(|error| error.to_string());
+                .map_err(|error| error.to_string()))
+            .map_err(Into::into);
         }
         if matches!(command.name.as_str(), "quit" | "window-close") {
             if route.context.is_some() || !command.arguments.is_empty() {
-                return Err(format!(
-                    "{} does not accept routing or arguments",
-                    command.name
+                return Err(super::PublicError::new(
+                    ferric_browser_ipc::ErrorCode::InvalidArgument,
+                    "This command does not accept routing or arguments.",
+                    command.name,
                 ));
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             self.as_mut()
                 .rust_mut()
                 .as_mut()
@@ -98,9 +117,13 @@ impl qobject::BrowserUi {
                 | "theme-reload"
         ) {
             if route.context.is_some() {
-                return Err(format!("context routing is not valid for {}", command.name));
+                return Err(super::PublicError::new(
+                    ferric_browser_ipc::ErrorCode::InvalidArgument,
+                    "This command does not accept a context selector.",
+                    command.name,
+                ));
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             return match command.name.as_str() {
                 "config-edit" => self.execute_config_edit_command(&command),
                 "config-reload" => self.execute_config_reload_command(&command),
@@ -108,20 +131,21 @@ impl qobject::BrowserUi {
                 "config-write-defaults" => self.execute_config_write_defaults_command(&command),
                 "theme-reload" => self.execute_theme_reload_command(&command),
                 _ => unreachable!("configuration command was matched above"),
-            };
+            }
+            .map_err(super::PublicError::engine);
         }
         if command.name == "config-export" {
             if route.context.is_some() {
                 return Err("context routing is not valid for configuration export".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_config_export_command(&command);
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.execute_config_export_command(&command)).map_err(Into::into);
         }
         if command.name == "learning-mode" {
             if route.context.is_some() {
                 return Err("context routing is not valid for learning mode".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             let current = self.as_ref().rust().learning_mode;
             let enabled = learning_mode_request(&command, current)?.unwrap_or(current);
             self.as_mut().set_learning_mode(enabled);
@@ -140,7 +164,7 @@ impl qobject::BrowserUi {
             if route.context.is_some() {
                 return Err("context routing is not valid for binding queries".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             let (keychain, mode) = binding_command_parameters(&command)?;
             let mode_value = mode
                 .as_deref()
@@ -175,12 +199,22 @@ impl qobject::BrowserUi {
             if route.context.is_some() {
                 return Err("context routing is not valid for configuration commands".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return if matches!(command.name.as_str(), "bind" | "unbind") {
-                self.execute_runtime_binding_command(&command)
+            self.as_ref().validate_ipc_route_public(route)?;
+            let result = if matches!(command.name.as_str(), "bind" | "unbind") {
+                self.as_mut()
+                    .execute_runtime_binding_command(&command)
+                    .map_err(super::PublicError::engine)
             } else {
-                self.execute_runtime_config_command(&command)
+                self.as_mut()
+                    .execute_runtime_config_command(&command)
+                    .map_err(super::PublicError::engine)
             };
+            if result.is_ok() {
+                if let Some(operation_id) = operation_id {
+                    self.as_mut().bind_configuration_operation(operation_id);
+                }
+            }
+            return result;
         }
         if matches!(
             command.name.as_str(),
@@ -189,54 +223,56 @@ impl qobject::BrowserUi {
             if route.context.is_some() {
                 return Err("context routing is not valid for input workflow commands".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             let accepted = self.as_mut().execute_parsed_commands(vec![command]);
             if accepted {
                 return Ok(serde_json::json!({"status": "accepted"}));
             }
-            return Err(self.as_ref().rust().status_text.to_string());
+            return Err(super::PublicError::engine(
+                self.as_ref().rust().status_text.to_string(),
+            ));
         }
         if command.name == "window-new" {
             if route.context.is_some() {
                 return Err("context routing is not valid for window creation".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_window_new_command(&command);
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.as_mut().execute_window_new_command(&command)).map_err(Into::into);
         }
         if is_context_command(&command.name) {
             if route.context.is_some() || route.profile.is_some() {
                 return Err("context routing is not valid for context lifecycle commands".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_context_command(&command);
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.execute_context_command(&command)).map_err(Into::into);
         }
         if matches!(command.name.as_str(), "session-load" | "session-save") {
             if route.context.is_some() || route.profile.is_some() {
                 return Err("context/profile routing is not valid for sessions".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             if command.name == "session-save" {
-                return self.as_mut().execute_session_save_command(&command);
+                return (self.as_mut().execute_session_save_command(&command)).map_err(Into::into);
             }
-            return self.as_mut().execute_session_load_command(&command);
+            return (self.as_mut().execute_session_load_command(&command)).map_err(Into::into);
         }
         if command.name == "blocking-status" {
             if route.context.is_some() {
                 return Err("context routing is not valid for blocking status".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             if !command.arguments.is_empty() {
                 return Err("blocking-status does not accept arguments".into());
             }
             let status = self.as_ref().blocking_status_message();
             self.as_mut().set_status_text(QString::from(status));
-            return self.as_ref().ipc_blocking_status(&Value::Null);
+            return (self.as_ref().ipc_blocking_status(&Value::Null)).map_err(Into::into);
         }
         if command.name == "site-status" {
             if route.context.is_some() {
                 return Err("context routing is not valid for site status".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             let params = match command.arguments.as_slice() {
                 [] => Value::Null,
                 [flag, id] if flag == "--tab" => {
@@ -244,20 +280,20 @@ impl qobject::BrowserUi {
                 }
                 _ => return Err("site-status accepts optional --tab TAB_ID".into()),
             };
-            return self.as_ref().ipc_site_status(&params);
+            return (self.as_ref().ipc_site_status(&params)).map_err(Into::into);
         }
         if command.name == "site-data-clear" {
             if route.context.is_some() {
                 return Err("context routing is not valid for site-data clearing".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_site_data_clear_command(&command);
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.as_mut().execute_site_data_clear_command(&command)).map_err(Into::into);
         }
         if command.name == "site-doctor" {
             if route.context.is_some() {
                 return Err("context routing is not valid for Site Doctor".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             let [kind] = command.arguments.as_slice() else {
                 return Err("site-doctor requires one experiment name".into());
             };
@@ -266,15 +302,18 @@ impl qobject::BrowserUi {
                 .begin_site_doctor_experiment(&QString::from(kind.as_str()))
                 .to_string();
             if payload.is_empty() {
-                return Err(self.as_ref().rust().status_text.to_string());
+                return Err(super::PublicError::engine(
+                    self.as_ref().rust().status_text.to_string(),
+                ));
             }
-            return serde_json::from_str(&payload).map_err(|error| error.to_string());
+            return serde_json::from_str(&payload)
+                .map_err(|error| super::PublicError::engine(error.to_string()));
         }
         if command.name == "site-doctor-undo" {
             if route.context.is_some() {
                 return Err("context routing is not valid for Site Doctor".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             let [experiment_id] = command.arguments.as_slice() else {
                 return Err("site-doctor-undo requires one experiment ID".into());
             };
@@ -282,7 +321,9 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .finish_site_doctor_experiment(&QString::from(experiment_id.as_str()), false)
             {
-                return Err(self.as_ref().rust().status_text.to_string());
+                return Err(super::PublicError::engine(
+                    self.as_ref().rust().status_text.to_string(),
+                ));
             }
             return Ok(serde_json::json!({"status": "undone", "experiment_id": experiment_id}));
         }
@@ -290,21 +331,19 @@ impl qobject::BrowserUi {
             if route.context.is_some() {
                 return Err("context routing is not valid for blocking toggle".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             let site = match command.arguments.as_slice() {
                 [] => false,
                 [flag] if flag == "--site" => true,
                 _ => return Err("blocking-toggle accepts optional --site".into()),
             };
             if site {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_engine_action = Some("blocking-toggle-site".into());
-                self.as_mut()
-                    .set_status_text(QString::from("Site blocker toggle requested"));
-                return Ok(serde_json::json!({"status": "accepted", "pending": true}));
+                if !self.as_mut().toggle_blocking_site() {
+                    return Err(ferric_browser_ipc::PublicError::engine(
+                        self.as_ref().rust().status_text.to_string(),
+                    ));
+                }
+                return Ok(serde_json::json!({"status": "completed", "pending": false}));
             }
             let enabled = !self.as_ref().rust().blocking_enabled;
             self.as_mut().set_blocking_enabled(enabled);
@@ -319,7 +358,7 @@ impl qobject::BrowserUi {
             if route.context.is_some() {
                 return Err("context routing is not valid for blocklist updates".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             if !command.arguments.is_empty() {
                 return Err("blocklist-update does not accept arguments".into());
             }
@@ -346,7 +385,7 @@ impl qobject::BrowserUi {
             if route.context.is_some() {
                 return Err("context routing is not valid for clean-link updates".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             if !command.arguments.is_empty() {
                 return Err("link-cleaning-update does not accept arguments".into());
             }
@@ -369,100 +408,27 @@ impl qobject::BrowserUi {
                 .set_status_text(QString::from("Clean-link update requested"));
             return Ok(serde_json::json!({"status": "accepted", "pending": true}));
         }
-        if is_tab_undo_command(&command.name) {
-            if route.context.is_some() {
-                return Err("context routing is not valid for tab-undo".into());
-            }
-            return self.execute_tab_undo_command(&command);
-        }
-        if is_tab_clone_command(&command.name) {
-            if route.context.is_some() {
-                return Err("context routing is not valid for tab-clone".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_tab_clone_command(&command);
-        }
-        if is_reopen_in_window_command(&command.name) {
-            if route.context.is_some() {
-                return Err("context routing is not valid for reopen-in-window".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_reopen_in_window_command(&command);
-        }
-        if is_tab_detach_command(&command.name) {
-            if route.context.is_some() {
-                return Err("context routing is not valid for tab-detach".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_tab_detach_command(&command, operation_id);
-        }
-        if is_tab_give_command(&command.name) {
-            if route.context.is_some() {
-                return Err("context routing is not valid for tab-give".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_tab_give_command(&command, operation_id);
-        }
-        if command.name == "search" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for search".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_search_command(&command);
-        }
+
         if is_zoom_command(&command.name) {
             if route.context.is_some() {
                 return Err("context routing is not valid for zoom".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_zoom_command(&command);
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.execute_zoom_command(&command)).map_err(Into::into);
         }
-        if is_search_next_command(&command.name) {
-            if route.context.is_some() {
-                return Err("context routing is not valid for search-next".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_search_next_command(&command);
-        }
-        if is_scroll_command(&command.name) {
-            if route.context.is_some() {
-                return Err("context routing is not valid for page scrolling".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_scroll_command(&command);
-        }
-        if is_scroll_target_command(&command.name) {
-            if route.context.is_some() {
-                return Err("context routing is not valid for scroll targeting".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_scroll_target_command(&command);
-        }
-        if is_link_clean_command(&command.name) {
-            if route.context.is_some() {
-                return Err("context routing is not valid for URL cleaning".into());
-            }
-            return self.execute_link_clean_command(&command);
-        }
-        if is_yank_command(&command.name) {
-            if route.context.is_some() {
-                return Err("context routing is not valid for clipboard copying".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_yank_command(&command);
-        }
+
         if command.name == "caret-yank" {
             if route.context.is_some() {
                 return Err("context routing is not valid for clipboard copying".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.execute_yank_command(&selection_yank_command());
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.execute_yank_command(&selection_yank_command())).map_err(Into::into);
         }
         if command.name == "mode-enter" {
             if route.context.is_some() {
                 return Err("context routing is not valid for mode changes".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             self.as_mut().execute_mode_enter(&command)?;
             return Ok(serde_json::json!({
                 "status": "accepted",
@@ -473,7 +439,7 @@ impl qobject::BrowserUi {
             if route.context.is_some() {
                 return Err("context routing is not valid for caret movement".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             self.as_mut().execute_caret_move(&command)?;
             return Ok(serde_json::json!({"status": "accepted", "mode": "caret"}));
         }
@@ -481,7 +447,7 @@ impl qobject::BrowserUi {
             if route.context.is_some() {
                 return Err("context routing is not valid for caret selection".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             self.as_mut().execute_caret_select(&command)?;
             return Ok(serde_json::json!({"status": "accepted", "mode": "caret"}));
         }
@@ -489,15 +455,15 @@ impl qobject::BrowserUi {
             if route.context.is_some() {
                 return Err("context routing is not valid for selection search".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_selection_search(&command);
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.as_mut().execute_selection_search(&command)).map_err(Into::into);
         }
         if command.name == "tab-close" {
             if route.context.is_some() {
                 return Err("context routing is not valid for tab-close".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_tab_close_command(&command);
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.as_mut().execute_tab_close_command(&command)).map_err(Into::into);
         }
         let active_tab_id = self
             .as_ref()
@@ -518,14 +484,14 @@ impl qobject::BrowserUi {
             if route.context.is_some() {
                 return Err("context routing is not valid for tab actions".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_tab_action(&command, operation_id);
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.as_mut().execute_tab_action(&command, operation_id)).map_err(Into::into);
         }
         if command.name == "window-focus" {
             if route.context.is_some() {
                 return Err("context routing is not valid for window actions".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             let result = self.as_mut().execute_window_action(&command)?;
             if let Some(operation_id) = operation_id
                 && let Some(action) = self
@@ -545,71 +511,38 @@ impl qobject::BrowserUi {
             if route.context.is_some() {
                 return Err("context routing is not valid for window actions".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_window_move(&command);
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.as_mut().execute_window_move(&command)).map_err(Into::into);
         }
         if matches!(command.name.as_str(), "command-help" | "command-execute") {
             if route.context.is_some() {
                 return Err("context routing is not valid for command actions".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_command_action(&command, Some(route));
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.as_mut().execute_command_action(&command, Some(route)))
+                .map_err(Into::into);
         }
         if command.name == "edit-text" {
             if route.context.is_some() {
                 return Err("context routing is not valid for external editing".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             self.as_mut().execute_editor_command(&command)?;
             return Ok(serde_json::json!({"status": "accepted", "pending": true}));
         }
-        if command.name == "print-pdf" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for PDF generation".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_print_pdf_command(&command);
-        }
-        if command.name == "save-page" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for page saving".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_save_page_command(&command);
-        }
-        if command.name == "view-source" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for source viewing".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_view_source_command(&command);
-        }
-        if command.name == "devtools" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for DevTools".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_devtools_command(&command);
-        }
-        if command.name == "print" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for printing".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_print_command(&command);
-        }
+
         if matches!(command.name.as_str(), "permissions" | "permission-reset") {
             if route.context.is_some() {
                 return Err("context routing is not valid for permission commands".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_permission_command(&command);
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.as_mut().execute_permission_command(&command)).map_err(Into::into);
         }
         if command.name == "downloads" {
             if route.context.is_some() || !command.arguments.is_empty() {
                 return Err("downloads does not accept routing or arguments".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             self.as_mut()
                 .rust_mut()
                 .as_mut()
@@ -621,44 +554,10 @@ impl qobject::BrowserUi {
             if route.context.is_some() {
                 return Err("context routing is not valid for the universal switcher".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_switcher_command(&command);
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self.as_mut().execute_switcher_command(&command)).map_err(Into::into);
         }
-        if matches!(command.name.as_str(), "download-open" | "download-show") {
-            if route.context.is_some() {
-                return Err("context routing is not valid for download desktop actions".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_download_desktop_command(&command);
-        }
-        if command.name == "spawn" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for external processes".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_spawn_command(&command);
-        }
-        if command.name == "script-run" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for userscripts".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_script_run_command(&command);
-        }
-        if command.name == "jseval" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for JavaScript evaluation".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_jseval_command(&command);
-        }
-        if command.name == "send" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for external action targets".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_send_command(&command);
-        }
+
         if command.name == "paste-open" {
             if route.context.is_some() {
                 return Err("context routing is not valid for clipboard navigation".into());
@@ -685,14 +584,16 @@ impl qobject::BrowserUi {
                 }
                 index += 1;
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             if self
                 .as_mut()
                 .paste_open_channel(&QString::from(target), primary)
             {
                 return Ok(serde_json::json!({"status": "accepted"}));
             }
-            return Err(self.as_ref().rust().status_text.to_string());
+            return Err(super::PublicError::engine(
+                self.as_ref().rust().status_text.to_string(),
+            ));
         }
         if is_library_command(&command.name) {
             if route.context.is_some() {
@@ -703,13 +604,13 @@ impl qobject::BrowserUi {
             {
                 return Err("private and ephemeral journeys are native memory-only views".into());
             }
-            return self.execute_library_command(&command);
+            return (self.execute_library_command(&command)).map_err(Into::into);
         }
         if command.name == "hint" {
             if route.context.is_some() {
                 return Err("context routing is not valid for hints".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
+            self.as_ref().validate_ipc_route_public(route)?;
             let options = parse_hint_options(&command)?;
             self.as_mut().set_hint_options(
                 &options.family,
@@ -737,16 +638,17 @@ impl qobject::BrowserUi {
             if route.context.is_some() || route.profile.is_some() {
                 return Err("tab-open does not accept context or profile routing".into());
             }
-            self.as_ref().validate_ipc_route(route)?;
-            return self
+            self.as_ref().validate_ipc_route_public(route)?;
+            return (self
                 .as_mut()
-                .dispatch_tab_open_ipc_command(command, route, operation_id);
+                .dispatch_tab_open_ipc_command(command, route, operation_id))
+            .map_err(Into::into);
         }
         self.as_mut().note_repeatable_command(&command);
         if route.context.is_some() && command.name != "open" {
             return Err("context routing is only valid for open".into());
         }
-        self.as_ref().validate_ipc_route(route)?;
+        self.as_ref().validate_ipc_route_public(route)?;
         // Validate profile/context affinity before mutating the window. A
         // rejected cross-profile route must not leave a durable context
         // assignment behind.
@@ -788,7 +690,8 @@ impl qobject::BrowserUi {
         if command.name == "open"
             && command.arguments.first().map(String::as_str) == Some("--clean-link")
         {
-            return self.execute_clean_open_ipc(&command, route, operation_id);
+            return (self.execute_clean_open_ipc(&command, route, operation_id))
+                .map_err(Into::into);
         }
         match route.open_target {
             IpcOpenTarget::PrivateWindow | IpcOpenTarget::Window => {

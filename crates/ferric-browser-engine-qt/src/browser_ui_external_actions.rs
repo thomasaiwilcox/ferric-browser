@@ -5,6 +5,7 @@ use super::{
     finish_pending_selection_operation, fs, join_editor_stderr, qobject, read_bounded,
     safe_ipc_url, terminate_editor_process, thread, try_wait_editor_process,
 };
+use crate::{FailureKind, OperationUpdate};
 
 impl qobject::BrowserUi {
     pub(super) fn take_clipboard_request(mut self: Pin<&mut Self>) -> QString {
@@ -44,17 +45,24 @@ impl qobject::BrowserUi {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         let expired = this
+            .processes
             .pending_selection
             .as_ref()
             .is_some_and(|request| request.created_at.elapsed() >= PAGE_SCRIPT_DEADLINE);
         if expired {
-            finish_pending_selection_operation(this, "failed (selection extraction timed out)");
+            finish_pending_selection_operation(
+                this,
+                OperationUpdate::failed(
+                    FailureKind::StaleTarget,
+                    "failed (selection extraction timed out)",
+                ),
+            );
             self.set_status_text(QString::from(
                 "Reading the selected text took too long. Try again.",
             ));
             return QString::default();
         }
-        let Some(request) = this.pending_selection.as_mut() else {
+        let Some(request) = this.processes.pending_selection.as_mut() else {
             return QString::default();
         };
         if request.issued {
@@ -72,14 +80,14 @@ impl qobject::BrowserUi {
         let pending = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(pending) = this.pending_action_target.as_ref() else {
+            let Some(pending) = this.processes.pending_action_target.as_ref() else {
                 return false;
             };
             if pending.token != token {
                 return false;
             }
-            let pending = this.pending_action_target.take();
-            this.pending_selection = None;
+            let pending = this.processes.pending_action_target.take();
+            this.processes.pending_selection = None;
             pending
         };
         let Some(pending) = pending else {
@@ -87,12 +95,10 @@ impl qobject::BrowserUi {
             return false;
         };
         let fail = |mut this: Pin<&mut Self>, message: String| {
-            this.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .operation_states
-                .insert(pending.operation_id.clone(), format!("failed ({message})"));
+            this.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                pending.operation_id.clone(),
+                OperationUpdate::failed(FailureKind::Engine, format!("failed ({message})")),
+            );
             this.set_status_text(QString::from(message));
             false
         };
@@ -196,7 +202,7 @@ impl qobject::BrowserUi {
         // The current request is the authority for every consumer. Check it
         // before routing a page reply to a process, script, search or copy.
         let binding = self.as_ref();
-        let Some(request) = binding.rust().pending_selection.as_ref() else {
+        let Some(request) = binding.rust().processes.pending_selection.as_ref() else {
             return false;
         };
         if request.token != token {
@@ -206,7 +212,10 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             finish_pending_selection_operation(
                 rust.as_mut().get_mut(),
-                "failed (selection extraction timed out)",
+                OperationUpdate::failed(
+                    FailureKind::StaleTarget,
+                    "failed (selection extraction timed out)",
+                ),
             );
             drop(rust);
             self.set_status_text(QString::from(
@@ -217,6 +226,7 @@ impl qobject::BrowserUi {
         if self
             .as_ref()
             .rust()
+            .processes
             .pending_userscript
             .as_ref()
             .is_some_and(|pending| pending.token == token)
@@ -226,6 +236,7 @@ impl qobject::BrowserUi {
         if self
             .as_ref()
             .rust()
+            .processes
             .pending_spawn
             .as_ref()
             .is_some_and(|pending| pending.token == token)
@@ -235,6 +246,7 @@ impl qobject::BrowserUi {
         if self
             .as_ref()
             .rust()
+            .processes
             .pending_action_target
             .as_ref()
             .is_some_and(|pending| pending.token == token)
@@ -246,6 +258,7 @@ impl qobject::BrowserUi {
         if self
             .as_ref()
             .rust()
+            .processes
             .pending_selection
             .as_ref()
             .is_some_and(|pending| pending.token == token && pending.search_engine.is_some())
@@ -255,14 +268,14 @@ impl qobject::BrowserUi {
         let pending = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(request) = this.pending_selection.as_ref() else {
+            let Some(request) = this.processes.pending_selection.as_ref() else {
                 // Cancelled/expired operations cannot overwrite newer feedback.
                 return false;
             };
             if request.token != token {
                 return false;
             }
-            this.pending_selection.take()
+            this.processes.pending_selection.take()
         };
         let Some(pending) = pending else {
             self.set_status_text(QString::from("Select text on the page and try again."));
@@ -336,14 +349,14 @@ impl qobject::BrowserUi {
         let pending = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(pending) = this.pending_userscript.as_ref() else {
+            let Some(pending) = this.processes.pending_userscript.as_ref() else {
                 return false;
             };
             if pending.token != token {
                 return false;
             }
-            let pending = this.pending_userscript.take();
-            this.pending_selection = None;
+            let pending = this.processes.pending_userscript.take();
+            this.processes.pending_selection = None;
             pending
         };
         let Some(pending) = pending else {
@@ -351,12 +364,10 @@ impl qobject::BrowserUi {
         };
         let operation_id = pending.operation_id.clone();
         let fail = |mut this: Pin<&mut Self>, message: String| {
-            this.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .operation_states
-                .insert(operation_id.clone(), format!("failed ({message})"));
+            this.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                operation_id.clone(),
+                OperationUpdate::failed(FailureKind::Engine, format!("failed ({message})")),
+            );
             this.set_status_text(QString::from(message));
             false
         };
@@ -423,7 +434,7 @@ impl qobject::BrowserUi {
         let request = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(request) = this.pending_caret.as_mut() else {
+            let Some(request) = this.processes.pending_caret.as_mut() else {
                 return false;
             };
             if request.issued {
@@ -448,7 +459,7 @@ impl qobject::BrowserUi {
         let pending = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(request) = this.pending_caret.as_ref() else {
+            let Some(request) = this.processes.pending_caret.as_ref() else {
                 self.set_status_text(QString::from("Caret request expired"));
                 return false;
             };
@@ -456,7 +467,7 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Caret request is stale"));
                 return false;
             }
-            this.pending_caret.take()
+            this.processes.pending_caret.take()
         };
         let Some(pending) = pending else {
             self.set_status_text(QString::from("Caret request expired"));
@@ -501,17 +512,18 @@ impl qobject::BrowserUi {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         let expired = this
+            .processes
             .pending_editor
             .as_ref()
             .is_some_and(|request| request.created_at.elapsed() >= PAGE_SCRIPT_DEADLINE);
         if expired {
-            if let Some(request) = this.pending_editor.take() {
+            if let Some(request) = this.processes.pending_editor.take() {
                 discard_editor_request(request);
             }
             self.set_status_text(QString::from("Editor extraction timed out"));
             return QString::default();
         }
-        let Some(request) = this.pending_editor.as_mut() else {
+        let Some(request) = this.processes.pending_editor.as_mut() else {
             return QString::default();
         };
         if request.issued {
@@ -531,6 +543,7 @@ impl qobject::BrowserUi {
         if self
             .as_ref()
             .rust()
+            .processes
             .pending_editor
             .as_ref()
             .is_some_and(|pending| {
@@ -566,6 +579,7 @@ impl qobject::BrowserUi {
         let Some((pending_token, pending_target)) = self
             .as_ref()
             .rust()
+            .processes
             .pending_editor
             .as_ref()
             .map(|pending| (pending.token.clone(), pending.target))
@@ -604,6 +618,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .processes
             .editor_write_worker
             .as_mut()
             .ok_or_else(|| "editor writer is unavailable".to_owned())
@@ -616,13 +631,14 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             let pending = this
+                .processes
                 .pending_editor
                 .as_mut()
                 .expect("editor request checked");
             text.clone_into(&mut pending.original);
             pending.file.clone_from(&file);
             pending.private_temporary = private_temporary;
-            this.pending_editor_write = Some((token.clone(), file, private_temporary));
+            this.processes.pending_editor_write = Some((token.clone(), file, private_temporary));
         }
         self.set_status_text(QString::from(if private_temporary {
             "Preparing private external editor; the editor may create its own swap files"
@@ -637,6 +653,7 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut()
                 .get_mut()
+                .processes
                 .editor_write_worker
                 .as_mut()
                 .and_then(EditorWriteWorker::poll)
@@ -649,6 +666,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .processes
             .pending_editor_write
             .take();
         let Some((token, file, private_temporary)) = pending_write else {
@@ -672,6 +690,7 @@ impl qobject::BrowserUi {
         let Some(pending) = self
             .as_ref()
             .rust()
+            .processes
             .pending_editor
             .as_ref()
             .filter(|pending| pending.token == token)
@@ -706,10 +725,11 @@ impl qobject::BrowserUi {
                     .map(|stderr| thread::spawn(move || read_bounded(stderr, 64 * 1024)));
                 let process = Arc::new(Mutex::new(Some(child)));
                 let cancellation = Arc::clone(&pending.cancellation);
-                let completions = Arc::clone(&self.as_ref().rust().editor_completions);
+                let completions = Arc::clone(&self.as_ref().rust().processes.editor_completions);
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
                 if let Some(current) = this
+                    .processes
                     .pending_editor
                     .as_mut()
                     .filter(|current| current.token == token)
@@ -789,7 +809,7 @@ impl qobject::BrowserUi {
             Err(error) => {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                if let Some(request) = this.pending_editor.take() {
+                if let Some(request) = this.processes.pending_editor.take() {
                     discard_editor_request(request);
                 }
                 self.set_status_text(QString::from(format!("Editor could not start: {error}")));
@@ -811,16 +831,21 @@ impl qobject::BrowserUi {
         let completion = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.editor_completions.lock().ok().and_then(|mut queue| {
-                let token = this
-                    .pending_editor
-                    .as_ref()
-                    .map(|request| request.token.as_str());
-                queue
-                    .iter()
-                    .position(|completion| Some(completion.token.as_str()) == token)
-                    .map(|index| queue.remove(index))
-            })
+            this.processes
+                .editor_completions
+                .lock()
+                .ok()
+                .and_then(|mut queue| {
+                    let token = this
+                        .processes
+                        .pending_editor
+                        .as_ref()
+                        .map(|request| request.token.as_str());
+                    queue
+                        .iter()
+                        .position(|completion| Some(completion.token.as_str()) == token)
+                        .map(|index| queue.remove(index))
+                })
         };
         let Some(completion) = completion else {
             return false;
@@ -847,7 +872,7 @@ impl qobject::BrowserUi {
         let pending = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(request) = this.pending_editor.as_ref() else {
+            let Some(request) = this.processes.pending_editor.as_ref() else {
                 self.set_status_text(QString::from("Editor request expired"));
                 return false;
             };
@@ -855,7 +880,7 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Editor request is stale"));
                 return false;
             }
-            this.pending_editor.take()
+            this.processes.pending_editor.take()
         };
         let Some(pending) = pending else {
             self.set_status_text(QString::from("Editor request expired"));
@@ -898,11 +923,12 @@ impl qobject::BrowserUi {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         if this
+            .processes
             .pending_editor
             .as_ref()
             .is_some_and(|pending| pending.token == token)
         {
-            if let Some(pending) = this.pending_editor.take() {
+            if let Some(pending) = this.processes.pending_editor.take() {
                 discard_editor_request(pending);
             }
         }

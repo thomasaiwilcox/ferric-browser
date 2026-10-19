@@ -1400,6 +1400,9 @@ impl ApplicationState {
     ///
     /// Returns a static explanation of the first broken invariant.
     pub fn validate(&self) -> Result<(), &'static str> {
+        // Build membership once. Looking through each tab's window vector
+        // again made validation quadratic in the number of open tabs.
+        let mut membership = std::collections::HashSet::with_capacity(self.tabs.len());
         for (id, window) in &self.windows {
             if !self.profiles.contains_key(&window.profile) {
                 return Err("window references missing profile");
@@ -1418,19 +1421,16 @@ impl ApplicationState {
                     .tabs
                     .get(tab_id)
                     .ok_or("window references missing tab")?;
-                if tab.window != *id || tab.profile != window.profile {
+                if tab.id != *tab_id || tab.window != *id || tab.profile != window.profile {
                     return Err("tab crosses window/profile boundary");
+                }
+                if !membership.insert(*tab_id) {
+                    return Err("tab appears more than once in window membership");
                 }
             }
         }
-        for tab in self.tabs.values() {
-            let window = self
-                .windows
-                .get(&tab.window)
-                .ok_or("tab references missing window")?;
-            if window.profile != tab.profile || !window.tabs.contains(&tab.id) {
-                return Err("tab ownership invariant violated");
-            }
+        if membership.len() != self.tabs.len() {
+            return Err("tab ownership invariant violated");
         }
         if self
             .active_window
@@ -1468,6 +1468,19 @@ mod tests {
         let tab = state.tabs.keys().next().copied().unwrap();
         let target = state.capture_target(tab).expect("test tab exists");
         (state, profile, window, tab, target)
+    }
+
+    #[test]
+    fn validation_rejects_duplicate_and_orphaned_window_membership() {
+        let (mut state, _, window, tab, _) = setup();
+        state.windows.get_mut(&window).unwrap().tabs.push(tab);
+        assert_eq!(
+            state.validate(),
+            Err("tab appears more than once in window membership")
+        );
+        state.windows.get_mut(&window).unwrap().tabs.clear();
+        state.windows.get_mut(&window).unwrap().active_tab = None;
+        assert_eq!(state.validate(), Err("tab ownership invariant violated"));
     }
 
     #[test]

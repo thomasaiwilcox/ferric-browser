@@ -25,8 +25,8 @@ pub(crate) const MAX_INSTALL_ASSET_BYTES: u64 = 16 * 1024 * 1024;
 use crate::userscript_discovery::url_pattern_matches;
 use crate::userscript_discovery::validate_url_pattern;
 pub use crate::userscript_discovery::{
-    InstalledScript, PageScript, RegisteredAction, installed_scripts, matching_page_scripts,
-    registered_actions,
+    InstalledScript, PageScript, RegisteredAction, UserscriptCatalog, installed_scripts,
+    matching_page_scripts, registered_actions,
 };
 pub use crate::userscript_install::install_manifest;
 pub use crate::userscript_manifest::{ActionManifest, FrameScope, LoadedManifest, Manifest, RunAt};
@@ -98,7 +98,7 @@ pub fn load(root: &Path, name: &str) -> Result<LoadedManifest, String> {
     if metadata.len() > MAX_MANIFEST_BYTES {
         return Err("userscript manifest exceeds 64 KiB".into());
     }
-    let source = fs::read_to_string(&path)
+    let source = crate::userscript_io::read_text(&path, MAX_MANIFEST_BYTES)
         .map_err(|error| format!("could not read userscript manifest: {error}"))?;
     let manifest: Manifest =
         toml::from_str(&source).map_err(|error| format!("invalid userscript manifest: {error}"))?;
@@ -142,7 +142,7 @@ pub(crate) fn validate_page_source(path: &Path) -> Result<(), String> {
     if metadata.len() > MAX_PAGE_SCRIPT_BYTES {
         return Err("userscript source exceeds 256 KiB".into());
     }
-    let source = fs::read_to_string(path)
+    let source = crate::userscript_io::read_text(path, MAX_PAGE_SCRIPT_BYTES)
         .map_err(|error| format!("could not read userscript source: {error}"))?;
     if source.contains('\0') {
         return Err("userscript source contains a NUL byte".into());
@@ -218,6 +218,36 @@ pub fn validate(manifest: &Manifest, requested_name: &str) -> Result<(), String>
         KNOWN_COMMANDS,
         "allowed_commands",
     )?;
+    validate_actions(manifest, requested_name)?;
+    if manifest.actions.len() > 64 {
+        return Err("userscript manifest may register at most 64 actions".into());
+    }
+    if manifest.matches.len() > 64 || manifest.excludes.len() > 64 {
+        return Err("userscript match and exclude lists must contain at most 64 patterns".into());
+    }
+    for pattern in manifest.matches.iter().chain(&manifest.excludes) {
+        validate_url_pattern(pattern)?;
+    }
+    if !manifest.page_world && manifest.source.is_some() {
+        return Err("userscript source requires explicit page_world = true".into());
+    }
+    if manifest.page_world {
+        if manifest.matches.is_empty() {
+            return Err("page-world userscript must declare at least one match pattern".into());
+        }
+        let source = manifest
+            .source
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "page-world userscript requires a local source path".to_owned())?;
+        if source.chars().any(char::is_control) {
+            return Err("page-world userscript source path contains a control character".into());
+        }
+    }
+    Ok(())
+}
+
+fn validate_actions(manifest: &Manifest, requested_name: &str) -> Result<(), String> {
     for action in &manifest.actions {
         if action.id.len() > MAX_ACTION_TEXT_BYTES
             || action.subject.len() > MAX_ACTION_TEXT_BYTES
@@ -314,31 +344,6 @@ pub fn validate(manifest: &Manifest, requested_name: &str) -> Result<(), String>
                     "userscript action requires undeclared context field: {field}"
                 ));
             }
-        }
-    }
-    if manifest.actions.len() > 64 {
-        return Err("userscript manifest may register at most 64 actions".into());
-    }
-    if manifest.matches.len() > 64 || manifest.excludes.len() > 64 {
-        return Err("userscript match and exclude lists must contain at most 64 patterns".into());
-    }
-    for pattern in manifest.matches.iter().chain(&manifest.excludes) {
-        validate_url_pattern(pattern)?;
-    }
-    if !manifest.page_world && manifest.source.is_some() {
-        return Err("userscript source requires explicit page_world = true".into());
-    }
-    if manifest.page_world {
-        if manifest.matches.is_empty() {
-            return Err("page-world userscript must declare at least one match pattern".into());
-        }
-        let source = manifest
-            .source
-            .as_deref()
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| "page-world userscript requires a local source path".to_owned())?;
-        if source.chars().any(char::is_control) {
-            return Err("page-world userscript source path contains a control character".into());
         }
     }
     Ok(())
@@ -740,6 +745,9 @@ source = "page.js"
         std::fs::write(directory.join("page.js"), "document.title = 'ok';")
             .expect("write userscript source");
 
+        let cached = UserscriptCatalog::load(&root).expect("complete catalog");
+        assert_eq!(cached.inventory().len(), 1);
+        assert!(cached.manifest("page").is_some());
         let scripts = matching_page_scripts(&root, "https://example.test/path", false)
             .expect("load matching page script");
         assert_eq!(scripts.len(), 1);
@@ -751,6 +759,13 @@ source = "page.js"
                 .expect("private filtering succeeds")
                 .is_empty()
         );
+        std::fs::remove_file(directory.join("page.js")).unwrap();
+        std::fs::remove_file(directory.join("page.toml")).unwrap();
+        assert_eq!(
+            cached.matching("https://example.test/path", false)[0].source,
+            "document.title = 'ok';"
+        );
+        assert!(cached.manifest("page").is_some());
         std::fs::remove_dir_all(root).expect("remove userscript test directory");
     }
 

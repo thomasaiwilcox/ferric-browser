@@ -62,6 +62,7 @@ pub(super) struct PendingProfileConfiguration {
 }
 
 pub(super) struct PendingSelectorValidation {
+    pub(super) operation_id: Option<String>,
     pub(super) generation: u64,
     pub(super) expected_revision: u64,
     pub(super) started_at: Instant,
@@ -89,6 +90,14 @@ pub(super) enum PendingSelectorAction {
     },
 }
 
+pub(super) struct PendingConfigurationPublication {
+    pub(super) operation_id: Option<String>,
+    pub(super) candidate: Value,
+    pub(super) layers: ConfigurationLayers,
+    pub(super) status: String,
+    pub(super) fingerprint: String,
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct SwitcherQueryCache {
     pub(super) params: Value,
@@ -96,7 +105,7 @@ pub(super) struct SwitcherQueryCache {
     pub(super) storage_library_revision: i64,
     pub(super) session_names: Vec<String>,
     pub(super) contexts_json: String,
-    pub(super) config_fingerprint: String,
+    pub(super) configuration_revision: u64,
     pub(super) profile_name: String,
     pub(super) result: Value,
 }
@@ -104,12 +113,16 @@ pub(super) struct SwitcherQueryCache {
 impl SwitcherQueryCache {
     pub(super) fn matches(&self, rust: &BrowserUiRust, params: &Value) -> bool {
         self.params == *params
-            && !rust.storage_library_dirty.get()
+            && !rust.library.storage_library_dirty.get()
             && self.state_revision == rust.state.as_ref().map_or(0, BrowserApplication::revision)
             && self.storage_library_revision == rust.storage_library_revision
-            && self.session_names == rust.session_names
+            && self.session_names == rust.library.session_names
             && self.contexts_json == rust.contexts_json.to_string()
-            && self.config_fingerprint == serde_json::to_string(&rust.config).unwrap_or_default()
+            && self.configuration_revision
+                == rust
+                    .state
+                    .as_ref()
+                    .map_or(0, BrowserApplication::configuration_revision)
             && self.profile_name == rust.profile_name
     }
 }

@@ -38,7 +38,7 @@ pub struct Manifest {
     pub source: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum RunAt {
     #[serde(rename = "document_start")]
@@ -50,7 +50,7 @@ pub enum RunAt {
     Idle,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum FrameScope {
     #[default]

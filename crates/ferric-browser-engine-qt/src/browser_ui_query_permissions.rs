@@ -39,7 +39,9 @@ impl qobject::BrowserUi {
                 "sequence": self.rust().ipc_sequence
             }));
         }
-        if self.rust().storage_library_dirty.get() || self.rust().storage_library.is_none() {
+        if self.rust().library.storage_library_dirty.get()
+            || self.rust().library.storage_library.is_none()
+        {
             return Err(IpcQueryError::Busy(
                 "permission metadata is still loading; retry".into(),
             ));
@@ -50,6 +52,7 @@ impl qobject::BrowserUi {
             .map_err(|error| IpcQueryError::Invalid(error.to_string()))?;
         let rules = self
             .rust()
+            .library
             .storage_library
             .as_ref()
             .ok_or_else(|| IpcQueryError::Unavailable("permission metadata is unavailable".into()))?

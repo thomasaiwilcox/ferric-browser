@@ -1,6 +1,6 @@
 #![no_main]
 
-use ferric_browser_engine_qt::userscript::{FrameScope, Manifest, RunAt, parse_output};
+use ferric_browser_application::userscript::{FrameScope, Manifest, RunAt, parse_output};
 use libfuzzer_sys::fuzz_target;
 
 fn manifest() -> Manifest {

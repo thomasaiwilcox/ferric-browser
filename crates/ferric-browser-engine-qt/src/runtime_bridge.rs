@@ -19,29 +19,55 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn dispatch_runtime(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         dispatch: RuntimeDispatch,
     ) -> Result<Vec<Effect>, String> {
+        self.dispatch_runtime_public(dispatch)
+            .map_err(|error| error.to_string())
+    }
+
+    pub(super) fn dispatch_runtime_public(
+        mut self: Pin<&mut Self>,
+        dispatch: RuntimeDispatch,
+    ) -> Result<Vec<Effect>, super::PublicError> {
         self.as_mut()
-            .handle_runtime_input(RuntimeInput::Command(RuntimeCommand::Dispatch(Box::new(
+            .handle_runtime_input_public(RuntimeInput::Command(RuntimeCommand::Dispatch(Box::new(
                 dispatch,
             ))))
     }
 
     pub(super) fn handle_runtime_input(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         input: RuntimeInput,
     ) -> Result<Vec<Effect>, String> {
+        self.handle_runtime_input_public(input)
+            .map_err(|error| error.to_string())
+    }
+
+    fn handle_runtime_input_public(
+        mut self: Pin<&mut Self>,
+        input: RuntimeInput,
+    ) -> Result<Vec<Effect>, super::PublicError> {
         let result = {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut()
                 .get_mut()
                 .state
                 .as_mut()
-                .ok_or_else(|| "Core state unavailable".to_owned())
+                .ok_or_else(|| {
+                    super::PublicError::new(
+                        ferric_browser_ipc::ErrorCode::NotFound,
+                        "The browser state is unavailable.",
+                        "runtime owner unavailable",
+                    )
+                })
                 .and_then(|runtime| {
                     runtime.dispatch_runtime(input).map_err(|error| {
-                        format!("{}: {}", error.code().as_str(), error.diagnostic_context())
+                        super::PublicError::new(
+                            error.code().into(),
+                            error.user_message(),
+                            error.diagnostic_context(),
+                        )
                     })
                 })
         };
@@ -73,12 +99,12 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             this.checkpoint.mark_dirty(elapsed_ms(this.binding_clock));
             for effect in &effects {
-                if let RuntimeEffect::IpcEvent {
-                    event_type,
-                    payload,
-                } = effect
-                {
-                    publish_ipc_event(&mut this.ipc_sequence, event_type, payload.clone());
+                if let RuntimeEffect::Observed(observation) = effect {
+                    publish_ipc_event(
+                        &mut this.ipc_sequence,
+                        super::runtime_event_projection::ipc_event_type(&observation.event),
+                        super::runtime_event_projection::ipc_event_payload(observation),
+                    );
                 }
             }
         }
@@ -90,8 +116,8 @@ impl qobject::BrowserUi {
                 RuntimeEffect::Storage(effect) => Some(Effect::Persist(effect)),
                 RuntimeEffect::Diagnostic(effect) => Some(Effect::Diagnostic(effect)),
                 RuntimeEffect::AppliedEvent(_)
-                | RuntimeEffect::IpcEvent { .. }
-                | RuntimeEffect::UiModelUpdated(_)
+                | RuntimeEffect::Observed(_)
+                | RuntimeEffect::UiModelChanged { .. }
                 | RuntimeEffect::WorkerObserved { .. } => None,
             })
             .collect()

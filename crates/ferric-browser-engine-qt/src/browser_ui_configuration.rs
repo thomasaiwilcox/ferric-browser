@@ -14,23 +14,169 @@ const SETTINGS_RELOAD_FAILED: &str = "Settings changes couldn't be loaded. Your 
 enum ConfigurationCommit<'a> {
     Reload(Option<Box<ferric_browser_application::ContextReloadEffect>>),
     Runtime(Option<(&'a Path, &'a RuntimeOverrides)>),
+    Persisted(Box<ferric_browser_application::PersistedConfigurationUpdate>),
 }
 
 impl qobject::BrowserUi {
-    pub(super) fn select_site_rule_settings(mut self: Pin<&mut Self>, url: &QString) -> bool {
-        let config = match serde_json::from_value::<Config>(self.as_ref().rust().config.clone()) {
-            Ok(config) => config,
+    pub(super) fn bind_configuration_operation(
+        mut self: Pin<&mut Self>,
+        operation_id: &str,
+    ) -> bool {
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        let committing = this
+            .configuration_io
+            .pending_configuration_publication
+            .is_some();
+        let pending = if let Some(pending) = this
+            .configuration_io
+            .pending_configuration_publication
+            .as_mut()
+        {
+            pending.operation_id = Some(operation_id.to_owned());
+            true
+        } else if let Some(pending) = this.configuration_io.pending_selector_validation.as_mut() {
+            pending.operation_id = Some(operation_id.to_owned());
+            true
+        } else {
+            false
+        };
+        if pending {
+            this.set_operation(
+                operation_id.to_owned(),
+                crate::OperationUpdate::running("settings validation or persistence"),
+            );
+        }
+        if committing && let Some(state) = this.state.as_mut() {
+            state.operations_mut().begin_commit(operation_id);
+        }
+        pending
+    }
+
+    pub(super) fn poll_peer_configuration(mut self: Pin<&mut Self>) {
+        if self
+            .as_ref()
+            .rust()
+            .configuration_io
+            .pending_selector_validation
+            .is_some()
+            || self
+                .as_ref()
+                .rust()
+                .configuration_io
+                .pending_configuration_publication
+                .is_some()
+            || self
+                .as_ref()
+                .rust()
+                .configuration_io
+                .pending_context_reload
+                .is_some()
+        {
+            return;
+        }
+        let layers = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .map(super::BrowserApplication::peer_configuration_layers)
+            .transpose();
+        let layers = match layers {
+            Ok(Some(Some(layers))) => layers,
+            Ok(_) => return,
             Err(error) => {
-                if self
-                    .as_mut()
-                    .update_hint_proxy_targets(&Config::default(), "")
-                {
-                    self.as_mut().note_hint_configuration_change();
-                }
                 self.as_mut()
-                    .set_status_text(QString::from(format!("Site rules unavailable: {error}")));
-                return false;
+                    .report_config_reload_failure(&error.to_string(), false);
+                return;
             }
+        };
+        let candidate = layers.resolve().and_then(|config| {
+            serde_json::to_value(config)
+                .map_err(|error| ferric_browser_config::ConfigError::Validation(error.to_string()))
+        });
+        let result = candidate
+            .map_err(|error| error.to_string())
+            .and_then(|candidate| {
+                let persistent = layers.runtime.clone();
+                self.as_mut().validate_or_queue_runtime_config(
+                    candidate,
+                    layers,
+                    "Settings synchronized from another window".into(),
+                    persistent,
+                    None,
+                )
+            });
+        if let Err(error) = result {
+            self.as_mut().report_config_reload_failure(&error, false);
+        }
+    }
+
+    pub(super) fn poll_configuration_publication(mut self: Pin<&mut Self>) {
+        let result = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .state
+            .as_mut()
+            .and_then(super::BrowserApplication::poll_configuration_write);
+        let Some(result) = result else {
+            return;
+        };
+        let pending = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .configuration_io
+            .pending_configuration_publication
+            .take();
+        let Some(pending) = pending else {
+            return;
+        };
+        let operation_id = pending.operation_id.clone();
+        let result = result
+            .map_err(|error| error.to_string())
+            .and_then(|receipt| {
+                self.as_mut().commit_validated_configuration(
+                    pending.candidate,
+                    pending.layers,
+                    Some(&pending.status),
+                    pending.fingerprint,
+                    ConfigurationCommit::Persisted(Box::new(receipt)),
+                )
+            });
+        if let Some(operation_id) = operation_id {
+            let update = match &result {
+                Ok(_) => crate::OperationUpdate::completed("settings persisted and published"),
+                Err(error) => {
+                    crate::OperationUpdate::failed(crate::FailureKind::Config, error.clone())
+                }
+            };
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .set_operation(operation_id, update);
+        }
+        if let Err(error) = result {
+            self.as_mut().report_config_reload_failure(&error, true);
+        }
+    }
+
+    pub(super) fn select_site_rule_settings(mut self: Pin<&mut Self>, url: &QString) -> bool {
+        let Some(config) = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .map(|state| state.configuration().clone())
+        else {
+            self.as_mut().set_status_text(QString::from(
+                "Site rules are unavailable while this window is closing.",
+            ));
+            return false;
         };
         if !self
             .as_mut()
@@ -90,9 +236,11 @@ impl qobject::BrowserUi {
     pub(super) fn clear_focus_observation_state(mut self: Pin<&mut Self>, index: i32) {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        this.focus_observations
+        this.interaction
+            .focus_observations
             .retain(|(candidate, _), _| *candidate != index);
-        this.focus_suppressions
+        this.interaction
+            .focus_suppressions
             .retain(|(candidate, _), _| *candidate != index);
     }
 
@@ -101,6 +249,7 @@ impl qobject::BrowserUi {
         let suppressed = self
             .as_ref()
             .rust()
+            .interaction
             .focus_observations
             .iter()
             .filter(|((index, _), _)| *index == active)
@@ -109,7 +258,7 @@ impl qobject::BrowserUi {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         for (key, sequence) in suppressed {
-            this.focus_suppressions.insert(key, sequence);
+            this.interaction.focus_suppressions.insert(key, sequence);
         }
     }
 
@@ -124,9 +273,9 @@ impl qobject::BrowserUi {
         {
             return None;
         }
-        let config = serde_json::from_value::<Config>(self.rust().config.clone()).ok()?;
+        let config = self.rust().state.as_ref()?.configuration();
         let mut entry_mode = None;
-        for rule in matching_site_rules(&config, url) {
+        for rule in matching_site_rules(config, url) {
             if let Some(mode) = rule
                 .set
                 .get("input.entry_mode")
@@ -143,12 +292,17 @@ impl qobject::BrowserUi {
         runtime_overrides: &RuntimeOverrides,
         temporary_overrides: &RuntimeOverrides,
     ) -> Result<Value, String> {
-        self.runtime_config_candidate_from(
-            &self.rust().base_config,
-            &self.rust().profile_overrides,
-            runtime_overrides,
-            temporary_overrides,
-        )
+        let mut layers = self
+            .rust()
+            .state
+            .as_ref()
+            .ok_or_else(|| "application state is unavailable".to_owned())?
+            .configuration_layers()
+            .clone();
+        layers.runtime = runtime_overrides.clone();
+        layers.temporary = temporary_overrides.clone();
+        serde_json::to_value(layers.resolve().map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())
     }
 
     pub(super) fn report_config_reload_failure(
@@ -228,31 +382,51 @@ impl qobject::BrowserUi {
         fingerprint: String,
         commit: ConfigurationCommit<'_>,
     ) -> Result<Value, String> {
-        let (boundary, persistence, contexts) = match commit {
+        let (boundary, persistence, contexts, persisted) = match commit {
             ConfigurationCommit::Reload(contexts) => (
                 ConfigurationApplyBoundary::Reload,
                 None,
                 contexts.map(|effect| *effect),
+                None,
             ),
-            ConfigurationCommit::Runtime(persistence) => {
-                (ConfigurationApplyBoundary::RuntimeUpdate, persistence, None)
-            }
+            ConfigurationCommit::Runtime(persistence) => (
+                ConfigurationApplyBoundary::RuntimeUpdate,
+                persistence,
+                None,
+                None,
+            ),
+            ConfigurationCommit::Persisted(receipt) => (
+                ConfigurationApplyBoundary::RuntimeUpdate,
+                None,
+                None,
+                Some(*receipt),
+            ),
         };
         let policy_layers = layers.clone();
-        let previous_hints = serde_json::from_value::<Config>(self.as_ref().rust().config.clone())
-            .ok()
-            .map(|config| config.hints);
+        let previous_config = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .map(|state| state.configuration().clone());
         let browser = self.as_ref();
         let state = browser
             .rust()
             .state
             .as_ref()
             .ok_or_else(|| "application state is unavailable".to_owned())?;
-        let prepared = match boundary {
-            ConfigurationApplyBoundary::RuntimeUpdate => state.prepare_configuration_update(layers),
-            ConfigurationApplyBoundary::Reload => state.prepare_configuration_reload(layers),
-        }
-        .map_err(|error| error.to_string())?;
+        let (prepared, write_outcome) = if let Some(receipt) = persisted {
+            (receipt.prepared, Some(receipt.outcome))
+        } else {
+            let prepared = match boundary {
+                ConfigurationApplyBoundary::RuntimeUpdate => {
+                    state.prepare_configuration_update(layers)
+                }
+                ConfigurationApplyBoundary::Reload => state.prepare_configuration_reload(layers),
+            }
+            .map_err(|error| error.to_string())?;
+            (prepared, None)
+        };
         let snapshot = prepared.snapshot();
         let active_settings = snapshot.effective;
         let active_config = serde_json::to_value(&active_settings)
@@ -260,6 +434,34 @@ impl qobject::BrowserUi {
         let (candidate_mixed_policy, policy_changed) = self
             .as_ref()
             .resolve_candidate_mixed_policy(&active_config, &policy_layers)?;
+        if persistence.is_some() {
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .state
+                .as_mut()
+                .ok_or_else(|| "application state is unavailable".to_owned())?
+                .request_configuration_write(prepared)
+                .map_err(|error| error.to_string())?;
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .configuration_io
+                .pending_configuration_publication =
+                Some(super::browser_ui_state::PendingConfigurationPublication {
+                    operation_id: None,
+                    candidate,
+                    layers: policy_layers,
+                    status: status.unwrap_or("Settings saved").to_owned(),
+                    fingerprint,
+                });
+            self.as_mut()
+                .set_status_text(QString::from("Saving settings…"));
+            self.as_mut().runtime_work_available();
+            return Ok(serde_json::json!({"status":"pending-persistence"}));
+        }
         let pending = snapshot.pending_changes;
         let pending_summary = pending
             .iter()
@@ -282,7 +484,6 @@ impl qobject::BrowserUi {
             .map(|effect| serde_json::to_string(effect.configuration()))
             .transpose()
             .map_err(|error| format!("could not serialize context configuration: {error}"))?;
-        let mut write_outcome = None;
         let mut context_runtime_effects = Vec::new();
         {
             let mut rust = self.as_mut().rust_mut();
@@ -299,15 +500,7 @@ impl qobject::BrowserUi {
                 context_runtime_effects = effects;
             } else {
                 state
-                    .publish_configuration_update(prepared, || {
-                        if let Some((path, overrides)) = persistence {
-                            write_outcome =
-                                Some(ferric_browser_config::save_runtime_overrides_atomic(
-                                    path, overrides,
-                                )?);
-                        }
-                        Ok(())
-                    })
+                    .publish_configuration_update(prepared, || Ok(()))
                     .map_err(|error| format!("configuration publication rejected: {error}"))?;
             }
         }
@@ -315,15 +508,19 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.config = active_config.clone();
-            this.active_selector_fingerprint = fingerprint;
-            this.selector_config_revision = this.selector_config_revision.wrapping_add(1);
+            this.configuration_io.active_selector_fingerprint = fingerprint;
+            this.configuration_io.selector_config_revision = this
+                .configuration_io
+                .selector_config_revision
+                .wrapping_add(1);
             this.base_config = base_config;
             this.profile_overrides = policy_layers.profile.clone();
             this.runtime_overrides = policy_layers.runtime.clone();
             this.cli_overrides = policy_layers.command_line.clone();
             this.temporary_overrides = policy_layers.temporary.clone();
             this.mixed_policy = candidate_mixed_policy;
-            this.pending_config = (!pending.is_empty()).then_some(candidate.clone());
+            this.configuration_io.pending_config =
+                (!pending.is_empty()).then_some(candidate.clone());
             this.learning_mode = active_config
                 .get("discovery")
                 .and_then(Value::as_object)
@@ -360,18 +557,20 @@ impl qobject::BrowserUi {
             .update_hint_proxy_targets(&active_settings, &current_url);
         self.as_mut().update_settings_presentation(&active_config);
         self.as_mut().set_config_json(QString::from(config_json));
-        self.as_mut().note_hint_configuration_change();
+        // A watch reconciliation or an unrelated peer binding update must not
+        // retire an in-flight collector. Only interaction policy changes revoke
+        // its configuration authority.
+        let hint_policy_changed = previous_config.as_ref().is_none_or(|previous| {
+            previous.hints != active_settings.hints
+                || previous.input != active_settings.input
+                || previous.site_rules != active_settings.site_rules
+        });
+        if hint_policy_changed {
+            self.as_mut().note_hint_configuration_change();
+        }
         let learning_mode = self.as_ref().rust().learning_mode;
         self.as_mut().set_learning_mode(learning_mode);
         self.as_mut().update_theme_palette(&candidate);
-        let label_settings_changed = previous_hints.is_some_and(|previous| {
-            previous.chars != active_settings.hints.chars
-                || previous.min_chars != active_settings.hints.min_chars
-                || previous.auto_follow != active_settings.hints.auto_follow
-        });
-        if label_settings_changed && self.as_ref().rust().hint_session.is_some() {
-            self.as_mut().cancel_hints();
-        }
         if let Some(contexts_json) = contexts_json {
             let _ = self
                 .as_mut()
@@ -524,6 +723,7 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut()
                 .get_mut()
+                .configuration_io
                 .theme_watch
                 .set_sources(Path::new(""), &watch_paths);
         }
@@ -664,6 +864,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .configuration_io
             .config_write_worker
             .as_mut()
             .ok_or_else(|| "configuration writer is unavailable".to_owned())?
@@ -680,8 +881,14 @@ impl qobject::BrowserUi {
         if path.is_empty() || path.len() > 4096 || path.chars().any(char::is_control) {
             return Err("config-export path is empty, too long, or unsafe".into());
         }
-        let config: Config = serde_json::from_value(self.as_ref().rust().config.clone())
-            .map_err(|error| format!("effective configuration cannot be exported: {error}"))?;
+        let config = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .ok_or("effective configuration is unavailable")?
+            .configuration()
+            .clone();
         let bytes = toml::to_string_pretty(&config)
             .map_err(|error| format!("could not serialize effective configuration: {error}"))?;
         let path = PathBuf::from(path);
@@ -724,6 +931,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .configuration_io
             .config_reload_worker
             .as_mut()
             .ok_or_else(|| "configuration reader is unavailable".to_owned())?
@@ -752,11 +960,11 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            if this.config_reload_worker.is_none() {
+            if this.configuration_io.config_reload_worker.is_none() {
                 return Err("Settings reload is unavailable in this window.".into());
             }
-            this.config_reload_requested_by_user = true;
-            this.config_watch.mark_pending(
+            this.configuration_io.config_reload_requested_by_user = true;
+            this.configuration_io.config_watch.mark_pending(
                 Instant::now()
                     .checked_sub(Duration::from_millis(200))
                     .unwrap_or_else(Instant::now),
@@ -840,7 +1048,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn poll_config_edit(mut self: Pin<&mut Self>) {
-        let pending = self.as_ref().rust().pending_config_edit.clone();
+        let pending = self.as_ref().rust().processes.pending_config_edit.clone();
         let Some(pending) = pending else {
             return;
         };
@@ -853,6 +1061,7 @@ impl qobject::BrowserUi {
                     if let Some(current) = rust
                         .as_mut()
                         .get_mut()
+                        .processes
                         .pending_config_edit
                         .as_mut()
                         .filter(|current| current.token == pending.token)
@@ -867,11 +1076,12 @@ impl qobject::BrowserUi {
                         let mut rust = self.as_mut().rust_mut();
                         let this = rust.as_mut().get_mut();
                         if this
+                            .processes
                             .pending_config_edit
                             .as_ref()
                             .is_some_and(|current| current.token == pending.token)
                         {
-                            this.pending_config_edit.take()
+                            this.processes.pending_config_edit.take()
                         } else {
                             None
                         }
@@ -909,11 +1119,12 @@ impl qobject::BrowserUi {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
                 if this
+                    .processes
                     .pending_config_edit
                     .as_ref()
                     .is_some_and(|current| current.token == pending.token)
                 {
-                    this.pending_config_edit.take()
+                    this.processes.pending_config_edit.take()
                 } else {
                     None
                 }
@@ -924,11 +1135,15 @@ impl qobject::BrowserUi {
                     .map_or_else(String::new, |text| format!(" (stderr: {text})"));
                 if status.success() {
                     let mut rust = self.as_mut().rust_mut();
-                    rust.as_mut().get_mut().config_watch.mark_pending(
-                        Instant::now()
-                            .checked_sub(Duration::from_millis(200))
-                            .unwrap_or_else(Instant::now),
-                    );
+                    rust.as_mut()
+                        .get_mut()
+                        .configuration_io
+                        .config_watch
+                        .mark_pending(
+                            Instant::now()
+                                .checked_sub(Duration::from_millis(200))
+                                .unwrap_or_else(Instant::now),
+                        );
                     self.as_mut().set_status_text(QString::from(format!(
                         "Configuration editor finished; reloading {}{}",
                         pending.path.display(),

@@ -8,7 +8,7 @@ use super::{
 
 impl qobject::BrowserUi {
     pub(super) fn request_session_names(mut self: Pin<&mut Self>) {
-        if !self.as_ref().rust().session_names_dirty.get()
+        if !self.as_ref().rust().library.session_names_dirty.get()
             || self
                 .as_ref()
                 .rust()
@@ -37,8 +37,8 @@ impl qobject::BrowserUi {
             let transient = self.as_ref().active_profile_is_transient();
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.session_names.clear();
-            this.session_names_dirty.set(false);
+            this.library.session_names.clear();
+            this.library.session_names_dirty.set(false);
             this.session_catalog_read_state = if transient {
                 CatalogReadState::Ready
             } else {
@@ -62,6 +62,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .library
                     .session_names_refresh_again = false;
                 self.as_mut().set_session_names_error(QString::default());
                 self.as_mut()
@@ -118,7 +119,7 @@ impl qobject::BrowserUi {
             Some(Ok(())) => {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                this.session_restore_recovery_pending = true;
+                this.library.session_restore_recovery_pending = true;
                 this.session_restore_values = QString::default();
                 drop(rust);
                 self.set_status_text(QString::from("Loading recovery session"));
@@ -272,14 +273,14 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             this.tab_ids = tab_ids;
             this.popup_tab_ids.clear();
-            this.popup_journey_targets.clear();
-            this.page_document_identities.clear();
-            this.pending_same_document_pass_through = None;
+            this.navigation.popup_journey_targets.clear();
+            this.navigation.page_document_identities.clear();
+            this.navigation.pending_same_document_pass_through = None;
             this.tab = Some(selected_tab);
             this.pending_engine_action = None;
             this.pending_engine_actions.clear();
-            this.pending_journey_traversal = None;
-            this.pending_journey_traversals.clear();
+            this.navigation.pending_journey_traversal = None;
+            this.navigation.pending_journey_traversals.clear();
         }
         self.as_mut()
             .set_session_restore_values(QString::from(format!(
@@ -405,21 +406,21 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             this.tab_ids = restored_tabs.clone();
             this.popup_tab_ids.clear();
-            this.popup_journey_targets.clear();
-            this.page_document_identities.clear();
-            this.pending_same_document_pass_through = None;
+            this.navigation.popup_journey_targets.clear();
+            this.navigation.page_document_identities.clear();
+            this.navigation.pending_same_document_pass_through = None;
             this.tab = Some(selected_tab);
             if !append {
-                this.scroll_positions.clear();
+                this.navigation.scroll_positions.clear();
             }
             for (tab, entry) in this.tab_ids[first_restored_index..]
                 .iter()
                 .zip(entries.iter())
             {
                 if let Some(position) = entry.scroll_position {
-                    this.scroll_positions.insert(*tab, position);
+                    this.navigation.scroll_positions.insert(*tab, position);
                 } else {
-                    this.scroll_positions.remove(tab);
+                    this.navigation.scroll_positions.remove(tab);
                 }
             }
             this.checkpoint.dirty = false;
@@ -531,7 +532,7 @@ impl qobject::BrowserUi {
             Some(Ok(())) => {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                this.session_restore_load_append = Some(append);
+                this.library.session_restore_load_append = Some(append);
                 this.session_restore_values = QString::default();
                 this.session_preview = QString::default();
                 drop(rust);
@@ -637,7 +638,7 @@ impl qobject::BrowserUi {
             Some(Ok(())) => {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                this.session_restore_preview_pending = true;
+                this.library.session_restore_preview_pending = true;
                 this.session_preview = QString::default();
                 drop(rust);
                 self.as_mut().clear_session_preview_rows();
@@ -667,9 +668,9 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn list_named_sessions(mut self: Pin<&mut Self>) -> QString {
-        self.as_ref().rust().session_names_dirty.set(true);
+        self.as_ref().rust().library.session_names_dirty.set(true);
         self.as_mut().request_session_names();
-        QString::from(self.as_ref().rust().session_names.join("\n"))
+        QString::from(self.as_ref().rust().library.session_names.join("\n"))
     }
 
     pub(super) fn delete_named_session(

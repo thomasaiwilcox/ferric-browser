@@ -45,7 +45,7 @@ impl qobject::BrowserUi {
                     pinned: tab.pinned,
                     muted: tab.muted,
                     zoom: tab.zoom,
-                    scroll_position: rust.scroll_positions.get(tab_id).copied(),
+                    scroll_position: rust.navigation.scroll_positions.get(tab_id).copied(),
                 })
             })
             .collect::<Vec<_>>();
@@ -94,7 +94,7 @@ impl qobject::BrowserUi {
         // repeated explicit requests and avoiding redundant checkpoints.
         let blocked = {
             let owner = self.as_ref();
-            let pending = &owner.rust().session_saves;
+            let pending = &owner.rust().library.session_saves;
             (checkpoint && !pending.is_empty())
                 || (!checkpoint
                     && pending
@@ -130,7 +130,7 @@ impl qobject::BrowserUi {
             Ok(ticket) => {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                this.session_saves.insert(ticket, intent);
+                this.library.session_saves.insert(ticket, intent);
                 true
             }
             Err(error) => {
@@ -181,6 +181,7 @@ impl qobject::BrowserUi {
         let pending_named = self
             .as_ref()
             .rust()
+            .library
             .session_saves
             .values()
             .any(|intent| matches!(intent, SessionSaveIntent::Named));
@@ -202,7 +203,7 @@ impl qobject::BrowserUi {
         let intent = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.session_saves.remove(&ticket)
+            this.library.session_saves.remove(&ticket)
         };
         let Some(intent) = intent else { return false };
         let checkpoint_save = matches!(intent, SessionSaveIntent::Checkpoint { .. });

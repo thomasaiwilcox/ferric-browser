@@ -7,6 +7,7 @@ use super::{
     read_bounded, resolve_input, safe_ipc_url, sanitize_untrusted_title, thread,
     validate_jseval_script,
 };
+use crate::{FailureKind, OperationUpdate};
 
 impl qobject::BrowserUi {
     pub(super) fn execute_link_clean_command(
@@ -79,14 +80,18 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         )
         .ok_or_else(|| "current document is unavailable".to_owned())?;
-        if self.as_ref().rust().pending_selection.is_some() {
+        if self.as_ref().rust().processes.pending_selection.is_some() {
             return Err("another selection operation is already pending".into());
         }
         let operation_id = format!("op-{}", Uuid::new_v4());
         let token = format!("selection-{}", Uuid::new_v4());
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        this.pending_selection = Some(PendingSelection {
+        this.start_operation(
+            operation_id.clone(),
+            OperationUpdate::running("selection pending"),
+        )?;
+        this.processes.pending_selection = Some(PendingSelection {
             token,
             target,
             primary: false,
@@ -95,8 +100,7 @@ impl qobject::BrowserUi {
             search_engine: Some(engine.clone()),
             operation_id: Some(operation_id.clone()),
         });
-        this.operation_states
-            .insert(operation_id.clone(), "selection pending".into());
+
         drop(rust);
         if self.as_ref().rust().core_mode == Mode::Caret {
             if let Some(window) = self.as_ref().rust().window {
@@ -126,7 +130,7 @@ impl qobject::BrowserUi {
         let pending = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(request) = this.pending_selection.as_ref() else {
+            let Some(request) = this.processes.pending_selection.as_ref() else {
                 self.set_status_text(QString::from("Selection search request expired"));
                 return false;
             };
@@ -134,7 +138,7 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Selection search request is stale"));
                 return false;
             }
-            this.pending_selection.take()
+            this.processes.pending_selection.take()
         };
         let Some(pending) = pending else {
             self.set_status_text(QString::from("Selection search request expired"));
@@ -143,12 +147,10 @@ impl qobject::BrowserUi {
         let operation_id = pending.operation_id.clone();
         let fail = |mut this: Pin<&mut Self>, message: String| {
             if let Some(operation_id) = operation_id.as_ref() {
-                this.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .operation_states
-                    .insert(operation_id.clone(), format!("failed ({message})"));
+                this.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                    operation_id.clone(),
+                    OperationUpdate::failed(FailureKind::Engine, format!("failed ({message})")),
+                );
             }
             this.set_status_text(QString::from(message));
             false
@@ -211,12 +213,10 @@ impl qobject::BrowserUi {
         );
         self.as_mut().set_pending_engine_action(&effects);
         if let Some(operation_id) = operation_id {
-            self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .operation_states
-                .insert(operation_id, "accepted".into());
+            self.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                operation_id,
+                OperationUpdate::completed("navigation requested"),
+            );
         }
         self.set_status_text(QString::from(format!("Searching selection with {engine}")));
         true
@@ -233,8 +233,8 @@ impl qobject::BrowserUi {
         .ok_or_else(|| "current document is unavailable".to_owned())?;
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        finish_pending_selection_operation(this, "cancelled");
-        this.pending_selection = Some(PendingSelection {
+        finish_pending_selection_operation(this, OperationUpdate::cancelled());
+        this.processes.pending_selection = Some(PendingSelection {
             token: format!("selection-{}", Uuid::new_v4()),
             target,
             primary,
@@ -406,7 +406,12 @@ impl qobject::BrowserUi {
         )
         .ok_or_else(|| "current document is unavailable".to_owned())?;
         self.as_mut().enter_caret();
-        self.as_mut().rust_mut().as_mut().get_mut().pending_caret = Some(PendingCaret {
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .processes
+            .pending_caret = Some(PendingCaret {
             token: format!("caret-{}", Uuid::new_v4()),
             target,
             operation,
@@ -477,11 +482,16 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         )
         .ok_or_else(|| "current document is unavailable".to_owned())?;
-        if self.as_ref().rust().pending_editor.is_some() {
+        if self.as_ref().rust().processes.pending_editor.is_some() {
             return Err("an external edit is already in progress".into());
         }
         let token = format!("editor-{}", Uuid::new_v4());
-        self.as_mut().rust_mut().as_mut().get_mut().pending_editor = Some(PendingEditor {
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .processes
+            .pending_editor = Some(PendingEditor {
             token,
             target,
             original: String::new(),
@@ -503,7 +513,7 @@ impl qobject::BrowserUi {
         if !command.arguments.is_empty() {
             return Err("config-edit does not accept arguments".into());
         }
-        if self.as_ref().rust().pending_config_edit.is_some() {
+        if self.as_ref().rust().processes.pending_config_edit.is_some() {
             return Err("a configuration edit is already in progress".into());
         }
         let path_text = self.as_ref().rust().config_path.to_string();
@@ -555,6 +565,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .processes
             .pending_config_edit = Some(PendingConfigEdit {
             token: token.clone(),
             path: path.clone(),
@@ -573,13 +584,14 @@ impl qobject::BrowserUi {
     pub(super) fn execute_spawn_command(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
+        requested_operation: Option<&str>,
     ) -> Result<Value, String> {
         let mut argv = command.arguments.clone();
         if argv.first().map(String::as_str) == Some("--userscript") {
             let [_, name] = argv.as_slice() else {
                 return Err("spawn --userscript requires a manifest name".into());
             };
-            return self.execute_userscript(name);
+            return self.execute_userscript_with_operation(name, requested_operation);
         }
         if argv.first().map(String::as_str) == Some("--") {
             argv.remove(0);
@@ -598,17 +610,22 @@ impl qobject::BrowserUi {
             )
             .ok_or_else(|| "current document is unavailable".to_owned())?;
             let token = format!("spawn-{}", Uuid::new_v4());
-            let operation_id = format!("op-{}", Uuid::new_v4());
+            let operation_id =
+                requested_operation.map_or_else(|| format!("op-{}", Uuid::new_v4()), str::to_owned);
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            finish_pending_selection_operation(this, "cancelled");
-            this.pending_spawn = Some(PendingSpawn {
+            finish_pending_selection_operation(this, OperationUpdate::cancelled());
+            this.start_operation(
+                operation_id.clone(),
+                OperationUpdate::running("selection pending"),
+            )?;
+            this.processes.pending_spawn = Some(PendingSpawn {
                 token: token.clone(),
                 target,
                 argv,
                 operation_id: operation_id.clone(),
             });
-            this.pending_selection = Some(PendingSelection {
+            this.processes.pending_selection = Some(PendingSelection {
                 token,
                 target,
                 primary: false,
@@ -617,15 +634,16 @@ impl qobject::BrowserUi {
                 search_engine: None,
                 operation_id: Some(operation_id.clone()),
             });
-            this.operation_states
-                .insert(operation_id.clone(), "selection pending".into());
+
             drop(rust);
             self.set_status_text(QString::from("Preparing the selected text…"));
             return Ok(
                 serde_json::json!({"status": "accepted", "pending": true, "operation_id": operation_id}),
             );
         }
-        let operation_id = self.as_mut().start_spawn_process(&resolved, None)?;
+        let operation_id = self
+            .as_mut()
+            .start_spawn_process(&resolved, requested_operation.map(str::to_owned))?;
         self.set_status_text(QString::from("External command started"));
         Ok(serde_json::json!({
             "status": "accepted",
@@ -636,6 +654,7 @@ impl qobject::BrowserUi {
     pub(super) fn execute_script_run_command(
         self: Pin<&mut Self>,
         command: &ParsedCommand,
+        requested_operation: Option<&str>,
     ) -> Result<Value, String> {
         self.as_ref()
             .rust()
@@ -645,7 +664,7 @@ impl qobject::BrowserUi {
         let [name] = command.arguments.as_slice() else {
             return Err("script-run requires exactly one userscript name".into());
         };
-        self.execute_userscript(name)
+        self.execute_userscript_with_operation(name, requested_operation)
     }
 
     pub(super) fn execute_jseval_command(
@@ -672,14 +691,14 @@ impl qobject::BrowserUi {
             .tab
             .ok_or_else(|| "jseval requires an active tab".to_owned())?;
         self.as_mut()
-            .set_jseval_tab_id(QString::from(tab_id.to_string()));
-        self.as_mut().set_jseval_world(QString::from(world));
-        self.as_mut().set_jseval_script(QString::from(script));
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_engine_action = Some("jseval".into());
+            .queue_view_command(ferric_browser_application::ViewCommand::Evaluate {
+                script: script.to_owned(),
+                world: if world == "page" {
+                    ferric_browser_application::ScriptWorld::Page
+                } else {
+                    ferric_browser_application::ScriptWorld::Application
+                },
+            })?;
         self.as_mut().set_status_text(QString::from(format!(
             "JavaScript evaluation requested in {world} world"
         )));

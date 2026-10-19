@@ -5,6 +5,8 @@
 #include <QClipboard>
 #include <QtWebEngineQuick/QQuickWebEngineProfile>
 #include <QMimeData>
+#include <QMetaProperty>
+#include <QMetaMethod>
 #include <QProcess>
 #include <QCryptographicHash>
 #include <QDir>
@@ -64,6 +66,20 @@ bool ApplicationTests::command(const QString &value) {
             .toBool();
     if (!accepted)
         qInfo() << "command rejected" << value << text("status_text");
+    // Binding persistence is asynchronous. Tests that use a new key must wait
+    // for its publication receipt before sending native keyboard input.
+    if (accepted && (value.startsWith("bind ") || value.startsWith("unbind "))) {
+        QElapsedTimer deadline;
+        deadline.start();
+        while (!text("status_text").startsWith("Binding saved")
+               && !text("status_text").startsWith("Binding removed")
+               && deadline.elapsed() < 5000) QTest::qWait(5);
+        if (!text("status_text").startsWith("Binding saved")
+                && !text("status_text").startsWith("Binding removed")) {
+            qInfo() << "binding publication failed" << value << text("status_text");
+            return false;
+        }
+    }
     return accepted;
 }
 void ApplicationTests::interactiveCommand(const QString &value) {
@@ -614,6 +630,7 @@ QString ApplicationTests::hintLabel(const QString &name, const QString &ownerUi)
         }
         QTest::qWait(20);
     } while (deadline.elapsed() < 5000);
+    qInfo() << "missing hint" << name << text("status_text") << evaluate(ownerUi+".mode");
     return {};
 }
 bool ApplicationTests::chooseCapability(const QString &name, QQuickWindow *ownerWindow) {
@@ -808,6 +825,7 @@ void ApplicationTests::scopedHintAndSearchJourneys() {
 }
 void ApplicationTests::durablePersistenceFailurePreservesConfiguration() {
     QVERIFY(command("set content.zoom=1.1"));
+    QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object()["content"].toObject()["zoom"].toDouble(), 1.1);
     QVERIFY(command("bind p hint --target pointer all"));
     const auto accepted = text("config_json");
     const auto path =
@@ -826,9 +844,10 @@ void ApplicationTests::durablePersistenceFailurePreservesConfiguration() {
     const auto selector =
         evaluate("testWindow.browserUi.hint_selector_policy('all')").toString();
     QTest::keyPress(window, Qt::Key_Return);
-    QVERIFY(!evaluate("testWindow.browserUi.set_runtime_setting('content.zoom',"
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('content.zoom',"
                       "'1.25',false)")
                  .toBool());
+    QTRY_VERIFY(text("status_text").contains("Your current settings are still active"));
     QCOMPARE(text("config_json"), beforeFailure);
     QCOMPARE(
         evaluate("testWindow.browserUi.hint_selector_policy('all')").toString(),
@@ -845,7 +864,7 @@ void ApplicationTests::durablePersistenceFailurePreservesConfiguration() {
     QCOMPARE(file.write(bytes), qint64(bytes.size()));
     file.close();
     QVERIFY(command("set content.zoom=1.25"));
-    QVERIFY(text("config_json") != accepted);
+    QTRY_VERIFY(text("config_json") != accepted);
     QCOMPARE(QJsonDocument::fromJson(text("config_json").toUtf8())
                  .object()
                  .value("content")
@@ -1070,7 +1089,7 @@ void ApplicationTests::selectorReloadActivatesAtBoundary() {
     QCOMPARE(config["hints"].toObject()["selectors"].toObject()["all"].toObject()["mode"].toString(),QString("replace"));
     QVERIFY(config["ipc"].toObject()["enabled"].toBool());
     QCOMPARE(config["navigation"].toObject()["start_pages"].toArray(),QJsonArray{"rb://start"});
-    QVERIFY(text("status_text").contains("2 lifecycle change(s) pending"));
+    QVERIFY(text("status_text").contains("some changes need a browser restart"));
     QVERIFY(command("hint all"));
     QTRY_VERIFY(text("status_text").contains("No visible hint targets") || evaluate("testWindow.hintResults.length").toInt()>0);
     QCOMPARE(evaluate("testWindow.hintResults.length").toInt(),selectors=="[]"?0:1);
@@ -1095,7 +1114,7 @@ void ApplicationTests::selectorReloadRejectsInvalidAndStaleCandidates() {
     write("[");
     evaluate("testWindow.browserUi.config_path=" + quoted(path));
     QVERIFY(command("config-reload"));
-    QTRY_VERIFY_WITH_TIMEOUT(text("status_text").contains("Selector validation failed"),6000);
+    QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.browserUi.profile_startup_details()").toString().contains("Selector validation failed"),6000);
     QCOMPARE(text("config_json"),before);
     QCOMPARE(evaluate("testWindow.browserUi.hint_selector_policy('all')").toString(),fingerprint);
     auto validator = window->findChild<QObject *>("selectorValidationSurface");
@@ -1122,7 +1141,7 @@ void ApplicationTests::selectorReloadTimeoutPreservesConfiguration() {
     evaluate("testWindow.browserUi.config_path=" + quoted(path));
     QVERIFY(command("config-reload"));
     QTRY_VERIFY_WITH_TIMEOUT(!text("selector_validation_request").isEmpty(),6000);
-    QTRY_VERIFY_WITH_TIMEOUT(text("status_text").contains("timed out"),7000);
+    QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.browserUi.profile_startup_details()").toString().contains("timed out"),7000);
     QCOMPARE(text("config_json"),before);
     QCOMPARE(evaluate("testWindow.browserUi.hint_selector_policy('all')").toString(),policy);
 }
@@ -1192,7 +1211,7 @@ void ApplicationTests::staleSelectorCallbackCannotPublish() {
     evaluate("testWindow.browserUi.complete_selector_validation(" +
              quoted(generation) + ",'{\"ok\":true}')");
     QCOMPARE(text("config_json"), accepted);
-    QVERIFY(text("status_text").contains("stale", Qt::CaseInsensitive));
+    QVERIFY(text("status_text").contains("Selector settings changed"));
 }
 void ApplicationTests::unavailableSelectorDocumentTimesOut() {
     auto validator = window->findChild<QObject *>("selectorValidationSurface");
@@ -2590,6 +2609,115 @@ void ApplicationTests::productPolishNativePageHistory() {
     if (secondary) QCOMPARE(text("current_url"),initial);
 }
 
+void ApplicationTests::deferredNativeRequestsKeepCapturedTargets() {
+    QTest::failOnWarning(QRegularExpression(".*(TypeError|ReferenceError|invalid context).*"));
+    auto ui = evaluate("testWindow.browserUi").value<QObject *>();
+    QVERIFY(ui);
+    for (const char *name : {"page_userscript_sources", "external_action_ids", "start_page_urls",
+                             "switcher_result_ids", "session_preview_urls"}) {
+        const auto index = ui->metaObject()->indexOfProperty(name);
+        QVERIFY2(index >= 0, name);
+        QCOMPARE(ui->metaObject()->property(index).metaType().id(), QMetaType::QStringList);
+    }
+    const auto requestMethod = ui->metaObject()->indexOfMethod("take_engine_request()");
+    QVERIFY(requestMethod >= 0);
+    QCOMPARE(ui->metaObject()->method(requestMethod).returnMetaType().id(), QMetaType::QVariant);
+    QVERIFY(evaluate(R"JS((function() {
+        var ui = testWindow.browserUi;
+        var before = ui.config_json;
+        return !ui.set_startup_configuration(before, ui.config_base_json,
+            ui.cli_overrides_json, ui.profile_overrides_json, ui.config_path, ui.config_source)
+            && ui.config_json === before;
+    })())JS").toBool());
+    // Consume within one JS turn, before the scheduled native pass can run.
+    const auto reload = evaluate(R"JS((function() {
+        var ui = testWindow.browserUi;
+        ui.new_tab(); ui.select_tab(0);
+        var original = ui.tab_id_for_index(0);
+        var accepted = ui.execute_command("reload ;; tab-next");
+        var request = ui.take_engine_request();
+        return [accepted, original, ui.tab_id_for_index(ui.active_tab_index), request.kind, request.tabId];
+    })())JS").toList();
+    QCOMPARE(reload.size(), 5);
+    QVERIFY(reload[0].toBool());
+    QVERIFY(reload[1].toString() != reload[2].toString());
+    QCOMPARE(reload[3].toString(), QStringLiteral("reload"));
+    QCOMPARE(reload[4].toString(), reload[1].toString());
+
+    const auto searches = evaluate(R"JS((function() {
+        var ui = testWindow.browserUi;
+        ui.select_tab(0);
+        var original = ui.tab_id_for_index(0);
+        var accepted = ui.execute_command('search "Captured query" --case sensitive ;; search-next --count 2 ;; tab-next');
+        var requests = [];
+        for (var i = 0; i < 3; ++i) {
+            var request = ui.take_engine_request();
+            requests.push(request.kind, request.tabId, request.query, request.caseMode);
+        }
+        return [accepted, original].concat(requests);
+    })())JS").toList();
+    QCOMPARE(searches.size(), 14);
+    QVERIFY(searches[0].toBool());
+    for (int i = 2; i < searches.size(); i += 4) {
+        QCOMPARE(searches[i].toString(), QStringLiteral("find"));
+        QCOMPARE(searches[i+1].toString(), searches[1].toString());
+        QCOMPARE(searches[i+2].toString(), QStringLiteral("Captured query"));
+        QCOMPARE(searches[i+3].toString(), QStringLiteral("sensitive"));
+    }
+    const auto captured = evaluate(R"JS((function() {
+        var ui = testWindow.browserUi;
+        ui.select_tab(0);
+        var tab = ui.tab_id_for_index(0);
+        var accepted = ui.execute_command('scroll down --count 2 ;; jseval "first()" ;; jseval "second()" ;; tab-next');
+        var scroll = ui.take_engine_request();
+        var first = ui.take_engine_request();
+        var second = ui.take_engine_request();
+        return [accepted, tab, scroll.kind, scroll.tabId, scroll.direction, scroll.count,
+            first.kind, first.tabId, first.script, second.kind, second.tabId, second.script];
+    })())JS").toList();
+    QCOMPARE(captured.size(), 12);
+    QVERIFY(captured[0].toBool());
+    QCOMPARE(captured[2].toString(), QStringLiteral("scroll"));
+    QCOMPARE(captured[3].toString(), captured[1].toString());
+    QCOMPARE(captured[4].toString(), QStringLiteral("down"));
+    QCOMPARE(captured[5].toInt(), 2);
+    QCOMPARE(captured[6].toString(), QStringLiteral("evaluate"));
+    QCOMPARE(captured[7].toString(), captured[1].toString());
+    QCOMPARE(captured[8].toString(), QStringLiteral("first()"));
+    QCOMPARE(captured[9].toString(), QStringLiteral("evaluate"));
+    QCOMPARE(captured[10].toString(), captured[1].toString());
+    QCOMPARE(captured[11].toString(), QStringLiteral("second()"));
+    const auto blocking = evaluate(R"JS((function() {
+        var ui = testWindow.browserUi;
+        ui.select_tab(0);
+        var before = ui.blocking_bypass_sites.join("\n");
+        var accepted = ui.execute_command("blocking-toggle --site ;; tab-next");
+        return [accepted, before !== ui.blocking_bypass_sites.join("\n")];
+    })())JS").toList();
+    QCOMPARE(blocking.size(), 2);
+    QVERIFY(blocking[0].toBool());
+    QVERIFY(blocking[1].toBool());
+    for (const auto &transfer : {QStringLiteral("tab-detach"), QStringLiteral("tab-give missing-window")}) {
+        const auto request = evaluate(QStringLiteral(R"JS((function() {
+            var ui = testWindow.browserUi;
+            ui.select_tab(0);
+            var tab = ui.tab_id_for_index(0);
+            var accepted = ui.execute_command(%1 + " ;; tab-next");
+            var fields = ui.take_engine_action().split("\t");
+            return [accepted, tab, fields[fields.length - 1]];
+        })())JS").arg(quoted(transfer))).toList();
+        QCOMPARE(request.size(), 3);
+        QVERIFY(request[0].toBool());
+        QCOMPARE(request[2].toString(), request[1].toString());
+    }
+    QVERIFY(evaluate(R"JS((function() {
+        var ui = testWindow.browserUi;
+        ui.select_tab(0); ui.execute_command("reload"); ui.close_tab(0);
+        var request = ui.take_engine_request();
+        return !request || !request.kind;
+    })())JS").toBool());
+}
+
 void ApplicationTests::productPolishSecondaryHistoryCommands_data() {
     QTest::addColumn<bool>("forward");
     QTest::newRow("back") << false;
@@ -3442,9 +3570,11 @@ void ApplicationTests::productPolishSecondaryHints() {
     const auto request=pointer ? "hint --target pointer links" : "hint links";
     QVERIFY2(evaluate(entry+".ui.execute_secondary_interactive_command("+quoted(QString("bind h ")+request)+")").toBool(),
         qPrintable(evaluate(entry+".ui.status_text").toString()));
+    QTRY_VERIFY(evaluate(entry+".ui.status_text").toString().startsWith("Binding saved"));
     QTest::keyClick(child,Qt::Key_H);
     evaluate(entry+".host.processRuntimeWork()");
-    QTRY_VERIFY(evaluate(entry+".ui.hint_visible").toBool());
+    QTRY_VERIFY2(evaluate(entry+".ui.hint_visible").toBool(),
+        qPrintable(evaluate(entry+".ui.status_text").toString()));
     const auto label=hintLabel("Same document",entry+".ui");QVERIFY(!label.isEmpty());
     auto overlay=findVisualItem(child->contentItem(),"hintOverlay");QVERIFY(overlay);QVERIFY(overlay->isVisible());
     QCOMPARE(overlay->window(),child);
@@ -3472,6 +3602,7 @@ void ApplicationTests::productPolishSecondaryHints() {
         // The searchable control list takes focus in this window and requires
         // confirmation. It must not activate a result just from query text.
         QVERIFY(evaluate(entry+".ui.execute_secondary_interactive_command('bind t target-search controls')").toBool());
+        QTRY_VERIFY(evaluate(entry+".ui.status_text").toString().startsWith("Binding saved"));
         QTest::keyClick(child,Qt::Key_T);
         QTRY_VERIFY(evaluate(entry+".ui.target_search_active").toBool());
         auto searchInput=findVisualItem(child->contentItem(),"targetSearchInput");QVERIFY(searchInput);
@@ -3492,6 +3623,7 @@ void ApplicationTests::productPolishSecondaryHints() {
         // Region actions use the shared palette but retain the requesting
         // workspace through its Grid handoff and native coordinate checks.
         QVERIFY(evaluate(entry+".ui.execute_secondary_interactive_command('bind r hint --target choose regions')").toBool());
+        QTRY_VERIFY(evaluate(entry+".ui.status_text").toString().startsWith("Binding saved"));
         QTest::keyClick(child,Qt::Key_R);
         const auto region=hintLabel("Scoped panel",entry+".ui");QVERIFY(!region.isEmpty());
         for (const auto character : region) { QTest::keyClick(child,Qt::Key(character.toUpper().unicode()));QTest::qWait(30); }
@@ -4199,6 +4331,12 @@ void ApplicationTests::productPolishUserscriptFeedback() {
     QVERIFY2(!text("status_text").contains(errorDetail), qPrintable(errorDetail));
     QVERIFY(QFile::remove(scriptsDirectory));
     QVERIFY(QDir().rename(backupDirectory, scriptsDirectory));
+    // Restoring an externally replaced directory requires a successful catalog
+    // refresh before its stale rows become actionable again.
+    QVERIFY(evaluate("testWindow.browserUi.refresh_userscript_inventory()").toBool());
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.userscript_inventory_pending").toBool());
+    QCOMPARE(text("userscript_inventory_error"), QString());
+    QTRY_VERIFY(toggle->isEnabled());
     QVERIFY(QMetaObject::invokeMethod(toggle, "click"));
     QTRY_COMPARE(text("userscript_install_state"), QString("disabled"));
     QTRY_VERIFY((toggle = findVisualItem(window->contentItem(), "userscriptEnableToggle"))

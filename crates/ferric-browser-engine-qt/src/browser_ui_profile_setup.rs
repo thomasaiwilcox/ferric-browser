@@ -4,13 +4,13 @@ use super::{
     NetworkPolicyWorker, PathBuf, PendingProfileConfiguration, Pin, PrintWorker, PrivacyKind,
     ProfileDeleteWorker, ProfileListWorker, ProfileOpenEffect, ProfileOpenRequest,
     ProfilePersistence, ProfilePreviewWorker, ProfileStorage, QString, QStringList, RootSpec,
-    RuntimeOverrides, SessionCheckpoint, UserscriptManagerWorker, Uuid, Value,
-    atomic_write_private, bootstrap_runtime, bounded_header, cleanup_editor_artifact,
-    cleanup_print_artifact, cleanup_staged_downloads, configured_bindings, desktop_portals,
-    discard_config_edit, discard_editor_request, finish_pending_selection_operation, hyprland,
-    link_cleaning_policy, logging, network_policy, profile_startup::FailureStage, qobject,
-    resolve_browser_roots,
+    RuntimeOverrides, SessionCheckpoint, StorageRoots, Uuid, Value, atomic_write_private,
+    bootstrap_runtime, bounded_header, cleanup_editor_artifact, cleanup_print_artifact,
+    cleanup_staged_downloads, configured_bindings, desktop_portals, discard_config_edit,
+    discard_editor_request, finish_pending_selection_operation, hyprland, link_cleaning_policy,
+    logging, network_policy, profile_startup::FailureStage, qobject, resolve_browser_roots,
 };
+use crate::OperationUpdate;
 
 impl qobject::BrowserUi {
     pub(super) fn profile_available(&self) -> bool {
@@ -43,6 +43,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .diagnostic_work
             .diagnostics_collector
             .clear();
         let profile_label = profile_label.to_string();
@@ -95,12 +96,18 @@ impl qobject::BrowserUi {
                 Ok(contexts) => (contexts, None),
                 Err(error) => (ContextsConfig::default(), Some(error.to_string())),
             };
+        let root_spec = if storage_base.is_empty() {
+            RootSpec::Xdg
+        } else {
+            RootSpec::Base(PathBuf::from(&storage_base))
+        };
+        let script_catalog_root = StorageRoots::resolve(root_spec.clone())
+            .ok()
+            .map(|roots| roots.config);
         let storage = if private_profile || ephemeral_profile {
             ProfileStorage::Transient
-        } else if storage_base.is_empty() {
-            ProfileStorage::Durable(RootSpec::Xdg)
         } else {
-            ProfileStorage::Durable(RootSpec::Base(PathBuf::from(&storage_base)))
+            ProfileStorage::Durable(root_spec)
         };
         let mut state = BrowserApplication::from_runtime(runtime, Config::default());
         let request_result = state
@@ -113,6 +120,7 @@ impl qobject::BrowserUi {
                 initial_profile_overrides,
                 command_line_overrides,
                 config_path: (!config_path.is_empty()).then(|| PathBuf::from(config_path)),
+                script_catalog_root,
                 contexts,
                 context_configuration_error,
             })
@@ -163,7 +171,7 @@ impl qobject::BrowserUi {
             window,
             tab,
         } = pending;
-        let userscript_roots = resolve_browser_roots(&storage_base).ok();
+        let policy_roots = resolve_browser_roots(&storage_base).ok();
         let startup_config = serde_json::from_str(&self.as_ref().rust().config_json.to_string())
             .unwrap_or_else(|_| serde_json::to_value(Config::default()).unwrap_or(Value::Null));
         let effect = match setup {
@@ -252,9 +260,17 @@ impl qobject::BrowserUi {
                         .unwrap_or(true)
             });
         let mut config_watch = ConfigWatch::default();
-        if !config_path.is_empty() {
-            let path = PathBuf::from(&config_path);
-            config_watch.set_sources(&path, &effect.config_sources);
+        let mut sources = effect.config_sources.clone();
+        sources.extend(state.userscript_watch_sources());
+        let watch_root = if config_path.is_empty() {
+            state
+                .userscript_root()
+                .map(|root| root.join(".catalog-root-watch"))
+        } else {
+            Some(PathBuf::from(&config_path))
+        };
+        if let Some(path) = watch_root {
+            config_watch.set_sources(&path, &sources);
         }
         let effective_config_json = serde_json::to_string(&config).unwrap_or_else(|_| "{}".into());
         let desktop_portal_mode = desktop_portals::mode_name(&presentation_config.desktop.portals);
@@ -266,26 +282,26 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             this.state = Some(state);
             this.context_catalog_revision = context_catalog_revision;
-            this.journey_durable_ids.borrow_mut().clear();
+            this.navigation.journey_durable_ids.borrow_mut().clear();
             this.journey_export_payload = None;
             this.journey_export_preview_text = QString::default();
-            this.pending_journey_transitions.clear();
-            this.pending_journey_parent = None;
-            this.pending_journey_mappings.clear();
+            this.navigation.pending_journey_transitions.clear();
+            this.navigation.pending_journey_parent = None;
+            this.navigation.pending_journey_mappings.clear();
             this.pending_history_clear = None;
-            this.pending_journey_reopen = None;
-            this.pending_navigation_urls.clear();
-            this.pending_redirect_tabs.clear();
-            this.pending_redirect_hops.clear();
-            this.page_document_identities.clear();
-            this.pending_same_document_pass_through = None;
+            this.navigation.pending_journey_reopen = None;
+            this.navigation.pending_navigation_urls.clear();
+            this.navigation.pending_redirect_tabs.clear();
+            this.navigation.pending_redirect_hops.clear();
+            this.navigation.page_document_identities.clear();
+            this.navigation.pending_same_document_pass_through = None;
             this.ipc_sequence = this.state.as_ref().map_or(0, BrowserApplication::revision);
             this.window = Some(window);
             this.core_window_id = QString::from(window.to_string());
             this.tab = Some(tab);
             this.tab_ids = vec![tab];
             this.popup_tab_ids.clear();
-            this.popup_journey_targets.clear();
+            this.navigation.popup_journey_targets.clear();
             this.completion_text = QString::default();
             this.completion_values = QString::default();
             this.completion_start = 0;
@@ -315,36 +331,36 @@ impl qobject::BrowserUi {
             this.library_graph_edge_sources = QStringList::default();
             this.library_graph_edge_targets = QStringList::default();
             this.library_graph_edge_transitions = QStringList::default();
-            this.storage_library = None;
+            this.library.storage_library = None;
             this.storage_library_revision = 0;
-            this.storage_library_dirty.set(false);
+            this.library.storage_library_dirty.set(false);
             this.private_start_state = std::sync::Arc::new(std::sync::Mutex::new(
                 super::browser_ui_start_page::PrivateStartState::default(),
             ));
             this.start_rank_requested = false;
-            this.start_snapshot = ferric_browser_storage::StartPageSnapshot::default();
-            this.start_read_pending = false;
-            this.start_write_pending = false;
-            this.start_refresh_requested = false;
-            this.content_histories.clear();
+            this.library.start_snapshot = ferric_browser_storage::StartPageSnapshot::default();
+            this.library.start_read_pending = false;
+            this.library.start_write_pending = false;
+            this.library.start_refresh_requested = false;
+            this.navigation.content_histories.clear();
             this.private_history.clear();
             this.private_history_next_id = -1;
-            this.session_names.clear();
-            this.session_names_dirty.set(true);
-            this.session_names_refresh_again = false;
-            this.storage_library_refresh_again = false;
-            this.storage_library_read_state = super::CatalogReadState::Unrequested;
+            this.library.session_names.clear();
+            this.library.session_names_dirty.set(true);
+            this.library.session_names_refresh_again = false;
+            this.library.storage_library_refresh_again = false;
+            this.library.storage_library_read_state = super::CatalogReadState::Unrequested;
             this.session_catalog_read_state = super::CatalogReadState::Unrequested;
             this.journey_read_pending = false;
             this.profile_list_refresh_again = false;
-            this.session_restore_preview_pending = false;
-            this.session_restore_load_append = None;
-            this.session_restore_recovery_pending = false;
-            this.session_saves.clear();
+            this.library.session_restore_preview_pending = false;
+            this.library.session_restore_load_append = None;
+            this.library.session_restore_recovery_pending = false;
+            this.library.session_saves.clear();
             this.checkpoint = SessionCheckpoint::default();
-            this.session_checkpoint_clear_pending = false;
-            this.storage_flush_pending = false;
-            this.storage_flush_error = None;
+            this.library.session_checkpoint_clear_pending = false;
+            this.library.storage_flush_pending = false;
+            this.library.storage_flush_error = None;
             this.action_audit.clear();
             this.link_preview_command = QString::default();
             this.link_preview_original = QString::default();
@@ -359,18 +375,18 @@ impl qobject::BrowserUi {
             this.clipboard_request = QString::default();
             this.clipboard_request_sensitive = false;
             this.clipboard_request_primary = false;
-            finish_pending_selection_operation(this, "cancelled");
-            this.pending_caret = None;
+            finish_pending_selection_operation(this, OperationUpdate::cancelled());
+            this.processes.pending_caret = None;
             super::browser_ui_download_requests::finish_pending_download_operation(
                 this,
-                "cancelled",
+                OperationUpdate::cancelled(),
             );
             drop(this.download_finalizer.take());
             drop(this.download_stream_writer.take());
             cleanup_staged_downloads(&mut this.staged_downloads);
             this.macro_key_prefix = None;
             this.macro_key_started_ms = None;
-            if let Some(editor) = this.pending_editor.take() {
+            if let Some(editor) = this.processes.pending_editor.take() {
                 discard_editor_request(editor);
             }
             let old_print_worker = this.print_worker.take();
@@ -384,12 +400,12 @@ impl qobject::BrowserUi {
             // Otherwise a profile replacement could let an in-flight write
             // finish after its path had become unreachable, leaving a stale
             // private scratch file behind.
-            let old_editor_write_worker = this.editor_write_worker.take();
+            let old_editor_write_worker = this.processes.editor_write_worker.take();
             drop(old_editor_write_worker);
-            if let Some((_, path, private_temporary)) = this.pending_editor_write.take() {
+            if let Some((_, path, private_temporary)) = this.processes.pending_editor_write.take() {
                 cleanup_editor_artifact(&path, private_temporary);
             }
-            if let Some(editor) = this.pending_config_edit.take() {
+            if let Some(editor) = this.processes.pending_config_edit.take() {
                 discard_config_edit(editor);
             }
             this.hint_values = QString::default();
@@ -405,9 +421,9 @@ impl qobject::BrowserUi {
             this.hint_index = 1;
             this.hint_rapid_tabs_created = 0;
             this.caret_selecting = false;
-            this.hint_session = None;
-            this.hint_interaction = None;
-            this.hint_consumed.clear();
+            this.interaction.hint_session = None;
+            this.interaction.hint_interaction = None;
+            this.interaction.hint_consumed.clear();
             this.config_revision = this.config_revision.wrapping_add(1);
             this.policy_revision = this.policy_revision.wrapping_add(1);
             this.config = config;
@@ -423,41 +439,38 @@ impl qobject::BrowserUi {
             this.temporary_overrides = RuntimeOverrides::default();
             this.cli_overrides = cli_overrides;
             this.profile_overrides = profile_overrides;
-            this.mixed_policy = serde_json::from_value::<Config>(this.config.clone())
-                .ok()
-                .and_then(|effective| {
-                    serde_json::from_value::<Config>(this.base_config.clone())
-                        .ok()
-                        .and_then(|base| {
-                            super::mixed_policy_runtime::resolve_for_layers(
-                                &base,
-                                &this.profile_overrides,
-                                &this.runtime_overrides,
-                                &this.cli_overrides,
-                                &this.temporary_overrides,
-                                &effective,
-                                &this.current_url.to_string(),
-                            )
-                            .ok()
-                        })
+            this.mixed_policy = this
+                .state
+                .as_ref()
+                .and_then(|state| {
+                    let layers = state.configuration_layers();
+                    super::mixed_policy_runtime::resolve_for_layers(
+                        &layers.base,
+                        &layers.profile,
+                        &layers.runtime,
+                        &layers.command_line,
+                        &layers.temporary,
+                        state.configuration(),
+                        &this.current_url.to_string(),
+                    )
+                    .ok()
                 })
                 .unwrap_or_default();
             this.binding_overlay = QString::default();
-            this.config_watch = config_watch;
-            this.pending_context_reload = None;
-            this.config_reload_requested_by_user = false;
-            this.context_reload_worker = None;
-            this.config_reload_worker = ConfigReloadWorker::spawn().ok();
-            this.config_write_worker = ConfigWriteWorker::spawn().ok();
+            this.configuration_io.config_watch = config_watch;
+            this.configuration_io.pending_context_reload = None;
+            this.configuration_io.config_reload_requested_by_user = false;
+            this.configuration_io.context_reload_worker = None;
+            this.configuration_io.config_reload_worker = ConfigReloadWorker::spawn().ok();
+            this.configuration_io.config_write_worker = ConfigWriteWorker::spawn().ok();
             this.print_worker = PrintWorker::spawn().ok();
-            this.editor_write_worker = EditorWriteWorker::spawn().ok();
+            this.processes.editor_write_worker = EditorWriteWorker::spawn().ok();
             this.profile_delete_worker = ProfileDeleteWorker::spawn().ok();
             this.profile_list_worker = ProfileListWorker::spawn().ok();
             this.profile_preview_worker = ProfilePreviewWorker::spawn().ok();
-            this.userscript_manager_worker = UserscriptManagerWorker::spawn().ok();
             this.userscript_inventory_refresh_again = false;
-            this.focus_observations.clear();
-            this.focus_suppressions.clear();
+            this.interaction.focus_observations.clear();
+            this.interaction.focus_suppressions.clear();
             this.profile_name.clone_from(&profile_name);
             this.contexts = this
                 .state
@@ -496,7 +509,7 @@ impl qobject::BrowserUi {
             });
             this.storage_roots = storage_roots;
             this.profile_registry_roots = resolve_browser_roots(&storage_base).ok();
-            this.userscript_roots = userscript_roots;
+            this.policy_roots = policy_roots;
             this.session_id = Uuid::new_v4();
             this.session_path = session_path
                 .map(|path| path.with_file_name(format!("current-{}.json", this.session_id)));
@@ -587,18 +600,22 @@ impl qobject::BrowserUi {
         self.as_mut().set_active_tab_index(0);
         self.as_mut().set_tab_count(1);
         self.as_mut().set_status_text(status);
+        // The bootstrap snapshot predates watcher installation. Rescan after
+        // the watch is armed so edits made during that handoff are not lost.
+        self.as_mut().refresh_userscript_inventory();
         self.as_mut().sync_context_choices();
         self.as_mut().sync_context_metadata();
         let policy_request = (|| {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            if this.network_policy_worker.is_none() {
-                this.network_policy_worker = Some(NetworkPolicyWorker::spawn()?);
+            if this.configuration_io.network_policy_worker.is_none() {
+                this.configuration_io.network_policy_worker = Some(NetworkPolicyWorker::spawn()?);
             }
-            this.network_policy_worker
+            this.configuration_io
+                .network_policy_worker
                 .as_mut()
                 .ok_or_else(|| "Network policy service is unavailable".to_owned())?
-                .request(this.userscript_roots.clone(), this.config.clone())
+                .request(this.policy_roots.clone(), this.config.clone())
         })();
         if let Err(error) = policy_request {
             self.as_mut()

@@ -825,6 +825,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn adblock_ffi_boundary_returns_match_provenance_and_releases() {
         let engine = super::AdblockEngineHandle::compile(&[(
             "easylist".into(),

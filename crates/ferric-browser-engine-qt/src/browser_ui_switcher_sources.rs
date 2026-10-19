@@ -23,7 +23,7 @@ impl qobject::BrowserUi {
         SwitcherAvailability::for_sources(
             scope,
             profile,
-            &rust.storage_library_read_state,
+            &rust.library.storage_library_read_state,
             &rust.session_catalog_read_state,
         )
     }
@@ -55,6 +55,7 @@ impl qobject::BrowserUi {
             && self
                 .as_ref()
                 .rust()
+                .library
                 .storage_library_read_state
                 .permits_query_request()
         {
@@ -100,12 +101,12 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            if needs.library && !this.storage_library_read_state.is_pending() {
-                this.storage_library_dirty.set(true);
-                this.storage_library_read_state = CatalogReadState::Unrequested;
+            if needs.library && !this.library.storage_library_read_state.is_pending() {
+                this.library.storage_library_dirty.set(true);
+                this.library.storage_library_read_state = CatalogReadState::Unrequested;
             }
             if needs.sessions && !this.session_catalog_read_state.is_pending() {
-                this.session_names_dirty.set(true);
+                this.library.session_names_dirty.set(true);
                 this.session_catalog_read_state = CatalogReadState::Unrequested;
             }
         }
@@ -117,7 +118,8 @@ impl qobject::BrowserUi {
     pub(super) fn retry_queued_switcher_sources(mut self: Pin<&mut Self>) -> bool {
         // At most one intent per catalog is retained when the coordinator's
         // bounded admission queue is full. It is not another request queue.
-        let library = self.as_ref().rust().storage_library_read_state == CatalogReadState::Queued;
+        let library =
+            self.as_ref().rust().library.storage_library_read_state == CatalogReadState::Queued;
         let sessions = self.as_ref().rust().session_catalog_read_state == CatalogReadState::Queued;
         if library {
             self.as_mut().request_storage_library();
@@ -125,7 +127,8 @@ impl qobject::BrowserUi {
         if sessions {
             self.as_mut().request_session_names();
         }
-        (library && self.as_ref().rust().storage_library_read_state != CatalogReadState::Queued)
+        (library
+            && self.as_ref().rust().library.storage_library_read_state != CatalogReadState::Queued)
             || (sessions
                 && self.as_ref().rust().session_catalog_read_state != CatalogReadState::Queued)
     }

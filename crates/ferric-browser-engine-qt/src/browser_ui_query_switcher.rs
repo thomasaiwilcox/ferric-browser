@@ -404,10 +404,16 @@ impl qobject::BrowserUi {
                 );
             }
         }
-        let indexed_library = self.rust().switcher_library_index.as_ref().filter(|index| {
-            self.rust().switcher_library_index_revision == self.rust().storage_library_revision
-                && index.profile_name == self.rust().profile_name
-        });
+        let indexed_library = self
+            .rust()
+            .library
+            .switcher_library_index
+            .as_ref()
+            .filter(|index| {
+                self.rust().library.switcher_library_index_revision
+                    == self.rust().storage_library_revision
+                    && index.profile_name == self.rust().profile_name
+            });
         if let Some(index) = indexed_library {
             let profile = index.profile_name.clone();
             for candidate in index
@@ -436,7 +442,7 @@ impl qobject::BrowserUi {
                     actions,
                 );
             }
-        } else if let Some(library) = self.rust().storage_library.as_ref() {
+        } else if let Some(library) = self.rust().library.storage_library.as_ref() {
             let profile = self.rust().profile_name.clone();
             if scope == "all" || scope == "history" {
                 for page in &library.history {
@@ -545,7 +551,7 @@ impl qobject::BrowserUi {
             && let Some(profile_id) = self.rust().profile_id
         {
             let profile = self.rust().profile_name.clone();
-            for name in &self.rust().session_names {
+            for name in &self.rust().library.session_names {
                 add(
                     "session",
                     format!("{profile_id}:{name}"),

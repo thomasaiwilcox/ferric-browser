@@ -1,8 +1,9 @@
-//! Bounded IPC observation data projected at the runtime boundary.
+//! Wire projection of facts captured at the reduction boundary.
 //!
-//! The Qt adapter transports these values but does not decide their shape.
+//! Serialization never reads later application state or page data.
 
-use ferric_browser_core::{ApplicationState, Event, Mode, TabId, Target, WindowId};
+use ferric_browser_core::{Event, Mode, TabId, Target, WindowId};
+use ferric_browser_runtime::RuntimeObservation;
 use serde_json::Value;
 
 #[must_use]
@@ -51,56 +52,57 @@ pub fn ipc_event_type(event: &Event) -> &'static str {
 }
 
 #[must_use]
-pub fn ipc_event_payload(event: &Event, state: &ApplicationState) -> Value {
+pub fn ipc_event_payload(observation: &RuntimeObservation) -> Value {
+    let event = &observation.event;
     match event {
         Event::ClipboardEdit { target, operation } => {
             serde_json::json!({"tab": target.tab.to_string(), "operation": operation.as_str(), "status": "requested"})
         }
         Event::CreateProfile { privacy, .. } => serde_json::json!({ "privacy": privacy.name() }),
         Event::CreateWindow { profile } => serde_json::json!({
-            "profile_id": profile.to_string(), "window_count": state.windows().len()
+            "profile_id": profile.to_string(), "window_count": observation.window_count
         }),
         Event::SetWindowContext { window, .. } => serde_json::json!({
             "window_id": window.to_string(), "context_changed": true
         }),
         Event::ClearWindowContexts { windows } => cleared_context_payload(windows),
         Event::OpenTab { window } | Event::OpenTabWithNavigation { window, .. } => {
-            opened_tab_payload(state, *window)
+            opened_tab_payload(observation, *window)
         }
         Event::FocusWindow { window } | Event::SetActiveWindow { window } => serde_json::json!({
-            "window_id": window.to_string(), "active": state.active_window() == Some(*window)
+            "window_id": window.to_string(), "active": observation.active_window == Some(*window)
         }),
         Event::ActivateTab { window, tab } => serde_json::json!({
-            "window_id": window.to_string(), "tab": tab_payload(state, *tab)
+            "window_id": window.to_string(), "tab": tab_payload(observation, *tab)
         }),
         Event::OpenPopup {
             opener,
             user_gesture,
             ..
         } => serde_json::json!({
-            "opener": target_payload(state, *opener), "user_gesture": user_gesture
+            "opener": target_payload(observation, *opener), "user_gesture": user_gesture
         }),
         Event::MoveTab {
             tab,
             to_window,
             index,
         } => serde_json::json!({
-            "tab": tab_payload(state, *tab), "to_window_id": to_window.to_string(), "index": index
+            "tab": tab_payload(observation, *tab), "to_window_id": to_window.to_string(), "index": index
         }),
         Event::TransferTabIn { window, .. } => {
             serde_json::json!({ "window_id": window.to_string() })
         }
         Event::SetTabPinned { tab, pinned } => serde_json::json!({
-            "tab": tab_payload(state, *tab), "pinned": pinned
+            "tab": tab_payload(observation, *tab), "pinned": pinned
         }),
         Event::SetTabMuted { tab, muted } => serde_json::json!({
-            "tab": tab_payload(state, *tab), "muted": muted
+            "tab": tab_payload(observation, *tab), "muted": muted
         }),
         Event::SetTabZoom {
             tab,
             zoom_hundredths,
         } => serde_json::json!({
-            "tab": tab_payload(state, *tab), "zoom_hundredths": zoom_hundredths
+            "tab": tab_payload(observation, *tab), "zoom_hundredths": zoom_hundredths
         }),
         Event::StartNavigation { target, .. }
         | Event::CommitNavigation { target, .. }
@@ -111,7 +113,7 @@ pub fn ipc_event_payload(event: &Event, state: &ApplicationState) -> Value {
         | Event::Reload { target, .. }
         | Event::Stop { target }
         | Event::TraverseHistory { target, .. } => {
-            serde_json::json!({ "target": target_payload(state, *target) })
+            serde_json::json!({ "target": target_payload(observation, *target) })
         }
         Event::StartSearch {
             target,
@@ -119,20 +121,20 @@ pub fn ipc_event_payload(event: &Event, state: &ApplicationState) -> Value {
             case,
             ..
         } => serde_json::json!({
-            "target": target_payload(state, *target), "backward": backward,
+            "target": target_payload(observation, *target), "backward": backward,
             "case": format!("{case:?}").to_ascii_lowercase(), "query_changed": true
         }),
         Event::SearchNext { target, backward } => serde_json::json!({
-            "target": target_payload(state, *target), "backward": backward
+            "target": target_payload(observation, *target), "backward": backward
         }),
         Event::EndSearch { target } => serde_json::json!({
-            "target": target_payload(state, *target), "search_active": false
+            "target": target_payload(observation, *target), "search_active": false
         }),
         Event::TransferTabOut { tab }
         | Event::CloseTab { tab }
         | Event::SuspendTab { tab }
         | Event::DiscardTab { tab }
-        | Event::ResumeTab { tab } => serde_json::json!({ "tab": tab_payload(state, *tab) }),
+        | Event::ResumeTab { tab } => serde_json::json!({ "tab": tab_payload(observation, *tab) }),
         Event::ViewClosed { tab, generation } => serde_json::json!({
             "tab_id": tab.to_string(), "generation": generation
         }),
@@ -141,11 +143,10 @@ pub fn ipc_event_payload(event: &Event, state: &ApplicationState) -> Value {
         }),
         Event::PopMode { window } | Event::Escape { window } => serde_json::json!({
             "window_id": window.to_string(),
-            "mode": state.windows().get(window).and_then(|window| window.modes.last())
-                .map_or("normal", |mode| mode_name(*mode))
+            "mode": mode_name(observation.mode)
         }),
         Event::RendererTerminated { target } => serde_json::json!({
-            "target": target_payload(state, *target), "renderer": "terminated"
+            "target": target_payload(observation, *target), "renderer": "terminated"
         }),
         Event::ClearJourney { since, origin } => {
             serde_json::json!({ "since": since, "origin": origin })
@@ -154,32 +155,24 @@ pub fn ipc_event_payload(event: &Event, state: &ApplicationState) -> Value {
     }
 }
 
-fn opened_tab_payload(state: &ApplicationState, window_id: ferric_browser_core::WindowId) -> Value {
-    let active_tab = state
-        .windows()
-        .get(&window_id)
-        .and_then(|window| window.active_tab);
-    serde_json::json!({
-        "window_id": window_id.to_string(),
-        "tab": active_tab.map_or(Value::Null, |tab| tab_payload(state, tab))
-    })
+fn opened_tab_payload(observation: &RuntimeObservation, window: WindowId) -> Value {
+    serde_json::json!({"window_id": window.to_string(),
+        "tab": observation.tab.as_ref().map_or(Value::Null, |tab| tab_payload(observation, tab.id))})
 }
 
-fn target_payload(state: &ApplicationState, target: Target) -> Value {
-    let mut payload = serde_json::json!({
-        "tab_id": target.tab.to_string(), "generation": target.generation,
-        "document_id": target.document.to_string()
-    });
-    if let Some(tab) = state.tabs().get(&target.tab) {
+fn target_payload(observation: &RuntimeObservation, target: Target) -> Value {
+    let mut payload = serde_json::json!({"tab_id": target.tab.to_string(),
+        "generation": target.generation, "document_id": target.document.to_string()});
+    if let Some(tab) = observation.tab.as_ref().filter(|tab| tab.id == target.tab) {
         payload["window_id"] = serde_json::json!(tab.window.to_string());
         payload["profile_id"] = serde_json::json!(tab.profile.to_string());
     }
     payload
 }
 
-fn tab_payload(state: &ApplicationState, tab_id: TabId) -> Value {
-    let Some(tab) = state.tabs().get(&tab_id) else {
-        return serde_json::json!({ "tab_id": tab_id.to_string() });
+fn tab_payload(observation: &RuntimeObservation, id: TabId) -> Value {
+    let Some(tab) = observation.tab.as_ref().filter(|tab| tab.id == id) else {
+        return serde_json::json!({"tab_id": id.to_string()});
     };
     serde_json::json!({
         "tab_id": tab.id.to_string(), "window_id": tab.window.to_string(),
@@ -189,9 +182,7 @@ fn tab_payload(state: &ApplicationState, tab_id: TabId) -> Value {
         "loading": format!("{:?}", tab.loading).to_ascii_lowercase(),
         "renderer": format!("{:?}", tab.renderer).to_ascii_lowercase(),
         "resources": format!("{:?}", tab.resources).to_ascii_lowercase(),
-        "selected": state.windows().get(&tab.window).and_then(|window| window.active_tab)
-            .is_some_and(|active| active == tab.id),
-        "pinned": tab.pinned, "muted": tab.muted
+        "selected": tab.selected, "pinned": tab.pinned, "muted": tab.muted
     })
 }
 
@@ -215,40 +206,4 @@ fn cleared_context_payload(windows: &[WindowId]) -> Value {
         "window_ids": windows.iter().map(ToString::to_string).collect::<Vec<_>>(),
         "context_changed": true,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use ferric_browser_core::{PrivacyKind, ValidatedUrl, reduce};
-
-    #[test]
-    fn payloads_identify_targets_without_navigation_secrets() {
-        let mut state = ApplicationState::new();
-        reduce(
-            &mut state,
-            Event::CreateProfile {
-                label: "Normal".into(),
-                privacy: PrivacyKind::Normal,
-            },
-        )
-        .unwrap();
-        let profile = *state.profiles().keys().next().unwrap();
-        reduce(&mut state, Event::CreateWindow { profile }).unwrap();
-        let window = *state.windows().keys().next().unwrap();
-        reduce(&mut state, Event::OpenTab { window }).unwrap();
-        let tab = *state.tabs().keys().next().unwrap();
-        let target = state.capture_target(tab).unwrap();
-        let payload = ipc_event_payload(
-            &Event::CommitNavigation {
-                target,
-                url: ValidatedUrl::parse("https://example.test/private?token=secret").unwrap(),
-                title: "private title".into(),
-            },
-            &state,
-        );
-        assert_eq!(payload["target"]["tab_id"], tab.to_string());
-        assert!(payload.get("url").is_none());
-        assert!(!payload.to_string().contains("secret"));
-    }
 }
