@@ -255,7 +255,9 @@ TestCase {
         compare(view.currentIndex,11)
         var last=findChild(view,"commandDialogAction-choice9")
         tryCompare(last,"activeFocus",true)
-        verify(waitForPolish(host)); inside(last,findChild(view,"commandDialogActionScroll"))
+        verify(waitForPolish(host))
+        // Focus scrolling is deferred until after layout has settled.
+        waitInside(last,findChild(view,"commandDialogActionScroll"))
         var spy=createTemporaryObject(spyFixture,view,{target:view,signalName:"actionRequested"})
         keyClick(Qt.Key_Return); compare(spy.count,1); compare(spy.signalArguments[0][0],"choice9")
         keyClick(Qt.Key_Return); compare(spy.count,1)
