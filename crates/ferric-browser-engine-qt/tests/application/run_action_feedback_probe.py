@@ -96,7 +96,7 @@ def main():
                     while True:
                         rows = [row for row in invoke('query', 'operations', '--format', 'json')['operations']
                                 if row['operation_id'] not in before]
-                        if rows and all(row['status'] == 'completed' or row['status'].startswith('failed') for row in rows):
+                        if rows and all(row['status'] in ('completed', 'failed') for row in rows):
                             break
                         assert time.monotonic() < deadline, ('selection readiness did not finish', rows)
                         time.sleep(0.02)
@@ -115,8 +115,12 @@ def main():
                         rows = [row for row in invoke('query', 'operations', '--format', 'json')['operations']
                                 if row['operation_id'] not in before]
                         assert len(rows) <= 1, ('selection handoff allocated another operation', rows)
-                        if rows and rows[0]['status'] in ('completed', 'detached'):
-                            assert rows[0]['status'] == ('completed' if name == 'tracked' else 'detached'), rows
+                        if rows and rows[0]['status'] in ('completed', 'failed', 'cancelled'):
+                            # Protocol 3 separates lifecycle state from the process outcome.
+                            assert rows[0]['status'] == 'completed', rows
+                            assert rows[0]['error'] is None, rows
+                            expected_detail = 'process exited' if name == 'tracked' else 'detached'
+                            assert rows[0]['detail'] == expected_detail, rows
                             break
                         assert time.monotonic() < deadline, ('selection action did not finish', rows)
                         time.sleep(0.05)
