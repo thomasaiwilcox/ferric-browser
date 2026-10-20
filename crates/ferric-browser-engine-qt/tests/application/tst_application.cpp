@@ -23,6 +23,7 @@
 #include <QImage>
 #include <QHostAddress>
 #include <QQmlApplicationEngine>
+#include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlExpression>
 #include <QQuickItem>
@@ -3635,23 +3636,54 @@ void ApplicationTests::productPolishSecondaryHints() {
         if (!artifacts.isEmpty()) QVERIFY(child->grabWindow().save(artifacts+"/production-scoped-grid-"+kind+".png"));
         QTest::keyClick(child,Qt::Key_1);
         QTRY_COMPARE(evaluate(entry+".ui.spatial_depth").toInt(),1);
-        // Do not let QTest's default key delay drain the dispatch before
-        // exercising the late observer callback.
-        QTest::keyPress(child,Qt::Key_Return,Qt::NoModifier,0);
-        const auto pendingGridAction=evaluate(entry+".ui.spatial_dispatch_request").toString();
-        const bool wasSelecting=evaluate(entry+".ui.spatial_selecting").toBool();
-        // A periodic selection observation can return after Enter starts its
-        // own dispatch validation. Its stale failure must not cancel that action.
-        const bool observationApplied=evaluate(entry+".ui.spatial_scope_geometry_validated('', '{}',"
-            +entry+".host.hintWorkspace.spatialAdapterSurfaceSerial,"
-            +entry+".host.hintWorkspace.spatialAdapterSurfaceRevision,"
-            +pageReceiver+".width,"+pageReceiver+".height,"+pageReceiver+".zoomFactor)").toBool();
-        const auto actionAfterObservation=evaluate(entry+".ui.spatial_dispatch_request").toString();
-        QTest::keyRelease(child,Qt::Key_Return,Qt::NoModifier,0);
-        QVERIFY(!pendingGridAction.isEmpty());
-        QVERIFY(!wasSelecting);
-        QVERIFY(!observationApplied);
-        QCOMPARE(actionAfterObservation,pendingGridAction);
+        // Observe the signal synchronously: native dispatch may finish before
+        // QTest returns from the key event, even with a zero key delay.
+        QQmlComponent dispatchProbeComponent(engine.get());
+        dispatchProbeComponent.setData(R"QML(
+import QtQuick
+QtObject {
+    id: probe
+    required property var ui
+    required property var workspace
+    required property var view
+    property bool captured: false
+    property string actionBefore: ""
+    property string actionAfter: ""
+    property bool wasSelecting: true
+    property bool observationApplied: true
+    property Connections observer: Connections {
+        target: probe.ui
+        function onSpatial_dispatch_requestChanged() {
+            const payload = probe.ui.spatial_dispatch_request
+            if (!payload || probe.captured) return
+            probe.captured = true
+            probe.actionBefore = payload
+            probe.wasSelecting = probe.ui.spatial_selecting
+            // A retired selection observation must not cancel the action
+            // whose own geometry validation is now pending.
+            probe.observationApplied = probe.ui.spatial_scope_geometry_validated(
+                "", "{}", probe.workspace.spatialAdapterSurfaceSerial,
+                probe.workspace.spatialAdapterSurfaceRevision,
+                probe.view.width, probe.view.height, probe.view.zoomFactor)
+            probe.actionAfter = probe.ui.spatial_dispatch_request
+        }
+    }
+}
+)QML",QUrl());
+        QVERIFY2(dispatchProbeComponent.isReady(),qPrintable(dispatchProbeComponent.errorString()));
+        std::unique_ptr<QObject> dispatchProbe(dispatchProbeComponent.createWithInitialProperties({
+            {"ui",evaluate(entry+".ui")},
+            {"workspace",evaluate(entry+".host.hintWorkspace")},
+            {"view",evaluate(pageReceiver)}
+        }));
+        QVERIFY2(dispatchProbe,qPrintable(dispatchProbeComponent.errorString()));
+        QTest::keyClick(child,Qt::Key_Return);
+        QTRY_VERIFY2(dispatchProbe->property("captured").toBool(),
+            qPrintable(evaluate(entry+".ui.status_text").toString()));
+        QVERIFY(!dispatchProbe->property("actionBefore").toString().isEmpty());
+        QVERIFY(!dispatchProbe->property("wasSelecting").toBool());
+        QVERIFY(!dispatchProbe->property("observationApplied").toBool());
+        QCOMPARE(dispatchProbe->property("actionAfter").toString(),dispatchProbe->property("actionBefore").toString());
         QTRY_VERIFY2_WITH_TIMEOUT(page("window.scopedClicks || 0").toInt()==1,
             qPrintable(evaluate("JSON.stringify({status:"+entry+".ui.status_text,mode:"+entry+".ui.mode,grid:"+entry+".ui.spatial_visible,depth:"+entry+".ui.spatial_depth,focus:String("+entry+".host.activeFocusItem)})").toString()
                 + " DOM " + page("JSON.stringify({clicks:window.scopedClicks||0,last:window.lastClicked,point:window.clientPoint,all:window.allClicks,zoom:devicePixelRatio,scrollY:scrollY,button:document.getElementById('scoped').getBoundingClientRect().toJSON()})").toString()),15000);
