@@ -4,6 +4,39 @@ use crate::cli_parse::log_level_rank;
 use crate::ipc_client::{add_cli_context, storage_diagnostics};
 
 #[test]
+fn cli_command_tokens_and_operation_cursors_preserve_boundaries() {
+    let (_, action) = parse_cli(&["open".into(), "https://example.test/a;;quit".into()]).unwrap();
+    assert!(matches!(action, CliAction::Open { .. }));
+    let (_, action) = parse_cli(&["search".into(), "two words;;quit".into()]).unwrap();
+    let CliAction::Command { text, .. } = action else {
+        panic!("command")
+    };
+    let commands =
+        ferric_browser_core::parse_chain(&text, ferric_browser_core::ParseInput::Ipc).unwrap();
+    assert_eq!(commands.len(), 1);
+    assert_eq!(commands[0].arguments, vec!["two words;;quit"]);
+    let (_, action) = parse_cli(&[
+        "query".into(),
+        "operations".into(),
+        "op-one".into(),
+        "--limit".into(),
+        "2".into(),
+        "--cursor".into(),
+        "windowid-1/7".into(),
+        "--stderr".into(),
+    ])
+    .unwrap();
+    let CliAction::Query { method, params, .. } = action else {
+        panic!("query")
+    };
+    assert_eq!(method, "operations.query");
+    assert_eq!(params["limit"], 2);
+    assert_eq!(params["operation_id"], "op-one");
+    assert_eq!(params["cursor"], "windowid-1/7");
+    assert_eq!(params["include_stderr"], true);
+}
+
+#[test]
 fn live_diagnostics_can_outlast_the_ordinary_ipc_response_timeout() {
     let base = std::env::temp_dir().join(format!("ferric-diag-{}", Uuid::new_v4().simple()));
     let paths = instance_paths(&base, &base, "test");
@@ -580,7 +613,9 @@ fn cli_catalog_commands_are_forwarded_instead_of_becoming_open_input() {
         .expect("registered commands use the direct CLI entry point");
     assert!(matches!(
         action,
-        CliAction::Command { text, window: None } if text == "reload --bypass-cache"
+        CliAction::Command { text, window: None }
+            if ferric_browser_core::parse_chain(&text, ferric_browser_core::ParseInput::Cli).unwrap()
+                == vec![ferric_browser_core::ParsedCommand { name: "reload".into(), arguments: vec!["--bypass-cache".into()] }]
     ));
 
     let (_, action) = parse_cli(&["profile-list".into()])

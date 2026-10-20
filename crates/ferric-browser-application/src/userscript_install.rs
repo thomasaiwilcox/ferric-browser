@@ -40,7 +40,7 @@ pub fn install_manifest(root: &Path, source_path: &Path) -> Result<String, Strin
         .and_then(|value| value.to_str())
         .ok_or_else(|| "userscript manifest name is not valid UTF-8".to_owned())?;
     validate_name(name)?;
-    let source = fs::read_to_string(source_path)
+    let source = crate::userscript_io::read_text(source_path, MAX_MANIFEST_BYTES)
         .map_err(|error| format!("could not read userscript manifest: {error}"))?;
     let mut manifest: Manifest =
         toml::from_str(&source).map_err(|error| format!("invalid userscript manifest: {error}"))?;
@@ -101,7 +101,7 @@ pub fn install_manifest(root: &Path, source_path: &Path) -> Result<String, Strin
         validate(&manifest, name)?;
         let installed = toml::to_string(&manifest)
             .map_err(|error| format!("could not encode installed userscript: {error}"))?;
-        if installed.len() > MAX_MANIFEST_BYTES as usize {
+        if u64::try_from(installed.len()).unwrap_or(u64::MAX) > MAX_MANIFEST_BYTES {
             return Err("installed userscript manifest exceeds 64 KiB".into());
         }
         let mut file = fs::OpenOptions::new()

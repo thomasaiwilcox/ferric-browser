@@ -19,12 +19,14 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .page_document_identities
             .invalidate(target.tab);
         self.as_mut()
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .pending_same_document_pass_through = None;
         if self.as_ref().rust().tab == Some(target.tab) {
             match self.as_ref().rust().core_mode {

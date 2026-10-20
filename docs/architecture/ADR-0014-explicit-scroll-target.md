@@ -70,8 +70,8 @@ different tab before QML consumes it.
 ## Evidence
 
 - `crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js`
-- `crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeServices.qml`
-- `crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeSurface.qml`
+- `crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml`
+- `crates/ferric-browser-engine-qt/qml/components/FerricRuntimeController.qml`
 - `crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml`
 - `crates/ferric-browser-engine-qt/src/browser_ui_browsing_commands.rs`
 - `crates/ferric-browser-engine-qt/src/tests/command_protocol.rs`

@@ -86,10 +86,14 @@ impl qobject::BrowserUi {
                     let token = Uuid::new_v4().to_string();
                     let mut rust = self.as_mut().rust_mut();
                     let this = rust.as_mut().get_mut();
-                    this.popup_journey_targets
-                        .push((token, popup_target, requested_url, false));
-                    if this.popup_journey_targets.len() > 256 {
-                        this.popup_journey_targets.remove(0);
+                    this.navigation.popup_journey_targets.push((
+                        token,
+                        popup_target,
+                        requested_url,
+                        false,
+                    ));
+                    if this.navigation.popup_journey_targets.len() > 256 {
+                        this.navigation.popup_journey_targets.remove(0);
                     }
                 }
                 let mut rust = self.as_mut().rust_mut();
@@ -107,6 +111,7 @@ impl qobject::BrowserUi {
     pub(super) fn popup_target_for_token(self: Pin<&mut Self>, token: &str) -> Option<Target> {
         self.as_ref()
             .rust()
+            .navigation
             .popup_journey_targets
             .iter()
             .find(|(candidate, _, _, _)| candidate == token)
@@ -118,6 +123,7 @@ impl qobject::BrowserUi {
         if let Some((_, pending, _, _)) = rust
             .as_mut()
             .get_mut()
+            .navigation
             .popup_journey_targets
             .iter_mut()
             .find(|(candidate, _, _, _)| candidate == token)
@@ -131,6 +137,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .popup_journey_targets
             .retain(|(candidate, _, _, _)| candidate != token);
     }
@@ -146,6 +153,7 @@ impl qobject::BrowserUi {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         let Some((token, _, _, claimed)) = this
+            .navigation
             .popup_journey_targets
             .iter_mut()
             .rev()

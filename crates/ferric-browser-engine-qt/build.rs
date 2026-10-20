@@ -27,7 +27,12 @@ fn main() {
     let (_, core_private) = qt_private_headers("Qt6Core", "QtCore/private/qglobal_p.h");
     let builder = CxxQtBuilder::new_qml_module(
         QmlModule::new("io.github.ferricbrowser").qml_files(qml_files),
-    );
+    )
+    // Header export must not recursively watch handwritten Rust sources.
+    // Native inputs are listed below; the generated bridge is the sole Rust
+    // input to CXX-Qt. Preserve the existing exported header paths.
+    .crate_include_root(None)
+    .include_dir(".");
     // SAFETY: This adds discovered dependency and version-matching SDK include
     // paths. Private Qt declarations are isolated in download_source.cpp.
     // It does not replace CXX-Qt's compiler, files, flags, or generated ABI.
@@ -43,7 +48,7 @@ fn main() {
         })
     };
     builder
-        .files(["src/lib.rs"])
+        .files(["src/bridge.rs"])
         .cpp_files([
             "src/browser_key_router.h",
             "src/browser_key_router.cpp",
@@ -112,6 +117,7 @@ fn qt_private_headers(module: &str, required: &str) -> (String, PathBuf) {
 
 fn collect_browser_resources(root: &Path) -> Vec<PathBuf> {
     fn visit(path: &Path, resources: &mut Vec<PathBuf>) {
+        println!("cargo::rerun-if-changed={}", path.display());
         let mut entries = fs::read_dir(path)
             .unwrap_or_else(|error| {
                 panic!("read QML resource directory {}: {error}", path.display())

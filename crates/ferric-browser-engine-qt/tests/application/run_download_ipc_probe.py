@@ -50,7 +50,7 @@ def connect(endpoint):
     stream = socket.socket(socket.AF_UNIX)
     stream.settimeout(12)
     stream.connect(str(endpoint))
-    hello = rpc(stream, 'hello', {'protocol_major': 2, 'protocol_minor': 0,
+    hello = rpc(stream, 'hello', {'protocol_major': 3, 'protocol_minor': 0,
                                    'client': 'ferric-owned-download-boundary'})
     assert 'error' not in hello, hello
     return stream
@@ -241,12 +241,16 @@ def run_case(executable, base, artifacts, enabled):
                 return value
 
             def catalog(private_profile):
-                with connect(endpoint) as stream:
-                    response = rpc(stream, 'actions.query', {})
-                rows = [row for row in response.get('result', {}).get('actions', [])
-                        if row['id'] in ['userscript.download_allowed.download', 'userscript.download_denied.download']]
+                def discovered():
+                    with connect(endpoint) as stream:
+                        response = rpc(stream, 'actions.query', {})
+                    assert 'error' not in response, response
+                    return [row for row in response['result']['actions']
+                            if row['id'] in ['userscript.download_allowed.download', 'userscript.download_denied.download']]
+                # Discovery publishes an immutable catalog asynchronously after
+                # filesystem changes and profile activation.
+                rows = wait_for(discovered, lambda rows: len(rows) == 2)
                 facts.setdefault('script_catalog', []).append(rows)
-                assert len(rows) == 2, response
                 expected = {'userscript.download_allowed.download': 'available',
                             'userscript.download_denied.download': 'unavailable' if private_profile else 'available'}
                 assert all(row['availability']['state'] == expected[row['id']] for row in rows), rows
@@ -443,7 +447,7 @@ def run_case(executable, base, artifacts, enabled):
             assert 'error' not in completed, completed
             completed_operation = completed['result']['operation_id']
             assert completed_operation != cancel_operation
-            wait_for(lambda: operation_state(completed_operation), lambda status: status == 'completed: download offered')
+            wait_for(lambda: operation_state(completed_operation), lambda status: status == 'completed')
             assert server.transfers['request-complete']['started'].wait(10)
             # Admission acknowledges the offer. File completion still requires
             # the remaining payload and its download.changed event.

@@ -40,7 +40,7 @@ use uuid::Uuid;
 
 /// Clean-break local-control protocol. Version 1 clients are deliberately
 /// rejected during the hello negotiation before any method is dispatched.
-pub const PROTOCOL_MAJOR: u32 = 2;
+pub const PROTOCOL_MAJOR: u32 = 3;
 pub const PROTOCOL_MINOR: u32 = 0;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const MAX_JSON_DEPTH: usize = 32;
@@ -600,6 +600,26 @@ pub enum ErrorCode {
     Storage,
     Engine,
     Cancelled,
+}
+
+impl From<ferric_browser_core::FailureKind> for ErrorCode {
+    fn from(kind: ferric_browser_core::FailureKind) -> Self {
+        match kind {
+            ferric_browser_core::FailureKind::InvalidArgument => Self::InvalidArgument,
+            ferric_browser_core::FailureKind::Config => Self::Config,
+            ferric_browser_core::FailureKind::NotFound => Self::NotFound,
+            ferric_browser_core::FailureKind::StaleTarget => Self::StaleTarget,
+            ferric_browser_core::FailureKind::Denied => Self::Denied,
+            ferric_browser_core::FailureKind::ConfirmationRequired => Self::ConfirmationRequired,
+            ferric_browser_core::FailureKind::Unsupported => Self::Unsupported,
+            ferric_browser_core::FailureKind::Busy => Self::Busy,
+            ferric_browser_core::FailureKind::Timeout => Self::Timeout,
+            ferric_browser_core::FailureKind::Io => Self::Io,
+            ferric_browser_core::FailureKind::Storage => Self::Storage,
+            ferric_browser_core::FailureKind::Engine => Self::Engine,
+            ferric_browser_core::FailureKind::Cancelled => Self::Cancelled,
+        }
+    }
 }
 
 impl ErrorCode {

@@ -68,9 +68,7 @@ bool FerricFrameBroker::reachable(const QString &owner) const {
 
 void FerricFrameBroker::attachFrame(const QWebEngineFrame &frame, const QString &parent,
                                        Completion completion) {
-    if (!frame.isValid() || frames_.size() >= 64) {
-        completion(failure("frame-limit-or-invalid")); return;
-    }
+    if (!frame.isValid()) { completion(failure("frame-limit-or-invalid")); return; }
     for (auto it = frames_.cbegin(); it != frames_.cend(); ++it) {
         if (it->frame == frame && it->parent == parent) {
             const auto owner = it.key();
@@ -93,6 +91,7 @@ void FerricFrameBroker::attachFrame(const QWebEngineFrame &frame, const QString 
             return;
         }
     }
+    if (frames_.size() >= 64) { completion(failure("frame-limit-or-invalid")); return; }
     const auto owner = QStringLiteral("frame-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
     const auto epoch = QUuid::createUuid().toString(QUuid::WithoutBraces);
     evaluate(frame, QStringLiteral("(()=>{window.") + documentProperty_ + QStringLiteral("=") + quoted(epoch)

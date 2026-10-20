@@ -1,6 +1,8 @@
 #![no_main]
 
-use ferric_browser_core::{ApplicationState, Event, Mode, PrivacyKind, SearchCase, ValidatedUrl, reduce};
+use ferric_browser_core::{
+    ApplicationState, Event, Mode, PrivacyKind, SearchCase, ValidatedUrl, reduce,
+};
 use libfuzzer_sys::fuzz_target;
 
 fn url(value: &str) -> ValidatedUrl {

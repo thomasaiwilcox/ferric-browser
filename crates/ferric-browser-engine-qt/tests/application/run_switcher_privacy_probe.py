@@ -44,7 +44,7 @@ def request(endpoint, method, params):
     with socket.socket(socket.AF_UNIX) as stream:
         stream.settimeout(8)
         stream.connect(str(endpoint))
-        hello = frame(stream, "hello", {"protocol_major": 2, "protocol_minor": 0,
+        hello = frame(stream, "hello", {"protocol_major": 3, "protocol_minor": 0,
                                        "client": "ferric-owned-switcher-test"})
         assert "error" not in hello, hello
         return frame(stream, method, params)

@@ -33,15 +33,21 @@ impl qobject::BrowserUi {
             },
         )?;
         if expanded.len() != 1 {
-            let mut result = None;
+            let mut result = serde_json::json!({"status": "accepted"});
+            let mut operations = Vec::new();
             for command in expanded {
-                result = Some(self.as_mut().execute_ipc_command_with_operation(
-                    command,
-                    route,
-                    operation_id,
-                )?);
+                // Each asynchronous command owns its own admission. Reusing
+                // the envelope ID would let the first completion terminate
+                // unrelated work or replace its cancellation authority.
+                result = self
+                    .as_mut()
+                    .execute_ipc_command_with_operation(command, route, None)?;
+                if let Some(id) = result.get("operation_id").and_then(Value::as_str) {
+                    operations.push(id.to_owned());
+                }
             }
-            return Ok(result.unwrap_or_else(|| serde_json::json!({"status": "accepted"})));
+            result["operation_ids"] = serde_json::json!(operations);
+            return Ok(result);
         }
         let command = expanded.into_iter().next().expect("one expanded command");
         if let Some(result) = self.as_mut().dispatch_support_command(&command, route) {
@@ -84,7 +90,6 @@ impl qobject::BrowserUi {
             return self.execute_context_delete_command(&command);
         }
         self.execute_adapter_ipc_command(command, route, operation_id)
-            .map_err(PublicError::engine)
     }
 
     fn execute_action_ipc_command(
@@ -128,7 +133,7 @@ impl qobject::BrowserUi {
         command: ParsedCommand,
         route: &IpcRoute,
         operation_id: Option<&str>,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, PublicError> {
         let dispatch = {
             let binding = self.as_ref();
             let rust = binding.rust();
@@ -153,7 +158,7 @@ impl qobject::BrowserUi {
                 target: selector,
             }
         };
-        let effects = self.as_mut().dispatch_runtime(dispatch)?;
+        let effects = self.as_mut().dispatch_runtime_public(dispatch)?;
         let target = effects.iter().find_map(|effect| match effect {
             Effect::Engine(EngineEffect::Navigate { target, .. }) => Some(*target),
             _ => None,

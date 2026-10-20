@@ -198,6 +198,7 @@ impl Drop for ConfigWatch {
 }
 
 #[cfg(target_os = "linux")]
+#[allow(unsafe_code)]
 fn spawn_inotify_watcher(
     directories: std::collections::BTreeSet<PathBuf>,
 ) -> Option<(

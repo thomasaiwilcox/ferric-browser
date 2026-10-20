@@ -74,6 +74,12 @@ Item {
                     if (browserUi.mode === "hint") window.startHintCollection()
                 })
             } else {
+                // Navigation can retire the page callback while collection or
+                // activation is pending. No pending token may block a new session.
+                window.hintCollectionEpoch += 1
+                window.hintRefreshPending = false
+                window.hintCollectionTruncated = false
+                window.activeHintScopeLeaseId = ""
                 window.stopHintTracking()
                 window.rapidHintConfirmationVisible = false
                 window.hintResults = []

@@ -21,6 +21,8 @@ pub(crate) enum SessionScope {
 }
 
 pub(crate) struct Session {
+    pub(crate) configuration: Arc<crate::profile_configuration::SharedConfiguration>,
+    pub(crate) configuration_gate: Arc<std::sync::atomic::AtomicBool>,
     pub(crate) scope: SessionScope,
     pub(crate) decisions: Mutex<BTreeMap<(String, String), PermissionDecision>>,
     pub(crate) durable: Mutex<PermissionCache>,
@@ -56,7 +58,15 @@ impl ProfileSession {
         };
         let durable = matches!(scope, SessionScope::Durable { .. });
         let make = |scope| {
+            let root = if durable {
+                activation.roots.as_ref().map(|roots| roots.state.as_path())
+            } else {
+                None
+            };
+            let configuration = crate::profile_configuration::SharedConfiguration::for_root(root);
             Arc::new(Session {
+                configuration_gate: configuration.gate.clone(),
+                configuration,
                 scope,
                 decisions: Mutex::new(BTreeMap::new()),
                 durable: Mutex::default(),

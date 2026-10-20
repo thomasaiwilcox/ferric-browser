@@ -18,7 +18,8 @@ pub(super) fn effective_hint_selector_snapshot(
     family: &str,
 ) -> Result<Value, String> {
     let selector_family = HintSelectorFamily::parse(family);
-    if selector_family.is_none() && !matches!(family, "regions" | "surfaces") {
+    if selector_family.is_none() && !matches!(family, "regions" | "surfaces" | "actions" | "focus")
+    {
         return Err(format!("unsupported hint selector family: {family}"));
     }
     let config = serde_json::from_str::<Config>(config_json)
@@ -76,21 +77,25 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.hint_configuration_revision = this.hint_configuration_revision.saturating_add(1);
-            this.hint_session = None;
-            this.hint_interaction = None;
-            this.pending_hint_scope_handoff = None;
-            this.active_hint_scope = None;
-            this.hint_consumed.clear();
+            this.interaction.hint_configuration_revision = this
+                .interaction
+                .hint_configuration_revision
+                .saturating_add(1);
+            this.interaction.hint_session = None;
+            this.interaction.hint_interaction = None;
+            this.interaction.pending_hint_scope_handoff = None;
+            this.interaction.active_hint_scope = None;
+            this.interaction.hint_consumed.clear();
             this.pending_hint_action = None;
-            if let Some(action) = this.hint_pointer_action.as_mut() {
+            if let Some(action) = this.interaction.hint_pointer_action.as_mut() {
                 action.terminate();
             }
-            this.hint_pointer_action = None;
-            this.hint_pointer_source = None;
-            this.pending_hint_palette_permit = None;
-            this.pending_grid_scope_permit = None;
-            this.hint_local_interaction_authority
+            this.interaction.hint_pointer_action = None;
+            this.interaction.hint_pointer_source = None;
+            this.interaction.pending_hint_palette_permit = None;
+            this.interaction.pending_grid_scope_permit = None;
+            this.interaction
+                .hint_local_interaction_authority
                 .clear_session_requests();
         }
         self.as_mut().set_hint_pointer_pending(false);
@@ -109,17 +114,6 @@ impl qobject::BrowserUi {
     pub(super) fn set_hint_mode(mut self: Pin<&mut Self>) {
         self.as_mut()
             .set_hint_options("all", false, "current", None, false, 1);
-    }
-
-    pub(super) fn set_hint_mode_kind(mut self: Pin<&mut Self>, links_only: bool) {
-        self.as_mut().set_hint_options(
-            if links_only { "links" } else { "all" },
-            false,
-            "current",
-            None,
-            false,
-            1,
-        );
     }
 
     pub(super) fn set_hint_options(
@@ -160,17 +154,18 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.hint_pointer_source = None;
-            this.hint_pointer_action = None;
+            this.interaction.hint_pointer_source = None;
+            this.interaction.hint_pointer_action = None;
             this.hint_script = script.map(ToOwned::to_owned);
             this.hint_first = first;
             this.hint_index = index;
             this.hint_rapid_tabs_created = 0;
-            this.hint_consumed.clear();
-            this.hint_interaction = None;
-            this.pending_hint_palette_permit = None;
-            this.pending_grid_scope_permit = None;
-            this.hint_local_interaction_authority
+            this.interaction.hint_consumed.clear();
+            this.interaction.hint_interaction = None;
+            this.interaction.pending_hint_palette_permit = None;
+            this.interaction.pending_grid_scope_permit = None;
+            this.interaction
+                .hint_local_interaction_authority
                 .clear_session_requests();
         }
         let window = self.as_ref().rust().window;
@@ -214,6 +209,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .interaction
             .hint_pointer_source = Some(source);
         self.as_mut()
             .set_hint_pointer_state(QString::from("selecting"));
@@ -227,21 +223,22 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.hint_session = None;
-            this.hint_interaction = None;
-            this.pending_hint_scope_handoff = None;
-            this.active_hint_scope = None;
-            this.hint_consumed.clear();
+            this.interaction.hint_session = None;
+            this.interaction.hint_interaction = None;
+            this.interaction.pending_hint_scope_handoff = None;
+            this.interaction.active_hint_scope = None;
+            this.interaction.hint_consumed.clear();
             this.hint_values = QString::default();
             this.pending_hint_action = None;
-            if let Some(action) = this.hint_pointer_action.as_mut() {
+            if let Some(action) = this.interaction.hint_pointer_action.as_mut() {
                 action.terminate();
             }
-            this.hint_pointer_action = None;
-            this.hint_pointer_source = None;
-            this.pending_hint_palette_permit = None;
-            this.pending_grid_scope_permit = None;
-            this.hint_local_interaction_authority
+            this.interaction.hint_pointer_action = None;
+            this.interaction.hint_pointer_source = None;
+            this.interaction.pending_hint_palette_permit = None;
+            this.interaction.pending_grid_scope_permit = None;
+            this.interaction
+                .hint_local_interaction_authority
                 .clear_session_requests();
         }
         self.as_mut().set_hint_visible(false);
@@ -268,7 +265,7 @@ impl qobject::BrowserUi {
         } else {
             String::new()
         };
-        let configuration_revision = self.as_ref().rust().hint_configuration_revision;
+        let configuration_revision = self.as_ref().rust().interaction.hint_configuration_revision;
         let requested_scope_lease_id = serde_json::from_str::<Value>(&candidates_json.to_string())
             .ok()
             .and_then(|payload| {
@@ -325,17 +322,20 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Hints unavailable: tab is no longer live"));
             return QString::from(r#"{"error":"stale-target"}"#);
         };
-        let scope_is_authorized = self.as_ref().rust().active_hint_scope.as_ref().map_or(
-            requested_scope_lease_id.is_none(),
-            |scope| {
+        let scope_is_authorized = self
+            .as_ref()
+            .rust()
+            .interaction
+            .active_hint_scope
+            .as_ref()
+            .map_or(requested_scope_lease_id.is_none(), |scope| {
                 requested_scope_lease_id.as_deref() == Some(scope.lease_id.as_str())
                     && scope.owner.target.tab == target.tab
                     && scope.owner.target.generation == target.generation
                     && scope.owner.target.document == target.document
                     && scope.owner.configuration_revision == configuration_revision
-                    && family == "all"
-            },
-        );
+                    && matches!(family.as_str(), "all" | "actions")
+            });
         if !scope_is_authorized {
             self.set_status_text(QString::from(
                 "Scoped Hint collection rejected: scope lease is missing or stale",
@@ -435,7 +435,7 @@ impl qobject::BrowserUi {
                     .is_some_and(|control_id| normally_usable_control_ids.contains(&control_id))
         });
         candidates.retain(|candidate| {
-            !self.as_ref().rust().hint_consumed.contains(&(
+            !self.as_ref().rust().interaction.hint_consumed.contains(&(
                 candidate.frame_owner.clone(),
                 candidate.frame_path.clone(),
                 candidate.element_id,
@@ -448,7 +448,7 @@ impl qobject::BrowserUi {
         let minimum_width = usize::from(config.hints.min_chars);
         let mut ids = {
             let mut rust = self.as_mut().rust_mut();
-            rust.as_mut().get_mut().hint_ids.clone()
+            rust.as_mut().get_mut().interaction.hint_ids.clone()
         };
         let auto_follow = if self.as_ref().rust().hint_pointer_mode || target_search_active {
             CoreHintAutoFollow::Never
@@ -465,6 +465,7 @@ impl qobject::BrowserUi {
         let previous = self
             .as_ref()
             .rust()
+            .interaction
             .hint_session
             .as_ref()
             .filter(|session| {
@@ -474,7 +475,7 @@ impl qobject::BrowserUi {
                     && session.configuration_revision == configuration_revision
                     && session.selector_policy_revision == selector_policy_revision
             })
-            .and_then(|_| self.as_ref().rust().hint_interaction.clone());
+            .and_then(|_| self.as_ref().rust().interaction.hint_interaction.clone());
         let refreshing = previous.is_some();
         let mut interaction = if let Some(mut previous) = previous {
             if let Err(error) = previous.refresh(candidates) {
@@ -540,7 +541,7 @@ impl qobject::BrowserUi {
             discovery_provenance,
         );
         let pointer_action = if self.as_ref().rust().hint_pointer_mode {
-            let Some(source) = self.as_ref().rust().hint_pointer_source else {
+            let Some(source) = self.as_ref().rust().interaction.hint_pointer_source else {
                 self.set_status_text(QString::from("Pointer Hint has no local authority"));
                 return QString::from(r#"{"error":"local-authority-required"}"#);
             };
@@ -558,6 +559,7 @@ impl qobject::BrowserUi {
                 let mut rust = self.as_mut().rust_mut();
                 rust.as_mut()
                     .get_mut()
+                    .interaction
                     .hint_local_interaction_authority
                     .mint(
                         source,
@@ -596,22 +598,23 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             if !this.hint_pointer_mode {
-                this.hint_pointer_source = None;
+                this.interaction.hint_pointer_source = None;
             }
-            this.hint_pointer_action = pointer_action;
+            this.interaction.hint_pointer_action = pointer_action;
             this.hint_pointer_pending = false;
             this.hint_pointer_state = QString::from(if this.hint_pointer_mode {
                 "selecting"
             } else {
                 "terminal"
             });
-            this.hint_ids = ids;
-            this.hint_session = Some(session);
-            this.hint_interaction = Some(interaction);
+            this.interaction.hint_ids = ids;
+            this.interaction.hint_session = Some(session);
+            this.interaction.hint_interaction = Some(interaction);
             this.hint_values = QString::from(result["hints"].to_string());
-            this.pending_hint_palette_permit = None;
-            this.pending_grid_scope_permit = None;
-            this.hint_local_interaction_authority
+            this.interaction.pending_hint_palette_permit = None;
+            this.interaction.pending_grid_scope_permit = None;
+            this.interaction
+                .hint_local_interaction_authority
                 .clear_session_requests();
         }
         self.as_mut().set_hint_visible(!hint_first);
@@ -658,7 +661,7 @@ impl qobject::BrowserUi {
         let (outcome, state) = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            let Some(interaction) = this.hint_interaction.as_mut() else {
+            let Some(interaction) = this.interaction.hint_interaction.as_mut() else {
                 return QString::from(r#"{"error":"no-session"}"#);
             };
             let outcome = interaction.handle(input);
@@ -743,7 +746,7 @@ impl qobject::BrowserUi {
             effective_hint_selector_snapshot(
                 &rust.config_json.to_string(),
                 &rust.current_url.to_string(),
-                rust.hint_configuration_revision,
+                rust.interaction.hint_configuration_revision,
                 &family.to_string(),
             )
         };
@@ -897,6 +900,18 @@ mod tests {
         let next_configuration =
             effective_hint_selector_snapshot(&config_json, "https://example.test/page", 8, "all")
                 .expect("new config revision snapshot");
+        for family in ["actions", "focus"] {
+            let filtered = effective_hint_selector_snapshot(
+                &config_json,
+                "https://example.test/page",
+                7,
+                family,
+            )
+            .unwrap();
+            assert_eq!(filtered["family"], family);
+            assert_eq!(filtered["policies"], all["policies"]);
+            assert_ne!(filtered["selector_revision"], all["selector_revision"]);
+        }
         assert_eq!(all["selector_revision"], repeated["selector_revision"]);
         assert_ne!(all["selector_revision"], buttons["selector_revision"]);
         assert_ne!(
@@ -1116,6 +1131,26 @@ mod tests {
             surface_context,
         ));
 
+        binding.source_family = "actions".into();
+        let action_context = HintScopeHandoffContext {
+            family: "actions",
+            ..surface_context
+        };
+        assert!(!hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            action_context
+        ));
+        binding.kind = HintKind::Frame;
+        receipt["kind"] = Value::String("frame".into());
+        assert!(hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            action_context
+        ));
+        binding.source_family = "surfaces".into();
         binding.kind = HintKind::Button;
         receipt["kind"] = Value::String(hint_kind_name(binding.kind).into());
         assert!(!hint_scope_handoff_is_valid(

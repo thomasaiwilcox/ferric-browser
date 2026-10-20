@@ -644,7 +644,7 @@ not a privileged WebChannel shared with arbitrary web pages.
 | Normal | Startup/default; explicit escape | Browser bindings consume matched keys | `i`, `:`, `/`, `f`, `v`, pass-through binding |
 | Insert | User focuses an editable element, a hint selects one, or `i` | Page receives ordinary keys, shortcuts, and IME | Escape or explicit normal-mode command |
 | Command | `:` | Native editable command line and completion | Enter executes; Escape cancels |
-| Search | `/` or `?` | Incremental engine text search | Enter retains match; Escape restores prior state |
+| Search | `/` or `?` | Incremental page text search | Enter retains match; Escape clears search |
 | Hint | `f` or hint command | Label selection/filtering, no text into page | Selection/cancel/navigation |
 | Grid | `:grid` or `;g` | Keyboard-only 3×3 point selection; explicit native click/hover; qualified double-click request is currently disabled | Click acknowledgement, Escape, or invalidated page view; hover resets to root and remains in Grid |
 | Caret | `v` | Text movement/selection commands | Escape returns normal |
@@ -807,8 +807,22 @@ shortcuts unless a user explicitly changes those mode-specific bindings.
 In caret mode, `h/j/k/l` move by character/line, `w/b` move by word, `0/$` move
 to line start/end, `v` toggles selection extension, and `y` copies selection and
 returns to normal mode. Search Enter retains the match and returns to the
-prior base mode; normal-mode `n/N` operate on that retained search. Prompt
-bindings are generated from the actual choices and never inherit normal-mode
+prior base mode without advancing; normal-mode `n/N` operate on that retained
+search. Matching, highlighting, scrolling and frame traversal use Qt/Chromium's
+native find directly. Query edits supersede pending native finds immediately;
+explicit next/previous steps remain ordered. No DOM search or frame-discovery
+work may delay typing.
+A subsequent Enter hands the native active result to page selection/focus and
+activates it with native keyboard semantics. This supports wrapped links and
+controls, including many buttons. Shift+Enter sends the native foreground-tab
+link gesture. Configured Enter bindings, Mixed routing and native prompts take
+precedence. Native activation can invoke page handlers, just like keyboard
+activation; this is not a separately verified URL-navigation operation. A bounded
+renderer round trip on activation prevents the key from racing the asynchronous
+selection handoff. Changing the query, tab, document, mode or prompt scope cancels
+pending activation. Escape clears the retained search. The `target-search links`
+palette remains a separate list view.
+Prompt bindings are generated from the actual choices and never inherit normal-mode
 macros or repeat handlers.
 
 ## 10. Command language and command inventory
@@ -2280,7 +2294,7 @@ Handshake request and response:
 {
   "id": "hello-1",
   "method": "hello",
-  "params": {"protocol_major": 2, "protocol_minor": 0, "client": "ferric-browser-cli"}
+  "params": {"protocol_major": 3, "protocol_minor": 0, "client": "ferric-browser-cli"}
 }
 ```
 
@@ -2288,7 +2302,7 @@ Handshake request and response:
 {
   "id": "hello-1",
   "result": {
-    "protocol_major": 2,
+    "protocol_major": 3,
     "protocol_minor": 0,
     "instance_id": "c6346caf-e69d-4919-99ca-510c89bb7d32",
     "capabilities": ["command.execute", "tabs.query", "events.subscribe"]
@@ -2335,7 +2349,7 @@ Error response:
 }
 ```
 
-**IPC-003 — Method surface.** V1 supports `hello`, `command.execute`,
+**IPC-003 — Method surface.** Protocol 3 supports `hello`, `command.execute`,
 `action.execute`, `actions.query`, `windows.query`, `tabs.query`,
 `profiles.query`, `contexts.query`, `switcher.query`, `site.status`,
 `bindings.query`, `downloads.query`, `config.get`, `diagnostics.get`,
@@ -2364,6 +2378,18 @@ validation still applies after native routing.
 Operation queries follow the same private-query opt-in and configuration rule,
 including status and explicitly requested stderr. Scoped operation queries use
 the same live window selector as tab queries.
+Protocol 3 operation pages accept `limit` (1–100, default 50) and an opaque
+`cursor`; responses return `next_cursor` when more retained records remain.
+Pages are bounded to 500 KiB of operation rows and cross-window queries paginate
+after aggregation. A cursor is a continuation through retained history, not a
+snapshot lease; expired records and retired owners may disappear between pages.
+Each application admits at most 64 active operations and retains at most 256
+terminal records. Stderr is limited to 16 KiB per operation and 1 MiB in total.
+Terminal completion events carry identity, state and failure category; output
+requires an authorized query. Completion backpressure rejects new admission
+before effects start, and terminal records never become active again.
+The version 2 handshake is rejected; persisted profile/session formats are
+unchanged by this wire-version transition.
 Download activation commands report a preparation operation. That operation
 completes only when the matching native-profile offer has been admitted; it does
 not claim that the file has finished. Cancellation invalidates its request token

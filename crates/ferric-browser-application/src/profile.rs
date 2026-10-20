@@ -67,7 +67,7 @@ pub(crate) struct ActiveProfile {
     id: Option<Uuid>,
     privacy: PrivacyKind,
     roots: Option<StorageRoots>,
-    _lock: Option<ProfileLock>,
+    lock: Option<ProfileLock>,
     pub(crate) contexts: Option<ContextRegistry>,
     storage_path: Option<PathBuf>,
     pub(crate) session: crate::profile_session::ProfileSession,
@@ -83,7 +83,7 @@ impl ActiveProfile {
             id: activation.id,
             privacy: activation.privacy,
             roots: activation.roots,
-            _lock: activation.lock,
+            lock: activation.lock,
             contexts: activation.contexts,
             storage_path: activation.storage_path,
         }
@@ -98,6 +98,10 @@ impl ActiveProfile {
             durable: self.storage_path.is_some(),
             roots: self.roots.clone(),
         }
+    }
+
+    pub(crate) fn persistence_lease(&self) -> Option<ProfileLock> {
+        self.lock.clone()
     }
 
     pub(crate) fn storage_path(&self) -> Option<&Path> {

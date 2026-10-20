@@ -80,7 +80,12 @@ TestCase {
         }
     }
     Component { id: spyFixture; SignalSpy {} }
-    function receipt(id, state) { return {id: id, state: state, message: state === "failed" ? "This change couldn't be saved." : state === "pending" ? "Saving library change…" : "Library change saved", detail: state === "failed" ? "<b>disk error</b>" : ""} }
+    function receipt(view, id, state) {
+        view.feedbackId = id
+        view.feedbackMessage = state === "failed" ? "This change couldn't be saved." : state === "pending" ? "Saving library change…" : "Library change saved"
+        view.feedbackDetail = state === "failed" ? "<b>disk error</b>" : ""
+        view.feedbackState = state
+    }
     function createView() {
         var view = createTemporaryObject(fixture, host.contentItem)
         verify(view); verify(waitForPolish(host))
@@ -115,14 +120,14 @@ TestCase {
     }
     function test_only_its_own_success_closes_the_editor() {
         var view=createView(); var input=edit(view,"A draft")
-        view.feedback=receipt("one","pending"); view.mutationAccepted("one","bookmark","internal-record-123","A draft",false)
+        receipt(view,"one","pending"); view.mutationAccepted("one","bookmark","internal-record-123","A draft",false)
         verify(input.visible); verify(input.readOnly)
-        view.feedback=receipt("one","failed"); verify(input.visible); compare(input.text,"A draft"); verify(!input.readOnly)
+        receipt(view,"one","failed"); verify(input.visible); compare(input.text,"A draft"); verify(!input.readOnly)
         var feedback=findChild(view,"libraryOperationFeedback")
         verify(feedback.failed); verify(!findChild(feedback,"managerFeedbackDetails").visible)
-        view.feedback=receipt("two","pending"); view.mutationAccepted("two","bookmark","internal-record-123","A draft",false)
-        view.feedback=receipt("other","succeeded"); verify(input.visible)
-        view.feedback=receipt("two","succeeded"); tryCompare(input,"visible",false)
+        receipt(view,"two","pending"); view.mutationAccepted("two","bookmark","internal-record-123","A draft",false)
+        receipt(view,"other","succeeded"); verify(input.visible)
+        receipt(view,"two","succeeded"); tryCompare(input,"visible",false)
     }
     function test_background_row_update_preserves_edit_and_selection() {
         var view=createView(); var input=edit(view,"Keep this draft")
@@ -147,13 +152,13 @@ TestCase {
         keyClick(Qt.Key_Return)
         compare(deleted.count, 1)
         compare(deleted.signalArguments[0][1], "internal-record-123")
-        view.feedback = receipt("delete-one", "pending")
+        receipt(view,"delete-one", "pending")
         view.mutationAccepted("delete-one", "bookmark", "internal-record-123", "", true)
         var coveringDialog = null
         if (row.cover === "before-feedback")
             coveringDialog = createTemporaryObject(coveringDialogFixture, host.contentItem)
         records.remove(0)
-        view.feedback = receipt("delete-one", "succeeded")
+        receipt(view,"delete-one", "succeeded")
         // No event processing between feedback and the new modal: ownership
         // must be checked when the queued restoration actually runs.
         if (row.cover === "before-timer")

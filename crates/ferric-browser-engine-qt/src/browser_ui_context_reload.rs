@@ -1,10 +1,10 @@
 //! A validated reload waits for its application-owned context disk operation.
 use super::{CxxQtType, Pin, QString, qobject};
-use crate::single_flight::{Poll, SingleFlightWorker, SubmitError};
 use ferric_browser_application::{
     ConfigurationLayers, ConfigurationReservation, ContextReloadEffect, ContextReloadJob,
 };
 use ferric_browser_config::{ContextsConfig, RuntimeOverrides};
+use ferric_browser_runtime::worker::{Poll, SingleFlightWorker, SubmitError};
 use serde_json::Value;
 use std::path::PathBuf;
 
@@ -47,7 +47,13 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         publication: ConfigReloadPublication,
     ) -> Result<(), String> {
-        if self.as_ref().rust().pending_context_reload.is_some() {
+        if self
+            .as_ref()
+            .rust()
+            .configuration_io
+            .pending_context_reload
+            .is_some()
+        {
             return Err("Settings are already being reloaded.".into());
         }
         let previous = self.as_ref().current_contexts_config()?;
@@ -74,10 +80,11 @@ impl qobject::BrowserUi {
                 .map_err(|error| error.to_string())?;
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            if this.context_reload_worker.is_none() {
-                this.context_reload_worker = Some(ContextReloadWorker::spawn()?);
+            if this.configuration_io.context_reload_worker.is_none() {
+                this.configuration_io.context_reload_worker = Some(ContextReloadWorker::spawn()?);
             }
             let submitted = this
+                .configuration_io
                 .context_reload_worker
                 .as_mut()
                 .ok_or("Context reload is unavailable.")?
@@ -89,14 +96,14 @@ impl qobject::BrowserUi {
                     return Err("The context update is busy. Try reloading settings again.".into());
                 }
                 Err(SubmitError::Stopped) => {
-                    this.context_reload_worker = None;
+                    this.configuration_io.context_reload_worker = None;
                     return Err(
                         "The context update could not start. Try reloading settings again.".into(),
                     );
                 }
             }
             let announce = publication.announce;
-            this.pending_context_reload = Some(PendingContextReload {
+            this.configuration_io.pending_context_reload = Some(PendingContextReload {
                 publication,
                 reservation,
             });
@@ -115,6 +122,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .configuration_io
             .context_reload_worker
             .as_mut()
             .map(ContextReloadWorker::poll);
@@ -126,6 +134,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .configuration_io
                     .context_reload_worker = None;
                 Err("The context update could not finish. Try reloading settings again.".into())
             }
@@ -135,6 +144,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .configuration_io
             .pending_context_reload
             .take();
         let Some(pending) = pending else {
@@ -181,7 +191,11 @@ impl qobject::BrowserUi {
         if let Some(profile) = this.profile_open_effect.as_mut() {
             profile.config_sources.clone_from(&sources);
         }
-        this.config_watch
+        if let Some(state) = this.state.as_ref() {
+            sources.extend(state.userscript_watch_sources());
+        }
+        this.configuration_io
+            .config_watch
             .refresh_sources(&publication.path, &sources);
         drop(rust);
         self.as_mut()

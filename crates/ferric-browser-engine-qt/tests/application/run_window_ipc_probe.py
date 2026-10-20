@@ -104,7 +104,7 @@ def main():
                         break
                     assert time.monotonic() < deadline, 'socket unavailable'
                     time.sleep(0.05)
-                rpc('hello', {'protocol_major': 2, 'protocol_minor': 0, 'client': 'live-owner-probe'})
+                rpc('hello', {'protocol_major': 3, 'protocol_minor': 0, 'client': 'live-owner-probe'})
 
                 def ready_windows():
                     return rpc('windows.query', {}, allow_busy=True)

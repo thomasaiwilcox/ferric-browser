@@ -2,12 +2,13 @@
 
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use crate::OperationUpdate;
 
 impl qobject::BrowserUi {
     pub(super) fn ipc_operation_cancel(
         mut self: Pin<&mut Self>,
         params: &Value,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, PublicError> {
         let object = params
             .as_object()
             .ok_or_else(|| "operations.cancel params must be an object".to_owned())?;
@@ -18,22 +19,31 @@ impl qobject::BrowserUi {
             .ok_or_else(|| "operations.cancel requires operation_id".to_owned())?;
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        if !this.operation_states.contains_key(id) {
-            return Err("operation was not found".into());
+        let record = this.operation(id).ok_or_else(|| {
+            PublicError::new(
+                ferric_browser_ipc::ErrorCode::NotFound,
+                "The operation was not found.",
+                "unknown or expired operation",
+            )
+        })?;
+        if record.state.is_terminal() || !record.cancellable {
+            return Err(PublicError::new(
+                if record.state.is_terminal() {
+                    ferric_browser_ipc::ErrorCode::InvalidArgument
+                } else {
+                    ferric_browser_ipc::ErrorCode::Unsupported
+                },
+                "The operation can no longer be cancelled.",
+                "operation cancellation boundary",
+            ));
         }
-        if this
-            .operation_states
-            .get(id)
-            .is_some_and(|status| operation_is_terminal(status))
-        {
-            return Err("operation is no longer cancellable".into());
-        }
-        if let Ok(values) = this.userscript_cancellations.lock()
+        this.set_operation(id.to_owned(), OperationUpdate::cancelled());
+        if let Ok(values) = this.processes.userscript_cancellations.lock()
             && let Some(cancellation) = values.get(id)
         {
             cancellation.store(true, Ordering::Release);
         }
-        if let Ok(values) = this.spawn_cancellations.lock()
+        if let Ok(values) = this.processes.spawn_cancellations.lock()
             && let Some(cancellation) = values.get(id)
         {
             cancellation.store(true, Ordering::Release);
@@ -45,14 +55,23 @@ impl qobject::BrowserUi {
         if download_cancelled {
             super::browser_ui_download_requests::finish_pending_download_operation(
                 this,
-                "cancelled",
+                OperationUpdate::cancelled(),
             );
         }
-        cancel_pending_selection_operation(this, id);
-        if let Some(status) = this.operation_states.get_mut(id) {
-            *status = "cancelled".into();
+        let selector_cancelled = this
+            .configuration_io
+            .pending_selector_validation
+            .as_ref()
+            .is_some_and(|pending| pending.operation_id.as_deref() == Some(id));
+        if selector_cancelled {
+            this.configuration_io.pending_selector_validation.take();
         }
+        cancel_pending_selection_operation(this, id);
         drop(rust);
+        if selector_cancelled {
+            self.as_mut()
+                .set_selector_validation_request(QString::default());
+        }
         if download_cancelled {
             self.as_mut()
                 .set_status_text(QString::from("Download request cancelled"));

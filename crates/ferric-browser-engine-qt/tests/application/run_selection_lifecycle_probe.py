@@ -100,7 +100,7 @@ def run_case(executable, case):
                             break
                         assert app.poll() is None and time.monotonic() < deadline
                         time.sleep(.02)
-                    rpc('hello', dict(protocol_major=2, protocol_minor=0, client='selection-lifecycle-probe'))
+                    rpc('hello', dict(protocol_major=3, protocol_minor=0, client='selection-lifecycle-probe'))
                     wait_for(lambda: rpc('tabs.query', {'active_only': True}), lambda value: any(row.get('title') == 'Selection ready' for row in value.get('tabs', [])))
                     command('mode-enter', {'mode': 'insert'})
                     # Stop the page's startup focus assistance, then establish
@@ -132,7 +132,7 @@ def run_case(executable, case):
                         assert entered.wait(3), 'renderer barrier did not enter'
                         first = command('send', {'target':'fixture','selection':True,'send_subject':'selection'})
                         first_id = first['operation_id']
-                        assert next(row for row in operations() if row['operation_id']==first_id)['status']=='selection pending'
+                        assert next(row for row in operations() if row['operation_id']==first_id)['status']=='running'
                         if case == 'cancel':
                             rpc('operations.cancel', {'operation_id':first_id})
                             second_id = None

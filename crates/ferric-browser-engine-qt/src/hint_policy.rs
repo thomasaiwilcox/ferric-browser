@@ -174,7 +174,7 @@ pub(super) fn hint_uses_url_action(
 
 /// Parses the legacy command arguments into named, validated hint options.
 pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions, String> {
-    let mut family = "all".to_owned();
+    let mut family = "actions".to_owned();
     let mut family_seen = false;
     let mut rapid = false;
     let mut target = "current".to_owned();
@@ -185,8 +185,8 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
     let mut index = 0;
     while index < command.arguments.len() {
         match command.arguments[index].as_str() {
-            value @ ("links" | "all" | "inputs" | "buttons" | "images" | "media"
-            | "scrollables" | "regions" | "surfaces")
+            value @ ("links" | "all" | "actions" | "focus" | "inputs" | "buttons" | "images"
+            | "media" | "scrollables" | "regions" | "surfaces")
                 if !family_seen =>
             {
                 value.clone_into(&mut family);
@@ -230,13 +230,13 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
                     return Err("hint script was specified more than once".into());
                 }
             }
-            "links" | "all" | "inputs" | "buttons" | "images" | "media" | "scrollables"
-            | "regions" | "surfaces" => {
+            "links" | "all" | "actions" | "focus" | "inputs" | "buttons" | "images" | "media"
+            | "scrollables" | "regions" | "surfaces" => {
                 return Err("hint family was specified more than once".into());
             }
             _ => {
                 return Err(
-                    "hint expects [--target TARGET] [--rapid] [--script NAME] [--first] [--index N] [links|all|inputs|buttons|images|media|scrollables|regions|surfaces]; pointer requires a direct local command and explicit family".into(),
+                    "hint expects [--target TARGET] [--rapid] [--script NAME] [--first] [--index N] [actions|focus|links|all|inputs|buttons|images|media|scrollables|regions|surfaces]; pointer requires a direct local command and explicit family".into(),
                 );
             }
         }
@@ -281,6 +281,11 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
     }
     if target != "userscript" && script.is_some() {
         return Err("--script is only valid with the userscript hint target".into());
+    }
+    if family == "focus" && (rapid || target != "current" || script.is_some()) {
+        return Err(
+            "hint focus supports only current-target focus and cannot use rapid or script".into(),
+        );
     }
     if target == "pointer"
         && (!family_seen || rapid || first || requested_index.is_some() || script.is_some())
@@ -494,6 +499,33 @@ mod tests {
             })
             .is_err()
         );
+    }
+
+    #[test]
+    fn action_default_and_explicit_focus_options_are_unambiguous() {
+        let parse = |arguments: &[&str]| {
+            parse_hint_options(&ParsedCommand {
+                name: "hint".into(),
+                arguments: arguments.iter().map(|value| (*value).into()).collect(),
+            })
+        };
+        assert_eq!(parse(&[]).unwrap().family, "actions");
+        assert_eq!(parse(&["all"]).unwrap().family, "all");
+        assert_eq!(parse(&["actions"]).unwrap().family, "actions");
+        let focus = parse(&["focus", "--first", "--index", "2"]).unwrap();
+        assert_eq!(focus.family, "focus");
+        assert!(focus.first);
+        assert_eq!(focus.index, 2);
+        for arguments in [
+            vec!["focus", "--rapid"],
+            vec!["focus", "--target", "tab"],
+            vec!["focus", "--target", "pointer"],
+            vec!["focus", "--target", "choose"],
+            vec!["focus", "--target", "userscript", "--script", "reader"],
+            vec!["actions", "focus"],
+        ] {
+            assert!(parse(&arguments).is_err(), "{arguments:?}");
+        }
     }
 
     #[test]

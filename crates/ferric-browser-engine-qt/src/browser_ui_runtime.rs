@@ -1,9 +1,9 @@
 use super::{
-    ActionRegistry, ActionSource, CommandSource, Config, CxxQtType, Duration, Event,
-    HyprlandRequest, HyprlandWorker, Instant, ParsedCommand, Pin, QString, StorageRequest,
-    SubmitError, ValidatedUrl, Value, configured_switcher_action_values, current_target,
-    elapsed_ms, hyprland, is_safe_history_url, parse_external_action_id, parse_switcher_generation,
-    qobject, switcher_action_allowed, switcher_default_action, thread, typed_ipc_action,
+    ActionRegistry, ActionSource, CommandSource, CxxQtType, Duration, Event, HyprlandRequest,
+    HyprlandWorker, Instant, ParsedCommand, Pin, QString, StorageRequest, SubmitError,
+    ValidatedUrl, Value, configured_switcher_action_values, current_target, elapsed_ms, hyprland,
+    is_safe_history_url, parse_external_action_id, parse_switcher_generation, qobject,
+    switcher_action_allowed, switcher_default_action, thread, typed_ipc_action,
     validate_switcher_generation,
 };
 
@@ -59,9 +59,15 @@ impl qobject::BrowserUi {
                 .set_status_text(QString::from("Hyprland workspace selector is invalid"));
             return false;
         }
-        let config = serde_json::from_str::<Config>(&self.as_ref().rust().config_json.to_string())
-            .unwrap_or_default()
-            .hyprland;
+        let Some(config) = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .map(|state| state.configuration().hyprland.clone())
+        else {
+            return false;
+        };
         let adapter = hyprland::HyprlandAdapter::from_config(&config);
         let status = adapter.status();
         self.as_mut()
@@ -108,9 +114,15 @@ impl qobject::BrowserUi {
                 .set_status_text(QString::from("Hyprland workspace selector is invalid"));
             return false;
         }
-        let config = serde_json::from_str::<Config>(&self.as_ref().rust().config_json.to_string())
-            .unwrap_or_default()
-            .hyprland;
+        let Some(config) = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .map(|state| state.configuration().hyprland.clone())
+        else {
+            return false;
+        };
         let adapter = hyprland::HyprlandAdapter::from_config(&config);
         let status = adapter.status();
         self.as_mut()
@@ -148,8 +160,15 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn hyprland_browser_clients(mut self: Pin<&mut Self>) -> QString {
-        let config = serde_json::from_str::<Config>(&self.as_ref().rust().config_json.to_string())
-            .unwrap_or_default();
+        let Some(config) = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .map(|state| state.configuration().clone())
+        else {
+            return QString::default();
+        };
         let adapter = hyprland::HyprlandAdapter::from_config(&config.hyprland);
         let status = adapter.status();
         self.as_mut()
@@ -417,10 +436,10 @@ impl qobject::BrowserUi {
             let stored_url = (|| -> Result<String, String> {
                 let binding = self.as_ref();
                 let rust = binding.rust();
-                if rust.storage_library_dirty.get() {
+                if rust.library.storage_library_dirty.get() {
                     return Err("switcher entries are refreshing; retry the selection".to_owned());
                 }
-                let library = rust.storage_library.as_ref().ok_or_else(|| {
+                let library = rust.library.storage_library.as_ref().ok_or_else(|| {
                     "stored switcher entries are still loading; retry the selection".to_owned()
                 })?;
                 match kind {
@@ -629,10 +648,10 @@ impl qobject::BrowserUi {
         let Some(tab) = this.tab_ids.get(index as usize).copied() else {
             return false;
         };
-        if this.scroll_positions.get(&tab).copied() == Some((x, y)) {
+        if this.navigation.scroll_positions.get(&tab).copied() == Some((x, y)) {
             return true;
         }
-        this.scroll_positions.insert(tab, (x, y));
+        this.navigation.scroll_positions.insert(tab, (x, y));
         this.checkpoint.mark_dirty(elapsed_ms(this.binding_clock));
         true
     }
@@ -642,7 +661,7 @@ impl qobject::BrowserUi {
         let due = {
             let pinned = self.as_ref();
             let rust = pinned.rust();
-            rust.session_saves.is_empty()
+            rust.library.session_saves.is_empty()
                 && rust.checkpoint.restore_pending.is_none()
                 && rust.checkpoint.dirty
                 && (rust
@@ -665,7 +684,7 @@ impl qobject::BrowserUi {
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
             self.as_mut().poll_storage_library();
-            if self.as_ref().rust().session_saves.is_empty() {
+            if self.as_ref().rust().library.session_saves.is_empty() {
                 return !self.as_ref().rust().checkpoint.dirty;
             }
             if Instant::now() >= deadline {
@@ -685,7 +704,10 @@ impl qobject::BrowserUi {
             let (pending, error) = {
                 let this = self.as_ref();
                 let rust = this.rust();
-                (rust.storage_flush_pending, rust.storage_flush_error.clone())
+                (
+                    rust.library.storage_flush_pending,
+                    rust.library.storage_flush_error.clone(),
+                )
             };
             if let Some(error) = error {
                 self.set_status_text(QString::from(format!(
@@ -754,8 +776,8 @@ impl qobject::BrowserUi {
             Ok(()) => {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                this.storage_flush_pending = true;
-                this.storage_flush_error = None;
+                this.library.storage_flush_pending = true;
+                this.library.storage_flush_error = None;
                 drop(rust);
                 if !self.as_mut().wait_for_storage_flush() {
                     return false;
@@ -817,6 +839,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .library
                     .session_checkpoint_clear_pending = true;
                 true
             }

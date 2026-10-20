@@ -1,4 +1,4 @@
-use super::{ConfigurationLayers, CxxQtType, ParsedCommand, Pin, Value, qobject};
+use super::{CxxQtType, ParsedCommand, Pin, Value, qobject};
 
 impl qobject::BrowserUi {
     pub(super) fn execute_runtime_config_command(
@@ -39,8 +39,16 @@ impl qobject::BrowserUi {
             return Err("configuration key is empty, too long, or unsafe".into());
         }
 
-        let mut persistent = self.as_ref().rust().runtime_overrides.clone();
-        let mut temporary_layer = self.as_ref().rust().temporary_overrides.clone();
+        let mut layers = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .ok_or_else(|| "application state is unavailable".to_owned())?
+            .configuration_layers()
+            .clone();
+        let mut persistent = layers.runtime.clone();
+        let mut temporary_layer = layers.temporary.clone();
         let changed = if command.name == "set" {
             let literal = literal.ok_or_else(|| "set requires KEY=VALUE".to_owned())?;
             let layer = if temporary {
@@ -97,14 +105,8 @@ impl qobject::BrowserUi {
         } else {
             None
         };
-        let layers = ConfigurationLayers {
-            base: serde_json::from_value(self.as_ref().rust().base_config.clone())
-                .map_err(|error| format!("base configuration is invalid: {error}"))?,
-            profile: self.as_ref().rust().profile_overrides.clone(),
-            runtime: persistent.clone(),
-            command_line: self.as_ref().rust().cli_overrides.clone(),
-            temporary: temporary_layer.clone(),
-        };
+        layers.runtime = persistent.clone();
+        layers.temporary = temporary_layer.clone();
         let scope = if temporary {
             "temporary"
         } else if persistent_storage {
@@ -143,6 +145,11 @@ impl qobject::BrowserUi {
                 "scope": scope
             }));
         };
+        if result.get("status").and_then(Value::as_str) == Some("pending-persistence") {
+            return Ok(
+                serde_json::json!({"status":"pending-persistence", "key": key, "scope":scope}),
+            );
+        }
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();

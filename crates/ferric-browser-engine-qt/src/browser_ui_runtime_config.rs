@@ -6,13 +6,15 @@ use super::{
     NetworkPolicyWorker, ParseInput, ParsedCommand, PathBuf, Pin, PortalProbeWorker, PrintWorker,
     ProfileDeleteWorker, ProfileListWorker, ProfileMutationResult, ProfilePreviewWorker, QString,
     ReducedMotionProbeWorker, RuntimeOverrides, SiteExperiment, SystemFontScaleProbeWorker,
-    UserscriptManagerResult, UserscriptManagerWorker, Value, cleanup_print_artifact,
-    configured_bindings, desktop_portals, desktop_preferences, parse_chain, parse_ipc_mode,
-    profile_from_list_values, qobject, safe_ipc_url,
+    UserscriptManagerResult, Value, cleanup_print_artifact, configured_bindings, desktop_portals,
+    desktop_preferences, parse_chain, parse_ipc_mode, profile_from_list_values, qobject,
+    safe_ipc_url,
 };
 
 impl qobject::BrowserUi {
     pub(super) fn poll_config(mut self: Pin<&mut Self>) {
+        self.as_mut().poll_configuration_publication();
+        self.as_mut().poll_peer_configuration();
         self.as_mut().expire_selector_validation();
         self.as_mut().poll_diagnostics();
         self.as_mut().poll_context_configuration_reload();
@@ -160,6 +162,7 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut()
                 .get_mut()
+                .configuration_io
                 .network_policy_worker
                 .as_mut()
                 .and_then(NetworkPolicyWorker::poll)
@@ -170,11 +173,13 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .configuration_io
                 .network_policy_reload_pending;
             self.as_mut()
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .configuration_io
                 .network_policy_reload_pending = false;
             match result {
                 Ok(policy) => {
@@ -210,16 +215,22 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut()
                 .get_mut()
-                .userscript_manager_worker
+                .state
                 .as_mut()
-                .and_then(UserscriptManagerWorker::poll)
+                .and_then(super::BrowserApplication::poll_userscript_job)
         };
         if let Some(result) = userscript_manager_result {
             match result {
-                UserscriptManagerResult::Inventory(result) => {
+                UserscriptManagerResult::Inventory(result, _) => {
                     self.as_mut().set_userscript_inventory_pending(false);
                     match result {
-                        Ok(scripts) => self.as_mut().set_userscript_inventory_rows(&scripts),
+                        Ok(scripts) => {
+                            if self.as_ref().active_profile_is_transient() {
+                                self.as_mut().clear_userscript_inventory_rows();
+                            } else {
+                                self.as_mut().set_userscript_inventory_rows(&scripts);
+                            }
+                        }
                         Err(error) => {
                             self.as_mut().userscript_inventory_failed(&error);
                         }
@@ -468,6 +479,7 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut()
                 .get_mut()
+                .configuration_io
                 .config_write_worker
                 .as_mut()
                 .and_then(ConfigWriteWorker::poll)
@@ -523,7 +535,11 @@ impl qobject::BrowserUi {
         }
         let theme_changed = {
             let mut rust = self.as_mut().rust_mut();
-            rust.as_mut().get_mut().theme_watch.changed()
+            rust.as_mut()
+                .get_mut()
+                .configuration_io
+                .theme_watch
+                .changed()
         };
         if theme_changed {
             let config = self.as_ref().rust().config.clone();
@@ -532,29 +548,51 @@ impl qobject::BrowserUi {
                     .set_status_text(QString::from("Theme palette reloaded"));
             }
         }
-        let path_text = self.as_ref().rust().config_path.to_string();
-        if path_text.is_empty() {
-            return;
-        }
-        if self.as_ref().rust().pending_config_edit.is_some() {
-            return;
-        }
-        let path = PathBuf::from(path_text);
         let now = Instant::now();
+        let mut scripts_changed = false;
         let should_reload = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            if this.config_watch.changed() && this.config_watch.pending_since().is_none() {
-                this.config_watch.mark_pending(now);
+            if this.configuration_io.config_watch.changed() {
+                // Script edits observed during a pending configuration reload
+                // still require a fresh catalog. Consuming their signatures
+                // without scheduling discovery can strand the initial catalog.
+                scripts_changed = true;
+                if this.configuration_io.config_watch.pending_since().is_none() {
+                    this.configuration_io.config_watch.mark_pending(now);
+                }
             }
-            this.config_watch
+            this.configuration_io
+                .config_watch
                 .pending_since()
                 .is_some_and(|since| now.duration_since(since) >= Duration::from_millis(150))
         };
+        if scripts_changed {
+            // Keep the validated immutable snapshot until the application
+            // publishes the refresh result. A filesystem notification after an
+            // install must not temporarily erase its registered actions.
+            self.as_mut().refresh_userscript_inventory();
+        }
+        let path_text = self.as_ref().rust().config_path.to_string();
+        if path_text.is_empty() {
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .configuration_io
+                .config_watch
+                .clear_pending();
+            return;
+        }
+        if self.as_ref().rust().processes.pending_config_edit.is_some() {
+            return;
+        }
+        let path = PathBuf::from(path_text);
         let reload_result = {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut()
                 .get_mut()
+                .configuration_io
                 .config_reload_worker
                 .as_mut()
                 .and_then(ConfigReloadWorker::poll)
@@ -612,7 +650,10 @@ impl qobject::BrowserUi {
                     let validation_items = selector_validation_items(&layers);
                     let validation_fingerprint =
                         serde_json::to_string(&validation_items).unwrap_or_default();
-                    let sources = result.loaded.sources;
+                    let mut sources = result.loaded.sources;
+                    if let Some(state) = self.as_ref().rust().state.as_ref() {
+                        sources.extend(state.userscript_watch_sources());
+                    }
                     let profiles_path = result.profiles_path;
                     let publication = super::ConfigReloadPublication {
                         candidate,
@@ -628,7 +669,11 @@ impl qobject::BrowserUi {
                     };
                     if !validation_items.is_empty()
                         && validation_fingerprint
-                            != self.as_ref().rust().active_selector_fingerprint
+                            != self
+                                .as_ref()
+                                .rust()
+                                .configuration_io
+                                .active_selector_fingerprint
                     {
                         self.as_mut().begin_selector_validation(
                             validation_fingerprint,
@@ -662,16 +707,31 @@ impl qobject::BrowserUi {
             }
         }
         if should_reload
-            && self.as_ref().rust().pending_context_reload.is_none()
-            && self.as_ref().rust().pending_selector_validation.is_none()
+            && self
+                .as_ref()
+                .rust()
+                .configuration_io
+                .pending_context_reload
+                .is_none()
+            && self
+                .as_ref()
+                .rust()
+                .configuration_io
+                .pending_selector_validation
+                .is_none()
         {
-            let announce = self.as_ref().rust().config_reload_requested_by_user;
+            let announce = self
+                .as_ref()
+                .rust()
+                .configuration_io
+                .config_reload_requested_by_user;
             let profile_name = self.as_ref().rust().profile_name.clone();
             let request = self
                 .as_mut()
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .configuration_io
                 .config_reload_worker
                 .as_mut()
                 .and_then(|worker| {
@@ -686,8 +746,8 @@ impl qobject::BrowserUi {
             if request.is_some() {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                this.config_watch.clear_pending();
-                this.config_reload_requested_by_user = false;
+                this.configuration_io.config_watch.clear_pending();
+                this.configuration_io.config_reload_requested_by_user = false;
             }
             if let Some(Err(error)) = request {
                 self.report_config_reload_failure(&error, announce);
@@ -866,8 +926,15 @@ impl qobject::BrowserUi {
             None
         };
         let layers = ConfigurationLayers {
-            base: serde_json::from_value(self.as_ref().rust().base_config.clone())
-                .map_err(|error| format!("base configuration is invalid: {error}"))?,
+            base: self
+                .as_ref()
+                .rust()
+                .state
+                .as_ref()
+                .ok_or("base configuration is unavailable")?
+                .configuration_layers()
+                .base
+                .clone(),
             profile: self.as_ref().rust().profile_overrides.clone(),
             runtime: persistent.clone(),
             command_line: self.as_ref().rust().cli_overrides.clone(),

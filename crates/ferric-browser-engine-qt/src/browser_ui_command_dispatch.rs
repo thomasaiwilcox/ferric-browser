@@ -1,11 +1,9 @@
 use crate::browser_ui_command_workflows::CommandDispatchControl;
+use ferric_browser_core::CommonCommandExecutor;
 
 use super::{
     CommandInvocation, CxxQtType, ParsedCommand, Pin, QString, RuntimeDispatch,
-    binding_command_parameters, is_library_command, is_link_clean_command,
-    is_reopen_in_window_command, is_scroll_command, is_scroll_target_command,
-    is_search_next_command, is_tab_clone_command, is_tab_detach_command, is_tab_give_command,
-    is_tab_undo_command, is_yank_command, is_zoom_command, learning_mode_request,
+    binding_command_parameters, is_library_command, is_zoom_command, learning_mode_request,
     normalize_active_tab_command, qobject, selection_yank_command,
 };
 
@@ -38,6 +36,42 @@ impl qobject::BrowserUi {
                 CommandDispatchControl::Continue => continue,
                 CommandDispatchControl::Failed => return false,
                 CommandDispatchControl::Unhandled => {}
+            }
+            if let Some(executor) = registry
+                .resolve(&command.name)
+                .ok()
+                .and_then(ferric_browser_core::CommandDefinition::common_executor)
+            {
+                // Generic spawn commands retain registry mode restrictions.
+                // Native action entry points have their own eligibility rules.
+                if executor == CommonCommandExecutor::Spawn
+                    && let Err(error) = registry.validate(&command, self.as_ref().rust().core_mode)
+                {
+                    self.set_status_text(QString::from(error.to_string()));
+                    return false;
+                }
+                if let Err(error) = self
+                    .as_mut()
+                    .execute_common_command(executor, &command, None)
+                {
+                    // These handlers historically exposed their local detail in
+                    // the owning window. IPC still receives only the safe text.
+                    let message = if error.code() == ferric_browser_ipc::ErrorCode::Engine {
+                        error.diagnostic_context()
+                    } else {
+                        error.user_message()
+                    };
+                    self.set_status_text(QString::from(message));
+                    return false;
+                }
+                if executor == CommonCommandExecutor::ScrollTarget
+                    && command.arguments == ["select"]
+                {
+                    // Interactive selection owns the next input. As before,
+                    // discard the remaining chain instead of running it early.
+                    return true;
+                }
+                continue;
             }
             if let Some(result) = self.as_mut().dispatch_start_page_command(&command) {
                 if !result {
@@ -162,13 +196,9 @@ impl qobject::BrowserUi {
                     }
                 };
                 if site {
-                    self.as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .pending_engine_action = Some("blocking-toggle-site".into());
-                    self.as_mut()
-                        .set_status_text(QString::from("Site blocker toggle requested"));
+                    if !self.as_mut().toggle_blocking_site() {
+                        return false;
+                    }
                 } else {
                     let enabled = !self.as_ref().rust().blocking_enabled;
                     self.as_mut().set_blocking_enabled(enabled);
@@ -465,78 +495,7 @@ impl qobject::BrowserUi {
                     .set_status_text(QString::from("Library command executed"));
                 continue;
             }
-            if is_tab_undo_command(&command.name) {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_tab_undo_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if is_tab_clone_command(&command.name) {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_tab_clone_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if is_reopen_in_window_command(&command.name) {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_reopen_in_window_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if is_tab_detach_command(&command.name) {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_tab_detach_command(&command, None) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if is_tab_give_command(&command.name) {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_tab_give_command(&command, None) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if command.name == "search" {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_search_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
+
             if is_zoom_command(&command.name) {
                 let mode = self.as_ref().rust().core_mode;
                 if let Err(error) = registry.validate(&command, mode) {
@@ -549,64 +508,7 @@ impl qobject::BrowserUi {
                 }
                 continue;
             }
-            if is_search_next_command(&command.name) {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_search_next_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if is_scroll_command(&command.name) {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_scroll_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if is_scroll_target_command(&command.name) {
-                match self.as_mut().execute_scroll_target_command(&command) {
-                    Ok(_) if command.arguments.as_slice() == ["select"] => return true,
-                    Ok(_) => continue,
-                    Err(error) => {
-                        self.set_status_text(QString::from(error));
-                        return false;
-                    }
-                }
-            }
-            if is_link_clean_command(&command.name) {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_link_clean_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if is_yank_command(&command.name) {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_yank_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
+
             if command.name == "caret-yank" {
                 let mode = self.as_ref().rust().core_mode;
                 if let Err(error) = registry.validate(&command, mode) {
@@ -815,66 +717,7 @@ impl qobject::BrowserUi {
                 }
                 continue;
             }
-            if command.name == "print-pdf" {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_print_pdf_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if command.name == "save-page" {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_save_page_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if command.name == "view-source" {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_view_source_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if command.name == "devtools" {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_devtools_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if command.name == "print" {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_print_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
+
             if matches!(command.name.as_str(), "permissions" | "permission-reset") {
                 if let Err(error) = self.as_mut().execute_permission_command(&command) {
                     self.set_status_text(QString::from(error));
@@ -896,18 +739,7 @@ impl qobject::BrowserUi {
                 self.as_mut().set_status_text(QString::from("Downloads"));
                 continue;
             }
-            if matches!(command.name.as_str(), "download-open" | "download-show") {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_download_desktop_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
+
             if matches!(
                 command.name.as_str(),
                 "download-cancel" | "download-pause" | "download-resume" | "download-retry"
@@ -923,42 +755,7 @@ impl qobject::BrowserUi {
                 }
                 continue;
             }
-            if command.name == "spawn" {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_spawn_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if command.name == "script-run" {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_script_run_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
-            if command.name == "jseval" {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
-                if let Err(error) = self.as_mut().execute_jseval_command(&command) {
-                    self.set_status_text(QString::from(error));
-                    return false;
-                }
-                continue;
-            }
+
             self.as_mut().note_repeatable_command(&command);
             let effects = {
                 if self.as_ref().rust().state.is_none() {

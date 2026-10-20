@@ -415,7 +415,11 @@ impl qobject::BrowserUi {
             ferric_browser_core::MixedKeyDecisionReason::NoPageKeyMapping => "unmapped-key",
         });
         let policy = &self.rust().mixed_policy;
-        let site_rule_config = serde_json::from_value::<Config>(self.rust().config.clone()).ok();
+        let site_rule_config = self
+            .rust()
+            .state
+            .as_ref()
+            .map(ferric_browser_application::BrowserApplication::configuration);
         let site_rule_for =
             |setting: &str, source: Option<ferric_browser_core::MixedPolicySource>| {
                 if source != Some(ferric_browser_core::MixedPolicySource::Site) {

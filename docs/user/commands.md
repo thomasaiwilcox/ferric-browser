@@ -266,7 +266,7 @@ Exit and recovery: Use the opposite traversal direction to return. Stop can canc
 
 Set or adjust the current tab's page zoom factor.
 
-Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
+Normal-mode H and L go back and forward through the current tab history. Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
 
 Exit and recovery: Select scroll-target auto to leave a manually chosen container. Reset zoom when text or controls become difficult to use.
 
@@ -290,7 +290,7 @@ Exit and recovery: Escape cancels search entry or clears the active search throu
 
 Scroll the resolved page scroll target in one direction.
 
-Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
+Normal-mode H and L go back and forward through the current tab history. Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
 
 Exit and recovery: Select scroll-target auto to leave a manually chosen container. Reset zoom when text or controls become difficult to use.
 
@@ -298,7 +298,7 @@ Exit and recovery: Select scroll-target auto to leave a manually chosen containe
 
 Scroll the resolved page scroll target by viewport pages.
 
-Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
+Normal-mode H and L go back and forward through the current tab history. Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
 
 Exit and recovery: Select scroll-target auto to leave a manually chosen container. Reset zoom when text or controls become difficult to use.
 
@@ -306,7 +306,7 @@ Exit and recovery: Select scroll-target auto to leave a manually chosen containe
 
 Scroll the resolved page scroll target to its top or bottom.
 
-Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
+Normal-mode H and L go back and forward through the current tab history. Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
 
 Exit and recovery: Select scroll-target auto to leave a manually chosen container. Reset zoom when text or controls become difficult to use.
 
@@ -314,7 +314,7 @@ Exit and recovery: Select scroll-target auto to leave a manually chosen containe
 
 Select, clear, inspect, or pin the active page's keyboard scroll target.
 
-Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
+Normal-mode H and L go back and forward through the current tab history. Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
 
 Exit and recovery: Select scroll-target auto to leave a manually chosen container. Reset zoom when text or controls become difficult to use.
 
@@ -442,9 +442,11 @@ Exit and recovery: Escape cancels command entry or an editor decision. Remove an
 
 Label visible links and controls so you can choose one with the keyboard.
 
-Hints label visible links and controls. Type a label to select its target. f follows in the current tab; F opens a new tab. --target tab-bg opens in the background, yank copies a link, and download requests a download. --first chooses the first matching target and supports an index. Rapid hints let you select several targets.
+Hints label visible links and controls. Ordinary hint commands and the default f/F bindings use hint actions, which omits containers whose only action is keyboard focus. Type a label to select its target. f follows in the current tab; F opens a new tab. --target tab-bg opens in the background, yank copies a link, and download requests a download. --first chooses the first matching target and supports an index. Rapid hints let you select several targets.
 
-Use Tab/Shift+Tab to preview candidates, Backspace to correct a label, and the text filter on crowded pages. Hover over a label for a description. Space cycles overlapping badges in label mode; Ctrl+Space does the same in text mode. Labels stay stable while the page changes. Restart hints to include new controls that could not receive a label.
+Expand/collapse headers activate their disclosure directly. Checkboxes, radio options and native buttons activate once; text fields receive focus for editing. Use hint focus to choose a keyboard region and enter Insert so the page receives keys. Explicit hint all retains visible focus-only containers; existing custom bindings using all remain comprehensive. The actions and focus views inherit hints.selectors.all. Focus hints support --first and --index, but only the current target and no rapid mode. Hidden content inside collapsed disclosures is excluded from every view. The buttons family includes disclosure headers and native button, checkbox and radio inputs.
+
+Use Tab/Shift+Tab to preview candidates, Backspace to correct a label, and the text filter on crowded pages. Hover over a label for its intended action and target description. Space cycles overlapping badges in label mode; Ctrl+Space does the same in text mode. Labels stay stable while the page changes. Restart hints to include new controls that could not receive a label.
 
 Use hint regions to choose a named section or scrolling panel, or hint surfaces to choose a visible surface. Hint within and Search within restrict the next step to that section. Scrollable panels also offer Set scroll target; focusable surfaces offer Focus. These choices do not search offscreen content.
 
@@ -730,7 +732,7 @@ Exit and recovery: Escape exits Insert or Caret. Ctrl+Escape is the reserved rec
 
 Move the document caret by a Unicode-aware browser granularity.
 
-Caret mode moves through document text with directional, word, and line actions. Toggle selection, move to extend it, then yank to copy. The general yank command can copy a safe URL, title, or selection. edit-text sends the focused editable content to the explicitly configured editor and applies a completed result only while its document target is still valid. It does not silently choose a different text field.
+Caret mode moves through document text with directional, word, and line actions. Toggle selection, move to extend it, then yank to copy. The general yank command can copy a safe URL, title, or selection. Press yy in Normal mode, run yank url, or click Copy URL in the status bar to copy the current page address, including with a single tab. edit-text sends the focused editable content to the explicitly configured editor and applies a completed result only while its document target is still valid. It does not silently choose a different text field.
 
 Exit and recovery: Escape exits Caret or cancels a pending text operation. Use i or I for webpage editing; Ctrl+Escape recovers from Pass-through.
 
@@ -738,7 +740,7 @@ Exit and recovery: Escape exits Caret or cancels a pending text operation. Use i
 
 Toggle or set document caret selection extension.
 
-Caret mode moves through document text with directional, word, and line actions. Toggle selection, move to extend it, then yank to copy. The general yank command can copy a safe URL, title, or selection. edit-text sends the focused editable content to the explicitly configured editor and applies a completed result only while its document target is still valid. It does not silently choose a different text field.
+Caret mode moves through document text with directional, word, and line actions. Toggle selection, move to extend it, then yank to copy. The general yank command can copy a safe URL, title, or selection. Press yy in Normal mode, run yank url, or click Copy URL in the status bar to copy the current page address, including with a single tab. edit-text sends the focused editable content to the explicitly configured editor and applies a completed result only while its document target is still valid. It does not silently choose a different text field.
 
 Exit and recovery: Escape exits Caret or cancels a pending text operation. Use i or I for webpage editing; Ctrl+Escape recovers from Pass-through.
 
@@ -746,7 +748,7 @@ Exit and recovery: Escape exits Caret or cancels a pending text operation. Use i
 
 Copy a URL or other supported browser value to the clipboard.
 
-Caret mode moves through document text with directional, word, and line actions. Toggle selection, move to extend it, then yank to copy. The general yank command can copy a safe URL, title, or selection. edit-text sends the focused editable content to the explicitly configured editor and applies a completed result only while its document target is still valid. It does not silently choose a different text field.
+Caret mode moves through document text with directional, word, and line actions. Toggle selection, move to extend it, then yank to copy. The general yank command can copy a safe URL, title, or selection. Press yy in Normal mode, run yank url, or click Copy URL in the status bar to copy the current page address, including with a single tab. edit-text sends the focused editable content to the explicitly configured editor and applies a completed result only while its document target is still valid. It does not silently choose a different text field.
 
 Exit and recovery: Escape exits Caret or cancels a pending text operation. Use i or I for webpage editing; Ctrl+Escape recovers from Pass-through.
 
@@ -754,7 +756,7 @@ Exit and recovery: Escape exits Caret or cancels a pending text operation. Use i
 
 Copy the current visible document selection to the clipboard.
 
-Caret mode moves through document text with directional, word, and line actions. Toggle selection, move to extend it, then yank to copy. The general yank command can copy a safe URL, title, or selection. edit-text sends the focused editable content to the explicitly configured editor and applies a completed result only while its document target is still valid. It does not silently choose a different text field.
+Caret mode moves through document text with directional, word, and line actions. Toggle selection, move to extend it, then yank to copy. The general yank command can copy a safe URL, title, or selection. Press yy in Normal mode, run yank url, or click Copy URL in the status bar to copy the current page address, including with a single tab. edit-text sends the focused editable content to the explicitly configured editor and applies a completed result only while its document target is still valid. It does not silently choose a different text field.
 
 Exit and recovery: Escape exits Caret or cancels a pending text operation. Use i or I for webpage editing; Ctrl+Escape recovers from Pass-through.
 
@@ -762,7 +764,7 @@ Exit and recovery: Escape exits Caret or cancels a pending text operation. Use i
 
 Edit the focused plain-text control with a configured external editor.
 
-Caret mode moves through document text with directional, word, and line actions. Toggle selection, move to extend it, then yank to copy. The general yank command can copy a safe URL, title, or selection. edit-text sends the focused editable content to the explicitly configured editor and applies a completed result only while its document target is still valid. It does not silently choose a different text field.
+Caret mode moves through document text with directional, word, and line actions. Toggle selection, move to extend it, then yank to copy. The general yank command can copy a safe URL, title, or selection. Press yy in Normal mode, run yank url, or click Copy URL in the status bar to copy the current page address, including with a single tab. edit-text sends the focused editable content to the explicitly configured editor and applies a completed result only while its document target is still valid. It does not silently choose a different text field.
 
 Exit and recovery: Escape exits Caret or cancels a pending text operation. Use i or I for webpage editing; Ctrl+Escape recovers from Pass-through.
 

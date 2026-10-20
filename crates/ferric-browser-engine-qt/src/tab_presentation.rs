@@ -94,8 +94,8 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             this.tab_ids = tab_ids;
             this.tab = active_tab;
-            this.focus_observations.clear();
-            this.focus_suppressions.clear();
+            this.interaction.focus_observations.clear();
+            this.interaction.focus_suppressions.clear();
         }
         self.as_mut().set_tab_count(tab_count);
         if let Some(tab) = active_tab {

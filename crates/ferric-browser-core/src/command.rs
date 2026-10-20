@@ -20,6 +20,26 @@ pub struct ParsedCommand {
     pub arguments: Vec<String>,
 }
 
+impl ParsedCommand {
+    /// Encodes tokens for the browser command grammar. Shell syntax remains
+    /// literal data, including separators, quotes, backslashes and empty values.
+    #[must_use]
+    pub fn to_text(&self) -> String {
+        let mut text = self.name.clone();
+        for argument in &self.arguments {
+            text.push_str(" \"");
+            for character in argument.chars() {
+                if matches!(character, '\\' | '"') {
+                    text.push('\\');
+                }
+                text.push(character);
+            }
+            text.push('"');
+        }
+        text
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CommandError {
     Empty,
@@ -325,6 +345,17 @@ pub struct CommandRegistry {
 }
 
 impl CommandRegistry {
+    /// Shares immutable built-in metadata across runtime and adapter owners.
+    /// Custom registries remain independently owned through `new` and aliases.
+    #[must_use]
+    pub fn shared_default_v1() -> std::sync::Arc<Self> {
+        static REGISTRY: std::sync::OnceLock<std::sync::Arc<CommandRegistry>> =
+            std::sync::OnceLock::new();
+        REGISTRY
+            .get_or_init(|| std::sync::Arc::new(Self::default_v1()))
+            .clone()
+    }
+
     #[must_use]
     pub fn new(mut definitions: Vec<CommandDefinition>) -> Self {
         for (index, definition) in definitions.iter_mut().enumerate() {
@@ -2718,9 +2749,12 @@ impl CommandRegistry {
                 },
             ];
             command.examples = vec![
+                "hint actions".into(),
+                "hint focus".into(),
+                "hint all".into(),
                 "hint links".into(),
                 "hint --rapid --target tab-bg links".into(),
-                "hint --target choose all".into(),
+                "hint --target choose actions".into(),
                 "hint --first --index 3 inputs".into(),
                 "hint regions".into(),
                 "hint surfaces".into(),
@@ -3672,6 +3706,24 @@ pub fn validate_open_target(target: Option<&str>, clean_link: bool) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encoded_tokens_round_trip_without_creating_commands() {
+        let command = ParsedCommand {
+            name: "open".into(),
+            arguments: vec![
+                String::new(),
+                "two words".into(),
+                "a;;quit".into(),
+                "a\"b\\c".into(),
+                "$()`quoted`".into(),
+            ],
+        };
+        assert_eq!(
+            parse_chain(&command.to_text(), ParseInput::Cli).unwrap(),
+            vec![command]
+        );
+    }
 
     #[test]
     fn open_target_validation_preserves_clean_link_semantics() {

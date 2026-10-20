@@ -10,6 +10,7 @@ use std::sync::{
 #[derive(Debug)]
 pub struct ConfigurationReservation {
     gate: Arc<AtomicBool>,
+    _shared: Option<Arc<crate::profile_configuration::SharedConfiguration>>,
     revision: u64,
     profile: Option<ProfileSnapshot>,
 }
@@ -42,6 +43,10 @@ impl BrowserApplication {
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map_err(|_| ConfigError::Validation("Settings are already being reloaded.".into()))?;
         Ok(ConfigurationReservation {
+            _shared: self
+                .active_profile
+                .as_ref()
+                .map(|profile| profile.session.0.configuration.clone()),
             gate: self.configuration_reservation.clone(),
             revision: self.configuration.revision(),
             profile: self.profile_snapshot(),

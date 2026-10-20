@@ -256,6 +256,14 @@ pub(super) fn validate_hint_candidates_for_family(
     candidates: &[HintCandidate],
 ) -> Result<(), String> {
     let (maximum, expected_kind): (Option<usize>, fn(HintKind) -> bool) = match family {
+        "focus" => (Some(ferric_browser_core::MAX_HINT_CANDIDATES), |kind| {
+            kind == HintKind::Focusable
+        }),
+        "actions" => (None, |kind| {
+            kind != HintKind::Focusable
+                && (kind == HintKind::Frame
+                    || !ferric_browser_core::hint_kind_is_region_or_surface(kind))
+        }),
         "regions" => (Some(ferric_browser_core::MAX_HINT_REGIONS), |kind| {
             matches!(kind, HintKind::Region | HintKind::ScrollableRegion)
         }),
@@ -328,7 +336,13 @@ fn hint_action_label(kind: HintKind, rapid: bool, target: &str) -> &'static str 
             "ephemeral" => "Open private window",
             _ => "Open externally",
         },
-        HintIntent::Focus => "Focus",
+        HintIntent::Focus => match kind {
+            HintKind::Input
+            | HintKind::Textarea
+            | HintKind::ContentEditable
+            | HintKind::EditorFocus => "Edit",
+            _ => "Focus",
+        },
         HintIntent::SetScrollTarget => "Set scroll target",
         HintIntent::ActionPalette => "Choose action",
         _ => "Activate",
@@ -563,6 +577,26 @@ mod tests {
             validate_hint_candidates_for_family("regions", &[candidate(1, HintKind::Surface)])
                 .is_err()
         );
+
+        for kind in [
+            HintKind::Focusable,
+            HintKind::Button,
+            HintKind::Input,
+            HintKind::Aria,
+            HintKind::Frame,
+        ] {
+            assert_eq!(
+                validate_hint_candidates_for_family("focus", &[candidate(1, kind)]).is_ok(),
+                kind == HintKind::Focusable
+            );
+            assert_eq!(
+                validate_hint_candidates_for_family("actions", &[candidate(1, kind)]).is_ok(),
+                kind != HintKind::Focusable
+            );
+        }
+        let mut invalid_focus = candidate(1, HintKind::Focusable);
+        invalid_focus.href = Some("https://example.test".into());
+        assert!(validate_hint_candidates_for_family("focus", &[invalid_focus]).is_err());
 
         let too_many = (1..=257)
             .map(|id| candidate(id, HintKind::Region))

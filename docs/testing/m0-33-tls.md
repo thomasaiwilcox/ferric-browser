@@ -5,7 +5,7 @@ Updated: 2026-10-15
 Status: in-progress
 
 Requirement: AUTH-004. The request lifecycle lives in
-`FerricBrowserRuntimeRequests.qml`; native presentation lives in
+`FerricWindowRequestsController.qml`; native presentation lives in
 `FerricCertificatePrompts.qml`. URL normalization remains in the Rust adapter.
 
 Certificate failures block by default. Non-overridable errors, subresources,

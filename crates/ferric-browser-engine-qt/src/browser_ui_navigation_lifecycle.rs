@@ -5,6 +5,7 @@ use super::{
     discard_config_edit, discard_editor_request, finish_pending_selection_operation, fs,
     journey_transition_after_load, qobject, safe_ipc_url, sanitize_untrusted_title, unix_timestamp,
 };
+use crate::{FailureKind, OperationUpdate};
 
 impl qobject::BrowserUi {
     pub(super) fn clear_navigation_failure(mut self: Pin<&mut Self>) {
@@ -42,15 +43,23 @@ impl qobject::BrowserUi {
             self.as_mut()
                 .spatial_invalidated(&QString::from("target-changed"));
         }
-        self.as_mut().clear_hint_session_state();
+        // Document replacement retires page callbacks. Navigation must also
+        // exit Hint mode instead of waiting for an activation callback to do it.
+        self.as_mut().cancel_hints();
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            finish_pending_selection_operation(this, "failed (document target invalidated)");
-            this.pending_caret = None;
+            finish_pending_selection_operation(
+                this,
+                OperationUpdate::failed(
+                    FailureKind::StaleTarget,
+                    "failed (document target invalidated)",
+                ),
+            );
+            this.processes.pending_caret = None;
             super::browser_ui_download_requests::finish_pending_download_operation(
                 this,
-                "cancelled",
+                OperationUpdate::cancelled(),
             );
         }
         self.as_mut().update_current_url(url);
@@ -81,8 +90,9 @@ impl qobject::BrowserUi {
             self.as_mut()
                 .spatial_invalidated(&QString::from("target-changed"));
         }
-        self.as_mut().clear_hint_session_state();
         if index == self.as_ref().rust().active_tab_index {
+            // A background document owns no part of the active hint session.
+            self.as_mut().cancel_hints();
             self.as_mut().clear_navigation_failure();
             self.as_mut()
                 .set_navigation_failure_requested_url(QString::from(safe_ipc_url(
@@ -90,11 +100,17 @@ impl qobject::BrowserUi {
                 )));
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            finish_pending_selection_operation(this, "failed (document target invalidated)");
-            this.pending_caret = None;
+            finish_pending_selection_operation(
+                this,
+                OperationUpdate::failed(
+                    FailureKind::StaleTarget,
+                    "failed (document target invalidated)",
+                ),
+            );
+            this.processes.pending_caret = None;
             super::browser_ui_download_requests::finish_pending_download_operation(
                 this,
-                "cancelled",
+                OperationUpdate::cancelled(),
             );
         }
         if index == self.as_ref().rust().active_tab_index {
@@ -168,6 +184,7 @@ impl qobject::BrowserUi {
         let identity_changed = self
             .as_ref()
             .rust()
+            .navigation
             .page_document_identities
             .get(target.tab)
             .is_some_and(|known| known != document_id);
@@ -175,6 +192,7 @@ impl qobject::BrowserUi {
             && self
                 .as_ref()
                 .rust()
+                .navigation
                 .pending_same_document_pass_through
                 .as_ref()
                 .is_some_and(|pending| pending.tab == target.tab)
@@ -183,12 +201,14 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .navigation
                 .pending_same_document_pass_through = None;
         }
         self.as_mut()
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .page_document_identities
             .establish(target.tab, &document_id);
     }
@@ -211,6 +231,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .navigation
                     .pending_same_document_pass_through = None;
                 return;
             }
@@ -224,6 +245,7 @@ impl qobject::BrowserUi {
                 && self
                     .as_ref()
                     .rust()
+                    .navigation
                     .page_document_identities
                     .proves(target.tab, &document_id)
         });
@@ -234,6 +256,7 @@ impl qobject::BrowserUi {
         let previous_pending = self
             .as_ref()
             .rust()
+            .navigation
             .pending_same_document_pass_through
             .clone();
         let can_extend_pending = identity_proven
@@ -264,6 +287,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .navigation
                     .pending_same_document_pass_through =
                     Some(super::PendingSameDocumentPassThrough {
                         tab: target.tab,
@@ -287,11 +311,13 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .navigation
                     .pending_same_document_pass_through = Some(pending);
             }
         } else if target.is_some_and(|target| {
             self.as_ref()
                 .rust()
+                .navigation
                 .pending_same_document_pass_through
                 .as_ref()
                 .is_some_and(|pending| pending.tab == target.tab)
@@ -300,6 +326,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .navigation
                 .pending_same_document_pass_through = None;
         }
     }
@@ -324,6 +351,7 @@ impl qobject::BrowserUi {
         let pending = self
             .as_ref()
             .rust()
+            .navigation
             .pending_same_document_pass_through
             .clone();
         let event_matches = pending.as_ref().is_some_and(|pending| {
@@ -338,6 +366,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .pending_same_document_pass_through = None;
 
         let Some(pending) = pending else {
@@ -348,6 +377,7 @@ impl qobject::BrowserUi {
             && self
                 .as_ref()
                 .rust()
+                .navigation
                 .page_document_identities
                 .proves(target.tab, &document_id)
             && self.as_ref().rust().tab == Some(target.tab)
@@ -608,8 +638,8 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.diagnostics_collector.clear();
-            this.pending_diagnostic_requests.clear();
+            this.diagnostic_work.diagnostics_collector.clear();
+            this.diagnostic_work.pending_diagnostic_requests.clear();
         }
         if !has_state {
             return true;
@@ -618,9 +648,9 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            finish_pending_selection_operation(this, "cancelled");
-            this.pending_caret = None;
-            if let Some(editor) = this.pending_editor.take() {
+            finish_pending_selection_operation(this, OperationUpdate::cancelled());
+            this.processes.pending_caret = None;
+            if let Some(editor) = this.processes.pending_editor.take() {
                 discard_editor_request(editor);
             }
             let old_print_worker = this.print_worker.take();
@@ -630,17 +660,17 @@ impl qobject::BrowserUi {
                 cleanup_print_artifact(&path, private_temporary);
             }
             this.pending_save_page = None;
-            let old_editor_write_worker = this.editor_write_worker.take();
+            let old_editor_write_worker = this.processes.editor_write_worker.take();
             drop(old_editor_write_worker);
-            if let Some((_, path, private_temporary)) = this.pending_editor_write.take() {
+            if let Some((_, path, private_temporary)) = this.processes.pending_editor_write.take() {
                 cleanup_editor_artifact(&path, private_temporary);
             }
-            if let Some(editor) = this.pending_config_edit.take() {
+            if let Some(editor) = this.processes.pending_config_edit.take() {
                 discard_config_edit(editor);
             }
             super::browser_ui_download_requests::finish_pending_download_operation(
                 this,
-                "cancelled",
+                OperationUpdate::cancelled(),
             );
             cleanup_staged_downloads(&mut this.staged_downloads);
             this.pending_link_navigation = None;
@@ -653,40 +683,42 @@ impl qobject::BrowserUi {
             // the pending handoff before dropping workers so a late result
             // cannot recreate state after the final owner has gone away.
             this.pending_profile_configuration = None;
-            this.session_saves.clear();
-            this.pending_context_reload = None;
-            this.config_reload_requested_by_user = false;
-            this.context_reload_worker = None;
-            this.config_reload_worker = None;
-            this.config_write_worker = None;
+            this.library.session_saves.clear();
+            this.configuration_io.pending_context_reload = None;
+            this.configuration_io.config_reload_requested_by_user = false;
+            this.configuration_io.context_reload_worker = None;
+            this.configuration_io.config_reload_worker = None;
+            this.configuration_io.config_write_worker = None;
             this.profile_delete_worker = None;
             this.profile_list_worker = None;
             this.profile_preview_worker = None;
-            this.network_policy_worker = None;
+            this.configuration_io.network_policy_worker = None;
             this.hyprland_worker = None;
             this.portal_probe_worker = None;
             this.reduced_motion_probe_worker = None;
             this.font_scale_probe_worker = None;
-            this.pending_journey_transitions.clear();
-            this.pending_journey_parent = None;
-            this.pending_journey_mappings.clear();
+            this.navigation.pending_journey_transitions.clear();
+            this.navigation.pending_journey_parent = None;
+            this.navigation.pending_journey_mappings.clear();
             this.pending_history_clear = None;
-            this.pending_journey_traversal = None;
-            this.pending_journey_traversals.clear();
-            this.pending_journey_reopen = None;
-            this.pending_navigation_urls.clear();
-            this.page_document_identities.clear();
-            this.pending_same_document_pass_through = None;
-            this.pending_redirect_tabs.clear();
-            this.pending_redirect_hops.clear();
-            this.popup_journey_targets.clear();
+            this.navigation.pending_journey_traversal = None;
+            this.navigation.pending_journey_traversals.clear();
+            this.navigation.pending_journey_reopen = None;
+            this.navigation.pending_navigation_urls.clear();
+            this.navigation.page_document_identities.clear();
+            this.navigation.pending_same_document_pass_through = None;
+            this.navigation.pending_redirect_tabs.clear();
+            this.navigation.pending_redirect_hops.clear();
+            this.navigation.popup_journey_targets.clear();
             this.tab_ids.clear();
             this.popup_tab_ids.clear();
-            this.journey_durable_ids.borrow_mut().clear();
+            this.navigation.journey_durable_ids.borrow_mut().clear();
             this.journey_export_payload = None;
             this.journey_export_preview_text = QString::default();
-            this.operation_states.clear();
-            this.operation_stderr.clear();
+            if let Some(application) = this.state.as_mut() {
+                application.operations_mut().retire();
+            }
+            this.publish_operation_completions();
             this.action_audit.clear();
             this.request_resolution_counts.clear();
             this.closed_tabs.clear();
@@ -699,10 +731,9 @@ impl qobject::BrowserUi {
             this.active_site_experiment = None;
             this.last_site_doctor_result = None;
             this.contexts = None;
-            this.userscript_manager_worker = None;
-            this.storage_library = None;
+            this.library.storage_library = None;
             this.storage_library_revision = 0;
-            this.storage_library_dirty.set(false);
+            this.library.storage_library_dirty.set(false);
             this.pending_permission_reset_session = None;
             this.request_resolution_counts.clear();
             this.profile_persistence = ProfilePersistence::Unavailable;
@@ -711,8 +742,8 @@ impl qobject::BrowserUi {
             this.structured_log = None;
             this.storage_roots = None;
             this.profile_registry_roots = None;
-            this.userscript_roots = None;
-            if let Some(path) = this.spawn_working_directory.take() {
+            this.policy_roots = None;
+            if let Some(path) = this.processes.spawn_working_directory.take() {
                 let _ = fs::remove_dir_all(path);
             }
             this.profile_id = None;
@@ -725,21 +756,24 @@ impl qobject::BrowserUi {
             this.tab = None;
             this.bindings = None;
             this.learning_mode = false;
-            this.config_watch = ConfigWatch::default();
-            this.theme_watch = ConfigWatch::default();
-            this.editor_completions
+            this.configuration_io.config_watch = ConfigWatch::default();
+            this.configuration_io.theme_watch = ConfigWatch::default();
+            this.processes
+                .editor_completions
                 .lock()
                 .map(|mut completions| completions.clear())
                 .ok();
-            this.spawn_completions
+            this.processes
+                .spawn_completions
                 .lock()
                 .map(|mut mutations| mutations.clear())
                 .ok();
-            this.userscript_completions
+            this.processes
+                .userscript_completions
                 .lock()
                 .map(|mut mutations| mutations.clear())
                 .ok();
-            if let Ok(mut cancellations) = this.userscript_cancellations.lock() {
+            if let Ok(mut cancellations) = this.processes.userscript_cancellations.lock() {
                 for cancellation in cancellations.values() {
                     cancellation.store(true, Ordering::Release);
                 }
@@ -812,8 +846,8 @@ impl qobject::BrowserUi {
                 let this = rust.as_mut().get_mut();
                 this.pending_engine_action = None;
                 this.pending_engine_actions.clear();
-                this.pending_journey_traversal = None;
-                this.pending_journey_traversals.clear();
+                this.navigation.pending_journey_traversal = None;
+                this.navigation.pending_journey_traversals.clear();
             }
         }
         let closed = {
@@ -855,19 +889,13 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.tab_ids.retain(|candidate| *candidate != tab);
-            this.page_document_identities.invalidate(tab);
-            this.pending_same_document_pass_through = None;
-            this.content_histories.remove(&tab);
+            this.navigation.page_document_identities.invalidate(tab);
+            this.navigation.pending_same_document_pass_through = None;
+            this.navigation.content_histories.remove(&tab);
             if let Some((_, _, original_closed, Some(temporary_tab))) = experiment_closing {
-                if original_closed {
-                    if let Some(temporary_index) = this
-                        .tab_ids
-                        .iter()
-                        .position(|candidate| *candidate == temporary_tab)
-                    {
-                        this.pending_engine_action =
-                            Some(format!("site-doctor-close\t{temporary_index}"));
-                    }
+                if original_closed && this.tab_ids.contains(&temporary_tab) {
+                    this.pending_engine_action =
+                        Some(format!("site-doctor-close\t{temporary_tab}"));
                 }
             }
             let active_tab = this.window.and_then(|window| {

@@ -139,7 +139,7 @@ impl qobject::BrowserUi {
             .get_mut()
             .staged_downloads
             .insert(id.to_string(), staged);
-        self.as_ref().rust().storage_library_dirty.set(true);
+        self.as_ref().rust().library.storage_library_dirty.set(true);
         path.file_name()
             .and_then(|name| name.to_str())
             .map_or_else(QString::default, QString::from)
@@ -193,7 +193,7 @@ impl qobject::BrowserUi {
                 .get_mut()
                 .staged_downloads
                 .insert(id.to_string(), staged);
-            self.as_ref().rust().storage_library_dirty.set(true);
+            self.as_ref().rust().library.storage_library_dirty.set(true);
             Ok(name.to_owned())
         })();
         match result {
@@ -273,7 +273,7 @@ impl qobject::BrowserUi {
             });
         match result {
             Ok(()) => {
-                self.as_ref().rust().storage_library_dirty.set(true);
+                self.as_ref().rust().library.storage_library_dirty.set(true);
                 // Session-only transfers must not announce their existence on
                 // the ordinary durable-profile IPC event stream.
                 if self.as_ref().rust().profile_persistence.is_durable() {
@@ -302,7 +302,8 @@ impl qobject::BrowserUi {
             .as_ref()
             .ok_or_else(|| "The window profile is not ready.".to_owned())?
             .session_download_rows(
-                rust.storage_library
+                rust.library
+                    .storage_library
                     .as_ref()
                     .map_or(&[], |library| library.downloads.as_slice()),
             )
@@ -313,8 +314,12 @@ impl qobject::BrowserUi {
         let needed = {
             let rust = self.as_ref().get_ref().rust();
             rust.profile_persistence.is_durable()
-                && (rust.storage_library.is_none() || rust.storage_library_dirty.get())
-                && rust.storage_library_read_state.permits_query_request()
+                && (rust.library.storage_library.is_none()
+                    || rust.library.storage_library_dirty.get())
+                && rust
+                    .library
+                    .storage_library_read_state
+                    .permits_query_request()
         };
         if needed {
             self.as_mut().request_storage_library();
@@ -367,11 +372,11 @@ impl qobject::BrowserUi {
                 Some(DownloadHistoryStatus::NotStored) => "not-stored",
                 Some(status @ (DownloadHistoryStatus::Ready | DownloadHistoryStatus::Saving)) => {
                     if matches!(
-                        self.rust().storage_library_read_state,
+                        self.rust().library.storage_library_read_state,
                         super::CatalogReadState::Failed(_)
                     ) {
                         "unavailable"
-                    } else if self.rust().storage_library_read_state.is_pending() {
+                    } else if self.rust().library.storage_library_read_state.is_pending() {
                         "loading"
                     } else if status == DownloadHistoryStatus::Saving {
                         "saving"
@@ -389,11 +394,12 @@ impl qobject::BrowserUi {
         if let Some(state) = self.as_mut().rust_mut().as_mut().get_mut().state.as_mut() {
             state.retry_download_history();
         }
-        self.as_ref().rust().storage_library_dirty.set(true);
+        self.as_ref().rust().library.storage_library_dirty.set(true);
         self.as_mut()
             .rust_mut()
             .as_mut()
             .get_mut()
+            .library
             .storage_library_read_state = super::CatalogReadState::Unrequested;
         self.request_storage_library();
     }
@@ -779,7 +785,7 @@ impl qobject::BrowserUi {
         };
         match result {
             Ok(()) => {
-                self.as_ref().rust().storage_library_dirty.set(true);
+                self.as_ref().rust().library.storage_library_dirty.set(true);
                 self.set_status_text(QString::from("Permission rule queued"));
                 true
             }
@@ -798,8 +804,8 @@ impl qobject::BrowserUi {
             .profile_persistence
             .lacks_durable_storage();
         if !private
-            && (self.as_ref().rust().storage_library.is_none()
-                || self.as_ref().rust().storage_library_dirty.get())
+            && (self.as_ref().rust().library.storage_library.is_none()
+                || self.as_ref().rust().library.storage_library_dirty.get())
         {
             self.as_mut().request_storage_library();
             self.set_status_text(QString::from("Permission rules are still loading; retry"));
@@ -827,6 +833,7 @@ impl qobject::BrowserUi {
         let rules = self
             .as_ref()
             .rust()
+            .library
             .storage_library
             .as_ref()
             .into_iter()
@@ -943,7 +950,7 @@ impl qobject::BrowserUi {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
                 this.pending_permission_reset_session = Some(session_removed);
-                this.storage_library_dirty.set(true);
+                this.library.storage_library_dirty.set(true);
                 this.pending_engine_action =
                     Some(format!("permission-reset\t{normalized}\t{permission}"));
                 drop(rust);

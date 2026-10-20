@@ -20,9 +20,8 @@ function intersects(a, b) {
 
 function description(row) {
     if (!row) return ""
-    var kind = String(row.kind || "target").replace(/-/g, " ")
-    return String(row.label) + " · " + kind + " · " + String(row.text || "Target")
-            + (row.action ? " · " + String(row.action) : "")
+    var action = String(row.action || row.kind || "target").replace(/-/g, " ")
+    return String(row.label) + " · " + action + " · " + String(row.text || "Target")
 }
 
 function layout(values, viewportWidth, viewportHeight, sourceWidth, sourceHeight,

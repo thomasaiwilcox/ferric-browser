@@ -11,6 +11,65 @@
 #include <QTcpSocket>
 #include <QtTest>
 
+void ApplicationTests::spawnCommandModeValidation_data() {
+    QTest::addColumn<QString>("mode");
+    for (const auto name : {"normal", "command", "insert", "insert-locked",
+                            "caret", "pass-through", "pass-through-once", "hint", "search", "grid"})
+        QTest::newRow(name) << QString::fromLatin1(name);
+}
+
+void ApplicationTests::spawnCommandModeValidation() {
+    QFETCH(QString, mode);
+    const auto marker = directory.filePath("spawn-mode-marker");
+    QFile::remove(marker);
+    if (mode == "command") evaluate("testWindow.browserUi.enter_command()");
+    else if (mode == "search") evaluate("testWindow.browserUi.enter_search(false)");
+    else if (mode == "hint") QVERIFY(command("hint all"));
+    else if (mode == "grid") QVERIFY(command("grid"));
+    else QVERIFY(command("mode-enter " + mode));
+    QCOMPARE(text("mode"), mode);
+    const auto accepted = command("spawn -- /bin/sh -c "
+        + quoted("printf started > \"$1\"") + " fixture " + quoted(marker));
+    const auto permitted = mode == "normal" || mode == "command";
+    QCOMPARE(accepted, permitted);
+    if (permitted) {
+        QTRY_VERIFY(QFileInfo(marker).size() > 0);
+    } else {
+        QVERIFY(text("status_text").contains("unknown command: spawn"));
+        QVERIFY(!QFileInfo::exists(marker));
+        // The userscript shortcut must be rejected before manifest lookup too.
+        QVERIFY(!command("spawn --userscript missing-mode-fixture"));
+        QVERIFY(text("status_text").contains("unknown command: spawn"));
+        QCOMPARE(text("mode"), mode);
+    }
+}
+
+void ApplicationTests::scrollTargetCommandChain_data() {
+    QTest::addColumn<QString>("action");
+    for (const auto name : {"select", "auto", "document", "status", "invalid"})
+        QTest::newRow(name) << QString::fromLatin1(name);
+}
+
+void ApplicationTests::scrollTargetCommandChain() {
+    QFETCH(QString, action);
+    QVERIFY(command("set --temp hints.auto_follow=never"));
+    const auto accepted = command("scroll-target " + action + " ;; mode-enter insert-locked");
+    if (action == "invalid") {
+        QVERIFY(!accepted);
+        QCOMPARE(text("mode"), QString("normal"));
+    } else if (action == "select") {
+        QVERIFY(accepted);
+        QCOMPARE(text("mode"), QString("hint"));
+        QCOMPARE(text("hint_family"), QString("scrollables"));
+        // Cancelling selection must not resume the discarded chain suffix.
+        evaluate("testWindow.browserUi.escape()");
+        QCOMPARE(text("mode"), QString("normal"));
+    } else {
+        QVERIFY(accepted);
+        QCOMPARE(text("mode"), QString("insert-locked"));
+    }
+}
+
 void ApplicationTests::prepareActionSelection() {
     evaluate(pageReceiver + ".forceActiveFocus()");
     page("(()=>{const e=document.createElement('p');e.textContent='Action selection';e.tabIndex=0;"
@@ -113,7 +172,7 @@ void ApplicationTests::productPolishRegisteredActionFeedback() {
     QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending || testWindow.browserUi.userscript_inventory_pending").toBool());
     QVERIFY(evaluate("testWindow.browserUi.install_userscript_manifest(" + quoted(manifest.fileName()) + ")").toBool());
     QTRY_COMPARE(text("userscript_install_state"), QString("installed"));
-    QVERIFY(evaluate("testWindow.browserUi.select_userscript_action_subject(" + quoted(subject) + ")").toBool());
+    QVERIFY2(evaluate("testWindow.browserUi.select_userscript_action_subject(" + quoted(subject) + ")").toBool(), qPrintable(text("status_text")));
     QVERIFY(evaluate("testWindow.browserUi.userscript_action_ids.indexOf(" + quoted(id) + ")>=0").toBool());
     QVERIFY(evaluate("testWindow.browserUi.userscript_action_labels.indexOf(" + quoted(label) + ")>=0").toBool());
     if (selection) {
@@ -281,6 +340,10 @@ void ApplicationTests::productPolishExternalActionFeedback() {
     QFile::remove(pidPath); QFile::remove(subjectPath);
     if (selection) {
         prepareActionSelection(); if (QTest::currentTestFailed()) return;
+        if (!fromCommand) {
+            evaluate("testWindow.browserUi.enter_insert()");
+            QCOMPARE(text("mode"), QString("insert"));
+        }
     }
     if (fromCommand) {
         interactiveCommand(selection ? "send fixture --selection" : "send fixture --url");

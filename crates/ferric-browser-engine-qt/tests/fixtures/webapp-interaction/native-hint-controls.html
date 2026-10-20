@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native hint controls</title>
+<style>
+body { margin: 20px; font: 16px sans-serif; }
+details { margin-bottom: 12px; }
+summary { min-height: 32px; }
+input, label { margin: 6px; }
+form { margin: 10px 0; }
+.post-actions { display: flex; gap: 12px; pointer-events: none; margin: 16px 0; }
+.post-actions > * { pointer-events: auto; position: relative; }
+.post-actions [role=toolbar] { position: absolute; bottom: 100%; left: 0; opacity: 0; pointer-events: none; }
+.post-actions [role=toolbar] button { width: 60px; height: 28px; }
+</style>
+<main id="scope" aria-label="Control section">
+  <details id="thread" tabindex="0" aria-label="Thread container">
+    <summary id="thread-toggle" aria-label="Expand or collapse thread">⊕ Thread</summary>
+    <p>Thread replies</p>
+    <div id="reply-focus" tabindex="0" aria-label="Thread keyboard region">Reply navigation</div>
+    <details id="nested" tabindex="0" aria-label="Nested container">
+      <summary aria-label="Expand nested replies">⊕ Nested replies</summary>
+      <p>A nested reply</p>
+    </details>
+  </details>
+  <label><input id="checkbox" type="checkbox" value="private-checkbox-value">Enable feature</label>
+  <label><input id="radio-a" type="radio" name="choice" checked>First option</label>
+  <label><input id="radio-b" type="radio" name="choice">Second option</label>
+  <form id="form">
+    <input id="text" aria-label="Text entry" value="private-text-value" required>
+    <input id="button" type="button" value="Run action">
+    <input id="submit" type="submit" value="Send form">
+    <input id="reset" type="reset" value="Reset form">
+    <input id="image" type="image" alt="Image submit" width="32" height="24"
+           src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='24'%3E%3Crect width='32' height='24' fill='green'/%3E%3C/svg%3E">
+  </form>
+  <div class="post-actions">
+    <button id="quote">Quote</button>
+    <div id="react" type="button" tabindex="-1">React<span role="toolbar"><button id="thanks" aria-label="Thanks"><span hidden>Thanks</span></button></span></div>
+    <button id="add-post">Add post</button>
+  </div>
+  <div id="focus-only" tabindex="0" aria-label="Keyboard region">A focus-only region</div>
+  <textarea aria-label="Text area">private-editor-value</textarea>
+</main>
+<script>
+window.controlEvents = { clicks: {}, changes: {}, submits: 0, resets: 0 };
+document.addEventListener('click', event => {
+  const id = event.target.id;
+  if (id) controlEvents.clicks[id] = (controlEvents.clicks[id] || 0) + 1;
+  if (event.target.dataset.cancel === 'true') event.preventDefault();
+});
+document.addEventListener('change', event => {
+  const id = event.target.id;
+  if (id) controlEvents.changes[id] = (controlEvents.changes[id] || 0) + 1;
+});
+document.getElementById('form').addEventListener('submit', event => {
+  event.preventDefault();
+  controlEvents.submits++;
+  controlEvents.submitter = event.submitter.id;
+});
+document.getElementById('form').addEventListener('reset', () => controlEvents.resets++);
+document.getElementById('react').addEventListener('click', () => {
+  const toolbar = document.querySelector('[role=toolbar]');
+  toolbar.style.opacity = '1';
+  toolbar.style.pointerEvents = 'auto';
+});
+document.body.dataset.ready = 'true';
+</script>

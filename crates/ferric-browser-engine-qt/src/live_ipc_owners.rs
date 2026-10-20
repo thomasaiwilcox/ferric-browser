@@ -18,6 +18,7 @@ struct Owner<H = CxxQtThread<qobject::BrowserUi>> {
     token: String,
     window: Option<WindowId>,
     operations: Vec<String>,
+    operation_revision: u64,
     thread: H,
     active: bool,
     focused: u64,
@@ -203,7 +204,20 @@ impl QueryPart {
                 if collection.key == "windows" {
                     result["live_registry"] = Value::Array(registry);
                 }
-                Response::success(collection.request.id.clone(), result)
+                if collection.key == "operations" {
+                    match super::operation_projection::page_operations(
+                        result["operations"].as_array().cloned().unwrap_or_default(),
+                        &collection.request.params,
+                        collection.sequence,
+                    ) {
+                        Ok(page) => Response::success(collection.request.id.clone(), page),
+                        Err(error) => {
+                            failure(&collection.request, ErrorCode::InvalidArgument, &error)
+                        }
+                    }
+                } else {
+                    Response::success(collection.request.id.clone(), result)
+                }
             };
             collection.reply.take().map(|reply| (reply, response))
         };
@@ -265,7 +279,18 @@ fn collect_query(pending: PendingRequest, key: &'static str, owners: Vec<Owner>,
                 return;
             }
             ui.as_mut().refresh_operations();
-            part.finish(ui.as_mut().handle_ipc_request(&request));
+            let response = if request.method == "operations.query" {
+                match super::operation_projection::operations_collection_value(
+                    ui.as_ref().rust(),
+                    &request.params,
+                ) {
+                    Ok(result) => Response::success(request.id.clone(), result),
+                    Err(error) => failure(&request, ErrorCode::InvalidArgument, &error),
+                }
+            } else {
+                ui.as_mut().handle_ipc_request(&request)
+            };
+            part.finish(response);
             ui.as_mut().refresh_ipc_owner();
         });
     }
@@ -458,6 +483,7 @@ impl qobject::BrowserUi {
                 token: token.clone(),
                 window: None,
                 operations: Vec::new(),
+                operation_revision: 0,
                 thread,
                 active: false,
                 focused: 0,
@@ -488,10 +514,14 @@ impl qobject::BrowserUi {
             .flatten();
         let changed = owner.window != window;
         owner.window = window;
-        // Operation membership only grows until this owner releases its lease.
-        // Avoid cloning the full retained catalog for every navigation fact.
-        if changed || owner.operations.len() != rust.operation_states.len() {
-            owner.operations = rust.operation_states.keys().cloned().collect();
+        // Admission and retention both change membership. Compare the catalog revision
+        // so equal-size eviction cannot leave routing pointed at forgotten IDs.
+        if changed || owner.operation_revision != rust.operation_revision() {
+            owner.operations = rust
+                .operation_records()
+                .map(|record| record.id.clone())
+                .collect();
+            owner.operation_revision = rust.operation_revision();
         }
         if changed {
             directory.generation = directory.generation.saturating_add(1);
@@ -676,6 +706,7 @@ mod tests {
             token: uuid::Uuid::from_u128(u128::from(number)).to_string(),
             window: WindowId::from_display(&format!("windowid-{number}")),
             operations: Vec::new(),
+            operation_revision: 0,
             thread: (),
             active,
             focused,

@@ -2,19 +2,20 @@ use super::{
     Arc, AtomicBool, ConfigReloadWorker, ConfigWriteWorker, CxxQtType, EditorWriteWorker,
     HyprlandWorker, MAX_ACTION_AUDIT_RECORDS, NetworkPolicyWorker, Ordering, Pin,
     PortalProbeWorker, PrintWorker, ProfileDeleteWorker, ProfileListWorker, ProfilePreviewWorker,
-    ReducedMotionProbeWorker, SystemFontScaleProbeWorker, Threading, UserscriptManagerWorker,
-    action_audit_record, captured_target_is_current, elapsed_ms, has_pending_requests,
-    install_pending_request_waker, ipc_failure, operation_is_terminal, operation_status_kind,
-    publish_ipc_event, qobject, remember_operation_stderr, subscribe_event_stream,
+    ReducedMotionProbeWorker, SystemFontScaleProbeWorker, Threading, action_audit_record,
+    captured_target_is_current, elapsed_ms, has_pending_requests, install_pending_request_waker,
+    ipc_failure, publish_ipc_event, qobject, remember_operation_stderr, subscribe_event_stream,
     take_pending_request,
 };
+use crate::{FailureKind, OperationUpdate};
 
 impl qobject::BrowserUi {
     pub(super) fn refresh_operations(mut self: Pin<&mut Self>) {
         let completions = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.spawn_completions
+            this.processes
+                .spawn_completions
                 .lock()
                 .map(|mut queue| queue.drain(..).collect::<Vec<_>>())
                 .unwrap_or_default()
@@ -22,41 +23,24 @@ impl qobject::BrowserUi {
         let userscript_completions = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.userscript_completions
+            this.processes
+                .userscript_completions
                 .lock()
                 .map(|mut queue| queue.drain(..).collect::<Vec<_>>())
                 .unwrap_or_default()
         };
         for completion in completions {
             let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            if this
-                .operation_states
-                .get(&completion.operation_id)
-                .is_some_and(|status| status == "cancelled")
-            {
-                continue;
-            }
-            this.operation_states
-                .insert(completion.operation_id.clone(), completion.status.clone());
-            publish_ipc_event(
-                &mut this.ipc_sequence,
-                "operation.completed",
-                serde_json::json!({
-                    "operation_id": completion.operation_id,
-                    "status": operation_status_kind(&completion.status)
-                }),
-            );
+            rust.as_mut()
+                .get_mut()
+                .set_operation(completion.operation_id, completion.status);
         }
         for completion in userscript_completions {
-            // Cancellation revokes returned actions as well as the operation
-            // record. Check before applying a queued script result to a page.
             if self
                 .as_ref()
                 .rust()
-                .operation_states
-                .get(&completion.operation_id)
-                .is_some_and(|status| status == "cancelled")
+                .operation(&completion.operation_id)
+                .is_none_or(|record| record.state.is_terminal())
             {
                 continue;
             }
@@ -70,33 +54,17 @@ impl qobject::BrowserUi {
                         .as_mut()
                         .execute_userscript_action(completion.target, action)
                     {
-                        Ok(()) => format!("{status}; action applied"),
-                        Err(error) => format!("failed (userscript action: {error})"),
+                        Ok(()) => OperationUpdate::completed("userscript action applied"),
+                        Err(error) => OperationUpdate::failed(FailureKind::Engine, error),
                     }
                 } else {
-                    "failed (userscript result target is stale)".into()
+                    OperationUpdate::failed(FailureKind::StaleTarget, "userscript target changed")
                 };
             }
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            if this
-                .operation_states
-                .get(&completion.operation_id)
-                .is_some_and(|current| current == "cancelled")
-            {
-                continue;
-            }
-            this.operation_states
-                .insert(completion.operation_id.clone(), status.clone());
             remember_operation_stderr(this, &completion.operation_id, completion.stderr);
-            publish_ipc_event(
-                &mut this.ipc_sequence,
-                "operation.completed",
-                serde_json::json!({
-                    "operation_id": completion.operation_id,
-                    "status": operation_status_kind(&status)
-                }),
-            );
+            this.set_operation(completion.operation_id, status);
         }
     }
 
@@ -155,16 +123,23 @@ impl qobject::BrowserUi {
     pub(super) fn maintenance_delay_ms(self: Pin<&mut Self>) -> i32 {
         let binding = self.as_ref();
         let rust = binding.rust();
-        let worker_pending = rust.pending_context_reload.is_some()
+        let worker_pending = rust
+            .state
+            .as_ref()
+            .is_some_and(super::BrowserApplication::configuration_write_pending)
+            || rust.configuration_io.pending_context_reload.is_some()
             || rust
+                .configuration_io
                 .context_reload_worker
                 .as_ref()
                 .is_some_and(super::ContextReloadWorker::is_pending)
             || rust
+                .configuration_io
                 .config_reload_worker
                 .as_ref()
                 .is_some_and(ConfigReloadWorker::is_pending)
             || rust
+                .configuration_io
                 .config_write_worker
                 .as_ref()
                 .is_some_and(ConfigWriteWorker::is_pending)
@@ -173,6 +148,7 @@ impl qobject::BrowserUi {
                 .as_ref()
                 .is_some_and(PrintWorker::is_pending)
             || rust
+                .processes
                 .editor_write_worker
                 .as_ref()
                 .is_some_and(EditorWriteWorker::is_pending)
@@ -182,6 +158,7 @@ impl qobject::BrowserUi {
                 .is_some_and(ProfileDeleteWorker::is_pending)
             || rust.pending_profile_configuration.is_some()
             || rust
+                .configuration_io
                 .network_policy_worker
                 .as_ref()
                 .is_some_and(NetworkPolicyWorker::is_pending)
@@ -210,26 +187,23 @@ impl qobject::BrowserUi {
                 .as_ref()
                 .is_some_and(ProfilePreviewWorker::is_pending)
             || rust
-                .userscript_manager_worker
+                .state
                 .as_ref()
-                .is_some_and(UserscriptManagerWorker::is_pending);
-        let operation_pending = rust
-            .operation_states
-            .values()
-            .any(|status| !operation_is_terminal(status))
-            || rust.pending_config_edit.is_some()
-            || rust.pending_editor.is_some()
-            || rust.pending_editor_write.is_some()
-            || rust.switcher_library_index_building
-            || rust.session_restore_preview_pending
-            || rust.session_restore_recovery_pending
-            || !rust.session_saves.is_empty()
-            || rust.session_checkpoint_clear_pending
-            || rust.storage_flush_pending;
+                .is_some_and(super::BrowserApplication::userscript_job_pending);
+        let operation_pending = rust.has_active_operations()
+            || rust.processes.pending_config_edit.is_some()
+            || rust.processes.pending_editor.is_some()
+            || rust.processes.pending_editor_write.is_some()
+            || rust.library.switcher_library_index_building
+            || rust.library.session_restore_preview_pending
+            || rust.library.session_restore_recovery_pending
+            || !rust.library.session_saves.is_empty()
+            || rust.library.session_checkpoint_clear_pending
+            || rust.library.storage_flush_pending;
         if worker_pending
             || operation_pending
             || rust.diagnostics_pending
-            || !rust.pending_diagnostic_requests.is_empty()
+            || !rust.diagnostic_work.pending_diagnostic_requests.is_empty()
         {
             return 50;
         }
@@ -247,7 +221,14 @@ impl qobject::BrowserUi {
             });
             return i32::try_from(500_u64.saturating_sub(elapsed).max(1)).unwrap_or(500);
         }
-        if rust.config_watch.is_watching() || rust.theme_watch.is_watching() {
+        if rust.configuration_io.config_watch.is_watching()
+            || rust.configuration_io.theme_watch.is_watching()
+            || rust.state.as_ref().is_some_and(|state| {
+                state
+                    .profile_snapshot()
+                    .is_some_and(|profile| profile.durable)
+            })
+        {
             return 1_000;
         }
         -1

@@ -1,4 +1,5 @@
 //! Owned diagnostic collection. Qt objects stay on the UI thread.
+use ferric_browser_runtime::worker::{Poll, SingleFlightWorker};
 use std::time::{Duration, Instant};
 
 use ferric_browser_config::{Config, load_theme_palette, theme_contrast_report};
@@ -9,7 +10,6 @@ use uuid::Uuid;
 use crate::{
     MAX_DIAGNOSTICS_EXPORT_BYTES, crash_diagnostics, diagnostics, diagnostics_presentation,
     diagnostics_snapshot, link_cleaning_policy, presentation_text,
-    single_flight::{Poll, SingleFlightWorker},
 };
 
 const CACHE_LIFETIME: Duration = Duration::from_secs(5);

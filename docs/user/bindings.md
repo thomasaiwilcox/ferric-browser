@@ -23,10 +23,10 @@ See [Webpage shortcuts](webpage-shortcuts.md) for examples and the existing emer
 | `normal` | `.` | `repeat` |
 | `normal` | `; S` | `scroll-target auto` |
 | `normal` | `; V` | `mode-enter passthrough` |
-| `normal` | `; a` | `hint --target choose all` |
-| `normal` | `; b` | `hint --target tab-bg all` |
+| `normal` | `; a` | `hint --target choose actions` |
+| `normal` | `; b` | `hint --target tab-bg actions` |
 | `normal` | `; d` | `hint --target download links` |
-| `normal` | `; f` | `hint --target tab all` |
+| `normal` | `; f` | `hint --target tab actions` |
 | `normal` | `; g` | `grid` |
 | `normal` | `; r` | `hint --rapid --target tab-bg links` |
 | `normal` | `; s` | `scroll-target select` |
@@ -65,7 +65,7 @@ See [Webpage shortcuts](webpage-shortcuts.md) for examples and the existing emer
 | `normal` | `Ctrl+t` | `tab-new` |
 | `normal` | `Ctrl+u` | `scroll-page up --half` |
 | `normal` | `Ctrl+w` | `tab-close` |
-| `normal` | `F` | `hint --target tab all` |
+| `normal` | `F` | `hint --target tab actions` |
 | `normal` | `F11` | `fullscreen` |
 | `normal` | `F5` | `reload` |
 | `normal` | `Forward` | `forward` |
@@ -86,7 +86,7 @@ See [Webpage shortcuts](webpage-shortcuts.md) for examples and the existing emer
 | `normal` | `Z Q` | `quit` |
 | `normal` | `b` | `quickmark-open` |
 | `normal` | `d` | `tab-close` |
-| `normal` | `f` | `hint all` |
+| `normal` | `f` | `hint actions` |
 | `normal` | `g $` | `tab-select last` |
 | `normal` | `g 0` | `tab-select 1` |
 | `normal` | `g ?` | `binding-list` |

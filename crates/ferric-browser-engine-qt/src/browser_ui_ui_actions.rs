@@ -3,7 +3,7 @@ use super::{
     Pin, PublicError, QString, QStringList, UserscriptManagerRequest, Value,
     action_failure_category, action_operation_id, current_target, external_action_presentations,
     is_bounded_untrusted_text, is_safe_history_url, parse_external_action_id, qobject,
-    safe_ipc_url, typed_ipc_action, ui_action_arguments, userscript, userscript_subject_target,
+    safe_ipc_url, typed_ipc_action, ui_action_arguments, userscript_subject_target,
 };
 
 impl qobject::BrowserUi {
@@ -204,9 +204,10 @@ impl qobject::BrowserUi {
         let Some(root) = self
             .as_ref()
             .rust()
-            .userscript_roots
+            .state
             .as_ref()
-            .map(|roots| roots.config.clone())
+            .and_then(super::BrowserApplication::userscript_root)
+            .map(ToOwned::to_owned)
         else {
             return self.userscript_update_failed(
                 "Userscript installation needs available storage.",
@@ -218,11 +219,11 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
-            .userscript_manager_worker
+            .state
             .as_mut()
-            .ok_or_else(|| "userscript manager is unavailable".to_owned())
+            .ok_or_else(|| "userscript owner is unavailable".to_owned())
             .and_then(|worker| {
-                worker.request(UserscriptManagerRequest::Install {
+                worker.request_userscript_job(UserscriptManagerRequest::Install {
                     root,
                     source: PathBuf::from(path),
                 })
@@ -249,16 +250,10 @@ impl qobject::BrowserUi {
         let [subject, verb, arguments @ ..] = command.arguments.as_slice() else {
             return Ok(None);
         };
-        let Some(root) = self
+        let Some(action) = self
             .as_ref()
             .rust()
-            .userscript_roots
-            .as_ref()
-            .map(|roots| roots.config.clone())
-        else {
-            return Ok(None);
-        };
-        let Some(action) = userscript::registered_actions(&root)?
+            .cached_userscript_actions()?
             .into_iter()
             .find(|action| action.subject == *subject && action.verb == *verb)
         else {
@@ -318,7 +313,13 @@ impl qobject::BrowserUi {
         };
         if result.get("selection_required").and_then(Value::as_bool) == Some(true) {
             let mut rust = self.as_mut().rust_mut();
-            if let Some(pending) = rust.as_mut().get_mut().pending_userscript.as_mut() {
+            if let Some(pending) = rust
+                .as_mut()
+                .get_mut()
+                .processes
+                .pending_userscript
+                .as_mut()
+            {
                 pending.label = action.label.clone();
             }
             drop(rust);
@@ -356,17 +357,18 @@ impl qobject::BrowserUi {
         if registry.resolve(action_id).is_some() {
             return Err("userscript action cannot replace a built-in action".into());
         }
-        let roots = self
+        let action = self
             .as_ref()
             .rust()
-            .userscript_roots
-            .clone()
-            .ok_or_else(|| "userscripts are unavailable without configured storage".to_owned())?;
-        let action = userscript::registered_actions(&roots.config)?
+            .cached_userscript_actions()?
             .into_iter()
             .find(|candidate| candidate.id == action_id)
             .ok_or_else(|| "userscript action is not installed".to_owned())?;
-        let manifest = userscript::load(&roots.config, &action.script)?.manifest;
+        let manifest = self
+            .as_ref()
+            .rust()
+            .cached_userscript(&action.script)?
+            .manifest;
         let current = current_target(
             self.as_ref().rust().state.as_ref(),
             self.as_ref().rust().tab,
@@ -537,9 +539,10 @@ impl qobject::BrowserUi {
                 let library = self
                     .as_ref()
                     .rust()
+                    .library
                     .storage_library
                     .clone()
-                    .filter(|_| !self.as_ref().rust().storage_library_dirty.get())
+                    .filter(|_| !self.as_ref().rust().library.storage_library_dirty.get())
                     .ok_or_else(|| {
                         "history metadata is unavailable; retry the action".to_owned()
                     })?;
@@ -568,9 +571,10 @@ impl qobject::BrowserUi {
                 let library = self
                     .as_ref()
                     .rust()
+                    .library
                     .storage_library
                     .clone()
-                    .filter(|_| !self.as_ref().rust().storage_library_dirty.get())
+                    .filter(|_| !self.as_ref().rust().library.storage_library_dirty.get())
                     .ok_or_else(|| {
                         "bookmark metadata is unavailable; retry the action".to_owned()
                     })?;
@@ -599,9 +603,10 @@ impl qobject::BrowserUi {
                 let library = self
                     .as_ref()
                     .rust()
+                    .library
                     .storage_library
                     .clone()
-                    .filter(|_| !self.as_ref().rust().storage_library_dirty.get())
+                    .filter(|_| !self.as_ref().rust().library.storage_library_dirty.get())
                     .ok_or_else(|| {
                         "quickmark metadata is unavailable; retry the action".to_owned()
                     })?;
@@ -628,7 +633,7 @@ impl qobject::BrowserUi {
                 }
                 let name = bounded_value()?;
                 self.as_mut().request_session_names();
-                if self.as_ref().rust().session_names_dirty.get() {
+                if self.as_ref().rust().library.session_names_dirty.get() {
                     return Err("named session catalog is still loading; retry the action".into());
                 }
                 if self.as_ref().rust().profile_id.is_none() {
@@ -637,6 +642,7 @@ impl qobject::BrowserUi {
                 if !self
                     .as_ref()
                     .rust()
+                    .library
                     .session_names
                     .iter()
                     .any(|candidate| candidate == name)

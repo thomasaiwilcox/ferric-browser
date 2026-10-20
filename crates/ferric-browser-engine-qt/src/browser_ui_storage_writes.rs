@@ -75,6 +75,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .library
             .mark_feedback_tickets
             .insert(ticket, (lane, id));
         self.set_status_text(QString::from("Saving library change…"));
@@ -82,7 +83,12 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn publish_library_pending(self: Pin<&mut Self>) {
-        let pending = self.as_ref().rust().storage_library_read_state.is_pending()
+        let pending = self
+            .as_ref()
+            .rust()
+            .library
+            .storage_library_read_state
+            .is_pending()
             || self.as_ref().rust().journey_read_pending;
         self.set_library_pending(pending);
     }
@@ -99,7 +105,7 @@ impl qobject::BrowserUi {
             self.as_mut().set_library_error(QString::default());
             self.set_library_values(QString::from(rows.join("\n")));
         } else {
-            self.as_ref().rust().storage_library_dirty.set(true);
+            self.as_ref().rust().library.storage_library_dirty.set(true);
             self.request_storage_library();
         }
     }
@@ -114,6 +120,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .library
             .mark_feedback_tickets
             .remove(&ticket);
         let Some((lane, id)) = receipt else {
@@ -125,12 +132,18 @@ impl qobject::BrowserUi {
             self.as_ref().rust().mark_action_id == id
         };
         if result.is_ok() {
-            self.as_ref().rust().storage_library_dirty.set(true);
-            let pending = self.as_ref().rust().storage_library_read_state.is_pending();
+            self.as_ref().rust().library.storage_library_dirty.set(true);
+            let pending = self
+                .as_ref()
+                .rust()
+                .library
+                .storage_library_read_state
+                .is_pending();
             self.as_mut()
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .library
                 .storage_library_refresh_again |= pending;
             self.as_mut().request_storage_library();
             self.as_mut().refresh_start_page_metadata();
@@ -170,18 +183,20 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .library
             .storage_library_read_state = match &result {
             Ok(_) => CatalogReadState::Ready,
             Err(error) => CatalogReadState::Failed(error.clone()),
         };
         self.as_mut().publish_library_pending();
-        if self.as_ref().rust().storage_library_refresh_again {
+        if self.as_ref().rust().library.storage_library_refresh_again {
             self.as_mut()
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .library
                 .storage_library_refresh_again = false;
-            self.as_ref().rust().storage_library_dirty.set(true);
+            self.as_ref().rust().library.storage_library_dirty.set(true);
             self.request_storage_library();
             return;
         }
@@ -202,9 +217,9 @@ impl qobject::BrowserUi {
                     .unwrap_or(1000)
                     .min(1000) as usize;
                 this.command_history.truncate(limit);
-                this.storage_library = Some(snapshot);
+                this.library.storage_library = Some(snapshot);
                 this.storage_library_revision = this.storage_library_revision.saturating_add(1);
-                this.storage_library_dirty.set(false);
+                this.library.storage_library_dirty.set(false);
                 drop(rust);
                 self.as_mut().set_library_error(QString::default());
                 let kind = self.as_ref().rust().library_kind.to_string();
@@ -215,7 +230,7 @@ impl qobject::BrowserUi {
             Err(error) => {
                 // Keep the last readable rows and allow an explicit retry.
                 self.as_mut().set_library_error(QString::from(&error));
-                self.as_ref().rust().storage_library_dirty.set(true);
+                self.as_ref().rust().library.storage_library_dirty.set(true);
                 self.set_status_text(QString::from(
                     "Saved items couldn't be loaded. Refresh the library to try again.",
                 ));
@@ -241,7 +256,7 @@ impl qobject::BrowserUi {
                     .collect(),
             );
         }
-        let library = rust.storage_library.as_ref()?;
+        let library = rust.library.storage_library.as_ref()?;
         match kind {
             "bookmarks" => Some(
                 library
@@ -344,7 +359,7 @@ impl qobject::BrowserUi {
                     .as_mut()
                     .get_mut()
                     .pending_history_clear = Some((since, origin.clone()));
-                self.as_ref().rust().storage_library_dirty.set(true);
+                self.as_ref().rust().library.storage_library_dirty.set(true);
                 self.as_mut()
                     .set_status_text(QString::from("History clear queued"));
                 Ok(())
@@ -367,7 +382,7 @@ impl qobject::BrowserUi {
             .submit_storage_with_ticket(StorageRequest::JourneyWrite { write })
         {
             Ok(ticket) => {
-                self.as_ref().rust().storage_library_dirty.set(true);
+                self.as_ref().rust().library.storage_library_dirty.set(true);
                 self.as_mut()
                     .set_status_text(QString::from("Journey write queued"));
                 Ok(ticket)
@@ -382,7 +397,7 @@ impl qobject::BrowserUi {
     ) {
         match result {
             Ok(_) => {
-                self.as_ref().rust().storage_library_dirty.set(true);
+                self.as_ref().rust().library.storage_library_dirty.set(true);
             }
             Err(error) => {
                 self.as_mut().set_status_text(QString::from(format!(
@@ -398,7 +413,7 @@ impl qobject::BrowserUi {
     ) {
         match result {
             Ok(_) => {
-                self.as_ref().rust().storage_library_dirty.set(true);
+                self.as_ref().rust().library.storage_library_dirty.set(true);
             }
             Err(error) => {
                 self.as_mut().set_status_text(QString::from(format!(
@@ -414,7 +429,7 @@ impl qobject::BrowserUi {
     ) {
         match result {
             Ok(_) => {
-                self.as_ref().rust().storage_library_dirty.set(true);
+                self.as_ref().rust().library.storage_library_dirty.set(true);
             }
             Err(error) => {
                 self.as_mut().set_status_text(QString::from(format!(

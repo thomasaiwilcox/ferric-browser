@@ -1,5 +1,5 @@
 #include "popup_owner_bridge.h"
-#include "ferric-browser-engine-qt/src/lib.cxxqt.h"
+#include "ferric-browser-engine-qt/src/bridge.cxxqt.h"
 #include <QThread>
 
 bool FerricPopupOwnerBridge::initialize(QObject *source, QObject *destination,

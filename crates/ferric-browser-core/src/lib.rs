@@ -4,8 +4,13 @@
 //! network dependencies. Qt and desktop adapters consume its typed events and
 //! effects in later milestones.
 
+mod failure;
+pub use failure::FailureKind;
+
 mod action;
 mod command;
+mod command_executors;
+pub use command_executors::CommonCommandExecutor;
 mod completion;
 mod dispatcher;
 mod guide;

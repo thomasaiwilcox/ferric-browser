@@ -63,6 +63,7 @@ impl qobject::BrowserUi {
             .and_then(|tab| tab.url.as_deref())
             .unwrap_or("about:blank");
         let focus_rows = rust
+            .interaction
             .focus_observations
             .iter()
             .filter(|((index, _), observation)| {
@@ -85,7 +86,7 @@ impl qobject::BrowserUi {
         } else {
             "mixed"
         };
-        let active_prompt = rust.native_prompt_leases.top();
+        let active_prompt = rust.interaction.native_prompt_leases.top();
         let prompt_owner = active_prompt.map(|lease| {
             serde_json::json!({
                 "view_bound": lease.owner.view.is_some(),
@@ -102,7 +103,10 @@ impl qobject::BrowserUi {
                     ferric_browser_core::MixedPolicySource::Site => "site",
                     ferric_browser_core::MixedPolicySource::Runtime => "runtime",
                 });
-        let site_rule_config = serde_json::from_value::<Config>(rust.config.clone()).ok();
+        let site_rule_config = rust
+            .state
+            .as_ref()
+            .map(ferric_browser_application::BrowserApplication::configuration);
         let site_rule_for =
             |setting: &str, source: Option<ferric_browser_core::MixedPolicySource>| {
                 if source != Some(ferric_browser_core::MixedPolicySource::Site) {
@@ -122,7 +126,7 @@ impl qobject::BrowserUi {
             "configuration_revision": rust.config_revision,
             "shortcut_policy_revision": rust.policy_revision,
             "target": {
-                "document_known": rust.tab.and_then(|tab| rust.page_document_identities.get(tab)).is_some()
+                "document_known": rust.tab.and_then(|tab| rust.navigation.page_document_identities.get(tab)).is_some()
             },
             "focus": {
                 "category": focus_category,
@@ -147,11 +151,11 @@ impl qobject::BrowserUi {
                 "source": "page-local policy is not retained by the native projection"
             },
             "native_prompt": {
-                "active": rust.native_prompt_leases.is_active(),
-                "category": rust.native_prompt_leases.active_category().unwrap_or("none"),
-                "depth": rust.native_prompt_leases.depth(),
+                "active": rust.interaction.native_prompt_leases.is_active(),
+                "category": rust.interaction.native_prompt_leases.active_category().unwrap_or("none"),
+                "depth": rust.interaction.native_prompt_leases.depth(),
                 "limit": super::native_prompt_lease::MAX_NATIVE_PROMPT_DEPTH,
-                "last_outcome": rust.native_prompt_leases.last_result(),
+                "last_outcome": rust.interaction.native_prompt_leases.last_result(),
                 "owner": prompt_owner,
             },
             "recent_action_errors": interaction_error_summary(&rust.action_audit),

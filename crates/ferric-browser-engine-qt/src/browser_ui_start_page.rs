@@ -80,7 +80,12 @@ impl qobject::BrowserUi {
                 .ok()
                 .map(|state| state.snapshot.clone());
             if let Some(snapshot) = snapshot {
-                self.as_mut().rust_mut().as_mut().get_mut().start_snapshot = snapshot;
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .library
+                    .start_snapshot = snapshot;
                 self.as_mut().set_start_page_ready(true);
                 self.publish_start_page();
             }
@@ -89,13 +94,14 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .library
                 .start_refresh_requested = true;
             self.flush_start_page_refresh();
         }
     }
 
     pub(super) fn publish_start_page(mut self: Pin<&mut Self>) {
-        let snapshot = self.as_ref().rust().start_snapshot.clone();
+        let snapshot = self.as_ref().rust().library.start_snapshot.clone();
         if self.as_ref().active_profile_is_transient() {
             if let Ok(mut state) = self.as_ref().rust().private_start_state.lock() {
                 state.snapshot = snapshot.clone();
@@ -202,7 +208,12 @@ impl qobject::BrowserUi {
                 .ok()
                 .map(|state| (state.snapshot.clone(), state.visits.clone()));
             if let Some((snapshot, _)) = &shared {
-                self.as_mut().rust_mut().as_mut().get_mut().start_snapshot = snapshot.clone();
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .library
+                    .start_snapshot = snapshot.clone();
             }
             let mut ranked = std::collections::BTreeMap::<String, (f64, i64, StartPageTile)>::new();
             let now = unix_timestamp();
@@ -217,6 +228,7 @@ impl qobject::BrowserUi {
                 if self
                     .as_ref()
                     .rust()
+                    .library
                     .start_snapshot
                     .dismissed
                     .contains(&site)
@@ -252,7 +264,7 @@ impl qobject::BrowserUi {
                     .then_with(|| left.2.site.cmp(&right.2.site))
             });
             let mut rust = self.as_mut().rust_mut();
-            let snapshot = &mut rust.as_mut().get_mut().start_snapshot;
+            let snapshot = &mut rust.as_mut().get_mut().library.start_snapshot;
             snapshot.eligible_urls = shared
                 .as_ref()
                 .map(|(_, visits)| visits.iter().map(|visit| visit.url.clone()).collect())
@@ -274,6 +286,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .library
             .start_refresh_requested = true;
         self.as_mut().set_start_page_error(QString::default());
         self.as_mut().flush_start_page_refresh();
@@ -282,9 +295,9 @@ impl qobject::BrowserUi {
 
     pub(super) fn flush_start_page_refresh(mut self: Pin<&mut Self>) {
         if self.as_ref().active_profile_is_transient()
-            || self.as_ref().rust().start_read_pending
-            || self.as_ref().rust().start_write_pending
-            || !self.as_ref().rust().start_refresh_requested
+            || self.as_ref().rust().library.start_read_pending
+            || self.as_ref().rust().library.start_write_pending
+            || !self.as_ref().rust().library.start_refresh_requested
         {
             return;
         }
@@ -309,11 +322,12 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .library
                     .start_read_pending = true;
                 {
                     let mut rust = self.as_mut().rust_mut();
                     let this = rust.as_mut().get_mut();
-                    this.start_refresh_requested = false;
+                    this.library.start_refresh_requested = false;
                     this.start_rank_requested = false;
                 }
                 self.set_start_page_busy(true);
@@ -328,6 +342,7 @@ impl qobject::BrowserUi {
                         .rust_mut()
                         .as_mut()
                         .get_mut()
+                        .library
                         .start_refresh_requested = false;
                     self.as_mut().set_start_page_busy(false);
                     self.set_start_page_error(QString::from(error.to_string()));
@@ -343,12 +358,12 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.start_read_pending = false;
+            this.library.start_read_pending = false;
             if let Ok(snapshot) = &result {
-                let old_top = this.start_snapshot.top_sites.clone();
-                this.start_snapshot = snapshot.clone();
+                let old_top = this.library.start_snapshot.top_sites.clone();
+                this.library.start_snapshot = snapshot.clone();
                 if !snapshot.ranked {
-                    this.start_snapshot.top_sites = old_top;
+                    this.library.start_snapshot.top_sites = old_top;
                 }
             }
         }
@@ -371,10 +386,11 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .library
             .start_write_pending = false;
         match result {
             Ok(()) => {
-                self.as_ref().rust().storage_library_dirty.set(true);
+                self.as_ref().rust().library.storage_library_dirty.set(true);
                 self.as_mut().refresh_start_page_metadata();
             }
             Err(error) => {
@@ -413,6 +429,7 @@ impl qobject::BrowserUi {
             "bookmark" => target.and_then(|slot| {
                 self.as_ref()
                     .rust()
+                    .library
                     .start_snapshot
                     .bookmarks
                     .iter()
@@ -461,10 +478,15 @@ impl qobject::BrowserUi {
                 .ok()
                 .map(|state| state.snapshot.clone());
             if let Some(snapshot) = latest {
-                self.as_mut().rust_mut().as_mut().get_mut().start_snapshot = snapshot;
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .library
+                    .start_snapshot = snapshot;
             }
             let mut rust = self.as_mut().rust_mut();
-            let snapshot = &mut rust.as_mut().get_mut().start_snapshot;
+            let snapshot = &mut rust.as_mut().get_mut().library.start_snapshot;
             match mutation {
                 StartPageMutation::View(view) => snapshot.view = view,
                 StartPageMutation::Pin {
@@ -541,7 +563,7 @@ impl qobject::BrowserUi {
             self.publish_start_page();
             return true;
         }
-        if self.as_ref().rust().start_write_pending {
+        if self.as_ref().rust().library.start_write_pending {
             self.set_start_page_error(QString::from(
                 "A change is still being saved; retry when it finishes",
             ));
@@ -558,6 +580,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .library
                     .start_write_pending = true;
                 self.as_mut().set_start_page_error(QString::default());
                 self.set_start_page_busy(true);
@@ -678,6 +701,7 @@ impl qobject::BrowserUi {
         let tile = self
             .as_ref()
             .rust()
+            .library
             .storage_library
             .as_ref()
             .and_then(|library| library.bookmarks.iter().find(|bookmark| bookmark.id == id))
@@ -728,6 +752,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .content_histories
             .entry(tab)
             .or_default()
@@ -789,6 +814,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .content_histories
             .entry(tab)
             .or_default()
@@ -810,6 +836,7 @@ impl qobject::BrowserUi {
             .and_then(|tab| {
                 self.as_ref()
                     .rust()
+                    .navigation
                     .content_histories
                     .get(&tab)
                     .map(|history| history.can_traverse(offset))
@@ -823,7 +850,7 @@ impl qobject::BrowserUi {
         };
         let binding = self.as_ref();
         let rust = binding.rust();
-        let Some(history) = rust.content_histories.get(&tab) else {
+        let Some(history) = rust.navigation.content_histories.get(&tab) else {
             return QString::default();
         };
         let (entries, cursor) = history.snapshot();
@@ -882,8 +909,15 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .content_histories
             .insert(tab, history);
+        let revision = self
+            .as_ref()
+            .rust()
+            .content_history_revision
+            .wrapping_add(1);
+        self.as_mut().set_content_history_revision(revision);
         true
     }
 
@@ -901,6 +935,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .navigation
             .content_histories
             .get_mut(&tab)
             .and_then(|history| history.traverse(offset));

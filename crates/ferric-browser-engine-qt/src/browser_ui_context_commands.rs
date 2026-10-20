@@ -493,6 +493,11 @@ impl qobject::BrowserUi {
         path: &QString,
         source: &QString,
     ) -> bool {
+        // This is a construction input, never a live configuration channel.
+        // Active owners synchronize through their application and file watcher.
+        if self.as_ref().rust().profile_open_effect.is_some() {
+            return false;
+        }
         let config_text = config.to_string();
         let base_config_text = base_config.to_string();
         let cli_overrides_text = cli_overrides.to_string();

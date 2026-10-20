@@ -9,9 +9,9 @@ edition = "2024"
 cargo-fuzz = true
 
 [dependencies]
+ferric-browser-application = { path = "../crates/ferric-browser-application" }
 ferric-browser-config = { version = "0.1.0", path = "../crates/ferric-browser-config" }
 ferric-browser-core = { version = "0.1.0", path = "../crates/ferric-browser-core" }
-ferric-browser-engine-qt = { version = "0.1.0", path = "../crates/ferric-browser-engine-qt" }
 ferric-browser-ipc = { version = "0.1.0", path = "../crates/ferric-browser-ipc" }
 ferric-browser-storage = { version = "0.1.0", path = "../crates/ferric-browser-storage" }
 libfuzzer-sys = "0.4"

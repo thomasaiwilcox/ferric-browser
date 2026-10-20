@@ -1,5 +1,3 @@
-import "../scripts/SwitcherSources.js" as SwitcherSources
-import "../scripts/SwitcherResults.js" as SwitcherResults
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -7,31 +5,19 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
-import "../scripts/CloseRequests.js" as CloseRequests
 import "../scripts/ChromePresentation.js" as ChromePresentation
-import "../scripts/TargetSearchPresentation.js" as TargetSearchPresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
+import "../scripts/SwitcherSources.js" as SwitcherSources
+import "../scripts/SwitcherResults.js" as SwitcherResults
+import "../scripts/CloseRequests.js" as CloseRequests
+import "../scripts/TargetSearchPresentation.js" as TargetSearchPresentation
+import "../scripts/EngineRequests.js" as EngineRequests
+import "../scripts/KeyboardPresentation.js" as KeyboardPresentation
 
-FerricBrowserRuntimeServices {
-    id: window
-
-
-    readonly property var clipboardBridge: window.clipboardBridgeObject
-    readonly property var activationOutcomeTimer: window.activationOutcomeTimerObject
-    readonly property var fileDialogSurfaces: window.fileDialogSurfacesObject
-    readonly property var certificatePrompts: window.certificatePromptsObject
-    readonly property var webAuthPrompt: window.webAuthPromptObject
-    readonly property var contextMenu: window.contextMenuObject
-    readonly property var tabs: window.tabsModel
-    readonly property var namedSessions: window.namedSessionsModel
-    readonly property var profiles: window.profilesModel
-    readonly property var downloads: window.downloadsModel
-    readonly property var libraryEntries: window.libraryEntriesModel
-    readonly property var libraryGraphEntries: window.libraryGraphEntriesModel
-    readonly property var libraryGraphNodes: window.libraryGraphNodesModel
-
-    readonly property alias switcherRefreshTimerObject: switcherRefreshTimer
-    readonly property alias switcherBatchTimerObject: switcherBatchTimer
+// Owns window behavior through an explicit host; no inherited creation scope.
+QtObject {
+    required property var host
+    readonly property var window: host
 
     function refreshDownloads() { window.downloadWorkspaceObject.refresh() }
 
@@ -54,7 +40,7 @@ FerricBrowserRuntimeServices {
     }
 
     function openExternalUri(ui, uri) {
-        var targetUi = ui || browserUi
+        var targetUi = ui || window.browserUi
         if (!uri || String(uri).length === 0) {
             return false
         }
@@ -65,7 +51,7 @@ FerricBrowserRuntimeServices {
         if (window.desktopPortalMode(targetUi) === "required") {
             var status = window.desktopPortalCapabilityStatus(targetUi, "open_uri")
             if (status === "not-probed") {
-                browserUi.probe_desktop_portals()
+                window.browserUi.probe_desktop_portals()
                 status = window.desktopPortalCapabilityStatus(targetUi, "open_uri")
             }
             if (status === "pending" || status === "not-probed") {
@@ -77,7 +63,7 @@ FerricBrowserRuntimeServices {
                 })
                 window.pendingExternalUris = pending.slice(-16)
                 targetUi.status_text = "Checking required OpenURI portal…"
-                externalOpenPortalTimer.start()
+                window.externalOpenPortalTimer.start()
                 return true
             }
             if (status !== "available") {
@@ -92,7 +78,7 @@ FerricBrowserRuntimeServices {
     }
 
     function hasActiveDownloads() {
-        if (browserUi.has_finalizing_downloads && browserUi.has_finalizing_downloads()) return true
+        if (window.browserUi.has_finalizing_downloads && window.browserUi.has_finalizing_downloads()) return true
         if (window.pendingDownloadId.length > 0) {
             return true
         }
@@ -201,7 +187,7 @@ FerricBrowserRuntimeServices {
         if (index < 0 || !id || id.length === 0) {
             return "this tab is no longer available"
         }
-        if (index === browserUi.active_tab_index) {
+        if (index === window.browserUi.active_tab_index) {
             return "only hidden tabs may be suspended"
         }
         if (!view) {
@@ -222,30 +208,30 @@ FerricBrowserRuntimeServices {
         if (window.hasActiveDownloads() || window.pendingDownloadId.length > 0) {
             return "a download is active"
         }
-        if (window.hasActiveShutdownRequestsFor(browserUi, window)) {
+        if (window.hasActiveShutdownRequestsFor(window.browserUi, window)) {
             return "a browser request or capture is active"
         }
-        if (browserUi.tab_has_active_operations(id)) {
+        if (window.browserUi.tab_has_active_operations(id)) {
             return "a browser operation is active"
         }
         return ""
     }
 
     function requestTabSuspension(id) {
-        var index = browserUi.tab_index_for_id(id)
-        var view = tabViewAt(index)
+        var index = window.browserUi.tab_index_for_id(id)
+        var view = window.tabViewAt(index)
         var reason = window.tabSuspensionBlockReason(index, id, view)
         if (reason.length > 0) {
-            browserUi.status_text = "Tab suspension refused: " + reason
+            window.browserUi.status_text = "Tab suspension refused: " + reason
             return
         }
         var probe = BrowserScripts.formStateProbe()
         window.runBrowserScript(view, probe, function(result) {
             if (result !== "safe") {
-                browserUi.status_text = "Tab suspension refused: editable page state is not safely empty"
+                window.browserUi.status_text = "Tab suspension refused: editable page state is not safely empty"
                 return
             }
-            if (!browserUi.commit_tab_suspend(id)) {
+            if (!window.browserUi.commit_tab_suspend(id)) {
                 return
             }
             window.executePendingEngineAction()
@@ -256,7 +242,7 @@ FerricBrowserRuntimeServices {
         if (index < 0 || !id || id.length === 0) {
             return "this tab is no longer available"
         }
-        if (index === browserUi.active_tab_index) {
+        if (index === window.browserUi.active_tab_index) {
             return "only hidden tabs may be discarded"
         }
         if (!view) {
@@ -277,30 +263,30 @@ FerricBrowserRuntimeServices {
         if (window.hasActiveDownloads() || window.pendingDownloadId.length > 0) {
             return "a download is active"
         }
-        if (window.hasActiveShutdownRequestsFor(browserUi, window)) {
+        if (window.hasActiveShutdownRequestsFor(window.browserUi, window)) {
             return "a browser request or capture is active"
         }
-        if (browserUi.tab_has_active_operations(id)) {
+        if (window.browserUi.tab_has_active_operations(id)) {
             return "a browser operation is active"
         }
         return ""
     }
 
     function requestTabDiscard(id) {
-        var index = browserUi.tab_index_for_id(id)
-        var view = tabViewAt(index)
+        var index = window.browserUi.tab_index_for_id(id)
+        var view = window.tabViewAt(index)
         var reason = window.tabDiscardBlockReason(index, id, view)
         if (reason.length > 0) {
-            browserUi.status_text = "Tab discard refused: " + reason
+            window.browserUi.status_text = "Tab discard refused: " + reason
             return
         }
         var probe = BrowserScripts.formStateProbe()
         window.runBrowserScript(view, probe, function(result) {
             if (result !== "safe") {
-                browserUi.status_text = "Tab discard refused: editable page state is not safely empty"
+                window.browserUi.status_text = "Tab discard refused: editable page state is not safely empty"
                 return
             }
-            if (!browserUi.commit_tab_discard(id)) {
+            if (!window.browserUi.commit_tab_discard(id)) {
                 return
             }
             window.executePendingEngineAction()
@@ -313,10 +299,10 @@ FerricBrowserRuntimeServices {
 
     function checkPageStateBeforeQuit() {
         var generation = ++window.shutdownPageProbeGeneration
-        shutdownPageProbeTimer.restart()
+        window.shutdownPageProbeTimer.restart()
         var candidates = []
-        for (var i = 0; i < tabViews.length; ++i) {
-            var view = tabViewAt(i)
+        for (var i = 0; i < window.tabViews.length; ++i) {
+            var view = window.tabViewAt(i)
             if (view && view.lifecycleState === WebEngineView.LifecycleState.Active)
                 candidates.push(view)
         }
@@ -326,7 +312,7 @@ FerricBrowserRuntimeServices {
                 return window.runBrowserScript(view, window.shutdownPageProbeScript(), reply, 0)
             },
             function(result) {
-                shutdownPageProbeTimer.stop()
+                window.shutdownPageProbeTimer.stop()
                 if (result.state === "clean") window.finalizeQuit()
                 else {
                     window.shutdownPagePromptReason = result.reason
@@ -345,14 +331,14 @@ FerricBrowserRuntimeServices {
         window.shutdownConfirmationCommand = commandText === ":quit"
                 ? ":quit" : ":window-close"
         window.shutdownConfirmationVisible = true
-        browserUi.status_text = window.shutdownConfirmationCommand === ":quit"
+        window.browserUi.status_text = window.shutdownConfirmationCommand === ":quit"
                 ? "Confirm browser shutdown" : "Confirm window close"
     }
 
     function continueQuitRequest() {
         window.shutdownConfirmationVisible = false
         if (window.hasActiveDownloads()
-                || window.hasActiveShutdownRequestsFor(browserUi, window)) {
+                || window.hasActiveShutdownRequestsFor(window.browserUi, window)) {
             window.shutdownPromptVisible = true
             return
         }
@@ -360,7 +346,7 @@ FerricBrowserRuntimeServices {
     }
 
     function finalizeQuit() {
-        shutdownPageProbeTimer.stop()
+        window.shutdownPageProbeTimer.stop()
         window.shutdownPromptVisible = false
         window.shutdownPagePromptVisible = false
         window.beginApplicationShutdown()
@@ -374,76 +360,59 @@ FerricBrowserRuntimeServices {
         for (var pendingKey in window.pendingDownloadRequests) {
             var pending = window.pendingDownloadRequests[pendingKey]
             if (pending) {
-                window.resolveQtRequest(browserUi, pending, "download", "cancel", [])
-                browserUi.update_download(pendingKey, "cancelled", pending.receivedBytes, true)
+                window.resolveQtRequest(window.browserUi, pending, "download", "cancel", [])
+                window.browserUi.update_download(pendingKey, "cancelled", pending.receivedBytes, true)
             }
         }
         window.pendingDownloadRequests = ({})
         for (var activeKey in window.activeDownloads) {
             var download = window.activeDownloads[activeKey]
             if (download && !download.isFinished) {
-                window.resolveQtRequest(browserUi, download, "download", "cancel", [])
-                browserUi.update_download(activeKey, "cancelled", download.receivedBytes, true)
+                window.resolveQtRequest(window.browserUi, download, "download", "cancel", [])
+                window.browserUi.update_download(activeKey, "cancelled", download.receivedBytes, true)
             }
         }
         window.activeDownloads = ({})
-        window.cancelShutdownRequestsFor(browserUi, window)
+        window.cancelShutdownRequestsFor(window.browserUi, window)
         window.continueQuitRequest()
     }
 
-    Timer {
-        id: libraryPublicationTimer
-        interval: 0
-        onTriggered: window.refreshLibraryManager()
-    }
-    Connections {
-        target: browserUi
-        function onLibrary_valuesChanged() { libraryPublicationTimer.restart() }
-        function onLibrary_pendingChanged() {
-            if (!browserUi.library_pending) Qt.callLater(function() {
-                if (window.downloadManagerVisible && !browserUi.library_pending
-                        && browserUi.library_error.length === 0) window.refreshDownloads()
-            })
-        }
-        function onLibrary_kindChanged() { libraryPublicationTimer.restart() }
-        function onLibrary_graph_edge_sourcesChanged() { libraryPublicationTimer.restart() }
-        function onLibrary_graph_edge_targetsChanged() { libraryPublicationTimer.restart() }
-        function onLibrary_graph_edge_transitionsChanged() { libraryPublicationTimer.restart() }
-    }
     function updateLibraryRows(rows) {
         // Retain delegates and drafts for stable records during asynchronous reads.
         for (var i = 0; i < rows.length; ++i) {
             var found = -1
-            for (var j = i; j < libraryEntries.count; ++j) {
-                var current = libraryEntries.get(j)
+            for (var j = i; j < window.libraryEntries.count; ++j) {
+                var current = window.libraryEntries.get(j)
                 if (current.entryKind === rows[i].entryKind && current.entryId === rows[i].entryId) { found = j; break }
             }
-            if (found < 0) libraryEntries.insert(i, rows[i])
+            if (found < 0) window.libraryEntries.insert(i, rows[i])
             else {
-                if (found !== i) libraryEntries.move(found, i, 1)
-                libraryEntries.set(i, rows[i])
+                if (found !== i) window.libraryEntries.move(found, i, 1)
+                window.libraryEntries.set(i, rows[i])
             }
         }
-        if (libraryEntries.count > rows.length) libraryEntries.remove(rows.length, libraryEntries.count - rows.length)
+        if (window.libraryEntries.count > rows.length) window.libraryEntries.remove(rows.length, window.libraryEntries.count - rows.length)
     }
+
     function refreshActiveLibrary() {
         window.pendingLibraryDelete = ""
-        if (browserUi.library_kind === "journey") {
+        if (window.browserUi.library_kind === "journey") {
             if (window.libraryJourneyCurrentOnly) window.runJourneyCurrentQuery()
             else window.runJourneyQuery(window.libraryJourneyExpandedNode.length > 0
                 ? window.journeyExpandArgument(window.libraryJourneyExpandedNode)
                 : window.journeySearchArgument(window.libraryJourneySearchText))
-        } else if (browserUi.library_kind === "actions") return browserUi.execute_command(":action-list")
-        else if (browserUi.library_kind === "context-routes") return browserUi.execute_command(":context-route list")
-        else browserUi.refresh_library()
+        } else if (window.browserUi.library_kind === "actions") return window.browserUi.execute_command(":action-list")
+        else if (window.browserUi.library_kind === "context-routes") return window.browserUi.execute_command(":context-route list")
+        else window.browserUi.refresh_library()
     }
+
     function refreshLibraryManager() {
         window.pendingLibraryDelete = ""
-        libraryGraphEntries.clear()
-        libraryGraphNodes.clear()
+        window.libraryGraphEntries.clear()
+        window.libraryGraphNodes.clear()
         window.libraryGraphLineData = []
-        var kind = browserUi.library_kind
-        var values = browserUi.library_values
+        var kind = window.browserUi.library_kind
+        var values = window.browserUi.library_values
         var lines = values.length > 0 ? values.split("\n") : []
         window.libraryTotalEntries = lines.length
         var visibleLines = lines
@@ -480,12 +449,12 @@ FerricBrowserRuntimeServices {
         }
         window.updateLibraryRows(rows)
         if (kind === "journey") {
-            var edgeSources = browserUi.library_graph_edge_sources
-            var edgeTargets = browserUi.library_graph_edge_targets
-            var edgeTransitions = browserUi.library_graph_edge_transitions
+            var edgeSources = window.browserUi.library_graph_edge_sources
+            var edgeTargets = window.browserUi.library_graph_edge_targets
+            var edgeTransitions = window.browserUi.library_graph_edge_transitions
             if (edgeSources.length !== edgeTargets.length
                     || edgeSources.length !== edgeTransitions.length) {
-                libraryGraphEntries.append({
+                window.libraryGraphEntries.append({
                     label: "Relationship graph unavailable",
                     secondary: "The graph data was incomplete"
                 })
@@ -500,8 +469,8 @@ FerricBrowserRuntimeServices {
                 }
                 var nodeIndex = ({})
                 var graphNodeLimit = Math.min(lines.length, 120)
-                var graphNodeWidth = libraryManager.graphNodeWidth
-                var graphNodeHeight = libraryManager.graphNodeHeight
+                var graphNodeWidth = window.runtime_libraryManager.graphNodeWidth
+                var graphNodeHeight = window.runtime_libraryManager.graphNodeHeight
                 var graphNodeGapX = 24
                 var graphNodeGapY = 18
                 var graphColumns = 4
@@ -510,13 +479,13 @@ FerricBrowserRuntimeServices {
                     if (graphFields.length < 4 || nodeIndex[graphFields[0]] !== undefined) {
                         continue
                     }
-                    var graphIndex = libraryGraphNodes.count
+                    var graphIndex = window.libraryGraphNodes.count
                     var graphX = (graphIndex % graphColumns)
                             * (graphNodeWidth + graphNodeGapX)
                     var graphY = Math.floor(graphIndex / graphColumns)
                             * (graphNodeHeight + graphNodeGapY)
                     nodeIndex[graphFields[0]] = graphIndex
-                    libraryGraphNodes.append({
+                    window.libraryGraphNodes.append({
                         nodeId: graphFields[0],
                         label: graphFields[1].length > 0 ? graphFields[1] : graphFields[2],
                         transition: graphFields[3],
@@ -531,14 +500,14 @@ FerricBrowserRuntimeServices {
                     var transition = String(edgeTransitions[e] || "navigate")
                     var source = nodeLabels[sourceId] || "Earlier page"
                     var target = nodeLabels[targetId] || "Another page"
-                    libraryGraphEntries.append({
+                    window.libraryGraphEntries.append({
                         label: source + " → " + target,
                         secondary: ChromePresentation.journeyTransitionLabel(transition)
                     })
                     if (nodeIndex[sourceId] !== undefined
                             && nodeIndex[targetId] !== undefined) {
-                        var sourceNode = libraryGraphNodes.get(nodeIndex[sourceId])
-                        var targetNode = libraryGraphNodes.get(nodeIndex[targetId])
+                        var sourceNode = window.libraryGraphNodes.get(nodeIndex[sourceId])
+                        var targetNode = window.libraryGraphNodes.get(nodeIndex[targetId])
                         window.libraryGraphLineData.push({
                             x1: sourceNode.x + graphNodeWidth / 2,
                             y1: sourceNode.y + graphNodeHeight / 2,
@@ -549,20 +518,20 @@ FerricBrowserRuntimeServices {
                     }
                 }
                 if (lines.length > graphNodeLimit) {
-                    libraryGraphEntries.insert(0, {
+                    window.libraryGraphEntries.insert(0, {
                         label: "Showing " + graphNodeLimit + " pages on the map",
                         secondary: "Search or choose Nearby pages to narrow the view"
                     })
                 }
-                if (libraryGraphEntries.count === 0) {
-                    libraryGraphEntries.append({
+                if (window.libraryGraphEntries.count === 0) {
+                    window.libraryGraphEntries.append({
                         label: "No connections to show",
                         secondary: "Try showing all pages or searching for another page"
                     })
                 }
             }
         }
-        libraryManager.requestGraphPaint()
+        window.runtime_libraryManager.requestGraphPaint()
     }
 
     function libraryPageCount() {
@@ -584,7 +553,7 @@ FerricBrowserRuntimeServices {
         if (argument.length > 0) {
             command += " " + argument
         }
-        if (browserUi.execute_command(command)) {
+        if (window.browserUi.execute_command(command)) {
             window.syncTabModel()
             window.refreshLibraryManager()
         }
@@ -611,7 +580,7 @@ FerricBrowserRuntimeServices {
     function openLibraryEntry(entryKind, entryId) {
         var command = entryKind === "history" ? "history-open"
                 : entryKind === "bookmark" ? "bookmark-open" : "quickmark-open"
-        if (browserUi.execute_command(":" + command + " " + libraryCommandArgument(entryId))) {
+        if (window.browserUi.execute_command(":" + command + " " + window.libraryCommandArgument(entryId))) {
             window.syncTabModel()
             window.executePendingEngineAction()
             window.libraryManagerVisible = false
@@ -623,12 +592,12 @@ FerricBrowserRuntimeServices {
 
     function showPrivateHistoryTransfer(entryId, title, url) {
         if (!window.temporaryProfile || String(url).length === 0) {
-            browserUi.status_text = "Private history transfer is unavailable"
+            window.browserUi.status_text = "Private history transfer is unavailable"
             return
         }
         if (window.privateBookmarkTransferPending) {
             var message = "A bookmark is still saving. Wait before choosing another page."
-            browserUi.status_text = message
+            window.browserUi.status_text = message
             window.showCommandNotice(message, false)
             return
         }
@@ -654,7 +623,7 @@ FerricBrowserRuntimeServices {
     function confirmPrivateHistoryTransfer(profileName) {
         var command = ":profile-open " + window.libraryCommandArgument(profileName)
                 + " " + window.libraryCommandArgument(window.privateHistoryTransferUrl)
-        if (!browserUi.execute_command(command)) {
+        if (!window.browserUi.execute_command(command)) {
             return
         }
         window.privateHistoryTransferVisible = false
@@ -687,7 +656,7 @@ FerricBrowserRuntimeServices {
         window.privateBookmarkTransferMessage = message
         window.privateBookmarkTransferDetail = detail
         window.privateBookmarkTransferFailed = !succeeded
-        browserUi.status_text = message
+        window.browserUi.status_text = message
         if (!window.privateHistoryTransferVisible) window.showCommandNotice(message, !succeeded)
     }
 
@@ -733,7 +702,7 @@ FerricBrowserRuntimeServices {
             window.pendingLibraryDelete = pendingKey
             return
         }
-        if (browserUi.execute_command(":" + command + " " + libraryCommandArgument(entryId))) {
+        if (window.browserUi.execute_command(":" + command + " " + window.libraryCommandArgument(entryId))) {
             window.pendingLibraryDelete = ""
             return true
         }
@@ -743,14 +712,14 @@ FerricBrowserRuntimeServices {
     function editLibraryEntry(entryKind, entryId, value) {
         var trimmed = String(value).trim()
         if (trimmed.length === 0) {
-            browserUi.status_text = "Library edit requires a non-empty value"
+            window.browserUi.status_text = "Library edit requires a non-empty value"
             return false
         }
         var command = entryKind === "bookmark" ? "bookmark-edit" : "quickmark-edit"
         var argumentsText = entryKind === "bookmark"
-                ? libraryCommandArgument(entryId) + " --title " + libraryCommandArgument(trimmed)
-                : libraryCommandArgument(entryId) + " " + libraryCommandArgument(trimmed)
-        if (browserUi.execute_command(":" + command + " " + argumentsText)) {
+                ? window.libraryCommandArgument(entryId) + " --title " + window.libraryCommandArgument(trimmed)
+                : window.libraryCommandArgument(entryId) + " " + window.libraryCommandArgument(trimmed)
+        if (window.browserUi.execute_command(":" + command + " " + argumentsText)) {
             window.pendingLibraryDelete = ""
             return true
         }
@@ -758,7 +727,7 @@ FerricBrowserRuntimeServices {
     }
 
     function beginJourneyExport() {
-        var preview = browserUi.journey_export_preview()
+        var preview = window.browserUi.journey_export_preview()
         if (preview.length === 0) {
             window.journeyExportAwaiting = true
             return
@@ -769,9 +738,9 @@ FerricBrowserRuntimeServices {
     }
 
     function finishJourneyExport() {
-        var selected = fileDialogSurfaces.journeyExportSelectedFile
-        var path = browserUi.local_file_path(selected || "")
-        if (path.length === 0 || !browserUi.export_journey(path)) {
+        var selected = window.fileDialogSurfaces.journeyExportSelectedFile
+        var path = window.browserUi.local_file_path(selected || "")
+        if (path.length === 0 || !window.browserUi.export_journey(path)) {
             window.journeyExportPreviewVisible = true
             return
         }
@@ -779,7 +748,7 @@ FerricBrowserRuntimeServices {
     }
 
     function finishDiagnosticsExport() {
-        var selected = fileDialogSurfaces.diagnosticsExportSelectedFile
+        var selected = window.fileDialogSurfaces.diagnosticsExportSelectedFile
         var ui = window.diagnosticsUi
         if (!window.diagnosticsOwner(ui, window.diagnosticsHost)
                 || (window.diagnosticsExportUi && window.diagnosticsExportUi !== ui)) return
@@ -803,49 +772,47 @@ FerricBrowserRuntimeServices {
     }
 
     function cancelSwitcherBatch() {
-        switcherBatchGeneration += 1
-        switcherBatchTimer.stop()
-        switcherBatchEntries = []
-        switcherBatchMerged = []
-        switcherBatchSources = []
-        switcherBatchPrevious = []
-        switcherBatchIndex = 0
+        window.switcherBatchGeneration += 1
+        window.switcherBatchTimer.stop()
+        window.switcherBatchEntries = []
+        window.switcherBatchMerged = []
+        window.switcherBatchSources = []
+        window.switcherBatchPrevious = []
+        window.switcherBatchIndex = 0
     }
 
-    // A query edit invalidates the old rows before the debounce timer runs.
-    // Guard activation at the owner boundary as well as in the presentation.
     function switcherResultsCurrent() {
         return window.switcherVisible && !!window.switcherRegistry.switcherInvocation()
                 && window.switcherResultContext !== null
                 && window.switcherResultContext.owner === window.switcherOwnerToken
-                && window.switcherResultContext.query === switcherSurface.query
+                && window.switcherResultContext.query === window.runtime_switcherSurface.query
                 && window.switcherResultContext.scope === window.switcherScope
     }
 
     function switcherMaxResults() {
-        return (window.switcherUi || browserUi).feature_switcher_max_results
+        return (window.switcherUi || window.browserUi).feature_switcher_max_results
     }
 
     function processSwitcherBatch() {
-        if (switcherBatchScheduledGeneration !== switcherBatchGeneration
+        if (window.switcherBatchScheduledGeneration !== window.switcherBatchGeneration
                 || !window.switcherVisible
                 || !window.switcherRegistry.switcherInvocation()
-                || switcherBatchQuery !== switcherSurface.query
-                || switcherBatchScope !== window.switcherScope) {
+                || window.switcherBatchQuery !== window.runtime_switcherSurface.query
+                || window.switcherBatchScope !== window.switcherScope) {
             window.cancelSwitcherBatch()
             return
         }
-        if (switcherBatchIndex >= switcherBatchEntries.length) {
-            switcherResults = window.publishedSwitcherBatch()
-            switcherSourceState = SwitcherSources.aggregate(switcherBatchSources, false)
-            switcherResultContext = {query: switcherBatchQuery, scope: switcherBatchScope, owner: window.switcherOwnerToken}
+        if (window.switcherBatchIndex >= window.switcherBatchEntries.length) {
+            window.switcherResults = window.publishedSwitcherBatch()
+            window.switcherSourceState = SwitcherSources.aggregate(window.switcherBatchSources, false)
+            window.switcherResultContext = {query: window.switcherBatchQuery, scope: window.switcherBatchScope, owner: window.switcherOwnerToken}
             return
         }
-        var entry = switcherBatchEntries[switcherBatchIndex]
-        switcherBatchIndex += 1
+        var entry = window.switcherBatchEntries[window.switcherBatchIndex]
+        window.switcherBatchIndex += 1
         if (window.switcherRegistry.switcherEntryLive(entry)) {
-            var accepted = entry.ui.switcher_query(switcherBatchQuery, switcherBatchScope)
-            switcherBatchSources.push(SwitcherSources.fromUi(entry.ui, accepted))
+            var accepted = entry.ui.switcher_query(window.switcherBatchQuery, window.switcherBatchScope)
+            window.switcherBatchSources.push(SwitcherSources.fromUi(entry.ui, accepted))
             if (accepted) {
                 var kinds = entry.ui.switcher_result_kinds || []
                 var ids = entry.ui.switcher_result_ids || []
@@ -865,7 +832,7 @@ FerricBrowserRuntimeServices {
                         && recencies.length === count) {
                     for (var j = 0; j < count; ++j) {
                         var actionText = String(actions[j])
-                        switcherBatchMerged.push({
+                        window.switcherBatchMerged.push({
                             kind: String(kinds[j]),
                             id: String(ids[j]),
                             generation: String(generations[j]),
@@ -885,20 +852,20 @@ FerricBrowserRuntimeServices {
         // Publish each source as it arrives. The next source is scheduled on
         // the GUI event loop, so a large multi-window search cannot monopolize
         // keyboard, focus, or portal callbacks.
-        switcherResults = window.publishedSwitcherBatch()
-        switcherSourceState = SwitcherSources.aggregate(switcherBatchSources,
-            switcherBatchIndex < switcherBatchEntries.length)
-        switcherResultContext = {query: switcherBatchQuery, scope: switcherBatchScope, owner: window.switcherOwnerToken}
-        switcherBatchTimer.start()
+        window.switcherResults = window.publishedSwitcherBatch()
+        window.switcherSourceState = SwitcherSources.aggregate(window.switcherBatchSources,
+            window.switcherBatchIndex < window.switcherBatchEntries.length)
+        window.switcherResultContext = {query: window.switcherBatchQuery, scope: window.switcherBatchScope, owner: window.switcherOwnerToken}
+        window.switcherBatchTimer.start()
     }
 
     function publishedSwitcherBatch() {
-        var pending = switcherBatchEntries.slice(switcherBatchIndex).map(function(entry) {
+        var pending = window.switcherBatchEntries.slice(window.switcherBatchIndex).map(function(entry) {
             return entry && entry.ui ? String(entry.ui.window_token) : ""
         })
         function live(row) { return !!window.switcherOwner(row) }
-        return SwitcherResults.publish(switcherBatchMerged.filter(live),
-            switcherBatchPrevious.filter(live), pending, window.switcherMaxResults())
+        return SwitcherResults.publish(window.switcherBatchMerged.filter(live),
+            window.switcherBatchPrevious.filter(live), pending, window.switcherMaxResults())
     }
 
     function retrySwitcherSources() {
@@ -922,48 +889,26 @@ FerricBrowserRuntimeServices {
         entries.sort(function(left, right) {
             return Number(right.ui === window.switcherUi) - Number(left.ui === window.switcherUi)
         })
-        switcherBatchEntries = entries.slice(0)
-        switcherBatchMerged = []
-        switcherBatchSources = []
-        switcherBatchPrevious = keepCurrentRows ? switcherResults.slice(0) : []
-        switcherBatchIndex = 0
-        switcherBatchQuery = switcherSurface.query
-        switcherBatchScope = window.switcherScope
-        switcherBatchScheduledGeneration = switcherBatchGeneration
+        window.switcherBatchEntries = entries.slice(0)
+        window.switcherBatchMerged = []
+        window.switcherBatchSources = []
+        window.switcherBatchPrevious = keepCurrentRows ? window.switcherResults.slice(0) : []
+        window.switcherBatchIndex = 0
+        window.switcherBatchQuery = window.runtime_switcherSurface.query
+        window.switcherBatchScope = window.switcherScope
+        window.switcherBatchScheduledGeneration = window.switcherBatchGeneration
         // A metadata completion must not erase usable results for the same
         // input while the next source batch is scheduled. New input is cleared
         // immediately at its edit boundary.
         if (!keepCurrentRows) {
-            switcherResultContext = null
-            switcherResults = []
+            window.switcherResultContext = null
+            window.switcherResults = []
         }
-        switcherBatchTimer.start()
-    }
-
-    // Querying every key event synchronously across all browser windows can
-    // build a backlog while the user is typing. Coalesce edits into one
-    // latest-input refresh; activation and scope changes still refresh
-    // immediately at their explicit boundaries.
-    Timer {
-        id: switcherRefreshTimer
-        interval: 35
-        repeat: false
-        onTriggered: {
-            if (window.switcherVisible) {
-                window.refreshSwitcher()
-            }
-        }
-    }
-
-    Timer {
-        id: switcherBatchTimer
-        interval: 0
-        repeat: false
-        onTriggered: window.processSwitcherBatch()
+        window.switcherBatchTimer.start()
     }
 
     function showSwitcherWith(scope, query, ownerUi, ownerHost) {
-        var ui = ownerUi || browserUi
+        var ui = ownerUi || window.browserUi
         var entry = window.browserWindowEntryForUi(ui)
         if (!entry || !window.switcherRegistry.switcherEntryLive(entry)
                 || (ownerHost && entry.host !== ownerHost)) {
@@ -976,12 +921,12 @@ FerricBrowserRuntimeServices {
         window.switcherProfile = entry.profile
         window.switcherOwnerToken = String(ui.window_token)
         window.captureOverlayFocus(entry.host, entry.view)
-        switcherVisible = true
-        switcherScope = scope && scope.length > 0 ? scope : "all"
-        switcherRefreshTimer.stop()
-        switcherSurface.query = query || ""
-        refreshSwitcher()
-        switcherSurface.focusInput()
+        window.switcherVisible = true
+        window.switcherScope = scope && scope.length > 0 ? scope : "all"
+        window.switcherRefreshTimer.stop()
+        window.runtime_switcherSurface.query = query || ""
+        window.refreshSwitcher()
+        window.runtime_switcherSurface.focusInput()
     }
 
     function showSwitcher() {
@@ -989,13 +934,13 @@ FerricBrowserRuntimeServices {
     }
 
     function closeSwitcher() {
-        var wasVisible = switcherVisible
+        var wasVisible = window.switcherVisible
         var host = window.switcherHost
-        switcherRefreshTimer.stop()
+        window.switcherRefreshTimer.stop()
         window.cancelSwitcherBatch()
-        switcherVisible = false
-        switcherResultContext = null
-        switcherResults = []
+        window.switcherVisible = false
+        window.switcherResultContext = null
+        window.switcherResults = []
         window.switcherUi = null
         window.switcherHost = null
         window.switcherProfile = null
@@ -1009,11 +954,11 @@ FerricBrowserRuntimeServices {
         if (!scope || scope.length === 0) {
             return
         }
-        switcherScope = scope
-        switcherRefreshTimer.stop()
+        window.switcherScope = scope
+        window.switcherRefreshTimer.stop()
         window.cancelSwitcherBatch()
-        refreshSwitcher()
-        switcherSurface.focusInput()
+        window.refreshSwitcher()
+        window.runtime_switcherSurface.focusInput()
     }
 
     function hintSelectorPolicySnapshot(family) {
@@ -1162,10 +1107,10 @@ FerricBrowserRuntimeServices {
             windowStartupRoutePreflighted: true
         })
         if (!child) {
-            browserUi.status_text = "Could not create ephemeral window"
+            window.browserUi.status_text = "Could not create ephemeral window"
             return false
         }
-        browserUi.status_text = "Opened link in a fresh ephemeral window"
+        window.browserUi.status_text = "Opened link in a fresh ephemeral window"
         return true
     }
 
@@ -1187,7 +1132,7 @@ FerricBrowserRuntimeServices {
         var ephemeralProfile = secondary
                 ? hostWindow.windowEphemeralProfile : window.ephemeralProfile
         var sharedProfile = secondary
-                ? hostWindow.windowWebEngineProfile : browserProfile
+                ? hostWindow.windowWebEngineProfile : window.browserProfile
         var invocationToken = secondary
                 ? hostWindow.windowEphemeralInvocationToken
                 : window.ephemeralInvocationToken
@@ -1213,23 +1158,22 @@ FerricBrowserRuntimeServices {
         return true
     }
 
-    function transferPayloadForUi(sourceUi) {
+    function transferPayloadForUi(sourceUi, sourceTabId) {
         if (!sourceUi) {
             return ""
         }
-        var index = Number(sourceUi.active_tab_index)
-        var id = index >= 0 ? sourceUi.tab_id_for_index(index) : ""
-        return id.length > 0 ? sourceUi.tab_transfer_payload(id) : ""
+        return sourceTabId && sourceUi.tab_index_for_id(sourceTabId) >= 0
+                ? sourceUi.tab_transfer_payload(sourceTabId) : ""
     }
 
-    function detachSourceView(sourceUi, sourceHost) {
+    function detachSourceView(sourceUi, sourceHost, sourceTabId) {
         if (sourceHost === window) {
-            var index = sourceUi ? sourceUi.active_tab_index : -1
-            var view = tabViewAt(index)
+            var index = sourceUi ? sourceUi.tab_index_for_id(sourceTabId) : -1
+            var view = window.tabViewAt(index)
             return view ? window.detachTabViewAt(index) : null
         }
         return sourceHost && sourceHost.detachActiveViewForTransfer
-                ? sourceHost.detachActiveViewForTransfer() : null
+                ? sourceHost.detachActiveViewForTransfer(sourceTabId) : null
     }
 
     function restoreSourceView(sourceUi, sourceHost, view) {
@@ -1237,22 +1181,22 @@ FerricBrowserRuntimeServices {
             return false
         }
         if (sourceHost === window) {
-            if (tabViews.indexOf(view) >= 0) return true
+            if (window.tabViews.indexOf(view) >= 0) return true
             var index = sourceUi ? sourceUi.tab_index_for_id(view.stableTabId) : -1
-            if (index < 0 || index > tabViews.length) {
-                index = tabViews.length
+            if (index < 0 || index > window.tabViews.length) {
+                index = window.tabViews.length
             }
-            if (tabViewAt(index) && tabViewAt(index).stableTabId === view.stableTabId)
+            if (window.tabViewAt(index) && window.tabViewAt(index).stableTabId === view.stableTabId)
                 window.removeTabViewAt(index, null)
             view.viewUi = sourceUi
             view.viewHost = window
-            view.viewTabs = tabs
-            tabViews = tabViews.slice(0, index).concat([view], tabViews.slice(index))
+            view.viewTabs = window.tabs
+            window.tabViews = window.tabViews.slice(0, index).concat([view], window.tabViews.slice(index))
             view.parent = window.webViewsObject
             view.visible = true
-            for (var restoredIndex = index; restoredIndex < tabViews.length; ++restoredIndex) {
-                tabViews[restoredIndex].tabIndex = restoredIndex
-                tabViews[restoredIndex].viewModel = tabs.get(restoredIndex)
+            for (var restoredIndex = index; restoredIndex < window.tabViews.length; ++restoredIndex) {
+                window.tabViews[restoredIndex].tabIndex = restoredIndex
+                window.tabViews[restoredIndex].viewModel = window.tabs.get(restoredIndex)
             }
             return true
         }
@@ -1282,33 +1226,33 @@ FerricBrowserRuntimeServices {
             transferData = null
         }
         if (!transferData || typeof transferData.tab_id !== "string"
-                || !browserUi.adopt_tab_transfer(payload)) {
+                || !window.browserUi.adopt_tab_transfer(payload)) {
             return false
         }
-        var adoptedTabId = browserUi.tab_id_for_index(browserUi.active_tab_index)
+        var adoptedTabId = window.browserUi.tab_id_for_index(window.browserUi.active_tab_index)
         window.syncTabModel()
-        var index = browserUi.active_tab_index
-        if (index < 0 || index >= tabs.count) {
-            browserUi.rollback_tab_transfer(adoptedTabId)
+        var index = window.browserUi.active_tab_index
+        if (index < 0 || index >= window.tabs.count) {
+            window.browserUi.rollback_tab_transfer(adoptedTabId)
             window.syncTabModel()
             return false
         }
-        tabs.setProperty(index, "url", transferData.url || "about:blank")
-        tabs.setProperty(index, "title", transferData.title || "New tab")
-        tabs.setProperty(index, "loaded", true)
-        tabs.setProperty(index, "muted", !!transferData.muted)
-        tabs.setProperty(index, "zoom", Number(transferData.zoom_hundredths || 100) / 100.0)
-        var placeholder = tabViewAt(index)
+        window.tabs.setProperty(index, "url", transferData.url || "about:blank")
+        window.tabs.setProperty(index, "title", transferData.title || "New tab")
+        window.tabs.setProperty(index, "loaded", true)
+        window.tabs.setProperty(index, "muted", !!transferData.muted)
+        window.tabs.setProperty(index, "zoom", Number(transferData.zoom_hundredths || 100) / 100.0)
+        var placeholder = window.tabViewAt(index)
         if (!placeholder) {
-            browserUi.rollback_tab_transfer(adoptedTabId)
+            window.browserUi.rollback_tab_transfer(adoptedTabId)
             window.syncTabModel()
             return false
         }
         window.removeTabViewAt(index, null)
-        if (contentHistory.length > 0) browserUi.content_history_import(browserUi.active_tab_index, contentHistory)
-        view.viewUi = browserUi
-        view.viewTabs = tabs
-        view.viewModel = tabs.get(index)
+        if (contentHistory.length > 0) window.browserUi.content_history_import(window.browserUi.active_tab_index, contentHistory)
+        view.viewUi = window.browserUi
+        view.viewTabs = window.tabs
+        view.viewModel = window.tabs.get(index)
         view.viewTransferred = false
         view.stableTabId = adoptedTabId
         if (view.viewHost !== undefined) {
@@ -1321,18 +1265,18 @@ FerricBrowserRuntimeServices {
         view.anchors.fill = undefined
         view.parent = window.webViewsObject
         view.visible = true
-        tabViews = tabViews.slice(0, index).concat([view], tabViews.slice(index))
-        for (var reindex = index; reindex < tabViews.length; ++reindex) {
-            tabViews[reindex].tabIndex = reindex
-            tabViews[reindex].viewModel = tabs.get(reindex)
+        window.tabViews = window.tabViews.slice(0, index).concat([view], window.tabViews.slice(index))
+        for (var reindex = index; reindex < window.tabViews.length; ++reindex) {
+            window.tabViews[reindex].tabIndex = reindex
+            window.tabViews[reindex].viewModel = window.tabs.get(reindex)
         }
-        window.updateBrowserWindowView(browserUi, view)
+        window.updateBrowserWindowView(window.browserUi, view)
         if (!window.completeDetachedSource(sourceUi, sourceHost, payload)) {
-            tabViews = tabViews.slice(0, index).concat(tabViews.slice(index + 1))
+            window.tabViews = window.tabViews.slice(0, index).concat(window.tabViews.slice(index + 1))
             view.parent = null
             view.visible = false
             view.stableTabId = sourceTabId
-            browserUi.rollback_tab_transfer(adoptedTabId)
+            window.browserUi.rollback_tab_transfer(adoptedTabId)
             window.syncTabModel()
             return false
         }
@@ -1341,7 +1285,7 @@ FerricBrowserRuntimeServices {
             sourceUi.complete_transfer_operation(arguments[4], true)
         }
         view.forceActiveFocus()
-        browserUi.status_text = "Live tab attached without navigation"
+        window.browserUi.status_text = "Live tab attached without navigation"
         return true
     }
 
@@ -1369,7 +1313,9 @@ FerricBrowserRuntimeServices {
             }
             return false
         }
-        var payload = window.transferPayloadForUi(sourceUi)
+        var sourceTabId = kind === "tab-detach" ? fields[2]
+                : (kind === "tab-give" ? fields[3] : fields[2])
+        var payload = window.transferPayloadForUi(sourceUi, sourceTabId)
         if (payload.length === 0) {
             sourceUi.status_text = "Active tab cannot be transferred"
             if (operationId.length > 0) {
@@ -1396,7 +1342,7 @@ FerricBrowserRuntimeServices {
                 sourceUi.complete_transfer_operation(operationId, false)
             return false
         }
-        var view = window.detachSourceView(sourceUi, sourceHost)
+        var view = window.detachSourceView(sourceUi, sourceHost, sourceTabId)
         if (!view) {
             sourceUi.status_text = "Live tab source view is unavailable"
             if (operationId.length > 0) {
@@ -1449,9 +1395,9 @@ FerricBrowserRuntimeServices {
         var ephemeralProfile = secondary
                 ? hostWindow.windowEphemeralProfile : window.ephemeralProfile
         var sharedProfile = secondary
-                ? hostWindow.windowWebEngineProfile : browserProfile
+                ? hostWindow.windowWebEngineProfile : window.browserProfile
         var sharedInterceptor = secondary
-                ? hostWindow.windowRequestInterceptor : requestInterceptor
+                ? hostWindow.windowRequestInterceptor : window.requestInterceptor
         var invocationToken = secondary
                 ? hostWindow.windowEphemeralInvocationToken
                 : window.ephemeralInvocationToken
@@ -1508,10 +1454,10 @@ FerricBrowserRuntimeServices {
             }
             return false
         }
-        if (sourceHost === window && index < tabs.count) {
-            tabs.remove(index)
+        if (sourceHost === window && index < window.tabs.count) {
+            window.tabs.remove(index)
             if (window.preparedTransferFallback) {
-                tabs.append({
+                window.tabs.append({
                     url: "about:blank",
                     title: "New tab",
                     loaded: true,
@@ -1523,18 +1469,18 @@ FerricBrowserRuntimeServices {
                 })
                 var fallback = window.preparedTransferFallback
                 window.preparedTransferFallback = null
-                fallback.viewUi = browserUi
-                fallback.viewTabs = tabs
-                fallback.viewModel = tabs.get(0)
+                fallback.viewUi = window.browserUi
+                fallback.viewTabs = window.tabs
+                fallback.viewModel = window.tabs.get(0)
                 fallback.viewTransferred = false
                 fallback.viewHost = window
                 fallback.tabIndex = 0
-                fallback.stableTabId = browserUi.tab_id_for_index(0)
-                tabs.setProperty(0, "tabId", fallback.stableTabId)
+                fallback.stableTabId = window.browserUi.tab_id_for_index(0)
+                window.tabs.setProperty(0, "tabId", fallback.stableTabId)
                 fallback.parent = window.webViewsObject
                 fallback.visible = true
-                tabViews = tabViews.concat([fallback])
-                browserUi.status_text = "Live tab moved; blank fallback tab created"
+                window.tabViews = window.tabViews.concat([fallback])
+                window.browserUi.status_text = "Live tab moved; blank fallback tab created"
             } else {
                 window.syncTabModel()
             }
@@ -1615,7 +1561,7 @@ FerricBrowserRuntimeServices {
         window.pendingContextMenuHost = host
         window.contextMenuItems = items
         window.captureOverlayFocus(host, view)
-        contextMenu.openAt(host, Math.round(host.width / 2),
+        window.contextMenu.openAt(host, Math.round(host.width / 2),
                            Math.round(host.height / 2))
         browserUi.status_text = "Hint actions"
     }
@@ -1623,5 +1569,4 @@ FerricBrowserRuntimeServices {
     function activateHint(label, actionId, localSelection) {
         return window.hintWorkspace.activateHint(label, actionId, localSelection)
     }
-
 }

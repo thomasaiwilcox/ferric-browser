@@ -52,6 +52,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .diagnostic_work
             .diagnostics_collector
             .request(input, true);
         match result {
@@ -60,6 +61,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .diagnostic_work
                     .diagnostics_review = Some((ticket, key, Instant::now()));
                 self.as_mut().set_diagnostics_pending(true);
                 self.runtime_work_available();
@@ -76,9 +78,9 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.diagnostics_review = None;
-            this.diagnostics_preview_ready = false;
-            this.diagnostics_preview_payload = None;
+            this.diagnostic_work.diagnostics_review = None;
+            this.diagnostic_work.diagnostics_preview_ready = false;
+            this.diagnostic_work.diagnostics_preview_payload = None;
         }
         self.as_mut().set_diagnostics_available(false);
         self.as_mut().set_diagnostics_pending(false);
@@ -95,7 +97,7 @@ impl qobject::BrowserUi {
 
     pub(super) fn poll_diagnostics(mut self: Pin<&mut Self>) {
         let key = self.as_ref().diagnostics_key();
-        let review = self.as_ref().rust().diagnostics_review;
+        let review = self.as_ref().rust().diagnostic_work.diagnostics_review;
         if let Some((_, owner, started)) = review {
             if owner != key {
                 self.as_mut().fail_diagnostics("The profile or settings changed while preparing the report. Refresh to try again.");
@@ -107,14 +109,18 @@ impl qobject::BrowserUi {
         }
         let completion = {
             let mut rust = self.as_mut().rust_mut();
-            let collector = &mut rust.as_mut().get_mut().diagnostics_collector;
+            let collector = &mut rust
+                .as_mut()
+                .get_mut()
+                .diagnostic_work
+                .diagnostics_collector;
             collector.select(key);
             collector.poll()
         };
         let Some(completion) = completion else {
             return;
         };
-        let expected = self.as_ref().rust().diagnostics_review;
+        let expected = self.as_ref().rust().diagnostic_work.diagnostics_review;
         if !expected.is_some_and(|(ticket, owner, _)| {
             ticket == completion.ticket && owner == completion.key
         }) {
@@ -125,9 +131,9 @@ impl qobject::BrowserUi {
                 {
                     let mut rust = self.as_mut().rust_mut();
                     let this = rust.as_mut().get_mut();
-                    this.diagnostics_review = None;
-                    this.diagnostics_preview_payload = Some(report.payload);
-                    this.diagnostics_preview_ready = true;
+                    this.diagnostic_work.diagnostics_review = None;
+                    this.diagnostic_work.diagnostics_preview_payload = Some(report.payload);
+                    this.diagnostic_work.diagnostics_preview_ready = true;
                 }
                 self.as_mut()
                     .set_diagnostics_preview(QString::from(report.preview));
@@ -153,7 +159,11 @@ impl qobject::BrowserUi {
         let live = input.live.clone();
         let fallback = {
             let mut rust = self.as_mut().rust_mut();
-            let collector = &mut rust.as_mut().get_mut().diagnostics_collector;
+            let collector = &mut rust
+                .as_mut()
+                .get_mut()
+                .diagnostic_work
+                .diagnostics_collector;
             collector.select(input.key);
             collector
                 .cached()
@@ -162,7 +172,11 @@ impl qobject::BrowserUi {
         };
         let (cached, collecting, error) = {
             let mut rust = self.as_mut().rust_mut();
-            let collector = &mut rust.as_mut().get_mut().diagnostics_collector;
+            let collector = &mut rust
+                .as_mut()
+                .get_mut()
+                .diagnostic_work
+                .diagnostics_collector;
             let failure = if request {
                 collector.request(input, false).err()
             } else {
@@ -198,7 +212,14 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         request: ferric_browser_ipc::PendingRequest,
     ) {
-        if self.as_ref().rust().pending_diagnostic_requests.len() >= MAX_DEFERRED_REPORTS {
+        if self
+            .as_ref()
+            .rust()
+            .diagnostic_work
+            .pending_diagnostic_requests
+            .len()
+            >= MAX_DEFERRED_REPORTS
+        {
             let response = super::ipc_failure(
                 &request.request().id,
                 "E_BUSY",
@@ -212,6 +233,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .diagnostic_work
             .pending_diagnostic_requests
             .push(PendingDiagnostic {
                 request,
@@ -228,6 +250,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .diagnostic_work
                 .pending_diagnostic_requests,
         );
         let mut waiting = Vec::new();
@@ -258,6 +281,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .diagnostic_work
                 .pending_diagnostic_requests = waiting;
             return;
         }

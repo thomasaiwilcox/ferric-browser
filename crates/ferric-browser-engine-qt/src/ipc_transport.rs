@@ -282,6 +282,20 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
+    fn protocol_two_is_rejected_without_compatibility_dispatch() {
+        let (_, response) = handshake_response(
+            Request {
+                id: "old-client".into(),
+                method: "hello".into(),
+                params: serde_json::json!({"protocol_major":2,"protocol_minor":0,"client":"legacy"}),
+            },
+            "instance-test",
+        );
+        assert!(response.result.is_none());
+        assert_eq!(response.error.unwrap().code, "E_PROTOCOL");
+    }
+
+    #[test]
     fn event_watermarks_are_monotonic_across_independent_window_owners() {
         let mut first = 0;
         let mut second = 0;

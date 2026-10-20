@@ -12,6 +12,7 @@ Rectangle {
     required property string mode
     required property string displayUrl
     property string hintPreviewText: ""
+    signal copyUrlRequested()
     required property string statusText
     property bool statusError: false
     required property string contextName
@@ -131,6 +132,17 @@ Rectangle {
                       : statusBar.browserWindow.primaryTextColor)
             elide: Text.ElideMiddle
             Accessible.ignored: true
+        }
+
+        ToolButton {
+            objectName: "copyCurrentUrlButton"
+            Layout.preferredHeight: statusBar.height
+            text: "Copy URL"
+            enabled: statusBar.displayUrl.length > 0
+            Accessible.name: "Copy current page URL"
+            ToolTip.visible: hovered
+            ToolTip.text: "Copy current page URL (yy in Normal mode)"
+            onClicked: statusBar.copyUrlRequested()
         }
 
         Label {

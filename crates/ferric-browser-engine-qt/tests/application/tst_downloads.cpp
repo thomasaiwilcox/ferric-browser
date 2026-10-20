@@ -20,6 +20,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QtTest>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 #include <memory>
@@ -526,8 +527,16 @@ class DownloadsTests final : public QObject {
         }
         const auto destination = evaluate(ui + ".default_download_directory()").toString();
         write(barrier + "/prefix", (destination + "/").toUtf8());
-        auto heartbeat = evaluate("Qt.createQmlObject('import QtQuick; Timer { interval: 10; repeat: true; running: true; property int ticks: 0; onTriggered: ++ticks }',testWindow)").value<QObject *>();
-        QVERIFY(heartbeat);
+        // Measure GUI event dispatch, independently of Qt Quick's animation
+        // clock. A QML Timer can miss this budget when offscreen frames slow
+        // down even though the GUI thread continues dispatching events.
+        QTimer eventLoopHeartbeat;
+        eventLoopHeartbeat.setTimerType(Qt::PreciseTimer);
+        eventLoopHeartbeat.setInterval(10);
+        int eventLoopTicks = 0;
+        connect(&eventLoopHeartbeat, &QTimer::timeout, &eventLoopHeartbeat,
+                [&] { ++eventLoopTicks; });
+        eventLoopHeartbeat.start();
         QTcpServer payload;
         QVERIFY(payload.listen(QHostAddress::LocalHost, 0));
         connect(&payload, &QTcpServer::newConnection, &payload, [&] {
@@ -549,9 +558,22 @@ class DownloadsTests final : public QObject {
         QFile entered(barrier + "/entered");
         QVERIFY(entered.open(QIODevice::ReadOnly));
         QVERIFY2(entered.readAll().toLongLong() != QCoreApplication::applicationPid(), "File sync ran on the GUI thread");
-        const auto ticks = heartbeat->property("ticks").toInt();
-        QTest::qWait(120);
-        QVERIFY(heartbeat->property("ticks").toInt() >= ticks + 5);
+        const auto nativeTicks = eventLoopTicks;
+        QElapsedTimer heartbeatElapsed;
+        heartbeatElapsed.start();
+        // Match the command-response budget below. Counting frames in a fixed
+        // 120 ms window also measures unrelated window/render scheduling and
+        // made the retirement row intermittent. Require repeated GUI progress
+        // while the external watchdog still holds the worker for up to 10 s.
+        const auto responsive = QTest::qWaitFor(
+            [&] { return eventLoopTicks >= nativeTicks + 5; }, 1000);
+        qInfo() << "Finalization heartbeat" << behavior
+                << "event loop" << eventLoopTicks - nativeTicks
+                << "elapsed ms" << heartbeatElapsed.elapsed();
+        QVERIFY2(responsive && heartbeatElapsed.elapsed() < 1000,
+                 "GUI event dispatch stalled while file sync was blocked");
+        QVERIFY(!QFileInfo::exists(barrier + "/release"));
+        QVERIFY(!QFileInfo::exists(barrier + "/left"));
         QElapsedTimer interaction; interaction.start();
         submitAt(owner, ui, "downloads");
         QVERIFY2(interaction.elapsed() < 1000, "Command input stalled while saving a file");
@@ -631,7 +653,6 @@ class DownloadsTests final : public QObject {
             }
         }
         QTRY_VERIFY(QDir(destination).entryList({".ferric-download-*.partial"}, QDir::Files | QDir::Hidden).isEmpty());
-        delete heartbeat;
     }
 
     void downloadProgressTracksItsTransport_data() {

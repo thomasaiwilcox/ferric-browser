@@ -4,6 +4,7 @@ use super::{
     ensure_spawn_working_directory, is_bounded_untrusted_text, qobject, safe_ipc_url,
     terminate_child_process, thread,
 };
+use crate::{FailureKind, OperationUpdate};
 
 impl qobject::BrowserUi {
     pub(super) fn editor_argv(&self, file: &Path) -> Result<(String, Vec<String>), String> {
@@ -88,33 +89,49 @@ impl qobject::BrowserUi {
             .stderr(Stdio::null());
         #[cfg(unix)]
         child.process_group(0);
-        let mut child = child
-            .spawn()
-            .map_err(|error| format!("could not start executable: {error}"))?;
-        let completions = Arc::clone(&self.as_ref().rust().spawn_completions);
-        let cancellations = Arc::clone(&self.as_ref().rust().spawn_cancellations);
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .start_operation(operation_id.clone(), OperationUpdate::running("running"))?;
+        let mut child = match child.spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                let message = format!("could not start executable: {error}");
+                self.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                    operation_id,
+                    OperationUpdate::failed(FailureKind::Io, &message),
+                );
+                return Err(message);
+            }
+        };
+        let completions = Arc::clone(&self.as_ref().rust().processes.spawn_completions);
+        let cancellations = Arc::clone(&self.as_ref().rust().processes.spawn_cancellations);
         let cancellation = Arc::new(AtomicBool::new(false));
         if let Ok(mut values) = cancellations.lock() {
             values.insert(operation_id.clone(), Arc::clone(&cancellation));
         }
         let completion_id = operation_id.clone();
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .operation_states
-            .insert(operation_id.clone(), "running".into());
         thread::spawn(move || {
             let status = loop {
                 if cancellation.load(Ordering::Acquire) {
                     terminate_child_process(&mut child);
-                    break "cancelled".to_owned();
+                    break OperationUpdate::cancelled();
                 }
                 match child.try_wait() {
-                    Ok(Some(status)) if status.success() => break "completed".to_owned(),
-                    Ok(Some(status)) => break format!("failed ({status})"),
+                    Ok(Some(status)) if status.success() => {
+                        break OperationUpdate::completed("process exited");
+                    }
+                    Ok(Some(status)) => {
+                        break OperationUpdate::failed(
+                            FailureKind::Engine,
+                            format!("process exited: {status}"),
+                        );
+                    }
                     Ok(None) => thread::sleep(Duration::from_millis(20)),
-                    Err(error) => break format!("failed ({error})"),
+                    Err(error) => {
+                        break OperationUpdate::failed(FailureKind::Engine, error.to_string());
+                    }
                 }
             };
             if let Ok(mut values) = cancellations.lock() {
@@ -164,21 +181,36 @@ impl qobject::BrowserUi {
                 .stderr(Stdio::null());
             #[cfg(unix)]
             command.process_group(0);
-            let mut child = command
-                .spawn()
-                .map_err(|error| format!("could not start action target: {error}"))?;
-            // Detached commands may outlive the browser, but commands that
-            // finish while it runs still need their exit status reaped.
-            thread::spawn(move || {
-                let _ = child.wait();
-            });
             let operation_id = operation_id.unwrap_or_else(|| format!("op-{}", Uuid::new_v4()));
             self.as_mut()
                 .rust_mut()
                 .as_mut()
                 .get_mut()
-                .operation_states
-                .insert(operation_id.clone(), "detached".into());
+                .start_operation(
+                    operation_id.clone(),
+                    OperationUpdate::running("starting detached process"),
+                )?;
+            let mut child = match command.spawn() {
+                Ok(child) => child,
+                Err(error) => {
+                    let message = format!("could not start action target: {error}");
+                    self.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                        operation_id,
+                        OperationUpdate::failed(FailureKind::Io, &message),
+                    );
+                    return Err(message);
+                }
+            };
+            // Detached commands may outlive the browser, but commands that
+            // finish while it runs still need their exit status reaped.
+            thread::spawn(move || {
+                let _ = child.wait();
+            });
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .set_operation(operation_id.clone(), OperationUpdate::completed("detached"));
             return Ok(operation_id);
         }
         self.start_spawn_process(argv, operation_id)

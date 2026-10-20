@@ -118,15 +118,16 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn reload_blocking_policy(mut self: Pin<&mut Self>) -> bool {
-        let roots = self.as_ref().rust().userscript_roots.clone();
+        let roots = self.as_ref().rust().policy_roots.clone();
         let config = self.as_ref().rust().config.clone();
         let request = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            if this.network_policy_worker.is_none() {
-                this.network_policy_worker = NetworkPolicyWorker::spawn().ok();
+            if this.configuration_io.network_policy_worker.is_none() {
+                this.configuration_io.network_policy_worker = NetworkPolicyWorker::spawn().ok();
             }
-            this.network_policy_worker
+            this.configuration_io
+                .network_policy_worker
                 .as_mut()
                 .map(|worker| worker.request(roots, config))
         };
@@ -140,6 +141,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .configuration_io
             .network_policy_reload_pending = true;
         self.as_mut()
             .set_status_text(QString::from("Blocklist policy reload requested"));

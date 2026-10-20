@@ -4,6 +4,7 @@ use super::{
     BrowserUiRust, CxxQtType, Duration, Instant, PendingDownload, Pin, PublicError, QString,
     Target, Uuid, ValidatedUrl, Value, captured_target_is_current, qobject, safe_ipc_url,
 };
+use crate::{FailureKind, OperationUpdate};
 
 use ferric_browser_ipc::ErrorCode;
 
@@ -12,10 +13,9 @@ pub(super) fn download_request_error(code: ErrorCode, message: impl Into<String>
     PublicError::new(code, message.clone(), message)
 }
 
-pub(super) fn finish_pending_download_operation(rust: &mut BrowserUiRust, status: &str) {
+pub(super) fn finish_pending_download_operation(rust: &mut BrowserUiRust, status: OperationUpdate) {
     if let Some(request) = rust.pending_download.take() {
-        rust.operation_states
-            .insert(request.operation_id, status.to_owned());
+        rust.set_operation(request.operation_id, status);
     }
 }
 
@@ -85,7 +85,10 @@ impl qobject::BrowserUi {
                 "Downloads are busy in this window. Wait for a transfer to finish or stop, then retry.",
             ));
         }
-        finish_pending_download_operation(self.as_mut().rust_mut().as_mut().get_mut(), "cancelled");
+        finish_pending_download_operation(
+            self.as_mut().rust_mut().as_mut().get_mut(),
+            OperationUpdate::cancelled(),
+        );
         let rust = self.as_ref().get_ref().rust();
         let state = rust
             .state
@@ -119,8 +122,10 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
-            .operation_states
-            .insert(operation_id.clone(), "download preparation pending".into());
+            .start_operation(
+                operation_id.clone(),
+                OperationUpdate::running("download preparation pending"),
+            )?;
         self.as_mut().rust_mut().as_mut().get_mut().pending_download = Some(PendingDownload {
             token: token.clone(),
             operation_id: operation_id.clone(),
@@ -166,7 +171,7 @@ impl qobject::BrowserUi {
         if self.as_ref().get_ref().current_download_request().is_none() {
             finish_pending_download_operation(
                 self.as_mut().rust_mut().as_mut().get_mut(),
-                "cancelled",
+                OperationUpdate::cancelled(),
             );
             return false;
         }
@@ -217,27 +222,17 @@ impl qobject::BrowserUi {
         if let Some(retry) = request.retry.as_mut()
             && let Err(error) = retry.bind(&id.to_string())
         {
-            self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .operation_states
-                .insert(
-                    request.operation_id.clone(),
-                    "failed (download offer refused)".into(),
-                );
+            self.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                request.operation_id.clone(),
+                OperationUpdate::failed(FailureKind::Engine, "failed (download offer refused)"),
+            );
             self.set_status_text(QString::from(error.to_string()));
             return false;
         }
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .operation_states
-            .insert(
-                request.operation_id.clone(),
-                "completed: download offered".into(),
-            );
+        self.as_mut().rust_mut().as_mut().get_mut().set_operation(
+            request.operation_id.clone(),
+            OperationUpdate::completed("completed: download offered"),
+        );
         self.set_status_text(QString::from("Download requested"));
         true
     }
@@ -263,9 +258,9 @@ impl qobject::BrowserUi {
         finish_pending_download_operation(
             self.as_mut().rust_mut().as_mut().get_mut(),
             if cancelled {
-                "cancelled"
+                OperationUpdate::cancelled()
             } else {
-                "failed (download could not start)"
+                OperationUpdate::failed(FailureKind::Engine, "download could not start")
             },
         );
         if current {
@@ -290,7 +285,7 @@ impl qobject::BrowserUi {
         }
         finish_pending_download_operation(
             self.as_mut().rust_mut().as_mut().get_mut(),
-            "failed (download offer refused)",
+            OperationUpdate::failed(FailureKind::StaleTarget, "failed (download offer refused)"),
         );
         true
     }

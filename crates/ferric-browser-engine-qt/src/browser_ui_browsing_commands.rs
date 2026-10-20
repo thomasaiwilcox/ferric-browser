@@ -4,11 +4,15 @@ use super::{
     is_bounded_untrusted_text, parse_scroll_options, parse_scroll_target_options,
     parse_search_next_options, qobject, safe_ipc_url,
 };
+use ferric_browser_application::{ScrollDirection, ScrollEdge, VerticalDirection, ViewCommand};
 
 #[derive(Debug, Eq, PartialEq)]
 pub(super) enum ScrollTargetEffect {
     StartHints,
-    QueueEngineAction(String),
+    Apply {
+        tab: TabId,
+        policy: ferric_browser_application::ScrollTargetPolicy,
+    },
 }
 
 pub(super) fn dispatch_scroll_target_command(
@@ -38,10 +42,14 @@ pub(super) fn dispatch_scroll_target_command(
             "mode": "hint"
         }));
     }
-    let tab_id = target_tab.map_or_else(String::new, |tab| tab.to_string());
-    apply_effect(ScrollTargetEffect::QueueEngineAction(format!(
-        "scroll-target\t{tab_id}\t{action_name}"
-    )));
+    let tab = target_tab.ok_or_else(|| "Scroll target unavailable: no active page".to_owned())?;
+    let policy = match action {
+        ScrollTargetAction::Auto => ferric_browser_application::ScrollTargetPolicy::Auto,
+        ScrollTargetAction::Document => ferric_browser_application::ScrollTargetPolicy::Document,
+        ScrollTargetAction::Status => ferric_browser_application::ScrollTargetPolicy::Status,
+        ScrollTargetAction::Select => unreachable!("selection returns a Hint intent above"),
+    };
+    apply_effect(ScrollTargetEffect::Apply { tab, policy });
     Ok(serde_json::json!({
         "status": "accepted",
         "action": action_name,
@@ -203,10 +211,18 @@ impl qobject::BrowserUi {
         if !command.arguments.is_empty() {
             return Err("tab-detach does not accept arguments".into());
         }
-        let action = operation_id.map_or_else(
-            || "tab-detach".to_owned(),
-            |operation_id| format!("tab-detach\t{operation_id}"),
-        );
+        let tab = self
+            .as_ref()
+            .rust()
+            .tab
+            .ok_or("live tab source is unavailable")?;
+        let operation_id_field = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .start_native_handoff(operation_id)?;
+        let action = format!("tab-detach\t{operation_id_field}\t{tab}");
         self.as_mut()
             .rust_mut()
             .as_mut()
@@ -220,9 +236,7 @@ impl qobject::BrowserUi {
             "pending": true,
             "preserves_live_state": true
         });
-        if let Some(operation_id) = operation_id {
-            result["operation_id"] = serde_json::Value::String(operation_id.to_owned());
-        }
+        result["operation_id"] = serde_json::Value::String(operation_id_field);
         Ok(result)
     }
 
@@ -245,10 +259,18 @@ impl qobject::BrowserUi {
         if self.as_ref().rust().pending_engine_action.is_some() {
             return Err("another browser operation is already pending".into());
         }
-        let action = operation_id.map_or_else(
-            || format!("tab-give\t{window_id}"),
-            |operation_id| format!("tab-give\t{window_id}\t{operation_id}"),
-        );
+        let tab = self
+            .as_ref()
+            .rust()
+            .tab
+            .ok_or("live tab source is unavailable")?;
+        let operation_id_field = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .start_native_handoff(operation_id)?;
+        let action = format!("tab-give\t{window_id}\t{operation_id_field}\t{tab}");
         self.as_mut()
             .rust_mut()
             .as_mut()
@@ -263,9 +285,7 @@ impl qobject::BrowserUi {
             "pending": true,
             "warning": "The live view will be reparented into the target same-profile window"
         });
-        if let Some(operation_id) = operation_id {
-            result["operation_id"] = serde_json::Value::String(operation_id.to_owned());
-        }
+        result["operation_id"] = serde_json::Value::String(operation_id_field);
         Ok(result)
     }
 
@@ -314,10 +334,9 @@ impl qobject::BrowserUi {
             })
             .map_err(|error| error.to_string())?;
         self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_engine_action = Some(format!("zoom\t{tab}\t{zoom:.2}"));
+            .queue_view_command(ferric_browser_application::ViewCommand::Zoom {
+                hundredths: zoom_hundredths,
+            })?;
         self.as_mut().set_status_text(QString::from(format!(
             "Zoom set to {}%",
             (zoom * 100.0).round()
@@ -445,30 +464,13 @@ impl qobject::BrowserUi {
             return Err("no retained in-page search".into());
         }
         for _ in 0..count {
-            self.as_mut()
+            let effects = self
+                .as_mut()
                 .reduce_event(Event::SearchNext { target, backward })
                 .map_err(|error| error.to_string())?;
+            self.as_mut().set_pending_engine_action(&effects);
         }
         self.as_mut().set_search_backward(backward);
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_engine_action = Some(format!(
-            "find-next\t{count}\t{backward}\t{}",
-            self.as_ref()
-                .rust()
-                .state
-                .as_ref()
-                .and_then(|state| state.tabs().get(&target.tab))
-                .and_then(|tab| tab.search.as_ref())
-                .map(|search| match search.case {
-                    SearchCase::Smart => "smart",
-                    SearchCase::Sensitive => "sensitive",
-                    SearchCase::Insensitive => "insensitive",
-                })
-                .unwrap_or("smart")
-        ));
         self.as_mut().set_status_text(QString::from(format!(
             "Search {} match{}",
             if backward { "backward" } else { "forward" },
@@ -528,15 +530,34 @@ impl qobject::BrowserUi {
             }
             _ => return Err("unsupported scroll command".into()),
         };
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_engine_action = Some(match kind {
-            "scroll" => format!("scroll\t{direction}\t{count}"),
-            "scroll-page" => format!("scroll-page\t{direction}\t{half}\t{count}"),
-            _ => format!("scroll-to\t{direction}"),
-        });
+        let request = match kind {
+            "scroll" => ViewCommand::Scroll {
+                direction: match direction {
+                    "up" => ScrollDirection::Up,
+                    "down" => ScrollDirection::Down,
+                    "left" => ScrollDirection::Left,
+                    _ => ScrollDirection::Right,
+                },
+                count,
+            },
+            "scroll-page" => ViewCommand::ScrollPage {
+                direction: if direction == "up" {
+                    VerticalDirection::Up
+                } else {
+                    VerticalDirection::Down
+                },
+                half,
+                count,
+            },
+            _ => ViewCommand::ScrollTo {
+                edge: if direction == "top" {
+                    ScrollEdge::Top
+                } else {
+                    ScrollEdge::Bottom
+                },
+            },
+        };
+        self.as_mut().queue_view_command(request)?;
         self.as_mut()
             .set_status_text(QString::from("Page scroll requested"));
         Ok(serde_json::json!({
@@ -559,7 +580,8 @@ impl qobject::BrowserUi {
         let target_tab = self
             .as_ref()
             .tab_for_index(self.as_ref().rust().active_tab_index);
-        dispatch_scroll_target_command(
+        let mut queued = Ok(());
+        let result = dispatch_scroll_target_command(
             command,
             &registry,
             core_mode,
@@ -570,14 +592,15 @@ impl qobject::BrowserUi {
                     self.as_mut()
                         .set_hint_options("scrollables", false, "current", None, false, 1)
                 }
-                ScrollTargetEffect::QueueEngineAction(action) => {
-                    self.as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .pending_engine_action = Some(action);
+                ScrollTargetEffect::Apply { tab, policy } => {
+                    queued = self.as_mut().queue_view_command_for(
+                        ferric_browser_application::ViewCommand::ScrollTarget(policy),
+                        tab,
+                    );
                 }
             },
-        )
+        )?;
+        queued?;
+        Ok(result)
     }
 }

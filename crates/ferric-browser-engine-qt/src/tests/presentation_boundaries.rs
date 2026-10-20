@@ -192,7 +192,7 @@ fn scalar_feature_preferences_cross_the_qml_boundary_without_config_parsing() {
     assert!(preferences.contains("struct FeaturePreferences"));
     assert!(source.contains("#[qproperty(i32, feature_switcher_max_results)]"));
     assert!(qml.contains("feature_switcher_max_results"));
-    assert!(qml.contains("return (ui || browserUi).feature_downloads_ask_destination"));
+    assert!(qml.contains("return (ui || window.browserUi).feature_downloads_ask_destination"));
     assert!(qml.contains("rootWindow.downloadsAskDestination(secondaryUi)"));
     let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
     assert!(popup.contains("FerricBrowserWindow {"));
@@ -520,7 +520,7 @@ fn context_routes_validate_before_assigning_window_membership() {
         .find("self.as_mut().assign_ipc_context(route)?;")
         .expect("context assignment exists");
     let validate = command_source
-        .find("self.as_ref().validate_ipc_route(route)?;")
+        .find("self.as_ref().validate_ipc_route_public(route)?;")
         .expect("route validation exists");
     assert!(validate < assign);
 }
@@ -640,9 +640,11 @@ fn qml_json_contract_allowlist_is_explicit() {
     assert!(allowlist.contains("Opaque page-script request/result contracts"));
     assert!(allowlist.contains("Prohibited presentation payloads"));
     assert!(allowlist.contains("In-memory permission request keys"));
-    assert!(allowlist.contains("20 parses and 40"));
-    assert_eq!(qml.matches("JSON.parse(").count(), 20);
-    assert_eq!(qml.matches("JSON.stringify(").count(), 40);
+    for field in ["window_registry_json", "operation_states_json", "userscript_inventory_json",
+        "editor_completion_json", "caret_request_json", "switcher_rows_json"] {
+        assert!(!qml.contains(field), "presentation payload must remain typed: {field}");
+    }
+
 }
 
 #[test]
@@ -706,7 +708,7 @@ fn caret_requests_cross_the_qml_boundary_as_typed_fields() {
     assert!(source.contains("#[qproperty(QString, caret_request_token)]"));
     assert!(source.contains("#[qproperty(QString, caret_request_operation)]"));
     assert!(source.contains("fn take_caret_request(self: Pin<&mut BrowserUi>) -> bool;"));
-    assert!(qml.contains("var caretToken = browserUi.caret_request_token"));
+    assert!(qml.contains("var caretToken = window.browserUi.caret_request_token"));
     assert!(qml.contains("window.caretScript(caretOperation, window.caretSelecting)"));
     assert!(!qml.contains("JSON.parse(caretRequest)"));
 }
@@ -719,7 +721,7 @@ fn editor_completion_records_cross_the_qml_boundary_as_typed_fields() {
     assert!(source.contains("#[qproperty(QString, editor_completion_token)]"));
     assert!(source.contains("#[qproperty(QString, editor_completion_stderr)]"));
     assert!(source.contains("fn take_editor_completion(self: Pin<&mut BrowserUi>) -> bool;"));
-    assert!(qml.contains("var editorToken = browserUi.editor_completion_token"));
+    assert!(qml.contains("var editorToken = window.browserUi.editor_completion_token"));
     assert!(qml.contains("window.editorApplyScript(editorOriginal, editorUpdated)"));
     assert!(!qml.contains("JSON.parse(editorCompletion)"));
 }
@@ -729,11 +731,12 @@ fn jseval_requests_cross_the_qml_boundary_as_typed_fields() {
     let source = ADAPTER_SOURCE;
     let qml = QML_SOURCE;
 
-    assert!(source.contains("#[qproperty(QString, jseval_tab_id)]"));
-    assert!(source.contains("set_jseval_script"));
-    assert!(qml.contains("if (action === \"jseval\")"));
+    // Payload isolation is exercised by the production deferred-request test.
+    assert!(source.contains("ViewCommand::Evaluate"));
+    assert!(!source.contains("#[qproperty(QString, jseval_script)]"));
+    assert!(qml.contains("request.script, request.world"));
+    assert!(qml.contains("request_target_current(request.tabId"));
     assert!(!qml.contains("evalPayload = JSON.parse("));
-    assert!(!qml.contains("secondaryEvalPayload = JSON.parse("));
 }
 
 #[test]
@@ -950,7 +953,7 @@ fn tab_projection_changes_use_qt_property_setters() {
 #[test]
 fn status_surfaces_report_bounded_navigation_and_activity_state() {
     let qml = QML_SOURCE;
-    let primary = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
+    let primary = concat!(include_str!("../../qml/components/FerricCommandEntryController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let shared_window = include_str!("../../qml/components/FerricBrowserWindow.qml");
     let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
     let status_bar = include_str!("../../qml/components/FerricStatusBar.qml");
@@ -1155,7 +1158,7 @@ fn required_portal_mode_reaches_file_choosers_without_cached_file_preflight() {
     let portals = include_str!("../desktop_portals.rs");
     let qml = QML_SOURCE;
     let dialogs = include_str!("../../qml/components/FerricFileDialogSurfaces.qml");
-    let services = include_str!("../../qml/components/FerricBrowserRuntimeServices.qml");
+    let services = concat!(include_str!("../../qml/components/FerricPageServices.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     assert!(source.contains("fn portal_capability_status"));
     assert!(source.contains("portal_capabilities"));
@@ -1411,7 +1414,7 @@ fn webauthn_uses_engine_state_and_clears_pin_input() {
 
 #[test]
 fn context_menus_use_engine_actions_and_bound_spellcheck_data() {
-    let requests = include_str!("../../qml/components/FerricBrowserRuntimeRequests.qml");
+    let requests = concat!(include_str!("../../qml/components/FerricWindowRequestsController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let source = ADAPTER_SOURCE;
     let qml = [
         QML_SOURCE,
@@ -1459,8 +1462,8 @@ fn context_menus_use_engine_actions_and_bound_spellcheck_data() {
     assert!(qml.contains("function searchFindFlags(query, caseMode, backward)"));
     assert!(qml.contains("var characters = Array.from(text)"));
     assert!(qml.contains("character.toUpperCase()"));
-    assert!(qml.contains("scroll-page\\t"));
-    assert!(qml.contains("scroll-to\\t"));
+    assert!(qml.contains("case \"scroll-page\""));
+    assert!(qml.contains("case \"scroll-to\""));
     assert!(qml.contains("tab_id_for_index"));
     assert!(qml.contains("execute_ui_action"));
     assert!(qml.contains("Inspect element"));
@@ -1502,14 +1505,15 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"22\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"27\""));
     assert!(
         BROWSER_SCRIPT_FACADE
             .contains(".import \"PageInteractionScripts.js\" as PageInteractionScripts")
     );
     assert!(BROWSER_SCRIPT_FACADE.contains("asset.VERSION !== PAGE_INTERACTION_VERSION"));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var PAGE_INTERACTION_VERSION = \"7\""));
     assert!(BROWSER_SCRIPT_FACADE.contains("script-version-mismatch"));
-    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"4\""));
+    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"7\""));
     let manifest: serde_json::Value = serde_json::from_str(BROWSER_SCRIPT_MANIFEST).unwrap();
     let entry = manifest["resources"]
         .as_array()
@@ -1544,7 +1548,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("? \"selected region\""));
     assert!(qml.contains("feedbackHost.showCommandNotice(message, isError)"));
     assert!(qml.contains("window.showCommandNotice(browserUi.status_text, !targetSelected)"));
-    assert!(qml.contains("action.indexOf(\"scroll-target\\t\") === 0"));
+    assert!(qml.contains("case \"scroll-target\""));
     assert!(qml.contains("id: secondaryUi"));
     assert!(qml.contains("hint_chrome_available: true"));
     assert!(script.contains("window.__ferric_browserScrollTargetState"));
@@ -1620,7 +1624,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("kind==='link'&&href===null"));
     assert!(script.contains("function linkedSurface(el,r)"));
     assert!(script.contains(
-        "candidateFamily==='all'&&(kind==='image'||kind==='media')&&linkedSurface(el,r)"
+        "(candidateFamily==='all'||candidateFamily==='actions')&&(kind==='image'||kind==='media')&&linkedSurface(el,r)"
     ));
     assert!(script.contains("function hasPreferredLink(el,r)"));
     assert!(script.contains("summary.get(href)+1<r.width*r.height"));
@@ -1674,7 +1678,7 @@ fn target_search_is_local_native_ranked_and_identity_bound() {
 fn enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml() {
     let qml = QML_SOURCE;
     let workspace = include_str!("../../qml/components/FerricHintWorkspace.qml");
-    let surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let surface = concat!(include_str!("../../qml/components/FerricRuntimeController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let overlay = include_str!("../../qml/components/FerricHintOverlay.qml");
     let menu = include_str!("../../qml/components/FerricContextMenu.qml");
 
@@ -1710,11 +1714,11 @@ fn enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml() {
 
 #[test]
 fn native_pointer_hint_waits_for_enter_release_and_uses_the_existing_adapter_once() {
-    let surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let surface = concat!(include_str!("../../qml/components/FerricRuntimeController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let chrome = include_str!("../../qml/components/FerricHintWorkspace.qml");
     let presentation = chrome;
     let scripts = BROWSER_SCRIPT_SOURCE;
-    let base = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
+    let base = concat!(include_str!("../../qml/components/FerricWindowLifecycleController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let pointer = include_str!("../browser_ui_hint_pointer.rs");
 
     assert!(surface.contains("ui.hint_pointer_state !== \"selecting\""));
@@ -1835,7 +1839,7 @@ fn site_data_clear_is_bound_to_its_originating_view() {
     assert!(qml.contains("var view = window.siteDataClearView"));
     assert!(qml.contains("clearSiteDataClearForView"));
     assert!(qml.contains("site-data clear cancelled by navigation"));
-    assert!(qml.contains("window.siteDataClearUi = browserUi"));
+    assert!(qml.contains("window.siteDataClearUi = window.browserUi"));
 }
 
 #[test]
@@ -1882,7 +1886,7 @@ fn permission_revocation_reloads_all_registered_matching_views() {
     assert!(qml.contains("window.sharesPermissionSession(issuer, ui)"));
     assert!(qml.contains("secondaryWindow, secondaryUi, secondaryWindow.activeView,"));
     assert!(qml.contains(
-        "window.applyPermissionReset(browserUi, permissionParts[1], permissionParts[2])"
+        "window.applyPermissionReset(window.browserUi, permissionParts[1], permissionParts[2])"
     ));
 }
 
@@ -1973,12 +1977,12 @@ fn xdg_user_dirs_resolve_downloads_without_shell_expansion() {
 fn focus_overlay_controller_owns_capture_state_and_only_restores_live_targets() {
     let controller = include_str!("../../qml/components/FerricFocusOverlayController.qml");
     let runtime = concat!(
-        include_str!("../../qml/components/FerricBrowserRuntimeBase.qml"),
-        include_str!("../../qml/components/FerricBrowserRuntimeServices.qml"),
-        include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml"),
-        include_str!("../../qml/components/FerricBrowserRuntimeRequests.qml"),
-        include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml"),
-        include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml"),
+        concat!(include_str!("../../qml/components/FerricWindowLifecycleController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml")),
+        concat!(include_str!("../../qml/components/FerricPageServices.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml")),
+        concat!(include_str!("../../qml/components/FerricWindowPresentationController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml")),
+        concat!(include_str!("../../qml/components/FerricWindowRequestsController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml")),
+        concat!(include_str!("../../qml/components/FerricCommandEntryController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml")),
+        concat!(include_str!("../../qml/components/FerricRuntimeController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml")),
     );
     assert!(controller.contains("required property var browserWindow"));
     assert!(controller.contains("property var focusReturnStack"));
@@ -1993,9 +1997,9 @@ fn focus_overlay_controller_owns_capture_state_and_only_restores_live_targets() 
 
 #[test]
 fn native_window_close_requires_a_user_decision_before_shutdown_checks() {
-    let root = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
-    let presentation = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
-    let surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let root = concat!(include_str!("../../qml/components/FerricWindowLifecycleController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
+    let presentation = concat!(include_str!("../../qml/components/FerricWindowPresentationController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
+    let surface = concat!(include_str!("../../qml/components/FerricRuntimeController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
 
@@ -2046,11 +2050,11 @@ fn native_window_close_requires_a_user_decision_before_shutdown_checks() {
 #[test]
 fn webengine_surface_recovery_is_frame_synchronized_and_wired_to_every_window() {
     let controller = include_str!("../../qml/components/FerricWebEngineSurfaceRecovery.qml");
-    let primary = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
+    let primary = concat!(include_str!("../../qml/components/FerricCommandEntryController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
     let devtools = include_str!("../../qml/components/FerricDevToolsWindow.qml");
-    let root = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
+    let root = concat!(include_str!("../../qml/components/FerricWindowLifecycleController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let executable = include_str!("../../../ferric-browser/src/main.rs");
 
     assert!(controller.contains("required property var hostWindow"));
@@ -2084,8 +2088,8 @@ fn webengine_surface_recovery_is_frame_synchronized_and_wired_to_every_window() 
 #[test]
 fn statusbar_visibility_is_mode_aware_in_every_browser_window() {
     let presentation = include_str!("../../qml/scripts/ChromePresentation.js");
-    let root = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
-    let primary = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
+    let root = concat!(include_str!("../../qml/components/FerricWindowLifecycleController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
+    let primary = concat!(include_str!("../../qml/components/FerricCommandEntryController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
 

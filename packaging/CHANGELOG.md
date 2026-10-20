@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- Navigating the active document now ends Hint mode even when navigation
+  retires an activation callback. Leaving Hint mode clears pending collection
+  tokens; background tab loads preserve the active hint session. Hint visibility
+  respects descendant CSS overrides of inherited pointer-events and visibility.
+  Programmatically focusable custom controls declaring type=button are included
+  as button actions, covering controls such as Mumsnet's React widget.
+
+- Keyboard Back/Forward, reload and other captured engine bindings now reach
+  the typed dispatcher instead of queuing legacy action names. SPA history
+  imports refresh navigation availability, and a same-URL push at the first
+  history entry retains both states. Normal-mode mouse Back/Forward uses one
+  browser traversal per gesture. Both window status bars offer Copy URL even
+  with a single tab; the Normal-mode `yy` shortcut remains available. Bare
+  `hint` bindings now use the same action-first default as the command bar.
+
+- Default hints favour actions and editable fields, omitting focus-only wrappers.
+  `hint actions` is the new default; `hint all` retains comprehensive targets and
+  `hint focus` explicitly focuses keyboard regions. Both new views inherit
+  `hints.selectors.all`. Existing custom bindings are preserved. Shared rendering
+  checks exclude hidden disclosure contents, including slotted controls, during
+  collection and activation. Hint descriptions distinguish Edit from Focus.
+
+- Hints prefer native expand/collapse headers over redundant focus-only containers,
+  fixing collapsed Reddit threads entering Insert without opening. Checkbox, radio,
+  submit, reset and image-button inputs now activate through their native behaviour.
+  Button hints include these controls; caption names exclude editable field values,
+  and activation rejects inputs whose type changed after collection.
+
 - Embedded consent dialogs can expose semantic hints through a verified focused
   frame/document lease. Unfocused frames offer Hint inside frame; collection and
   activation reject stale documents, redirected focus, covered targets and

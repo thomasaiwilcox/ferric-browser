@@ -126,11 +126,6 @@ impl qobject::BrowserUi {
         self.validate_ipc_route_public(route)
     }
 
-    pub(super) fn validate_ipc_route(&self, route: &IpcRoute) -> Result<(), String> {
-        self.validate_ipc_route_public(route)
-            .map_err(|error| error.to_string())
-    }
-
     pub(super) fn validate_ipc_route_public(&self, route: &IpcRoute) -> Result<(), PublicError> {
         validate_route(self.rust(), route)
     }

@@ -6,14 +6,14 @@ use std::{
 const QUEUE_CAPACITY: usize = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SubmitError {
+pub enum SubmitError {
     Busy,
     QueueFull,
     Stopped,
 }
 
 #[derive(Debug)]
-pub(crate) enum Poll<T> {
+pub enum Poll<T> {
     Pending,
     Ready(T),
     Stopped,
@@ -22,7 +22,7 @@ pub(crate) enum Poll<T> {
 /// Owns the common lifecycle of a bounded worker that accepts one request at
 /// a time. Domain wrappers remain responsible for request validation and for
 /// translating lifecycle failures into user-facing messages.
-pub(crate) struct SingleFlightWorker<Request, Response> {
+pub struct SingleFlightWorker<Request, Response> {
     sender: Option<SyncSender<Request>>,
     receiver: Receiver<Response>,
     pending: bool,
@@ -34,7 +34,11 @@ where
     Request: Send + 'static,
     Response: Send + 'static,
 {
-    pub(crate) fn spawn(
+    /// Starts a worker with an owned request handler.
+    ///
+    /// # Errors
+    /// Returns an I/O error if the operating system cannot start the thread.
+    pub fn spawn(
         thread_name: &str,
         mut handle: impl FnMut(Request) -> Response + Send + 'static,
     ) -> std::io::Result<Self> {
@@ -57,7 +61,12 @@ where
         })
     }
 
-    pub(crate) fn submit(&mut self, request: Request) -> Result<(), SubmitError> {
+    /// Submits work without blocking the caller.
+    ///
+    /// # Errors
+    /// Rejects work while another request is pending, when the queue is full,
+    /// or after the worker has stopped.
+    pub fn submit(&mut self, request: Request) -> Result<(), SubmitError> {
         if self.pending {
             return Err(SubmitError::Busy);
         }
@@ -72,7 +81,7 @@ where
         }
     }
 
-    pub(crate) fn poll(&mut self) -> Poll<Response> {
+    pub fn poll(&mut self) -> Poll<Response> {
         match self.receiver.try_recv() {
             Ok(response) => {
                 self.pending = false;
@@ -86,15 +95,17 @@ where
         }
     }
 
-    /// Stop accepting work without waiting for an in-flight read-only job.
-    /// Its owned inputs remain on the worker; no UI object may be captured.
-    pub(crate) fn detach(mut self) {
+    /// Stop accepting work without waiting for an in-flight owned job.
+    /// Its inputs and any required durability leases remain on the worker;
+    /// no UI object may be captured.
+    pub fn detach(mut self) {
         self.sender.take();
         self.join.take();
     }
 
+    #[must_use]
     #[inline]
-    pub(crate) fn is_pending(&self) -> bool {
+    pub fn is_pending(&self) -> bool {
         self.pending
     }
 }
@@ -103,7 +114,12 @@ impl<Request, Response> Drop for SingleFlightWorker<Request, Response> {
     fn drop(&mut self) {
         self.sender.take();
         if let Some(join) = self.join.take() {
-            let _ = join.join();
+            // A worker owns every input and never captures a GUI object. Closing
+            // both channels retires it after the current job; destructors must
+            // not wait for filesystem or process I/O on the calling thread.
+            if join.is_finished() {
+                let _ = join.join();
+            }
         }
     }
 }
@@ -124,6 +140,28 @@ mod tests {
 
         worker.submit(3).expect("request after polling");
         assert_eq!(wait_for_result(&mut worker), 6);
+    }
+
+    #[test]
+    fn dropping_a_busy_worker_does_not_wait_for_its_owned_job() {
+        let (release, held) = std::sync::mpsc::channel();
+        let (started, entered) = std::sync::mpsc::channel();
+        let (dropped, retired) = std::sync::mpsc::channel();
+        let owner = std::thread::spawn(move || {
+            let mut worker = SingleFlightWorker::spawn("retirement-test", move |()| {
+                started.send(()).unwrap();
+                held.recv().ok();
+            })
+            .unwrap();
+            worker.submit(()).unwrap();
+            entered.recv().unwrap();
+            drop(worker);
+            dropped.send(()).unwrap();
+        });
+        let result = retired.recv_timeout(Duration::from_secs(1));
+        let _ = release.send(());
+        owner.join().unwrap();
+        result.expect("retirement must not wait for the job release");
     }
 
     fn wait_for_result(worker: &mut SingleFlightWorker<i32, i32>) -> i32 {

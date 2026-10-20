@@ -32,8 +32,9 @@ impl qobject::BrowserUi {
             PromptOwner {
                 window: rust.window.map(|window| window.to_string()),
                 tab: tab.to_string(),
-                view: rust.prompt_view_identities.get(&tab).cloned(),
+                view: rust.interaction.prompt_view_identities.get(&tab).cloned(),
                 document: rust
+                    .navigation
                     .page_document_identities
                     .get(tab)
                     .map(ToOwned::to_owned),
@@ -57,8 +58,9 @@ impl qobject::BrowserUi {
         let current_owner = PromptOwner {
             window: rust.window.map(|window| window.to_string()),
             tab: tab.to_string(),
-            view: rust.prompt_view_identities.get(&tab).cloned(),
+            view: rust.interaction.prompt_view_identities.get(&tab).cloned(),
             document: rust
+                .navigation
                 .page_document_identities
                 .get(tab)
                 .map(ToOwned::to_owned),
@@ -91,7 +93,8 @@ impl qobject::BrowserUi {
             .as_deref()
             .unwrap_or("about:blank");
         let mut candidates =
-            rust.focus_observations
+            rust.interaction
+                .focus_observations
                 .iter()
                 .filter(|((candidate, _), observation)| {
                     *candidate == index
@@ -112,7 +115,7 @@ impl qobject::BrowserUi {
     fn force_prompt_normal(mut self: Pin<&mut Self>) {
         {
             let mut rust = self.as_mut().rust_mut();
-            rust.as_mut().get_mut().native_prompt_transition = true;
+            rust.as_mut().get_mut().interaction.native_prompt_transition = true;
         }
         if self.as_ref().rust().core_mode == Mode::Normal {
             self.as_mut().set_core_mode(Mode::Normal);
@@ -121,7 +124,7 @@ impl qobject::BrowserUi {
         }
         {
             let mut rust = self.as_mut().rust_mut();
-            rust.as_mut().get_mut().native_prompt_transition = false;
+            rust.as_mut().get_mut().interaction.native_prompt_transition = false;
         }
         self.as_mut().set_mode(QString::from("normal"));
     }
@@ -132,6 +135,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .interaction
                 .native_prompt_leases
                 .set_last_result("normal-mode-retained");
             return false;
@@ -143,6 +147,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .interaction
                 .native_prompt_leases
                 .set_last_result(if owner_matches {
                     "epoch-or-config-changed"
@@ -156,6 +161,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .interaction
                 .native_prompt_leases
                 .set_last_result("focus-rejected");
             return false;
@@ -167,6 +173,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .interaction
             .native_prompt_leases
             .set_last_result("pass-through-restored");
         self.set_status_text(QString::from("Pass Through restored after native prompt"));
@@ -187,6 +194,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .interaction
                 .prompt_view_identities
                 .insert(tab, identity);
         }
@@ -203,8 +211,8 @@ impl qobject::BrowserUi {
         let identity = view_identity.to_string();
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        if this.prompt_view_identities.get(&tab) == Some(&identity) {
-            this.prompt_view_identities.remove(&tab);
+        if this.interaction.prompt_view_identities.get(&tab) == Some(&identity) {
+            this.interaction.prompt_view_identities.remove(&tab);
         }
     }
 
@@ -219,10 +227,16 @@ impl qobject::BrowserUi {
         let Some((_, owner)) = self.as_ref().prompt_owner(index) else {
             return QString::default();
         };
-        if self.as_ref().rust().native_prompt_leases.is_active()
+        if self
+            .as_ref()
+            .rust()
+            .interaction
+            .native_prompt_leases
+            .is_active()
             && self
                 .as_ref()
                 .rust()
+                .interaction
                 .native_prompt_leases
                 .top()
                 .is_some_and(|current| current.owner != owner)
@@ -231,24 +245,36 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .interaction
                 .native_prompt_leases
                 .clear("nested-owner-changed");
             self.as_mut().force_prompt_normal();
         }
-        if self.as_ref().rust().native_prompt_leases.depth()
+        if self
+            .as_ref()
+            .rust()
+            .interaction
+            .native_prompt_leases
+            .depth()
             >= super::native_prompt_lease::MAX_NATIVE_PROMPT_DEPTH
         {
             self.as_mut()
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .interaction
                 .native_prompt_leases
                 .clear("depth-limit");
             self.as_mut().force_prompt_normal();
             return QString::default();
         }
 
-        let nested = self.as_ref().rust().native_prompt_leases.is_active();
+        let nested = self
+            .as_ref()
+            .rust()
+            .interaction
+            .native_prompt_leases
+            .is_active();
         let current_mode = self.as_ref().rust().core_mode;
         let focus_identity = self.as_ref().prompt_focus_identity(index);
         let saved_mode = if nested {
@@ -261,12 +287,12 @@ impl qobject::BrowserUi {
         if !nested {
             {
                 let mut rust = self.as_mut().rust_mut();
-                rust.as_mut().get_mut().native_prompt_transition = true;
+                rust.as_mut().get_mut().interaction.native_prompt_transition = true;
             }
             self.as_mut().escape();
             {
                 let mut rust = self.as_mut().rust_mut();
-                rust.as_mut().get_mut().native_prompt_transition = false;
+                rust.as_mut().get_mut().interaction.native_prompt_transition = false;
             }
         }
         let expected_input_epoch = self.as_ref().rust().input_epoch;
@@ -282,6 +308,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .interaction
             .native_prompt_leases
             .push(
                 category,
@@ -302,7 +329,14 @@ impl qobject::BrowserUi {
         let Ok(id) = lease_id.to_string().parse::<u64>() else {
             return false;
         };
-        let Some(lease) = self.as_ref().rust().native_prompt_leases.entry(id).cloned() else {
+        let Some(lease) = self
+            .as_ref()
+            .rust()
+            .interaction
+            .native_prompt_leases
+            .entry(id)
+            .cloned()
+        else {
             return false;
         };
         if !self.as_ref().lease_owner_matches(&lease)
@@ -312,6 +346,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .interaction
                 .native_prompt_leases
                 .clear("stale-owner-epoch-or-config");
             return false;
@@ -321,6 +356,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .interaction
             .native_prompt_leases
             .begin_completion(id)
         {
@@ -348,7 +384,14 @@ impl qobject::BrowserUi {
         let Ok(id) = lease_id.to_string().parse::<u64>() else {
             return false;
         };
-        let Some(lease) = self.as_ref().rust().native_prompt_leases.entry(id).cloned() else {
+        let Some(lease) = self
+            .as_ref()
+            .rust()
+            .interaction
+            .native_prompt_leases
+            .entry(id)
+            .cloned()
+        else {
             return false;
         };
         if !lease.completion_pending
@@ -359,6 +402,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .interaction
                 .native_prompt_leases
                 .clear("stale-focus-probe");
             return false;
@@ -368,6 +412,7 @@ impl qobject::BrowserUi {
         let editable = observed.as_ref().is_some_and(|focus| {
             self.as_ref()
                 .rust()
+                .interaction
                 .focus_observations
                 .get(&(index, focus.frame_path.clone()))
                 .is_some_and(|observation| observation.editable)
@@ -379,6 +424,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .interaction
             .native_prompt_leases
             .finish_pending(id)
         else {
@@ -389,6 +435,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .interaction
                 .native_prompt_leases
                 .set_last_result("focus-changed");
             return false;
@@ -403,6 +450,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .interaction
             .native_prompt_leases
             .set_last_result("editing-mode-restored");
         self.set_status_text(QString::from(if mode == Mode::InsertLocked {
@@ -414,7 +462,11 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn has_native_prompt_lease(self: Pin<&mut Self>) -> bool {
-        self.as_ref().rust().native_prompt_leases.is_active()
+        self.as_ref()
+            .rust()
+            .interaction
+            .native_prompt_leases
+            .is_active()
     }
 
     pub(super) fn invalidate_native_prompt_leases(mut self: Pin<&mut Self>) {
@@ -422,6 +474,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
+            .interaction
             .native_prompt_leases
             .clear("owner-lifecycle-changed");
     }

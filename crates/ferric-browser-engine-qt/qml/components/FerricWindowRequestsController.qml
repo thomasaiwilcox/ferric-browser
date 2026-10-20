@@ -5,88 +5,29 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
+import "../scripts/ChromePresentation.js" as ChromePresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
+import "../scripts/SwitcherSources.js" as SwitcherSources
+import "../scripts/SwitcherResults.js" as SwitcherResults
+import "../scripts/CloseRequests.js" as CloseRequests
+import "../scripts/TargetSearchPresentation.js" as TargetSearchPresentation
+import "../scripts/EngineRequests.js" as EngineRequests
+import "../scripts/KeyboardPresentation.js" as KeyboardPresentation
 
-FerricBrowserRuntimePresentation {
-    id: window
-
-    readonly property var switcherRefreshTimer: window.switcherRefreshTimerObject
-    readonly property var switcherBatchTimer: window.switcherBatchTimerObject
-    readonly property var requestPresentationController: window.requestPresentationControllerObject
-
-    Connections {
-        target: browserUi
-        function onActive_tab_indexChanged() {
-            if (window.copyNoticeHost === window) window.copyNoticeVisible = false
-            window.noteTabActivity()
-        }
-        function onTab_countChanged() {
-            window.noteTabActivity()
-        }
-        function onContext_route_idChanged() {
-            window.showContextRoute(browserUi)
-        }
-        function onContext_workspaceChanged() {
-            window.routeContextWorkspace(browserUi)
-        }
-        function onModeChanged() {
-            if (browserUi.mode === "command" || browserUi.mode === "search") {
-                window.captureModeFocus()
-                Qt.callLater(function() {
-                    if (browserUi.mode === "command") {
-                        commandSurface.focusInput()
-                    } else if (browserUi.mode === "search") {
-                        searchSurface.focusInput()
-                    }
-                })
-            } else {
-                window.restoreModeFocus()
-            }
-            if (browserUi.mode !== "hint" && browserUi.mode !== "caret") window.caretSelecting = false
-        }
-        function onConfig_jsonChanged() {
-            window.refreshChromeAppearance()
-            window.configureLinkCleaningUpdateTimer()
-            window.refreshSpellcheckInventory(browserUi)
-            if (browserProfile) {
-                browserProfile.spellCheckEnabled = window.spellcheckEnabled(browserUi)
-                browserProfile.spellCheckLanguages = window.spellcheckLanguages(browserUi)
-            }
-            if (window.settingsVisible) {
-                window.refreshSettings()
-            }
-        }
-        function onTheme_background_colorChanged() {
-            window.refreshChromeAppearance()
-        }
-        function onSystem_font_scaleChanged() {
-            window.refreshChromeAppearance()
-        }
-        function onExternal_navigation_visibleChanged() {
-            if (browserUi.external_navigation_visible) {
-                window.openInternalSurface()
-            } else {
-                window.closeInternalSurface()
-            }
-        }
-        function onBinding_overlayChanged() {
-            window.bindingOverlayVisible = false
-            bindingOverlayTimer.stop()
-            if (browserUi.binding_overlay.length > 0) {
-                bindingOverlayTimer.restart()
-            }
-        }
-    }
+// Owns window behavior through an explicit host; no inherited creation scope.
+QtObject {
+    required property var host
+    readonly property var window: host
 
     function activateSwitcher(index) {
         if (!window.switcherResultsCurrent()) return
-        var result = switcherResults[index]
+        var result = window.switcherResults[index]
         if (!result) {
             return
         }
         var owner = window.switcherOwner(result)
         if (!owner) {
-            var ui = window.switcherUi || browserUi
+            var ui = window.switcherUi || window.browserUi
             ui.status_text = "That window is no longer available. Refresh the Switcher and choose again."
             window.refreshSwitcher()
             return
@@ -100,7 +41,7 @@ FerricBrowserRuntimePresentation {
             } else if (owner.host.applySwitcherEngineAction) {
                 owner.host.applySwitcherEngineAction()
             }
-            closeSwitcher()
+            window.closeSwitcher()
             window.activateBrowserWindow(owner.host, owner.ui)
             if (result.workspace) {
                 window.routeContextWorkspace(owner.ui)
@@ -110,13 +51,13 @@ FerricBrowserRuntimePresentation {
 
     function activateSwitcherAction(index, action) {
         if (!window.switcherResultsCurrent()) return
-        var result = switcherResults[index]
+        var result = window.switcherResults[index]
         if (!result || !action) {
             return
         }
         var owner = window.switcherOwner(result)
         if (!owner) {
-            var ui = window.switcherUi || browserUi
+            var ui = window.switcherUi || window.browserUi
             ui.status_text = "That window is no longer available. Refresh the Switcher and choose again."
             window.refreshSwitcher()
             return
@@ -130,17 +71,12 @@ FerricBrowserRuntimePresentation {
             } else if (owner.host.applySwitcherEngineAction) {
                 owner.host.applySwitcherEngineAction()
             }
-            closeSwitcher()
+            window.closeSwitcher()
             window.activateBrowserWindow(owner.host, owner.ui)
             if (result.workspace) {
                 window.routeContextWorkspace(owner.ui)
             }
         }
-    }
-
-    Shortcut {
-        sequence: "Ctrl+P"
-        onActivated: window.showSwitcher()
     }
 
     function downloadStateName(download) {
@@ -193,42 +129,42 @@ FerricBrowserRuntimePresentation {
     }
 
     function downloadsAskDestination(ui) {
-        return (ui || browserUi).feature_downloads_ask_destination
+        return (ui || window.browserUi).feature_downloads_ask_destination
     }
 
     function permissionTypeName(permissionType) {
-        return requestPresentationController.permissionTypeName(permissionType)
+        return window.requestPresentationController.permissionTypeName(permissionType)
     }
 
     function permissionDisplayName(permissionName) {
-        return requestPresentationController.permissionDisplayName(permissionName)
+        return window.requestPresentationController.permissionDisplayName(permissionName)
     }
 
     function permissionCanRemember(origin, permissionName) {
-        return requestPresentationController.permissionCanRemember(origin, permissionName)
+        return window.requestPresentationController.permissionCanRemember(origin, permissionName)
     }
 
     function permissionCanRememberForSite(origin, permissionName) {
-        return requestPresentationController.permissionCanRememberForSite(origin, permissionName)
+        return window.requestPresentationController.permissionCanRememberForSite(origin, permissionName)
     }
 
     function boundedPageDialogText(value) {
-        return requestPresentationController.boundedPageDialogText(value)
+        return window.requestPresentationController.boundedPageDialogText(value)
     }
 
     function pageDialogType(request) {
-        return requestPresentationController.pageDialogType(request)
+        return window.requestPresentationController.pageDialogType(request)
     }
 
     function pageDialogKind() {
-        return requestPresentationController.pageDialogKind()
+        return window.requestPresentationController.pageDialogKind()
     }
 
     function clearPageDialog(rejectRequest) {
-        var host = pageDialogPopup.hostWindow
+        var host = window.runtime_pageDialogPopup.hostWindow
         var request = window.pendingAuthenticationRequest || window.pendingPageDialogRequest
         var hadRequest = !!request
-        var ui = window.pendingPageDialogUi || browserUi
+        var ui = window.pendingPageDialogUi || window.browserUi
         var view = window.pendingPageDialogView
         var leaseToken = window.pendingPageDialogLeaseToken
         var authentication = window.pageDialogIsAuthentication
@@ -243,10 +179,10 @@ FerricBrowserRuntimePresentation {
         window.pageDialogOrigin = ""
         window.pageDialogDefaultText = ""
         window.pageDialogSuppressChecked = false
-        pageDialogPopup.usernameText = ""
-        pageDialogPopup.passwordText = ""
-        pageDialogPopup.inputText = ""
-        pageDialogPopup.close()
+        window.runtime_pageDialogPopup.usernameText = ""
+        window.runtime_pageDialogPopup.passwordText = ""
+        window.runtime_pageDialogPopup.inputText = ""
+        window.runtime_pageDialogPopup.close()
         if (hadRequest) {
             window.restoreOverlayFocus(host)
         }
@@ -328,8 +264,8 @@ FerricBrowserRuntimePresentation {
                 || "Origin unavailable"
         window.pageDialogDefaultText = window.boundedPageDialogText(request.defaultText)
         window.pageDialogSuppressChecked = false
-        pageDialogPopup.inputText = window.pageDialogDefaultText
-        pageDialogPopup.open(hostWindow || window)
+        window.runtime_pageDialogPopup.inputText = window.pageDialogDefaultText
+        window.runtime_pageDialogPopup.open(hostWindow || window)
         ui.status_text = privateProfile ? "Private page dialog" : "Page dialog"
     }
 
@@ -373,17 +309,17 @@ FerricBrowserRuntimePresentation {
                 ? (proxyAuthentication ? "Proxy message: " : "Site message: ") + realm
                 : "Enter your username and password to continue."
         window.pageDialogSuppressChecked = false
-        pageDialogPopup.usernameText = ""
-        pageDialogPopup.passwordText = ""
-        pageDialogPopup.open(hostWindow || window)
+        window.runtime_pageDialogPopup.usernameText = ""
+        window.runtime_pageDialogPopup.passwordText = ""
+        window.runtime_pageDialogPopup.open(hostWindow || window)
         ui.status_text = privateProfile ? "Private authentication prompt" : "Authentication prompt"
     }
 
     function clearClientCertificateRequest(selectNone) {
-        var host = certificatePrompts.hostWindow
+        var host = window.certificatePrompts.hostWindow
         var selection = window.pendingClientCertificateSelection
         var hadSelection = !!selection
-        var ui = window.pendingClientCertificateUi || browserUi
+        var ui = window.pendingClientCertificateUi || window.browserUi
         var view = window.pendingClientCertificateView
         var leaseToken = window.pendingClientCertificateLeaseToken
         window.pendingClientCertificateSelection = null
@@ -392,7 +328,7 @@ FerricBrowserRuntimePresentation {
         window.pendingClientCertificateLeaseToken = ""
         window.pendingClientCertificateOptions = []
         window.pendingClientCertificateHost = ""
-        certificatePrompts.closeClientCertificate()
+        window.certificatePrompts.closeClientCertificate()
         if (hadSelection && selectNone) {
             window.resolveQtRequest(ui, selection, "client-certificate", "selectNone", [])
         }
@@ -450,7 +386,7 @@ FerricBrowserRuntimePresentation {
                 || "Host unavailable"
         // Capture the native frame before transferring focus to the menu.
         window.captureOverlayFocus(hostWindow || window, view)
-        certificatePrompts.openClientCertificate(hostWindow || window)
+        window.certificatePrompts.openClientCertificate(hostWindow || window)
         ui.status_text = privateProfile
                 ? "Private client certificate selection"
                 : "Client certificate selection"
@@ -458,7 +394,7 @@ FerricBrowserRuntimePresentation {
 
     function acceptClientCertificate(index) {
         var selection = window.pendingClientCertificateSelection
-        var ui = window.pendingClientCertificateUi || browserUi
+        var ui = window.pendingClientCertificateUi || window.browserUi
         var options = window.pendingClientCertificateOptions || []
         var valid = false
         for (var i = 0; i < options.length; ++i) {
@@ -476,7 +412,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function rejectClientCertificate() {
-        var ui = window.clearClientCertificateRequest(true) || browserUi
+        var ui = window.clearClientCertificateRequest(true) || window.browserUi
         ui.status_text = "Client certificate request cancelled"
     }
 
@@ -487,10 +423,10 @@ FerricBrowserRuntimePresentation {
     }
 
     function clearCertificateErrorRequest(rejectRequest) {
-        var host = certificatePrompts.hostWindow
+        var host = window.certificatePrompts.hostWindow
         var error = window.pendingCertificateError
         var hadError = !!error
-        var ui = window.pendingCertificateErrorUi || browserUi
+        var ui = window.pendingCertificateErrorUi || window.browserUi
         var view = window.pendingCertificateErrorView
         var leaseToken = window.pendingCertificateErrorLeaseToken
         window.pendingCertificateError = null
@@ -499,7 +435,7 @@ FerricBrowserRuntimePresentation {
         window.pendingCertificateErrorLeaseToken = ""
         window.pendingCertificateErrorHost = ""
         window.pendingCertificateErrorDescription = ""
-        certificatePrompts.closeCertificateError()
+        window.certificatePrompts.closeCertificateError()
         if (hadError && rejectRequest) {
             window.resolveQtRequest(ui, error, "client-certificate", "rejectCertificate", [])
         }
@@ -556,13 +492,13 @@ FerricBrowserRuntimePresentation {
                     error.description || "The certificate could not be verified")
         // Capture the native frame before transferring focus to the menu.
         window.captureOverlayFocus(hostWindow || window, view)
-        certificatePrompts.openCertificateError(hostWindow || window)
+        window.certificatePrompts.openCertificateError(hostWindow || window)
         ui.status_text = "TLS certificate confirmation required"
     }
 
     function acceptCertificateError() {
         var error = window.pendingCertificateError
-        var ui = window.pendingCertificateErrorUi || browserUi
+        var ui = window.pendingCertificateErrorUi || window.browserUi
         if (!error) {
             return
         }
@@ -572,7 +508,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function rejectCertificateError() {
-        var ui = window.clearCertificateErrorRequest(true) || browserUi
+        var ui = window.clearCertificateErrorRequest(true) || window.browserUi
         ui.status_text = "TLS certificate rejected"
     }
 
@@ -605,19 +541,19 @@ FerricBrowserRuntimePresentation {
         window.pendingWebAuthState = state
         window.webAuthStatusText = window.webAuthStateLabel(state)
         if (state === WebEngineWebAuthUxRequest.WebAuthUxState.Completed) {
-            var completedUi = window.clearWebAuthRequest(false) || browserUi
+            var completedUi = window.clearWebAuthRequest(false) || window.browserUi
             completedUi.status_text = "WebAuthn completed"
         } else if (state === WebEngineWebAuthUxRequest.WebAuthUxState.Cancelled) {
-            var cancelledUi = window.clearWebAuthRequest(false) || browserUi
+            var cancelledUi = window.clearWebAuthRequest(false) || window.browserUi
             cancelledUi.status_text = "WebAuthn cancelled"
         }
     }
 
     function clearWebAuthRequest(cancelRequest) {
-        var host = webAuthPrompt.hostWindow
+        var host = window.webAuthPrompt.hostWindow
         var request = window.pendingWebAuthRequest
         var hadRequest = !!request
-        var ui = window.pendingWebAuthUi || browserUi
+        var ui = window.pendingWebAuthUi || window.browserUi
         var view = window.pendingWebAuthView
         var leaseToken = window.pendingWebAuthLeaseToken
         window.pendingWebAuthRequest = null
@@ -628,8 +564,8 @@ FerricBrowserRuntimePresentation {
         window.pendingWebAuthState = null
         window.pendingWebAuthRelyingParty = ""
         window.webAuthStatusText = ""
-        webAuthPrompt.pin = ""
-        webAuthPrompt.close()
+        window.webAuthPrompt.pin = ""
+        window.webAuthPrompt.close()
         if (hadRequest && cancelRequest
                 && request.state !== WebEngineWebAuthUxRequest.WebAuthUxState.Completed
                 && request.state !== WebEngineWebAuthUxRequest.WebAuthUxState.Cancelled) {
@@ -684,7 +620,7 @@ FerricBrowserRuntimePresentation {
         })
         // Capture the native frame before transferring focus to the menu.
         window.captureOverlayFocus(hostWindow || window, view)
-        webAuthPrompt.open(hostWindow || window)
+        window.webAuthPrompt.open(hostWindow || window)
         ui.status_text = "WebAuthn security-key prompt"
     }
 
@@ -701,8 +637,8 @@ FerricBrowserRuntimePresentation {
         if (!request || window.pendingWebAuthState !== WebEngineWebAuthUxRequest.WebAuthUxState.CollectPin) {
             return
         }
-        var pin = window.boundedPageDialogText(webAuthPrompt.pin)
-        webAuthPrompt.pin = ""
+        var pin = window.boundedPageDialogText(window.webAuthPrompt.pin)
+        window.webAuthPrompt.pin = ""
         request.setPin(pin)
         pin = ""
     }
@@ -715,7 +651,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function cancelWebAuth() {
-        var ui = window.clearWebAuthRequest(true) || browserUi
+        var ui = window.clearWebAuthRequest(true) || window.browserUi
         ui.status_text = "WebAuthn cancelled"
     }
 
@@ -769,11 +705,11 @@ FerricBrowserRuntimePresentation {
         window.pendingContextMenuLeaseToken = ""
         window.pendingContextMenuHost = null
         window.contextMenuItems = []
-        contextMenu.close()
+        window.contextMenu.close()
         if (hadRequest) {
             window.restoreOverlayFocus(host)
         }
-        window.completeNativePromptLease(requestUi || browserUi, leaseToken, view)
+        window.completeNativePromptLease(requestUi || window.browserUi, leaseToken, view)
     }
 
     function clearContextMenuForView(view) {
@@ -937,14 +873,14 @@ FerricBrowserRuntimePresentation {
             if (window.pendingContextMenuRequest !== request || window.pendingContextMenuView !== view) return
             window.pendingContextMenuSelection = captured
             window.captureOverlayFocus(hostWindow || window, view)
-            contextMenu.openAt(menuHost, menuX, menuY)
+            window.contextMenu.openAt(menuHost, menuX, menuY)
             ui.status_text = "Context menu"
         })
     }
 
     function activateContextMenuItem(item) {
         var view = window.pendingContextMenuView
-        var ui = window.pendingContextMenuUi || browserUi
+        var ui = window.pendingContextMenuUi || window.browserUi
         var host = window.pendingContextMenuHost
         if (!item || !view) {
             window.clearContextMenuRequest()
@@ -974,15 +910,15 @@ FerricBrowserRuntimePresentation {
             if (item.actionId.indexOf("browser.edit.") === 0 && view.clipboardPopupToken) {
                 if (!source) { ui.status_text = "Edit source is unavailable"; return }
                 var popupEdit = ui.popup_clipboard_edit(view.clipboardPopupToken, item.actionId.slice("browser.edit.".length))
-                if (popupEdit.length > 0) window.applyNativeEditAction(ui, view, popupEdit, source)
+                if (popupEdit && popupEdit.kind) window.applyNativeEditAction(ui, view, popupEdit, source)
                 return
             }
             if (!ui.execute_ui_action(item.actionId, value)) {
                 return
             }
             if (item.actionId.indexOf("browser.edit.") === 0) {
-                if (!source) { ui.take_engine_action(); ui.status_text = "Edit source is unavailable"; return }
-                window.applyNativeEditAction(ui, view, ui.take_engine_action(), source)
+                if (!source) { ui.take_engine_request(); ui.status_text = "Edit source is unavailable"; return }
+                EngineRequests.execute(ui.take_engine_request(), ui, view.viewHost || window, window, source)
                 return
             }
             var capturedSelectionToken = ui.take_selection_request()
@@ -990,7 +926,7 @@ FerricBrowserRuntimePresentation {
                 window.readSelection(ui, view, capturedSelectionToken, source)
             }
             if (action === "download-link") window.dispatchDownloadRequest(ui)
-            if (ui === browserUi) {
+            if (ui === window.browserUi) {
                 window.syncTabModel()
                 window.executePendingEngineAction()
             } else if (action === "favourite-add" && host && host.executePendingEngineAction) {
@@ -1022,7 +958,7 @@ FerricBrowserRuntimePresentation {
         }
         if (action === "open-link") {
             ui.navigate(value)
-            if (ui === browserUi) {
+            if (ui === window.browserUi) {
                 window.updateActiveTabUrl()
             } else if (ui.initial_url !== undefined) {
                 view.url = ui.initial_url
@@ -1058,17 +994,17 @@ FerricBrowserRuntimePresentation {
 
     function acceptPageDialog() {
         var request = window.pendingAuthenticationRequest || window.pendingPageDialogRequest
-        var ui = window.pendingPageDialogUi || browserUi
+        var ui = window.pendingPageDialogUi || window.browserUi
         var view = window.pendingPageDialogView
         var authentication = !!window.pendingAuthenticationRequest
         if (!request) {
             return
         }
         if (window.pendingAuthenticationRequest) {
-            var username = window.boundedPageDialogText(pageDialogPopup.usernameText)
-            var password = window.boundedPageDialogText(pageDialogPopup.passwordText)
-            pageDialogPopup.usernameText = ""
-            pageDialogPopup.passwordText = ""
+            var username = window.boundedPageDialogText(window.runtime_pageDialogPopup.usernameText)
+            var password = window.boundedPageDialogText(window.runtime_pageDialogPopup.passwordText)
+            window.runtime_pageDialogPopup.usernameText = ""
+            window.runtime_pageDialogPopup.passwordText = ""
             window.resolveQtRequest(
                 ui, request, authentication ? "authentication" : "page-dialog",
                 "dialogAccept", [username, password])
@@ -1077,7 +1013,7 @@ FerricBrowserRuntimePresentation {
         } else if (window.pageDialogType(request) === "prompt") {
             window.resolveQtRequest(
                 ui, request, "page-dialog", "dialogAccept",
-                [window.boundedPageDialogText(pageDialogPopup.inputText)])
+                [window.boundedPageDialogText(window.runtime_pageDialogPopup.inputText)])
         } else {
             window.resolveQtRequest(
                 ui, request, "page-dialog", "dialogAccept", [])
@@ -1091,7 +1027,7 @@ FerricBrowserRuntimePresentation {
 
     function rejectPageDialog() {
         var request = window.pendingAuthenticationRequest || window.pendingPageDialogRequest
-        var ui = window.pendingPageDialogUi || browserUi
+        var ui = window.pendingPageDialogUi || window.browserUi
         var view = window.pendingPageDialogView
         var kind = window.pageDialogKind()
         if (!request) {
@@ -1100,8 +1036,8 @@ FerricBrowserRuntimePresentation {
         window.resolveQtRequest(
             ui, request, kind === "authentication" ? "authentication" : "page-dialog",
             "dialogReject", [])
-        pageDialogPopup.usernameText = ""
-        pageDialogPopup.passwordText = ""
+        window.runtime_pageDialogPopup.usernameText = ""
+        window.runtime_pageDialogPopup.passwordText = ""
         if (view && window.pageDialogSuppressChecked) {
             view.pageDialogSuppressed = true
         }
@@ -1178,7 +1114,7 @@ FerricBrowserRuntimePresentation {
         var wasVisible = window.permissionPromptVisible
         var host = window.pendingPermissionHost || window
         var leaseToken = window.pendingPermissionLeaseToken
-        var leaseUi = window.permissionLeaseUi || browserUi
+        var leaseUi = window.permissionLeaseUi || window.browserUi
         var leaseView = window.permissionLeaseView
         window.permissionPromptVisible = false
         window.pendingPermissionRequest = null
@@ -1194,7 +1130,7 @@ FerricBrowserRuntimePresentation {
         window.pendingPermissionPrivate = false
         window.pendingPermissionGroupCount = 0
         window.pendingPermissionHost = null
-        permissionPromptExpiry.stop()
+        window.runtime_permissionPromptExpiry.stop()
         if (wasVisible) {
             window.restoreOverlayFocus(host)
         }
@@ -1235,7 +1171,7 @@ FerricBrowserRuntimePresentation {
                         group.ui, group.view || null, "permission", group.tabIndex)
         }
         window.permissionPromptVisible = true
-        if (!wasVisible) permissionPromptExpiry.restart()
+        if (!wasVisible) window.runtime_permissionPromptExpiry.restart()
     }
 
     function clearPermissionPrompt(denyRequest) {
@@ -1327,7 +1263,7 @@ FerricBrowserRuntimePresentation {
             })
         }
         window.permissionPromptQueue = queue
-        if (policyPending) permissionPolicyRefresh.start()
+        if (policyPending) window.runtime_permissionPolicyRefresh.start()
         if (!window.permissionPromptVisible) {
             window.showNextPermissionPrompt()
         } else if (groupIndex === 0) {
@@ -1339,7 +1275,7 @@ FerricBrowserRuntimePresentation {
         if (!request || !request.isValid) {
             return
         }
-        var permissionUi = ui || browserUi
+        var permissionUi = ui || window.browserUi
         var permissionName = window.permissionTypeName(request.permissionType)
         if (permissionName.length === 0) {
             window.resolveQtRequest(permissionUi, request, "permission", "deny", [])
@@ -1370,7 +1306,7 @@ FerricBrowserRuntimePresentation {
     function decidePermission(allow, lifetime) {
         var queue = window.permissionPromptQueue || []
         var group = queue.length > 0 ? queue[0] : null
-        var ui = group && group.ui ? group.ui : browserUi
+        var ui = group && group.ui ? group.ui : window.browserUi
         if (!group || !group.requests || group.requests.length === 0) {
             window.clearPermissionPrompt(false)
             ui.status_text = "Permission request expired"
@@ -1423,7 +1359,7 @@ FerricBrowserRuntimePresentation {
 
     function cancelPermissionForTab(tabIndex) {
         window.removePermissionGroups(function(group) {
-            return group.ui === browserUi && group.tabIndex === tabIndex
+            return group.ui === window.browserUi && group.tabIndex === tabIndex
         }, true)
     }
 
@@ -1447,7 +1383,7 @@ FerricBrowserRuntimePresentation {
         var host = window.pendingDesktopMediaHost
         var request = window.pendingDesktopMediaRequest
         var hadRequest = !!request
-        var ui = window.pendingDesktopMediaUi || browserUi
+        var ui = window.pendingDesktopMediaUi || window.browserUi
         var view = window.pendingDesktopMediaView
         var leaseToken = window.pendingDesktopMediaLeaseToken
         window.pendingDesktopMediaRequest = null
@@ -1477,7 +1413,7 @@ FerricBrowserRuntimePresentation {
             return
         }
         if (Date.now() >= window.pendingDesktopMediaPortalDeadlineMs) {
-            var timedOutUi = window.pendingDesktopMediaUi || browserUi
+            var timedOutUi = window.pendingDesktopMediaUi || window.browserUi
             window.clearDesktopMediaRequest(true)
             if (timedOutUi) {
                 timedOutUi.status_text =
@@ -1485,7 +1421,7 @@ FerricBrowserRuntimePresentation {
             }
             return
         }
-        var ui = window.pendingDesktopMediaUi || browserUi
+        var ui = window.pendingDesktopMediaUi || window.browserUi
         var status = window.desktopPortalCapabilityStatus(ui, "screen_cast")
         if (status === "pending" || status === "not-probed") {
             return
@@ -1517,11 +1453,11 @@ FerricBrowserRuntimePresentation {
         window.desktopMediaOrigin = view && view.url && view.url.host
                 ? window.boundedPageDialogText(view.url.host)
                 : "opaque or unavailable origin"
-        var requestUi = window.pendingDesktopMediaUi || browserUi
+        var requestUi = window.pendingDesktopMediaUi || window.browserUi
         if (window.desktopPortalMode(requestUi) === "required") {
             var portalStatus = window.desktopPortalCapabilityStatus(requestUi, "screen_cast")
             if (portalStatus === "not-probed") {
-                browserUi.probe_desktop_portals()
+                window.browserUi.probe_desktop_portals()
                 portalStatus = window.desktopPortalCapabilityStatus(requestUi, "screen_cast")
             }
             if (portalStatus === "pending" || portalStatus === "not-probed") {
@@ -1543,7 +1479,7 @@ FerricBrowserRuntimePresentation {
 
     function selectDesktopScreen(index) {
         var request = window.pendingDesktopMediaRequest
-        var ui = window.pendingDesktopMediaUi || browserUi
+        var ui = window.pendingDesktopMediaUi || window.browserUi
         if (!request || !request.screensModel) {
             window.clearDesktopMediaRequest(true)
             return
@@ -1559,7 +1495,7 @@ FerricBrowserRuntimePresentation {
 
     function selectDesktopWindow(index) {
         var request = window.pendingDesktopMediaRequest
-        var ui = window.pendingDesktopMediaUi || browserUi
+        var ui = window.pendingDesktopMediaUi || window.browserUi
         if (!request || !request.windowsModel) {
             window.clearDesktopMediaRequest(true)
             return
@@ -1693,7 +1629,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function reloadViewsForPermission(origin, sourceUi) {
-        var issuer = sourceUi || browserUi
+        var issuer = sourceUi || window.browserUi
         var expected = String(origin || "").toLowerCase()
         if (!expected || !window.sharesPermissionSession(issuer, issuer)) return 0
         var candidates = []
@@ -1788,7 +1724,7 @@ FerricBrowserRuntimePresentation {
         window.rendererFailureExitCode = exitCode
         window.rendererFailureCount = count
         var visible = window.rendererFailureHost !== window
-                || tabIndex === browserUi.active_tab_index
+                || tabIndex === window.browserUi.active_tab_index
         if (visible) {
             window.captureOverlayFocus(window.rendererFailureHost || window, view)
         }
@@ -1799,13 +1735,13 @@ FerricBrowserRuntimePresentation {
     }
 
     function showRendererFailureForTab(tabIndex) {
-        var view = tabViewAt(tabIndex)
+        var view = window.tabViewAt(tabIndex)
         if (!view || !view.rendererFailed) {
             return
         }
         window.rendererFailureView = view
         window.rendererFailureHost = window
-        window.rendererFailureUi = browserUi
+        window.rendererFailureUi = window.browserUi
         window.rendererFailureTabIndex = tabIndex
         window.rendererFailureSafeUrl = view.rendererFailureSafeUrl
         window.rendererFailureReason = view.rendererFailureReason
@@ -1837,7 +1773,7 @@ FerricBrowserRuntimePresentation {
     function reloadRendererFailure() {
         var host = window.rendererFailureHost
         var view = window.rendererFailureView
-        var ui = window.rendererFailureUi || browserUi
+        var ui = window.rendererFailureUi || window.browserUi
         if (!view) {
             return
         }
@@ -1875,7 +1811,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function showRendererFailureDiagnostics() {
-        var ui = window.rendererFailureUi || browserUi
+        var ui = window.rendererFailureUi || window.browserUi
         var payload = ui.refresh_site_status()
         if (payload && payload.length > 0) {
             try {
@@ -1893,12 +1829,12 @@ FerricBrowserRuntimePresentation {
     }
 
     function restartSoftwareRendering() {
-        var ui = window.rendererFailureUi || browserUi
+        var ui = window.rendererFailureUi || window.browserUi
         if (window.softwareRendering) {
             ui.status_text = "Software rendering is already enabled"
             return
         }
-        if (!browserUi.restart_software_rendering(
+        if (!window.browserUi.restart_software_rendering(
                     window.instanceLockPath,
                     window.storageBasePath,
                     window.temporaryProfile,
@@ -1912,33 +1848,6 @@ FerricBrowserRuntimePresentation {
         window.continueQuitRequest()
     }
 
-    Timer {
-        id: permissionPolicyRefresh
-        interval: 50
-        repeat: true
-        onTriggered: {
-            window.refreshPendingPermissionPolicies()
-            if (!(window.permissionPromptQueue || []).some(function(group) { return group.policyPending })) stop()
-        }
-    }
-
-    Timer {
-        id: permissionPromptExpiry
-        interval: 30000
-        repeat: false
-        onTriggered: {
-            var ui = window.pendingPermissionUi || browserUi
-            window.clearPermissionPrompt(true)
-            ui.status_text = "Permission request expired"
-        }
-    }
-
-    FerricPageDialog {
-        id: pageDialogPopup
-        objectName: "pageDialogPopup"
-        browserWindow: window
-    }
-
     function dispatchDownloadRequest(ui) {
         var owner = window.profileResourceRegistry.downloadInvocation(ui)
         if (owner && owner.host.downloadWorkspaceObject) owner.host.downloadWorkspaceObject.dispatchRequest()
@@ -1946,7 +1855,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function attachDownloadStateUpdates(download, id, ui, host) {
-        var ownerUi = ui || browserUi
+        var ownerUi = ui || window.browserUi
         var ownerHost = host || window
         function update() {
             if (!ownerUi || !ownerHost || ownerHost.runtimeReleased === true) return
@@ -1964,23 +1873,23 @@ FerricBrowserRuntimePresentation {
     }
 
     function acceptDownloadRequest(download, id, directory, suggestedName) {
-        var finalName = browserUi.accept_download(id, directory, suggestedName)
+        var finalName = window.browserUi.accept_download(id, directory, suggestedName)
         if (finalName.length === 0) {
-            window.profileResourceRegistry.cancelDownloadRequest(browserUi, download)
+            window.profileResourceRegistry.cancelDownloadRequest(window.browserUi, download)
             delete window.activeDownloads[id]
             return false
         }
-        var stagingDirectory = window.downloadStagingDirectory(browserUi, id)
+        var stagingDirectory = window.downloadStagingDirectory(window.browserUi, id)
         if (stagingDirectory.length === 0) {
-            window.profileResourceRegistry.cancelDownloadRequest(browserUi, download)
-            browserUi.update_download(id, "cancelled", download.receivedBytes, true)
+            window.profileResourceRegistry.cancelDownloadRequest(window.browserUi, download)
+            window.browserUi.update_download(id, "cancelled", download.receivedBytes, true)
             return false
         }
         download.downloadDirectory = stagingDirectory
         download.downloadFileName = finalName
         window.attachDownloadStateUpdates(download, id)
-        window.resolveQtRequest(browserUi, download, "download", "accept", [])
-        browserUi.update_download(id, "in-progress", 0, false)
+        window.resolveQtRequest(window.browserUi, download, "download", "accept", [])
+        window.browserUi.update_download(id, "in-progress", 0, false)
         if (window.downloadManagerVisible) {
             window.refreshDownloads()
         }
@@ -1995,18 +1904,18 @@ FerricBrowserRuntimePresentation {
             window.restoreOverlayFocus()
             return
         }
-        var selectedPath = browserUi.local_file_path(fileDialogSurfaces.downloadSelectedFile)
-        var finalName = browserUi.accept_download_path(id, selectedPath)
+        var selectedPath = window.browserUi.local_file_path(window.fileDialogSurfaces.downloadSelectedFile)
+        var finalName = window.browserUi.accept_download_path(id, selectedPath)
         if (finalName.length === 0) {
-            window.profileResourceRegistry.cancelDownloadRequest(browserUi, download)
-            browserUi.update_download(id, "cancelled", download.receivedBytes, true)
+            window.profileResourceRegistry.cancelDownloadRequest(window.browserUi, download)
+            window.browserUi.update_download(id, "cancelled", download.receivedBytes, true)
         } else {
             var separator = selectedPath.lastIndexOf("/")
             var directory = separator > 0 ? selectedPath.slice(0, separator) : "/"
-            var stagingDirectory = window.downloadStagingDirectory(browserUi, id)
+            var stagingDirectory = window.downloadStagingDirectory(window.browserUi, id)
             if (stagingDirectory.length === 0) {
-                window.profileResourceRegistry.cancelDownloadRequest(browserUi, download)
-                browserUi.update_download(id, "cancelled", download.receivedBytes, true)
+                window.profileResourceRegistry.cancelDownloadRequest(window.browserUi, download)
+                window.browserUi.update_download(id, "cancelled", download.receivedBytes, true)
                 delete window.pendingDownloadRequests[id]
                 window.pendingDownloadId = ""
                 window.pendingDownloadSuggestedName = ""
@@ -2017,8 +1926,8 @@ FerricBrowserRuntimePresentation {
             download.downloadFileName = finalName
             window.activeDownloads[id] = download
             window.attachDownloadStateUpdates(download, id)
-            window.resolveQtRequest(browserUi, download, "download", "accept", [])
-            browserUi.update_download(id, "in-progress", 0, false)
+            window.resolveQtRequest(window.browserUi, download, "download", "accept", [])
+            window.browserUi.update_download(id, "in-progress", 0, false)
         }
         delete window.pendingDownloadRequests[id]
         window.pendingDownloadId = ""
@@ -2034,25 +1943,25 @@ FerricBrowserRuntimePresentation {
         var download = window.pendingDownloadRequests[id]
         if (download) {
             window.profileResourceRegistry.markDownloadSelectionFailed(download)
-            window.profileResourceRegistry.cancelDownloadRequest(browserUi, download)
+            window.profileResourceRegistry.cancelDownloadRequest(window.browserUi, download)
             // Retain the existing retryable download record and URL. A picker
             // failure is an interruption, not a user cancellation.
-            browserUi.update_download(id, "interrupted", download.receivedBytes, true)
+            window.browserUi.update_download(id, "interrupted", download.receivedBytes, true)
         }
         delete window.pendingDownloadRequests[id]
         window.pendingDownloadId = ""
         window.pendingDownloadSuggestedName = ""
         if (window.downloadManagerVisible) window.refreshDownloads()
         window.restoreOverlayFocus()
-        browserUi.status_text = message
+        window.browserUi.status_text = message
     }
 
     function cancelPendingDownload() {
         var id = window.pendingDownloadId
         var download = window.pendingDownloadRequests[id]
         if (download) {
-            window.profileResourceRegistry.cancelDownloadRequest(browserUi, download)
-            browserUi.update_download(id, "cancelled", download.receivedBytes, true)
+            window.profileResourceRegistry.cancelDownloadRequest(window.browserUi, download)
+            window.browserUi.update_download(id, "cancelled", download.receivedBytes, true)
         }
         delete window.pendingDownloadRequests[id]
         window.pendingDownloadId = ""
@@ -2065,60 +1974,60 @@ FerricBrowserRuntimePresentation {
 
     function handleDownloadRequested(download, id, safeName) {
         var requestedPath = download.savePageFormat === WebEngineDownloadRequest.MimeHtmlSaveFormat
-                ? browserUi.take_save_page_path() : ""
+                ? window.browserUi.take_save_page_path() : ""
         if (requestedPath.length > 0) {
-            var requestedName = browserUi.accept_download_path(id, requestedPath)
+            var requestedName = window.browserUi.accept_download_path(id, requestedPath)
             if (requestedName.length === 0) {
-                window.profileResourceRegistry.cancelDownloadRequest(browserUi, download)
-                browserUi.update_download(id, "cancelled", download.receivedBytes, true)
+                window.profileResourceRegistry.cancelDownloadRequest(window.browserUi, download)
+                window.browserUi.update_download(id, "cancelled", download.receivedBytes, true)
                 return
             }
             var requestedSeparator = requestedPath.lastIndexOf("/")
             var requestedDirectory = requestedSeparator > 0
                     ? requestedPath.slice(0, requestedSeparator) : "/"
             window.activeDownloads[id] = download
-            var stagingDirectory = window.downloadStagingDirectory(browserUi, id)
+            var stagingDirectory = window.downloadStagingDirectory(window.browserUi, id)
             if (stagingDirectory.length === 0) {
-                window.profileResourceRegistry.cancelDownloadRequest(browserUi, download)
-                browserUi.update_download(id, "cancelled", download.receivedBytes, true)
+                window.profileResourceRegistry.cancelDownloadRequest(window.browserUi, download)
+                window.browserUi.update_download(id, "cancelled", download.receivedBytes, true)
                 return
             }
             download.downloadDirectory = stagingDirectory
             download.downloadFileName = requestedName
             window.attachDownloadStateUpdates(download, id)
-            window.resolveQtRequest(browserUi, download, "download", "accept", [])
-            browserUi.update_download(id, "in-progress", 0, false)
+            window.resolveQtRequest(window.browserUi, download, "download", "accept", [])
+            window.browserUi.update_download(id, "in-progress", 0, false)
             return
         }
-        var directory = browserUi.default_download_directory()
+        var directory = window.browserUi.default_download_directory()
         if (!window.downloadsAskDestination()) {
             window.activeDownloads[id] = download
             window.acceptDownloadRequest(download, id, directory, safeName)
             return
         }
         if (window.pendingDownloadId.length > 0) {
-            window.profileResourceRegistry.cancelDownloadRequest(browserUi, download)
-            browserUi.update_download(id, "cancelled", download.receivedBytes, true)
+            window.profileResourceRegistry.cancelDownloadRequest(window.browserUi, download)
+            window.browserUi.update_download(id, "cancelled", download.receivedBytes, true)
             return
         }
         window.pendingDownloadRequests[id] = download
         window.pendingDownloadId = id
         window.pendingDownloadSuggestedName = safeName
         window.captureOverlayFocus(window, window.activeWebView())
-        browserUi.update_download(id, "selecting-destination", 0, false)
-        fileDialogSurfaces.downloadCurrentFile = window.fileUrlForPath(directory + "/" + safeName)
-        fileDialogSurfaces.openDownload()
+        window.browserUi.update_download(id, "selecting-destination", 0, false)
+        window.fileDialogSurfaces.downloadCurrentFile = window.fileUrlForPath(directory + "/" + safeName)
+        window.fileDialogSurfaces.openDownload()
     }
 
     function handleDownloadFinished(download, selectionFailed, id) {
         var state = selectionFailed ? "interrupted" : window.downloadStateName(download)
         if (state === "completed") {
-            browserUi.update_download(id, "completed", download.receivedBytes, false)
-            if (browserUi.finalize_download(id)) return true
+            window.browserUi.update_download(id, "completed", download.receivedBytes, false)
+            if (window.browserUi.finalize_download(id)) return true
             state = "interrupted"
         }
-        browserUi.discard_download_staging(id)
-        browserUi.update_download(id, state, download.receivedBytes, true)
+        window.browserUi.discard_download_staging(id)
+        window.browserUi.update_download(id, state, download.receivedBytes, true)
         window.completeFinishedDownload(id)
         return false
     }
@@ -2132,5 +2041,4 @@ FerricBrowserRuntimePresentation {
         }
         if (window.downloadManagerVisible) window.refreshDownloads()
     }
-
 }

@@ -1,8 +1,6 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError},
-    thread::{self, JoinHandle},
 };
 
 use ferric_browser_config::{
@@ -16,7 +14,9 @@ use ferric_browser_storage::{
 
 use crate::{ConfigurationLayers, ProfileActivation};
 
-const PROFILE_REQUEST_CAPACITY: usize = 1;
+use ferric_browser_runtime::worker::{Poll as WorkerPoll, SingleFlightWorker, SubmitError};
+#[cfg(test)]
+use std::thread;
 
 /// Typed inputs required to open one browser profile.
 #[derive(Clone, Debug, PartialEq)]
@@ -29,6 +29,10 @@ pub struct ProfileOpenRequest {
     pub initial_profile_overrides: RuntimeOverrides,
     pub command_line_overrides: RuntimeOverrides,
     pub config_path: Option<PathBuf>,
+    /// Read-only installed-script root, independent of a custom configuration
+    /// file's location. Transient profiles may read this catalog without
+    /// acquiring durable profile storage or permission to mutate it.
+    pub script_catalog_root: Option<PathBuf>,
     pub contexts: ContextsConfig,
     pub context_configuration_error: Option<String>,
 }
@@ -85,6 +89,8 @@ pub struct ProfileOpenEffect {
 }
 
 pub(crate) struct PreparedProfile {
+    pub(crate) userscript_root: Option<PathBuf>,
+    pub(crate) page_scripts: Result<std::sync::Arc<crate::userscript::UserscriptCatalog>, String>,
     pub(crate) activation: ProfileActivation,
     pub(crate) layers: ConfigurationLayers,
     pub(crate) fallback_configuration: Config,
@@ -99,73 +105,30 @@ pub(crate) struct PreparedProfile {
 }
 
 pub(crate) struct ProfileOpenCoordinator {
-    sender: Option<SyncSender<ProfileOpenRequest>>,
-    receiver: Receiver<PreparedProfile>,
-    pending: bool,
-    join: Option<JoinHandle<()>>,
+    worker: SingleFlightWorker<ProfileOpenRequest, PreparedProfile>,
 }
 
 impl ProfileOpenCoordinator {
     pub(crate) fn spawn() -> Result<Self, ProfileOpenError> {
-        let (sender, requests) = mpsc::sync_channel(PROFILE_REQUEST_CAPACITY);
-        let (responses, receiver) = mpsc::sync_channel(PROFILE_REQUEST_CAPACITY);
-        let join = thread::Builder::new()
-            .name("ferric-browser-profile-bootstrap".into())
-            .spawn(move || {
-                while let Ok(request) = requests.recv() {
-                    if responses.send(prepare_profile(request)).is_err() {
-                        break;
-                    }
-                }
-            })
+        let worker = SingleFlightWorker::spawn("ferric-browser-profile-bootstrap", prepare_profile)
             .map_err(|error| ProfileOpenError::WorkerStart(error.to_string()))?;
-        Ok(Self {
-            sender: Some(sender),
-            receiver,
-            pending: false,
-            join: Some(join),
-        })
+        Ok(Self { worker })
     }
 
     pub(crate) fn submit(&mut self, request: ProfileOpenRequest) -> Result<(), ProfileOpenError> {
         validate_request(&request)?;
-        if self.pending {
-            return Err(ProfileOpenError::Busy);
-        }
-        let sender = self
-            .sender
-            .as_ref()
-            .ok_or(ProfileOpenError::WorkerStopped)?;
-        match sender.try_send(request) {
-            Ok(()) => {
-                self.pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(ProfileOpenError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(ProfileOpenError::WorkerStopped),
-        }
+        self.worker.submit(request).map_err(|error| match error {
+            SubmitError::Busy => ProfileOpenError::Busy,
+            SubmitError::QueueFull => ProfileOpenError::QueueFull,
+            SubmitError::Stopped => ProfileOpenError::WorkerStopped,
+        })
     }
 
     pub(crate) fn poll(&mut self) -> Option<Result<PreparedProfile, ProfileOpenError>> {
-        match self.receiver.try_recv() {
-            Ok(response) => {
-                self.pending = false;
-                Some(Ok(response))
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.pending = false;
-                Some(Err(ProfileOpenError::WorkerStopped))
-            }
-        }
-    }
-}
-
-impl Drop for ProfileOpenCoordinator {
-    fn drop(&mut self) {
-        self.sender.take();
-        if let Some(join) = self.join.take() {
-            let _ = join.join();
+        match self.worker.poll() {
+            WorkerPoll::Pending => None,
+            WorkerPoll::Ready(profile) => Some(Ok(profile)),
+            WorkerPoll::Stopped => Some(Err(ProfileOpenError::WorkerStopped)),
         }
     }
 }
@@ -191,29 +154,13 @@ fn validate_request(request: &ProfileOpenRequest) -> Result<(), ProfileOpenError
 
 fn prepare_profile(request: ProfileOpenRequest) -> PreparedProfile {
     let fallback_configuration = request.base_configuration.clone();
-    let mut profile_overrides = request.initial_profile_overrides;
+    let (profile_overrides, config_sources, mut configuration_error) = load_profile_layers(
+        request.config_path.as_deref(),
+        &request.name,
+        matches!(request.storage, ProfileStorage::Transient),
+        request.initial_profile_overrides,
+    );
     let mut runtime_overrides = RuntimeOverrides::default();
-    let mut config_sources = Vec::new();
-    let mut configuration_error = None;
-
-    if let Some(config_path) = request.config_path.as_deref() {
-        match load(config_path) {
-            Ok(loaded) => {
-                config_sources = loaded.sources;
-                let profiles_path = profile_config_path(config_path);
-                if profiles_path.exists() {
-                    config_sources.push(profiles_path);
-                }
-            }
-            Err(error) => configuration_error = Some(error.to_string()),
-        }
-        if !matches!(request.storage, ProfileStorage::Transient) {
-            match load_profile_runtime_overrides(config_path, &request.name) {
-                Ok(overrides) => profile_overrides = overrides,
-                Err(error) => configuration_error = Some(error.to_string()),
-            }
-        }
-    }
 
     let mut activation = ProfileActivation {
         name: request.name.clone(),
@@ -278,7 +225,22 @@ fn prepare_profile(request: ProfileOpenRequest) -> PreparedProfile {
         configuration_error.get_or_insert_with(|| error.to_string());
     }
 
+    let userscript_root = activation
+        .roots
+        .as_ref()
+        .map(|roots| roots.config.clone())
+        .or(request.script_catalog_root)
+        .or_else(|| {
+            request
+                .config_path
+                .as_deref()
+                .and_then(Path::parent)
+                .map(Path::to_owned)
+        });
+    let page_scripts = prepare_page_scripts(userscript_root.as_deref());
     PreparedProfile {
+        userscript_root,
+        page_scripts,
         activation,
         layers,
         fallback_configuration,
@@ -291,6 +253,48 @@ fn prepare_profile(request: ProfileOpenRequest) -> PreparedProfile {
         configuration_error,
         context_error,
     }
+}
+
+fn load_profile_layers(
+    config_path: Option<&Path>,
+    name: &str,
+    transient: bool,
+    initial: RuntimeOverrides,
+) -> (RuntimeOverrides, Vec<PathBuf>, Option<String>) {
+    let mut profile_overrides = initial;
+    let mut config_sources = Vec::new();
+    let mut configuration_error = None;
+
+    if let Some(config_path) = config_path {
+        match load(config_path) {
+            Ok(loaded) => {
+                config_sources = loaded.sources;
+                let profiles_path = profile_config_path(config_path);
+                if profiles_path.exists() {
+                    config_sources.push(profiles_path);
+                }
+            }
+            Err(error) => configuration_error = Some(error.to_string()),
+        }
+        if !transient {
+            match load_profile_runtime_overrides(config_path, name) {
+                Ok(overrides) => profile_overrides = overrides,
+                Err(error) => configuration_error = Some(error.to_string()),
+            }
+        }
+    }
+
+    (profile_overrides, config_sources, configuration_error)
+}
+
+fn prepare_page_scripts(
+    root: Option<&Path>,
+) -> Result<std::sync::Arc<crate::userscript::UserscriptCatalog>, String> {
+    root.map_or_else(
+        || Ok(crate::userscript::UserscriptCatalog::default()),
+        crate::userscript::UserscriptCatalog::load,
+    )
+    .map(std::sync::Arc::new)
 }
 
 struct DurableProfile {
@@ -388,9 +392,31 @@ mod tests {
             initial_profile_overrides: RuntimeOverrides::default(),
             command_line_overrides: RuntimeOverrides::default(),
             config_path: None,
+            script_catalog_root: None,
             contexts: ContextsConfig::default(),
             context_configuration_error: None,
         }
+    }
+
+    #[test]
+    fn private_catalog_root_is_independent_of_custom_configuration_location() {
+        let root =
+            std::env::temp_dir().join(format!("ferric-private-catalog-{}", uuid::Uuid::new_v4()));
+        let catalog = root.join("installed");
+        fs::create_dir_all(catalog.join("userscripts")).unwrap();
+        fs::write(catalog.join("userscripts/example.toml"),
+            "schema_version=1\nname=\"example\"\nexecutable=\"/bin/true\"\ncontext_fields=[\"url\"]\n[[actions]]\nid=\"userscript.example.inspect\"\nsubject=\"url\"\nverb=\"inspect\"\nlabel=\"Inspect\"\nrequired_fields=[\"url\"]\n").unwrap();
+        let config = root.join("custom.toml");
+        fs::write(&config, "schema_version=3\n").unwrap();
+        let mut input = request(ProfileStorage::Transient, PrivacyKind::Private);
+        input.config_path = Some(config);
+        input.script_catalog_root = Some(catalog.clone());
+        let prepared = prepare_profile(input);
+        assert!(prepared.activation.roots.is_none());
+        assert!(prepared.activation.storage_path.is_none());
+        assert_eq!(prepared.userscript_root, Some(catalog));
+        assert_eq!(prepared.page_scripts.unwrap().actions().len(), 1);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

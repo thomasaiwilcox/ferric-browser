@@ -180,6 +180,7 @@ pub(super) fn binding_uses_full_command_executor(command: &ParsedCommand) -> boo
                 | "devtools"
                 | "fullscreen"
                 | "history"
+                | "hint"
                 | "print"
                 | "tab-clone"
                 | "tab-close"

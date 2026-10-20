@@ -7,9 +7,11 @@ use std::thread;
 
 const ADAPTER_SOURCE: &str = concat!(
     include_str!("lib.rs"),
+    include_str!("bridge.rs"),
     include_str!("browser_ui_defaults.rs"),
     include_str!("browser_ui_browsing_commands.rs"),
     include_str!("browser_ui_command_dispatch.rs"),
+    include_str!("browser_ui_common_commands.rs"),
     include_str!("browser_ui_command_workflows.rs"),
     include_str!("browser_ui_configuration.rs"),
     include_str!("browser_ui_content_tools.rs"),
@@ -75,14 +77,13 @@ const BROWSER_SCRIPT_MANIFEST: &str =
 
 const QML_SOURCE: &str = concat!(
     include_str!("../qml/Main.qml"),
-    include_str!("../qml/components/FerricPrimaryBrowserWindow.qml"),
-    include_str!("../qml/components/FerricBrowserRuntimeBase.qml"),
+    include_str!("../qml/components/FerricWindowLifecycleController.qml"),
     include_str!("../qml/components/FerricWebNotificationController.qml"),
-    include_str!("../qml/components/FerricBrowserRuntimeServices.qml"),
-    include_str!("../qml/components/FerricBrowserRuntimePresentation.qml"),
-    include_str!("../qml/components/FerricBrowserRuntimeRequests.qml"),
-    include_str!("../qml/components/FerricBrowserRuntimeChrome.qml"),
-    include_str!("../qml/components/FerricBrowserRuntimeSurface.qml"),
+    include_str!("../qml/components/FerricPageServices.qml"),
+    include_str!("../qml/components/FerricWindowPresentationController.qml"),
+    include_str!("../qml/components/FerricWindowRequestsController.qml"),
+    include_str!("../qml/components/FerricCommandEntryController.qml"),
+    include_str!("../qml/components/FerricRuntimeController.qml"),
     include_str!("../qml/components/FerricHintWorkspace.qml"),
     include_str!("../qml/components/FerricFocusOverlayController.qml"),
     include_str!("../qml/components/FerricChromePresentationController.qml"),
@@ -108,6 +109,8 @@ const QML_SOURCE: &str = concat!(
     include_str!("../qml/components/FerricStartKeycap.qml"),
     include_str!("../qml/components/FerricPopupWindow.qml"),
     include_str!("../qml/components/FerricDevToolsWindow.qml"),
+    include_str!("../qml/components/FerricPrimaryBrowserWindow.qml"),
+    include_str!("../qml/scripts/EngineRequests.js"),
 );
 
 fn bootstrap_application(

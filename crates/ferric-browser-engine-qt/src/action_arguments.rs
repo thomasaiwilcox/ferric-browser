@@ -155,12 +155,9 @@ fn send_arguments(value: &str) -> Result<Value, String> {
 fn link_open_arguments(value: &str) -> Result<Value, String> {
     match optional_fields(value, 2, "Link open")?.as_slice() {
         [url] => Ok(serde_json::json!({"url": url})),
-        [target, url]
-            if matches!(
-                *target,
-                "current" | "tab" | "tab-bg" | "window" | "private-window"
-            ) =>
-        {
+        // The typed navigation API uses an absent target for the current tab.
+        ["current", url] => Ok(serde_json::json!({"url": url})),
+        [target, url] if matches!(*target, "tab" | "tab-bg" | "window" | "private-window") => {
             Ok(serde_json::json!({"url": url, "target": target}))
         }
         _ => Err("Link open UI action requires a URL and an optional valid target".into()),
@@ -223,6 +220,11 @@ mod tests {
 
     #[test]
     fn decodes_compact_action_values_without_opening_the_argument_boundary() {
+        assert_eq!(
+            decode_ui_action_arguments("browser.link.open", "current\thttps://example.test/docs")
+                .expect("current tab is the default target"),
+            serde_json::json!({"url": "https://example.test/docs"})
+        );
         assert_eq!(
             decode_ui_action_arguments("browser.link.open", "tab-bg\thttps://example.test/docs")
                 .expect("valid targeted link open"),

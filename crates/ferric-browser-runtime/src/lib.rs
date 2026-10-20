@@ -11,14 +11,15 @@ use ferric_browser_core::{
     NavigationContext, PersistEffect, ProfileId, ProfileState, ReduceError, ShutdownState, TabId,
     TabState, Target, ValidatedUrl, WindowId, WindowState, dispatch_command_for, reduce,
 };
-pub use ferric_browser_ipc::ErrorCode;
+mod observation;
+pub mod worker;
+pub use observation::{RuntimeObservation, TabObservation};
 
-mod ipc_projection;
-pub use ipc_projection::{ipc_event_payload, ipc_event_type};
+pub use ferric_browser_core::FailureKind as RuntimeErrorKind;
 
 #[derive(Debug)]
 pub struct RuntimeError {
-    code: ErrorCode,
+    code: RuntimeErrorKind,
     user_message: String,
     diagnostic_context: String,
     source: Option<Box<dyn Error + Send + Sync>>,
@@ -26,7 +27,7 @@ pub struct RuntimeError {
 
 impl RuntimeError {
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub fn code(&self) -> RuntimeErrorKind {
         self.code
     }
 
@@ -60,14 +61,14 @@ impl From<ReduceError> for RuntimeError {
         let code = match error {
             ReduceError::UnknownProfile(_)
             | ReduceError::UnknownWindow(_)
-            | ReduceError::UnknownTab(_) => ErrorCode::NotFound,
-            ReduceError::ShutdownInProgress => ErrorCode::Busy,
+            | ReduceError::UnknownTab(_) => RuntimeErrorKind::NotFound,
+            ReduceError::ShutdownInProgress => RuntimeErrorKind::Busy,
             ReduceError::WrongProfile
             | ReduceError::TabAlreadyInWindow
             | ReduceError::InvalidActivation
             | ReduceError::TabNotHidden
             | ReduceError::InvalidLifecycle
-            | ReduceError::InvalidZoom => ErrorCode::InvalidArgument,
+            | ReduceError::InvalidZoom => RuntimeErrorKind::InvalidArgument,
         };
         Self {
             code,
@@ -82,17 +83,17 @@ impl From<DispatchError> for RuntimeError {
     fn from(error: DispatchError) -> Self {
         let code = match &error {
             DispatchError::Reduce(error) => return Self::from(error.clone()),
-            DispatchError::NoActiveTab => ErrorCode::NotFound,
+            DispatchError::NoActiveTab => RuntimeErrorKind::NotFound,
             DispatchError::Navigation(
                 ferric_browser_core::NavigationError::ExternalSchemeRequiresConfirmation { .. },
-            ) => ErrorCode::ConfirmationRequired,
+            ) => RuntimeErrorKind::ConfirmationRequired,
             DispatchError::Command(_)
             | DispatchError::Navigation(_)
             | DispatchError::MissingArgument { .. }
             | DispatchError::UnexpectedArguments { .. }
             | DispatchError::CountNotSupported { .. }
             | DispatchError::CountTooLarge { .. }
-            | DispatchError::UnsupportedCommand(_) => ErrorCode::InvalidArgument,
+            | DispatchError::UnsupportedCommand(_) => RuntimeErrorKind::InvalidArgument,
         };
         Self {
             code,
@@ -148,14 +149,16 @@ pub enum RuntimeInput {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorkerOutcome {
     Completed,
-    Failed { code: ErrorCode },
+    Failed { code: RuntimeErrorKind },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RuntimeEffect {
     Engine(EngineEffect),
     Storage(PersistEffect),
-    UiModelUpdated(RuntimeSnapshot),
+    UiModelChanged {
+        revision: u64,
+    },
     Diagnostic(Diagnostic),
     /// A reducer event accepted by the runtime.
     ///
@@ -165,10 +168,7 @@ pub enum RuntimeEffect {
     AppliedEvent(Event),
     /// Public observation data captured immediately after an accepted event.
     /// The adapter transports this payload unchanged over its IPC mechanism.
-    IpcEvent {
-        event_type: &'static str,
-        payload: serde_json::Value,
-    },
+    Observed(Box<RuntimeObservation>),
     WorkerObserved {
         job_id: u64,
         outcome: WorkerOutcome,
@@ -277,7 +277,7 @@ impl<'a> RuntimeView<'a> {
 
 pub struct BrowserRuntime {
     state: ApplicationState,
-    registry: CommandRegistry,
+    registry: std::sync::Arc<CommandRegistry>,
 }
 
 impl Default for BrowserRuntime {
@@ -291,7 +291,7 @@ impl BrowserRuntime {
     pub fn new() -> Self {
         Self {
             state: ApplicationState::new(),
-            registry: CommandRegistry::default_v1(),
+            registry: CommandRegistry::shared_default_v1(),
         }
     }
 
@@ -300,7 +300,7 @@ impl BrowserRuntime {
     pub fn with_registry(registry: CommandRegistry) -> Self {
         Self {
             state: ApplicationState::new(),
-            registry,
+            registry: std::sync::Arc::new(registry),
         }
     }
 
@@ -329,7 +329,7 @@ impl BrowserRuntime {
     ) -> Result<(Self, WindowId, TabId), RuntimeError> {
         let mut runtime = Self {
             state: ApplicationState::with_id_source(ids),
-            registry: CommandRegistry::default_v1(),
+            registry: CommandRegistry::shared_default_v1(),
         };
         runtime.handle(RuntimeInput::Lifecycle(Event::CreateProfile {
             label: profile_label.into(),
@@ -403,7 +403,7 @@ impl BrowserRuntime {
 
     fn invariant(diagnostic_context: impl Into<String>) -> RuntimeError {
         RuntimeError {
-            code: ErrorCode::Engine,
+            code: RuntimeErrorKind::Engine,
             user_message: "The browser could not initialize its runtime.".into(),
             diagnostic_context: diagnostic_context.into(),
             source: None,
@@ -424,7 +424,9 @@ impl BrowserRuntime {
                 effects.extend(Self::apply_event(&mut self.state, &event)?);
                 effects.push(RuntimeEffect::AppliedEvent(event));
             }
-            effects.push(RuntimeEffect::UiModelUpdated(self.snapshot()));
+            effects.push(RuntimeEffect::UiModelChanged {
+                revision: self.state.revision(),
+            });
             return Ok(effects);
         }
         Self::apply_input(&mut self.state, input)
@@ -460,9 +462,9 @@ impl BrowserRuntime {
         // focus) that intentionally does not advance the durable revision.
         // Publishing a bounded snapshot after every accepted input keeps the
         // adapter synchronized without exposing mutable state.
-        runtime_effects.push(RuntimeEffect::UiModelUpdated(Self::snapshot_for_state(
-            state,
-        )));
+        runtime_effects.push(RuntimeEffect::UiModelChanged {
+            revision: state.revision(),
+        });
         Ok(runtime_effects)
     }
 
@@ -486,10 +488,9 @@ impl BrowserRuntime {
             })
             .collect::<Vec<_>>();
         if !ignored_stale_target {
-            runtime_effects.push(RuntimeEffect::IpcEvent {
-                event_type: ipc_event_type(event),
-                payload: ipc_event_payload(event, state),
-            });
+            runtime_effects.push(RuntimeEffect::Observed(Box::new(
+                RuntimeObservation::capture(event, state),
+            )));
         }
         Ok(runtime_effects)
     }
@@ -583,7 +584,7 @@ mod tests {
         assert!(
             effects
                 .iter()
-                .any(|effect| matches!(effect, RuntimeEffect::UiModelUpdated(_)))
+                .any(|effect| matches!(effect, RuntimeEffect::UiModelChanged { .. }))
         );
 
         runtime
@@ -617,8 +618,7 @@ mod tests {
 
         assert!(effects.iter().any(|effect| matches!(
             effect,
-            RuntimeEffect::UiModelUpdated(snapshot)
-                if snapshot.windows()[0].tabs.len() == 2
+            RuntimeEffect::UiModelChanged { revision } if *revision == runtime.view().revision()
         )));
         assert!(effects.iter().any(|effect| matches!(
             effect,
@@ -627,8 +627,7 @@ mod tests {
         )));
         assert!(effects.iter().any(|effect| matches!(
             effect,
-            RuntimeEffect::IpcEvent { event_type: "tab.changed", payload }
-                if payload["window_id"] == window.to_string()
+            RuntimeEffect::Observed(observation) if observation.window == Some(window)
         )));
     }
 
@@ -679,8 +678,7 @@ mod tests {
                 background: false,
             }))
             .expect_err("unknown window");
-        assert_eq!(error.code(), ErrorCode::NotFound);
-        assert_eq!(error.code().as_str(), "E_NOT_FOUND");
+        assert_eq!(error.code(), RuntimeErrorKind::NotFound);
         assert_ne!(error.diagnostic_context(), "");
     }
 }

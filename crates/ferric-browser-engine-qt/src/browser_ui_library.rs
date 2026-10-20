@@ -51,6 +51,7 @@ impl qobject::BrowserUi {
         if let Some(result) = self
             .as_ref()
             .rust()
+            .library
             .switcher_cache
             .as_ref()
             .filter(|cache| cache.matches(self.as_ref().rust(), &params))
@@ -76,13 +77,16 @@ impl qobject::BrowserUi {
                 }
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                this.switcher_cache = Some(SwitcherQueryCache {
+                this.library.switcher_cache = Some(SwitcherQueryCache {
                     params,
                     state_revision: this.state.as_ref().map_or(0, BrowserApplication::revision),
                     storage_library_revision: this.storage_library_revision,
-                    session_names: this.session_names.clone(),
+                    session_names: this.library.session_names.clone(),
                     contexts_json: this.contexts_json.to_string(),
-                    config_fingerprint: serde_json::to_string(&this.config).unwrap_or_default(),
+                    configuration_revision: this
+                        .state
+                        .as_ref()
+                        .map_or(0, BrowserApplication::configuration_revision),
                     profile_name: this.profile_name.clone(),
                     result,
                 });
@@ -117,10 +121,11 @@ impl qobject::BrowserUi {
         if self
             .as_ref()
             .rust()
+            .library
             .storage_library_read_state
             .is_in_flight()
-            || (self.as_ref().rust().storage_library.is_some()
-                && !self.as_ref().rust().storage_library_dirty.get())
+            || (self.as_ref().rust().library.storage_library.is_some()
+                && !self.as_ref().rust().library.storage_library_dirty.get())
         {
             return;
         }
@@ -134,6 +139,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .library
                     .storage_library_read_state = CatalogReadState::Pending;
                 self.publish_library_pending();
             }
@@ -145,6 +151,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .library
                     .storage_library_read_state = CatalogReadState::Queued;
                 self.publish_library_pending();
             }
@@ -154,6 +161,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .library
                     .storage_library_read_state = CatalogReadState::Failed(detail.clone());
                 self.as_mut().set_library_error(QString::from(detail));
                 self.as_mut().set_status_text(QString::from(
@@ -177,34 +185,39 @@ impl qobject::BrowserUi {
                     .and_then(|tab| state.profiles().get(&tab.profile))
                     .map(|profile| profile.privacy.is_transient())
             }) == Some(true);
-            if transient || this.storage_library_dirty.get() {
+            if transient || this.library.storage_library_dirty.get() {
                 return;
             }
-            if this.switcher_library_index_building {
-                if this.switcher_library_index_revision != this.storage_library_revision
-                    && let Some(cancel) = this.switcher_library_index_cancel.as_ref()
+            if this.library.switcher_library_index_building {
+                if this.library.switcher_library_index_revision != this.storage_library_revision
+                    && let Some(cancel) = this.library.switcher_library_index_cancel.as_ref()
                 {
                     cancel.store(true, Ordering::Relaxed);
                 }
                 return;
             }
-            if this.switcher_library_index.as_ref().is_some_and(|index| {
-                this.switcher_library_index_revision == this.storage_library_revision
-                    && index.profile_name == this.profile_name
-            }) {
+            if this
+                .library
+                .switcher_library_index
+                .as_ref()
+                .is_some_and(|index| {
+                    this.library.switcher_library_index_revision == this.storage_library_revision
+                        && index.profile_name == this.profile_name
+                })
+            {
                 return;
             }
-            let Some(snapshot) = this.storage_library.clone() else {
+            let Some(snapshot) = this.library.storage_library.clone() else {
                 return;
             };
-            this.switcher_library_index_building = true;
+            this.library.switcher_library_index_building = true;
             let cancel = Arc::new(AtomicBool::new(false));
-            this.switcher_library_index_cancel = Some(Arc::clone(&cancel));
+            this.library.switcher_library_index_cancel = Some(Arc::clone(&cancel));
             (
                 snapshot,
                 this.storage_library_revision,
                 this.profile_name.clone(),
-                Arc::clone(&this.switcher_library_index_result),
+                Arc::clone(&this.library.switcher_library_index_result),
                 cancel,
             )
         };
@@ -221,11 +234,13 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .library
                 .switcher_library_index_building = false;
             self.as_mut()
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .library
                 .switcher_library_index_cancel = None;
         }
     }
@@ -234,7 +249,8 @@ impl qobject::BrowserUi {
         let result = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.switcher_library_index_result
+            this.library
+                .switcher_library_index_result
                 .lock()
                 .ok()
                 .and_then(|mut pending| pending.take())
@@ -244,8 +260,8 @@ impl qobject::BrowserUi {
         };
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        this.switcher_library_index_building = false;
-        this.switcher_library_index_cancel = None;
+        this.library.switcher_library_index_building = false;
+        this.library.switcher_library_index_cancel = None;
         let Some(index) = result.index else {
             return true;
         };
@@ -261,9 +277,9 @@ impl qobject::BrowserUi {
         {
             return false;
         }
-        this.switcher_library_index_revision = result.revision;
-        this.switcher_library_index = Some(index);
-        this.switcher_cache = None;
+        this.library.switcher_library_index_revision = result.revision;
+        this.library.switcher_library_index = Some(index);
+        this.library.switcher_cache = None;
         true
     }
 
@@ -380,7 +396,7 @@ impl qobject::BrowserUi {
                 }
                 StorageCompletion::DownloadSave(result) => {
                     if result.is_ok() {
-                        self.as_ref().rust().storage_library_dirty.set(true);
+                        self.as_ref().rust().library.storage_library_dirty.set(true);
                     }
                     consumed = true;
                 }
@@ -421,14 +437,14 @@ impl qobject::BrowserUi {
             consumed = true;
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.storage_flush_pending = false;
-            this.storage_flush_error = result.err();
+            this.library.storage_flush_pending = false;
+            this.library.storage_flush_error = result.err();
         }
         if let Some(result) = session_checkpoint_clear_result {
             consumed = true;
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.session_checkpoint_clear_pending = false;
+            this.library.session_checkpoint_clear_pending = false;
             drop(rust);
             if let Err(error) = result {
                 self.as_mut().set_status_text(QString::from(format!(
@@ -471,17 +487,24 @@ impl qobject::BrowserUi {
             consumed = true;
             let recovery_pending = {
                 let mut rust = self.as_mut().rust_mut();
-                rust.as_mut().get_mut().session_restore_recovery_pending
+                rust.as_mut()
+                    .get_mut()
+                    .library
+                    .session_restore_recovery_pending
             };
             let restore_load_append = {
                 let mut rust = self.as_mut().rust_mut();
-                rust.as_mut().get_mut().session_restore_load_append.take()
+                rust.as_mut()
+                    .get_mut()
+                    .library
+                    .session_restore_load_append
+                    .take()
             };
             {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                this.session_restore_preview_pending = false;
-                this.session_restore_recovery_pending = false;
+                this.library.session_restore_preview_pending = false;
+                this.library.session_restore_recovery_pending = false;
             }
             if recovery_pending {
                 match result {
@@ -581,7 +604,7 @@ impl qobject::BrowserUi {
         }
         if let Some(result) = session_result {
             consumed = true;
-            let refresh_again = self.as_ref().rust().session_names_refresh_again;
+            let refresh_again = self.as_ref().rust().library.session_names_refresh_again;
             self.as_mut().set_session_names_pending(false);
             self.as_mut()
                 .rust_mut()
@@ -598,6 +621,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .library
                     .session_names_refresh_again = false;
                 self.as_mut().request_session_names();
             } else {
@@ -609,8 +633,8 @@ impl qobject::BrowserUi {
                             .collect();
                         let mut rust = self.as_mut().rust_mut();
                         let this = rust.as_mut().get_mut();
-                        this.session_names = names;
-                        this.session_names_dirty.set(false);
+                        this.library.session_names = names;
+                        this.library.session_names_dirty.set(false);
                         drop(rust);
                         self.as_mut().set_session_names_error(QString::default());
                         self.as_mut().set_session_names_values(values);
@@ -659,6 +683,7 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
+                .navigation
                 .pending_journey_reopen
                 .take();
             match (pending, result) {
@@ -787,7 +812,7 @@ impl qobject::BrowserUi {
                 .unwrap_or(false);
             match result {
                 Ok(true) => {
-                    self.as_ref().rust().storage_library_dirty.set(true);
+                    self.as_ref().rust().library.storage_library_dirty.set(true);
                     self.as_mut()
                         .set_status_text(QString::from(if session_removed {
                             "Permission decision reset"
@@ -837,17 +862,18 @@ impl qobject::BrowserUi {
                             let this = rust.as_mut().get_mut();
                             if let Some(state) = this.state.as_ref() {
                                 let retained = this
+                                    .navigation
                                     .journey_durable_ids
                                     .borrow()
                                     .iter()
                                     .filter(|(node, _)| state.journey().node(**node).is_some())
                                     .map(|(node, durable)| (*node, durable.clone()))
                                     .collect();
-                                this.journey_durable_ids.replace(retained);
+                                this.navigation.journey_durable_ids.replace(retained);
                             }
                         }
                     }
-                    self.as_ref().rust().storage_library_dirty.set(true);
+                    self.as_ref().rust().library.storage_library_dirty.set(true);
                     self.as_mut().set_status_text(QString::from(format!(
                         "History cleared ({deleted} entries deleted)"
                     )));
@@ -862,7 +888,7 @@ impl qobject::BrowserUi {
             consumed = true;
             match result {
                 Ok(()) => {
-                    self.as_ref().rust().storage_library_dirty.set(true);
+                    self.as_ref().rust().library.storage_library_dirty.set(true);
                 }
                 Err(error) => {
                     self.as_mut().set_status_text(QString::from(format!(
@@ -875,7 +901,7 @@ impl qobject::BrowserUi {
             consumed = true;
             match result {
                 Ok(()) => {
-                    self.as_ref().rust().storage_library_dirty.set(true);
+                    self.as_ref().rust().library.storage_library_dirty.set(true);
                 }
                 Err(error) => {
                     self.as_mut().set_status_text(QString::from(format!(
@@ -891,6 +917,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
+                    .navigation
                     .pending_journey_mappings
                     .remove(&ticket)
             });
@@ -899,11 +926,12 @@ impl qobject::BrowserUi {
                     if let Some((core_id, durable_id)) = mapping {
                         self.as_ref()
                             .rust()
+                            .navigation
                             .journey_durable_ids
                             .borrow_mut()
                             .insert(core_id, durable_id);
                     }
-                    self.as_ref().rust().storage_library_dirty.set(true);
+                    self.as_ref().rust().library.storage_library_dirty.set(true);
                     let mut rust = self.as_mut().rust_mut();
                     let this = rust.as_mut().get_mut();
                     this.journey_export_payload = None;
