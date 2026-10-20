@@ -87,12 +87,12 @@ fn scroll_target_policy_captures_identity_and_rejects_unavailable_pages() {
         assert_eq!(effects, [ScrollTargetEffect::Apply { tab, policy }]);
         let mut effects = Vec::new();
         assert!(dispatch_scroll_target_command(&command, &registry, Mode::Normal, true, None, |effect| effects.push(effect)).is_err());
-        assert!(effects.is_empty());
+        assert_eq!(effects, [] as [ScrollTargetEffect; 0]);
     }
     let select = ParsedCommand { name: "scroll-target".into(), arguments: vec!["select".into()] };
     let mut effects = Vec::new();
     assert!(dispatch_scroll_target_command(&select, &registry, Mode::Normal, false, Some(tab), |effect| effects.push(effect)).is_err());
-    assert!(effects.is_empty());
+    assert_eq!(effects, [] as [ScrollTargetEffect; 0]);
     dispatch_scroll_target_command(&select, &registry, Mode::Normal, true, Some(tab), |effect| effects.push(effect)).unwrap();
     assert_eq!(effects, [ScrollTargetEffect::StartHints]);
 }
