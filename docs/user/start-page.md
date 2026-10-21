@@ -47,10 +47,37 @@ the same promotion action.
 Favourites refer to ordinary bookmarks. Edit bookmark changes its URL/label in
 both places. Unpin keeps the bookmark. Deleting the bookmark clears its slot.
 Pinning an existing bookmark moves its favourite reference rather than making
-a duplicate. Replacing an occupied slot keeps its former bookmark. Move to
+a duplicate. The name entered when adding a favourite is saved to that bookmark
+too, including when you choose an existing bookmark or type its address.
+Replacing an occupied slot keeps its former bookmark. Move to
 slot swaps two occupied slots or moves into an empty slot. Slots never compact
 after removal. Saving shows errors and commits the change before refreshing
 its stored presentation.
+
+In the editor, Enter in Site address moves to Name; Enter in Name saves.
+Holding Enter does not advance or submit repeatedly. The focused field scrolls
+into view, and the footer wraps in narrow windows or with larger text.
+Saving shows progress until the write and its metadata refresh finish. A
+failed save leaves the form and its text available to retry; Show details
+reveals selectable error text. Text entered during a save remains an unsaved
+edit when that earlier save finishes. Close during saving keeps the draft;
+Resume edit reopens it. Cancel after completion discards the local draft.
+Each tab keeps its draft and save feedback when another tab saves a favourite.
+
+Another Add to Favourites request waits while you edit or save the current
+one. Save or cancel that edit, then use Review next in Favourites. Dismiss next
+removes just the next waiting request. Up to sixteen requests can wait; another
+request is rejected visibly if that list is full. Waiting requests belong to
+the current tab and profile and are included in its unfinished-work close
+check. Switching profiles clears them.
+
+Bookmark choices follow their identity while metadata refreshes, keeping your
+entered name and selection intact. If a selected bookmark is removed or its
+address changes, saving waits for a choice: use the entered address, choose
+another bookmark, or inspect and use the updated address. The entered name is
+kept. The save checks the bookmark and the address shown in the form together.
+Narrow windows with larger text use compact view controls and a scrolling
+content area so the waiting requests remain reachable.
 
 ## Guide and keyboard help
 

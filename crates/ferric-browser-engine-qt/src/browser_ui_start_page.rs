@@ -1,8 +1,9 @@
 //! Native start-page requests and typed presentation projections.
 
+use super::feature_state::{FavouriteFeedback, FavouriteStage};
 use super::{
-    CxxQtType, Event, Pin, QString, StorageRequest, Uuid, ValidatedUrl, Value, qobject,
-    unix_timestamp,
+    CxxQtType, Event, FeedbackLane, FeedbackState, Pin, QString, StorageRequest, StorageTicket,
+    Uuid, ValidatedUrl, Value, qobject, unix_timestamp,
 };
 use ferric_browser_core::InternalPage;
 use ferric_browser_storage::{
@@ -312,12 +313,14 @@ impl qobject::BrowserUi {
             .unwrap_or(90);
         let cutoff = now.saturating_sub(days.saturating_mul(86400));
         let rank = self.as_ref().rust().start_rank_requested;
-        match self.as_mut().submit_storage(StorageRequest::StartPage {
-            now,
-            retention_before: cutoff,
-            rank,
-        }) {
-            Ok(()) => {
+        match self
+            .as_mut()
+            .submit_storage_with_ticket(StorageRequest::StartPage {
+                now,
+                retention_before: cutoff,
+                rank,
+            }) {
+            Ok(ticket) => {
                 self.as_mut()
                     .rust_mut()
                     .as_mut()
@@ -329,6 +332,11 @@ impl qobject::BrowserUi {
                     let this = rust.as_mut().get_mut();
                     this.library.start_refresh_requested = false;
                     this.start_rank_requested = false;
+                    if let Some(feedback) = this.library.favourite_feedback.as_mut()
+                        && feedback.stage == FavouriteStage::AwaitingRefresh
+                    {
+                        feedback.stage = FavouriteStage::Reading(ticket);
+                    }
                 }
                 self.set_start_page_busy(true);
             }
@@ -345,6 +353,10 @@ impl qobject::BrowserUi {
                         .library
                         .start_refresh_requested = false;
                     self.as_mut().set_start_page_busy(false);
+                    self.as_mut().finish_favourite_feedback(
+                        FavouriteStage::AwaitingRefresh,
+                        Err(&error.to_string()),
+                    );
                     self.set_start_page_error(QString::from(error.to_string()));
                 }
             }
@@ -353,6 +365,7 @@ impl qobject::BrowserUi {
 
     pub(super) fn complete_start_page_read(
         mut self: Pin<&mut Self>,
+        ticket: StorageTicket,
         result: Result<StartPageSnapshot, StorageOperationError>,
     ) {
         {
@@ -372,14 +385,24 @@ impl qobject::BrowserUi {
             Ok(_) => {
                 self.as_mut().set_start_page_ready(true);
                 self.as_mut().set_start_page_error(QString::default());
-                self.publish_start_page();
+                self.as_mut().publish_start_page();
+                self.as_mut()
+                    .finish_favourite_feedback(FavouriteStage::Reading(ticket), Ok(()));
             }
-            Err(error) => self.set_start_page_error(QString::from(error.message)),
+            Err(error) => {
+                self.as_mut()
+                    .set_start_page_error(QString::from(error.message.clone()));
+                self.finish_favourite_feedback(
+                    FavouriteStage::Reading(ticket),
+                    Err(&error.message),
+                );
+            }
         }
     }
 
     pub(super) fn complete_start_page_write(
         mut self: Pin<&mut Self>,
+        ticket: StorageTicket,
         result: Result<(), StorageOperationError>,
     ) {
         self.as_mut()
@@ -390,22 +413,192 @@ impl qobject::BrowserUi {
             .start_write_pending = false;
         match result {
             Ok(()) => {
+                {
+                    let mut rust = self.as_mut().rust_mut();
+                    if let Some(feedback) =
+                        rust.as_mut().get_mut().library.favourite_feedback.as_mut()
+                        && feedback.stage == FavouriteStage::Writing(ticket)
+                    {
+                        feedback.stage = FavouriteStage::AwaitingRefresh;
+                    }
+                }
                 self.as_ref().rust().library.storage_library_dirty.set(true);
                 self.as_mut().refresh_start_page_metadata();
             }
             Err(error) => {
                 self.as_mut().set_start_page_busy(false);
-                self.set_start_page_error(QString::from(error.message));
+                self.as_mut()
+                    .set_start_page_error(QString::from(error.message.clone()));
+                self.finish_favourite_feedback(
+                    FavouriteStage::Writing(ticket),
+                    Err(&error.message),
+                );
             }
         }
     }
 
     pub(super) fn start_page_action(
+        self: Pin<&mut Self>,
+        action: &QString,
+        slot: i32,
+        value: &QString,
+        title: &QString,
+    ) -> bool {
+        self.request_start_page_action(action, slot, value, title, None)
+    }
+
+    pub(super) fn save_favourite(
+        self: Pin<&mut Self>,
+        slot: i32,
+        url: &QString,
+        title: &QString,
+        bookmark_id: &QString,
+    ) -> bool {
+        if bookmark_id.is_empty() {
+            self.request_start_page_action(&QString::from("pin"), slot, url, title, None)
+        } else {
+            self.request_start_page_action(
+                &QString::from("bookmark"),
+                slot,
+                bookmark_id,
+                title,
+                Some(url),
+            )
+        }
+    }
+
+    fn request_start_page_action(
         mut self: Pin<&mut Self>,
         action: &QString,
         slot: i32,
         value: &QString,
         title: &QString,
+        expected_url: Option<&QString>,
+    ) -> bool {
+        let tracked = matches!(
+            action.to_string().as_str(),
+            "pin" | "bookmark" | "edit" | "move"
+        );
+        if !tracked {
+            return self.execute_start_page_action(action, slot, value, title, expected_url);
+        }
+        if self.as_ref().rust().favourite_action_state.to_string() == "pending" {
+            self.set_start_page_error(QString::from(
+                "A favourite change is still being saved. Wait for it to finish.",
+            ));
+            return false;
+        }
+        self.as_mut().set_start_page_error(QString::default());
+        self.as_mut().publish_management_feedback(
+            FeedbackLane::Favourite,
+            FeedbackState::Pending,
+            if action.to_string() == "move" {
+                "Moving favourite…"
+            } else {
+                "Saving favourite…"
+            },
+            "",
+        );
+        let feedback = FavouriteFeedback {
+            id: self.as_ref().rust().favourite_action_id.clone(),
+            stage: FavouriteStage::Submitting,
+            success: if action.to_string() == "move" {
+                "Favourite moved"
+            } else {
+                "Favourite saved"
+            },
+        };
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .library
+            .favourite_feedback = Some(feedback);
+        let accepted =
+            self.as_mut()
+                .execute_start_page_action(action, slot, value, title, expected_url);
+        if !accepted {
+            let detail = self.as_ref().rust().start_page_error.to_string();
+            self.as_mut().finish_favourite_feedback(
+                FavouriteStage::Submitting,
+                Err(if detail.is_empty() {
+                    "This favourite is no longer available. Refresh and try again."
+                } else {
+                    &detail
+                }),
+            );
+        } else if self.as_ref().active_profile_is_transient() {
+            self.as_mut()
+                .finish_favourite_feedback(FavouriteStage::Submitting, Ok(()));
+        }
+        accepted
+    }
+
+    fn finish_favourite_feedback(
+        mut self: Pin<&mut Self>,
+        stage: FavouriteStage,
+        result: Result<(), &str>,
+    ) {
+        let feedback = {
+            let mut rust = self.as_mut().rust_mut();
+            let library = &mut rust.as_mut().get_mut().library;
+            if !library
+                .favourite_feedback
+                .as_ref()
+                .is_some_and(|feedback| feedback.stage == stage)
+            {
+                return;
+            }
+            library
+                .favourite_feedback
+                .take()
+                .expect("matched favourite request")
+        };
+        if self.as_ref().rust().favourite_action_id != feedback.id
+            || self.as_ref().rust().favourite_action_state.to_string() != "pending"
+        {
+            return;
+        }
+        match result {
+            Ok(()) => {
+                self.publish_management_feedback(
+                    FeedbackLane::Favourite,
+                    FeedbackState::Succeeded,
+                    feedback.success,
+                    "",
+                );
+            }
+            Err(detail)
+                if matches!(
+                    stage,
+                    FavouriteStage::AwaitingRefresh | FavouriteStage::Reading(_)
+                ) =>
+            {
+                self.publish_management_feedback(
+                    FeedbackLane::Favourite,
+                    FeedbackState::Succeeded,
+                    "Favourite saved, but the start page couldn't be refreshed. Use Refresh to try again.",
+                    detail,
+                );
+            }
+            Err(detail) => {
+                self.publish_management_feedback(
+                    FeedbackLane::Favourite,
+                    FeedbackState::Failed,
+                    "Couldn't save this favourite. Review the details and try again.",
+                    detail,
+                );
+            }
+        }
+    }
+
+    fn execute_start_page_action(
+        mut self: Pin<&mut Self>,
+        action: &QString,
+        slot: i32,
+        value: &QString,
+        title: &QString,
+        expected_url: Option<&QString>,
     ) -> bool {
         let action = action.to_string();
         let value = value.to_string();
@@ -427,19 +620,28 @@ impl qobject::BrowserUi {
                     })
             }),
             "bookmark" => target.and_then(|slot| {
-                self.as_ref()
-                    .rust()
-                    .library
-                    .start_snapshot
-                    .bookmarks
-                    .iter()
-                    .find(|entry| entry.id == value)
-                    .map(|entry| StartPageMutation::Pin {
-                        slot,
-                        url: entry.url.clone(),
-                        title: entry.title.clone(),
-                        bookmark_id: Some(entry.id.clone()),
-                    })
+                let url = if let Some(expected) = expected_url {
+                    let visible_url = expected.to_string();
+                    ValidatedUrl::parse(&visible_url)
+                        .ok()
+                        .filter(|url| site_key(url.as_str()).is_some())
+                        .map(|_| visible_url)
+                } else {
+                    self.as_ref()
+                        .rust()
+                        .library
+                        .start_snapshot
+                        .bookmarks
+                        .iter()
+                        .find(|entry| entry.id == value)
+                        .map(|entry| entry.url.clone())
+                };
+                url.map(|url| StartPageMutation::Pin {
+                    slot,
+                    url,
+                    title: title.clone(),
+                    bookmark_id: Some(value.clone()),
+                })
             }),
             "edit" => target.and_then(|slot| {
                 ValidatedUrl::parse(&value)
@@ -495,20 +697,32 @@ impl qobject::BrowserUi {
                     title,
                     bookmark_id,
                 } => {
+                    let matching = |entry: &&StartPageTile| {
+                        entry.url == url && bookmark_id.as_ref().is_none_or(|id| &entry.id == id)
+                    };
                     let existing = snapshot
                         .bookmarks
                         .iter()
+                        .filter(matching)
                         .find(|entry| {
-                            bookmark_id.as_ref().is_some_and(|id| &entry.id == id)
-                                || entry.url == url
+                            snapshot
+                                .favourites
+                                .iter()
+                                .flatten()
+                                .any(|pinned| pinned.id == entry.id)
                         })
+                        .or_else(|| snapshot.bookmarks.iter().find(matching))
                         .cloned();
-                    let entry = existing.unwrap_or_else(|| StartPageTile {
+                    if bookmark_id.is_some() && existing.is_none() {
+                        return false;
+                    }
+                    let mut entry = existing.unwrap_or_else(|| StartPageTile {
                         id: Uuid::new_v4().to_string(),
                         site: site_key(&url).unwrap_or_default(),
                         url,
-                        title,
+                        title: String::new(),
                     });
+                    entry.title = title;
                     for slot in &mut snapshot.favourites {
                         if slot
                             .as_ref()
@@ -517,11 +731,13 @@ impl qobject::BrowserUi {
                             *slot = None;
                         }
                     }
-                    if !snapshot
+                    if let Some(bookmark) = snapshot
                         .bookmarks
-                        .iter()
-                        .any(|candidate| candidate.id == entry.id)
+                        .iter_mut()
+                        .find(|candidate| candidate.id == entry.id)
                     {
+                        *bookmark = entry.clone();
+                    } else {
                         snapshot.bookmarks.push(entry.clone());
                     }
                     snapshot.favourites[usize::from(slot - 1)] = Some(entry);
@@ -571,17 +787,26 @@ impl qobject::BrowserUi {
         }
         match self
             .as_mut()
-            .submit_storage(StorageRequest::StartPageWrite {
+            .submit_storage_with_ticket(StorageRequest::StartPageWrite {
                 mutation,
                 timestamp: unix_timestamp(),
             }) {
-            Ok(()) => {
+            Ok(ticket) => {
                 self.as_mut()
                     .rust_mut()
                     .as_mut()
                     .get_mut()
                     .library
                     .start_write_pending = true;
+                {
+                    let mut rust = self.as_mut().rust_mut();
+                    if let Some(feedback) =
+                        rust.as_mut().get_mut().library.favourite_feedback.as_mut()
+                        && feedback.stage == FavouriteStage::Submitting
+                    {
+                        feedback.stage = FavouriteStage::Writing(ticket);
+                    }
+                }
                 self.as_mut().set_start_page_error(QString::default());
                 self.set_start_page_busy(true);
                 true
@@ -698,19 +923,34 @@ impl qobject::BrowserUi {
 
     pub(super) fn start_page_pick_bookmark(mut self: Pin<&mut Self>, id: &QString) -> bool {
         let id = id.to_string();
-        let tile = self
-            .as_ref()
-            .rust()
-            .library
-            .storage_library
-            .as_ref()
-            .and_then(|library| library.bookmarks.iter().find(|bookmark| bookmark.id == id))
-            .cloned();
-        let Some(tile) = tile else {
+        let captured = if self.as_ref().active_profile_is_transient() {
+            self.as_ref()
+                .rust()
+                .private_start_state
+                .lock()
+                .ok()
+                .and_then(|state| {
+                    state
+                        .snapshot
+                        .bookmarks
+                        .iter()
+                        .find(|bookmark| bookmark.id == id)
+                        .map(|bookmark| (bookmark.url.clone(), bookmark.title.clone()))
+                })
+        } else {
+            self.as_ref()
+                .rust()
+                .library
+                .storage_library
+                .as_ref()
+                .and_then(|library| library.bookmarks.iter().find(|bookmark| bookmark.id == id))
+                .map(|bookmark| (bookmark.url.clone(), bookmark.title.clone()))
+        };
+        let Some((url, title)) = captured else {
             self.set_status_text(QString::from("Bookmark is no longer available"));
             return false;
         };
-        if site_key(&tile.url).is_none() {
+        if site_key(&url).is_none() {
             return false;
         }
         self.as_mut().navigate(&QString::from("rb://start"));
@@ -719,10 +959,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
-            .pending_engine_action = Some(format!(
-            "start-page-bookmark\t{}\t{}\t{}",
-            tile.id, tile.url, tile.title
-        ));
+            .pending_engine_action = Some(format!("start-page-bookmark\t{id}\t{url}\t{title}"));
         true
     }
 

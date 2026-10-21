@@ -355,11 +355,12 @@ impl qobject::BrowserUi {
             match effect.completion {
                 StorageCompletion::StartPage(result) => {
                     self.as_mut()
-                        .complete_start_page_read(result.map(|snapshot| *snapshot));
+                        .complete_start_page_read(effect.ticket, result.map(|snapshot| *snapshot));
                     consumed = true;
                 }
                 StorageCompletion::StartPageWrite(result) => {
-                    self.as_mut().complete_start_page_write(result);
+                    self.as_mut()
+                        .complete_start_page_write(effect.ticket, result);
                     consumed = true;
                 }
                 StorageCompletion::Library(result) => {

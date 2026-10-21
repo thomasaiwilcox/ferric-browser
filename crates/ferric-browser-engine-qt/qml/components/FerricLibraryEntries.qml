@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../scripts/ListNavigation.js" as ListNavigation
 
 FocusScope {
     id: libraryEntries
@@ -9,10 +10,16 @@ FocusScope {
     required property string libraryKind
     required property string pendingDelete
     property Component controlsHeader
+    property Item navigationLayoutRoot: null
     property bool operationPending: false
     property string completedEditValue: ""
     property int completedEditToken: 0
     property string completedEditKey: ""
+    // Drafts belong to this window's library, not its recycled row widgets.
+    property var editDrafts: ({})
+    property var journeyDestinations: ({})
+    onEntriesChanged: { editDrafts = ({}); journeyDestinations = ({}); if (libraryList) libraryList.headerFocusItem = null }
+    onBrowserWindowChanged: { editDrafts = ({}); journeyDestinations = ({}); if (libraryList) libraryList.headerFocusItem = null }
     signal favouriteRequested(string id)
     signal openRequested(string entryKind, string entryId)
     signal privateHistoryTransferRequested(string entryId, string title, string url)
@@ -23,10 +30,40 @@ FocusScope {
 
     readonly property alias currentIndex: libraryList.currentIndex
 
+    function setEditDraft(key, value) {
+        if (editDrafts[key] === value) return
+        var next = Object.assign({}, editDrafts)
+        next[key] = value
+        editDrafts = next
+    }
+
+    function discardEditDraft(key) {
+        if (editDrafts[key] === undefined) return
+        var next = Object.assign({}, editDrafts)
+        delete next[key]
+        editDrafts = next
+    }
+
+    function journeyDestination(nodeId) {
+        return journeyDestinations["journey\t" + nodeId] || "current"
+    }
+
+    function setJourneyDestination(nodeId, target) {
+        if (["current", "tab", "window"].indexOf(target) < 0
+                || journeyDestination(nodeId) === target) return
+        var next = Object.assign({}, journeyDestinations)
+        var key = "journey\t" + nodeId
+        if (target === "current") delete next[key]
+        else next[key] = target
+        journeyDestinations = next
+    }
+
     function markEditSaved(entryKind, entryId, value) {
+        var key = entryKind + "\t" + entryId
         completedEditValue = value
-        completedEditKey = entryKind + "\t" + entryId
+        completedEditKey = key
         completedEditToken += 1
+        if (editDrafts[key] === value) discardEditDraft(key)
     }
 
     function normalizeSelection() {
@@ -41,7 +78,13 @@ FocusScope {
 
     function focusList() {
         normalizeSelection()
-        libraryList.forceActiveFocus()
+        libraryList.focusViewport()
+    }
+
+    function focusSelection() {
+        focusList()
+        if (libraryList.currentIndex >= 0)
+            libraryList.positionViewAtIndex(libraryList.currentIndex, ListView.Contain)
     }
 
     function moveSelection(delta) {
@@ -55,19 +98,69 @@ FocusScope {
         libraryList.forceActiveFocus()
     }
 
+    function movePage(direction) {
+        ListNavigation.page(libraryList, direction, navigationLayoutRoot)
+        // The list owns page navigation while header controls or expanded
+        // details scroll past the selected row. Delegate focus would pull the
+        // viewport back to that row through the manager's focus revealer.
+        if (libraryList.currentItem) libraryList.currentItem.focus = false
+        libraryList.forceActiveFocus()
+    }
+
+    function focusCurrentAction() {
+        var row = libraryList.currentItem
+        if (!row) return false
+        var control = row.nextItemInFocusChain(true)
+        var ancestor = control
+        while (ancestor && ancestor !== row) ancestor = ancestor.parent
+        if (!ancestor) return false
+        libraryList.focusControl(control, Qt.TabFocusReason)
+        return true
+    }
+
+    function headerControls() {
+        var header = libraryList.headerItem
+        if (!header) return {first: null, last: null}
+        var control = header.nextItemInFocusChain(true)
+        var first = null
+        var last = null
+        while (control) {
+            var ancestor = control
+            while (ancestor && ancestor !== header) ancestor = ancestor.parent
+            if (!ancestor || control === last) break
+            if (!first) first = control
+            last = control
+            control = control.nextItemInFocusChain(true)
+        }
+        return {first: first, last: last}
+    }
+
+    function focusHeaderControls() {
+        var control = headerControls().last
+        if (!control) return false
+        control.forceActiveFocus(Qt.BacktabFocusReason)
+        return true
+    }
+
+    function isBacktab(event) {
+        return (event.key === Qt.Key_Backtab
+                && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier))
+            || (event.key === Qt.Key_Tab && event.modifiers === Qt.ShiftModifier)
+    }
+
     function moveToBeginning() {
-        if (libraryList.count === 0)
-            return
-        libraryList.currentIndex = 0
+        ListNavigation.prepareViewport(libraryList, navigationLayoutRoot)
+        if (libraryList.count > 0) libraryList.currentIndex = 0
         libraryList.positionViewAtBeginning()
         libraryList.forceActiveFocus()
     }
 
     function moveToEnd() {
-        if (libraryList.count === 0)
-            return
-        libraryList.currentIndex = libraryList.count - 1
-        libraryList.positionViewAtEnd()
+        ListNavigation.prepareViewport(libraryList, navigationLayoutRoot)
+        if (libraryList.count > 0) {
+            libraryList.currentIndex = libraryList.count - 1
+            libraryList.positionViewAtEnd()
+        } else ListNavigation.scrollTo(libraryList, Infinity)
         libraryList.forceActiveFocus()
     }
 
@@ -84,7 +177,7 @@ FocusScope {
         if (!entry)
             return
         if (entry.entryKind === "journey") {
-            libraryEntries.journeyReopenRequested(entry.nodeId, "current")
+            libraryEntries.journeyReopenRequested(entry.nodeId, journeyDestination(entry.nodeId))
         } else if (["history", "bookmark", "quickmark"].indexOf(entry.entryKind) >= 0) {
             libraryEntries.openRequested(entry.entryKind, entry.entryId)
         } else if (libraryList.currentItem) {
@@ -94,17 +187,28 @@ FocusScope {
 
     function handleNavigationKey(event) {
         var host = libraryList.Window.window
-        if (!host || (host.activeFocusItem !== libraryList && host.activeFocusItem !== libraryList.currentItem)) return false
+        if (!host) return false
         var plainKey = event.modifiers === Qt.NoModifier
-        if (!plainKey && !(event.key === Qt.Key_G && event.modifiers === Qt.ShiftModifier)) return false
+        var backtab = isBacktab(event)
+        if (host.activeFocusItem !== libraryList && host.activeFocusItem !== libraryList.currentItem) {
+            if (!backtab && !(plainKey && event.key === Qt.Key_Tab)) return false
+            var controls = headerControls()
+            if (backtab && host.activeFocusItem === controls.first) focusSelection()
+            else if (plainKey && event.key === Qt.Key_Tab && host.activeFocusItem === controls.last) {
+                if (!focusCurrentAction()) focusSelection()
+            } else return false
+            event.accepted = true
+            return true
+        }
+        if (!plainKey && !backtab && !(event.key === Qt.Key_G && event.modifiers === Qt.ShiftModifier)) return false
         if (event.key === Qt.Key_Up || (plainKey && event.key === Qt.Key_K)) {
             moveSelection(-1)
         } else if (event.key === Qt.Key_Down || (plainKey && event.key === Qt.Key_J)) {
             moveSelection(1)
         } else if (event.key === Qt.Key_PageUp) {
-            moveSelection(-Math.max(1, Math.floor(libraryList.height / 54)))
+            movePage(-1)
         } else if (event.key === Qt.Key_PageDown) {
-            moveSelection(Math.max(1, Math.floor(libraryList.height / 54)))
+            movePage(1)
         } else if (event.key === Qt.Key_Home
                    || (plainKey && event.key === Qt.Key_G
                        && !(event.modifiers & Qt.ShiftModifier))) {
@@ -114,6 +218,10 @@ FocusScope {
             moveToEnd()
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             if (!event.isAutoRepeat) activateCurrent()
+        } else if (backtab) {
+            if (!focusHeaderControls()) return false
+        } else if (event.key === Qt.Key_Tab) {
+            if (!focusCurrentAction()) return false
         } else {
             return false
         }
@@ -148,21 +256,27 @@ FocusScope {
             color: index === libraryList.currentIndex
                    ? libraryEntries.browserWindow.selectionColor : "transparent"
             radius: 3
-            property bool editing: false
+            readonly property bool editing: libraryEntries.editDrafts[entryKey] !== undefined
             property bool detailsExpanded: false
-            property string editValue: ""
+            readonly property string editValue: libraryEntries.editDrafts[entryKey] || ""
             readonly property string entryKey: model.entryKind + "\t" + model.entryId
+            readonly property string journeyNodeId: model.nodeId
             Accessible.role: Accessible.ListItem
             Accessible.name: model.label + ", " + model.secondary
             Accessible.selected: index === libraryList.currentIndex
+
+            function returnToList(event, control) {
+                if (!libraryEntries.isBacktab(event) || libraryRow.nextItemInFocusChain(true) !== control) return
+                libraryList.currentIndex = index
+                libraryList.focusViewport(Qt.BacktabFocusReason)
+                event.accepted = true
+            }
 
             Connections {
                 target: libraryEntries
                 function onCompletedEditTokenChanged() {
                     if (libraryEntries.completedEditKey === libraryRow.entryKey && libraryRow.editValue === libraryEntries.completedEditValue) {
-                        var hadFocus = editInput.activeFocus
-                        libraryRow.editing = false
-                        if (hadFocus) editButton.forceActiveFocus()
+                        if (editInput.activeFocus) editButton.forceActiveFocus()
                     }
                 }
             }
@@ -200,31 +314,34 @@ FocusScope {
                     text: libraryRow.editValue
                     readOnly: libraryEntries.operationPending
                     Accessible.name: (model.entryKind === "quickmark" ? "Quickmark address for " : "Bookmark title for ") + model.label
-                    onTextEdited: libraryRow.editValue = text
+                    onTextEdited: libraryEntries.setEditDraft(libraryRow.entryKey, text)
+                    Keys.onPressed: function(event) { libraryRow.returnToList(event, editInput) }
                     onAccepted: if (!libraryEntries.operationPending) libraryEntries.editRequested(model.entryKind, model.entryId, text)
                 }
                 Flow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: childrenRect.height
                     spacing: 6
-                    Button {
+                    FerricWrappingButton {
+                        id: openButton
                         visible: model.entryKind === "history"
                                  || model.entryKind === "bookmark"
                                  || model.entryKind === "quickmark"
                         text: "Open"
                         Accessible.name: "Open " + model.label
+                        Keys.onPressed: function(event) { libraryRow.returnToList(event, openButton) }
                         onClicked: {
                             libraryList.currentIndex = index
                             libraryEntries.openRequested(model.entryKind, model.entryId)
                         }
                     }
-                    Button {
+                    FerricWrappingButton {
                         visible: model.entryKind === "bookmark"
                         text: "Add to Favourites"
                         Accessible.name: "Choose a favourite slot for " + model.label
                         onClicked: libraryEntries.favouriteRequested(model.entryId)
                     }
-                    Button {
+                    FerricWrappingButton {
                         visible: libraryEntries.browserWindow.temporaryProfile
                                  && model.entryKind === "history"
                         text: "Reopen in profile"
@@ -232,7 +349,7 @@ FocusScope {
                         onClicked: libraryEntries.privateHistoryTransferRequested(
                                        model.entryId, model.label, model.secondary)
                     }
-                    Button {
+                    FerricWrappingButton {
                         visible: model.entryKind === "bookmark" || model.entryKind === "quickmark"
                         id: editButton
                         objectName: "libraryEntryEditButton"
@@ -245,14 +362,13 @@ FocusScope {
                                 libraryEntries.editRequested(
                                             model.entryKind, model.entryId, libraryRow.editValue)
                             } else {
-                                libraryRow.editValue = model.entryKind === "quickmark"
-                                        ? model.secondary : model.label
-                                libraryRow.editing = true
+                                libraryEntries.setEditDraft(libraryRow.entryKey,
+                                    model.entryKind === "quickmark" ? model.secondary : model.label)
                                 editInput.forceActiveFocus()
                             }
                         }
                     }
-                    Button {
+                    FerricWrappingButton {
                         objectName: "libraryEntryDeleteButton"
                         enabled: !libraryEntries.operationPending
                         visible: (model.entryKind === "bookmark" || model.entryKind === "quickmark")
@@ -263,36 +379,50 @@ FocusScope {
                                          + model.label
                         onClicked: libraryEntries.deleteRequested(model.entryKind, model.entryId)
                     }
-                    Button {
+                    FerricWrappingButton {
+                        objectName: "libraryEntryCancelEditButton"
                         text: "Cancel edit"
                         visible: libraryRow.editing
                         enabled: !libraryEntries.operationPending
-                        onClicked: { libraryRow.editing = false; editButton.forceActiveFocus() }
+                        onClicked: {
+                            editButton.forceActiveFocus()
+                            libraryEntries.discardEditDraft(libraryRow.entryKey)
+                        }
                     }
                     ComboBox {
                         id: journeyTargetSelector
+                        objectName: "libraryJourneyDestination"
                         visible: libraryEntries.libraryKind === "journey"
                         model: [{label: "Current tab", value: "current"}, {label: "New tab", value: "tab"}, {label: "New window", value: "window"}]
                         textRole: "label"
                         valueRole: "value"
+                        implicitContentWidthPolicy: visible ? ComboBox.WidestText : ComboBox.ContentItemImplicitWidth
+                        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                        currentIndex: ["current", "tab", "window"].indexOf(
+                            libraryEntries.journeyDestination(libraryRow.journeyNodeId))
+                        onActivated: libraryEntries.setJourneyDestination(libraryRow.journeyNodeId, currentValue)
                         Accessible.name: "Reopen destination"
+                        Keys.onPressed: function(event) { libraryRow.returnToList(event, journeyTargetSelector) }
                     }
-                    Button {
+                    FerricWrappingButton {
+                        objectName: "libraryJourneyReopenButton"
                         visible: libraryEntries.libraryKind === "journey"
                         text: "Reopen"
                         Accessible.name: "Reopen " + model.label + " in " + journeyTargetSelector.currentText
                         onClicked: libraryEntries.journeyReopenRequested(
-                                       model.nodeId, journeyTargetSelector.currentValue)
+                            libraryRow.journeyNodeId, libraryEntries.journeyDestination(libraryRow.journeyNodeId))
                     }
-                    Button {
+                    FerricWrappingButton {
                         visible: libraryEntries.libraryKind === "journey"
                         text: "Nearby pages"
                         Accessible.name: "Show nearby pages for " + model.label
                         onClicked: libraryEntries.journeyExpandRequested(model.nodeId)
                     }
                     ToolButton {
+                        id: detailsButton
                         objectName: "libraryEntryDetailsButton"
                         text: libraryRow.detailsExpanded ? "Hide details" : "Details"
+                        Keys.onPressed: function(event) { libraryRow.returnToList(event, detailsButton) }
                         onClicked: libraryRow.detailsExpanded = !libraryRow.detailsExpanded
                     }
                 }

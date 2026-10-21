@@ -236,7 +236,16 @@ class BrowserFileChooserTests final : public QObject {
     return nullptr;
   }
   void press(QQuickItem *item) {
-    QVERIFY(item && item->isEnabled());
+    QPointer<QQuickItem> target = item;
+    QVERIFY(target && target->isEnabled());
+    // Hit-test only after the layout and focus reveal reach a rendered frame.
+    QSignalSpy frames(window, &QQuickWindow::frameSwapped);
+    window->update();
+    QTRY_VERIFY(!frames.isEmpty());
+    QVERIFY(target && target->isEnabled());
+    item = target;
+    QSignalSpy clicked(item, SIGNAL(clicked()));
+    QVERIFY(clicked.isValid());
     const auto point =
         item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
     QDBusInterface compositor(
@@ -245,6 +254,7 @@ class BrowserFileChooserTests final : public QObject {
     QDBusReply<bool> sent =
         compositor.call("Click", clickedWindow, point.x(), point.y());
     QVERIFY(sent.isValid() && sent.value());
+    QTRY_COMPARE(clicked.count(), 1);
   }
   void selectOwner(const QString &kind) {
     QTRY_VERIFY_WITH_TIMEOUT(

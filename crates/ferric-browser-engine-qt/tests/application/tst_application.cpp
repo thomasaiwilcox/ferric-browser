@@ -21,6 +21,7 @@
 #include <QMessageBox>
 #include <QTimer>
 #include <QImage>
+#include <QScopeGuard>
 #include <QHostAddress>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
@@ -199,6 +200,7 @@ void ApplicationTests::init() {
     engine = std::make_unique<QQmlApplicationEngine>();
     const auto testName = QString::fromLatin1(QTest::currentTestFunction());
     const bool durable = testName.startsWith("durablePersistence")
+                         || testName == "selectorValidationRejectsWholeCandidate"
                          || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary"
                              && !(testName == "productPolishDiagnosticLifecycle" && QString::fromLatin1(QTest::currentDataTag()) == "private"));
     QString startupConfig = "{\"schema_version\":3}";
@@ -848,6 +850,16 @@ void ApplicationTests::durablePersistenceFailurePreservesConfiguration() {
     QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('content.zoom',"
                       "'1.25',false)")
                  .toBool());
+    const auto failedReceipt = text("setting_action_id");
+    QVERIFY(!failedReceipt.isEmpty());
+    QCOMPARE(text("setting_action_state"), QString("pending"));
+    QVERIFY(!evaluate("testWindow.browserUi.set_runtime_setting('content.zoom','1.5',false)").toBool());
+    QCOMPARE(text("setting_action_id"), failedReceipt);
+    QTRY_COMPARE(text("setting_action_state"), QString("failed"));
+    QCOMPARE(text("setting_action_id"), failedReceipt);
+    QVERIFY(text("setting_action_message").contains("Couldn't save content.zoom"));
+    QVERIFY(!text("setting_action_detail").isEmpty());
+    QVERIFY(text("setting_action_detail").contains("runtime-overrides.toml"));
     QTRY_VERIFY(text("status_text").contains("Your current settings are still active"));
     QCOMPARE(text("config_json"), beforeFailure);
     QCOMPARE(
@@ -864,7 +876,11 @@ void ApplicationTests::durablePersistenceFailurePreservesConfiguration() {
     QVERIFY(file.open(QIODevice::WriteOnly));
     QCOMPARE(file.write(bytes), qint64(bytes.size()));
     file.close();
-    QVERIFY(command("set content.zoom=1.25"));
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('content.zoom','1.25',false)").toBool());
+    QVERIFY(text("setting_action_id") != failedReceipt);
+    QTRY_COMPARE(text("setting_action_state"), QString("succeeded"));
+    QVERIFY(text("setting_action_message").contains("Saved content.zoom"));
+    QVERIFY(text("setting_action_detail").isEmpty());
     QTRY_VERIFY(text("config_json") != accepted);
     QCOMPARE(QJsonDocument::fromJson(text("config_json").toUtf8())
                  .object()
@@ -881,11 +897,73 @@ void ApplicationTests::selectorValidationRejectsWholeCandidate() {
             "testWindow.browserUi.set_runtime_setting('hints.selectors.all', " +
             quoted("{mode='extend',selectors=['[']}") + ",true)")
             .toBool());
+    const auto rejectedReceipt = text("setting_action_id");
+    QVERIFY(!rejectedReceipt.isEmpty());
+    QTRY_COMPARE(text("setting_action_state"), QString("failed"));
+    QCOMPARE(text("setting_action_id"), rejectedReceipt);
+    QVERIFY(!text("setting_action_detail").isEmpty());
     QTRY_VERIFY_WITH_TIMEOUT(
         text("status_text").contains("selector", Qt::CaseInsensitive), 6000);
     QTRY_VERIFY_WITH_TIMEOUT(
         text("status_text").contains("failed", Qt::CaseInsensitive), 6000);
     QCOMPARE(text("config_json"), accepted);
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('hints.selectors.all', "
+                     + quoted("{mode='extend',selectors=['[data-ferric-owned]']}") + ",false)").toBool());
+    QVERIFY(text("setting_action_id") != rejectedReceipt);
+    const auto retriedReceipt = text("setting_action_id");
+    QTRY_COMPARE(text("setting_action_state"), QString("succeeded"));
+    QCOMPARE(text("setting_action_id"), retriedReceipt);
+    QVERIFY(text("setting_action_message").contains("Saved hints.selectors.all"));
+    QVERIFY(text("setting_action_message").contains(":config-reload"));
+    QVERIFY(text("setting_action_detail").isEmpty());
+    // Selector policy is a reload-boundary setting. Saving it must not
+    // silently change the current effective policy.
+    QCOMPARE(text("config_json"), accepted);
+    QFile persisted(directory.filePath("durable-test/state/runtime-overrides.toml"));
+    QVERIFY(persisted.open(QIODevice::ReadOnly));
+    QVERIFY(persisted.readAll().contains("[data-ferric-owned]"));
+    const auto saved = text("config_json");
+    QVERIFY(!evaluate("testWindow.browserUi.set_runtime_setting('ui.font_size_pt','-1',true)").toBool());
+    QCOMPARE(text("setting_action_state"), QString("failed"));
+    QVERIFY(text("setting_action_id") != retriedReceipt);
+    QVERIFY(!text("setting_action_detail").isEmpty());
+    QCOMPARE(text("config_json"), saved);
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('desktop.portals','\"required\"',false)").toBool());
+    QTRY_COMPARE(text("setting_action_state"), QString("succeeded"));
+    QVERIFY(text("setting_action_message").contains("restart Ferric"));
+    QCOMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object()["desktop"].toObject()["portals"].toString(), QString("auto"));
+    QCOMPARE(evaluate("(function(){var rows=testWindow.browserUi.settings_rows;for(var i=0;i<rows.length;++i)if(rows[i].key==='desktop.portals')return rows[i].value;return ''})()").toString(), QString("required"));
+}
+
+void ApplicationTests::productPolishSettingDurability() {
+    if (qEnvironmentVariable("FERRIC_SETTINGS_SYNC_FIXTURE") != "1")
+        QSKIP("Use application_settings_durability with its owned sync-failure interposer");
+    QVERIFY(command("set content.zoom=1.1"));
+    QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object()["content"].toObject()["zoom"].toDouble(), 1.1);
+    const auto base = directory.filePath("durable-test/productPolishSettingDurability/");
+    QDirIterator overrides(base, {"runtime-overrides.toml"}, QDir::Files, QDirIterator::Subdirectories);
+    QVERIFY(overrides.hasNext());
+    const auto path = overrides.next();
+    QVERIFY(!overrides.hasNext());
+    evaluate("testWindow.showSettings('content.zoom')");
+    auto surface = window->findChild<QQuickItem *>("settingsSurface");
+    QVERIFY(surface && surface->isVisible());
+    engine->rootContext()->setContextProperty("settingsWorkspaceUnderTest", surface->parentItem());
+    QVERIFY(!qEnvironmentVariableIsSet("FERRIC_SETTINGS_SYNC_FAULT_PATH"));
+    qputenv("FERRIC_SETTINGS_SYNC_FAULT_PATH", QFile::encodeName(QFileInfo(path).absolutePath()));
+    const auto clearFault = qScopeGuard([] { qunsetenv("FERRIC_SETTINGS_SYNC_FAULT_PATH"); });
+    QVERIFY(evaluate("settingsWorkspaceUnderTest.applySetting({key:'content.zoom',type:'number'},'1.2')").toBool());
+    QTRY_COMPARE(text("setting_action_state"), QString("succeeded"));
+    QVERIFY(text("setting_action_message").contains("system crash"));
+    QVERIFY(text("setting_action_detail").contains("saving may not survive a system crash"));
+    QCOMPARE(surface->property("notice").toString(), text("setting_action_message"));
+    QCOMPARE(surface->property("noticeDetail").toString(), text("setting_action_detail"));
+    QVERIFY(!surface->property("noticeFailed").toBool());
+    QVERIFY(!surface->property("noticePending").toBool());
+    QCOMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object()["content"].toObject()["zoom"].toDouble(), 1.2);
+    QFile saved(path);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QVERIFY(saved.readAll().contains("\"content.zoom\" = 1.2"));
 }
 
 void ApplicationTests::nativePointerControlFamilies_data() {
@@ -4040,8 +4118,20 @@ void ApplicationTests::productPolishWindowSettings() {
     QVERIFY(workspace->setProperty("settingsSearch", "ui.font_size_pt"));
     engine->rootContext()->setContextProperty("settingsWorkspaceUnderTest", workspace);
     evaluate("settingsWorkspaceUnderTest.refreshSettings()");
-    QPointer<QQuickItem> editor = findVisualItem(child->contentItem(), "settingTextEditor");
-    QTRY_VERIFY((editor = findVisualItem(child->contentItem(), "settingTextEditor")));
+    auto settingsList = findVisualItem(child->contentItem(), "settingsList");
+    QVERIFY(settingsList);
+    QTRY_COMPARE(settingsList->property("count").toInt(), 1);
+    // Removed delegates can remain in the visual tree until deferred deletion.
+    // Select the filtered model row, rather than the first named descendant.
+    const auto filteredEditor = [settingsList]() -> QQuickItem * {
+        QQuickItem *row = nullptr;
+        QMetaObject::invokeMethod(settingsList, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, row), Q_ARG(int, 0));
+        return row ? findVisualItem(row, "settingTextEditor") : nullptr;
+    };
+    QPointer<QQuickItem> editor;
+    QTRY_VERIFY((editor = filteredEditor()) && editor->isVisible());
+    QCOMPARE(QQmlExpression(qmlContext(editor), editor, "settingRow.rowData.key").evaluate().toString(),
+        QString("ui.font_size_pt"));
     QVERIFY(workspace->setProperty("settingsTemporary", true));
     QVERIFY(editor->setProperty("text", "14"));
     QVERIFY(QMetaObject::invokeMethod(editor, "accepted"));
@@ -4051,7 +4141,7 @@ void ApplicationTests::productPolishWindowSettings() {
     QTRY_COMPARE(child->property("font").value<QFont>().pointSizeF(), 14.0);
     // Validation errors must retain the edit without exposing the raw error as
     // the primary message or applying it to either window.
-    editor = findVisualItem(child->contentItem(), "settingTextEditor");
+    editor = filteredEditor();
     QVERIFY(editor);
     child->resize(640, 480);
     child->requestActivate();
@@ -5255,6 +5345,15 @@ void ApplicationTests::productPolishLibrary() {
     key(Qt::Key_A, Qt::ControlModifier);
     typeText("revised bookmark");
     QCOMPARE(input->property("text").toString(), QString("revised bookmark"));
+    auto browseList = findVisualItem(window->contentItem(), "libraryEntryList");
+    QVERIFY(browseList);
+    key(Qt::Key_Backtab, Qt::ShiftModifier);
+    QTRY_VERIFY(window->activeFocusItem() == browseList
+        || window->activeFocusItem() == browseList->property("currentItem").value<QObject *>());
+    QCOMPARE(input->property("text").toString(), QString("revised bookmark"));
+    QVERIFY(input->isVisible());
+    key(Qt::Key_Tab);
+    QTRY_COMPARE(window->activeFocusItem(), input);
     // A real background read must preserve the row and its unsaved input.
     evaluate("testWindow.browserUi.refresh_library()");
     QTRY_VERIFY(!evaluate("testWindow.browserUi.library_pending").toBool());

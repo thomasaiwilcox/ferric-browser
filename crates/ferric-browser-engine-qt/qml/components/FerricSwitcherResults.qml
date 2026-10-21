@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "../scripts/ChromePresentation.js" as ChromePresentation
 import "../scripts/SwitcherResults.js" as SwitcherResults
+import "../scripts/ListNavigation.js" as ListNavigation
 
 Item {
     id: switcherResults
@@ -18,6 +19,7 @@ Item {
     signal activationRequested(int index)
     signal actionRequested(int index, string action)
     signal focusSearchRequested()
+    signal focusPreviousRequested()
 
     function resultKey(value, index) {
         return SwitcherResults.resultKey(value, index)
@@ -115,7 +117,7 @@ Item {
         interval: 0
         onTriggered: {
             if (!switcherResults.revealFocusedControl() && resultList.currentIndex >= 0)
-                resultList.positionViewAtIndex(resultList.currentIndex, ListView.Contain)
+                ListNavigation.revealSelection(resultList, 0)
         }
     }
 
@@ -127,6 +129,22 @@ Item {
                                         resultList.currentIndex + delta))
         resultList.currentIndex = next
         revealTimer.restart()
+    }
+
+    function movePage(direction) {
+        revealTimer.stop()
+        ListNavigation.page(resultList, direction)
+    }
+
+    function focusCurrentAction() {
+        if (!resultsCurrent || resultList.currentIndex < 0
+                || resultList.currentIndex >= resultRows.count) return false
+        var actions = resultRows.get(resultList.currentIndex).rowActions.split("\t")
+        var button = actionIn(resultList.currentItem, actions[0])
+        if (!button || !button.visible || !button.enabled) return false
+        button.forceActiveFocus(Qt.TabFocusReason)
+        revealTimer.restart()
+        return true
     }
 
     function moveToBeginning() {
@@ -236,6 +254,7 @@ Item {
                         model: resultRow.rowActions.length > 0 ? resultRow.rowActions.split("\t") : []
                         delegate: Button {
                             id: actionButton
+                            required property int index
                             required property var modelData
                             objectName: "switcherActionButton"
                             readonly property string resultIdentity: resultRow.rowKey
@@ -247,6 +266,16 @@ Item {
                                 pressedAction = resultAction
                             }
                             onCanceled: pressedKey = ""
+                            Keys.onPressed: function(event) {
+                                var backtab = (event.key === Qt.Key_Backtab
+                                    && (event.modifiers === Qt.NoModifier
+                                        || event.modifiers === Qt.ShiftModifier))
+                                    || (event.key === Qt.Key_Tab && event.modifiers === Qt.ShiftModifier)
+                                if (backtab && actionButton.index === 0) {
+                                    switcherResults.focusPreviousRequested()
+                                    event.accepted = true
+                                }
+                            }
 
                             text: ChromePresentation.switcherActionLabel(modelData)
                             width: Math.min(implicitWidth, actionFlow.width)

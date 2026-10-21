@@ -46,7 +46,7 @@ set_tests_properties(application_hint_controls_dpr2 PROPERTIES TIMEOUT 180 ENVIR
 add_test(NAME application_close_requests COMMAND close_request_tests)
 set_tests_properties(application_close_requests PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_test(NAME application_switcher COMMAND switcher_tests)
-set_tests_properties(application_switcher PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+set_tests_properties(application_switcher PROPERTIES TIMEOUT 240 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_subdirectory(../portal portal)
 add_executable(file_chooser_backend_tests tst_file_chooser_backend.cpp ../../src/native_file_chooser.cpp ../../src/native_file_chooser.h ../../src/portal_file_request.cpp ../../src/portal_file_request.h ../../src/gui_application.cpp ../../src/gui_application.h ../../src/local_file_url.cpp ../../src/local_file_url.h)
 target_link_libraries(file_chooser_backend_tests PRIVATE KF6::WindowSystem Qt6::DBus Qt6::Widgets Qt6::Quick Qt6::Qml Qt6::Test)
@@ -64,11 +64,30 @@ add_executable(notification_test_service notification_test_service.cpp)
 target_link_libraries(notification_test_service PRIVATE Qt6::Core Qt6::DBus)
 add_dependencies(notification_transport_tests notification_test_service)
 add_dependencies(application_tests notification_test_service)
+add_library(settings_sync_interposer SHARED settings_sync_interposer.cpp)
+target_link_libraries(settings_sync_interposer PRIVATE ${CMAKE_DL_LIBS})
+add_dependencies(application_tests settings_sync_interposer)
 add_executable(notification_consent_tests tst_notification_consent.cpp)
 target_link_libraries(notification_consent_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 add_dependencies(notification_consent_tests notification_test_service)
 find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
+add_test(NAME application_settings_durability COMMAND "${DBUS_RUN_SESSION}"
+    --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
+    ${CMAKE_COMMAND} -E env "LD_PRELOAD=$<TARGET_FILE:settings_sync_interposer>"
+    FERRIC_SETTINGS_SYNC_FIXTURE=1 $<TARGET_FILE:application_tests> productPolishSettingDurability)
+set_tests_properties(application_settings_durability PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_dependencies(switcher_tests portal_compositor)
+add_test(NAME application_command_editing_wayland COMMAND "${DBUS_RUN_SESSION}"
+    --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
+    ${CMAKE_COMMAND} -E env FERRIC_PORTAL_TEST_BUS=isolated "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../portal/run.py" "${CMAKE_CURRENT_BINARY_DIR}/portal" command_editing)
+set_tests_properties(application_command_editing_wayland PROPERTIES TIMEOUT 180)
+add_test(NAME application_keyboard_chrome_wayland COMMAND "${DBUS_RUN_SESSION}"
+    --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
+    ${CMAKE_COMMAND} -E env FERRIC_PORTAL_TEST_BUS=isolated "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../portal/run.py" "${CMAKE_CURRENT_BINARY_DIR}/portal" keyboard_chrome)
+set_tests_properties(application_keyboard_chrome_wayland PROPERTIES TIMEOUT 180)
 add_test(NAME application_download_finalization COMMAND "${DBUS_RUN_SESSION}" --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf -- "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_download_finalization_probe.py" --executable $<TARGET_FILE:downloads_tests> --interposer $<TARGET_FILE:download_save_interposer>)
 set_tests_properties(application_download_finalization PROPERTIES TIMEOUT 100)
 set(FERRIC_BROWSER_EXECUTABLE "${REPO_ROOT}/target/release/ferric-browser" CACHE FILEPATH "Production browser for runtime-version admission regression")

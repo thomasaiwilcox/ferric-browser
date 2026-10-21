@@ -220,8 +220,8 @@ TestCase {
         keyClick(Qt.Key_Down)
         tryCompare(list, "currentIndex", 1)
         keyClick(Qt.Key_PageDown)
-        tryCompare(list, "currentIndex", 9)
-        keyClick(Qt.Key_End)
+        tryVerify(function() { return list.currentIndex > 1 && inside(list.currentItem, list) })
+        keyClick(Qt.Key_End, Qt.ControlModifier)
         tryCompare(list, "currentIndex", 23)
         tryVerify(function() {
             var row = list.itemAtIndex(23)
@@ -230,12 +230,39 @@ TestCase {
         keyClick(Qt.Key_Return)
         compare(lastIndex, 23)
         compare(activationCount, 1)
-        keyClick(Qt.Key_Home)
+        keyClick(Qt.Key_Home, Qt.ControlModifier)
         tryCompare(list, "currentIndex", 0)
         tryVerify(function() {
             var row = list.itemAtIndex(0)
             return row && inside(row, list)
         })
+    }
+    function test_search_query_keeps_native_home_end_and_selection() {
+        var surface = create({scope: "tabs", results: [
+            {kind: "tab", label: "Alpha", actions: ["open"]},
+            {kind: "tab", label: "Beta", actions: ["open"]}]})
+        var list = findChild(surface, "switcherResultList")
+        var input = findChild(surface, "switcherSearchInput")
+        input.text = "alpha beta"
+        input.cursorPosition = 5
+        keyClick(Qt.Key_Home)
+        compare(input.cursorPosition, 0)
+        compare(list.currentIndex, 0)
+        keyClick(Qt.Key_End, Qt.ShiftModifier)
+        compare(input.selectedText, "alpha beta")
+        compare(list.currentIndex, 0)
+        keyClick(Qt.Key_End)
+        compare(input.cursorPosition, 10)
+        keyClick(Qt.Key_Home, Qt.ShiftModifier)
+        compare(input.selectedText, "alpha beta")
+        compare(list.currentIndex, 0)
+        input.deselect()
+        keyClick(Qt.Key_N, Qt.ControlModifier)
+        compare(list.currentIndex, 1)
+        keyClick(Qt.Key_P, Qt.ControlModifier)
+        compare(list.currentIndex, 0)
+        compare(input.text, "alpha beta")
+        compare(input.activeFocus, true)
     }
     function test_keyboard_focus_reveals_wrapped_actions() {
         host.width = 390
@@ -271,6 +298,43 @@ TestCase {
         compare(lastIndex, 1)
         compare(activationCount, 0)
     }
+    function test_activation_can_remove_its_delegate_data() {
+        return [{tag: "row", gesture: "row"}, {tag: "button", gesture: "button"},
+                {tag: "keyboard-button", gesture: "keyboard"}]
+    }
+    function test_activation_can_remove_its_delegate(data) {
+        var surface = create()
+        surface.activationRequested.connect(function() { surface.results = [] })
+        surface.actionRequested.connect(function() { surface.results = [] })
+        var list = findChild(surface, "switcherResultList")
+        var row = list.currentItem
+        verify(row)
+        if (data.gesture === "row") mouseClick(row, 4, 4)
+        else {
+            var action = buttons(row)[0]
+            if (data.gesture === "button") mouseClick(action, action.width / 2, action.height / 2)
+            else {
+                action.forceActiveFocus(Qt.TabFocusReason)
+                keyClick(Qt.Key_Return)
+            }
+        }
+        compare(list.count, 0)
+        compare(lastIndex, 0)
+        if (data.gesture === "row") compare(activationCount, 1)
+        else compare(lastAction, "enter")
+        tryCompare(findChild(surface, "switcherSearchInput"), "activeFocus", true)
+    }
+    function test_result_count_announces_pending_search() {
+        var surface = create()
+        var count = findChild(surface, "switcherResultCount")
+        compare(count.Accessible.description, "Current result count")
+        surface.sourcesPending = true
+        compare(count.Accessible.description, "Current result count; Searching browser items")
+        surface.sourceNotice = "Searching other browser windows…"
+        compare(count.Accessible.description, "Current result count; " + surface.sourceNotice)
+        surface.sourcesPending = false
+        compare(count.Accessible.description, "Current result count")
+    }
     function test_saved_source_states_data() {
         return [
             {tag: "waiting", pending: true, failed: false, retryable: false,
@@ -297,8 +361,18 @@ TestCase {
             results: data.count ? [{kind: "bookmark", id: "held", label: "A saved bookmark",
                 actions: ["open"]}] : []})
         var status = findChild(surface, "switcherSourceStatus")
-        tryCompare(status, "visible", true)
-        verify(inside(status, surface.bodyItem), "source state stays in the body")
+        var inline = data.pending && data.count > 0 && !data.failed
+            && !data.retryable && data.detail.length === 0
+        tryCompare(status, "visible", !inline)
+        if (inline) {
+            var progress = findChild(surface, "switcherSearchProgress")
+            tryCompare(progress, "visible", true)
+            verify(progress.contentItem.height > 0, "the progress indicator has a paintable height")
+            var input = findChild(surface, "switcherSearchInput")
+            verify(inside(progress, input), "background progress stays in the search field")
+            compare(progress.Accessible.name, data.notice)
+            compare(input.Accessible.description, data.notice)
+        } else verify(inside(status, surface.bodyItem), "source state stays in the body")
         var notice = findChild(status, "managerFeedbackMessage")
         compare(notice.text, data.notice)
         compare(notice.textFormat, Text.PlainText)

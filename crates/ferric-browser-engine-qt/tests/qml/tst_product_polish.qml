@@ -392,6 +392,7 @@ TestCase {
         verify(!retry.enabled)
         var cancel = findChild(surface, "downloadCancelRequestButton")
         verify(cancel.visible)
+        verify(waitForPolish(host))
         mouseClick(cancel)
         compare(downloadCancelSpy.count, 1)
         surface.preparingDownload = false

@@ -761,6 +761,9 @@ impl qobject::BrowserUi {
         literal: &QString,
         temporary: bool,
     ) -> bool {
+        if !self.as_mut().setting_request_ready() {
+            return false;
+        }
         let mut arguments = Vec::with_capacity(if temporary { 2 } else { 1 });
         if temporary {
             arguments.push("--temp".into());
@@ -770,18 +773,8 @@ impl qobject::BrowserUi {
             name: "set".into(),
             arguments,
         };
-        match self.as_mut().execute_runtime_config_command(&command) {
-            Ok(_) => {
-                self.as_mut().set_runtime_setting_error(QString::default());
-                true
-            }
-            Err(error) => {
-                self.as_mut().set_status_text(QString::from(error.clone()));
-                self.as_mut()
-                    .set_runtime_setting_error(QString::from(error));
-                false
-            }
-        }
+        let result = self.as_mut().execute_runtime_config_command(&command);
+        self.finish_runtime_setting_request(result, key, temporary, false)
     }
 
     pub(super) fn unset_runtime_setting(
@@ -789,6 +782,9 @@ impl qobject::BrowserUi {
         key: &QString,
         temporary: bool,
     ) -> bool {
+        if !self.as_mut().setting_request_ready() {
+            return false;
+        }
         let arguments = if temporary {
             vec!["--temp".into(), key.to_string()]
         } else {
@@ -798,16 +794,164 @@ impl qobject::BrowserUi {
             name: "unset".into(),
             arguments,
         };
-        match self.as_mut().execute_runtime_config_command(&command) {
+        let result = self.as_mut().execute_runtime_config_command(&command);
+        self.finish_runtime_setting_request(result, key, temporary, true)
+    }
+
+    fn setting_request_ready(mut self: Pin<&mut Self>) -> bool {
+        if self.as_ref().rust().setting_action_state.to_string() == "pending" {
+            self.as_mut().set_runtime_setting_error(QString::from(
+                "Another settings change is still pending. Wait for it to finish.",
+            ));
+            return false;
+        }
+        true
+    }
+
+    fn finish_runtime_setting_request(
+        mut self: Pin<&mut Self>,
+        result: Result<Value, String>,
+        key: &QString,
+        temporary: bool,
+        reset: bool,
+    ) -> bool {
+        let scope = if temporary {
+            "this window and session"
+        } else {
+            "all regular profiles in this setup"
+        };
+        let verb = if reset {
+            "Resetting"
+        } else if temporary {
+            "Applying"
+        } else {
+            "Saving"
+        };
+        self.as_mut().publish_management_feedback(
+            FeedbackLane::Setting,
+            FeedbackState::Pending,
+            &format!("{verb} {key} for {scope}…"),
+            "",
+        );
+        let feedback = super::browser_ui_state::SettingFeedback {
+            id: self.as_ref().rust().setting_action_id.clone(),
+            key: key.to_string(),
+            success: format!(
+                "{} {key} for {scope}",
+                if reset {
+                    "Reset"
+                } else if temporary {
+                    "Applied"
+                } else {
+                    "Saved"
+                }
+            ),
+            failure: format!(
+                "Couldn't {} {key} for {scope}",
+                if reset {
+                    "reset"
+                } else if temporary {
+                    "apply"
+                } else {
+                    "save"
+                }
+            ),
+        };
+        match result {
             Ok(_) => {
                 self.as_mut().set_runtime_setting_error(QString::default());
+                self.as_mut().continue_setting_feedback(Some(feedback));
                 true
             }
             Err(error) => {
                 self.as_mut().set_status_text(QString::from(error.clone()));
                 self.as_mut()
-                    .set_runtime_setting_error(QString::from(error));
+                    .finish_setting_feedback(Some(feedback), Err(&error));
                 false
+            }
+        }
+    }
+
+    pub(super) fn continue_setting_feedback(
+        mut self: Pin<&mut Self>,
+        feedback: Option<super::browser_ui_state::SettingFeedback>,
+    ) {
+        let Some(feedback) = feedback else { return };
+        let synchronous = {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            if let Some(pending) = this
+                .configuration_io
+                .pending_configuration_publication
+                .as_mut()
+            {
+                pending.setting_feedback = Some(feedback);
+                None
+            } else if let Some(pending) = this.configuration_io.pending_selector_validation.as_mut()
+            {
+                pending.setting_feedback = Some(feedback);
+                None
+            } else {
+                Some(feedback)
+            }
+        };
+        self.finish_setting_feedback(synchronous, Ok(()));
+    }
+
+    pub(super) fn finish_setting_feedback(
+        mut self: Pin<&mut Self>,
+        feedback: Option<super::browser_ui_state::SettingFeedback>,
+        result: Result<(), &str>,
+    ) {
+        let Some(feedback) = feedback else { return };
+        if self.as_ref().rust().setting_action_id != feedback.id
+            || self.as_ref().rust().setting_action_state.to_string() != "pending"
+        {
+            return;
+        }
+        match result {
+            Ok(()) => {
+                let apply_time = self.as_ref().rust().state.as_ref().and_then(|state| {
+                    state
+                        .configuration_snapshot()
+                        .pending_changes
+                        .into_iter()
+                        .find(|change| change.key == feedback.key)
+                        .map(|change| change.apply_time)
+                });
+                let uncertain =
+                    self.as_ref().rust().runtime_config_persistence == "durability-uncertain";
+                let detail = if uncertain {
+                    self.as_ref().rust().status_text.to_string()
+                } else {
+                    String::new()
+                };
+                let mut message = if uncertain {
+                    "Saved, but a system crash could lose the change.".to_owned()
+                } else {
+                    feedback.success
+                };
+                match apply_time {
+                    Some("reload") => message.push_str("; use :config-reload to apply"),
+                    Some("startup" | "restart") => message.push_str("; restart Ferric to apply"),
+                    _ => {}
+                }
+                self.publish_management_feedback(
+                    FeedbackLane::Setting,
+                    FeedbackState::Succeeded,
+                    &message,
+                    &detail,
+                );
+            }
+            Err(error) => {
+                self.as_mut()
+                    .set_runtime_setting_error(QString::from(error));
+                self.publish_management_feedback(
+                    FeedbackLane::Setting,
+                    FeedbackState::Failed,
+                    &feedback.failure,
+                    error,
+                );
             }
         }
     }

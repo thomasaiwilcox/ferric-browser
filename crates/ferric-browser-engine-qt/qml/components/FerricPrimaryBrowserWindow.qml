@@ -1958,11 +1958,6 @@ ApplicationWindow {
 
     function activateSwitcherAction(index, action) { return runtimeRequests.activateSwitcherAction(index, action) }
 
-    Shortcut {
-        sequence: "Ctrl+P"
-        onActivated: window.showSwitcher()
-    }
-
     function downloadStateName(download) { return runtimeRequests.downloadStateName(download) }
 
     function navigationFailureKind(loadRequest) { return runtimeRequests.navigationFailureKind(loadRequest) }
@@ -3153,8 +3148,18 @@ GridLayout {
                 function setContentUrl(destination, traversal, engineMoves) { contentInitialized = true; nativeContent.setContentUrl(destination, traversal, engineMoves) }
                 function contentEngineOffset(destination, expected, backwards) { return nativeContent.engineOffset(destination, expected, backwards) }
                 function synchronizeContentHistory() { nativeContent.synchronizeHistory() }
+                // Bootstrap can publish a temporary blank tab before choosing
+                // its startup content. Initialize from the settled model, or
+                // let an explicit navigation take ownership first.
+                Timer {
+                    id: initializeContentTimer
+                    interval: 0
+                    onTriggered: if (webView.ownsTab() && webView.viewModel.loaded && !webView.contentInitialized)
+                        webView.setContentUrl(webView.modelContentUrl || "about:blank", false)
+                }
                 onModelContentUrlChanged: {
-                    if (modelContentUrl.length > 0 && (modelContentUrl === "rb://start" || modelContentUrl === "rb://blank" || nativeUrl.length > 0 || !contentInitialized)) setContentUrl(modelContentUrl, false)
+                    if (!contentInitialized) { initializeContentTimer.restart(); return }
+                    if (modelContentUrl.length > 0 && (modelContentUrl === "rb://start" || modelContentUrl === "rb://blank" || nativeUrl.length > 0)) setContentUrl(modelContentUrl, false)
                 }
                 FerricNativeTabContent {
                     id: nativeContent
@@ -3224,7 +3229,9 @@ GridLayout {
                     return host.length > 0 && counts[host] !== undefined ? Number(counts[host]) : 0
                 }
                 profile: viewProfile
-                url: "about:blank"
+                // Native pages supply their own content; the model or an
+                // explicit request initializes the first engine navigation.
+                url: ""
                 audioMuted: !!viewModel.muted
                 zoomFactor: Number(window.siteRuleValue(
                     effectiveSiteSettings, "content.zoom", viewModel.zoom))
@@ -3246,7 +3253,7 @@ GridLayout {
                         return
                     }
                     refreshPromptViewIdentity()
-                    if (viewModel.loaded && !contentInitialized) setContentUrl(viewModel.url || "about:blank", false)
+                    if (viewModel.loaded && !contentInitialized) initializeContentTimer.restart()
                     refreshEffectiveSiteSettings()
                     if (nativeUrl.length > 0) {
                         viewUi.content_navigated(tabIndex, nativeUrl, engineHistoryIndex, false)

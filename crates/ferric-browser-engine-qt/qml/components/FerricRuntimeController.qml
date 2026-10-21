@@ -176,8 +176,7 @@ QtObject {
             if (startView && startView.nativeUrl === "rb://start") {
                 if (startParts[0] === "start-page-view") startView.startPage.chooseView(startParts[1])
                 else if (startParts[0] === "start-page-bookmark") {
-                    startView.startPage.addCaptured(startParts[2], startParts.slice(3).join("\t"))
-                    startView.startPage.editBookmarkId = startParts[1]
+                    startView.startPage.addCaptured(startParts[2], startParts.slice(3).join("\t"), startParts[1])
                 } else startView.startPage.addCaptured(startParts[1], startParts.slice(2).join("\t"))
             }
             return

@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 FerricModalSurface {
     id: settings
+    FontMetrics { id: formFont; font: settings.browserWindow.font }
     objectName: "settingsSurface"
     required property bool settingsVisible
     required property bool temporary
@@ -13,6 +14,8 @@ FerricModalSurface {
     property string noticeDetail: ""
     property bool noticeFailed: false
     property bool noticePending: false
+    property bool settingPending: false
+    property string pendingSettingKey: ""
     property string profileLabel: ""
     property bool transientProfile: browserWindow.temporaryProfile === true || browserWindow.ephemeralProfile === true
     required property string spellcheckStatus
@@ -38,14 +41,23 @@ FerricModalSurface {
     function clearUserscriptOverrides() {
         userscriptInventory.clearEnabledOverrides();
     }
+    function clearSettingDrafts() { settingRows.clearDrafts() }
+    function discardSettingDraft(key) { settingRows.discardDraft(key) }
+    function finishSettingRequest(key, value, accepted) { settingRows.finishRequest(key, value, accepted) }
+    function settingDraft(key) { return settingRows.draftValue(key) }
+    function finishSettingOperation(key, value, reset, snapshot, succeeded) { settingRows.finishOperation(key, value, reset, snapshot, succeeded) }
 
     visible: settingsVisible
     commandText: ":settings"
     title: "Settings"
     message: profileLabel.length > 0 ? "Profile: " + profileLabel : "Browsing and interface preferences"
     keyHelp: "type to filter  ·  tab/shift-tab controls  ·  esc close"
+    compactKeyHelp: "Esc"
     dialogWidth: 980 * scale
     dialogHeight: 680 * scale
+    readonly property real minimumEditorHeight: formFont.height * 2 + 24 * scale
+    minimumBodyHeight: Math.max(100 * scale, sections.implicitHeight + footerActions.implicitHeight
+        + 4 * settingsBody.spacing + minimumEditorHeight) / (notice.length > 0 ? 0.7 : 1)
     stackingOrder: 76
     initialFocusItem: sections.currentIndex === 0 ? settingsSearchInput : scriptInstall
     onSearchTextChanged: if (searchText.length > 0)
@@ -53,6 +65,7 @@ FerricModalSurface {
     onDismissRequested: closeRequested()
 
     ColumnLayout {
+        id: settingsBody
         anchors.fill: parent
         spacing: 8 * settings.scale
 
@@ -98,13 +111,14 @@ FerricModalSurface {
                 Layout.fillWidth: true
                 CheckBox {
                     id: sessionScope
+                    objectName: "settingsScopeControl"
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     text: "Session only"
                     checked: settings.temporary || settings.transientProfile
                     enabled: !settings.transientProfile
                     Accessible.name: "Apply settings temporarily"
-                    Accessible.description: "Changes remain in memory for this session"
+                    Accessible.description: "Turn on to change only this window for this session. Turn off to save changes for all regular profiles in this setup."
                     onToggled: settings.temporaryChangeRequested(checked)
                     contentItem: Label {
                         objectName: "settingsSessionScopeLabel"
@@ -118,10 +132,13 @@ FerricModalSurface {
                     }
                 }
                 Label {
+                    objectName: "settingsScopeDescription"
                     textFormat: Text.PlainText
                     visible: !settings.filtering
                     Layout.fillWidth: true
-                    text: settings.transientProfile ? "Changes stay in memory and are forgotten when this private or temporary profile closes." : "Session changes are forgotten when Ferric closes. Turn this off to save changes; your config.toml file stays intact."
+                    text: settings.transientProfile ? (settings.filtering ? "This window only" : "Changes stay in memory and are forgotten when this private or temporary profile closes.")
+                        : settings.temporary ? (settings.filtering ? "This window only" : "Changes apply only to this window and session.")
+                        : settings.filtering ? "Save for all profiles" : "Saved changes apply to all regular profiles in this setup."
                     color: settings.browserWindow.secondaryTextColor
                     wrapMode: Text.WordWrap
                 }
@@ -129,6 +146,10 @@ FerricModalSurface {
 
             FerricSettingRows {
                 id: settingRows
+                hostWindow: settings.hostWindow
+                interactive: settings.interactive
+                operationPending: settings.settingPending
+                pendingSettingKey: settings.pendingSettingKey
                 Layout.fillWidth: true
                 Layout.preferredHeight: implicitHeight
                 browserWindow: settings.browserWindow
@@ -248,7 +269,9 @@ FerricModalSurface {
             objectName: "settingsFeedbackViewport"
             Layout.fillWidth: true
             Layout.minimumHeight: 0
-            Layout.preferredHeight: Math.min(contentLayout.implicitHeight, settings.bodyItem.height * 0.3)
+            Layout.preferredHeight: Math.min(contentLayout.implicitHeight, settings.bodyItem.height * 0.3,
+                Math.max(0, settings.bodyItem.height - sections.implicitHeight - footerActions.implicitHeight
+                    - 3 * settingsBody.spacing - settings.minimumEditorHeight))
             Layout.maximumHeight: settings.bodyItem.height * 0.3
             visible: settings.notice.length > 0
             hostWindow: settings.hostWindow
@@ -264,6 +287,7 @@ FerricModalSurface {
             }
         }
         ColumnLayout {
+            id: footerActions
             Layout.fillWidth: true
             Layout.minimumWidth: 0
             Flow {
@@ -273,6 +297,7 @@ FerricModalSurface {
                 Layout.preferredHeight: childrenRect.height
                 spacing: 8
                 FerricWrappingButton {
+                    objectName: "settingsRefreshButton"
                     text: "Refresh"
                     Accessible.name: "Refresh settings"
                     onClicked: settings.refreshRequested()
@@ -287,6 +312,7 @@ FerricModalSurface {
                     onClicked: settings.installUserscriptRequested()
                 }
                 FerricWrappingButton {
+                    objectName: "settingsCloseButton"
                     text: "Close"
                     Accessible.name: "Close settings"
                     onClicked: settings.closeRequested()

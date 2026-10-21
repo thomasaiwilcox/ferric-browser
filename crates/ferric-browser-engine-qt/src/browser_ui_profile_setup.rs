@@ -341,6 +341,7 @@ impl qobject::BrowserUi {
             this.library.start_snapshot = ferric_browser_storage::StartPageSnapshot::default();
             this.library.start_read_pending = false;
             this.library.start_write_pending = false;
+            this.library.favourite_feedback = None;
             this.library.start_refresh_requested = false;
             this.navigation.content_histories.clear();
             this.private_history.clear();

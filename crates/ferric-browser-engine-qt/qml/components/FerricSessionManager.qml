@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 FerricModalSurface {
     id: manager
+    FontMetrics { id: formFont; font: manager.browserWindow.font }
     property var state: browserWindow
     required property var sessionsModel
     property bool listPending: false
@@ -53,6 +54,7 @@ FerricModalSurface {
     keyHelp: "tab/shift-tab controls  ·  enter activate  ·  esc close"
     dialogWidth: 620 * scale
     dialogHeight: 520 * scale
+    minimumBodyHeight: Math.max(100 * scale, formFont.height * 2 + 24 * scale)
     stackingOrder: 40
     initialFocusItem: nameField
     onDismissRequested: closeRequested()
@@ -60,12 +62,6 @@ FerricModalSurface {
     ColumnLayout {
         anchors.fill: parent
         spacing: 8 * manager.scale
-        RowLayout {
-            Layout.fillWidth: true
-            Item { Layout.fillWidth: true }
-            Button { objectName: "sessionRefreshButton"; text: "Refresh"; enabled: !manager.privateSession && !manager.listPending; onClicked: { manager.resetDeleteConfirmation(); manager.refreshRequested() } }
-            Button { text: "Close"; Accessible.name: "Close session manager"; onClicked: manager.closeRequested() }
-        }
         FerricManagerList {
             id: sessionList
             objectName: "sessionList"
@@ -78,6 +74,13 @@ FerricModalSurface {
                 property alias nameInput: sessionNameInput
                 width: sessionList.width
                 spacing: 8 * manager.scale
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: childrenRect.height
+                    spacing: 6 * manager.scale
+                    FerricWrappingButton { objectName: "sessionRefreshButton"; text: "Refresh"; enabled: !manager.privateSession && !manager.listPending; onClicked: { manager.resetDeleteConfirmation(); manager.refreshRequested() } }
+                    FerricWrappingButton { objectName: "sessionCloseButton"; text: "Close"; Accessible.name: "Close session manager"; onClicked: manager.closeRequested() }
+                }
                 FerricTextField {
                     id: sessionNameInput
                     objectName: "sessionNameInput"
@@ -86,8 +89,14 @@ FerricModalSurface {
                     enabled: !manager.privateSession
                     readOnly: manager.operationPending
                     Accessible.name: "New session name"
+                    Keys.onPressed: function(event) {
+                        if (event.isAutoRepeat && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) event.accepted = true
+                    }
+                    onAccepted: if (manager.interactive && saveSessionButton.enabled) manager.saveRequested(text)
                 }
-                Button {
+                FerricWrappingButton {
+                    id: saveSessionButton
+                    Layout.maximumWidth: sessionList.width
                     objectName: "sessionSaveButton"
                     text: "Save session"
                     enabled: !manager.privateSession && !manager.operationPending && sessionNameInput.text.trim().length > 0
@@ -154,8 +163,8 @@ FerricModalSurface {
                     Layout.fillWidth: true
                     Layout.preferredHeight: childrenRect.height
                     spacing: 6 * manager.scale
-                    Button { text: "Preview"; onClicked: manager.previewRequested(name) }
-                    Button {
+                    FerricWrappingButton { text: "Preview"; onClicked: manager.previewRequested(name) }
+                    FerricWrappingButton {
                         text: manager.pendingDeleteName === name ? "Confirm delete" : "Delete"
                         enabled: !manager.operationPending && !manager.privateSession
                         onClicked: {
@@ -163,7 +172,7 @@ FerricModalSurface {
                             else manager.pendingDeleteName = name
                         }
                     }
-                    Button { text: "Keep session"; visible: manager.pendingDeleteName === name; onClicked: manager.resetDeleteConfirmation() }
+                    FerricWrappingButton { text: "Keep session"; visible: manager.pendingDeleteName === name; onClicked: manager.resetDeleteConfirmation() }
                 }
             }
             footer: Label {

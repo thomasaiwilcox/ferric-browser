@@ -6,6 +6,7 @@ Button {
     required property var browserWindow
     property bool prominent: false
     property bool quiet: false
+    property bool wrapText: false
     readonly property color accent: browserWindow.accentColor
     readonly property color surface: browserWindow.surfaceColor
     implicitHeight: Math.max(38, contentItem.implicitHeight + topPadding + bottomPadding)
@@ -15,6 +16,18 @@ Button {
     bottomPadding: 8
     hoverEnabled: true
     Accessible.name: text
+    Keys.onShortcutOverride: function(event) {
+        if (event.modifiers === Qt.NoModifier && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) event.accepted = true
+    }
+    function activateEnter(event) {
+        event.accepted = event.modifiers === Qt.NoModifier
+        if (event.accepted && !event.isAutoRepeat && control.enabled) control.click()
+    }
+    Keys.onReturnPressed: function(event) { control.activateEnter(event) }
+    Keys.onEnterPressed: function(event) { control.activateEnter(event) }
+    Keys.onReleased: function(event) {
+        if (event.modifiers === Qt.NoModifier && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) event.accepted = true
+    }
     contentItem: Label {
         text: control.text
         font.pointSize: control.browserWindow.chromeFontPointSize || 10
@@ -24,6 +37,7 @@ Button {
         verticalAlignment: Text.AlignVCenter
         opacity: control.enabled ? 1 : 0.45
         textFormat: Text.PlainText
+        wrapMode: control.wrapText ? Text.Wrap : Text.NoWrap
     }
     background: Rectangle {
         radius: 9
