@@ -137,5 +137,11 @@ function page(view, direction, layoutRoot) {
         scrollTo(view, view.contentY + direction * view.height * 0.9)
         return
     }
-    revealSelection(view, direction)
+    row = rowAt(view, next)
+    if (row && row.height <= view.height) {
+        // Probing a candidate can move the viewport before we reject it.
+        // Anchor the completed page explicitly, preserving the rows between
+        // this selection and the previous page even if estimates shifted.
+        view.positionViewAtIndex(next, direction > 0 ? Quick.ListView.End : Quick.ListView.Beginning)
+    } else revealSelection(view, direction)
 }

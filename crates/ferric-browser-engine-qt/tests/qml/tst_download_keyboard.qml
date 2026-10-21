@@ -95,13 +95,17 @@ TestCase {
     function test_toolbar_return_materializes_the_first_visible_download() {
         host.width = 390; host.height = 700; host.font.pointSize = 20
         var f = create(30)
+        // Layout completion is sufficient between keys. At a page boundary,
+        // the frame may already be rendered before keyClick returns.
         for (var page = 0; page < 100 && f.list.currentIndex < 29; ++page) {
             keyClick(Qt.Key_PageDown)
-            verify(waitForRendering(host.contentItem))
+            verify(waitForPolish(host))
+            wait(0)
         }
         for (page = 0; page < 100 && f.list.currentIndex > 0; ++page) {
             keyClick(Qt.Key_PageUp)
-            verify(waitForRendering(host.contentItem))
+            verify(waitForPolish(host))
+            wait(0)
         }
         keyClick(Qt.Key_End)
         keyClick(Qt.Key_Tab)

@@ -217,3 +217,29 @@ It replaces the transient loading panel with search-field progress when current
 rows remain usable, and finishes pending ancestor layouts before paging. That
 record contains the newer 802-QML/58-native qualification and preserves the
 interim failure evidence.
+
+
+## Ubuntu CI font follow-up — 2026-10-21
+
+PR #16's Ubuntu run failed four paging checks that passed with the local
+JetBrains Mono font. Using Ubuntu's DejaVu fonts reproduced the failures.
+Page Up could skip row 26 after leaving an expanded row 27: measuring an
+uncached candidate moved the viewport, even when that candidate was rejected.
+Containing the selected row afterward left the viewport too far up the list.
+
+The helper now polishes the final selection and explicitly anchors the completed
+page at the selected row's bottom for Page Down, or its top for Page Up. The
+intervening rows stay visible despite revisions to ListView's estimated origin.
+Oversized rows retain their existing overlapping scroll behavior.
+
+The resize test now spans enough height to change the page by at least one row
+with smaller fonts. The completed-search test constrains its loading viewport
+using the measured row height instead of assuming font metrics. Both keep their
+original progress and visibility assertions. The download toolbar journey waits
+for completed layout between paging keys; waiting for a new frame could time
+out when the final boundary frame had already rendered.
+
+The focused paging suite passed all **35 checks** with both Ubuntu DejaVu and
+the local fonts. The download keyboard suite passed all **18 checks** with
+DejaVu. Temporary font files and Fontconfig overrides are outside the repository;
+the application's font selection is unchanged.

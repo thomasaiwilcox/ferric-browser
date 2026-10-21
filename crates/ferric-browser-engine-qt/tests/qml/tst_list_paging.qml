@@ -239,7 +239,9 @@ TestCase {
         if (data.kind === "switcher") keyClick(Qt.Key_Home, Qt.ControlModifier)
         else keyClick(Qt.Key_Home)
         tryCompare(list, "currentIndex", 0)
-        host.height = 480
+        // Leave enough room between sizes to change the page by at least one
+        // row even with the smaller default fonts used by CI.
+        host.height = 350
         verify(waitForPolish(host))
         wait(0)
         before = visibleRange(list)
@@ -394,6 +396,14 @@ TestCase {
         fixture.surface.sourceDetail = "Waiting for source details"
         fixture.surface.sourceNotice = "Searching other browser windows…"
         verify(waitForPolish(host))
+        // Font metrics differ across desktops. Create the constrained loading
+        // viewport from the actual row instead of assuming a particular font.
+        for (var attempt = 0; attempt < 5
+                && fixture.list.height >= fixture.list.currentItem.height; ++attempt) {
+            fixture.surface.dialogHeight = fixture.surface.panelItem.height
+                - (fixture.list.height - fixture.list.currentItem.height) - 20
+            verify(waitForPolish(host))
+        }
         var oldHeight = fixture.list.height
         verify(fixture.list.currentItem.height > oldHeight,
             "The loading status temporarily leaves less than a full row")
