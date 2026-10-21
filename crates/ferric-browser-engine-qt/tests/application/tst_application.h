@@ -245,4 +245,5 @@ class ApplicationTests final : public QObject {
     void scopedHintAndSearchJourneys();
     void durablePersistenceFailurePreservesConfiguration();
     void selectorValidationRejectsWholeCandidate();
+    void productPolishSettingDurability();
 };

@@ -63,12 +63,21 @@ impl qobject::BrowserUi {
             .pending_selector_validation
             .as_ref()
             .is_some_and(|pending| pending.operation_id.as_deref() == Some(id));
-        if selector_cancelled {
-            this.configuration_io.pending_selector_validation.take();
-        }
+        let setting_feedback = if selector_cancelled {
+            this.configuration_io
+                .pending_selector_validation
+                .take()
+                .and_then(|pending| pending.setting_feedback)
+        } else {
+            None
+        };
         cancel_pending_selection_operation(this, id);
         drop(rust);
         if selector_cancelled {
+            self.as_mut().finish_setting_feedback(
+                setting_feedback,
+                Err("Settings validation was cancelled."),
+            );
             self.as_mut()
                 .set_selector_validation_request(QString::default());
         }

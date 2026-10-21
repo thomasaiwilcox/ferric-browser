@@ -12,6 +12,8 @@ FerricModalSurface {
     property bool sourcesRetryable: false
     property string sourceNotice: ""
     property string sourceDetail: ""
+    readonly property bool inlineLoading: resultsCurrent && results.length > 0
+        && sourcesPending && !sourcesFailed && !sourcesRetryable && sourceDetail.length === 0
     signal refreshRequested()
     property bool sourceDetailsVisible: false
     property string inspectedSourceDetail: ""
@@ -42,17 +44,26 @@ FerricModalSurface {
         switcherInput.forceActiveFocus()
     }
 
+    function focusBeforeResults() {
+        if (sourceRefreshButton.visible && sourceRefreshButton.enabled)
+            sourceRefreshButton.forceActiveFocus(Qt.BacktabFocusReason)
+        else if (sourceDetailsButton.visible && sourceDetailsButton.enabled)
+            sourceDetailsButton.forceActiveFocus(Qt.BacktabFocusReason)
+        else switcherInput.forceActiveFocus(Qt.BacktabFocusReason)
+    }
+
     visible: switcherVisible
     commandText: ":switcher"
     title: scopeTitle
-    keyHelp: "↑/↓ select  ·  pgup/pgdn page  ·  enter open  ·  esc close"
+    keyHelp: "↑/↓ select  ·  PgUp/PgDn page  ·  Tab actions  ·  Enter open  ·  Esc close"
+    compactKeyHelp: "Tab · Esc"
     dialogWidth: 860 * scale
     dialogHeight: 520 * scale
     stackingOrder: 60
     initialFocusItem: switcherInput
     onDismissRequested: closeRequested()
     Accessible.description: "Search up to " + maximumResults
-        + " browser items; use arrow keys, Page Up, Page Down, Home, End, and Enter to choose"
+        + " browser items; use arrow keys or Control+N/P, Page Up, Page Down, Control+Home/End, and Enter to choose. Tab enters the selected result's actions, after any search status controls; Shift+Tab returns. Home and End edit the search text."
 
     ColumnLayout {
         anchors.fill: parent
@@ -72,27 +83,49 @@ FerricModalSurface {
                 Accessible.name: switcher.scopeTitle + " search"
                 Accessible.role: Accessible.EditableText
                 Accessible.editable: true
+                Accessible.description: switcher.inlineLoading ? switcher.sourceNotice : ""
+                ProgressBar {
+                    objectName: "switcherSearchProgress"
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.leftMargin: 2
+                    anchors.rightMargin: 2
+                    anchors.bottomMargin: 1
+                    height: 4 * switcher.scale
+                    padding: 0
+                    visible: switcher.inlineLoading
+                    indeterminate: visible
+                    Accessible.name: switcher.sourceNotice || "Searching browser items"
+                }
                 onTextChanged: switcher.queryChangeRequested(text)
                 Keys.onPressed: function(event) {
+                    var plain = event.modifiers === Qt.NoModifier
+                    var control = event.modifiers === Qt.ControlModifier
                     if (event.key === Qt.Key_Escape) {
                         switcher.closeRequested()
                         event.accepted = true
-                    } else if (event.key === Qt.Key_Down) {
+                    } else if (plain && event.key === Qt.Key_Tab
+                            && !sourceDetailsButton.visible && !sourceRefreshButton.visible) {
+                        event.accepted = switcherResultsList.focusCurrentAction()
+                    } else if ((plain && event.key === Qt.Key_Down)
+                            || (control && event.key === Qt.Key_N)) {
                         switcherResultsList.moveBy(1)
                         event.accepted = true
-                    } else if (event.key === Qt.Key_Up) {
+                    } else if ((plain && event.key === Qt.Key_Up)
+                            || (control && event.key === Qt.Key_P)) {
                         switcherResultsList.moveBy(-1)
                         event.accepted = true
-                    } else if (event.key === Qt.Key_PageDown) {
-                        switcherResultsList.moveBy(8)
+                    } else if (plain && event.key === Qt.Key_PageDown) {
+                        switcherResultsList.movePage(1)
                         event.accepted = true
-                    } else if (event.key === Qt.Key_PageUp) {
-                        switcherResultsList.moveBy(-8)
+                    } else if (plain && event.key === Qt.Key_PageUp) {
+                        switcherResultsList.movePage(-1)
                         event.accepted = true
-                    } else if (event.key === Qt.Key_Home) {
+                    } else if (control && event.key === Qt.Key_Home) {
                         switcherResultsList.moveToBeginning()
                         event.accepted = true
-                    } else if (event.key === Qt.Key_End) {
+                    } else if (control && event.key === Qt.Key_End) {
                         switcherResultsList.moveToEnd()
                         event.accepted = true
                     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
@@ -112,7 +145,9 @@ FerricModalSurface {
                 font.pointSize: Math.max(10, switcher.browserWindow.font.pointSize - 2)
                 Accessible.name: text
                 Accessible.role: Accessible.StatusBar
-                Accessible.description: "Current result count"
+                Accessible.description: switcher.sourcesPending
+                    ? "Current result count; " + (switcher.sourceNotice || "Searching browser items")
+                    : "Current result count"
             }
         }
 
@@ -123,7 +158,7 @@ FerricModalSurface {
             Layout.preferredHeight: Math.min(contentLayout.implicitHeight,
                 switcher.bodyItem.height * (switcher.results.length > 0 ? 0.4 : 0.75))
             hostWindow: switcher.hostWindow
-            visible: switcher.resultsCurrent && switcher.sourceNotice.length > 0
+            visible: switcher.resultsCurrent && switcher.sourceNotice.length > 0 && !switcher.inlineLoading
             FerricManagerFeedback {
                 id: sourceFeedback
                 Layout.fillWidth: true
@@ -142,15 +177,25 @@ FerricModalSurface {
                     objectName: "switcherSourceDetailsButton"
                     text: "Show details"
                     visible: switcher.sourceDetail.length > 0
+                    Keys.onPressed: function(event) {
+                        if (event.key === Qt.Key_Tab && event.modifiers === Qt.NoModifier
+                                && !sourceRefreshButton.visible)
+                            event.accepted = switcherResultsList.focusCurrentAction()
+                    }
                     onClicked: {
                         switcher.inspectedSourceDetail = switcher.sourceDetail
                         switcher.sourceDetailsVisible = true
                     }
                 }
                 Button {
+                    id: sourceRefreshButton
                     objectName: "switcherSourceRefresh"
                     text: "Refresh"
                     visible: switcher.sourcesRetryable
+                    Keys.onPressed: function(event) {
+                        if (event.key === Qt.Key_Tab && event.modifiers === Qt.NoModifier)
+                            event.accepted = switcherResultsList.focusCurrentAction()
+                    }
                     onClicked: switcher.refreshRequested()
                 }
             }
@@ -168,6 +213,7 @@ FerricModalSurface {
             sourcesFailed: switcher.sourcesFailed
             sourceNotice: switcher.sourceNotice
             onFocusSearchRequested: switcher.focusInput()
+            onFocusPreviousRequested: switcher.focusBeforeResults()
             onActivationRequested: function(index) { switcher.activationRequested(index) }
             onActionRequested: function(index, action) { switcher.actionRequested(index, action) }
         }

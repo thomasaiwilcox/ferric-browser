@@ -64,6 +64,9 @@ TestCase {
         failOnWarning(/TypeError|ReferenceError|Binding loop|Cannot assign|Unable to assign/)
         host.width = 900; host.height = 700; host.font.pointSize = 10
         host.profileManagerVisible = true; host.sessionManagerVisible = true
+        host.temporaryProfile = false; host.ephemeralProfile = false
+        profiles.clear(); profiles.append({name: "work", label: "<b>Work</b>"})
+        sessions.clear(); sessions.append({name: "research"})
         host.requestActivate(); tryCompare(host, "active", true)
     }
     function profile() {
@@ -78,6 +81,187 @@ TestCase {
         view.nameField.text = "draft-session"
         return view
     }
+    function activate(control) {
+        verify(control && control.enabled)
+        control.forceActiveFocus()
+        verify(waitForPolish(host))
+        compare(host.activeFocusItem, control)
+        keyClick(Qt.Key_Return)
+    }
+    function test_session_return_submits_the_name() {
+        var view = session()
+        var saved = createTemporaryObject(spyFixture, view, {target: view, signalName: "saveRequested"})
+        var accepted = createTemporaryObject(spyFixture, view, {target: view.nameField, signalName: "accepted"})
+        var clicked = createTemporaryObject(spyFixture, view, {target: findChild(view, "sessionSaveButton"), signalName: "clicked"})
+        view.nameField.forceActiveFocus()
+        keyClick(Qt.Key_Return)
+        compare(saved.count, 1, "accepted=" + accepted.count + ", clicked=" + clicked.count
+            + ", focus=" + host.activeFocusItem.objectName)
+        compare(saved.signalArguments[0][0], "draft-session")
+    }
+    function test_profile_return_advances_to_display_name() {
+        var view = profile()
+        view.createLabelField.text = ""
+        var created = createTemporaryObject(spyFixture, view, {target: view, signalName: "createRequested"})
+        view.createNameField.forceActiveFocus()
+        keyClick(Qt.Key_Return)
+        compare(host.activeFocusItem, view.createLabelField)
+        compare(created.count, 0)
+    }
+    function test_profile_return_submits_the_display_name() {
+        var view = profile()
+        var created = createTemporaryObject(spyFixture, view, {target: view, signalName: "createRequested"})
+        view.createLabelField.forceActiveFocus()
+        keyClick(Qt.Key_Return)
+        compare(created.count, 1)
+        compare(created.signalArguments[0][0], "new-profile")
+        compare(created.signalArguments[0][1], "New profile")
+    }
+    function test_profile_return_submits_the_rename() {
+        var view = profile()
+        var renamed = createTemporaryObject(spyFixture, view, {target: view, signalName: "renameRequested"})
+        view.beginRename("work", "Work")
+        tryCompare(view.renameField, "activeFocus", true)
+        view.renameField.text = "Research"
+        keyClick(Qt.Key_Return)
+        compare(renamed.count, 1)
+        compare(renamed.signalArguments[0][0], "work")
+        compare(renamed.signalArguments[0][1], "Research")
+    }
+    function test_cancel_rename_returns_to_a_visible_control() {
+        var view = profile()
+        view.beginRename("work", "Work")
+        tryCompare(view.renameField, "activeFocus", true)
+        keyClick(Qt.Key_Tab)
+        compare(host.activeFocusItem.objectName, "profileRenameButton")
+        keyClick(Qt.Key_Tab)
+        compare(host.activeFocusItem.text, "Cancel rename")
+        keyClick(Qt.Key_Return)
+        compare(view.renameName, "")
+        verify(host.activeFocusItem !== null && host.activeFocusItem.visible
+            && host.activeFocusItem.enabled && host.activeFocusItem.activeFocusOnTab,
+            "Closing the rename form leaves focus on an available control")
+    }
+    function test_cancel_rename_returns_to_its_invoking_control() {
+        var view = profile()
+        var action = findChild(view, "profileBeginRenameButton")
+        verify(action)
+        action.forceActiveFocus()
+        keyClick(Qt.Key_Return)
+        tryCompare(view.renameField, "activeFocus", true)
+        keyClick(Qt.Key_Tab)
+        keyClick(Qt.Key_Tab)
+        keyClick(Qt.Key_Return)
+        compare(view.renameName, "")
+        compare(host.activeFocusItem, action)
+    }
+    function test_successful_create_prepares_the_next_name_without_stealing_focus_data() {
+        return [{tag: "form", inForm: true}, {tag: "other-control", inForm: false}]
+    }
+    function test_successful_create_prepares_the_next_name_without_stealing_focus(data) {
+        var view = profile()
+        var action = findChild(view, "profileBeginRenameButton")
+        var target = data.inForm ? view.createLabelField : action
+        target.forceActiveFocus()
+        view.feedback = receipt("create", "pending")
+        view.mutationAccepted("create", "create", "new-profile", "New profile")
+        view.feedback = receipt("create", "succeeded")
+        compare(view.createNameField.text, "")
+        compare(view.createLabelField.text, "")
+        compare(host.activeFocusItem, data.inForm ? view.createNameField : action)
+    }
+    function test_completed_rename_leaves_visible_focus() {
+        var view = profile()
+        view.beginRename("work", "Work")
+        tryCompare(view.renameField, "activeFocus", true)
+        view.renameField.text = "Research"
+        view.feedback = receipt("rename", "pending")
+        view.mutationAccepted("rename", "rename", "work", "Research")
+        view.feedback = receipt("rename", "succeeded")
+        compare(view.renameName, "")
+        compare(host.activeFocusItem, view.createNameField)
+    }
+    function test_completed_rename_keeps_focus_after_catalog_publication() {
+        var view = profile()
+        var action = findChild(view, "profileBeginRenameButton")
+        action.forceActiveFocus()
+        keyClick(Qt.Key_Return)
+        tryCompare(view.renameField, "activeFocus", true)
+        view.renameField.text = "Research"
+        view.feedback = receipt("rename", "pending")
+        view.mutationAccepted("rename", "rename", "work", "Research")
+        view.feedback = receipt("rename", "succeeded")
+        profiles.clear(); profiles.append({name: "work", label: "Research"})
+        verify(waitForPolish(host))
+        verify(waitForRendering(host.contentItem))
+        verify(host.activeFocusItem && host.activeFocusItem.visible && host.activeFocusItem.enabled
+            && host.activeFocusItem.activeFocusOnTab,
+            "Publishing the renamed catalog leaves a usable control focused")
+    }
+    function test_session_return_respects_submission_guards_data() {
+        return [{tag: "blank"}, {tag: "saving"}, {tag: "deleting"},
+            {tag: "temporary"}, {tag: "ephemeral"}]
+    }
+    function test_session_return_respects_submission_guards(data) {
+        var view = session()
+        var saved = createTemporaryObject(spyFixture, view, {target: view, signalName: "saveRequested"})
+        if (data.tag === "blank") view.nameField.text = "   "
+        if (data.tag === "saving") view.saveFeedback = receipt("pending", "pending")
+        if (data.tag === "deleting") view.deleteFeedback = receipt("pending", "pending")
+        host.temporaryProfile = data.tag === "temporary"
+        host.ephemeralProfile = data.tag === "ephemeral"
+        verify(!findChild(view, "sessionSaveButton").enabled)
+        view.nameField.forceActiveFocus()
+        keyClick(Qt.Key_Return)
+        compare(saved.count, 0)
+    }
+    function test_profile_return_respects_submission_guards_data() {
+        return [{tag: "blank-name"}, {tag: "blank-label"}, {tag: "creating"},
+            {tag: "blank-rename", rename: true}, {tag: "renaming", rename: true}]
+    }
+    function test_profile_return_respects_submission_guards(data) {
+        var view = profile()
+        var created = createTemporaryObject(spyFixture, view, {target: view, signalName: "createRequested"})
+        var renamed = createTemporaryObject(spyFixture, view, {target: view, signalName: "renameRequested"})
+        if (data.rename) view.beginRename("work", "Work")
+        var input = data.rename ? view.renameField : view.createLabelField
+        if (data.tag === "blank-name") view.createNameField.text = " "
+        if (data.tag === "blank-label" || data.tag === "blank-rename") input.text = " "
+        if (data.tag === "creating" || data.tag === "renaming") view.feedback = receipt("pending", "pending")
+        verify(!findChild(view, data.rename ? "profileRenameButton" : "profileCreateButton").enabled)
+        input.forceActiveFocus()
+        keyClick(Qt.Key_Return)
+        compare(created.count, 0)
+        compare(renamed.count, 0)
+    }
+    function test_refresh_preserves_form_focus_data() {
+        return [{tag: "profile", profile: true}, {tag: "session", profile: false}]
+    }
+    function test_refresh_preserves_form_focus(data) {
+        var view = data.profile ? profile() : session()
+        var input = data.profile ? view.createLabelField : view.nameField
+        var text = input.text
+        input.forceActiveFocus()
+        var model = data.profile ? profiles : sessions
+        model.clear()
+        model.append(data.profile ? {name: "another", label: "Another profile"} : {name: "another"})
+        verify(waitForPolish(host))
+        verify(waitForRendering(host.contentItem))
+        compare(host.activeFocusItem, input)
+        compare(input.text, text)
+    }
+    function test_tab_leaves_the_form_for_row_actions_data() {
+        return [{tag: "profile", profile: true}, {tag: "session", profile: false}]
+    }
+    function test_tab_leaves_the_form_for_row_actions(data) {
+        var view = data.profile ? profile() : session()
+        var input = data.profile ? view.createLabelField : view.nameField
+        input.forceActiveFocus()
+        keyClick(Qt.Key_Tab)
+        compare(host.activeFocusItem.objectName, data.profile ? "profileCreateButton" : "sessionSaveButton")
+        keyClick(Qt.Key_Tab)
+        compare(host.activeFocusItem.text, data.profile ? "Open window" : "Preview")
+    }
     function test_profile_retains_failed_draft_and_clears_its_own_success() {
         var view = profile()
         view.feedback = receipt("one", "pending", "Creating profile…")
@@ -90,7 +274,7 @@ TestCase {
         compare(feedback.message, "The profile change couldn't be completed.")
         var details = findChild(feedback, "managerFeedbackDetails")
         verify(!details.visible)
-        findChild(feedback, "managerFeedbackDetailsButton").click()
+        activate(findChild(feedback, "managerFeedbackDetailsButton"))
         tryCompare(details, "visible", true)
         compare(details.textFormat, TextEdit.PlainText); verify(details.readOnly); verify(details.selectByMouse)
         view.feedback = receipt("two", "pending", "Creating profile…")
@@ -157,7 +341,7 @@ TestCase {
         host.sessionManagerVisible = false
         compare(view.pendingDeleteName, "")
         host.sessionManagerVisible = true
-        view.pendingDeleteName = "research"; findChild(view, "sessionRefreshButton").click()
+        view.pendingDeleteName = "research"; activate(findChild(view, "sessionRefreshButton"))
         compare(view.pendingDeleteName, "")
     }
     function test_catalog_failure_is_distinct_from_empty() {
@@ -171,18 +355,21 @@ TestCase {
     }
     function test_compact_forms_remain_scrollable_data() {
         return [{tag: "profile", profile: true, font: 10}, {tag: "profile-large", profile: true, font: 16},
-                {tag: "session", profile: false, font: 10}, {tag: "session-large", profile: false, font: 16}]
+                {tag: "session", profile: false, font: 10}, {tag: "session-large", profile: false, font: 16},
+                {tag: "profile-26", profile: true, font: 26, width: 320},
+                {tag: "session-26", profile: false, font: 26, width: 320}]
     }
     function test_compact_forms_remain_scrollable(row) {
-        host.width = 390; host.height = 600; host.font.pointSize = row.font
+        host.width = row.width || 390; host.height = 600; host.font.pointSize = row.font
         var view = row.profile ? profile() : session()
         var list = findChild(view, row.profile ? "profileList" : "sessionList")
         if (row.profile) {
             view.beginRename("work", "A longer display name")
+            tryCompare(view.renameField, "activeFocus", true)
             view.feedback = receipt("one", "failed", "The profile change couldn't be completed. Review the details and try again.", Array(20).join("A long technical detail.\n"))
         } else view.saveFeedback = receipt("one", "failed", "The session couldn't be saved. Review the details and try again.", Array(20).join("A long technical detail.\n"))
         var feedback = findChild(view, row.profile ? "profileFeedback" : "sessionSaveFeedback")
-        findChild(feedback, "managerFeedbackDetailsButton").click()
+        activate(findChild(feedback, "managerFeedbackDetailsButton"))
         verify(waitForPolish(host)); wait(50)
         var input = row.profile ? view.renameField : view.nameField
         input.forceActiveFocus()
@@ -195,6 +382,16 @@ TestCase {
         var finalPoint = button.mapToItem(list, 0, 0)
         verify(finalPoint.y >= -1 && finalPoint.y + button.height <= list.height + 1)
         compare(button.width > view.panelItem.width, false)
+        function checkButtons(item) {
+            if (!item.visible) return
+            if (typeof item.text === "string" && typeof item.clicked === "function") {
+                var x = item.mapToItem(view.panelItem, 0, 0).x
+                verify(x >= -1 && x + item.width <= view.panelItem.width + 1,
+                    item.text + " fits at " + host.width + "px and " + row.font + "pt")
+            }
+            for (var child of item.children) checkButtons(child)
+        }
+        checkButtons(view)
         if (testArtifactDirectory.length > 0) grabImage(host.contentItem).save(testArtifactDirectory + "/manager-" + row.tag + ".png")
     }
 }

@@ -13,7 +13,7 @@ ctest --test-dir target/portal-tests --output-on-failure
 ```
 
 These tests need Qt Wayland Compositor, KWindowSystem >= 6.28, Wayland headers
-and scanner, wayland-protocols, and `dbus-run-session`. CI builds the pinned
+and scanner, libxkbcommon headers, wayland-protocols, and `dbus-run-session`. CI builds the pinned
 KWindowSystem dependency in a disposable prefix using
 `.github/ci/build-window-system.py`; the Arch package uses the system library.
 Real desktop portal focus/consent remains a separate qualification step.
@@ -35,6 +35,113 @@ ctest --test-dir target/application-tests -R '^portal_browser$' --output-on-fail
 Set `FERRIC_PORTAL_TEST_ARTIFACTS` to a disposable output directory when running
 that CTest entry to save the updating and ready Downloads panel renders. The
 fixture's pointer and keyboard events target its own Wayland client surfaces.
+
+The keyboard chrome gates use the same release engine and temporary browser
+roots. `application_switcher` checks completion editing, text navigation,
+selection, action focus and list paging offscreen. It first compares the
+compiled chrome resources, including the paging script, with the current source.
+Paging waits for the complete search batch and also traverses uncached results
+with background delegate incubation paused in both primary and secondary windows.
+The persisted-bookmark journey also checks Tab into the selected row, Shift+Tab
+back to browsing, subsequent arrow navigation, and a round trip through the
+scrolling toolbar that preserves selection.
+`libraryDrafts` uses 110 persisted bookmarks to check an unfinished editor across
+delegate recycling and catalog pages, followed by an explicit save. Its text
+entry uses Qt events; navigation and action keys use the seat in the compositor gate.
+`journeyDestination` visits two loopback pages, chooses New tab or New window
+through the row's controls, returns to list browsing and presses Enter. It checks
+the rendered document URL and that the original page stays open. Each seed
+visit must first appear in its own temporary SQLite profile. Both
+destinations run offscreen and with compositor seat keys at 20-point text.
+See the [journey destination qualification](testing/journey-destinations-2026-10-20.md).
+`journeyGraphKeyboard` records fifteen loopback visits, opens Relationships
+through its real button, pans and pages the focused map, then traverses the
+relationship outline at 20-point text. It checks visible row overlap, keyboard
+return to browsing, access to the search header, and Home/End plus g/G through
+the same offscreen and compositor gates.
+See the [library controls and graph qualification](testing/library-controls-and-journey-graph-2026-10-21.md).
+`managerFormsKeyboard` creates and renames a profile, cancels a rename and saves
+a named session through Return in primary and secondary windows. It checks
+the actual focused recipient of each submission, held-Return suppression,
+catalog publication, draft cleanup and usable focus after completion. Text
+entry and explicit repeat events use Qt; navigation and fresh Return use the
+owned compositor seat in the Wayland gate. The resource guard also compares
+the profile/session managers and shared feedback component.
+See the [manager keyboard qualification](testing/manager-keyboard-forms-2026-10-21.md).
+`favouriteEditorKeyboard` adds, edits and opens a favourite in primary,
+secondary and private windows. It verifies address-to-name Return, held-key
+suppression, request identities, newer text and a real SQLite rejection/retry.
+An owned writer lock orders an older metadata read before save completion;
+that read must leave the editor pending. This ordering step invokes the focused
+field's acceptance in the same event-loop turn. Other fresh Return/navigation
+events use the compositor seat in the Wayland gate. The resource guard includes
+the start page, both button components and the focus-revealing scroll column.
+See the [favourite editor qualification](testing/favourite-editor-2026-10-21.md).
+The same native journey also reuses the saved address in another slot, then
+chooses the bookmark through its keyboard picker and changes its name again.
+It requires the submitted name in both the tile and bookmark, the same bookmark
+ID, one bookmark record and one occupied slot in primary, secondary and private
+windows. Storage checks additionally exercise duplicate addresses and roll back
+the name and both affected slots when an insert trigger rejects the pin.
+See the [favourite naming qualification](testing/favourite-names-2026-10-21.md).
+`favouriteRequestsKeyboard` holds a real edit save behind an owned SQLite
+writer in regular windows, delivers bookmark captures through the production
+engine-action route, and requires the original text, selection and identity
+to survive. It also reviews waiting captures in order, explicitly discards a
+newer local edit, and changes a selected bookmark's address through the backend.
+A direct save using the old visible address must fail without renaming that
+bookmark; a keyboard choice of the updated address must then save correctly.
+Primary, secondary and private windows use the same journey, with synchronous
+private saves. The resource guard additionally compares the runtime controller.
+See the [favourite request qualification](testing/favourite-requests-2026-10-21.md).
+`downloadPaging` reads thirty durable download records and owned files in
+primary and secondary windows at 20-point text. It checks page overlap,
+selected-row actions, full details, toolbar traversal and reopening through
+both offscreen and compositor seat keys. The resource guard includes the
+download manager and workspace. QML checks also cover disclosure recycling,
+completion/retry/header focus recovery, and 320-pixel/26-point controls.
+See the [Downloads keyboard qualification](testing/downloads-keyboard-2026-10-21.md).
+`settingsDrafts` exercises filtering, persisted numeric changes, canonical
+value acknowledgment, held-Return suppression, toolbar refresh, discard and
+reopening in primary and secondary windows. Its navigation and fresh Return
+use the owned compositor seat in the Wayland gate; text and explicit repeat
+events use Qt. The resource guard includes Settings, its row editor and its
+workspace. The QML suite also covers reordered rows, native undo/selection,
+owner handoff, rejected controls and 320-pixel/26-point draft actions.
+See the [Settings editing qualification](testing/settings-drafts-2026-10-21.md).
+The same journey also blocks the owned profile's runtime override path with
+a directory, submits through Return, reads the actual writer's failure details,
+then repairs the path and retries the preserved draft. It checks receipt IDs,
+effective values, persisted output and synchronization of saved settings
+between regular profiles sharing the same setup. The QML
+checks cover pending progress, synchronous and asynchronous results, reopening,
+scope changes, Reset and edits made while a previous request is still pending.
+`durablePersistenceFailurePreservesConfiguration` and
+`selectorValidationRejectsWholeCandidate` additionally exercise writer and
+WebEngine selector validation receipts through the production backend.
+See the [Settings save qualification](testing/settings-save-feedback-2026-10-21.md).
+`application_settings_durability` preloads a test-only sync interposer into its
+owned browser process. After a normal saved setting, it fails directory sync
+for exactly that temporary profile's state directory. It checks that the next
+value is applied and written, and that Settings shows the crash-durability
+warning and its detail. Other paths and file syncs pass through unchanged.
+The journey fixtures also require each first real visit from a native blank
+page to persist under its actual document URL. The graph fixture rejects a
+persisted engine placeholder and reports load-event URLs and owned database
+rows on failure. See the [first-navigation qualification](testing/first-navigation-2026-10-21.md).
+Internal QML reference/type errors and binding-loop warnings fail this suite. The
+`application_keyboard_chrome_wayland` gate delivers paging, Tab/Shift+Tab,
+completion cycling, Ctrl+P and Ctrl+Space through the owned compositor's seat;
+it requires one non-repeated native press/release pair, expected modifiers,
+and cleared modifiers afterward. Its single keyboard seat uses a US keymap.
+The separate `application_command_editing_wayland` gate sends Qt-generated
+key/mouse events to Wayland windows to check completion insertion, caret,
+undo and explicit preedit events. These gates do not qualify physical hardware,
+a full desktop compositor, GPU rendering or platform IMEs.
+
+```sh
+ctest --test-dir target/application-tests --parallel 1 -R '^application_(switcher|keyboard_chrome_wayland|command_editing_wayland)$' --output-on-failure
+```
 
 `application_downloads` uses an owned loopback transfer and temporary download
 directory in a private D-Bus session. It checks displayed progress, actual

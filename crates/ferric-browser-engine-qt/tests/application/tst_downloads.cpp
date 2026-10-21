@@ -462,7 +462,16 @@ class DownloadsTests final : public QObject {
             const auto label = behavior.endsWith("cancel-active") ? QString("Cancel") : QString("Pause");
             QTRY_VERIFY(visibleButton(owner->contentItem(), label));
             auto control = visibleButton(owner->contentItem(), label);
-            QTest::mouseClick(owner, Qt::LeftButton, Qt::NoModifier, control->mapToScene(QPointF(control->width()/2, control->height()/2)).toPoint());
+            if (behavior.endsWith("pause-resume")) {
+                auto list = visual(owner->contentItem(), "downloadList");
+                QVERIFY(list);
+                QTRY_VERIFY(list->hasActiveFocus());
+                QTest::keyClick(owner, Qt::Key_Tab);
+                QTRY_COMPARE(owner->activeFocusItem(), control);
+                QTest::keyClick(owner, Qt::Key_Return);
+            } else {
+                QTest::mouseClick(owner, Qt::LeftButton, Qt::NoModifier, control->mapToScene(QPointF(control->width()/2, control->height()/2)).toPoint());
+            }
             if (behavior.endsWith("cancel-active")) {
                 QTRY_COMPARE(evaluate(ui + ".download_rows()[0].state").toString(), QString("cancelled"));
                 QTRY_COMPARE(evaluate(helperExpression + ".ownedHelpers.length").toInt(), 0);
@@ -480,7 +489,8 @@ class DownloadsTests final : public QObject {
             QCOMPARE(evaluate(live + ".receivedBytes").toLongLong(), pausedBytes);
             QTRY_VERIFY(visibleButton(owner->contentItem(), "Resume"));
             control = visibleButton(owner->contentItem(), "Resume");
-            QTest::mouseClick(owner, Qt::LeftButton, Qt::NoModifier, control->mapToScene(QPointF(control->width()/2, control->height()/2)).toPoint());
+            QTRY_COMPARE(owner->activeFocusItem(), control);
+            QTest::keyClick(owner, Qt::Key_Return);
             QTRY_VERIFY(!evaluate(live + ".isPaused").toBool());
             QTRY_COMPARE(evaluate(ui + ".download_rows()[0].state").toString(), QString("in-progress"));
         }
@@ -488,6 +498,10 @@ class DownloadsTests final : public QObject {
         transfer->disconnectFromHost();
         QTRY_COMPARE(evaluate("Object.keys(" + host + ".activeDownloads).length").toInt(), 0);
         QTRY_VERIFY(evaluate(ui + ".download_rows().some(function(row){return row.id===" + quoted(id) + " && row.fileReady})").toBool());
+        if (behavior.endsWith("pause-resume"))
+            QTRY_VERIFY(owner->activeFocusItem() && owner->activeFocusItem()->isVisible()
+                && owner->activeFocusItem()->isEnabled()
+                && owner->activeFocusItem()->objectName() == "downloadOpenButton");
         const auto path = evaluate(ui + ".download_rows().filter(function(row){return row.id===" + quoted(id) + "})[0].destination").toString();
         QVERIFY(path.startsWith(destination + "/"));
         QTRY_COMPARE(evaluate(helperExpression + ".ownedHelpers.length").toInt(), 0);

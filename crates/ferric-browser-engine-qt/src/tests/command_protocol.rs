@@ -112,6 +112,7 @@ fn local_empty_binding_commands_use_the_full_executor() {
         "history",
         "hint",
         "print",
+        "switcher",
         "tab-clone",
         "tab-move",
         "tab-mute",

@@ -182,6 +182,7 @@ pub(super) fn binding_uses_full_command_executor(command: &ParsedCommand) -> boo
                 | "history"
                 | "hint"
                 | "print"
+                | "switcher"
                 | "tab-clone"
                 | "tab-close"
                 | "tab-move"

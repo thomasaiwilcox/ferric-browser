@@ -50,6 +50,8 @@ pub struct StartPageSnapshot {
 #[derive(Clone, Debug, PartialEq)]
 pub enum StartPageMutation {
     View(StartPageView),
+    /// Save the submitted name and slot together, reusing the selected or
+    /// matching bookmark rather than creating another copy of it.
     Pin {
         slot: u8,
         url: String,
@@ -295,7 +297,11 @@ impl ProfileStore {
                     return Err(StoreError::InvalidInput("bookmark is stale"));
                 }
                 let id = existing.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-                transaction.execute("INSERT OR IGNORE INTO bookmarks(id, url, title, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)", params![id, url, title, timestamp])?;
+                transaction.execute(
+                    "INSERT INTO bookmarks(id, url, title, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)
+                     ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at",
+                    params![id, url, title, timestamp],
+                )?;
                 transaction.execute(
                     "DELETE FROM start_page_favourites WHERE slot = ?1 OR bookmark_id = ?2",
                     params![target, id],
@@ -514,6 +520,145 @@ mod tests {
             Some("a.test")
         );
         assert_ne!(site_key("https://a.test:8080"), site_key("https://a.test"));
+    }
+
+    #[test]
+    fn pinning_saves_the_submitted_name_on_the_reused_bookmark() {
+        for (selected, already_pinned) in [(true, false), (false, false), (false, true)] {
+            let store = store();
+            store
+                .add_bookmark("old", "https://a.test", "Original name", 1)
+                .unwrap();
+            store
+                .add_bookmark("new", "https://a.test", "Other name", 2)
+                .unwrap();
+            let expected_id = if selected || already_pinned {
+                "new"
+            } else {
+                "old"
+            };
+            if already_pinned {
+                store
+                    .mutate_start_page(
+                        &StartPageMutation::Pin {
+                            slot: 3,
+                            url: "https://a.test".into(),
+                            title: "Other name".into(),
+                            bookmark_id: Some("new".into()),
+                        },
+                        3,
+                    )
+                    .unwrap();
+            }
+            store
+                .mutate_start_page(
+                    &StartPageMutation::Pin {
+                        slot: 8,
+                        url: "https://a.test".into(),
+                        title: "The name I entered".into(),
+                        bookmark_id: selected.then(|| "new".into()),
+                    },
+                    4,
+                )
+                .unwrap();
+            let snapshot = store.start_page_snapshot(4, 0).unwrap();
+            let favourite = snapshot.favourites[7].as_ref().unwrap();
+            assert_eq!(favourite.id, expected_id);
+            assert_eq!(favourite.title, "The name I entered");
+            assert!(snapshot.favourites[2].is_none());
+            assert_eq!(snapshot.bookmarks.len(), 2);
+            assert_eq!(
+                snapshot
+                    .bookmarks
+                    .iter()
+                    .find(|entry| entry.id == expected_id)
+                    .unwrap()
+                    .title,
+                "The name I entered"
+            );
+            let other = snapshot
+                .bookmarks
+                .iter()
+                .find(|entry| entry.id != expected_id)
+                .unwrap();
+            assert_eq!(
+                other.title,
+                if expected_id == "new" {
+                    "Original name"
+                } else {
+                    "Other name"
+                }
+            );
+            let timestamps: (i64, i64) = store
+                .connection
+                .query_row(
+                    "SELECT created_at, updated_at FROM bookmarks WHERE id = ?1",
+                    [expected_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(timestamps, (if expected_id == "new" { 2 } else { 1 }, 4));
+        }
+    }
+
+    #[test]
+    fn a_rejected_pin_rolls_back_its_name_and_both_affected_slots() {
+        let store = store();
+        store
+            .add_bookmark("source", "https://a.test", "Source name", 1)
+            .unwrap();
+        store
+            .add_bookmark("destination", "https://b.test", "Destination name", 2)
+            .unwrap();
+        for (slot, id, url, title) in [
+            (1, "source", "https://a.test", "Source name"),
+            (8, "destination", "https://b.test", "Destination name"),
+        ] {
+            store
+                .mutate_start_page(
+                    &StartPageMutation::Pin {
+                        slot,
+                        url: url.into(),
+                        title: title.into(),
+                        bookmark_id: Some(id.into()),
+                    },
+                    3,
+                )
+                .unwrap();
+        }
+        let before = store.start_page_snapshot(3, 0).unwrap();
+        store.connection.execute_batch("CREATE TRIGGER reject_pin BEFORE INSERT ON start_page_favourites WHEN NEW.slot = 8 BEGIN SELECT RAISE(ABORT, 'Owned pin failure'); END").unwrap();
+        let mutation = StartPageMutation::Pin {
+            slot: 8,
+            url: "https://a.test".into(),
+            title: "Submitted new name".into(),
+            bookmark_id: Some("source".into()),
+        };
+        assert!(store.mutate_start_page(&mutation, 4).is_err());
+        let rejected = store.start_page_snapshot(4, 0).unwrap();
+        assert_eq!(rejected.bookmarks, before.bookmarks);
+        assert_eq!(rejected.favourites, before.favourites);
+        store
+            .connection
+            .execute_batch("DROP TRIGGER reject_pin")
+            .unwrap();
+        store.mutate_start_page(&mutation, 5).unwrap();
+        let saved = store.start_page_snapshot(5, 0).unwrap();
+        assert!(saved.favourites[0].is_none());
+        assert_eq!(saved.favourites[7].as_ref().unwrap().id, "source");
+        assert_eq!(
+            saved.favourites[7].as_ref().unwrap().title,
+            "Submitted new name"
+        );
+        assert_eq!(
+            saved
+                .bookmarks
+                .iter()
+                .find(|entry| entry.id == "destination")
+                .unwrap()
+                .title,
+            "Destination name"
+        );
     }
 
     #[test]

@@ -995,10 +995,11 @@ function onContext_workspaceChanged() {
             if (activeView.nativeUrl === "rb://start" && activeView.startPage) activeView.startPage.cycleView()
             return
         }
-        if (action.indexOf("start-page-view\t") === 0 || action.indexOf("start-page-add\t") === 0) {
+        if (action.indexOf("start-page-view\t") === 0 || action.indexOf("start-page-add\t") === 0 || action.indexOf("start-page-bookmark\t") === 0) {
             var startParts = action.split("\t")
             if (activeView.nativeUrl === "rb://start" && activeView.startPage) {
                 if (startParts[0] === "start-page-view") activeView.startPage.chooseView(startParts[1])
+                else if (startParts[0] === "start-page-bookmark") activeView.startPage.addCaptured(startParts[2], startParts.slice(3).join("\t"), startParts[1])
                 else activeView.startPage.addCaptured(startParts[1], startParts.slice(2).join("\t"))
             }
             return
@@ -1871,6 +1872,9 @@ function onContext_workspaceChanged() {
                 rejectPopupAdmission()
                 return
             }
+            // WebEngine owns this first navigation. A pending model
+            // initializer must not replace the adopted popup document.
+            view.contentInitialized = true
             request.openIn(view)
             windowPopupRequest=null
             return

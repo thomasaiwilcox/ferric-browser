@@ -509,7 +509,8 @@ fn setting_rows_component_emits_intents_without_reaching_the_runtime_bridge() {
     let composition_root = QML_SOURCE;
     assert!(qml.contains("signal applyRequested(var row, var value)"));
     assert!(qml.contains("signal resetRequested(var row)"));
-    assert!(qml.contains("settingRows.applyRequested(settingRow.rowData, checked)"));
+    assert!(qml.contains("settingRow.submitValue(checked)"));
+    assert!(qml.contains("settingRows.applyRequested(rowData, value)"));
     assert!(qml.contains("settingRows.resetRequested(settingRow.rowData)"));
     assert!(!qml.contains("browserUi."));
     assert!(!qml.contains("window.applySetting"));
@@ -582,7 +583,10 @@ fn switcher_results_component_keeps_navigation_and_dispatch_at_the_root_boundary
     assert!(!qml.contains("browserUi."));
     assert!(!qml.contains("activateSwitcher("));
     assert!(switcher.contains("FerricSwitcherResults {"));
-    assert!(switcher.contains("switcherResultsList.moveBy(8)"));
+    assert!(qml.contains("function movePage(direction)"));
+    assert!(qml.contains("ListNavigation.page(resultList, direction)"));
+    assert!(switcher.contains("switcherResultsList.movePage(1)"));
+    assert!(switcher.contains("switcherResultsList.movePage(-1)"));
     assert!(composition_root.contains("window.activateSwitcher(index)"));
     assert!(composition_root.contains("window.activateSwitcherAction(index, action)"));
 }

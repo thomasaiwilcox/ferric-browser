@@ -50,7 +50,12 @@ TestCase {
             id: owner
             property var calls: []
             property bool accepted: true
+            property string setting_action_id: ""
+            property string setting_action_state: "idle"
+            property string setting_action_message: ""
+            property string setting_action_detail: ""
             property string runtime_setting_error: "<b>literal failure details</b>"
+            property bool profile_bootstrap_pending: false
             property string status_text: "<b>literal worker details</b>"
             property var settings_rows: [{key:"ui.font_size_pt",label:"Interface font size",type:"number",scope:"profile",apply:"immediate",value:"10",options:testEmptySettingsOptions}]
             property var userscript_names: []

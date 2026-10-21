@@ -136,6 +136,7 @@ impl qobject::BrowserUi {
             return;
         };
         let operation_id = pending.operation_id.clone();
+        let setting_feedback = pending.setting_feedback;
         let result = result
             .map_err(|error| error.to_string())
             .and_then(|receipt| {
@@ -160,6 +161,10 @@ impl qobject::BrowserUi {
                 .get_mut()
                 .set_operation(operation_id, update);
         }
+        self.as_mut().finish_setting_feedback(
+            setting_feedback,
+            result.as_ref().map(|_| ()).map_err(String::as_str),
+        );
         if let Err(error) = result {
             self.as_mut().report_config_reload_failure(&error, true);
         }
@@ -452,6 +457,7 @@ impl qobject::BrowserUi {
                 .pending_configuration_publication =
                 Some(super::browser_ui_state::PendingConfigurationPublication {
                     operation_id: None,
+                    setting_feedback: None,
                     candidate,
                     layers: policy_layers,
                     status: status.unwrap_or("Settings saved").to_owned(),
@@ -555,7 +561,9 @@ impl qobject::BrowserUi {
         let current_url = self.as_ref().rust().current_url.to_string();
         self.as_mut()
             .update_hint_proxy_targets(&active_settings, &current_url);
-        self.as_mut().update_settings_presentation(&active_config);
+        // The editors show committed choices, including values waiting for
+        // reload or restart. Their apply-time labels describe the boundary.
+        self.as_mut().update_settings_presentation(&candidate);
         self.as_mut().set_config_json(QString::from(config_json));
         // A watch reconciliation or an unrelated peer binding update must not
         // retire an in-flight collector. Only interaction policy changes revoke

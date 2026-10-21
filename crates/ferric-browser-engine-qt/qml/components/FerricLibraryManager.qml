@@ -70,8 +70,10 @@ FerricModalSurface {
     function applyFeedback() {
         if (!submittedId || feedbackId !== submittedId || (feedbackState !== "succeeded" && feedbackState !== "failed")) return
         if (feedbackState === "succeeded") {
-            libraryEntryList.markEditSaved(submittedKind, submittedKey, submittedValue)
-            if (submittedDelete) focusTimer.restart()
+            if (submittedDelete) {
+                libraryEntryList.discardEditDraft(submittedKind + "\t" + submittedKey)
+                focusTimer.restart()
+            } else libraryEntryList.markEditSaved(submittedKind, submittedKey, submittedValue)
         }
         submittedId = ""
     }
@@ -79,7 +81,11 @@ FerricModalSurface {
     function focusPrimaryControl() {
         if (!interactive) return
         if (libraryEntryList.visible) libraryEntryList.focusList()
-        else { journeyGraph.showBeginning(); journeyGraph.forceActiveFocus() }
+        else { journeyGraph.showBeginning(); journeyGraph.focusViewport() }
+    }
+    function handleToolbarNavigation(event) {
+        if (libraryEntryList.visible) libraryEntryList.handleNavigationKey(event)
+        else journeyGraph.returnFromHeader(event)
     }
     onFeedbackIdChanged: applyFeedback()
     onFeedbackStateChanged: applyFeedback()
@@ -99,7 +105,10 @@ FerricModalSurface {
     title: ChromePresentation.libraryTitle(libraryKind)
     message: libraryKind === "history" && (browserWindow.temporaryProfile || browserWindow.ephemeralProfile)
         ? "History in this private session." : ChromePresentation.libraryDescription(libraryKind)
-    keyHelp: "j/k or ↑/↓ browse  ·  enter " + (["actions", "context-routes"].indexOf(libraryKind) >= 0 ? "details" : "activate") + "  ·  tab actions  ·  esc close"
+    keyHelp: libraryKind === "journey" && graphMode
+        ? "j/k or ↑/↓ scroll  ·  PgUp/PgDn page  ·  Home/End or g/G top/bottom  ·  Tab controls  ·  focused map: arrows pan, paging keys navigate  ·  Esc close"
+        : "j/k or ↑/↓ browse  ·  enter " + (["actions", "context-routes"].indexOf(libraryKind) >= 0 ? "details" : "activate") + "  ·  tab actions  ·  shift+tab back  ·  esc close"
+    compactKeyHelp: "Tab · Esc"
     dialogWidth: 880 * scale
     dialogHeight: 620 * scale
     stackingOrder: 55
@@ -110,6 +119,66 @@ FerricModalSurface {
         ColumnLayout {
             width: libraryManager.bodyItem.width
             spacing: 8 * libraryManager.scale
+            Flow {
+                objectName: "libraryToolbar"
+                Layout.fillWidth: true
+                Layout.preferredHeight: childrenRect.height
+                spacing: 6 * libraryManager.scale
+                FerricWrappingButton {
+                    objectName: "libraryGraphToggleButton"
+                    visible: libraryManager.libraryKind === "journey"
+                    text: libraryManager.graphMode ? "Outline" : "Relationships"
+                    Keys.onPressed: function(event) { libraryManager.handleToolbarNavigation(event) }
+                    onClicked: libraryManager.graphToggleRequested()
+                }
+                FerricWrappingButton {
+                    visible: libraryManager.libraryKind === "journey"
+                    text: "Export"
+                    Accessible.name: "Export journey records"
+                    Keys.onPressed: function(event) { libraryManager.handleToolbarNavigation(event) }
+                    onClicked: libraryManager.exportRequested()
+                }
+                FerricWrappingButton {
+                    objectName: "libraryRefreshButton"
+                    text: "Refresh"
+                    enabled: !libraryManager.listPending
+                    Keys.onPressed: function(event) { libraryManager.handleToolbarNavigation(event) }
+                    onClicked: { libraryManager.deleteCancelled(); libraryManager.refreshRequested() }
+                }
+                FerricWrappingButton {
+                    objectName: "libraryPreviousPageButton"
+                    visible: libraryManager.libraryKind !== "journey" && libraryManager.totalEntries > libraryManager.pageSize
+                    text: "Previous"; enabled: libraryManager.page > 0
+                    Accessible.name: "Previous library page"
+                    Keys.onPressed: function(event) { libraryManager.handleToolbarNavigation(event) }
+                    onClicked: libraryManager.pageChangeRequested(-1)
+                }
+                Label {
+                    textFormat: Text.PlainText
+                    visible: libraryManager.libraryKind !== "journey" && libraryManager.totalEntries > libraryManager.pageSize
+                    text: "Page " + (libraryManager.page + 1) + " / " + libraryManager.pageCount
+                    color: libraryManager.browserWindow.mutedTextColor
+                    width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                    wrapMode: Text.Wrap
+                    height: implicitHeight + 8 * libraryManager.scale
+                    verticalAlignment: Text.AlignVCenter
+                }
+                FerricWrappingButton {
+                    objectName: "libraryNextPageButton"
+                    visible: libraryManager.libraryKind !== "journey" && libraryManager.totalEntries > libraryManager.pageSize
+                    text: "Next"; enabled: libraryManager.page + 1 < libraryManager.pageCount
+                    Accessible.name: "Next library page"
+                    Keys.onPressed: function(event) { libraryManager.handleToolbarNavigation(event) }
+                    onClicked: libraryManager.pageChangeRequested(1)
+                }
+                FerricWrappingButton {
+                    objectName: "libraryCloseButton"
+                    text: "Close"
+                    Accessible.name: "Close library manager"
+                    Keys.onPressed: function(event) { libraryManager.handleToolbarNavigation(event) }
+                    onClicked: libraryManager.closeRequested()
+                }
+            }
             FerricJourneySearch {
                 Layout.fillWidth: true
                 visible: libraryManager.libraryKind === "journey"
@@ -155,36 +224,6 @@ FerricModalSurface {
     ColumnLayout {
         anchors.fill: parent
         spacing: 8 * libraryManager.scale
-        Flow {
-            objectName: "libraryToolbar"
-            Layout.fillWidth: true
-            Layout.preferredHeight: childrenRect.height
-            spacing: 6 * libraryManager.scale
-            Button { visible: libraryManager.libraryKind === "journey"; text: libraryManager.graphMode ? "Outline" : "Relationships"; onClicked: libraryManager.graphToggleRequested() }
-            Button { visible: libraryManager.libraryKind === "journey"; text: "Export"; Accessible.name: "Export journey records"; onClicked: libraryManager.exportRequested() }
-            Button { text: "Refresh"; enabled: !libraryManager.listPending; onClicked: { libraryManager.deleteCancelled(); libraryManager.refreshRequested() } }
-            Button {
-                visible: libraryManager.libraryKind !== "journey" && libraryManager.totalEntries > libraryManager.pageSize
-                text: "Previous"; enabled: libraryManager.page > 0
-                Accessible.name: "Previous library page"
-                onClicked: libraryManager.pageChangeRequested(-1)
-            }
-            Label {
-                textFormat: Text.PlainText
-                visible: libraryManager.libraryKind !== "journey" && libraryManager.totalEntries > libraryManager.pageSize
-                text: "Page " + (libraryManager.page + 1) + " / " + libraryManager.pageCount
-                color: libraryManager.browserWindow.mutedTextColor
-                height: implicitHeight + 8 * libraryManager.scale
-                verticalAlignment: Text.AlignVCenter
-            }
-            Button {
-                visible: libraryManager.libraryKind !== "journey" && libraryManager.totalEntries > libraryManager.pageSize
-                text: "Next"; enabled: libraryManager.page + 1 < libraryManager.pageCount
-                Accessible.name: "Next library page"
-                onClicked: libraryManager.pageChangeRequested(1)
-            }
-            Button { objectName: "libraryCloseButton"; text: "Close"; Accessible.name: "Close library manager"; onClicked: libraryManager.closeRequested() }
-        }
         FerricLibraryEntries {
             id: libraryEntryList
             Layout.fillWidth: true
@@ -196,6 +235,7 @@ FerricModalSurface {
             pendingDelete: libraryManager.pendingDelete
             operationPending: libraryManager.operationPending
             controlsHeader: libraryControls
+            navigationLayoutRoot: libraryManager
             onFavouriteRequested: function(id) {
                 if (libraryManager.browserWindow.primaryBrowserUi.start_page_pick_bookmark(id)) {
                     libraryManager.closeRequested()
@@ -219,6 +259,7 @@ FerricModalSurface {
             graphEntries: libraryManager.graphEntries
             lineData: libraryManager.graphLineData
             controlsHeader: libraryControls
+            navigationLayoutRoot: libraryManager
         }
     }
 

@@ -1,9 +1,8 @@
 #include "settings_model.h"
 
 #include <QtCore/QMetaType>
+#include <QtCore/QSet>
 #include <QtCore/QVariantMap>
-
-#include <utility>
 
 FerricBrowserSettingsModel::FerricBrowserSettingsModel(QObject *parent) : QAbstractListModel(parent) {}
 int FerricBrowserSettingsModel::rowCount(const QModelIndex &parent) const { return parent.isValid() ? 0 : rows_.size(); }
@@ -23,6 +22,7 @@ bool FerricBrowserSettingsModel::replaceRows(const QVariantList &values) {
     }
     QList<Row> rows;
     rows.reserve(values.size());
+    QSet<QString> keys;
     const QStringList fields = {"key", "label", "type", "scope", "apply", "value", "options"};
     for (const QVariant &value : values) {
         if (value.metaType().id() != QMetaType::QVariantMap) {
@@ -46,12 +46,48 @@ bool FerricBrowserSettingsModel::replaceRows(const QVariantList &values) {
             row.value("options").metaType().id() != QMetaType::QStringList) {
             return false;
         }
-        rows.append({row.value("key").toString(), row.value("label").toString(),
+        const auto key = row.value("key").toString();
+        if (key.isEmpty() || keys.contains(key)) return false;
+        keys.insert(key);
+        rows.append({key, row.value("label").toString(),
                      row.value("type").toString(), row.value("scope").toString(),
                      row.value("apply").toString(), row.value("value").toString(),
                      row.value("options").toStringList()});
     }
-    beginResetModel(); rows_ = std::move(rows);
-    endResetModel();
+    // Keep surviving editors alive: resetting the model discards their
+    // selection, undo history and keyboard focus on every settings refresh.
+    for (int index = 0; index < rows.size(); ++index) {
+        int previous = index;
+        while (previous < rows_.size() && rows_[previous].key != rows[index].key) ++previous;
+        if (previous == rows_.size()) {
+            beginInsertRows({}, index, index);
+            rows_.insert(index, rows[index]);
+            endInsertRows();
+            continue;
+        }
+        if (previous != index) {
+            beginMoveRows({}, previous, previous, {}, index);
+            rows_.move(previous, index);
+            endMoveRows();
+        }
+        auto &current = rows_[index];
+        const auto &next = rows[index];
+        QList<int> changed;
+        const auto update = [&changed](auto &field, const auto &value, int role) {
+            if (field != value) { field = value; changed.append(role); }
+        };
+        update(current.label, next.label, LabelRole);
+        update(current.type, next.type, TypeRole);
+        update(current.scope, next.scope, ScopeRole);
+        update(current.apply, next.apply, ApplyRole);
+        update(current.value, next.value, ValueRole);
+        update(current.options, next.options, OptionsRole);
+        if (!changed.isEmpty()) emit dataChanged(this->index(index), this->index(index), changed);
+    }
+    if (rows_.size() > rows.size()) {
+        beginRemoveRows({}, rows.size(), rows_.size() - 1);
+        rows_.remove(rows.size(), rows_.size() - rows.size());
+        endRemoveRows();
+    }
     return true;
 }

@@ -68,6 +68,20 @@ pub(super) struct ConfigurationIoState {
     pub(super) theme_watch: ConfigWatch,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum FavouriteStage {
+    Submitting,
+    Writing(StorageTicket),
+    AwaitingRefresh,
+    Reading(StorageTicket),
+}
+
+pub(super) struct FavouriteFeedback {
+    pub(super) id: QString,
+    pub(super) stage: FavouriteStage,
+    pub(super) success: &'static str,
+}
+
 // Flags belong to independent single-flight catalogs, not one combined state.
 #[allow(clippy::struct_excessive_bools)]
 pub(super) struct LibraryState {
@@ -75,6 +89,7 @@ pub(super) struct LibraryState {
     pub(super) start_read_pending: bool,
     pub(super) start_refresh_requested: bool,
     pub(super) start_write_pending: bool,
+    pub(super) favourite_feedback: Option<FavouriteFeedback>,
     pub(super) mark_feedback_tickets: BTreeMap<StorageTicket, (FeedbackLane, QString)>,
     pub(super) storage_library_refresh_again: bool,
     pub(super) storage_library_read_state: CatalogReadState,

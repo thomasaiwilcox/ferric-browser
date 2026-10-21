@@ -1,8 +1,8 @@
 //! Qt-owned transient state shapes shared by browser presentation modules.
 
 use super::{
-    BrowserApplication, BrowserUiRust, ConfigurationLayers, ProfileOpenEffect, RuntimeOverrides,
-    TabId, Value,
+    BrowserApplication, BrowserUiRust, ConfigurationLayers, ProfileOpenEffect, QString,
+    RuntimeOverrides, TabId, Value,
 };
 use std::{path::PathBuf, time::Instant};
 
@@ -63,6 +63,7 @@ pub(super) struct PendingProfileConfiguration {
 
 pub(super) struct PendingSelectorValidation {
     pub(super) operation_id: Option<String>,
+    pub(super) setting_feedback: Option<SettingFeedback>,
     pub(super) generation: u64,
     pub(super) expected_revision: u64,
     pub(super) started_at: Instant,
@@ -92,10 +93,18 @@ pub(super) enum PendingSelectorAction {
 
 pub(super) struct PendingConfigurationPublication {
     pub(super) operation_id: Option<String>,
+    pub(super) setting_feedback: Option<SettingFeedback>,
     pub(super) candidate: Value,
     pub(super) layers: ConfigurationLayers,
     pub(super) status: String,
     pub(super) fingerprint: String,
+}
+
+pub(super) struct SettingFeedback {
+    pub(super) id: QString,
+    pub(super) key: String,
+    pub(super) success: String,
+    pub(super) failure: String,
 }
 
 #[derive(Clone, Debug)]

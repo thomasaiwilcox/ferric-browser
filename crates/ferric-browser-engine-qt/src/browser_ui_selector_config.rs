@@ -75,24 +75,32 @@ impl qobject::BrowserUi {
             "items": items,
         });
         let request = serde_json::to_string(&request).unwrap_or_default();
-        {
+        let replaced_feedback = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            if let Some(previous) = this.configuration_io.pending_selector_validation.take()
-                && let Some(operation_id) = previous.operation_id
+            let previous = this.configuration_io.pending_selector_validation.take();
+            if let Some(operation_id) = previous
+                .as_ref()
+                .and_then(|pending| pending.operation_id.clone())
             {
                 this.set_operation(operation_id, crate::OperationUpdate::cancelled());
             }
             this.configuration_io.selector_generation = generation;
             this.configuration_io.pending_selector_validation = Some(PendingSelectorValidation {
                 operation_id: None,
+                setting_feedback: None,
                 generation,
                 expected_revision: this.configuration_io.selector_config_revision,
                 started_at: Instant::now(),
                 fingerprint,
                 action,
             });
-        }
+            previous.and_then(|pending| pending.setting_feedback)
+        };
+        self.as_mut().finish_setting_feedback(
+            replaced_feedback,
+            Err("A newer request replaced this settings validation. Try again."),
+        );
         self.as_mut()
             .set_selector_validation_request(QString::from(request));
         self.as_mut().set_status_text(QString::from(
@@ -180,7 +188,7 @@ impl qobject::BrowserUi {
             }
             this.configuration_io.pending_selector_validation.take()
         };
-        let Some(pending) = pending else {
+        let Some(mut pending) = pending else {
             return false;
         };
         self.as_mut()
@@ -196,6 +204,13 @@ impl qobject::BrowserUi {
             result.ok,
         );
         if !matches!(decision, SelectorCallbackDecision::Accept) {
+            let detail = if matches!(decision, SelectorCallbackDecision::Stale) {
+                "Settings changed during validation. Try again.".to_owned()
+            } else {
+                selector_diagnostic(&result)
+            };
+            self.as_mut()
+                .finish_setting_feedback(pending.setting_feedback.take(), Err(&detail));
             if let Some(operation_id) = pending.operation_id.as_ref() {
                 self.as_mut().rust_mut().as_mut().get_mut().set_operation(
                     operation_id.clone(),
@@ -249,6 +264,8 @@ impl qobject::BrowserUi {
                 rule: String::new(),
                 reason: "WebEngine selector validation timed out".into(),
             };
+            self.as_mut()
+                .finish_setting_feedback(pending.setting_feedback, Err(&result.reason));
             if let Some(operation_id) = pending.operation_id {
                 self.as_mut().rust_mut().as_mut().get_mut().set_operation(
                     operation_id,
@@ -265,6 +282,7 @@ impl qobject::BrowserUi {
 
     fn accept_selector_action(mut self: Pin<&mut Self>, pending: PendingSelectorValidation) {
         let operation_id = pending.operation_id;
+        let setting_feedback = pending.setting_feedback;
         match pending.action {
             PendingSelectorAction::RuntimeConfig {
                 candidate,
@@ -283,6 +301,7 @@ impl qobject::BrowserUi {
                     pending.fingerprint,
                 ) {
                     Ok(_) => {
+                        self.as_mut().continue_setting_feedback(setting_feedback);
                         if let Some(operation_id) = operation_id {
                             if !self.as_mut().bind_configuration_operation(&operation_id) {
                                 self.as_mut().rust_mut().as_mut().get_mut().set_operation(
@@ -293,6 +312,8 @@ impl qobject::BrowserUi {
                         }
                     }
                     Err(error) => {
+                        self.as_mut()
+                            .finish_setting_feedback(setting_feedback, Err(&error));
                         if let Some(operation_id) = operation_id {
                             self.as_mut().rust_mut().as_mut().get_mut().set_operation(
                                 operation_id,

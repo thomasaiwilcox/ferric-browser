@@ -108,6 +108,7 @@ TestCase {
                 active:state === "in-progress",retryAvailable:state === "cancelled" || state === "interrupted",fileReady:state === "completed",finishing:false}
     }
     function init() {
+        failOnWarning(/TypeError|ReferenceError|Binding loop|Cannot assign|Unable to assign/)
         test.sourceLookups = 0
         transferUi.failedRequest = ""
         transferUi.status_text = ""

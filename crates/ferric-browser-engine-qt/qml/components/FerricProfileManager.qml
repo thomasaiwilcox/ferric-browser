@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 FerricModalSurface {
     id: manager
+    FontMetrics { id: formFont; font: manager.browserWindow.font }
     property var state: browserWindow
     required property var profilesModel
     property bool listPending: false
@@ -14,6 +15,7 @@ FerricModalSurface {
     readonly property var renameField: profileList.headerItem ? profileList.headerItem.renameInput : null
     property string renameName: ""
     property string renameLabel: ""
+    property Item renameReturnItem: null
     property string submittedId: ""
     property string submittedKind: ""
     property string submittedName: ""
@@ -28,12 +30,28 @@ FerricModalSurface {
     signal openRequested(string name, string label)
     signal deleteRequested(string name)
 
-    function clearCreateInputs() { createNameField.text = ""; createLabelField.text = "" }
-    function beginRename(name, label) {
+    function clearCreateInputs() {
+        var hadFocus = createNameField.activeFocus || createLabelField.activeFocus || profileList.headerItem.createButton.activeFocus
+        createNameField.text = ""; createLabelField.text = ""
+        if (hadFocus && interactive) createNameField.forceActiveFocus()
+    }
+    function beginRename(name, label, returnItem) {
+        renameReturnItem = returnItem || null
         renameName = name; renameLabel = label; renameField.text = label
         renameFocusTimer.restart()
     }
-    function clearRename() { renameName = ""; renameLabel = ""; renameField.text = "" }
+    function clearRename() {
+        var hadFocus = focusWithin(profileList.headerItem.renameForm)
+        var returnItem = renameReturnItem
+        renameName = ""; renameLabel = ""; renameField.text = ""; renameReturnItem = null
+        if (hadFocus && interactive) {
+            if (returnItem && returnItem.visible && returnItem.enabled) returnItem.forceActiveFocus()
+            else createNameField.forceActiveFocus()
+        }
+    }
+    function ignoreRepeatedReturn(event) {
+        if (event.isAutoRepeat && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) event.accepted = true
+    }
     function mutationAccepted(id, kind, name, label) {
         submittedId = id; submittedKind = kind; submittedName = name; submittedLabel = label
         rejectionMessage = ""; rejectionDetail = ""
@@ -51,7 +69,7 @@ FerricModalSurface {
     }
     onFeedbackChanged: applyFeedback()
     onVisibleChanged: if (visible && profileList) profileList.positionViewAtBeginning()
-    Timer { id: renameFocusTimer; interval: 0; onTriggered: if (manager.visible && manager.renameName.length > 0) renameField.forceActiveFocus() }
+    Timer { id: renameFocusTimer; interval: 0; onTriggered: if (manager.interactive && manager.renameName.length > 0) renameField.forceActiveFocus() }
 
     visible: state.profileManagerVisible
     commandText: ":profiles"
@@ -60,6 +78,7 @@ FerricModalSurface {
     keyHelp: "tab/shift-tab controls  ·  enter activate  ·  esc close"
     dialogWidth: 720 * scale
     dialogHeight: 560 * scale
+    minimumBodyHeight: Math.max(100 * scale, formFont.height * 2 + 24 * scale)
     stackingOrder: 40
     initialFocusItem: createNameField
     onDismissRequested: closeRequested()
@@ -67,12 +86,6 @@ FerricModalSurface {
     ColumnLayout {
         anchors.fill: parent
         spacing: 8 * manager.scale
-        RowLayout {
-            Layout.fillWidth: true
-            Item { Layout.fillWidth: true }
-            Button { text: "Refresh"; enabled: !manager.listPending; onClicked: manager.refreshRequested() }
-            Button { text: "Close"; onClicked: manager.closeRequested() }
-        }
         FerricManagerList {
             id: profileList
             objectName: "profileList"
@@ -85,8 +98,17 @@ FerricModalSurface {
                 property alias nameInput: profileNameInput
                 property alias labelInput: profileLabelInput
                 property alias renameInput: profileRenameInput
+                property alias renameForm: profileRenameForm
+                property alias createButton: createProfileButton
                 width: profileList.width
                 spacing: 8 * manager.scale
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: childrenRect.height
+                    spacing: 6 * manager.scale
+                    FerricWrappingButton { objectName: "profileRefreshButton"; text: "Refresh"; enabled: !manager.listPending; onClicked: manager.refreshRequested() }
+                    FerricWrappingButton { objectName: "profileCloseButton"; text: "Close"; onClicked: manager.closeRequested() }
+                }
                 Label { Layout.fillWidth: true; text: "New profile"; color: manager.browserWindow.primaryTextColor; font.bold: true }
                 FerricTextField {
                     id: profileNameInput
@@ -95,6 +117,9 @@ FerricModalSurface {
                     placeholderText: "Profile name, e.g. work"
                     readOnly: manager.operationPending
                     Accessible.name: "New profile name"
+                    Keys.onPressed: function(event) { manager.ignoreRepeatedReturn(event) }
+                    onAccepted: if (manager.interactive && !manager.operationPending && text.trim().length > 0)
+                        profileLabelInput.forceActiveFocus(Qt.TabFocusReason)
                 }
                 FerricTextField {
                     id: profileLabelInput
@@ -103,14 +128,20 @@ FerricModalSurface {
                     placeholderText: "Display name"
                     readOnly: manager.operationPending
                     Accessible.name: "New profile display name"
+                    Keys.onPressed: function(event) { manager.ignoreRepeatedReturn(event) }
+                    onAccepted: if (manager.interactive && createProfileButton.enabled)
+                        manager.createRequested(profileNameInput.text, profileLabelInput.text)
                 }
-                Button {
+                FerricWrappingButton {
+                    id: createProfileButton
+                    Layout.maximumWidth: profileList.width
                     objectName: "profileCreateButton"
                     text: "Create profile"
                     enabled: !manager.operationPending && profileNameInput.text.trim().length > 0 && profileLabelInput.text.trim().length > 0
                     onClicked: manager.createRequested(profileNameInput.text, profileLabelInput.text)
                 }
                 ColumnLayout {
+                    id: profileRenameForm
                     objectName: "profileRenameForm"
                     Layout.fillWidth: true
                     visible: manager.renameName.length > 0
@@ -129,18 +160,22 @@ FerricModalSurface {
                         placeholderText: "New display name"
                         readOnly: manager.operationPending
                         Accessible.name: "New profile display name"
+                        Keys.onPressed: function(event) { manager.ignoreRepeatedReturn(event) }
+                        onAccepted: if (manager.interactive && saveRenameButton.enabled)
+                            manager.renameRequested(manager.renameName, text)
                     }
                     Flow {
                         Layout.fillWidth: true
                         Layout.preferredHeight: childrenRect.height
                         spacing: 6 * manager.scale
-                        Button {
+                        FerricWrappingButton {
+                            id: saveRenameButton
                             objectName: "profileRenameButton"
                             text: "Save name"
                             enabled: !manager.operationPending && profileRenameInput.text.trim().length > 0
                             onClicked: manager.renameRequested(manager.renameName, profileRenameInput.text)
                         }
-                        Button { text: "Cancel rename"; enabled: !manager.operationPending; onClicked: manager.clearRename() }
+                        FerricWrappingButton { text: "Cancel rename"; enabled: !manager.operationPending; onClicked: manager.clearRename() }
                     }
                 }
                 FerricManagerFeedback {
@@ -180,9 +215,15 @@ FerricModalSurface {
                     Layout.fillWidth: true
                     Layout.preferredHeight: childrenRect.height
                     spacing: 6 * manager.scale
-                    Button { text: "Open window"; onClicked: manager.openRequested(name, label) }
-                    Button { text: "Rename"; enabled: !manager.operationPending; onClicked: manager.beginRename(name, label) }
-                    Button { text: "Delete"; enabled: !manager.operationPending; onClicked: manager.deleteRequested(name) }
+                    FerricWrappingButton { text: "Open window"; onClicked: manager.openRequested(name, label) }
+                    FerricWrappingButton {
+                        id: renameAction
+                        objectName: "profileBeginRenameButton"
+                        text: "Rename"
+                        enabled: !manager.operationPending
+                        onClicked: manager.beginRename(name, label, renameAction)
+                    }
+                    FerricWrappingButton { text: "Delete"; enabled: !manager.operationPending; onClicked: manager.deleteRequested(name) }
                 }
             }
             footer: Label {

@@ -21,6 +21,15 @@ Item {
     property string noticeDetail: ""
     property bool noticeFailed: false
     property bool noticePending: false
+    property var settingRequest: null
+    property string noticeSource: ""
+    readonly property bool settingPending: !!browserUi && browserUi.setting_action_state === "pending"
+    onBrowserUiChanged: {
+        settingRequest = null
+        noticeSource = ""
+        if (surface) surface.clearSettingDrafts()
+        if (!browserUi) close()
+    }
     readonly property bool active: state.settingsVisible || state.pendingUserscriptRemoval.length > 0
     signal opening
     signal closed
@@ -30,6 +39,7 @@ Item {
     z: 76
 
     function show(search) {
+        if (!browserUi) return;
         if (!state.settingsVisible)
             opening();
         showNotice("");
@@ -37,7 +47,10 @@ Item {
             state.settingsSearch = String(search);
         refresh();
         var operation = browserUi.userscript_install_state || "idle";
-        if (["pending", "removing", "updating"].indexOf(operation) >= 0 || operation.indexOf("error:") === 0)
+        if (settingRequest) {
+            noticeSource = "setting";
+            applySettingFeedback();
+        } else if (["pending", "removing", "updating"].indexOf(operation) >= 0 || operation.indexOf("error:") === 0)
             applyScriptState(operation);
         state.settingsVisible = true;
         surface.focusInitialControl();
@@ -55,10 +68,12 @@ Item {
         noticePending = pending === true;
     }
     function refresh() {
+        if (!browserUi) return;
         browserUi.refresh_userscript_inventory();
         refreshSettings();
     }
     function refreshSettings() {
+        if (!browserUi) return;
         var query = (state.settingsSearch || "").trim().toLowerCase();
         var visibleRows = [];
         var rows = browserUi.settings_rows;
@@ -89,28 +104,60 @@ Item {
         return JSON.stringify(String(value));
     }
     function applySetting(row, value) {
-        if (!browserUi.set_runtime_setting(row.key, settingLiteral(row, value), state.settingsTemporary || transientProfile)) {
+        if (settingPending) return false;
+        var previousId = browserUi.setting_action_id || "";
+        var accepted = browserUi.set_runtime_setting(row.key, settingLiteral(row, value), state.settingsTemporary || transientProfile);
+        if (trackSettingRequest(previousId, row.key, value, false, undefined)) return accepted;
+        if (!accepted) {
             showNotice("Couldn't apply this value.", browserUi.runtime_setting_error, true);
             return false;
         }
-        showNotice("Change requested for " + row.key + (state.settingsTemporary || transientProfile ? " for this session" : " for this profile"));
+        showNotice("Change requested for " + row.key + (state.settingsTemporary || transientProfile ? " for this window and session" : " for all regular profiles in this setup"));
         refreshSettings();
         return true;
     }
     function resetSetting(row) {
-        if (!browserUi.unset_runtime_setting(row.key, state.settingsTemporary || transientProfile)) {
+        if (settingPending) return false;
+        var snapshot = surface.settingDraft(row.key);
+        var previousId = browserUi.setting_action_id || "";
+        var accepted = browserUi.unset_runtime_setting(row.key, state.settingsTemporary || transientProfile);
+        if (trackSettingRequest(previousId, row.key, undefined, true, snapshot)) return accepted;
+        if (!accepted) {
             showNotice("Couldn't reset this setting.", browserUi.runtime_setting_error, true);
             return false;
         }
         showNotice("Reset requested for " + row.key);
+        surface.discardSettingDraft(row.key);
         refreshSettings();
         return true;
+    }
+    function trackSettingRequest(previousId, key, value, reset, snapshot) {
+        var id = browserUi.setting_action_id || "";
+        if (!id || id === previousId) return false;
+        settingRequest = { id: id, key: key, value: value, reset: reset, snapshot: snapshot, settled: false };
+        noticeSource = "setting";
+        applySettingFeedback();
+        return true;
+    }
+    function applySettingFeedback() {
+        var request = settingRequest;
+        if (!request || !browserUi || request.id !== browserUi.setting_action_id) return;
+        var operation = browserUi.setting_action_state;
+        if (["pending", "succeeded", "failed"].indexOf(operation) < 0) return;
+        if (operation !== "pending" && !request.settled) {
+            settingRequest = Object.assign({}, request, { settled: true });
+            refreshSettings();
+            surface.finishSettingOperation(request.key, request.value, request.reset, request.snapshot, operation === "succeeded");
+        }
+        if (noticeSource === "setting")
+            showNotice(browserUi.setting_action_message, browserUi.setting_action_detail, operation === "failed", operation === "pending");
     }
     function scriptFailureDetail() {
         var operation = browserUi.userscript_install_state || "";
         return operation.indexOf("error:") === 0 ? operation.substring(6) : browserUi.status_text;
     }
     function installManifest(selected) {
+        noticeSource = "script";
         var path = browserUi.local_file_path(selected || "");
         if (!path) {
             showNotice("Choose a local userscript manifest.", "", true);
@@ -130,6 +177,7 @@ Item {
         removal.open();
     }
     function userscriptRows() {
+        if (!browserUi) return [];
         var names = browserUi.userscript_names;
         var enabled = browserUi.userscript_enabled_values;
         var pageWorld = browserUi.userscript_page_world_values;
@@ -149,6 +197,7 @@ Item {
         return rows;
     }
     function applyScriptState(operation) {
+        if (noticeSource === "setting") return;
         if (["pending", "removing", "updating"].indexOf(operation) >= 0) {
             showNotice(operation === "pending" ? "Installing userscript…" : operation === "removing" ? "Removing userscript…" : "Updating userscript…", "", false, true);
         } else if (["installed", "removed", "enabled", "disabled"].indexOf(operation) >= 0) {
@@ -165,8 +214,20 @@ Item {
 
     Connections {
         target: workspace.browserUi
+        function onSettings_rowsChanged() {
+            if (workspace.state.settingsVisible) workspace.refreshSettings();
+        }
+        function onSetting_action_stateChanged() { workspace.applySettingFeedback(); }
         function onUserscript_install_stateChanged() {
             workspace.applyScriptState(workspace.browserUi.userscript_install_state || "idle");
+        }
+        function onProfile_bootstrap_pendingChanged() {
+            if (workspace.browserUi.profile_bootstrap_pending) {
+                workspace.settingRequest = null;
+                workspace.noticeSource = "";
+                surface.clearSettingDrafts();
+                workspace.close();
+            }
         }
     }
     FerricSettingsModel {
@@ -184,13 +245,15 @@ Item {
         noticeDetail: workspace.noticeDetail
         noticeFailed: workspace.noticeFailed
         noticePending: workspace.noticePending
+        settingPending: workspace.settingPending
+        pendingSettingKey: workspace.settingPending && workspace.settingRequest ? workspace.settingRequest.key : ""
         transientProfile: workspace.transientProfile
         profileLabel: workspace.profileLabel
         spellcheckStatus: workspace.spellcheckStatus
         spellcheckDictionariesMissing: workspace.spellcheckDictionariesMissing
-        userscriptInventoryReady: workspace.browserUi.userscript_inventory_ready
-        userscriptInventoryPending: workspace.browserUi.userscript_inventory_pending
-        userscriptInventoryError: workspace.browserUi.userscript_inventory_error
+        userscriptInventoryReady: !!workspace.browserUi && workspace.browserUi.userscript_inventory_ready
+        userscriptInventoryPending: !!workspace.browserUi && workspace.browserUi.userscript_inventory_pending
+        userscriptInventoryError: workspace.browserUi ? workspace.browserUi.userscript_inventory_error : ""
         userscriptRows: workspace.userscriptRows()
         settingsModel: settingsModel
         onCloseRequested: workspace.close()
@@ -198,13 +261,15 @@ Item {
         onInstallUserscriptRequested: workspace.installManifestRequested()
         onTemporaryChangeRequested: function (temporary) {
             workspace.state.settingsTemporary = temporary;
-            workspace.showNotice(temporary ? "Changes apply only to this window and session" : "Changes will be saved for this profile");
+            if (!workspace.settingPending)
+                workspace.showNotice(temporary ? "Changes apply only to this window and session" : "Changes will be saved for all regular profiles in this setup");
         }
         onSearchChanged: function (text) {
             workspace.state.settingsSearch = text;
             workspace.refreshSettings();
         }
         onUserscriptEnabledRequested: function (name, enabled) {
+            workspace.noticeSource = "script";
             var accepted = workspace.browserUi.set_userscript_enabled(name, enabled);
             surface.setUserscriptEnabled(name, accepted ? enabled : !enabled);
             if (accepted)
@@ -216,7 +281,8 @@ Item {
             workspace.confirmRemoveUserscript(name);
         }
         onSettingApplyRequested: function (row, value) {
-            workspace.applySetting(row, value);
+            var accepted = workspace.applySetting(row, value);
+            surface.finishSettingRequest(row.key, value, accepted);
         }
         onSettingResetRequested: function (row) {
             workspace.resetSetting(row);
@@ -228,6 +294,7 @@ Item {
         hostWindow: workspace.hostWindow
         scriptName: workspace.state.pendingUserscriptRemoval
         onConfirmed: {
+            workspace.noticeSource = "script";
             var name = workspace.state.pendingUserscriptRemoval;
             workspace.state.pendingUserscriptRemoval = "";
             if (workspace.browserUi.remove_userscript(name))

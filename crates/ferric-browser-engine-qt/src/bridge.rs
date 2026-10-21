@@ -77,6 +77,10 @@ pub(crate) mod qobject {
         #[qproperty(u64, content_history_revision)]
         #[qproperty(QString, start_page_view)]
         #[qproperty(QString, start_page_error)]
+        #[qproperty(QString, favourite_action_id)]
+        #[qproperty(QString, favourite_action_state)]
+        #[qproperty(QString, favourite_action_message)]
+        #[qproperty(QString, favourite_action_detail)]
         #[qproperty(bool, start_page_busy)]
         #[qproperty(u64, start_page_revision)]
         #[qproperty(u64, start_page_rank_revision)]
@@ -278,6 +282,10 @@ pub(crate) mod qobject {
         #[qproperty(QString, selector_validation_request)]
         #[qproperty(QVariant, settings_rows)]
         #[qproperty(QString, runtime_setting_error)]
+        #[qproperty(QString, setting_action_id)]
+        #[qproperty(QString, setting_action_state)]
+        #[qproperty(QString, setting_action_message)]
+        #[qproperty(QString, setting_action_detail)]
         #[qproperty(QString, chrome_font_family)]
         #[qproperty(f64, chrome_font_size_pt)]
         #[qproperty(QString, chrome_statusbar_mode)]
@@ -401,6 +409,14 @@ pub(crate) mod qobject {
             slot: i32,
             value: &QString,
             title: &QString,
+        ) -> bool;
+        #[qinvokable]
+        fn save_favourite(
+            self: Pin<&mut BrowserUi>,
+            slot: i32,
+            url: &QString,
+            title: &QString,
+            bookmark_id: &QString,
         ) -> bool;
         #[qinvokable]
         fn refresh_guide(self: Pin<&mut BrowserUi>, search: &QString);

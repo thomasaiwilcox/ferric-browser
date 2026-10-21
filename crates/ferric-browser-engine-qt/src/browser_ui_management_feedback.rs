@@ -10,6 +10,8 @@ pub(super) enum FeedbackLane {
     SessionDelete,
     Mark,
     BookmarkTransfer,
+    Setting,
+    Favourite,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -37,6 +39,8 @@ impl qobject::BrowserUi {
                 FeedbackLane::SessionDelete => self.as_ref().rust().session_delete_id.clone(),
                 FeedbackLane::Mark => self.as_ref().rust().mark_action_id.clone(),
                 FeedbackLane::BookmarkTransfer => self.as_ref().rust().bookmark_transfer_id.clone(),
+                FeedbackLane::Setting => self.as_ref().rust().setting_action_id.clone(),
+                FeedbackLane::Favourite => self.as_ref().rust().favourite_action_id.clone(),
             },
         };
         let state = QString::from(match state {
@@ -79,6 +83,18 @@ impl qobject::BrowserUi {
                 self.as_mut().set_bookmark_transfer_detail(detail);
                 self.as_mut().set_bookmark_transfer_state(state);
             }
+            FeedbackLane::Setting => {
+                self.as_mut().set_setting_action_id(id);
+                self.as_mut().set_setting_action_message(message);
+                self.as_mut().set_setting_action_detail(detail);
+                self.as_mut().set_setting_action_state(state);
+            }
+            FeedbackLane::Favourite => {
+                self.as_mut().set_favourite_action_id(id);
+                self.as_mut().set_favourite_action_message(message);
+                self.as_mut().set_favourite_action_detail(detail);
+                self.as_mut().set_favourite_action_state(state);
+            }
         }
     }
 
@@ -96,6 +112,8 @@ impl qobject::BrowserUi {
             FeedbackLane::SessionDelete,
             FeedbackLane::Mark,
             FeedbackLane::BookmarkTransfer,
+            FeedbackLane::Setting,
+            FeedbackLane::Favourite,
         ] {
             self.as_mut()
                 .publish_management_feedback(lane, FeedbackState::Idle, "", "");

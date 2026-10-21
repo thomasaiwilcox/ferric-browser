@@ -33,8 +33,9 @@ ColumnLayout {
             Accessible.name: text
         }
     }
-    Button {
+    FerricWrappingButton {
         id: detailsButton
+        Layout.maximumWidth: feedback.width
         objectName: "managerFeedbackDetailsButton"
         visible: feedback.detail.length > 0
         text: checked ? "Hide details" : "Show details"
