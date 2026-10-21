@@ -1239,10 +1239,11 @@ class SwitcherTests final : public QObject {
         const auto type = [host](const QString &value) { for (const auto character : value.toUtf8()) QTest::keyClick(host, character); };
         const auto present = [host] { QSignalSpy frame(host, &QQuickWindow::frameSwapped);host->update();QTRY_VERIFY(!frame.isEmpty()); };
         submitAt(host, ui, "start-page-view favourites");
+        QTRY_COMPARE(evaluate(ui + ".start_page_view").toString(), QString("favourites"));
         QTRY_VERIFY(evaluate(ui + ".start_page_ready && !" + ui + ".start_page_busy").toBool());
         for (int index = 0; index < 3; ++index) {
-            QVERIFY(evaluate(ui + ".save_favourite(" + QString::number(index + 1) + "," + quoted(addresses[index])
-                + "," + quoted("Original " + QString(QChar('A' + index))) + ",\"\")").toBool());
+            QVERIFY2(evaluate(ui + ".save_favourite(" + QString::number(index + 1) + "," + quoted(addresses[index])
+                + "," + quoted("Original " + QString(QChar('A' + index))) + ",\"\")").toBool(), qPrintable(evaluate(ui + ".start_page_error").toString()));
             QTRY_COMPARE(evaluate(ui + ".favourite_action_state").toString(), QString("succeeded"));
         }
         if (!privateProfile) {

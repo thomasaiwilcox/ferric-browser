@@ -4118,8 +4118,20 @@ void ApplicationTests::productPolishWindowSettings() {
     QVERIFY(workspace->setProperty("settingsSearch", "ui.font_size_pt"));
     engine->rootContext()->setContextProperty("settingsWorkspaceUnderTest", workspace);
     evaluate("settingsWorkspaceUnderTest.refreshSettings()");
-    QPointer<QQuickItem> editor = findVisualItem(child->contentItem(), "settingTextEditor");
-    QTRY_VERIFY((editor = findVisualItem(child->contentItem(), "settingTextEditor")));
+    auto settingsList = findVisualItem(child->contentItem(), "settingsList");
+    QVERIFY(settingsList);
+    QTRY_COMPARE(settingsList->property("count").toInt(), 1);
+    // Removed delegates can remain in the visual tree until deferred deletion.
+    // Select the filtered model row, rather than the first named descendant.
+    const auto filteredEditor = [settingsList]() -> QQuickItem * {
+        QQuickItem *row = nullptr;
+        QMetaObject::invokeMethod(settingsList, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, row), Q_ARG(int, 0));
+        return row ? findVisualItem(row, "settingTextEditor") : nullptr;
+    };
+    QPointer<QQuickItem> editor;
+    QTRY_VERIFY((editor = filteredEditor()) && editor->isVisible());
+    QCOMPARE(QQmlExpression(qmlContext(editor), editor, "settingRow.rowData.key").evaluate().toString(),
+        QString("ui.font_size_pt"));
     QVERIFY(workspace->setProperty("settingsTemporary", true));
     QVERIFY(editor->setProperty("text", "14"));
     QVERIFY(QMetaObject::invokeMethod(editor, "accepted"));
@@ -4129,7 +4141,7 @@ void ApplicationTests::productPolishWindowSettings() {
     QTRY_COMPARE(child->property("font").value<QFont>().pointSizeF(), 14.0);
     // Validation errors must retain the edit without exposing the raw error as
     // the primary message or applying it to either window.
-    editor = findVisualItem(child->contentItem(), "settingTextEditor");
+    editor = filteredEditor();
     QVERIFY(editor);
     child->resize(640, 480);
     child->requestActivate();
