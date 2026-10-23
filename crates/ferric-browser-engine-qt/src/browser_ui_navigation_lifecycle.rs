@@ -33,6 +33,9 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         ) {
             self.as_mut().note_navigation_started(target, &started_url);
+            let _ = self
+                .as_mut()
+                .reduce_event(Event::NavigationStarted { target });
         }
         self.as_mut().clear_navigation_failure();
         self.as_mut()
@@ -82,6 +85,9 @@ impl qobject::BrowserUi {
         let started_url = url.to_string();
         if let Some(target) = self.as_ref().get_ref().target_for_index(index) {
             self.as_mut().note_navigation_started(target, &started_url);
+            let _ = self
+                .as_mut()
+                .reduce_event(Event::NavigationStarted { target });
         }
         self.as_mut().clear_focus_observation_state(index);
         if index == self.as_ref().rust().active_tab_index
@@ -523,30 +529,34 @@ impl qobject::BrowserUi {
                 was_traversal,
                 redirect_observed,
             );
-            let commit_event = journey_transition.map_or_else(
-                || Event::CommitNavigation {
-                    target,
-                    url: parsed.clone(),
-                    title: title.clone(),
-                },
-                |(transition, source)| Event::CommitNavigationWithTransition {
-                    target,
-                    url: parsed.clone(),
-                    title: title.clone(),
-                    transition,
-                    source: Some(source),
-                    parent: journey_parent,
-                },
+            let index = self.as_ref().rust().active_tab_index;
+            let visit = was_traversal
+                .then(|| self.as_ref().content_journey_visit(index, &canonical_url))
+                .flatten();
+            let (transition, source) = journey_transition.map_or(
+                (ferric_browser_core::JourneyEdgeKind::Navigate, None),
+                |(transition, source)| (transition, Some(source)),
             );
+            let commit_event = Event::CommitNavigationAtVisit {
+                target,
+                url: parsed.clone(),
+                title: title.clone(),
+                visit,
+                transition,
+                source,
+                parent: journey_parent,
+            };
             let committed = self.as_mut().reduce_event(commit_event).is_ok();
             if committed {
+                let reused = self.as_ref().content_journey_reused(target.tab, visit);
                 self.as_mut().record_committed_visit(
                     target.tab,
                     &canonical_url,
                     &title,
-                    was_traversal,
+                    reused,
                     journey_parent,
                 );
+                self.as_mut().bind_content_journey(index, &canonical_url);
             }
         }
         self.as_mut()
@@ -591,30 +601,33 @@ impl qobject::BrowserUi {
                 was_traversal,
                 redirect_observed,
             );
-            let commit_event = journey_transition.map_or_else(
-                || Event::CommitNavigation {
-                    target,
-                    url: parsed.clone(),
-                    title: title.clone(),
-                },
-                |(transition, source)| Event::CommitNavigationWithTransition {
-                    target,
-                    url: parsed.clone(),
-                    title: title.clone(),
-                    transition,
-                    source: Some(source),
-                    parent: journey_parent,
-                },
+            let visit = was_traversal
+                .then(|| self.as_ref().content_journey_visit(index, &canonical_url))
+                .flatten();
+            let (transition, source) = journey_transition.map_or(
+                (ferric_browser_core::JourneyEdgeKind::Navigate, None),
+                |(transition, source)| (transition, Some(source)),
             );
+            let commit_event = Event::CommitNavigationAtVisit {
+                target,
+                url: parsed.clone(),
+                title: title.clone(),
+                visit,
+                transition,
+                source,
+                parent: journey_parent,
+            };
             let committed = self.as_mut().reduce_event(commit_event).is_ok();
             if committed {
+                let reused = self.as_ref().content_journey_reused(target.tab, visit);
                 self.as_mut().record_committed_visit(
                     target.tab,
                     &canonical_url,
                     &title,
-                    was_traversal,
+                    reused,
                     journey_parent,
                 );
+                self.as_mut().bind_content_journey(index, &canonical_url);
             }
         }
         if index == self.as_ref().rust().active_tab_index {
@@ -701,8 +714,7 @@ impl qobject::BrowserUi {
             this.navigation.pending_journey_parent = None;
             this.navigation.pending_journey_mappings.clear();
             this.pending_history_clear = None;
-            this.navigation.pending_journey_traversal = None;
-            this.navigation.pending_journey_traversals.clear();
+            this.navigation.engine_navigation_kinds.clear();
             this.navigation.pending_journey_reopen = None;
             this.navigation.pending_navigation_urls.clear();
             this.navigation.page_document_identities.clear();
@@ -846,8 +858,7 @@ impl qobject::BrowserUi {
                 let this = rust.as_mut().get_mut();
                 this.pending_engine_action = None;
                 this.pending_engine_actions.clear();
-                this.navigation.pending_journey_traversal = None;
-                this.navigation.pending_journey_traversals.clear();
+                this.navigation.engine_navigation_kinds.clear();
             }
         }
         let closed = {
@@ -866,9 +877,34 @@ impl qobject::BrowserUi {
                     profile: profile.label.clone(),
                     private: profile.privacy.is_transient(),
                     closed_at: unix_timestamp(),
+                    group_index: state.windows().get(&tab_state.window).map(|window| {
+                        window
+                            .tabs
+                            .iter()
+                            .take_while(|id| **id != tab)
+                            .filter(|id| {
+                                state.tabs().get(*id).is_some_and(|candidate| {
+                                    candidate.pinned == tab_state.pinned
+                                        && candidate.existence == super::ExistenceState::Live
+                                })
+                            })
+                            .count()
+                    }),
+                    pinned: tab_state.pinned,
+                    muted: tab_state.muted,
+                    zoom_hundredths: ((tab_state.zoom * 100.0).round() as u32).clamp(25, 500),
                 })
             })
         };
+        let creates_fallback = self.as_ref().rust().state.as_ref().is_some_and(|state| {
+            state.tabs().get(&tab).is_some_and(|closing| {
+                Some(closing.window) == self.as_ref().rust().window
+                    && state
+                        .windows()
+                        .get(&closing.window)
+                        .is_some_and(|window| window.tabs == [tab])
+            })
+        });
         if let Err(error) = self
             .as_mut()
             .reduce_event(Event::ViewClosed { tab, generation })
@@ -909,6 +945,11 @@ impl qobject::BrowserUi {
                 && !this.tab_ids.contains(&active_tab)
             {
                 this.tab_ids.push(active_tab);
+            }
+            if creates_fallback {
+                this.undo_fallback =
+                    active_tab.and_then(|tab| current_target(this.state.as_ref(), Some(tab)));
+                this.undo_fallback_ready = false;
             }
             i32::try_from(this.tab_ids.len()).unwrap_or(i32::MAX)
         };

@@ -567,6 +567,79 @@ mod tests {
     }
 
     #[test]
+    fn native_navigation_start_observes_loading_without_an_engine_request() {
+        let (mut runtime, window, tab) = runtime_with_tab();
+        let target = runtime.state.capture_target(tab).unwrap();
+        let effects = runtime
+            .handle(RuntimeInput::EngineFact(Event::NavigationStarted {
+                target,
+            }))
+            .unwrap();
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, RuntimeEffect::Engine(_)))
+        );
+        let observation = effects
+            .iter()
+            .find_map(|effect| match effect {
+                RuntimeEffect::Observed(observation) => Some(observation),
+                _ => None,
+            })
+            .expect("native start observation");
+        assert_eq!(observation.window, Some(window));
+        let observed = observation.tab.as_ref().unwrap();
+        assert_eq!(observed.id, tab);
+        assert_eq!(
+            observed.loading,
+            ferric_browser_core::LoadingState::Provisional
+        );
+        assert_eq!(runtime.state.capture_target(tab), Some(target));
+    }
+
+    #[test]
+    fn stopped_navigation_observation_retains_its_tab_and_loading_fact() {
+        let (mut runtime, window, tab) = runtime_with_tab();
+        let target = runtime.state.capture_target(tab).unwrap();
+        let effects = runtime
+            .handle(RuntimeInput::Lifecycle(Event::CancelNavigation { target }))
+            .unwrap();
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, RuntimeEffect::Engine(_)))
+        );
+        let observation = effects
+            .iter()
+            .find_map(|effect| match effect {
+                RuntimeEffect::Observed(observation) => Some(observation),
+                _ => None,
+            })
+            .expect("stopped observation");
+        assert_eq!(observation.window, Some(window));
+        let observed = observation.tab.as_ref().expect("stopped tab");
+        assert_eq!(observed.id, tab);
+        assert_eq!(
+            observed.loading,
+            ferric_browser_core::LoadingState::Cancelled
+        );
+        runtime
+            .handle(RuntimeInput::Lifecycle(Event::Reload {
+                target,
+                bypass_cache: false,
+            }))
+            .unwrap();
+        assert_eq!(
+            observation.tab.as_ref().unwrap().loading,
+            ferric_browser_core::LoadingState::Cancelled
+        );
+        assert_eq!(
+            runtime.state.tabs()[&tab].loading,
+            ferric_browser_core::LoadingState::Provisional
+        );
+    }
+
+    #[test]
     fn navigation_open_close_and_modes_share_the_runtime_boundary() {
         let (mut runtime, window, tab) = runtime_with_tab();
         let target = runtime.state.capture_target(tab).expect("target");

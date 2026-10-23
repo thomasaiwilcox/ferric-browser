@@ -92,7 +92,9 @@ the section filter narrows the index. Arrows/jk browse entries. Enter, Space,
 or Right/l moves keyboard focus into the article; j/k and arrows then scroll,
 Space pages down, Shift+Space pages up, and PgUp/PgDn scroll by a page. Left/h
 or Escape returns focus to the index, keeping the article visible on wide
-windows. On narrow windows, one click or Enter opens a full-width article;
+windows. Press `/` from the index or reader to search again; the existing query
+is selected so you can replace it. On narrow windows this also reveals the
+search field. One click or Enter opens a full-width article in narrow windows;
 All features returns to the selected entry in the index. Entries describe
 the feature, complete configured invocation (including arguments and command
 chains), syntax, examples, count

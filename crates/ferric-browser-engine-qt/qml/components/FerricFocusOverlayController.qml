@@ -9,6 +9,15 @@ QtObject {
     property var modeFocusReturnTarget: null
     property bool modeFocusCaptured: false
     property var pendingModeFocusTarget: null
+    property bool followTabFocus: false
+    readonly property var activeView: followTabFocus ? browserWindow.activeWebView() : null
+    readonly property string activeNativeUrl: activeView ? String(activeView.nativeUrl || "") : ""
+    onActiveViewChanged: pageTimer.restart()
+    onActiveNativeUrlChanged: pageTimer.restart()
+    property Timer pageTimer: Timer {
+        interval: 0
+        onTriggered: controller.applyPageFocus()
+    }
     property Timer overlayTimer: Timer {
         interval: 0
         onTriggered: controller.applyOverlayFocus()
@@ -25,6 +34,28 @@ QtObject {
     function focusPermitted(hostWindow, target) {
         var scope = hostWindow ? hostWindow.modalInputScope : null
         return !scope || scope.allowsFocus(target)
+    }
+    function contentFocusTarget(target) {
+        if (!target || target.nativeUrl === undefined || target.nativeUrl.length > 0
+                || typeof target.nextItemInFocusChain !== "function") return target
+        // WebEngine is a focus scope. Returning to its parent can leave the
+        // document unfocused after native controls owned that scope.
+        var next = target.nextItemInFocusChain(true)
+        if (!focusTargetAvailable(next)) return target
+        for (var parent = next; parent; parent = parent.parent) {
+            if (parent === target) return next
+        }
+        return target
+    }
+    function applyPageFocus() {
+        // Tab identity can change before the layout hides the old renderer.
+        // Resolve the current page after that change, while keeping editors
+        // and browser surfaces in charge of their own input.
+        if (!followTabFocus || browserWindow.runtimeDisposing === true || browserWindow.runtimeReleased === true
+                || browserWindow.browserKeyFocusActive === false
+                || focusReturnStack.some(function(entry) { return entry.host === browserWindow })) return
+        var view = activeView
+        if (focusTargetAvailable(view) && focusPermitted(browserWindow, view)) contentFocusTarget(view).forceActiveFocus()
     }
     function captureOverlayFocus(hostWindow, fallbackTarget, previousTarget) {
         if (browserWindow.runtimeDisposing === true) return
@@ -81,16 +112,17 @@ QtObject {
         for (var i = 0; i < pending.length; ++i) {
             var entry = pending[i]
             if (!entry.host || entry.host.runtimeReleased === true) continue
-            if (focusTargetAvailable(entry.target) && focusPermitted(entry.host, entry.target)) entry.target.forceActiveFocus()
-            else if (focusTargetAvailable(entry.fallback) && focusPermitted(entry.host, entry.fallback)) entry.fallback.forceActiveFocus()
-            else if (entry.host === browserWindow) {
-                var view = browserWindow.activeWebView()
-                if (focusTargetAvailable(view) && focusPermitted(entry.host, view)) view.forceActiveFocus()
+            if (focusTargetAvailable(entry.target) && focusPermitted(entry.host, entry.target)) contentFocusTarget(entry.target).forceActiveFocus()
+            else if (focusTargetAvailable(entry.fallback) && focusPermitted(entry.host, entry.fallback)) contentFocusTarget(entry.fallback).forceActiveFocus()
+            else if (typeof entry.host.activeWebView === "function") {
+                var view = entry.host.activeWebView()
+                if (focusTargetAvailable(view) && focusPermitted(entry.host, view)) contentFocusTarget(view).forceActiveFocus()
             }
         }
     }
     function captureModeFocus() {
-        if (modeFocusCaptured || browserWindow.runtimeDisposing === true) return
+        if (modeFocusCaptured || browserWindow.runtimeDisposing === true
+                || browserWindow.runtimeReleased === true) return
         var target = browserWindow.activeFocusItem
         if (!focusTargetAvailable(target)) target = browserWindow.activeWebView()
         modeFocusReturnTarget = target
@@ -100,16 +132,16 @@ QtObject {
         pendingModeFocusTarget = modeFocusCaptured ? modeFocusReturnTarget : browserWindow.activeWebView()
         modeFocusReturnTarget = null
         modeFocusCaptured = false
-        if (browserWindow.runtimeDisposing !== true) modeTimer.restart()
+        if (browserWindow.runtimeDisposing !== true && browserWindow.runtimeReleased !== true) modeTimer.restart()
     }
     function applyModeFocus() {
         var target = pendingModeFocusTarget
         pendingModeFocusTarget = null
         // A command can open a modal immediately before leaving command mode.
-        if (browserWindow.runtimeDisposing === true
+        if (browserWindow.runtimeDisposing === true || browserWindow.runtimeReleased === true
                 || (browserWindow.modalInputScope && browserWindow.modalInputScope.activeSurface)
                 || focusReturnStack.some(function(entry) { return entry.host === browserWindow })) return
-        if (focusTargetAvailable(target)) target.forceActiveFocus()
+        if (focusTargetAvailable(target)) contentFocusTarget(target).forceActiveFocus()
         else {
             var view = browserWindow.activeWebView()
             if (focusTargetAvailable(view)) view.forceActiveFocus()

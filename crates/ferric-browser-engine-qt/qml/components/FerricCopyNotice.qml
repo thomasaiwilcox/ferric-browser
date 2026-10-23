@@ -23,10 +23,12 @@ Rectangle {
 
     anchors.horizontalCenter: parent.horizontalCenter
     anchors.bottom: parent.bottom
-    anchors.bottomMargin: 8
+    readonly property real bottomChromeInset: Number((parent === hostWindow.contentItem
+        ? hostWindow.bottomChromeHeight : hostWindow.bottomControlsHeight) || 0)
+    anchors.bottomMargin: bottomChromeInset + 8
     width: Math.min(Math.max(0, parent.width - 24), 720 * spacingScale)
     readonly property real minimumActionHeight: Math.ceil(Math.max(copyAgain.implicitHeight, dismiss.implicitHeight) + 2 * padding)
-    readonly property real maximumHeight: Math.min(Math.max(1, parent.height - 16), Math.max(parent.height * 0.4, minimumActionHeight))
+    readonly property real maximumHeight: Math.min(Math.max(1, parent.height - bottomChromeInset - 16), Math.max(parent.height * 0.4, minimumActionHeight))
     height: Math.min(maximumHeight, Math.ceil(copyContent.implicitHeight + 2 * padding))
     z: 35
     visible: noticeVisible

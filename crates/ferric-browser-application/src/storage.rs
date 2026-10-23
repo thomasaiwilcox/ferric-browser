@@ -121,8 +121,19 @@ impl StorageCoordinator {
         command: StorageCommand,
         observation: Option<StorageObservation>,
     ) -> Result<StorageTicket, StorageWorkerError> {
+        if self.worker.is_none() {
+            return Err(StorageWorkerError::Stopped);
+        }
+        command.validate()?;
         let ticket = self.next_ticket();
-        let result = match self.submit_now(ticket, command.clone()) {
+        // A newly available operation must not overtake the existing backlog.
+        // Pointer writes may depend on nodes queued by an earlier navigation.
+        let submission = if self.pending.is_empty() {
+            self.submit_now(ticket, command.clone())
+        } else {
+            Err(StorageWorkerError::Busy)
+        };
+        let result = match submission {
             Ok(()) => Ok(ticket),
             Err(StorageWorkerError::Busy | StorageWorkerError::QueueFull) => {
                 if self.pending.len() >= MAX_PENDING_REQUESTS {
@@ -265,5 +276,79 @@ impl StorageCoordinator {
         worker.try_submit(command)?;
         self.active.insert(operation, ticket);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ferric_browser_storage::{JourneyWrite, ProfileStore, StoreMode};
+    use uuid::Uuid;
+
+    #[test]
+    fn a_new_journey_pointer_waits_for_already_queued_visits() {
+        let root = std::env::temp_dir().join(format!("ferric-storage-order-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("profile.sqlite3");
+        let mut storage = StorageCoordinator::default();
+        storage.replace(Some(&path)).unwrap();
+        // This backlog can remain after another operation has completed.
+        // Both visits precede the user's request to return to the first one.
+        for (id, timestamp) in [("older", 1), ("newer", 2)] {
+            let ticket = storage.next_ticket();
+            storage.pending.push_back(ScheduledRequest {
+                ticket,
+                command: StorageCommand::JourneyWrite {
+                    write: JourneyWrite::RecordNode {
+                        id: id.into(),
+                        profile_id: "profile".into(),
+                        tab_id: "tab".into(),
+                        url: "https://example.test/same".into(),
+                        title: id.into(),
+                        committed_at: timestamp,
+                        transition: "navigate".into(),
+                        source: None,
+                        retention_before: None,
+                        parent_id: None,
+                    },
+                },
+            });
+        }
+        assert!(matches!(
+            storage.submit(StorageCommand::Library { limit: 0 }, None),
+            Err(StorageWorkerError::InvalidLimit)
+        ));
+        storage
+            .submit(
+                StorageCommand::JourneyWrite {
+                    write: JourneyWrite::SetCurrentById {
+                        tab_id: "tab".into(),
+                        node_id: "older".into(),
+                    },
+                },
+                None,
+            )
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut effects = Vec::new();
+        while effects.len() < 3 {
+            effects.extend(storage.poll());
+            assert!(Instant::now() < deadline, "{effects:?}");
+            thread::sleep(Duration::from_millis(2));
+        }
+        storage.close();
+        let store = ProfileStore::open(&path, StoreMode::Normal).unwrap();
+        assert_eq!(
+            store.current_journey_node("tab").unwrap().as_deref(),
+            Some("older")
+        );
+        assert!(
+            effects.iter().all(|effect| matches!(
+                effect.completion,
+                StorageCompletion::JourneyWrite(Ok(true))
+            ))
+        );
+        drop(store);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

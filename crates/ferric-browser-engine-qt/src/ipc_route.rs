@@ -54,13 +54,18 @@ pub(super) fn typed_ipc_route(envelope: &CommandEnvelope) -> Result<IpcRoute, St
         match arguments
             .and_then(|arguments| arguments.get("target"))
             .and_then(Value::as_str)
-            .unwrap_or("tab")
+            .unwrap_or("current")
         {
+            "current" => IpcOpenTarget::Current,
             "tab" => IpcOpenTarget::Tab,
             "tab-bg" => IpcOpenTarget::BackgroundTab,
             "window" => IpcOpenTarget::Window,
             "private-window" => IpcOpenTarget::PrivateWindow,
-            _ => return Err("open target must be tab, tab-bg, window, or private-window".into()),
+            _ => {
+                return Err(
+                    "open target must be current, tab, tab-bg, window, or private-window".into(),
+                );
+            }
         }
     } else if command == "tab-open" {
         if profile.is_some() || context_name.is_some() {

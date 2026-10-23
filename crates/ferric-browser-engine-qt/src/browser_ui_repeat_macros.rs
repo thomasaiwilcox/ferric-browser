@@ -5,7 +5,7 @@ use super::{
     is_repeatable_command, macro_status_text, qobject, userscript_action_values,
     valid_macro_register,
 };
-use crate::OperationUpdate;
+use crate::{IpcRoute, OperationUpdate, RepeatableCommand};
 
 impl qobject::BrowserUi {
     pub(super) fn show_action_list(
@@ -92,21 +92,35 @@ impl qobject::BrowserUi {
         Ok(actions)
     }
 
-    pub(super) fn note_repeatable_command(mut self: Pin<&mut Self>, command: &ParsedCommand) {
+    pub(super) fn note_repeatable_command(self: Pin<&mut Self>, command: &ParsedCommand) {
+        self.note_repeatable_invocation(command, None, 1);
+    }
+
+    pub(super) fn note_repeatable_invocation(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        route: Option<&IpcRoute>,
+        count: u32,
+    ) {
         if !is_repeatable_command(&command.name) {
             return;
         }
         let mut recording_limit_reached = false;
+        let recorded = RepeatableCommand {
+            command: command.clone(),
+            count,
+            route: route.cloned(),
+        };
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.last_repeatable = Some(command.clone());
+            this.last_repeatable = Some(recorded.clone());
             if let Some((_, commands)) = this.recording_macro.as_mut() {
                 if commands.len() >= MAX_MACRO_COMMANDS {
                     this.recording_macro = None;
                     recording_limit_reached = true;
                 } else {
-                    commands.push(command.clone());
+                    commands.push(recorded);
                 }
             }
         }
@@ -142,7 +156,56 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("No eligible command to repeat"));
             return false;
         };
-        self.execute_parsed_commands(std::iter::repeat_n(last, count).collect())
+        self.execute_recorded_commands(std::iter::repeat_n(last, count).collect())
+    }
+
+    fn execute_recorded_commands(
+        mut self: Pin<&mut Self>,
+        commands: Vec<RepeatableCommand>,
+    ) -> bool {
+        let chained = commands.len() > 1;
+        for (index, recorded) in commands.into_iter().enumerate() {
+            if index > 0 {
+                self.as_mut().queue_pending_engine_action();
+            }
+            if let Some(route) = recorded.route {
+                if !self.as_mut().admit_macro_command() {
+                    return false;
+                }
+                if let Err(error) = self.as_mut().execute_ipc_command(recorded.command, &route) {
+                    self.set_status_text(QString::from(error));
+                    return false;
+                }
+            } else if !self
+                .as_mut()
+                .execute_counted_parsed_commands(vec![recorded.command], recorded.count)
+            {
+                return false;
+            }
+        }
+        if chained {
+            self.as_mut().queue_pending_engine_action();
+        }
+        true
+    }
+
+    pub(super) fn admit_macro_command(mut self: Pin<&mut Self>) -> bool {
+        if self.as_ref().rust().macro_depth == 0 {
+            return true;
+        }
+        let expanded = self.as_ref().rust().macro_expanded_commands;
+        if expanded >= MAX_MACRO_COMMANDS {
+            self.set_status_text(QString::from(
+                "Macro expansion stopped at the 1000-command limit",
+            ));
+            return false;
+        }
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .macro_expanded_commands = expanded + 1;
+        true
     }
 
     pub(super) fn execute_macro_command(mut self: Pin<&mut Self>, command: &ParsedCommand) -> bool {
@@ -225,7 +288,7 @@ impl qobject::BrowserUi {
                         .macro_expanded_commands = 0;
                 }
                 self.as_mut().rust_mut().as_mut().get_mut().macro_depth += 1;
-                let result = self.as_mut().execute_parsed_commands(commands);
+                let result = self.as_mut().execute_recorded_commands(commands);
                 self.as_mut().rust_mut().as_mut().get_mut().macro_depth -= 1;
                 if outermost {
                     self.as_mut()

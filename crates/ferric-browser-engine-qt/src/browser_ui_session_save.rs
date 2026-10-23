@@ -78,8 +78,15 @@ impl qobject::BrowserUi {
                 url: closed.url.clone(),
                 title: closed.title.clone(),
                 closed_at: closed.closed_at,
+                group_index: closed.group_index,
+                pinned: closed.pinned,
+                muted: closed.muted,
+                zoom_hundredths: closed.zoom_hundredths,
             })
             .collect();
+        snapshot
+            .recovered_session_ids
+            .clone_from(&rust.recovered_session_ids);
         Some((path, snapshot))
     }
 

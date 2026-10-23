@@ -470,7 +470,6 @@ impl qobject::BrowserUi {
                 .map_err(|error| error.to_string())?;
             self.as_mut().set_pending_engine_action(&effects);
         }
-        self.as_mut().set_search_backward(backward);
         self.as_mut().set_status_text(QString::from(format!(
             "Search {} match{}",
             if backward { "backward" } else { "forward" },

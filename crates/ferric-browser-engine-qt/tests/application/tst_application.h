@@ -29,18 +29,59 @@ class ApplicationTests final : public QObject {
     void interactiveCommand(const QString &value);
     void prepareActionSelection();
     static QString quoted(const QString &value);
+    void restartRecoveryFixture(const QString &url, const QString &checkpointPath = {},
+                                const QByteArray &checkpointBytes = {});
     QVariant page(const QString &source, int world = 0);
     void typeText(const QString &text);
     QString hintLabel(const QString &name, const QString &ownerUi = QStringLiteral("testWindow.browserUi"));
     bool chooseCapability(const QString &name, QQuickWindow *ownerWindow = nullptr);
     void key(int value, Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+    void preparePageSearchHost(const QString &kind, QString &owner, QString &ui,
+                               QQuickWindow *&host);
 
   public:
     Q_INVOKABLE void accept(const QVariant &value);
     Q_INVOKABLE void frameOperationComplete(const QVariant &value);
   private slots:
+    void repeatWindowRouting();
+    void repeatKeyboardCount_data();
+    void repeatKeyboardCount();
+    void repeatAdmission_data();
+    void repeatAdmission();
+    void repeatCommonCommands_data();
+    void repeatCommonCommands();
+    void productPolishOpenTargets_data();
+    void productPolishOpenTargets();
+    void productPolishLastTabUndo_data();
+    void productPolishLastTabUndo();
+    void productPolishTabRecoveryCheckpoint_data();
+    void productPolishTabRecoveryCheckpoint();
+    void productPolishTabRecovery_data();
+    void productPolishTabRecovery();
+    void productPolishSessionRecoveryFailure_data();
+    void productPolishSessionRecoveryFailure();
+    void productPolishSessionRecoveryCancellation_data();
+    void productPolishSessionRecoveryCancellation();
+    void productPolishStartupRecovery_data();
+    void productPolishStartupRecovery();
+    void productPolishStopState_data();
+    void productPolishStopState();
+    void productPolishSwitcherLiveUpdates_data();
+    void productPolishSwitcherLiveUpdates();
+    void productPolishSwitcherNavigation_data();
+    void productPolishSwitcherNavigation();
+    void productPolishLiveTitles_data();
+    void productPolishLiveTitles();
+    void productPolishPrivacyIdentity_data();
+    void productPolishPrivacyIdentity();
     void pageSearchFollowing_data();
     void pageSearchFollowing();
+    void pageSearchFeedback_data();
+    void pageSearchFeedback();
+    void pageSearchDirection_data();
+    void pageSearchDirection();
+    void pageSearchEditorPreedit_data();
+    void pageSearchEditorPreedit();
     void pageSearchNativeText_data();
     void pageSearchNativeText();
     void pageSearchCrossOriginFrames_data();
@@ -48,6 +89,16 @@ class ApplicationTests final : public QObject {
     void pageSearchCancellationAndBindings();
     void urlCopyStatusBar_data();
     void urlCopyStatusBar();
+    void bottomChromeOverlay_data();
+    void bottomChromeOverlay();
+    void navigationFailureRecovery_data();
+    void navigationFailureRecovery();
+    void streamingFormReload_data();
+    void streamingFormReload();
+    void streamingHistoryTraversal_data();
+    void streamingHistoryTraversal();
+    void keyboardGuideOwner_data();
+    void keyboardGuideOwner();
     void hintNavigationLifecycle_data();
     void hintNavigationLifecycle();
     void navigationJourneys_data();

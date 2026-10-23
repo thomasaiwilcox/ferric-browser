@@ -14,6 +14,7 @@
 #include <QJSValue>
 #include <QInputMethodEvent>
 #include <QQmlApplicationEngine>
+#include <QQmlComponent>
 #include <QPointer>
 #include <QQmlContext>
 #include <QQmlExpression>
@@ -50,15 +51,35 @@ class KeyDelivery final : public QObject {
     }
     bool pressed = false, released = false;
     int presses = 0, repeats = 0;
+    int shortcutOverrides = 0, shortcutRepeats = 0;
     quint32 scanCode = 0;
     QPointer<QQuickItem> focusItem;
     QVariant sourceState;
     Qt::KeyboardModifiers modifiers = Qt::NoModifier;
+    bool receivedPress() const {
+        return pressed || (key == Qt::Key_Escape && shortcutOverrides == 1);
+    }
+    int receivedPresses() const {
+        return pressed ? presses : (key == Qt::Key_Escape ? shortcutOverrides : 0);
+    }
   private:
     QQuickWindow *window;
     int key;
     QObject *owner;
     bool eventFilter(QObject *watched, QEvent *event) override {
+        if (watched == window && event->type() == QEvent::ShortcutOverride) {
+            auto input = static_cast<QKeyEvent *>(event);
+            if (input->key() == key) {
+                // Qt's WindowShortcut can consume Escape before QWindow's
+                // KeyPress. Observe that original press and its native metadata.
+                ++shortcutOverrides;
+                if (input->isAutoRepeat()) ++shortcutRepeats;
+                focusItem = window->activeFocusItem();
+                sourceState = owner->property("switcherSourceState");
+                scanCode = input->nativeScanCode();
+                modifiers = input->modifiers();
+            }
+        }
         if (watched == window && (event->type() == QEvent::KeyPress
                                  || event->type() == QEvent::KeyRelease)) {
             auto input = static_cast<QKeyEvent *>(event);
@@ -102,17 +123,21 @@ class SwitcherTests final : public QObject {
         auto bytes = QJsonDocument(QJsonArray{value}).toJson(QJsonDocument::Compact);
         return QString::fromUtf8(bytes.mid(1, bytes.size() - 2));
     }
-    QString documentUrl(const QString &receiver = "testWindow.activeWebView()") {
+    QVariant documentValue(const QString &script,
+                           const QString &receiver = "testWindow.activeWebView()") {
         documentReadDone = false;
         const auto serial = ++documentRequestSerial;
-        evaluate(receiver + ".runJavaScript('location.href', function(value){"
+        evaluate(receiver + ".runJavaScript(" + quoted(script) + ", function(value){"
             "testProbe.acceptDocument(" + QString::number(serial) + ",value)})");
         QElapsedTimer timer;
         timer.start();
         while (!documentReadDone && timer.elapsed() < 5000)
             QTest::qWait(5);
         if (!documentReadDone) qFatal("Owned document callback timed out");
-        return documentResult.toString();
+        return documentResult;
+    }
+    QString documentUrl(const QString &receiver = "testWindow.activeWebView()") {
+        return documentValue("location.href", receiver).toString();
     }
     static void write(const QString &path, const QByteArray &contents) {
         QFile file(path);
@@ -313,9 +338,13 @@ class SwitcherTests final : public QObject {
             QTest::keyClick(host, key, modifiers);
             lastKeyFocus = delivery.focusItem;
             lastKeySourceState = delivery.sourceState;
-            QVERIFY(delivery.pressed && delivery.released);
-            QCOMPARE(delivery.presses, 1);
+            QVERIFY2(delivery.receivedPress() && delivery.released,
+                qPrintable(QString("key=%1, pressed=%2, released=%3, shortcutOverrides=%4")
+                    .arg(key).arg(delivery.pressed).arg(delivery.released)
+                    .arg(delivery.shortcutOverrides)));
+            QCOMPARE(delivery.receivedPresses(), 1);
             QCOMPARE(delivery.repeats, 0);
+            QCOMPARE(delivery.shortcutRepeats, 0);
             QCOMPARE(delivery.modifiers, modifiers);
             return;
         }
@@ -347,14 +376,16 @@ class SwitcherTests final : public QObject {
         QDBusReply<bool> sent = compositor.call("Key", seatWindow,
             int(key == Qt::Key_Backtab ? Qt::Key_Tab : key), int(modifiers));
         QVERIFY(sent.isValid() && sent.value());
-        QTRY_VERIFY2(delivery.pressed && delivery.released,
-            qPrintable(QString("key=%1, pressed=%2, released=%3, focus=%4")
+        QTRY_VERIFY2(delivery.receivedPress() && delivery.released,
+            qPrintable(QString("key=%1, pressed=%2, released=%3, focus=%4, shortcutOverrides=%5")
                 .arg(key).arg(delivery.pressed).arg(delivery.released)
-                .arg(host->activeFocusItem() ? host->activeFocusItem()->objectName() : "none")));
+                .arg(host->activeFocusItem() ? host->activeFocusItem()->objectName() : "none")
+                .arg(delivery.shortcutOverrides)));
         lastKeyFocus = delivery.focusItem;
         lastKeySourceState = delivery.sourceState;
-        QCOMPARE(delivery.presses, 1);
+        QCOMPARE(delivery.receivedPresses(), 1);
         QCOMPARE(delivery.repeats, 0);
+        QCOMPARE(delivery.shortcutRepeats, 0);
         QVERIFY(delivery.scanCode != 0);
         QCOMPARE(delivery.modifiers, modifiers);
         QTRY_COMPARE(QGuiApplication::queryKeyboardModifiers(), Qt::NoModifier);
@@ -496,6 +527,8 @@ class SwitcherTests final : public QObject {
     void initTestCase() {
         const QDir source(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath() + "/../../qml");
         for (const auto &name : {QString("components/FerricCommandLine.qml"),
+                                 QString("components/FerricFocusOverlayController.qml"),
+                                 QString("components/FerricTabViewController.qml"),
                                  QString("components/FerricLibraryEntries.qml"),
                                  QString("components/FerricLibraryManager.qml"),
                                  QString("components/FerricManagerList.qml"),
@@ -556,8 +589,11 @@ class SwitcherTests final : public QObject {
                     if (socket->property("responseSent").toBool())
                         return;
                     socket->setProperty("responseSent", true);
-                    const QByteArray body =
-                        "<!doctype html><title>Owned child secret</title><p>Owned fixture</p>";
+                    const QByteArray body = request.startsWith("GET /keyboard-focus/")
+                        ? "<!doctype html><title>Keyboard focus fixture</title>"
+                          "<button id=focus-target>Focus test</button><div style='height:4000px'>"
+                          "Owned keyboard fixture</div>"
+                        : "<!doctype html><title>Owned child secret</title><p>Owned fixture</p>";
                     socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: " +
                                   QByteArray::number(body.size()) +
                                   "\r\nConnection: close\r\n\r\n" + body);
@@ -575,6 +611,98 @@ class SwitcherTests final : public QObject {
         closeWindow();
         server.close();
         server.disconnect(this);
+    }
+    void tabKeyboardContinuity_data() {
+        QTest::addColumn<QString>("hostKind");
+        QTest::addColumn<QString>("flow");
+        for (const auto &host : {QString("primary"), QString("secondary"), QString("private")}) {
+            for (const auto &flow : {QString("command-select"), QString("key-select"),
+                                     QString("switcher-select"), QString("close-active"),
+                                     QString("close-leading"),
+                                     QString("cancel-after-switch"), QString("command-cancel"),
+                                     QString("search-cancel")}) {
+                QTest::newRow(qPrintable(host + "-" + flow)) << host << flow;
+            }
+        }
+    }
+    void tabKeyboardContinuity() {
+        QFETCH(QString, hostKind);
+        QFETCH(QString, flow);
+        const bool primary = hostKind == "primary";
+        auto host = primary ? window : createChild("keyboard-focus-host", hostKind == "private");
+        QVERIFY(host);
+        const QString hostSource = primary ? "testWindow" : "testWindow.browserWindowRegistry[1].host";
+        const QString ui = primary ? "testWindow.browserUi" : "testWindow.browserWindowRegistry[1].ui";
+        const auto receiver = hostSource + ".activeWebView()";
+        const auto origin = QString("http://127.0.0.1:%1/keyboard-focus/").arg(server.serverPort());
+        const auto suffix = hostKind + "-" + flow;
+        const auto first = origin + "first-" + suffix;
+        const auto second = origin + "second-" + suffix;
+        const auto expected = flow.endsWith("-cancel") || flow == "close-leading" ? second : first;
+        for (const auto &url : {first, second}) {
+            submitAt(host, ui, (url == first ? "open " : "tab-open ") + url);
+            QTRY_COMPARE(evaluate(receiver + ".url.toString()").toString(), url);
+            QTRY_COMPARE(documentUrl(receiver), url);
+            QTRY_COMPARE(documentValue("document.readyState", receiver).toString(), "complete");
+            QTRY_COMPARE(evaluate(ui + ".load_state").toString(), "complete");
+        }
+        if (flow == "close-leading") {
+            submitAt(host, ui, "tab-select 1");
+            QTRY_COMPARE(evaluate(receiver + ".url.toString()").toString(), first);
+        }
+        auto view = qobject_cast<QQuickItem *>(evaluate(receiver).value<QObject *>());
+        QVERIFY(view);
+        view->forceActiveFocus(); // Establish only the starting page focus.
+        QTRY_VERIFY(view->hasActiveFocus());
+        if (flow == "command-cancel" || flow == "search-cancel") {
+            const bool search = flow == "search-cancel";
+            evaluate(ui + (search ? ".enter_search(false)" : ".enter_command()"));
+            auto editor = visual(host->contentItem(), search ? "pageSearchBar" : "commandLineInput");
+            QVERIFY(editor);
+            QTRY_VERIFY(host->activeFocusItem() && (host->activeFocusItem() == editor
+                || editor->isAncestorOf(host->activeFocusItem())));
+            key(host, Qt::Key_Escape);
+        } else if (flow == "command-select") {
+            submitAt(host, ui, "tab-select 1");
+        } else if (flow == "key-select") {
+            key(host, Qt::Key_1, Qt::AltModifier);
+        } else if (flow == "close-active" || flow == "close-leading") {
+            key(host, Qt::Key_W, Qt::ControlModifier);
+        } else {
+            submitAt(host, ui, "switcher --scope tabs first-" + suffix);
+            QTRY_VERIFY(evaluate("testWindow.switcherVisible && testWindow.switcherResultsCurrent()"
+                                 " && testWindow.switcherResults.length===1").toBool());
+            auto field = visual(host->contentItem(), "switcherSearchInput");
+            QVERIFY(field);
+            QTRY_VERIFY(field->hasActiveFocus());
+            if (flow == "switcher-select") {
+                key(host, Qt::Key_Return);
+            } else {
+                // An incoming command can change the tab while a browser surface owns focus.
+                evaluate(ui + ".execute_command('tab-select 1')");
+                evaluate(hostSource + ".syncTabModel()");
+                QTRY_COMPARE(evaluate(receiver + ".url.toString()").toString(), first);
+                QVERIFY(evaluate("testWindow.switcherVisible").toBool());
+                QVERIFY(field->hasActiveFocus());
+                key(host, Qt::Key_Escape);
+            }
+            QTRY_VERIFY(!evaluate("testWindow.switcherVisible").toBool());
+        }
+        QTRY_COMPARE(evaluate(receiver + ".url.toString()").toString(), expected);
+        QTRY_COMPARE(documentUrl(receiver), expected);
+        const auto pageOwnsFocus = [this, host, receiver] {
+            auto activeView = qobject_cast<QQuickItem *>(evaluate(receiver).value<QObject *>());
+            auto focus = host->activeFocusItem();
+            return activeView && focus && (focus == activeView || activeView->isAncestorOf(focus));
+        };
+        QTRY_VERIFY2(pageOwnsFocus(), qPrintable(evaluate("JSON.stringify({mode:" + ui +
+            ".mode,index:" + ui + ".active_tab_index,focus:String(" + hostSource +
+            ".activeFocusItem),view:String(" + receiver + "),visible:" + receiver +
+            ".visible,modal:String(" + hostSource + ".modalInputScope.activeSurface)})").toString()));
+        key(host, Qt::Key_Tab);
+        QTRY_COMPARE(documentValue("document.activeElement.id", receiver).toString(), "focus-target");
+        key(host, Qt::Key_J);
+        QTRY_VERIFY(documentValue("window.scrollY", receiver).toDouble() > 0);
     }
     void commandCompletionKeyboard_data() {
         QTest::addColumn<bool>("secondary");
@@ -643,6 +771,100 @@ class SwitcherTests final : public QObject {
         QCOMPARE(input->property("text").toString(), QString());
         key(host, Qt::Key_Escape);
         QTRY_VERIFY(!input->isVisible());
+    }
+    void commandHistoryEditing_data() {
+        QTest::addColumn<QString>("hostKind");
+        QTest::addColumn<QString>("journey");
+        for (const auto kind : {"primary", "secondary", "private"})
+            for (const auto path : {"undo-redo", "undo-next", "undo-previous", "undo-draft", "edited-history", "new-entry", "undo-after-draft", "undo-after-empty-draft"})
+                QTest::newRow(qPrintable(QString(kind) + "-" + path)) << QString(kind) << QString(path);
+    }
+    void commandHistoryEditing() {
+        QFETCH(QString, hostKind);
+        QFETCH(QString, journey);
+        auto host = hostKind == "primary" ? window : createChild("history-editing", hostKind == "private");
+        QVERIFY(host);
+        const QString ui = hostKind == "primary" ? "testWindow.browserUi" : "testWindow.browserWindowRegistry[1].ui";
+        submitAt(host, ui, "zoom 1.1");
+        QTRY_COMPARE(evaluate(ui + ".mode").toString(), QString("normal"));
+        submitAt(host, ui, "zoom 1.2");
+        QTRY_COMPARE(evaluate(ui + ".mode").toString(), QString("normal"));
+        const auto originalUrl = evaluate(ui + ".current_url").toString();
+        const QString view = hostKind == "primary" ? "testWindow.activeWebView()" : "testWindow.browserWindowRegistry[1].view";
+        QTRY_COMPARE(evaluate(view + ".zoomFactor").toDouble(), 1.2);
+        const auto originalZoom = evaluate(view + ".zoomFactor").toDouble();
+        QCOMPARE(originalZoom, 1.2);
+        evaluate(ui + ".enter_command()");
+        auto input = visual(host->contentItem(), "commandLineInput");
+        QVERIFY(input);
+        QTRY_VERIFY(input->hasActiveFocus());
+        const QString draft = journey == "undo-after-empty-draft" ? QString() : QString("open unfinished-draft");
+        for (auto character : draft) QTest::keyClick(host, character.toLatin1());
+        QCOMPARE(input->property("text").toString(), draft);
+        key(host, Qt::Key_Up);
+        QCOMPARE(input->property("text").toString(), QString("zoom 1.2"));
+        key(host, Qt::Key_Up);
+        QCOMPARE(input->property("text").toString(), QString("zoom 1.1"));
+        key(host, Qt::Key_Z, Qt::ControlModifier);
+        QCOMPARE(input->property("text").toString(), QString("zoom 1.2"));
+        if (journey == "new-entry") {
+            key(host, Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier);
+            QCOMPARE(input->property("text").toString(), QString("zoom 1.1"));
+            key(host, Qt::Key_Escape);
+            QTRY_COMPARE(evaluate(ui + ".mode").toString(), QString("normal"));
+            evaluate(ui + ".enter_command()");
+            QTRY_VERIFY(input->hasActiveFocus());
+            key(host, Qt::Key_Up);
+            QCOMPARE(input->property("text").toString(), QString("zoom 1.2"));
+            key(host, Qt::Key_Down);
+            QCOMPARE(input->property("text").toString(), QString("zoom 1.1"));
+        } else if (journey == "undo-after-draft" || journey == "undo-after-empty-draft") {
+            key(host, Qt::Key_Down);
+            QCOMPARE(input->property("text").toString(), draft);
+            key(host, Qt::Key_Z, Qt::ControlModifier);
+            QCOMPARE(input->property("text").toString(), QString("zoom 1.2"));
+            key(host, Qt::Key_Down);
+            QCOMPARE(input->property("text").toString(), draft);
+        } else if (journey == "undo-next") {
+            key(host, Qt::Key_Down);
+            QCOMPARE(input->property("text").toString(), draft);
+        } else if (journey == "undo-previous") {
+            key(host, Qt::Key_Up);
+            QCOMPARE(input->property("text").toString(), QString("zoom 1.1"));
+        } else if (journey == "undo-draft") {
+            key(host, Qt::Key_Z, Qt::ControlModifier);
+            QCOMPARE(input->property("text").toString(), draft);
+            key(host, Qt::Key_Up);
+            QCOMPARE(input->property("text").toString(), QString("zoom 1.2"));
+            key(host, Qt::Key_Down);
+            QCOMPARE(input->property("text").toString(), draft);
+        } else if (journey == "edited-history") {
+            QTest::keyClick(host, Qt::Key_5);
+            QCOMPARE(input->property("text").toString(), QString("zoom 1.25"));
+            key(host, Qt::Key_Up);
+            QCOMPARE(input->property("text").toString(), QString("zoom 1.2"));
+            key(host, Qt::Key_Down);
+            QCOMPARE(input->property("text").toString(), QString("zoom 1.25"));
+        } else {
+            key(host, Qt::Key_Z, Qt::ControlModifier);
+            QCOMPARE(input->property("text").toString(), draft);
+            key(host, Qt::Key_Z, Qt::ControlModifier);
+            QVERIFY(input->property("text").toString() != draft);
+            key(host, Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier);
+            QCOMPARE(input->property("text").toString(), draft);
+            key(host, Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier);
+            QCOMPARE(input->property("text").toString(), QString("zoom 1.2"));
+            key(host, Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier);
+            QCOMPARE(input->property("text").toString(), QString("zoom 1.1"));
+            key(host, Qt::Key_Down);
+            QCOMPARE(input->property("text").toString(), QString("zoom 1.2"));
+            key(host, Qt::Key_Down);
+            QCOMPARE(input->property("text").toString(), draft);
+        }
+        QCOMPARE(evaluate(ui + ".current_url").toString(), originalUrl);
+        QCOMPARE(evaluate(view + ".zoomFactor").toDouble(), originalZoom);
+        QCOMPARE(evaluate(ui + ".mode").toString(), QString("command"));
+        QVERIFY(input->hasActiveFocus());
     }
     void commandCompletionEditing_data() {
         QTest::addColumn<bool>("secondary");
@@ -721,16 +943,75 @@ class SwitcherTests final : public QObject {
         QTRY_COMPARE(evaluate(view + ".url.toString()").toString(), url);
         QTRY_VERIFY(!evaluate(view + ".loading").toBool());
     }
+    void commandModifiedArrows_data() {
+        QTest::addColumn<QString>("hostKind");
+        QTest::addColumn<int>("arrow");
+        for (const auto kind : {"primary", "secondary", "private"})
+            for (const auto arrow : {Qt::Key_Up, Qt::Key_Down})
+                QTest::newRow(qPrintable(QString(kind) + (arrow == Qt::Key_Up ? "-up" : "-down"))) << QString(kind) << int(arrow);
+    }
+    void commandModifiedArrows() {
+        QFETCH(QString, hostKind);
+        QFETCH(int, arrow);
+        auto host = hostKind == "primary" ? window : createChild("modified-arrows", hostKind == "private");
+        QVERIFY(host);
+        const QString ui = hostKind == "primary" ? "testWindow.browserUi" : "testWindow.browserWindowRegistry[1].ui";
+        submitAt(host, ui, "zoom 1.2");
+        QTRY_COMPARE(evaluate(ui + ".mode").toString(), QString("normal"));
+        const auto originalUrl = evaluate(ui + ".current_url").toString();
+        host->requestActivate(); QTRY_VERIFY(host->isActive());
+        evaluate(ui + ".enter_command()");
+        auto input = visual(host->contentItem(), "commandLineInput");
+        QVERIFY(input); QTRY_VERIFY(input->hasActiveFocus());
+
+        QQmlComponent referenceComponent(engine.get());
+        referenceComponent.setData("import QtQuick; import QtQuick.Controls; TextField { width: 600; height: 40 }", QUrl("file:///ferric-native-editor-reference.qml"));
+        std::unique_ptr<QObject> referenceObject(referenceComponent.create());
+        QVERIFY2(referenceObject, qPrintable(referenceComponent.errorString()));
+        auto reference = qobject_cast<QQuickItem *>(referenceObject.get());
+        QVERIFY(reference);
+        reference->setParentItem(host->contentItem());
+        const QString draft = "open two words";
+        QVERIFY(reference->setProperty("text", draft));
+        QVERIFY(reference->setProperty("cursorPosition", 7));
+        reference->forceActiveFocus(); QTRY_VERIFY(reference->hasActiveFocus());
+        key(host, Qt::Key(arrow), Qt::ShiftModifier);
+        const auto expectedCursor = reference->property("cursorPosition").toInt();
+        const auto expectedSelection = reference->property("selectedText").toString();
+        QCOMPARE(reference->property("text").toString(), draft);
+        QVERIFY(input->setProperty("text", draft));
+        QVERIFY(input->setProperty("cursorPosition", 7));
+        input->forceActiveFocus(); QTRY_VERIFY(input->hasActiveFocus());
+        key(host, Qt::Key(arrow), Qt::ShiftModifier);
+        QCOMPARE(input->property("text").toString(), draft);
+        QCOMPARE(input->property("cursorPosition").toInt(), expectedCursor);
+        QCOMPARE(input->property("selectedText").toString(), expectedSelection);
+        QVERIFY(input->hasActiveFocus());
+        QCOMPARE(evaluate(ui + ".mode").toString(), QString("command"));
+        QCOMPARE(evaluate(ui + ".current_url").toString(), originalUrl);
+    }
     void commandCompletionPreedit_data() {
         QTest::addColumn<int>("key");
-        QTest::newRow("right") << int(Qt::Key_Right);
-        QTest::newRow("space") << int(Qt::Key_Space);
+        QTest::addColumn<int>("modifiers");
+        for (const auto item : {std::pair{"right", Qt::Key_Right}, {"space", Qt::Key_Space},
+                {"up", Qt::Key_Up}, {"down", Qt::Key_Down}, {"tab", Qt::Key_Tab},
+                {"escape", Qt::Key_Escape}, {"return", Qt::Key_Return}})
+            QTest::newRow(item.first) << int(item.second) << int(Qt::NoModifier);
+        QTest::newRow("backtab") << int(Qt::Key_Backtab) << int(Qt::ShiftModifier);
+        QTest::newRow("control-n") << int(Qt::Key_N) << int(Qt::ControlModifier);
+        QTest::newRow("control-p") << int(Qt::Key_P) << int(Qt::ControlModifier);
     }
     void commandCompletionPreedit() {
         QFETCH(int, key);
+        QFETCH(int, modifiers);
+        submit("zoom 1.2");
+        QTRY_COMPARE(evaluate("testWindow.browserUi.mode").toString(), QString("normal"));
+        const auto originalUrl = evaluate("testWindow.browserUi.current_url").toString();
         evaluate("testWindow.browserUi.enter_command()");
         auto input = visual(window->contentItem(), "commandLineInput");
+        auto surface = visual(window->contentItem(), "commandSurface");
         QVERIFY(input);
+        QVERIFY(surface);
         QVERIFY(input->setProperty("text", "op"));
         QVERIFY(input->setProperty("cursorPosition", 2));
         input->forceActiveFocus();
@@ -739,12 +1020,42 @@ class SwitcherTests final : public QObject {
         const auto index = values.indexOf("open");
         QVERIFY(index >= 0);
         evaluate("testWindow.browserUi.completion_select(" + QString::number(index) + ")");
-        QInputMethodEvent preedit("composing", {});
+        QSignalSpy history(surface, SIGNAL(historyMoveRequested(int,QString)));
+        QSignalSpy completion(surface, SIGNAL(completionMoveRequested(int)));
+        QSignalSpy submitted(surface, SIGNAL(submitted(QString)));
+        QSignalSpy escaped(surface, SIGNAL(escapeRequested()));
+        QVERIFY(history.isValid() && completion.isValid() && submitted.isValid() && escaped.isValid());
+        QInputMethodEvent preedit(QString::fromUtf8("にほ"), {});
         QCoreApplication::sendEvent(input, &preedit);
         QTRY_VERIFY(input->property("inputMethodComposing").toBool());
-        QTest::keyClick(window, Qt::Key(key));
-        QVERIFY(input->property("text").toString().trimmed() != values.at(index));
+        QTest::keyClick(window, Qt::Key(key), Qt::KeyboardModifiers(modifiers));
+        QCOMPARE(history.count(), 0);
+        QCOMPARE(completion.count(), 0);
+        QCOMPARE(submitted.count(), 0);
+        QCOMPARE(escaped.count(), 0);
         QCOMPARE(evaluate("testWindow.browserUi.mode").toString(), QString("command"));
+        QCOMPARE(evaluate("testWindow.browserUi.current_url").toString(), originalUrl);
+        input->forceActiveFocus();
+        QInputMethodEvent finished;
+        QCoreApplication::sendEvent(input, &finished);
+        QTRY_VERIFY(!input->property("inputMethodComposing").toBool());
+        QVERIFY(input->setProperty("text", "op"));
+        QVERIFY(input->setProperty("cursorPosition", 2));
+        QTest::keyClick(window, Qt::Key_Tab);
+        QCOMPARE(completion.count(), 1);
+        if (key == Qt::Key_Return) {
+            QVERIFY(input->setProperty("text", "zoom 1.3"));
+            evaluate("testWindow.browserUi.completion_select(-1)");
+            QTest::keyClick(window, Qt::Key_Return);
+            QCOMPARE(submitted.count(), 1);
+            QCOMPARE(submitted.at(0).at(0).toString(), QString("zoom 1.3"));
+            QTRY_COMPARE(evaluate("testWindow.browserUi.mode").toString(), QString("normal"));
+            QTRY_COMPARE(evaluate("testWindow.activeWebView().zoomFactor").toDouble(), 1.3);
+        } else {
+            QTest::keyClick(window, Qt::Key_Escape);
+            QCOMPARE(escaped.count(), 1);
+            QTRY_COMPARE(evaluate("testWindow.browserUi.mode").toString(), QString("normal"));
+        }
     }
     void switcherSearchEditing() {
         submit("switcher --scope commands");

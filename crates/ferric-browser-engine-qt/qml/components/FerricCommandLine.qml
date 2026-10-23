@@ -54,6 +54,17 @@ Item {
         commandLine.selectAll()
     }
 
+    function recallHistory(text) {
+        if (text === commandLine.text) return
+        // A history choice is an editor operation. Assigning text clears
+        // Qt's undo stack, including the draft typed before browsing history.
+        commandLine.cursorPosition = 0
+        commandLine.cursorPosition = commandLine.text.length
+        commandLine.remove(0, commandLine.text.length)
+        commandLine.insert(0, text)
+        commandLine.cursorPosition = text.length
+    }
+
     function showFeedback(text, isError) {
         feedbackText = String(text || "")
         feedbackError = !!isError
@@ -128,6 +139,13 @@ Item {
         color: commandSurface.browserWindow.surfaceColor
         opacity: commandSurface.browserWindow.chromeOpacity
 
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            hoverEnabled: true
+            onWheel: function(wheel) { wheel.accepted = true }
+        }
+
         RowLayout {
             anchors.fill: parent
             spacing: 0
@@ -182,31 +200,41 @@ Item {
                     commandSurface.completionUpdateRequested(text, cursorPosition)
                 }
                 onCursorPositionChanged: commandSurface.completionUpdateRequested(text, cursorPosition)
-                onAccepted: commandSurface.submitted(
-                    commandSurface.commandWithCompletion(commandSurface.completionSelected))
+                onAccepted: {
+                    if (!commandLine.inputMethodComposing)
+                        commandSurface.submitted(commandSurface.commandWithCompletion(commandSurface.completionSelected))
+                }
                 Keys.onPressed: function(event) {
+                    // Composition keys belong to the input method and native editor.
+                    if (commandLine.inputMethodComposing) {
+                        event.accepted = false
+                        return
+                    }
+                    var modifiers = event.modifiers & ~Qt.KeypadModifier
                     if (event.key === Qt.Key_Escape) {
                         commandSurface.escapeRequested()
                         event.accepted = true
-                    } else if (event.modifiers === Qt.NoModifier
+                    } else if (modifiers === Qt.NoModifier
                                && (event.key === Qt.Key_Right || event.key === Qt.Key_Space)
                                && commandSurface.canInsertCompletion()) {
                         var inserted = commandSurface.applyCompletion(commandSurface.completionSelected)
                         // Let the original Space event add the next token's
                         // separator through the native editor after insertion.
                         event.accepted = inserted && event.key === Qt.Key_Right
-                    } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+                    } else if ((event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)
+                               && (modifiers === Qt.NoModifier || modifiers === Qt.ShiftModifier)) {
                         commandSurface.completionMoveRequested(
                                     event.key === Qt.Key_Backtab
-                                    || (event.modifiers & Qt.ShiftModifier) ? -1 : 1)
+                                    || modifiers === Qt.ShiftModifier ? -1 : 1)
                         event.accepted = true
-                    } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_N) {
+                    } else if (modifiers === Qt.ControlModifier && event.key === Qt.Key_N) {
                         commandSurface.completionMoveRequested(1)
                         event.accepted = true
-                    } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_P) {
+                    } else if (modifiers === Qt.ControlModifier && event.key === Qt.Key_P) {
                         commandSurface.completionMoveRequested(-1)
                         event.accepted = true
-                    } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
+                    } else if (modifiers === Qt.NoModifier
+                               && (event.key === Qt.Key_Up || event.key === Qt.Key_Down)) {
                         commandSurface.historyMoveRequested(
                             event.key === Qt.Key_Up ? -1 : 1, text)
                         event.accepted = true

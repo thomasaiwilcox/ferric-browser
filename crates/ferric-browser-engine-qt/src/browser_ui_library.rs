@@ -1,3 +1,4 @@
+use super::feature_state::SessionRestoreIntent;
 use super::{
     Arc, AtomicBool, BrowserApplication, CatalogReadState, CxxQtType, Event, FeedbackLane,
     FeedbackState, JourneyReopenRecord, Ordering, Pin, QString, StorageCompletion, StorageRequest,
@@ -333,7 +334,7 @@ impl qobject::BrowserUi {
         let mut journey_ticket = None;
         let mut library_result = None;
         let mut session_result = None;
-        let mut session_restore_result = None;
+        let mut session_restore_results = Vec::new();
         let mut session_save_results = Vec::new();
         let mut session_delete_result = None;
         let mut session_checkpoint_clear_result = None;
@@ -370,7 +371,8 @@ impl qobject::BrowserUi {
                     session_result = Some(result.map_err(|error| error.message));
                 }
                 StorageCompletion::SessionRestore(result) => {
-                    session_restore_result = Some(result.map_err(|error| error.message));
+                    session_restore_results
+                        .push((effect.ticket, result.map_err(|error| error.message)));
                 }
                 StorageCompletion::SessionSave(result) => {
                     session_save_results
@@ -484,57 +486,90 @@ impl qobject::BrowserUi {
         for (ticket, result) in session_save_results {
             consumed |= self.as_mut().complete_session_save(ticket, result);
         }
-        if let Some(result) = session_restore_result {
+        for (ticket, result) in session_restore_results {
             consumed = true;
-            let recovery_pending = {
-                let mut rust = self.as_mut().rust_mut();
-                rust.as_mut()
-                    .get_mut()
-                    .library
-                    .session_restore_recovery_pending
-            };
-            let restore_load_append = {
-                let mut rust = self.as_mut().rust_mut();
-                rust.as_mut()
-                    .get_mut()
-                    .library
-                    .session_restore_load_append
-                    .take()
-            };
-            {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.library.session_restore_preview_pending = false;
-                this.library.session_restore_recovery_pending = false;
-            }
-            if recovery_pending {
+            let intent = self
+                .as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .library
+                .session_restores
+                .remove(&ticket);
+            // Cancelled requests and old profile owners have no authority to
+            // publish. In particular they must not fall through to preview.
+            let Some(intent) = intent else { continue };
+            if intent == SessionRestoreIntent::Recovery {
                 match result {
                     Ok(snapshot)
                         if !snapshot.entries.is_empty() || !snapshot.closed_tabs.is_empty() =>
                     {
-                        self.as_mut()
-                            .restore_closed_tabs_from_snapshot(snapshot.closed_tabs);
-                        let restored = self
-                            .as_mut()
-                            .restore_session_from_entries(snapshot.entries, false);
+                        let append = !self.as_ref().can_reuse_recovery_placeholder();
+                        let restored = if snapshot.entries.is_empty() {
+                            // A closed-tab-only checkpoint still recovers Undo,
+                            // without replacing or adding any live page.
+                            self.as_mut()
+                                .set_status_text(QString::from("Recovered recently closed tabs"));
+                            QString::from("append\n")
+                        } else {
+                            let rows = self
+                                .as_mut()
+                                .restore_session_from_entries(snapshot.entries, append);
+                            if rows.is_empty() {
+                                QString::default()
+                            } else {
+                                QString::from(format!(
+                                    "{}\n{rows}",
+                                    if append { "append" } else { "replace" }
+                                ))
+                            }
+                        };
                         if restored.is_empty() {
+                            self.as_mut().set_session_recovery_error(QString::from(
+                                "Saved tabs couldn't be restored. Try again, or start without recovery.",
+                            ));
                             self.as_mut()
                                 .set_status_text(QString::from("Recovery could not be applied"));
                         } else {
                             self.as_mut()
-                                .set_session_restore_values(QString::from(format!(
-                                    "replace\n{restored}"
-                                )));
+                                .restore_closed_tabs_from_snapshot(snapshot.closed_tabs);
+                            {
+                                let mut rust = self.as_mut().rust_mut();
+                                let this = rust.as_mut().get_mut();
+                                let current = this.session_id;
+                                this.recovered_session_ids.extend(
+                                    snapshot
+                                        .source_session_ids
+                                        .into_iter()
+                                        .filter(|id| *id != current),
+                                );
+                                this.recovered_session_ids.sort_unstable();
+                                this.recovered_session_ids.dedup();
+                                this.checkpoint
+                                    .mark_dirty(super::elapsed_ms(this.binding_clock));
+                                this.recovery_paths.clear();
+                                this.recovery_placeholder = None;
+                            }
+                            self.as_mut().set_session_restore_values(restored);
                         }
                     }
-                    Ok(_) => self
-                        .as_mut()
-                        .set_status_text(QString::from("Recovery session is empty")),
-                    Err(error) => self
-                        .as_mut()
-                        .set_status_text(QString::from(format!("Recovery rejected: {error}"))),
+                    Ok(_) => {
+                        self.as_mut().set_session_recovery_error(QString::from(
+                            "There are no saved tabs to recover. You can start without recovery.",
+                        ));
+                        self.as_mut()
+                            .set_status_text(QString::from("Recovery session is empty"));
+                    }
+                    Err(error) => {
+                        self.as_mut().set_session_recovery_error(QString::from(
+                            "Saved tabs couldn't be read. Try again, or start without recovery.",
+                        ));
+                        self.as_mut()
+                            .set_status_text(QString::from(format!("Recovery rejected: {error}")));
+                    }
                 }
-            } else if let Some(append) = restore_load_append {
+                self.as_mut().set_session_recovery_pending(false);
+            } else if let SessionRestoreIntent::Load { append } = intent {
                 match result {
                     Ok(snapshot) if !snapshot.entries.is_empty() => {
                         let restored = self

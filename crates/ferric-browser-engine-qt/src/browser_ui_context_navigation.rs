@@ -38,7 +38,7 @@ impl qobject::BrowserUi {
                 context_name: context.name.clone(),
                 profile_name: context.profile.clone(),
                 url: url.as_str().to_owned(),
-                new_window: false,
+                open_route: None,
             }
         };
         let route_id = QString::from(&pending.route_id);
@@ -93,6 +93,36 @@ impl qobject::BrowserUi {
         pending
     }
 
+    // Record the chosen outcome, so repeat does not reopen the same prompt or
+    // lose a background tab / different-profile window destination.
+    fn note_context_route_navigation(
+        mut self: Pin<&mut Self>,
+        pending: &PendingContextRoute,
+        accepted: bool,
+    ) {
+        let Some(mut route) = pending.open_route.clone() else {
+            return;
+        };
+        if accepted {
+            if pending.profile_name != self.as_ref().rust().profile_name {
+                route.open_target = super::IpcOpenTarget::Window;
+            }
+            route.context = Some(pending.context_name.clone());
+            route.profile = Some(pending.profile_name.clone());
+        } else {
+            route.profile = Some(self.as_ref().rust().profile_name.clone());
+            route.context = None;
+        }
+        self.as_mut().note_repeatable_invocation(
+            &super::ParsedCommand {
+                name: "open".into(),
+                arguments: vec![pending.url.clone()],
+            },
+            Some(&route),
+            1,
+        );
+    }
+
     pub(super) fn accept_context_route(mut self: Pin<&mut Self>) -> bool {
         let Some(pending) = self.as_mut().clear_context_route() else {
             self.set_status_text(QString::from("No context route is pending"));
@@ -102,7 +132,12 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Context route URL is invalid"));
             return false;
         };
-        if pending.new_window || pending.profile_name != self.as_ref().rust().profile_name {
+        if pending
+            .open_route
+            .as_ref()
+            .is_some_and(|route| route.open_target == super::IpcOpenTarget::Window)
+            || pending.profile_name != self.as_ref().rust().profile_name
+        {
             self.as_mut()
                 .rust_mut()
                 .as_mut()
@@ -113,6 +148,7 @@ impl qobject::BrowserUi {
                 pending.context_name,
                 url.as_str()
             ));
+            self.as_mut().note_context_route_navigation(&pending, true);
             self.set_status_text(QString::from(format!(
                 "Context route accepted; opening {} in profile {}",
                 pending.context_name, pending.profile_name
@@ -149,11 +185,24 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Context route assignment was rejected"));
             return false;
         }
-        if self.as_mut().navigate_url(&url).is_err() {
+        let navigation = if let Some(route) = pending.open_route.as_ref().filter(|route| {
+            matches!(
+                route.open_target,
+                super::IpcOpenTarget::Tab | super::IpcOpenTarget::BackgroundTab
+            )
+        }) {
+            self.as_mut()
+                .dispatch_new_tab_open(url.as_str(), route, None)
+                .map(|_| ())
+        } else {
+            self.as_mut().navigate_url(&url)
+        };
+        if navigation.is_err() {
             self.set_status_text(QString::from("Context route navigation was rejected"));
             return false;
         }
         self.as_mut().sync_core_tabs();
+        self.as_mut().note_context_route_navigation(&pending, true);
         self.set_status_text(QString::from(format!(
             "Context route accepted: {}",
             pending.context_name
@@ -166,11 +215,15 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("No context route is pending"));
             return false;
         };
-        let Ok(url) = ValidatedUrl::parse(pending.url) else {
+        let Ok(url) = ValidatedUrl::parse(pending.url.clone()) else {
             self.set_status_text(QString::from("Context route URL is invalid"));
             return false;
         };
-        if pending.new_window {
+        if pending
+            .open_route
+            .as_ref()
+            .is_some_and(|route| route.open_target == super::IpcOpenTarget::Window)
+        {
             let profile = self.as_ref().rust().profile_name.clone();
             self.as_mut()
                 .rust_mut()
@@ -184,13 +237,27 @@ impl qobject::BrowserUi {
                     true,
                     url.as_str(),
                 ));
+            self.as_mut().note_context_route_navigation(&pending, false);
             self.set_status_text(QString::from(
                 "Opening a new window without context routing",
             ));
             return true;
         }
-        match self.as_mut().navigate_url(&url) {
+        let navigation = if let Some(route) = pending.open_route.as_ref().filter(|route| {
+            matches!(
+                route.open_target,
+                super::IpcOpenTarget::Tab | super::IpcOpenTarget::BackgroundTab
+            )
+        }) {
+            self.as_mut()
+                .dispatch_new_tab_open(url.as_str(), route, None)
+                .map(|_| ())
+        } else {
+            self.as_mut().navigate_url(&url)
+        };
+        match navigation {
             Ok(()) => {
+                self.as_mut().note_context_route_navigation(&pending, false);
                 self.set_status_text(QString::from("Navigation requested without context route"));
                 true
             }

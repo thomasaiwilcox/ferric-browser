@@ -199,6 +199,22 @@ impl JourneyGraph {
         Some(node)
     }
 
+    /// Resolves an engine visit by identity, without assuming its history
+    /// offsets match this graph's retained, completed visits.
+    pub fn complete_traversal_to(
+        &mut self,
+        tab: TabId,
+        node: Option<JourneyNodeId>,
+    ) -> Option<JourneyNodeId> {
+        self.pending_traversals.remove(&tab);
+        let node = node?;
+        let path = self.paths_by_tab.get_mut(&tab)?;
+        let cursor = path.nodes.iter().position(|candidate| *candidate == node)?;
+        path.cursor = cursor;
+        self.current_by_tab.insert(tab, node);
+        Some(node)
+    }
+
     #[must_use]
     pub fn node(&self, id: JourneyNodeId) -> Option<&JourneyNode> {
         self.nodes.get(&id)

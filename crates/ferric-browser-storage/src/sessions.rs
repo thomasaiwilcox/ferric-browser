@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
+const SNAPSHOT_SCHEMA_VERSION: u32 = 4;
 const MAX_WINDOWS: usize = 256;
 const MAX_TABS: usize = 5_000;
 const MAX_CLOSED_TABS: usize = 100;
@@ -60,6 +60,19 @@ pub struct ClosedTabSnapshot {
     pub url: String,
     pub title: String,
     pub closed_at: i64,
+    /// Position among tabs with the same pinned state; absent in version 2.
+    #[serde(default)]
+    pub group_index: Option<usize>,
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
+    pub muted: bool,
+    #[serde(default = "default_closed_tab_zoom")]
+    pub zoom_hundredths: u32,
+}
+
+const fn default_closed_tab_zoom() -> u32 {
+    100
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -74,6 +87,10 @@ pub struct SessionSnapshot {
     pub windows: Vec<SessionWindow>,
     #[serde(default)]
     pub closed_tabs: Vec<ClosedTabSnapshot>,
+    /// Checkpoints incorporated into this session. Retaining their identities
+    /// makes recovery idempotent even if a crash interrupts later cleanup.
+    #[serde(default)]
+    pub recovered_session_ids: Vec<Uuid>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -217,11 +234,37 @@ pub fn clear_current_session_checkpoints(
     state_root: impl AsRef<Path>,
     profile_id: Uuid,
 ) -> Result<(), SessionError> {
-    for path in current_session_paths(state_root, profile_id) {
-        match fs::remove_file(&path) {
+    let directory = state_root
+        .as_ref()
+        .join("sessions")
+        .join(profile_id.to_string());
+    let entries = match fs::read_dir(&directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(io_error(&directory, &error)),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|error| io_error(&directory, &error))?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let Some(stem) = name
+            .strip_suffix(".json")
+            .or_else(|| name.strip_suffix(".previous"))
+        else {
+            continue;
+        };
+        if !is_checkpoint_name(stem)
+            || !entry
+                .file_type()
+                .map_err(|error| io_error(&entry.path(), &error))?
+                .is_file()
+        {
+            continue;
+        }
+        match fs::remove_file(entry.path()) {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(io_error(&path, &error)),
+            Err(error) => return Err(io_error(&entry.path(), &error)),
         }
     }
     Ok(())
@@ -363,6 +406,7 @@ impl SessionSnapshot {
             saved_at: saved_at.into(),
             windows,
             closed_tabs: Vec::new(),
+            recovered_session_ids: Vec::new(),
         })
     }
 
@@ -510,10 +554,16 @@ fn load_session_generation(path: &Path) -> Result<SessionSnapshot, SessionError>
     if bytes.len() > 2 * 1024 * 1024 {
         return Err(SessionError::SizeLimit);
     }
-    let snapshot = serde_json::from_slice(&bytes).map_err(|error| SessionError::Json {
-        path: path.to_owned(),
-        message: error.to_string(),
-    })?;
+    let mut snapshot: SessionSnapshot =
+        serde_json::from_slice(&bytes).map_err(|error| SessionError::Json {
+            path: path.to_owned(),
+            message: error.to_string(),
+        })?;
+    // Older formats have no recovery lineage; version 2 also lacks the
+    // optional closed-tab presentation fields. Preserve the source generation.
+    if matches!(snapshot.schema_version, 2 | 3) {
+        snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION;
+    }
     validate_snapshot(&snapshot)?;
     Ok(snapshot)
 }
@@ -622,6 +672,21 @@ fn validate_snapshot(snapshot: &SessionSnapshot) -> Result<(), SessionError> {
             "session structure exceeds limits".into(),
         ));
     }
+    if snapshot.recovered_session_ids.len() > MAX_TABS
+        || snapshot
+            .recovered_session_ids
+            .contains(&snapshot.session_id)
+        || snapshot
+            .recovered_session_ids
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != snapshot.recovered_session_ids.len()
+    {
+        return Err(SessionError::Invalid(
+            "recovered session identities are invalid".into(),
+        ));
+    }
     if snapshot.closed_tabs.len() > MAX_CLOSED_TABS {
         return Err(SessionError::Invalid(
             "closed-tab undo history exceeds limits".into(),
@@ -650,6 +715,13 @@ fn validate_snapshot(snapshot: &SessionSnapshot) -> Result<(), SessionError> {
         }
     }
     for closed in &snapshot.closed_tabs {
+        if closed.group_index.is_some_and(|index| index > MAX_TABS)
+            || !(25..=500).contains(&closed.zoom_hundredths)
+        {
+            return Err(SessionError::Invalid(
+                "closed-tab recovery settings are invalid".into(),
+            ));
+        }
         if closed.url.is_empty()
             || closed.url.len() > 16 * 1024
             || closed.url.chars().any(char::is_control)
@@ -699,6 +771,21 @@ mod tests {
             current_session_paths(&directory, profile),
             [folder.join(format!("{checkpoint}.json"))]
         );
+        for name in ["current", checkpoint.as_str(), "work"] {
+            fs::write(
+                folder.join(format!("{name}.previous")),
+                b"retained generation",
+            )
+            .unwrap();
+        }
+        clear_current_session_checkpoints(&directory, profile).unwrap();
+        for name in ["current", checkpoint.as_str()] {
+            assert!(!folder.join(format!("{name}.json")).exists());
+            assert!(!folder.join(format!("{name}.previous")).exists());
+        }
+        assert!(folder.join("work.json").exists());
+        assert!(folder.join("work.previous").exists());
+        assert!(folder.join("current-research.json").exists());
         fs::remove_dir_all(directory).expect("fixture cleanup");
     }
 
@@ -783,6 +870,10 @@ mod tests {
             url: "https://closed.test/".into(),
             title: "Closed tab".into(),
             closed_at: 42,
+            group_index: Some(1),
+            pinned: true,
+            muted: true,
+            zoom_hundredths: 175,
         });
         save_session_atomic(&path, &snapshot).expect("save");
         let mut newer = snapshot.clone();
@@ -889,21 +980,143 @@ mod tests {
     }
 
     #[test]
+    fn version_two_closed_tabs_upgrade_without_rewriting_the_source() {
+        let path = std::env::temp_dir().join(format!("ferric-session-v2-{}.json", Uuid::new_v4()));
+        let snapshot = SessionSnapshot::new(
+            Uuid::new_v4(),
+            "legacy",
+            Uuid::new_v4(),
+            7,
+            "now",
+            Vec::new(),
+        )
+        .unwrap();
+        let mut value = serde_json::to_value(&snapshot).unwrap();
+        value["schema_version"] = serde_json::json!(2);
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("recovered_session_ids");
+        let closed_id = Uuid::new_v4();
+        value["closed_tabs"] = serde_json::json!([{
+            "id": closed_id, "url": "https://closed.test/", "title": "Closed", "closed_at": 42
+        }]);
+        let original = serde_json::to_vec(&value).unwrap();
+        fs::write(&path, &original).unwrap();
+        let loaded = load_session(&path).unwrap();
+        assert_eq!(loaded.schema_version, SNAPSHOT_SCHEMA_VERSION);
+        assert_eq!(loaded.session_id, snapshot.session_id);
+        assert_eq!(loaded.revision, snapshot.revision);
+        assert_eq!(
+            loaded.closed_tabs,
+            vec![ClosedTabSnapshot {
+                id: closed_id,
+                url: "https://closed.test/".into(),
+                title: "Closed".into(),
+                closed_at: 42,
+                group_index: None,
+                pinned: false,
+                muted: false,
+                zoom_hundredths: 100,
+            }]
+        );
+        assert_eq!(fs::read(&path).unwrap(), original);
+        save_session_atomic(&path, &loaded).unwrap();
+        assert_eq!(fs::read(previous_generation_path(&path)).unwrap(), original);
+        assert_eq!(load_session(&path).unwrap(), loaded);
+        fs::write(&path, b"interrupted current generation").unwrap();
+        assert_eq!(load_session(&path).unwrap(), loaded);
+        fs::remove_file(&path).unwrap();
+        fs::remove_file(previous_generation_path(&path)).unwrap();
+    }
+
+    #[test]
+    fn version_three_loads_without_lineage_and_invalid_lineage_cannot_replace_it() {
+        let path = std::env::temp_dir().join(format!("ferric-session-v3-{}.json", Uuid::new_v4()));
+        let snapshot = SessionSnapshot::new(
+            Uuid::new_v4(),
+            "version-three",
+            Uuid::new_v4(),
+            1,
+            "now",
+            Vec::new(),
+        )
+        .unwrap();
+        let mut value = serde_json::to_value(&snapshot).unwrap();
+        value["schema_version"] = serde_json::json!(3);
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("recovered_session_ids");
+        let original = serde_json::to_vec(&value).unwrap();
+        fs::write(&path, &original).unwrap();
+        let mut loaded = load_session(&path).unwrap();
+        assert_eq!(loaded.schema_version, SNAPSHOT_SCHEMA_VERSION);
+        assert!(loaded.recovered_session_ids.is_empty());
+        assert_eq!(fs::read(&path).unwrap(), original);
+        for ids in [vec![loaded.session_id], vec![Uuid::nil(), Uuid::nil()]] {
+            loaded.recovered_session_ids = ids;
+            assert!(save_session_atomic(&path, &loaded).is_err());
+            assert_eq!(fs::read(&path).unwrap(), original);
+        }
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn invalid_closed_tab_settings_do_not_replace_a_valid_generation() {
+        let path =
+            std::env::temp_dir().join(format!("ferric-closed-settings-{}.json", Uuid::new_v4()));
+        let mut snapshot = SessionSnapshot::new(
+            Uuid::new_v4(),
+            "settings",
+            Uuid::new_v4(),
+            1,
+            "now",
+            Vec::new(),
+        )
+        .unwrap();
+        snapshot.closed_tabs.push(ClosedTabSnapshot {
+            id: Uuid::new_v4(),
+            url: "https://closed.test/".into(),
+            title: "Closed".into(),
+            closed_at: 42,
+            group_index: Some(1),
+            pinned: true,
+            muted: true,
+            zoom_hundredths: 175,
+        });
+        save_session_atomic(&path, &snapshot).unwrap();
+        let original = fs::read(&path).unwrap();
+        for (group_index, zoom) in [(Some(MAX_TABS + 1), 100), (Some(1), 24), (Some(1), 501)] {
+            let mut invalid = snapshot.clone();
+            invalid.closed_tabs[0].group_index = group_index;
+            invalid.closed_tabs[0].zoom_hundredths = zoom;
+            assert!(matches!(
+                save_session_atomic(&path, &invalid),
+                Err(SessionError::Invalid(_))
+            ));
+            assert_eq!(fs::read(&path).unwrap(), original);
+            assert_eq!(load_session(&path).unwrap(), snapshot);
+        }
+        fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
     fn newer_or_structurally_unsafe_snapshots_are_rejected() {
         let mut snapshot =
             SessionSnapshot::new(Uuid::new_v4(), "test", Uuid::new_v4(), 1, "now", Vec::new())
                 .expect("snapshot");
-        snapshot.schema_version = 3;
+        snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION + 1;
         assert!(matches!(
             snapshot.restore_plan(),
-            Err(SessionError::NewerSchema(3))
+            Err(SessionError::NewerSchema(version)) if version == SNAPSHOT_SCHEMA_VERSION + 1
         ));
         snapshot.schema_version = 1;
         assert!(matches!(
             snapshot.restore_plan(),
             Err(SessionError::LegacySchema(1))
         ));
-        snapshot.schema_version = 2;
+        snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION;
         snapshot.windows.push(SessionWindow {
             selected_tab: Some(Uuid::new_v4()),
             workspace: None,

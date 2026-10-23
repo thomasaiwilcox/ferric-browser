@@ -41,8 +41,16 @@ TestCase {
     }
     QtObject {
         id: host
+        property bool statusBarVisible: false
         property var browserKeyRouterObject: router
         function executePendingEngineAction() {}
+    }
+    QtObject {
+        id: searchAppearance
+        property color panelColor: "#222222"
+        property color mutedTextColor: "#888888"
+        property color primaryTextColor: "#ffffff"
+        property font font: Qt.font({family:"monospace",pointSize:12})
     }
     BrowserKeyRouter { id: router; enabled:true; targetWindow:test.Window.window }
     WebEngineProfile { id: privateProfile; offTheRecord: true }
@@ -93,7 +101,7 @@ TestCase {
     }
     FerricPageSearch {
         id: search
-        appearance: ({panelColor:"#222222",mutedTextColor:"#888888",primaryTextColor:"#ffffff"})
+        appearance: searchAppearance
         browserUi: ui
         hostWindow: host
         activeView: test.selectedView
@@ -125,6 +133,9 @@ TestCase {
         ui.nativeTabs=[]
         rejectedNavigation="";createdTab=false
         slowPage.calls=[];slowPage.callbacks=[]
+        host.statusBarVisible=false
+        test.width=1000; test.height=800
+        searchAppearance.font=Qt.font({family:"monospace",pointSize:12})
     }
     function cleanup() {
         search.stop()
@@ -237,6 +248,56 @@ TestCase {
         search.follow(false)
         tryCompare(test,"rejectedNavigation","https://fixture.test/target-second",3000)
     }
+    function test_feedback_tracks_native_match_position() {
+        load("<p>needle one</p><p>needle two</p><p>needle three</p>")
+        ui.mode="search"
+        find("needle",true)
+        compare(search.previewText,"Match 1 of 3 · Enter: keep")
+        for (const position of [2,3,1]) {
+            find("needle",false)
+            compare(nativeActiveMatch,position)
+            compare(search.previewText,"Match "+position+" of 3 · Enter: keep")
+        }
+        find("needle",false,true)
+        compare(search.previewText,"Match 3 of 3 · Enter: keep")
+        search.accept();ui.mode="normal"
+        verify(search.previewText.indexOf("Match 3 of 3 · Enter: activate")===0)
+        find("missing",true)
+        compare(search.previewText,"No matches")
+        search.stop()
+        compare(search.previewText,"")
+    }
+    function test_editing_feedback_is_visible_with_any_status_policy_data() {
+        return [{tag:"status-visible",statusVisible:true},{tag:"status-hidden",statusVisible:false}]
+    }
+    function test_editing_feedback_is_visible_with_any_status_policy(data) {
+        load("<p>needle</p>")
+        host.statusBarVisible=data.statusVisible
+        ui.mode="search"
+        find("needle",true)
+        var feedback=search.children[0]
+        verify(feedback.visible,"The search bar covers the status bar while editing")
+        search.accept();ui.mode="normal"
+        compare(feedback.visible,!data.statusVisible)
+        search.stop()
+        verify(!feedback.visible)
+    }
+    function test_feedback_fits_a_narrow_window_at_large_text_size() {
+        test.width=320;test.height=640
+        searchAppearance.font=Qt.font({family:"monospace",pointSize:26})
+        load("<p>needle one</p><p>needle two</p><p>needle three</p>")
+        ui.mode="search"
+        find("needle",true)
+        verify(waitForPolish(test.Window.window))
+        var feedback=findChild(search,"pageSearchFeedback")
+        var label=findChild(search,"pageSearchFeedbackText")
+        verify(feedback.visible)
+        compare(label.font.pointSize,26)
+        verify(feedback.width<=test.width-24)
+        verify(feedback.y>=0 && feedback.y+feedback.height<=test.height)
+        verify(label.lineCount>0 && label.lineCount<=2)
+        compare(label.text,"Match 1 of 3 · Enter: keep")
+    }
     function test_typing_retains_chrome_focus_data() {
         return [{tag:"normal",css:""},{tag:"unselectable",css:"body{user-select:none}"}]
     }
@@ -270,14 +331,17 @@ TestCase {
         search.execute(request("old",false),slowPage)
         search.execute(request("old",false),slowPage)
         compare(slowPage.calls.length,1)
+        compare(search.previewText,"Searching…")
         slowPage.callbacks[0](3)
         compare(slowPage.calls.length,2)
         search.execute(request("new",true),slowPage)
         compare(slowPage.calls[2].query,"new")
         slowPage.callbacks[1](3)
         verify(search.busy)
+        compare(search.previewText,"Searching…")
         slowPage.callbacks[2](1)
         verify(!search.busy);compare(search.query,"new");compare(search.pending.length,0)
+        compare(search.previewText,"1 match · Enter: activate · Shift+Enter: new tab")
     }
     function test_escape_ignores_late_native_reply() {
         selectedView=slowPage

@@ -107,8 +107,7 @@ pub(super) fn parse_interactive(
     let target = target
         .map(|target| -> Result<String, String> {
             match target.as_str() {
-                "current" => Ok("tab".to_owned()),
-                "tab" | "tab-bg" | "window" | "private-window" => Ok(target),
+                "current" | "tab" | "tab-bg" | "window" | "private-window" => Ok(target),
                 _ => Err(
                     "open target must be current, tab, tab-bg, window, or private-window".into(),
                 ),
@@ -131,7 +130,7 @@ mod tests {
     use ferric_browser_core::ParsedCommand;
 
     #[test]
-    fn interactive_open_normalizes_current_and_keeps_route_context() {
+    fn interactive_open_preserves_current_and_route_context() {
         let parsed = parse_interactive(&ParsedCommand {
             name: "open".into(),
             arguments: vec![
@@ -147,7 +146,7 @@ mod tests {
             parsed,
             Some(InteractiveOpen {
                 input: "example.test".into(),
-                target: Some("tab".into()),
+                target: Some("current".into()),
                 profile: Some("work".into()),
                 context: None,
                 clean_link: false,

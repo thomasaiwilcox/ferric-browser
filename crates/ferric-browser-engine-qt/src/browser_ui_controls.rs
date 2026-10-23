@@ -134,6 +134,12 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn enter_command(mut self: Pin<&mut Self>) {
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.command_history_index = None;
+            this.command_history_draft = None;
+        }
         let window = self.as_ref().rust().window;
         if let Some(window) = window {
             let _ = self.as_mut().reduce_event(Event::PushMode {

@@ -61,11 +61,65 @@ In the favourite editor, Enter moves from the address to its name, then saves.
 Saving shows progress and keeps failed or newer edits available to retry.
 The saved name is shared with its bookmark, including when reusing one.
 
+Press `g ?` to open the Guide in the current window, including private and
+popup windows. Search features and shortcuts using that window's bindings.
+Direct feature names, commands and shortcuts appear before matches in article
+text. Shortcuts accept spaced or compact keychains, such as `g g` or `gg`.
+Press `/` from the feature list or article to search again.
+In an article, use `j`/`k` or Page Up/Down to read; Space and Shift+Space page
+down and up.
+Escape clears a focused search, returns from an article to the feature list,
+then closes the Guide and returns focus to the page.
+
 Page search uses Chromium's native text search: type `/words`, press Enter to
-keep the highlighted match, and use `n`/`N` to move. Press Enter again to activate
+keep the highlighted match. `n` continues the original direction; `N` steps in
+the opposite direction without changing the next `n`. Start with `?words` to
+search backward. Press Enter again to activate
 the selected page result, including links with wrapped titles and buttons.
 Shift+Enter requests a foreground tab for links. Escape clears the search.
+Feedback shows the current match and total while you type, including when the
+status bar is enabled. While an input method is composing, finish or cancel
+the composition before accepting or closing search.
 Use `:target-search links` for the full link-list interface.
+
+Private and temporary windows keep a visible identity header, including when
+tabs or status chrome are hidden. Their window titles carry the same marker,
+and popups retain it as their page titles change.
+
+Live page titles stay consistent across tabs, Switcher search and `:yank title`,
+including background updates. An open Switcher refreshes matching results while
+keeping your query and keyboard focus.
+Titles and addresses also follow navigation while the Switcher is open,
+including page changes within a private window.
+Busy pages cannot keep postponing a search or prevent results from other
+windows from arriving. Selected result actions keep keyboard focus as labels update.
+
+Use `H` and `L` for Back and Forward; a count such as `2H` moves two visits.
+History includes Ferric's start page and follows a new document while its
+response is still arriving.
+Press `s` to stop a load. Finished and failed pages keep their current state,
+and reselecting a loading tab keeps its loading feedback.
+Reopen recently closed tabs with `u` or Ctrl+Shift+T. Their saved position,
+pinning, mute state, and zoom return with them.
+After an unclean exit, press `y` or Alt+R to recover saved tabs. Recovery shows
+read errors with a retry choice. Escape, `n`, or Alt+D starts without recovery,
+including while the saved tabs are still being read.
+Recovery keeps new pages open and retains the addresses of restored tabs you
+haven't visited yet. An untouched initial start page can be reused for recovery.
+
+If a page fails to load, press `r` to open its address again, `e` to edit the
+address in the command line, or `b` to go back. Reopening starts a fresh request
+without resending form data. Enter runs the selected choice; Escape closes the
+dialog. The same choices are available in regular, private and popup windows.
+
+Reload asks before resending form data, including from a response that is still
+arriving or has been stopped. Enter or Escape keeps the current page; `y`
+resends once. Keeping a live response lets it continue loading. The decision
+remains available if that response finishes, and expires when you change tabs
+or pages. Cancelling a failed form reload preserves its failed state and
+returns to its error dialog if it was open. Choosing Stay in a site's Leave page
+prompt keeps the document and keyboard focus; an interrupted response is shown
+as stopped.
 
 In `:downloads`, use `j`/`k` or arrows to browse, Page Up/Down to read a page,
 and Home/End or `g`/`G` to jump. Enter expands the selected file's full name,
@@ -98,10 +152,33 @@ variants edit the search text. Enter opens the selection; Escape closes it.
 Tab enters the selected result's actions after any search status controls;
 Shift+Tab from its first action returns to the preceding search control.
 Current results remain usable while background searches load more items.
+Use `Alt+1–8` to select tabs, `Alt+9` for the last tab, and `Ctrl+w` to close
+the current tab. After selecting or closing a tab, the selected page is ready
+for keyboard input in regular and private windows.
+Press `u` or `Ctrl+Shift+T` to reopen a closed page with its pin, mute and zoom
+settings. After closing the last tab, Undo reuses the automatic start page while
+it is still unused. New pages and unfinished start-page edits keep their tabs.
+From a terminal, `ferric-browser open --target tab URL` opens a new tab in the
+running browser. Use `--target tab-bg` to keep the selected page, or `--target
+current` to navigate it. Plain `open URL` uses the current tab. Profile and
+context selectors also apply to additional URL inputs.
+Use `ferric-browser open --context NAME URL` for a context created in the browser,
+whether it is already running or starting fresh. The saved context keeps its
+identity and profile without adding a definition to `contexts.toml`.
+Help and query output work in pipelines such as `ferric-browser --help | head`.
+A reader closing its pipe exits quietly; other output failures return an error.
+
 In the command line, Tab/Shift+Tab or `Ctrl+n`/`Ctrl+p` cycle completions.
 At the end of the input, Right inserts the selected suggestion for editing;
 Space inserts it and starts the next word. Enter runs the command. Ctrl+z
-undoes an insertion while preserving what you typed before it.
+undoes an insertion while preserving what you typed before it. Up/Down recall
+command history; Ctrl+z steps back through recalled commands to your draft,
+and Ctrl+Shift+z redoes those edits.
+After Undo, Up/Down continue from the restored command. Reopening command entry
+starts browsing from the newest command and keeps the visible line as its draft.
+Modified arrows keep their normal text-editing behavior. While an input method
+is composing, Return and Escape stay with the editor; finish or cancel the
+composition before running or closing the command line.
 History and bookmark lists also page by their rendered rows; expanded details
 and controls taller than the viewport scroll before navigation moves past them.
 Tab enters a library entry's controls; Shift+Tab from its first control returns

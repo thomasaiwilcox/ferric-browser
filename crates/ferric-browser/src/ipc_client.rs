@@ -40,8 +40,11 @@ pub(super) fn acquire_instance(
         }
         error => CliError::storage(error.to_string()),
     })?;
-    ferric_browser_engine_qt::spawn_ipc_server(listener, Uuid::new_v4().to_string());
-    Ok(InstanceStart::Owner(InstanceRuntime { _lock: lock, paths }))
+    Ok(InstanceStart::Owner(InstanceRuntime {
+        _lock: lock,
+        paths,
+        pending_listener: Some(listener),
+    }))
 }
 
 pub(super) fn existing_instance_paths(
@@ -98,17 +101,14 @@ pub(super) fn forward_open(
         return Err(CliError::Protocol(error));
     }
     for (offset, additional) in additional_inputs.iter().enumerate() {
-        let mut params = if let Some(target) = target {
-            serde_json::json!({
-                "command": "open",
-                "arguments": {"input": additional, "external": true, "target": target}
-            })
-        } else {
-            serde_json::json!({
-                "command": "tab-open",
-                "arguments": {"input": additional, "background": false}
-            })
-        };
+        let mut params = serde_json::json!({
+            "command": "open",
+            "arguments": {
+                "input": additional,
+                "external": true,
+                "target": target.unwrap_or("tab")
+            }
+        });
         add_cli_context(&mut params, options, None)?;
         let response = instance_request(
             paths,
@@ -123,7 +123,7 @@ pub(super) fn forward_open(
             return Err(CliError::Protocol(error).after_accepted("startup input", offset + 1));
         }
     }
-    println!(
+    crate::cli_output::line(format_args!(
         "Forwarded {} startup input{} to the running Ferric Browser instance",
         additional_inputs.len().saturating_add(1),
         if additional_inputs.is_empty() {
@@ -131,7 +131,7 @@ pub(super) fn forward_open(
         } else {
             "s"
         }
-    );
+    ))?;
     Ok(())
 }
 
@@ -147,7 +147,7 @@ pub(super) fn forward_focus(paths: &InstancePaths) -> Result<(), CliError> {
     if let Some(error) = response.error {
         return Err(CliError::Protocol(error));
     }
-    println!("Focused the running Ferric Browser instance");
+    crate::cli_output::line(format_args!("Focused the running Ferric Browser instance"))?;
     Ok(())
 }
 
@@ -208,7 +208,9 @@ pub(super) fn forward_command(
             return Err(CliError::Protocol(error).after_accepted("command", accepted));
         }
     }
-    println!("Command accepted by the running Ferric Browser instance");
+    crate::cli_output::line(format_args!(
+        "Command accepted by the running Ferric Browser instance"
+    ))?;
     Ok(())
 }
 
@@ -269,7 +271,7 @@ pub(super) fn forward_query(
     if let Some(error) = response.error {
         return Err(CliError::Protocol(error));
     }
-    print_response_result(response, format).map_err(CliError::from)
+    print_response_result(response, format)
 }
 
 pub(super) fn forward_activate(
@@ -288,17 +290,17 @@ pub(super) fn forward_activate(
     if let Some(error) = response.error {
         return Err(CliError::Protocol(error));
     }
-    print_response_result(response, "json").map_err(CliError::from)
+    print_response_result(response, "json")
 }
 
-pub(super) fn print_response_result(response: Response, format: &str) -> Result<(), String> {
+pub(super) fn print_response_result(response: Response, format: &str) -> Result<(), CliError> {
     validate_format(format)?;
     let result = response.result.unwrap_or_else(|| serde_json::json!({}));
-    println!(
+    crate::cli_output::line(format_args!(
         "{}",
         serde_json::to_string_pretty(&result)
             .map_err(|error| format!("could not format JSON response: {error}"))?
-    );
+    ))?;
     Ok(())
 }
 
@@ -325,7 +327,7 @@ pub(super) fn print_diagnostics(
                 if let Some(error) = response.error {
                     return Err(CliError::Protocol(error));
                 }
-                return print_response_result(response, format).map_err(CliError::from);
+                return print_response_result(response, format);
             }
             Err(error) if error.code() == ErrorCode::NoInstance => {}
             Err(error) => return Err(error),
@@ -356,11 +358,11 @@ pub(super) fn print_diagnostics(
         ]
     });
     diagnostics["storage"] = storage_diagnostics(&roots);
-    println!(
+    crate::cli_output::line(format_args!(
         "{}",
         serde_json::to_string_pretty(&diagnostics)
             .map_err(|error| format!("could not format diagnostics: {error}"))?
-    );
+    ))?;
     Ok(())
 }
 

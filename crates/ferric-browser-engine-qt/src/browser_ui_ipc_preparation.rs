@@ -95,82 +95,33 @@ impl qobject::BrowserUi {
                 );
                 PendingLinkNavigation {
                     target: None,
+                    new_tab_route: None,
                     new_window_action: Some(new_window_action),
                     journey_parent: None,
-                    url: cleaned,
-                }
-            }
-            IpcOpenTarget::BackgroundTab => {
-                let (window, original_window, original_tab, journey_parent) = {
-                    let binding = self.as_ref();
-                    let state = binding
-                        .rust()
-                        .state
-                        .as_ref()
-                        .ok_or_else(|| "core state unavailable".to_owned())?;
-                    let window = match route.selector {
-                        DispatchTarget::Active => state.active_window(),
-                        DispatchTarget::LastFocused => {
-                            state.last_focused_window().or(state.active_window())
-                        }
-                        DispatchTarget::Window(window) => Some(window),
-                        DispatchTarget::Tab(tab) => state.tabs().get(&tab).map(|tab| tab.window),
-                    }
-                    .ok_or_else(|| "requested window is not available".to_owned())?;
-                    let source_tab = match route.selector {
-                        DispatchTarget::Tab(tab) => Some(tab),
-                        _ => state
-                            .windows()
-                            .get(&window)
-                            .and_then(|window| window.active_tab),
-                    };
-                    let journey_parent =
-                        source_tab.and_then(|tab| state.journey().current_node(tab));
-                    (
-                        window,
-                        state.active_window(),
-                        state.windows()[&window].active_tab,
-                        journey_parent,
-                    )
-                };
-                self.as_mut()
-                    .reduce_event(Event::OpenTab { window })
-                    .map_err(|error| error.clone())?;
-                let tab = self
-                    .as_ref()
-                    .rust()
-                    .state
-                    .as_ref()
-                    .and_then(|state| state.windows().get(&window))
-                    .and_then(|window| window.active_tab)
-                    .ok_or_else(|| "new background tab was not created".to_owned())?;
-                if let Some(original_tab) = original_tab {
-                    self.as_mut()
-                        .reduce_event(Event::ActivateTab {
-                            window,
-                            tab: original_tab,
-                        })
-                        .map_err(|error| error.clone())?;
-                } else if let Some(original_window) = original_window
-                    && original_window != window
-                {
-                    self.as_mut()
-                        .reduce_event(Event::FocusWindow {
-                            window: original_window,
-                        })
-                        .map_err(|error| error.clone())?;
-                }
-                value["tab_id"] = Value::String(tab.to_string());
-                let target = current_target(self.as_ref().rust().state.as_ref(), Some(tab))
-                    .ok_or_else(|| "new background tab target is not live".to_owned())?;
-                PendingLinkNavigation {
-                    target: Some(target),
-                    new_window_action: None,
-                    journey_parent,
+                    repeat_route: Some(route.clone()),
                     url: cleaned,
                 }
             }
             IpcOpenTarget::Tab => {
+                let window = self
+                    .as_ref()
+                    .ipc_route_window(route)
+                    .map_err(|error| error.to_string())?;
+                let mut captured = route.clone();
+                captured.selector = DispatchTarget::Window(window);
+                PendingLinkNavigation {
+                    target: None,
+                    new_tab_route: Some(captured),
+                    new_window_action: None,
+                    journey_parent: None,
+                    repeat_route: Some(route.clone()),
+                    url: cleaned,
+                }
+            }
+            IpcOpenTarget::BackgroundTab => {
+                return Err("open --clean-link cannot be combined with --target tab-bg".into());
+            }
+            IpcOpenTarget::Current => {
                 let binding = self.as_ref();
                 let state = binding
                     .rust()
@@ -194,8 +145,10 @@ impl qobject::BrowserUi {
                     .ok_or_else(|| "requested tab is not live".to_owned())?;
                 PendingLinkNavigation {
                     target: Some(target),
+                    new_tab_route: None,
                     new_window_action: None,
                     journey_parent: None,
+                    repeat_route: Some(route.clone()),
                     url: cleaned,
                 }
             }
@@ -212,9 +165,6 @@ impl qobject::BrowserUi {
             .pending_link_navigation = Some(pending);
         self.as_mut().publish_link_preview("open", &result, true);
         self.as_mut().set_link_preview_visible(true);
-        // Clean background opens also restore the original active tab. Keep
-        // the newly-created pending tab in the full projected tab order.
-        self.as_mut().sync_tab_order_from_core();
         self.set_status_text(QString::from("Clean-link navigation awaits confirmation"));
         Ok(value)
     }

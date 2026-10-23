@@ -566,8 +566,10 @@ qualification gate rather than silently downgrade the requirement.
 bottom status bar is hidden in normal mode by default and appears in other
 interaction modes. Users can configure it to remain visible. A top tab strip
 appears with two or more tabs. The command line replaces the status text while active;
-completion expands upward without resizing the web page on every keystroke.
-Transient messages must not repeatedly change viewport size or scroll position.
+status, command, and search bars overlay the page, and completion expands upward.
+Showing or hiding these surfaces, including transient messages, must not change
+the page viewport size or scroll position. Persistent tab strips and profile
+health notices reserve their own space independently of these overlays.
 
 **UI-002 — Status.** Show mode, distinct profile and context labels, committed
 URL/origin, connection state, loading progress, tab position, audible/mute
@@ -752,6 +754,22 @@ grouped by mode and action, including unbound commands and conflicts. The same
 data is queryable through typed IPC without exporting private page state. The
 `binding-list` command opens that surface and returns the filtered map, while
 `binding-explain` returns the structured resolution for one keychain.
+The Guide opens in the invoking primary, secondary, private or popup window
+and uses that window's effective bindings. Search and reader state remain
+with their window. An explicit command query replaces an edited search,
+including its visible input. Opening the Guide focuses a visible search field;
+closing it returns focus to the invoking window.
+Search ranks exact names, commands and shortcuts before prefixes, article text,
+sections and modes. Shortcut case remains significant; keychains accept spaced
+or compact notation. A changed query selects the best result, while a refresh
+of the same query preserves the selected feature. Search results follow
+relevance order; an empty search retains section grouping. Keyboard guidance
+follows the focused search, list, reader or control. Escape first cancels an
+open section chooser.
+From the Guide's list or reader, `/` reveals and focuses search with the current
+query selected for replacement. In the search field it remains ordinary text.
+Reader movement uses the current viewport and complete article layout even
+when the next key follows opening or reopening the article immediately.
 
 ### 9.2 Default bindings
 
@@ -797,8 +815,26 @@ action.
 Tab/Shift-Tab in command mode traverse completion; Ctrl-n/Ctrl-p do likewise.
 Return uses an explicitly selected completion, and clicking a completion inserts
 it for review. Up/Down recall eligible profile-local command history while
-preserving the draft line. Sensitive commands are excluded; only conservatively
-safe command text is durable. In normal mode, Ctrl-Tab/Ctrl-^ return to the
+preserving the draft line. Each recall is one native undoable edit; Ctrl-z can
+return through recalled commands to the draft and its earlier edits, and
+Ctrl-Shift-z redoes them. An unchanged history result must preserve caret,
+selection and undo state. Sensitive commands are excluded; only conservatively
+safe command text is durable. During history browsing, reconcile a restored
+recorded line with its exact position before moving Up or Down. A restored
+saved draft has no selected entry; retain its session so Undo can recover a
+recorded line after Down returned to the draft. An unrecorded edit becomes
+the next draft rather than retaining an unrelated history position. Explicit
+command entry starts a
+fresh history browse without clearing the editor's visible text or undo state.
+Only unmodified Up/Down browse history. Modified arrows retain native editing
+and selection. Completion accepts exact Tab, Shift-Tab, Ctrl-n and Ctrl-p
+gestures; additional modifiers remain available to the native editor and its
+surrounding context. Keypad navigation has the same meaning as ordinary arrows.
+While input-method preedit is active, command entry must not recall history,
+cycle browser completions, submit a command or close on Escape. Leave the key
+event to the native editor/input method, and suppress accepted signals during
+composition. A fresh Return after committed text submits normally.
+In normal mode, Ctrl-Tab/Ctrl-^ return to the
 previously focused live tab, and the mouse wheel over the tab strip switches
 adjacent tabs.
 Insert and pass-through behavior must preserve common web Ctrl-c/v/x/z/a/f
@@ -807,11 +843,17 @@ shortcuts unless a user explicitly changes those mode-specific bindings.
 In caret mode, `h/j/k/l` move by character/line, `w/b` move by word, `0/$` move
 to line start/end, `v` toggles selection extension, and `y` copies selection and
 returns to normal mode. Search Enter retains the match and returns to the
-prior base mode without advancing; normal-mode `n/N` operate on that retained
-search. Matching, highlighting, scrolling and frame traversal use Qt/Chromium's
+prior base mode without advancing. Normal-mode `n` continues the original query
+direction; `N` reverses one step without changing the next `n`. Previous/next
+arrows and explicit `search-next --forward` or `--backward` steps also preserve
+that original direction. Matching, highlighting, scrolling and frame traversal use Qt/Chromium's
 native find directly. Query edits supersede pending native finds immediately;
 explicit next/previous steps remain ordered. No DOM search or frame-discovery
 work may delay typing.
+Match feedback includes the native active position and total, and remains
+visible while entering a query even when the search bar covers the status bar.
+Enter and Escape remain with the native editor during input-method composition;
+they cannot accept or close search until composition finishes.
 A subsequent Enter hands the native active result to page selection/focus and
 activates it with native keyboard semantics. This supports wrapped links and
 controls, including many buttons. Shift+Enter sends the native foreground-tab
@@ -888,7 +930,7 @@ commands may be added, but these names and semantics form the target contract.
 | `scroll-to <top\|bottom>` | Apply the same target policy vertically and preserve horizontal position |
 | `scroll-target <select\|auto\|document\|status>` | Select a visible scrollable through Hint mode, clear to focus-aware automatic targeting, pin the document scroller, or report the current policy |
 | `search [--backward] [--case smart\|sensitive\|insensitive] <text>` | In-page search; no network |
-| `search-next [--backward] [--count N]` | Traverse retained matches |
+| `search-next [--forward\|--backward] [--count N]` | Continue the query's original direction by default; explicit direction applies only to this step |
 | `zoom <in\|out\|reset\|FACTOR>` | Clamp 0.25–5.0; default 1.0 |
 | `tab-close [--id ID] [--count N]` | Respect pinned tab/unsaved state; choose adjacent tab deterministically |
 | `tab-undo` | Restore most recent eligible closed-tab descriptor in this profile |
@@ -1015,6 +1057,77 @@ history; never turn an engine popup request into a naive URL reload that loses
 opener state, POST data, or OAuth flow. New explicit browser tabs use safe
 navigation and the selected profile. Preserve engine restrictions around
 cross-origin opener access and user gesture requirements.
+Back and Forward reconcile the current engine visit before choosing their
+destination, including a document whose response is still streaming. An owned
+document probe distinguishes that visit from the preceding page still visible
+before response headers. Recording history must not mark the load complete or
+infer its form method. Commands awaiting the same probe combine their signed
+counts within the supported bound and expire with their exact target, document,
+view, UI, host, address or navigation. Native start-page entries remain part of
+the logical history. An unavailable document proof must not choose from stale
+history. Bind a completed content-history visit to its exact Journey node.
+On an engine traversal commit, reuse that owned node only when its destination
+matches the actual committed address. Native start pages, unfinished responses
+and queued commands make engine offsets different from Journey offsets; never
+apply the latter to an engine destination. Missing, stale or foreign references
+record the actual committed visit instead of selecting a node by URL. A fresh
+navigation clears any older pending traversal intent.
+Determine traversal from the owned engine's main-frame navigation policy, not
+from the number of accepted browser commands. Several commands can combine
+before a probe replies. Persist a reused Journey reference only when the Core
+actually selected that node; a newly recorded destination needs a new durable
+record even when the initiating action was Back or Forward.
+During an explicit traversal, preserve the selected content entry until the
+native URL and history index agree. Their intermediate updates must not be
+treated as a replacement or a fresh visit. Capture the resolved native index
+with the request; even load success must wait for that position before
+publishing a history anchor. Stop and Stay expire the pending position.
+Follow-up commands must wait for that position as well; a proven document alone
+does not make offsets from the preceding native model valid. Preserve signed
+count combination and owner expiry while waiting.
+History notifications before the Core commit must not bind the selected visit
+to the old Core current node merely because their addresses match.
+A queued durable write already owns
+its UUID; use that identity for subsequent pointer writes before the worker's
+acknowledgement arrives. Never substitute the latest visit at the same URL.
+Application admission preserves existing storage queue order, including when a
+new request's operation is immediately available. Validate before queueing.
+Native QML URL strings can contain decoded spaces. Re-escape those spaces at
+the engine boundary before the existing strict URL and origin checks; retain
+encoded separators and reject invalid authorities, controls and backslashes.
+Browser Reload captures its owner and target, then preflights after queued native
+load notifications settle. Revalidate the capture before dispatch; queued repeats
+preserve the first cache option. Browser Reload asks before resending a form submission, including a
+committed response that is still arriving or has been stopped. Use the method
+of the entry the engine will actually reload: a form still awaiting response
+headers may reload its preceding GET without resending the submission.
+Keep page is initially selected; Enter or Escape cancels. Confirmation retains
+the requested cache behavior and authorizes one reload. It expires when its
+tab, window or document changes. Finishing the same response keeps its decision
+available and updates the recorded loading state. Cancelling leaves a live
+response running, preserves a completed, failed or stopped state, and restores
+a previously visible failure dialog without issuing another request. Rejecting
+a site's BeforeUnload decision releases the pending browser reload for retry.
+A Reload policy callback preserves the existing document's verified form method
+until a replacement document starts; that information never carries approval
+into a later retry. If Stay has stopped the view without a load notification,
+acknowledge the stopped response instead of retaining a provisional load.
+An explicit Stay owns a single cancellation record for its exact tab, generation,
+document, view, UI, host and local navigation serial. Its terminal address must
+match the retained engine address, including when Qt rolls back a proposed Open
+address after Stay. Form-resubmission approvals retain strict captured-address
+matching. A stopped terminal
+event, or Qt's failure with zero code/domain and no error text, preserves the
+previous completed/failed state or settles an interrupted response as cancelled.
+Do not show a new failure dialog for that cancellation. Genuine error facts,
+downloads, error pages and events from another owner follow normal handling.
+Automatic prompt dismissal does not create a Stay record.
+Native load starts, including page-initiated GET and POST, update retained
+loading state without issuing another navigation or changing the captured
+target. Stop always forwards a valid current target to the engine, including
+before its native start notification arrives. Only provisional and committed
+loads become cancelled from the request itself; idle, complete, failed and
+already-cancelled states remain intact when no load is running.
 
 **NAV-005 — Completion.** Combine commands/settings, current profile's tabs,
 quickmarks, bookmarks, and history. Ranking is deterministic: exact match,
@@ -1025,7 +1138,12 @@ manager views. Private windows do not query persistent history by default.
 
 **NAV-006 — Failure surfaces.** Preserve the requested and final safe URL in an
 error view. Distinguish DNS/network/TLS/HTTP/download/renderer failures. Retry
-does not resubmit POST silently. Offline pages and service workers are left to
+does not resubmit POST silently. Navigation failures offer keyboard actions to
+open the address again with a fresh request, edit it in the command line, or
+go back when history is available. Enter initially dismisses the dialog;
+Escape always dismisses it. These choices follow the failing tab in primary,
+secondary, private and popup windows and expire when that tab or address changes.
+Offline pages and service workers are left to
 the engine; the browser must not force an error just because a network probe
 failed. No network connectivity check is required for normal startup.
 
@@ -1181,9 +1299,18 @@ the same position, then the previous tab if none remains. Closing the final
 tab creates the native start page in the same profile, using its saved view.
 `window-close` closes the window.
 Pinned tabs remain before ordinary tabs and resist accidental bulk closure.
+Selecting or closing a tab returns keyboard focus to the selected page when
+no browser editor or modal surface owns input. Dismissing a surface after a
+tab change returns to that window's current page if its captured target is no
+longer available. This behavior is shared by primary, secondary and private windows.
 Pin and mute actions preserve their typed state through Qt; tab mute also
 updates the native WebEngine audio-muted state. `tab-next` and `tab-prev`
 accept bounded typed `--count` traversal and wrap over the live tab order.
+Undo reopens an eligible safe descriptor at its saved position within the
+pinned or unpinned group, clamped to the remaining group. Restore pin, mute and
+zoom before creating the replacement renderer. The new document has fresh
+identity. Normal-profile checkpoints retain these settings; private and
+temporary closed tabs remain in memory.
 
 **TAB-003 — Live movement.** Moving a tab between windows of the same profile
 must preserve its live browsing context, forms, and media. M0 must prove Qt
@@ -1222,6 +1349,12 @@ profiles with no persistent paths, in-memory Rust history/session/permission
 state, and no persistent favicon or download index. One private session may
 span its own windows; a fresh private session gets a new profile. Named durable
 profiles and private profiles never share cookies or website storage.
+
+Private and temporary windows keep an explicit, noninteractive identity header
+outside the webpage in primary, secondary and popup hosts. Hiding tabs or status
+chrome and entering commands or page search must not hide this identity. Window
+titles also carry the marker; popup page-title changes retain it as a prefix.
+The header uses the owning font and stays outside keyboard focus traversal.
 
 **PROFILE-003 — Private data exclusions.** Never write private URLs, titles,
 form content, permission decisions, command history, page-script results, or
@@ -1347,14 +1480,28 @@ tab, safe restore URL, pin/mute/zoom state, and optional scroll position.
 Windows record intended ordering and optional workspace hints, not a promise
 to recreate absolute compositor geometry. No forms, passwords, POST bodies,
 renderer memory, cookies, or private tabs are serialized.
+Format 3 adds closed-tab group position, pin/mute and zoom in hundredths.
+Format 4 adds `recovered_session_ids`, identifying the checkpoints already
+incorporated into this session. Recovery excludes those ancestors while keeping
+their files available for fallback to a retained generation. Reject self or
+duplicate identities and cycles across current checkpoints.
+Read formats 2 and 3 and upgrade in memory. Format 2's absent closed-tab settings
+default to append, unpinned, unmuted and 100% zoom. Atomic saves retain the
+original generation. Continue rejecting unsupported earlier and future formats.
+Associate restored rows with their newly allocated runtime tab IDs before
+reconciling pinned groups. Selected-first planning and append operations must
+preserve each page's address, settings and lazy-loading state through reordering.
+Retain unloaded addresses in authoritative tab state without navigation, a new
+document identity, or a history visit. Later saves must preserve those addresses.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 4,
   "session_id": "7094eaa1-4c2c-46a8-9766-ffdd4d030061",
   "name": "work",
   "profile_id": "e1b96359-f88e-441b-9221-2217bb22a7e0",
   "revision": 42,
+  "recovered_session_ids": [],
   "saved_at": "2026-09-14T12:00:00Z",
   "windows": [
     {
@@ -1388,6 +1535,21 @@ callback state, or an unknown unsafe transition, restore a placeholder with
 explicit user options rather than automatically navigate. Do not promise
 full back/forward history across process restarts; live engine history remains
 supported. Preserve original snapshots until a successful restore is saved.
+The recovery dialog distinguishes reading, empty and failed reads. Keep Escape,
+`n` and Alt+D available while reading; `y` and Alt+R retry after a failure and
+cannot queue duplicate recovery while a read is pending. Dismissing revokes the
+read's authority to publish tabs or a session preview. Failed and cancelled
+reads preserve the current document and return keyboard focus on dismissal.
+Correlate saved-session reads with their request intent and storage ticket.
+Capture recovery paths during background profile bootstrap and share that
+source set between same-profile owners. Files created by the new run cannot
+enter it. Evaluate live work when the read completes: append saved tabs while
+preserving existing renderers, documents, settings and closed-tab undo records.
+Reuse only the captured initial blank/start-page target when the exact owner,
+target, sole-tab membership and default settings remain unchanged. Persist the
+recovered session identities with the resulting current checkpoint so repeated
+crash recovery excludes ancestors. Keep those files for atomic fallback until
+normal checkpoint cleanup removes all current and previous generations.
 
 **SESSION-004 — User actions.** Session load defaults to a preview/replace flow
 with unsaved-page/download checks; `--append` adds windows within the named
@@ -3635,6 +3797,19 @@ all-token match, then bounded current-context and recency boosts, with kind and
 stable ID as tie-breakers. Current-context boosting never hides an exact result.
 The default displays at most `switcher.max_results` and offers a clear route to
 the full manager for larger stores.
+
+Live document-title changes update retained tab metadata, invalidate cached
+matches and refresh an open Switcher without replacing its query or moving
+keyboard focus. The tab strip and `yank title` use the same bounded, sanitized
+title. These updates preserve navigation/document identity and create no visit.
+Accepted runtime observations invalidate cached live rows even when the durable
+revision is unchanged. Open Switchers refresh after full or same-document
+navigation, including background and transient-profile tabs, and retain the
+query and focus while publishing current target generations.
+Continuous page activity must not postpone a pending query refresh. Live
+refreshes let the current batch finish for every window, including before its
+first result, then collect newer facts. Query edits replace the batch immediately;
+closing the Switcher discards pending refresh work.
 
 **SWITCH-003 — Actions.** Selecting a result invokes its default typed action:
 focus for a live tab/window, enter for a context, execute/open-help for a

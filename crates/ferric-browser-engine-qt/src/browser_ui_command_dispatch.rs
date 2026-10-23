@@ -8,10 +8,18 @@ use super::{
 };
 
 impl qobject::BrowserUi {
-    #[allow(clippy::too_many_lines)]
     pub(super) fn execute_parsed_commands(
+        self: Pin<&mut Self>,
+        commands: Vec<ParsedCommand>,
+    ) -> bool {
+        self.execute_counted_parsed_commands(commands, 1)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub(super) fn execute_counted_parsed_commands(
         mut self: Pin<&mut Self>,
         commands: Vec<ParsedCommand>,
+        count: u32,
     ) -> bool {
         let registry = self.as_ref().rust().registry.clone();
         let commands = match registry.expand_chain(commands) {
@@ -71,6 +79,7 @@ impl qobject::BrowserUi {
                     // discard the remaining chain instead of running it early.
                     return true;
                 }
+                self.as_mut().note_repeatable_command(&command);
                 continue;
             }
             if let Some(result) = self.as_mut().dispatch_start_page_command(&command) {
@@ -506,6 +515,7 @@ impl qobject::BrowserUi {
                     self.set_status_text(QString::from(error));
                     return false;
                 }
+                self.as_mut().note_repeatable_command(&command);
                 continue;
             }
 
@@ -756,7 +766,6 @@ impl qobject::BrowserUi {
                 continue;
             }
 
-            self.as_mut().note_repeatable_command(&command);
             let effects = {
                 if self.as_ref().rust().state.is_none() {
                     self.set_status_text(QString::from("Core state unavailable"));
@@ -765,7 +774,7 @@ impl qobject::BrowserUi {
                 let navigation = self.as_ref().navigation_context();
                 let target = self.as_ref().clipboard_dispatch_target(&command);
                 self.as_mut().dispatch_runtime(RuntimeDispatch {
-                    invocation: CommandInvocation::new(command),
+                    invocation: CommandInvocation::with_count(command.clone(), count),
                     navigation,
                     target,
                 })
@@ -777,6 +786,8 @@ impl qobject::BrowserUi {
                     return false;
                 }
             };
+            self.as_mut()
+                .note_repeatable_invocation(&command, None, count);
             self.as_mut().sync_tab_order_from_core();
             self.as_mut().set_pending_engine_action(&effects);
         }

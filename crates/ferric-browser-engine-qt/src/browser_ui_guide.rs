@@ -16,6 +16,7 @@ const CATEGORIES: [&str; 10] = [
 ];
 
 struct GuideRow {
+    match_rank: u8,
     category: String,
     title: String,
     keys: String,
@@ -30,6 +31,65 @@ struct GuideRow {
     recovery: String,
     count: String,
     binding_notes: String,
+}
+
+impl GuideRow {
+    fn search_rank(&self, query: &str) -> Option<u8> {
+        if query.is_empty() {
+            return Some(0);
+        }
+        let folded = query.to_lowercase();
+        let command_query = folded
+            .strip_prefix(':')
+            .filter(|value| !value.is_empty())
+            .unwrap_or(&folded);
+        let title = self.title.to_lowercase();
+        let command = self.command.to_lowercase();
+        // Key case is meaningful: o and O may invoke different commands.
+        let bound = !self.keys.starts_with("Unbound");
+        let keys = self.keys.replace(' ', "");
+        let key_query = query.replace(' ', "");
+        if (bound && keys == key_query)
+            || self.identity == command_query
+            || command == command_query
+            || title == folded
+        {
+            Some(0)
+        } else if title.starts_with(&folded)
+            || self.identity.starts_with(command_query)
+            || command.starts_with(command_query)
+            || (bound && (keys.starts_with(&key_query) || keys.eq_ignore_ascii_case(&key_query)))
+        {
+            Some(1)
+        } else if title.contains(&folded)
+            || self.identity.contains(command_query)
+            || command.contains(command_query)
+            || (bound && keys.contains(&key_query))
+        {
+            Some(2)
+        } else if self.summary.to_lowercase().contains(&folded) {
+            Some(3)
+        } else if [
+            &self.explanation,
+            &self.arguments,
+            &self.examples,
+            &self.recovery,
+            &self.count,
+            &self.binding_notes,
+        ]
+        .iter()
+        .any(|text| text.to_lowercase().contains(&folded))
+        {
+            Some(4)
+        } else if self.category.to_lowercase().contains(&folded)
+            || self.mode.to_lowercase().contains(&folded)
+            || (bound && self.keys.to_lowercase().contains(&folded))
+        {
+            Some(5)
+        } else {
+            None
+        }
+    }
 }
 
 fn feature_title(command: &str, description: &str) -> String {
@@ -190,11 +250,18 @@ fn feature_title(command: &str, description: &str) -> String {
 
 // These gestures are handled directly by the window input controller, rather
 // than the configurable binding resolver. Keep them visible in the same reader.
-fn built_in_gestures(command: &str) -> &'static [(&'static str, &'static str, &'static str)] {
+fn built_in_gestures(
+    command: &str,
+    search_backward: bool,
+) -> &'static [(&'static str, &'static str, &'static str)] {
     match command {
         "search" => &[
             ("search <query>", "/", "normal"),
             ("search <query> --backward", "?", "normal"),
+        ],
+        "search-next" if search_backward => &[
+            ("search-next", "n", "normal"),
+            ("search-next --forward", "N", "normal"),
         ],
         "search-next" => &[
             ("search-next", "n", "normal"),
@@ -218,7 +285,8 @@ fn built_in_gestures(command: &str) -> &'static [(&'static str, &'static str, &'
 
 impl qobject::BrowserUi {
     pub(super) fn refresh_guide(mut self: Pin<&mut Self>, search: &QString) {
-        let query = search.to_string().to_ascii_lowercase();
+        let query = search.to_string();
+        let query = query.trim();
         let bindings = self
             .as_ref()
             .rust()
@@ -255,7 +323,7 @@ impl qobject::BrowserUi {
                     )
                 })
                 .collect();
-            let gestures = built_in_gestures(&command.name);
+            let gestures = built_in_gestures(&command.name, self.as_ref().rust().search_backward);
             invocations.extend(gestures.iter().map(|(invocation, keys, mode)| {
                 ((*invocation).into(), (*keys).into(), (*mode).into())
             }));
@@ -272,7 +340,6 @@ impl qobject::BrowserUi {
                 ));
             }
             let mut feature_rows = Vec::new();
-            let mut matches_query = query.is_empty();
             for (invocation, keys, mode) in invocations {
                 let count = match command.count {
                     CountPolicy::NotSupported => {
@@ -317,7 +384,7 @@ impl qobject::BrowserUi {
                     }
                     binding_notes.push_str(match command.name.as_str() {
                         "search" => "Built-in search-entry gesture. Type a query and press Enter. A question mark continues a pending key chain instead when one is active.",
-                        "search-next" => "Built-in gesture while a page search is active. Numeric counts are available through command entry with --count.",
+                        "search-next" => "While a page search is active, n continues its original direction and N steps in the opposite direction. A reversed step does not change the next n. Command entry accepts --forward or --backward for an explicit direction and --count for multiple matches.",
                         _ => "Built-in Caret-mode gesture, handled before configurable bindings.",
                     });
                 }
@@ -337,13 +404,8 @@ impl qobject::BrowserUi {
                     article.recovery
                 );
                 let details = format!("{details}\n\nBinding resolution\n{binding_notes}");
-                let searchable = format!(
-                    "{} {title} {invocation} {keys} {mode} {} {details}",
-                    article.category, command.description
-                )
-                .to_ascii_lowercase();
-                matches_query |= searchable.contains(&query);
                 feature_rows.push(GuideRow {
+                    match_rank: 0,
                     category: article.category.into(),
                     title: title.clone(),
                     keys,
@@ -360,11 +422,21 @@ impl qobject::BrowserUi {
                     binding_notes,
                 });
             }
-            if matches_query {
+            // Keep every binding of a matching feature together, at the rank
+            // of its best match. The reader groups these rows into one article.
+            if let Some(rank) = feature_rows
+                .iter()
+                .filter_map(|row| row.search_rank(query))
+                .min()
+            {
+                for row in &mut feature_rows {
+                    row.match_rank = rank;
+                }
                 rows.extend(feature_rows);
             }
         }
-        let recovery = GuideRow {
+        let mut recovery = GuideRow {
+            match_rank: 0,
             category: "Getting Started and Modes".into(),
             title: "Recover from webpage shortcuts".into(),
             keys: "Ctrl+Escape".into(),
@@ -380,29 +452,23 @@ impl qobject::BrowserUi {
             count: "This gesture does not accept a numeric count.".into(),
             binding_notes: "This recovery gesture is reserved, even when bindings are customised.".into(),
         };
-        if query.is_empty()
-            || format!(
-                "{} {} {} {} {}",
-                recovery.category,
-                recovery.title,
-                recovery.keys,
-                recovery.mode,
-                recovery.explanation
-            )
-            .to_ascii_lowercase()
-            .contains(&query)
-        {
+        if let Some(rank) = recovery.search_rank(query) {
+            recovery.match_rank = rank;
             rows.push(recovery);
         }
         rows.sort_by(|left, right| {
-            CATEGORIES
-                .iter()
-                .position(|category| *category == left.category)
-                .cmp(
-                    &CATEGORIES
+            left.match_rank
+                .cmp(&right.match_rank)
+                .then_with(|| {
+                    CATEGORIES
                         .iter()
-                        .position(|category| *category == right.category),
-                )
+                        .position(|category| *category == left.category)
+                        .cmp(
+                            &CATEGORIES
+                                .iter()
+                                .position(|category| *category == right.category),
+                        )
+                })
                 .then_with(|| {
                     (left.identity != "mode-enter").cmp(&(right.identity != "mode-enter"))
                 })
@@ -439,6 +505,72 @@ impl qobject::BrowserUi {
 mod tests {
     use super::*;
 
+    fn article_row(command: &str, keys: &str) -> GuideRow {
+        let registry = ferric_browser_core::CommandRegistry::default_v1();
+        let definition = registry.resolve(command).unwrap();
+        let article = guide_article(command).unwrap();
+        GuideRow {
+            match_rank: 0,
+            category: article.category.into(),
+            title: feature_title(command, &definition.description),
+            keys: keys.into(),
+            mode: "normal".into(),
+            command: command.into(),
+            summary: definition.description.clone(),
+            details: String::new(),
+            identity: command.into(),
+            explanation: article.explanation.into(),
+            arguments: String::new(),
+            examples: definition.examples.join("\n"),
+            recovery: article.recovery.into(),
+            count: String::new(),
+            binding_notes: String::new(),
+        }
+    }
+
+    #[test]
+    fn direct_features_outrank_shared_articles_and_sections() {
+        let zoom = article_row("zoom", "+");
+        let scroll = article_row("scroll-target", "Unbound — use command entry");
+        let session = article_row("session-delete", "Unbound — use command entry");
+        let direct_rank = zoom.search_rank("zoom").unwrap();
+        assert!(direct_rank < scroll.search_rank("zoom").unwrap());
+        assert!(direct_rank < session.search_rank("zoom").unwrap());
+        assert_eq!(zoom.search_rank("PAGE ZOOM"), Some(direct_rank));
+        // Browsing by section or mode and finding words in the full article
+        // remain available even when no title or command matches.
+        assert!(zoom.search_rank("movement").is_some());
+        assert!(zoom.search_rank("normal").is_some());
+        assert!(session.search_rank("replaying forms").is_some());
+        assert_eq!(zoom.search_rank("no-such-feature"), None);
+        assert!(zoom.search_rank("").is_some());
+    }
+
+    #[test]
+    fn exact_shortcuts_preserve_case_and_beat_text_prefixes() {
+        let lower = article_row("open", "o");
+        let upper = article_row("tab-open", "O");
+        assert!(lower.search_rank("o").unwrap() < upper.search_rank("o").unwrap());
+        assert!(upper.search_rank("O").unwrap() < lower.search_rank("O").unwrap());
+        let mut custom = article_row("zoom", "g z");
+        assert!(custom.search_rank("g z").is_some());
+        assert_eq!(custom.search_rank("gz"), custom.search_rank("g z"));
+        assert!(custom.search_rank("g").is_some());
+        custom.keys = "Ctrl+t".into();
+        assert!(custom.search_rank("ctrl+t").unwrap() < custom.search_rank("normal").unwrap());
+        custom.keys = "Unbound — use command entry".into();
+        assert_eq!(custom.search_rank("Unbound"), None);
+    }
+
+    #[test]
+    fn configured_invocations_accept_the_command_prompt_prefix() {
+        let mut zoom = article_row("zoom", "-");
+        zoom.command = "zoom out".into();
+        assert_eq!(zoom.search_rank(":zoom out"), zoom.search_rank("zoom out"));
+        assert_eq!(zoom.search_rank(":zoom"), zoom.search_rank("zoom"));
+        assert!(zoom.search_rank(":zoom out").unwrap() < zoom.search_rank("out").unwrap());
+    }
+
     #[test]
     fn direct_input_gestures_have_registered_manual_commands() {
         let registry = ferric_browser_core::CommandRegistry::default_v1();
@@ -449,7 +581,7 @@ mod tests {
             "caret-select",
             "caret-yank",
         ] {
-            let gestures = built_in_gestures(command);
+            let gestures = built_in_gestures(command, false);
             assert_ne!(gestures, []);
             for (invocation, _, mode) in gestures {
                 let chain = parse_chain(invocation, ParseInput::Interactive).unwrap();
@@ -467,7 +599,15 @@ mod tests {
         }
         // Prompt and document-selection shortcuts are browser gestures even
         // when no configurable binding exists for their command.
-        assert_eq!(built_in_gestures("search")[0].1, "/");
-        assert_eq!(built_in_gestures("caret-select")[0].1, "v");
+        assert_eq!(built_in_gestures("search", false)[0].1, "/");
+        assert_eq!(built_in_gestures("caret-select", false)[0].1, "v");
+        assert_eq!(
+            built_in_gestures("search-next", false)[1].0,
+            "search-next --backward"
+        );
+        assert_eq!(
+            built_in_gestures("search-next", true)[1].0,
+            "search-next --forward"
+        );
     }
 }

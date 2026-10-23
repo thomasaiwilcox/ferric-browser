@@ -27,6 +27,7 @@ pub(crate) struct Session {
     pub(crate) decisions: Mutex<BTreeMap<(String, String), PermissionDecision>>,
     pub(crate) durable: Mutex<PermissionCache>,
     pub(crate) downloads: Mutex<DownloadCatalog>,
+    pub(crate) recovery_paths: OnceLock<Vec<std::path::PathBuf>>,
 }
 
 #[derive(Clone)]
@@ -75,6 +76,7 @@ impl ProfileSession {
                 } else {
                     DownloadCatalog::default()
                 }),
+                recovery_paths: OnceLock::new(),
             })
         };
         if !durable {

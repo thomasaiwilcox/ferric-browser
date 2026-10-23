@@ -43,6 +43,7 @@ pub(super) fn command_context(
         "requested_profile": route.profile,
         "requested_context": route.context,
         "target": match route.open_target {
+            IpcOpenTarget::Current => "current",
             IpcOpenTarget::Tab => "tab",
             IpcOpenTarget::BackgroundTab => "tab-bg",
             IpcOpenTarget::Window => "window",

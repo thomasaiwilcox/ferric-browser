@@ -86,18 +86,20 @@ pub(super) fn search_next(
     default_backward: bool,
 ) -> Result<(bool, u32), String> {
     let mut backward = default_backward;
-    let mut backward_seen = false;
+    let mut direction_seen = false;
     let mut count = 1;
     let mut count_seen = false;
     let mut index = 0;
     while index < arguments.len() {
         match arguments[index].as_str() {
-            "--backward" if !backward_seen => {
-                backward = true;
-                backward_seen = true;
+            direction @ ("--forward" | "--backward") if !direction_seen => {
+                backward = direction == "--backward";
+                direction_seen = true;
                 index += 1;
             }
-            "--backward" => return Err("search-next accepts --backward at most once".to_owned()),
+            "--forward" | "--backward" => {
+                return Err("search-next accepts only one direction flag".to_owned());
+            }
             "--count" if !count_seen => {
                 let value = arguments.get(index + 1).ok_or_else(|| {
                     "search-next --count requires a value from 1 to 100".to_owned()
@@ -113,7 +115,8 @@ pub(super) fn search_next(
             "--count" => return Err("search-next accepts --count at most once".to_owned()),
             _ => {
                 return Err(
-                    "search-next accepts --backward and optional --count N flags".to_owned(),
+                    "search-next accepts --forward or --backward and optional --count N flags"
+                        .to_owned(),
                 );
             }
         }

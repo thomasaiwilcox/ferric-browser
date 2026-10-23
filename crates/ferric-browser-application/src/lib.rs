@@ -658,6 +658,17 @@ impl BrowserApplication {
         let profile = self
             .profile_snapshot()
             .ok_or(ProfileOpenError::WorkerStopped)?;
+        // Independently opened windows share the first owner's startup source
+        // set. Later bootstrap scans can already contain this run's files.
+        let recovery_paths = self
+            .active_profile
+            .as_ref()
+            .unwrap()
+            .session
+            .0
+            .recovery_paths
+            .get_or_init(|| prepared.recovery_paths)
+            .clone();
         Ok(ProfileOpenEffect {
             configuration,
             profile,
@@ -666,6 +677,7 @@ impl BrowserApplication {
             runtime_overrides: prepared.runtime_overrides,
             session_path: prepared.session_path,
             session_state_root: prepared.session_state_root,
+            recovery_paths,
             storage_error: prepared.storage_error,
             configuration_error: prepared.configuration_error,
             context_error: prepared.context_error,
@@ -815,6 +827,7 @@ impl BrowserApplication {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ferric_browser_config::ContextsConfig;
     use ferric_browser_core::{Event, Mode};
     use ferric_browser_runtime::{RuntimeCommand, RuntimeInput};
     use ferric_browser_storage::{RootSpec, StorageCompletion, StorageRoots};
@@ -991,6 +1004,59 @@ mod tests {
         assert!(child.profile_snapshot().is_some());
         drop(child);
         let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn profile_windows_share_recovery_sources_captured_before_current_run_writes() {
+        fn open(application: &mut BrowserApplication, base: &std::path::Path) -> ProfileOpenEffect {
+            application
+                .request_profile_open(ProfileOpenRequest {
+                    name: "default".into(),
+                    label: "Default".into(),
+                    privacy: PrivacyKind::Normal,
+                    storage: ProfileStorage::Durable(RootSpec::Base(base.to_path_buf())),
+                    base_configuration: Config::default(),
+                    initial_profile_overrides: RuntimeOverrides::default(),
+                    command_line_overrides: RuntimeOverrides::default(),
+                    config_path: None,
+                    script_catalog_root: None,
+                    contexts: ContextsConfig::default(),
+                    context_configuration_error: None,
+                })
+                .unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            loop {
+                if let Some(result) = application.poll_profile_open() {
+                    return result.unwrap();
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "profile open timed out"
+                );
+                thread::yield_now();
+            }
+        }
+        let base = std::env::temp_dir().join(format!("ferric-recovery-sources-{}", Uuid::new_v4()));
+        let mut setup = BrowserApplication::new(Config::default());
+        let old_path = open(&mut setup, &base).session_path.unwrap();
+        drop(setup);
+        fs::create_dir_all(old_path.parent().unwrap()).unwrap();
+        fs::write(&old_path, b"previous-run checkpoint").unwrap();
+        let mut first = BrowserApplication::new(Config::default());
+        let first_effect = open(&mut first, &base);
+        assert_eq!(
+            first_effect.recovery_paths.as_slice(),
+            std::slice::from_ref(&old_path)
+        );
+        let new_path = old_path.with_file_name(format!("current-{}.json", Uuid::new_v4()));
+        fs::write(&new_path, b"current-run checkpoint").unwrap();
+        let mut second = BrowserApplication::new(Config::default());
+        let second_effect = open(&mut second, &base);
+        assert_eq!(second_effect.recovery_paths, [old_path]);
+        assert!(!second_effect.recovery_paths.contains(&new_path));
+        drop(second);
+        drop(first);
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

@@ -152,6 +152,10 @@ fn worker_lists_named_sessions_off_thread() {
         url: "https://closed.example.test/".into(),
         title: "Closed worker tab".into(),
         closed_at: 2,
+        group_index: Some(0),
+        pinned: true,
+        muted: true,
+        zoom_hundredths: 125,
     });
     let current_path = root
         .join("sessions")

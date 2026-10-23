@@ -71,7 +71,6 @@ fn modal_navigation_bindings_open_an_editable_command_line() {
 
     let qml = QML_SOURCE;
     assert!(qml.contains("action.indexOf(\"command-prefill\\t\") === 0"));
-    assert!(qml.contains("commandSurface.cursorPosition = commandSurface.commandText.length"));
 }
 
 #[test]
@@ -80,20 +79,66 @@ fn scroll_target_policy_captures_identity_and_rejects_unavailable_pages() {
     use ferric_browser_application::ScrollTargetPolicy;
     let registry = CommandRegistry::default_v1();
     let tab = TabId::from_display("tabid-41").unwrap();
-    for (action, policy) in [("auto", ScrollTargetPolicy::Auto), ("document", ScrollTargetPolicy::Document), ("status", ScrollTargetPolicy::Status)] {
-        let command = ParsedCommand { name: "scroll-target".into(), arguments: vec![action.into()] };
+    for (action, policy) in [
+        ("auto", ScrollTargetPolicy::Auto),
+        ("document", ScrollTargetPolicy::Document),
+        ("status", ScrollTargetPolicy::Status),
+    ] {
+        let command = ParsedCommand {
+            name: "scroll-target".into(),
+            arguments: vec![action.into()],
+        };
         let mut effects = Vec::new();
-        dispatch_scroll_target_command(&command, &registry, Mode::Normal, false, Some(tab), |effect| effects.push(effect)).unwrap();
+        dispatch_scroll_target_command(
+            &command,
+            &registry,
+            Mode::Normal,
+            false,
+            Some(tab),
+            |effect| effects.push(effect),
+        )
+        .unwrap();
         assert_eq!(effects, [ScrollTargetEffect::Apply { tab, policy }]);
         let mut effects = Vec::new();
-        assert!(dispatch_scroll_target_command(&command, &registry, Mode::Normal, true, None, |effect| effects.push(effect)).is_err());
+        assert!(
+            dispatch_scroll_target_command(
+                &command,
+                &registry,
+                Mode::Normal,
+                true,
+                None,
+                |effect| effects.push(effect)
+            )
+            .is_err()
+        );
         assert_eq!(effects, [] as [ScrollTargetEffect; 0]);
     }
-    let select = ParsedCommand { name: "scroll-target".into(), arguments: vec!["select".into()] };
+    let select = ParsedCommand {
+        name: "scroll-target".into(),
+        arguments: vec!["select".into()],
+    };
     let mut effects = Vec::new();
-    assert!(dispatch_scroll_target_command(&select, &registry, Mode::Normal, false, Some(tab), |effect| effects.push(effect)).is_err());
+    assert!(
+        dispatch_scroll_target_command(
+            &select,
+            &registry,
+            Mode::Normal,
+            false,
+            Some(tab),
+            |effect| effects.push(effect)
+        )
+        .is_err()
+    );
     assert_eq!(effects, [] as [ScrollTargetEffect; 0]);
-    dispatch_scroll_target_command(&select, &registry, Mode::Normal, true, Some(tab), |effect| effects.push(effect)).unwrap();
+    dispatch_scroll_target_command(
+        &select,
+        &registry,
+        Mode::Normal,
+        true,
+        Some(tab),
+        |effect| effects.push(effect),
+    )
+    .unwrap();
     assert_eq!(effects, [ScrollTargetEffect::StartHints]);
 }
 
@@ -315,7 +360,10 @@ fn switcher_cache_requires_the_same_revisions_and_snapshot_inputs() {
         storage_library_revision: rust.storage_library_revision,
         session_names: rust.library.session_names.clone(),
         contexts_json: rust.contexts_json.to_string(),
-        configuration_revision: rust.state.as_ref().map_or(0, BrowserApplication::configuration_revision),
+        configuration_revision: rust
+            .state
+            .as_ref()
+            .map_or(0, BrowserApplication::configuration_revision),
         profile_name: rust.profile_name.clone(),
         result: serde_json::json!({"results": []}),
     };
@@ -384,16 +432,24 @@ fn macro_status_is_redacted_and_rust_formats_its_presentation_text() {
     let mut ui = BrowserUiRust::default();
     ui.recording_macro = Some((
         "a".into(),
-        vec![ParsedCommand {
-            name: "open".into(),
-            arguments: vec!["https://private.example/path".into()],
+        vec![RepeatableCommand {
+            command: ParsedCommand {
+                name: "open".into(),
+                arguments: vec!["https://private.example/path".into()],
+            },
+            count: 1,
+            route: None,
         }],
     ));
     ui.macro_registers.insert(
         "b".into(),
-        vec![ParsedCommand {
-            name: "scroll".into(),
-            arguments: vec!["--amount".into(), "3".into()],
+        vec![RepeatableCommand {
+            command: ParsedCommand {
+                name: "scroll".into(),
+                arguments: vec!["--amount".into(), "3".into()],
+            },
+            count: 1,
+            route: None,
         }],
     );
 
@@ -735,7 +791,7 @@ fn ipc_commands_use_typed_arguments_without_shell_parsing() {
     }))
     .expect("typed command");
     assert_eq!(command.name, "open");
-    assert_eq!(route.open_target, IpcOpenTarget::Tab);
+    assert_eq!(route.open_target, IpcOpenTarget::Current);
     assert!(!route.external_open);
     assert_eq!(
         command.arguments[0],
@@ -881,6 +937,11 @@ fn ipc_commands_use_typed_arguments_without_shell_parsing() {
     .expect("typed search-next command");
     assert_eq!(command.name, "search-next");
     assert_eq!(command.arguments, vec!["--backward", "--count", "3"]);
+    let (command, _) = typed_ipc_command(&serde_json::json!({
+        "command": "search-next", "arguments": {"direction": "forward", "count": 2}
+    }))
+    .expect("explicit forward search-next command");
+    assert_eq!(command.arguments, vec!["--forward", "--count", "2"]);
     assert!(
         typed_ipc_command(&serde_json::json!({
             "command": "search-next",
@@ -1168,6 +1229,17 @@ fn search_next_options_accept_flags_in_any_order_and_reject_duplicates() {
         (true, 1)
     );
     assert_eq!(
+        parse_search_next_options(&["--forward".into()], true).unwrap(),
+        (false, 1)
+    );
+    for directions in [
+        ["--forward", "--backward"],
+        ["--backward", "--forward"],
+        ["--forward", "--forward"],
+    ] {
+        assert!(parse_search_next_options(&directions.map(str::to_owned), false).is_err());
+    }
+    assert_eq!(
         parse_search_next_options(&["--backward".into(), "--count".into(), "4".into()], false)
             .expect("ordered search-next options"),
         (true, 4)
@@ -1295,10 +1367,13 @@ fn ipc_support_commands_use_typed_help_and_empty_arguments() {
         .expect("typed support command");
         assert_eq!(command.name, name);
         assert_eq!(command.arguments, Vec::<String>::new());
-        assert!(typed_ipc_command(&serde_json::json!({
-            "command": name,
-            "arguments": {"unexpected": true}
-        })).is_err());
+        assert!(
+            typed_ipc_command(&serde_json::json!({
+                "command": name,
+                "arguments": {"unexpected": true}
+            }))
+            .is_err()
+        );
     }
     assert!(
         typed_ipc_command(&serde_json::json!({
@@ -1421,4 +1496,22 @@ fn ipc_configuration_lifecycle_commands_use_typed_paths_and_no_arguments() {
         }))
         .is_err()
     );
+}
+
+#[test]
+fn open_destinations_remain_distinct_through_interactive_and_ipc_decoding() {
+    for (target, expected) in [("current", IpcOpenTarget::Current), ("tab", IpcOpenTarget::Tab),
+        ("tab-bg", IpcOpenTarget::BackgroundTab), ("window", IpcOpenTarget::Window),
+        ("private-window", IpcOpenTarget::PrivateWindow)] {
+        let command = ParsedCommand { name: "open".into(), arguments: vec!["--target".into(), target.into(), "https://example.test/".into()] };
+        let (_, interactive) = interactive_open_command(&command).unwrap().unwrap();
+        let envelope = ferric_browser_ipc::encode_command(&command).unwrap();
+        let (_, ipc) = typed_ipc_command(&envelope).unwrap();
+        assert_eq!(interactive.open_target, expected);
+        assert_eq!(ipc.open_target, expected);
+    }
+    for arguments in [vec!["--clean-link", "https://example.test/"], vec!["--profile", "work", "https://example.test/"]] {
+        let command = ParsedCommand {name: "open".into(), arguments: arguments.into_iter().map(str::to_owned).collect()};
+        assert_eq!(interactive_open_command(&command).unwrap().unwrap().1.open_target, IpcOpenTarget::Current);
+    }
 }

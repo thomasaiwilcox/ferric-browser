@@ -147,6 +147,36 @@ impl ContextRegistry {
     /// Returns an error when the state root cannot be created, the registry
     /// cannot be decoded, or a stored record violates its bounds.
     pub fn open(roots: &StorageRoots) -> Result<Self, ContextRegistryError> {
+        let (path, document) = Self::read_document(roots)?;
+        Ok(Self {
+            path,
+            contexts: document.contexts,
+            revision: document.revision,
+        })
+    }
+
+    /// Reads a command-created context for startup selection without rewriting
+    /// the catalog or treating a removed configuration definition as user data.
+    ///
+    /// # Errors
+    /// Returns the same directory, lock and catalog validation errors as `open`.
+    pub fn load_created_context(
+        roots: &StorageRoots,
+        name: &str,
+    ) -> Result<Option<ContextRecord>, ContextRegistryError> {
+        let (_, document) = Self::read_document(roots)?;
+        if document.configured_names.contains(name) {
+            return Ok(None);
+        }
+        Ok(document
+            .contexts
+            .into_iter()
+            .find(|context| context.name == name))
+    }
+
+    fn read_document(
+        roots: &StorageRoots,
+    ) -> Result<(PathBuf, ContextDocument), ContextRegistryError> {
         roots.ensure().map_err(|error| ContextRegistryError::Io {
             path: roots.state.clone(),
             message: error.to_string(),
@@ -154,11 +184,7 @@ impl ContextRegistry {
         let path = roots.state.join("contexts.json");
         let _lock = RegistryLock::acquire(&path).map_err(|error| context_io(&path, &error))?;
         let document = document::load(&path)?;
-        Ok(Self {
-            path,
-            contexts: document.contexts,
-            revision: document.revision,
-        })
+        Ok((path, document))
     }
 
     /// Monotonic durable commit order within this storage root.

@@ -501,3 +501,52 @@ fn cli_accepts_a_successful_null_result() {
     assert_eq!(response.result, Some(serde_json::Value::Null));
     peer.finish();
 }
+
+#[test]
+fn multiple_open_inputs_keep_profile_context_and_destination_on_every_request() {
+    for target in [None, Some("current"), Some("tab"), Some("tab-bg")] {
+        let mut count = 0;
+        let peer = Peer::start(2, move |request| {
+            if let Some(response) = hello(&request) {
+                return Some(response);
+            }
+            let params = &request.params;
+            assert_eq!(params["command"], "open");
+            assert_eq!(params["arguments"]["external"], true);
+            assert_eq!(params["context"]["profile"], "work");
+            assert_eq!(params["context"]["context"], "project");
+            assert_eq!(params["context"]["source"], "cli");
+            let expected = if count == 0 {
+                target
+            } else {
+                Some(target.unwrap_or("tab"))
+            };
+            assert_eq!(
+                params["arguments"]
+                    .get("target")
+                    .and_then(serde_json::Value::as_str),
+                expected
+            );
+            count += 1;
+            Some(Response::success(
+                request.id,
+                serde_json::json!({"status":"accepted"}),
+            ))
+        });
+        let options = CliOptions {
+            profile: Some("work".into()),
+            context: Some("project".into()),
+            ..CliOptions::default()
+        };
+        forward_open(
+            &peer.paths,
+            "https://example.test/first",
+            &["https://example.test/second".into()],
+            target,
+            false,
+            &options,
+        )
+        .unwrap();
+        peer.finish();
+    }
+}

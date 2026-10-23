@@ -19,6 +19,9 @@ TestCase {
         width: 900
         height: 700
         visible: true
+        palette.windowText: theme.primaryTextColor
+        palette.text: theme.primaryTextColor
+        palette.buttonText: theme.primaryTextColor
     }
 
     property int selectedTabs: 0
@@ -50,6 +53,7 @@ TestCase {
         property real width: testWindow.width
         property real height: testWindow.height
         property real chromeScale: 1
+        property real chromeFontPointSize: testWindow.font.pointSize
         property int chromeRowHeight: 24
         property int tabBarHeight: 32
         property int inputBarHeight: 32
@@ -119,6 +123,19 @@ TestCase {
     }
 
     ListModel { id: settingsModel }
+    QtObject {
+        id: windowHelpUi
+        property string config_json: "{}"
+        property var guide_categories: ["Window shortcuts"]
+        property var guide_ids: ["owner-zoom"]
+        property var guide_titles: ["Owner zoom"]
+        property var guide_keys: ["x"]
+        property var guide_modes: ["normal"]
+        property var guide_commands: ["zoom out"]
+        property var guide_details: ["This window's binding"]
+        property int refreshCount: 0
+        function refresh_guide(search) { refreshCount++ }
+    }
     ListModel { id: tabsModel }
 
     Component {
@@ -427,8 +444,72 @@ TestCase {
         FerricBindingHelp {
             property int closeRequests: 0
             browserWindow: theme
+            browserUi: helpUi
             onCloseRequested: closeRequests++
         }
+    }
+    Component {
+        id: longGuideUiFixture
+        QtObject {
+            property string config_json: "{}"
+            property var guide_categories: ["Page movement"]
+            property var guide_ids: ["long-article"]
+            property var guide_titles: ["Long keyboard article"]
+            property var guide_keys: ["j"]
+            property var guide_modes: ["normal"]
+            property var guide_commands: ["scroll down"]
+            property var guide_summaries: ["Read this article with the keyboard."]
+            property var guide_details: [Array(40).join("Keyboard movement must use the complete article layout. ")]
+            function refresh_guide(search) {}
+        }
+    }
+    function test_first_article_scroll_uses_the_new_layout_data() {
+        var rows=[]
+        for (var reopen of [false,true]) {
+            for (var gesture of [{tag:"page-down",key:Qt.Key_PageDown,back:Qt.Key_PageUp},
+                {tag:"space",key:Qt.Key_Space,back:Qt.Key_Space,backModifiers:Qt.ShiftModifier},
+                {tag:"j",key:Qt.Key_J,back:Qt.Key_K}]) {
+                rows.push({tag:(reopen?"reopened-":"first-")+gesture.tag,reopen:reopen,
+                    key:gesture.key,back:gesture.back,backModifiers:gesture.backModifiers || Qt.NoModifier})
+            }
+        }
+        return rows
+    }
+    function test_first_article_scroll_uses_the_new_layout(data) {
+        var ui=createTemporaryObject(longGuideUiFixture,chromeTest)
+        var help=createTemporaryObject(guideHelpFixture,testWindow.contentItem,
+            {browserUi:ui,dialogWidth:480,dialogHeight:420})
+        var guide=findChild(help,"ferricGuide")
+        verify(waitForPolish(testWindow)) // Establish only the collapsed reader's layout.
+        verify(guide.width>0 && guide.height>0)
+        verify(guide.compact)
+        if (data.reopen) {
+            guide.focusReader()
+            verify(waitForPolish(testWindow))
+            guide.focusEntries()
+            verify(waitForPolish(testWindow))
+        }
+        var scroll=findChild(guide,"ferricGuideReaderScroll")
+        var viewport=scroll.contentItem
+        compare(viewport.contentY,0)
+        guide.focusReader()
+        // A second queued key can arrive before a render/layout pass.
+        var event={key:data.key,modifiers:Qt.NoModifier,accepted:false}
+        verify(guide.handleNavigation(event))
+        verify(event.accepted)
+        function geometry(item) {
+            return {type:String(item),width:item.width,height:item.height,
+                implicitHeight:item.implicitHeight,visible:item.visible,
+                children:Array.from(item.children || []).filter(function(child){return String(child).indexOf("Layout")>=0}).map(geometry)}
+        }
+        verify(viewport.contentY>0,"The first key must scroll the newly opened article: "+
+            JSON.stringify({height:viewport.height,contentHeight:viewport.contentHeight,
+                content: Array.from(scroll.contentChildren).map(geometry)}))
+        compare(guide.currentRow.identity,"long-article")
+        var back={key:data.back,modifiers:data.backModifiers,accepted:false}
+        verify(guide.handleNavigation(back))
+        verify(back.accepted)
+        compare(viewport.contentY,0)
     }
 
     function test_guide_help_escape_returns_focus_before_closing() {
@@ -453,6 +534,93 @@ TestCase {
         keyClick(Qt.Key_Escape)
         tryCompare(help, "closeRequests", 1)
     }
+    function test_guide_help_uses_its_explicit_window_ui() {
+        var help=createTemporaryObject(guideHelpFixture,testWindow.contentItem,{browserUi:windowHelpUi})
+        var guide=findChild(help,"ferricGuide")
+        compare(guide.browserUi,windowHelpUi)
+        tryVerify(function(){return guide.currentRow!==null})
+        compare(guide.currentRow.title,"Owner zoom")
+        compare(guide.currentShortcuts[0],"x")
+        verify(windowHelpUi.refreshCount>0)
+    }
+    function test_guide_footer_and_escape_follow_search_and_section_focus() {
+        var help=createTemporaryObject(guideHelpFixture,testWindow.contentItem)
+        var guide=findChild(help,"ferricGuide")
+        guide.focusSearch()
+        tryCompare(guide.searchInput,"activeFocus",true)
+        keyClick(Qt.Key_J)
+        compare(guide.searchInput.text,"j")
+        verify(help.keyHelp.indexOf("Esc clear search")>=0)
+        verify(help.keyHelp.indexOf("Esc close")<0)
+        verify(help.compactKeyHelp.indexOf("Esc close")<0)
+        keyClick(Qt.Key_Escape)
+        compare(guide.searchText,"")
+        compare(help.closeRequests,0)
+        verify(help.keyHelp.indexOf("Esc close")>=0)
+        var filter=findChild(guide,"ferricGuideSectionFilter")
+        filter.forceActiveFocus()
+        keyClick(Qt.Key_Space)
+        tryCompare(filter.popup,"visible",true)
+        verify(!help.dismissOnEscape)
+        verify(help.keyHelp.indexOf("Esc cancel")>=0)
+        keyClick(Qt.Key_Escape)
+        tryCompare(filter.popup,"visible",false)
+        compare(help.closeRequests,0)
+        compare(help.commandText,":binding-list")
+    }
+    function test_guide_compact_search_hints_fit_data() {
+        return [{tag:"320-26",width:320,font:26},{tag:"480-20",width:480,font:20}]
+    }
+    function test_guide_compact_search_hints_fit(data) {
+        testWindow.width=data.width;testWindow.height=760
+        testWindow.font.pointSize=data.font
+        var help=createTemporaryObject(guideHelpFixture,testWindow.contentItem)
+        var guide=findChild(help,"ferricGuide")
+        guide.focusSearch()
+        tryCompare(guide.searchInput,"activeFocus",true)
+        keyClick(Qt.Key_O)
+        verify(waitForPolish(testWindow))
+        verify(help.compactHelp)
+        verify(guide.compact)
+        verify(guide.searchInput.width>100)
+        verify(help.bodyItem.height>=100)
+        verify(help.compactKeyHelp.indexOf("Esc clear search")>=0)
+        if(testArtifactDirectory.length>0)
+            grabImage(testWindow.contentItem).save(testArtifactDirectory+"/guide-search-"+data.tag+".png")
+        keyClick(Qt.Key_Down)
+        tryCompare(guide.entriesList,"activeFocus",true)
+        verify(help.compactKeyHelp.indexOf("j/k browse")>=0)
+        testWindow.font.pointSize=10
+    }
+    function test_guide_command_query_replaces_an_edited_search() {
+        var help=createTemporaryObject(guideHelpFixture,testWindow.contentItem)
+        var guide=findChild(help,"ferricGuide")
+        help.setSearchQuery("open")
+        help.focusSearch()
+        tryCompare(guide.searchInput,"activeFocus",true)
+        keyClick(Qt.Key_End);keyClick(Qt.Key_X)
+        compare(guide.searchText,"openx")
+        keyClick(Qt.Key_Escape)
+        compare(guide.searchInput.text,"")
+        help.setSearchQuery("o")
+        compare(guide.searchText,"o")
+        compare(guide.searchInput.text,"o")
+        compare(guide.selectedCategory,"")
+    }
+    function test_guide_reopen_from_a_compact_article_returns_to_search() {
+        var help=createTemporaryObject(guideHelpFixture,testWindow.contentItem,{dialogWidth:480})
+        var guide=findChild(help,"ferricGuide")
+        tryVerify(function(){return guide.currentRow!==null})
+        verify(guide.compact)
+        guide.focusReader()
+        tryCompare(guide,"readerActive",true)
+        help.visible=false
+        help.visible=true
+        help.focusSearch()
+        tryCompare(guide.searchInput,"activeFocus",true)
+        verify(guide.searchInput.visible)
+        verify(!guide.readerActive)
+    }
 
     Component {
         id: largeFontHelpFixture
@@ -463,6 +631,7 @@ TestCase {
             FerricBindingHelp {
                 id: help
                 browserWindow: theme
+                browserUi: helpUi
             }
         }
     }
@@ -581,6 +750,7 @@ TestCase {
         failOnWarning(/TypeError|ReferenceError|Cannot assign|Unable to assign|Binding loop/)
         testWindow.width = 900
         testWindow.height = 700
+        testWindow.font.pointSize = 10
         testWindow.requestActivate()
         tryCompare(testWindow, "active", true)
         theme.font = Qt.font({family:"monospace",pointSize:10})
@@ -1265,6 +1435,41 @@ TestCase {
         banner.decisionTaken = false
         keyClick(Qt.Key_D, Qt.AltModifier)
         compare(dismissedRecoveries, 1)
+    }
+
+    function test_recovery_can_be_dismissed_while_reading() {
+        var banner = createTemporaryObject(recoveryBannerFixture, testWindow.contentItem)
+        verify(banner)
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+        keyClick(Qt.Key_Y)
+        compare(recoveredSessions, 1)
+        banner.recoveryPending = true
+        var recover = findChild(banner, "commandDialogAction-recover")
+        verify(recover)
+        tryCompare(recover, "enabled", false)
+        keyClick(Qt.Key_Y)
+        keyClick(Qt.Key_R, Qt.AltModifier)
+        compare(recoveredSessions, 1)
+        keyClick(Qt.Key_Escape)
+        compare(dismissedRecoveries, 1)
+    }
+
+    function test_recovery_failure_offers_retry() {
+        var banner = createTemporaryObject(recoveryBannerFixture, testWindow.contentItem)
+        verify(banner)
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+        keyClick(Qt.Key_Y)
+        banner.recoveryPending = true
+        banner.recoveryError = "Saved tabs couldn't be read. Try again, or start without recovery."
+        banner.recoveryPending = false
+        verify(banner.message.indexOf("couldn't be read") >= 0)
+        var recover = findChild(banner, "commandDialogAction-recover")
+        verify(recover)
+        tryCompare(recover, "enabled", true)
+        keyClick(Qt.Key_R, Qt.AltModifier)
+        compare(recoveredSessions, 2)
     }
 
     function test_shared_command_dialog_supports_keyboard_and_mouse() {

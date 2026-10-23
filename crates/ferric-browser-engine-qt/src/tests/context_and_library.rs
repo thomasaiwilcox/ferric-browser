@@ -1,4 +1,62 @@
 #[test]
+fn journey_identity_compares_native_pretty_urls_with_the_canonical_address() {
+    use crate::browser_ui_start_page::content_matches_journey_url;
+    for (native, canonical) in [
+        (
+            "https://example.test/café",
+            "https://example.test/caf%C3%A9",
+        ),
+        (
+            "https://example.test/?label=owned space%2Fλ",
+            "https://example.test/?label=owned%20space%2F%CE%BB",
+        ),
+        (
+            "https://bücher.example/café",
+            "https://xn--bcher-kva.example/caf%C3%A9",
+        ),
+    ] {
+        assert!(
+            content_matches_journey_url(native, canonical),
+            "{native} => {canonical}"
+        );
+    }
+    assert!(!content_matches_journey_url(
+        "https://example.test/a%2Fb",
+        "https://example.test/a/b"
+    ));
+    assert!(!content_matches_journey_url(
+        "https://example.test/#one",
+        "https://example.test/#two"
+    ));
+}
+
+#[test]
+fn engine_url_reescapes_native_spaces_without_relaxing_authority_or_control_checks() {
+    use crate::url_presentation::content_url_valid;
+    assert!(content_url_valid(
+        "https://example.test/a b?label=space value#one two"
+    ));
+    assert_eq!(
+        canonical_engine_url(QString::from(
+            "https://example.test/a b?label=space value#one two"
+        ))
+        .unwrap(),
+        "https://example.test/a%20b?label=space%20value#one%20two"
+    );
+    for invalid in [
+        "https://bad host.test/path",
+        "https://example.test/a\tb",
+        "https://example.test/a\\b",
+    ] {
+        assert!(
+            canonical_engine_url(QString::from(invalid)).is_err(),
+            "{invalid:?}"
+        );
+        assert!(!content_url_valid(invalid), "{invalid:?}");
+    }
+}
+
+#[test]
 fn ipc_context_commands_use_explicit_typed_fields() {
     let (command, route) = typed_ipc_command(&serde_json::json!({
         "command": "context-create",
@@ -1037,7 +1095,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     .expect("typed tab search-next action");
     assert_eq!(action_id, "browser.tab.search-next");
     assert_eq!(command.name, "search-next");
-    assert_eq!(command.arguments, vec!["--count", "2"]);
+    assert_eq!(command.arguments, vec!["--forward", "--count", "2"]);
     let qml = [
         QML_SOURCE,
         include_str!("../../qml/components/FerricSettings.qml"),
@@ -1049,7 +1107,8 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
         include_str!("../../qml/scripts/SpellcheckPresentation.js"),
     ]
     .concat();
-    let reopen_confirmation = include_str!("../../qml/components/FerricReopenWindowConfirmation.qml");
+    let reopen_confirmation =
+        include_str!("../../qml/components/FerricReopenWindowConfirmation.qml");
     let source = ADAPTER_SOURCE;
     let hint_policy = include_str!("../hint_policy.rs");
     assert!(qml.contains("browser.tab.move"));
@@ -1113,7 +1172,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("request_named_session_load"));
     assert!(qml.contains("sessionPreviewPollTimer"));
     assert!(source.contains("request_session_preview(&name)"));
-    assert!(source.contains("session_restore_load_append = Some(append)"));
+    assert!(source.contains("SessionRestoreIntent::Load { append }"));
     assert!(qml.contains("update_completion(commandSurface.commandText"));
     assert!(qml.contains("window.downloadManagerVisible"));
     assert!(qml.contains("clear_current_session_checkpoints"));
@@ -1324,15 +1383,21 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
 
 #[test]
 fn compact_link_destinations_use_the_existing_typed_navigation_contract() {
-    for (action, value, command_name) in [
-        ("browser.link.open", "current\thttps://example.test/link", "open"),
-        ("browser.tab.open", "https://example.test/link", "tab-open"),
+    for (action, value, command_name, expected_target) in [
+        (
+            "browser.link.open",
+            "current\thttps://example.test/link",
+            "open",
+            IpcOpenTarget::Current,
+        ),
+        ("browser.tab.open", "https://example.test/link", "tab-open", IpcOpenTarget::Tab),
     ] {
         let arguments = ui_action_arguments(action, value).expect("local navigation arguments");
-        let (command, route, _) = typed_ipc_action(&serde_json::json!({"action":action,"arguments":arguments}))
-            .expect("typed navigation action");
+        let (command, route, _) =
+            typed_ipc_action(&serde_json::json!({"action":action,"arguments":arguments}))
+                .expect("typed navigation action");
         assert_eq!(command.name, command_name);
         assert_eq!(command.arguments, vec!["https://example.test/link"]);
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
+        assert_eq!(route.open_target, expected_target);
     }
 }

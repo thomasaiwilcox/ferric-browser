@@ -41,6 +41,7 @@ mod binding_presentation;
 mod blocking_evidence;
 mod blocking_presentation;
 mod browser_ui_browsing_commands;
+mod browser_ui_closed_tabs;
 mod browser_ui_command_dispatch;
 mod browser_ui_command_history;
 mod browser_ui_command_workflows;
@@ -559,7 +560,8 @@ pub struct BrowserUiRust {
     command_retryable: bool,
     command_history: Vec<String>,
     command_history_index: Option<usize>,
-    command_history_draft: String,
+    // None before recall; Some("") is an active browse with an empty draft.
+    command_history_draft: Option<String>,
     queued_command_history: Vec<(String, i64)>,
     command_history_write_pending: bool,
     command_history_write_error: Option<String>,
@@ -629,6 +631,8 @@ pub struct BrowserUiRust {
     search_text: QString,
     search_backward: bool,
     session_restore_values: QString,
+    session_recovery_pending: bool,
+    session_recovery_error: QString,
     session_preview_labels: QStringList,
     session_preview_urls: QStringList,
     session_preview_pinned: QStringList,
@@ -936,16 +940,21 @@ pub struct BrowserUiRust {
     session_id: Uuid,
     session_path: Option<PathBuf>,
     session_state_root: Option<PathBuf>,
+    recovery_paths: Vec<PathBuf>,
+    recovery_placeholder: Option<Target>,
+    recovered_session_ids: Vec<Uuid>,
     checkpoint: SessionCheckpoint,
     closed_tabs: Vec<ClosedTabDescriptor>,
+    undo_fallback: Option<Target>,
+    undo_fallback_ready: bool,
     action_audit: Vec<Value>,
     structured_log: Option<logging::StructuredLogSink>,
     request_resolution_counts: BTreeMap<(String, String), u64>,
     active_site_experiment: Option<SiteExperiment>,
     last_site_doctor_result: Option<Value>,
-    last_repeatable: Option<ParsedCommand>,
-    macro_registers: BTreeMap<String, Vec<ParsedCommand>>,
-    recording_macro: Option<(String, Vec<ParsedCommand>)>,
+    last_repeatable: Option<RepeatableCommand>,
+    macro_registers: BTreeMap<String, Vec<RepeatableCommand>>,
+    recording_macro: Option<(String, Vec<RepeatableCommand>)>,
     macro_key_prefix: Option<String>,
     macro_key_started_ms: Option<u64>,
     macro_depth: u8,
@@ -993,13 +1002,28 @@ struct ClosedTabDescriptor {
     profile: String,
     private: bool,
     closed_at: i64,
+    group_index: Option<usize>,
+    pinned: bool,
+    muted: bool,
+    zoom_hundredths: u32,
+}
+
+#[derive(Clone, Debug)]
+struct RepeatableCommand {
+    command: ParsedCommand,
+    count: u32,
+    // Keep the original authority and routing policy for IPC and typed opens.
+    // Local commands continue to resolve against the current keyboard target.
+    route: Option<IpcRoute>,
 }
 
 #[derive(Clone, Debug)]
 struct PendingLinkNavigation {
     target: Option<Target>,
+    new_tab_route: Option<IpcRoute>,
     new_window_action: Option<String>,
     journey_parent: Option<JourneyNodeId>,
+    repeat_route: Option<IpcRoute>,
     url: ValidatedUrl,
 }
 

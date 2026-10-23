@@ -46,12 +46,16 @@ Item {
             }
             var fields = lines[i].split("\t")
             var tabIndex = previousCount + i
+            var tabId = hasModeLine && fields.length > 6 ? String(fields[6]) : ""
+            var selectedId = browserUi.tab_id_for_index(browserUi.active_tab_index)
             tabs.append({
+                tabId: tabId,
                 url: fields[0],
                 title: fields.length > 4 && fields[4].length > 0 && !hasModeLine
                        ? fields[4]
                        : (i === 0 ? "Recovered tab" : "Recovered tab " + (i + 1)),
-                loaded: tabIndex === browserUi.active_tab_index,
+                loaded: tabId.length > 0 ? tabId === selectedId
+                                        : tabIndex === browserUi.active_tab_index,
                 pinned: fields.length > 1 && fields[1] === "true",
                 muted: fields.length > 2 && fields[2] === "true",
                 zoom: fields.length > 3 ? Number(fields[3]) : 1.0,
@@ -139,9 +143,9 @@ Item {
                     url: nativeDescriptor ? descriptor.url : "about:blank",
                     title: nativeDescriptor ? (descriptor.url === "rb://start" ? "Start page" : "Blank") : "New tab",
                     loaded: true,
-                    pinned: false,
-                    muted: false,
-                    zoom: 1.0,
+                    pinned: descriptor.pinned === true,
+                    muted: descriptor.muted === true,
+                    zoom: Number(descriptor.zoom_hundredths || 100) / 100,
                     suspended: false,
                     discarded: false
                 })

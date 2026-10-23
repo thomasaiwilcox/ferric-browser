@@ -199,10 +199,15 @@ void ApplicationTests::init() {
     });
     engine = std::make_unique<QQmlApplicationEngine>();
     const auto testName = QString::fromLatin1(QTest::currentTestFunction());
-    const bool durable = testName.startsWith("durablePersistence")
+    const auto dataTag = QString::fromLatin1(QTest::currentDataTag());
+    const bool identityPrivate = testName == "productPolishPrivacyIdentity" && dataTag.endsWith("-private");
+    const bool identityTemporary = testName == "productPolishPrivacyIdentity" && dataTag.endsWith("-temporary");
+    const bool recoveryTemporary = (testName == "productPolishTabRecovery" || testName == "productPolishLastTabUndo")
+        && dataTag.startsWith("temporary-");
+    const bool durable = !identityPrivate && !identityTemporary && !recoveryTemporary && (testName.startsWith("durablePersistence")
                          || testName == "selectorValidationRejectsWholeCandidate"
                          || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary"
-                             && !(testName == "productPolishDiagnosticLifecycle" && QString::fromLatin1(QTest::currentDataTag()) == "private"));
+                             && !(testName == "productPolishDiagnosticLifecycle" && QString::fromLatin1(QTest::currentDataTag()) == "private")));
     QString startupConfig = "{\"schema_version\":3}";
     if (testName == "productPolishExternalActionFeedback") {
         const auto tag = QString::fromLatin1(QTest::currentDataTag());
@@ -270,6 +275,9 @@ void ApplicationTests::init() {
     }
     engine->setInitialProperties(
         {{"temporaryProfile", !durable},
+         {"ephemeralProfile", identityTemporary || recoveryTemporary},
+         {"ephemeralInvocationToken", identityTemporary ? QString("privacy-identity-fixture")
+             : recoveryTemporary ? QString("tab-recovery-fixture") : QString()},
          {"storageBasePath", storageBase},
          {"softwareRendering", true},
          {"nativeWayland", QGuiApplication::platformName() == "wayland"},

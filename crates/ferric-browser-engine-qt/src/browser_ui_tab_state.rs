@@ -9,6 +9,58 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    #[allow(clippy::unused_self)]
+    pub(super) fn display_page_title(&self, title: &QString) -> QString {
+        QString::from(sanitize_untrusted_title(&title.to_string()))
+    }
+
+    pub(super) fn document_title_changed(
+        mut self: Pin<&mut Self>,
+        tab: &QString,
+        generation: &QString,
+        document: &QString,
+        title: &QString,
+    ) -> bool {
+        let Some(tab) = TabId::from_display(&tab.to_string())
+            .filter(|tab| self.as_ref().rust().tab_ids.contains(tab))
+        else {
+            return false;
+        };
+        let Some(target) = current_target(self.as_ref().rust().state.as_ref(), Some(tab)) else {
+            return false;
+        };
+        if target.generation.to_string() != generation.to_string()
+            || target.document.to_string() != document.to_string()
+        {
+            return false;
+        }
+        let title = sanitize_untrusted_title(&title.to_string());
+        if self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .and_then(|state| state.tabs().get(&tab))
+            .is_none_or(|tab| tab.title == title)
+        {
+            return false;
+        }
+        if self
+            .as_mut()
+            .reduce_event(Event::PageTitleChanged {
+                target,
+                title: title.clone(),
+            })
+            .is_err()
+        {
+            return false;
+        }
+        if self.as_ref().rust().tab == Some(tab) {
+            self.as_mut().set_page_title(QString::from(title));
+        }
+        true
+    }
+
     pub(super) fn set_core_mode(mut self: Pin<&mut Self>, mode: Mode) {
         let epoch = self.as_ref().rust().input_epoch.wrapping_add(1);
         self.as_mut().set_input_epoch(epoch);
@@ -627,17 +679,6 @@ impl qobject::BrowserUi {
             if request.captured_target().is_some_and(|target| {
                 super::captured_target_is_current(self.as_ref().rust().state.as_ref(), target)
             }) {
-                if let super::engine_requests::NativeRequest::Engine(
-                    EngineEffect::TraverseHistory { target, .. },
-                ) = &request
-                {
-                    self.as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .navigation
-                        .pending_journey_traversal = Some(*target);
-                }
                 if !self.as_ref().rust().pending_engine_actions.is_empty() {
                     self.as_mut().runtime_work_available();
                 }
@@ -647,43 +688,14 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn take_journey_traversal(mut self: Pin<&mut Self>, target: Target) -> bool {
-        let queued_target = self
-            .as_ref()
-            .rust()
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
             .navigation
-            .pending_journey_traversals
-            .front()
-            .copied();
-        if let Some(queued_target) = queued_target {
-            if queued_target != target {
-                return false;
-            }
-            self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .navigation
-                .pending_journey_traversals
-                .pop_front();
-            return true;
-        }
-        if self
-            .as_ref()
-            .rust()
-            .navigation
-            .pending_journey_traversal
-            .is_some_and(|pending| pending == target)
-        {
-            self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .navigation
-                .pending_journey_traversal = None;
-            true
-        } else {
-            false
-        }
+            .engine_navigation_kinds
+            .remove(&target.tab)
+            .is_some_and(|(owner, history)| owner == target && history)
     }
 
     pub(super) fn note_navigation_started(mut self: Pin<&mut Self>, target: Target, url: &str) {
@@ -944,7 +956,6 @@ impl qobject::BrowserUi {
             .reduce_event(Event::SearchNext { target, backward })
         {
             Ok(effects) => {
-                self.as_mut().set_search_backward(backward);
                 self.as_mut().set_pending_engine_action(&effects);
                 self.set_status_text(QString::from("Search match requested"));
             }

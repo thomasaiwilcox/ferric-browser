@@ -2923,6 +2923,7 @@ impl CommandRegistry {
             command.effect = EffectClass::Navigation;
             command.examples = vec![
                 "search-next".into(),
+                "search-next --forward".into(),
                 "search-next --backward".into(),
                 "search-next --count 3".into(),
             ];

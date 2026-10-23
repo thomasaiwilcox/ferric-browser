@@ -1,16 +1,22 @@
 //! Native start-page requests and typed presentation projections.
 
 use super::feature_state::{FavouriteFeedback, FavouriteStage};
+use super::url_presentation::content_url_valid;
 use super::{
     CxxQtType, Event, FeedbackLane, FeedbackState, Pin, QString, StorageRequest, StorageTicket,
-    Uuid, ValidatedUrl, Value, qobject, unix_timestamp,
+    Uuid, ValidatedUrl, Value, canonical_engine_url, qobject, unix_timestamp,
 };
-use ferric_browser_core::InternalPage;
+use ferric_browser_core::{InternalPage, JourneyNodeId, TabId};
 use ferric_browser_storage::{
     StartPageMutation, StartPageSnapshot, StartPageTile, StartPageView, StorageOperationError,
     site_key,
 };
 use std::hash::{Hash, Hasher};
+
+pub(super) fn content_matches_journey_url(content: &str, journey: &str) -> bool {
+    content == journey
+        || canonical_engine_url(QString::from(content)).is_ok_and(|url| url == journey)
+}
 
 #[derive(Default)]
 pub(super) struct PrivateStartState {
@@ -982,7 +988,7 @@ impl qobject::BrowserUi {
             return;
         };
         let url = url.to_string();
-        if ValidatedUrl::parse(&url).is_err() {
+        if !content_url_valid(&url) {
             return;
         }
         self.as_mut()
@@ -994,6 +1000,18 @@ impl qobject::BrowserUi {
             .entry(tab)
             .or_default()
             .record(url.clone(), engine_index, traversal);
+        // Native success reports content history before the Core commit.
+        // Preserve its selected visit until that commit consumes the policy
+        // fact, especially when the old and new documents share an address.
+        if !self
+            .as_ref()
+            .rust()
+            .navigation
+            .engine_navigation_kinds
+            .contains_key(&tab)
+        {
+            self.as_mut().bind_content_journey(index, &url);
+        }
         let revision = self
             .as_ref()
             .rust()
@@ -1033,6 +1051,65 @@ impl qobject::BrowserUi {
         }
     }
 
+    pub(super) fn content_journey_visit(&self, index: i32, url: &str) -> Option<JourneyNodeId> {
+        let tab = self.tab_for_index(index)?;
+        let history = self.rust().navigation.content_histories.get(&tab)?;
+        let (entries, cursor) = history.snapshot();
+        entries
+            .get(cursor)
+            .filter(|entry| content_matches_journey_url(&entry.url, url))?
+            .journey_node
+    }
+
+    pub(super) fn content_journey_reused(&self, tab: TabId, visit: Option<JourneyNodeId>) -> bool {
+        visit.is_some_and(|id| {
+            self.rust()
+                .state
+                .as_ref()
+                .is_some_and(|state| state.journey().current_node(tab) == Some(id))
+        })
+    }
+
+    pub(super) fn bind_content_journey(mut self: Pin<&mut Self>, index: i32, url: &str) {
+        let Some(tab) = self.as_ref().tab_for_index(index) else {
+            return;
+        };
+        let node = self.as_ref().rust().state.as_ref().and_then(|state| {
+            let id = state.journey().current_node(tab)?;
+            state
+                .journey()
+                .node(id)
+                .filter(|node| node.url == url)
+                .map(|_| id)
+        });
+        let Some(node) = node else { return };
+        let entry_url = self
+            .as_ref()
+            .rust()
+            .navigation
+            .content_histories
+            .get(&tab)
+            .and_then(|history| {
+                let (entries, cursor) = history.snapshot();
+                entries
+                    .get(cursor)
+                    .filter(|entry| content_matches_journey_url(&entry.url, url))
+                    .map(|entry| entry.url.clone())
+            });
+        let Some(entry_url) = entry_url else { return };
+        if let Some(history) = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .navigation
+            .content_histories
+            .get_mut(&tab)
+        {
+            history.bind_current_journey(&entry_url, node);
+        }
+    }
+
     pub(super) fn content_engine_traversed(
         mut self: Pin<&mut Self>,
         index: i32,
@@ -1043,7 +1120,7 @@ impl qobject::BrowserUi {
             return false;
         };
         let url = url.to_string();
-        if ValidatedUrl::parse(&url).is_err() {
+        if !content_url_valid(&url) {
             return false;
         }
         let changed = self
@@ -1093,7 +1170,10 @@ impl qobject::BrowserUi {
         let (entries, cursor) = history.snapshot();
         let entries: Vec<_> = entries
             .iter()
-            .map(|entry| serde_json::json!({"url": entry.url, "engine_index": entry.engine_index}))
+            .map(|entry| {
+                serde_json::json!({"url": entry.url, "engine_index": entry.engine_index,
+                "journey_node": entry.journey_node.map(|node| node.to_string())})
+            })
             .collect();
         QString::from(serde_json::json!({"entries": entries, "cursor": cursor}).to_string())
     }
@@ -1125,15 +1205,49 @@ impl qobject::BrowserUi {
         else {
             return false;
         };
+        // A reference must have come from this tab's own prior snapshot.
+        // Do not borrow a same-URL visit from another tab or scan the full
+        // Journey path once for every history row.
+        let known_nodes = self
+            .as_ref()
+            .rust()
+            .navigation
+            .content_histories
+            .get(&tab)
+            .map(|history| {
+                history
+                    .snapshot()
+                    .0
+                    .iter()
+                    .filter_map(|entry| entry.journey_node)
+                    .collect::<std::collections::HashSet<_>>()
+            })
+            .unwrap_or_default();
         let entries: Option<Vec<_>> = rows
             .iter()
             .map(|row| {
                 let url = row["url"].as_str()?;
-                ValidatedUrl::parse(url).ok()?;
+                if !content_url_valid(url) {
+                    return None;
+                }
                 let engine_index = i32::try_from(row["engine_index"].as_i64()?).ok()?;
+                let journey_node = match row.get("journey_node") {
+                    None | Some(Value::Null) => None,
+                    Some(value) => Some(JourneyNodeId::from_display(value.as_str()?)?),
+                }
+                .filter(|id| {
+                    self.as_ref().rust().state.as_ref().is_some_and(|state| {
+                        known_nodes.contains(id)
+                            && state
+                                .journey()
+                                .node(*id)
+                                .is_some_and(|node| content_matches_journey_url(url, &node.url))
+                    })
+                });
                 Some(ferric_browser_core::ContentEntry {
                     url: url.into(),
                     engine_index,
+                    journey_node,
                 })
             })
             .collect();

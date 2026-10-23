@@ -13,7 +13,7 @@ pub(super) struct PendingContextRoute {
     pub(super) context_name: String,
     pub(super) profile_name: String,
     pub(super) url: String,
-    pub(super) new_window: bool,
+    pub(super) open_route: Option<super::IpcRoute>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

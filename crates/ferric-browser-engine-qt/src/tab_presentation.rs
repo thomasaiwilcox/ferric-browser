@@ -1,10 +1,26 @@
 //! Typed tab and window-context projection for QML-facing Qt properties.
 
 use super::{CxxQtType, Pin, QString, Target, current_target, qobject};
+use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QVariant};
 
 impl qobject::BrowserUi {
     pub(super) fn target_for_index(&self, index: i32) -> Option<Target> {
         current_target(self.rust().state.as_ref(), self.tab_for_index(index))
+    }
+
+    pub(super) fn navigation_target_for_index(&self, index: i32) -> QVariant {
+        let Some(target) = self.target_for_index(index) else {
+            return QVariant::default();
+        };
+        let mut row = QMap::<QMapPair_QString_QVariant>::default();
+        for (key, value) in [
+            ("tabId", target.tab.to_string()),
+            ("generation", target.generation.to_string()),
+            ("documentId", target.document.to_string()),
+        ] {
+            row.insert(QString::from(key), QVariant::from(&QString::from(value)));
+        }
+        QVariant::from(&row)
     }
 
     pub(super) fn sync_active_tab_properties(mut self: Pin<&mut Self>) {

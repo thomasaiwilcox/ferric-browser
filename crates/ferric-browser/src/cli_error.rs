@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 pub(super) enum CliError {
     Local(PublicError),
     Protocol(ProtocolError),
+    Output(std::io::Error),
 }
 
 impl CliError {
@@ -109,7 +110,12 @@ impl CliError {
         match self {
             Self::Local(error) => error.code(),
             Self::Protocol(error) => canonical_error_code(&error.code),
+            Self::Output(_) => ErrorCode::Io,
         }
+    }
+
+    pub(super) fn is_broken_pipe(&self) -> bool {
+        matches!(self, Self::Output(error) if error.kind() == std::io::ErrorKind::BrokenPipe)
     }
 
     pub(super) fn status(&self) -> i32 {
@@ -161,6 +167,18 @@ impl CliError {
 
     pub(super) fn into_protocol(self) -> ProtocolError {
         let mut error = match self {
+            Self::Output(error) => {
+                return Self::local(
+                    ErrorCode::Io,
+                    "Ferric Browser couldn't write command output.",
+                    error.to_string(),
+                )
+                .with_recovery(
+                    "command output could not be delivered",
+                    "check the command result before retrying",
+                )
+                .into_protocol();
+            }
             Self::Protocol(error) => error,
             Self::Local(error) => {
                 // Raw local context stays in the typed cause; it must not become

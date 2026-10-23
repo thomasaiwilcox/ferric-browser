@@ -9,6 +9,14 @@ TestCase {
     when: windowShown
     property int submissions: 0
     property string lastSubmission: ""
+    property int historyRequests: 0
+    property int completionMoves: 0
+    property int escapes: 0
+
+    Component {
+        id: nativeEditorFixture
+        FerricTextField { width: 600; height: 40 }
+    }
 
     ApplicationWindow {
         id: host
@@ -46,7 +54,13 @@ TestCase {
             completionEnd: 2
             completionSelected: -1
             property bool refreshAfterEdit: false
+            property string historyResponse: ""
+            onHistoryMoveRequested: {
+                test.historyRequests++
+                recallHistory(historyResponse)
+            }
             onSubmitted: function(text) { test.submissions++; test.lastSubmission = text }
+            onEscapeRequested: test.escapes++
             onCompletionUpdateRequested: function(text, cursor) {
                 if (!refreshAfterEdit) return
                 // The production bridge replaces candidates and the token
@@ -58,6 +72,7 @@ TestCase {
                 completionSelected = -1
             }
             onCompletionMoveRequested: function(delta) {
+                test.completionMoves++
                 var count = completionValues.split("\n").length
                 completionSelected = completionSelected < 0
                     ? (delta < 0 ? count - 1 : 0)
@@ -73,6 +88,9 @@ TestCase {
         host.font.pointSize = 12
         submissions = 0
         lastSubmission = ""
+        historyRequests = 0
+        completionMoves = 0
+        escapes = 0
         host.requestActivate()
         tryCompare(host, "active", true)
     }
@@ -220,6 +238,102 @@ TestCase {
         compare(input.cursorPosition, data.position)
         compare(submissions, 0)
     }
+    function test_modified_arrows_follow_the_native_editor_data() {
+        var rows = []
+        var modifiers = [{name: "shift", value: Qt.ShiftModifier},
+            {name: "control", value: Qt.ControlModifier},
+            {name: "control-shift", value: Qt.ControlModifier | Qt.ShiftModifier},
+            {name: "alt", value: Qt.AltModifier},
+            {name: "keypad-shift", value: Qt.KeypadModifier | Qt.ShiftModifier}]
+        for (var i = 0; i < modifiers.length; ++i)
+            for (var direction = 0; direction < 2; ++direction)
+                rows.push({tag: modifiers[i].name + (direction ? "-down" : "-up"),
+                    key: direction ? Qt.Key_Down : Qt.Key_Up, modifiers: modifiers[i].value})
+        return rows
+    }
+    function test_modified_arrows_follow_the_native_editor(data) {
+        var native = createTemporaryObject(nativeEditorFixture, host.contentItem)
+        verify(native)
+        native.text = "open two words"
+        native.cursorPosition = 7
+        native.forceActiveFocus()
+        tryCompare(native, "activeFocus", true)
+        keyClick(data.key, data.modifiers)
+        var expected = {text: native.text, cursor: native.cursorPosition,
+            selected: native.selectedText}
+
+        var command = create()
+        var input = findChild(command, "commandLineInput")
+        command.commandText = "open two words"
+        command.cursorPosition = 7
+        command.historyResponse = "zoom 1.2"
+        keyClick(data.key, data.modifiers)
+        compare(command.commandText, expected.text)
+        compare(command.cursorPosition, expected.cursor)
+        compare(input.selectedText, expected.selected)
+        compare(historyRequests, 0)
+        compare(submissions, 0)
+    }
+    function test_other_modified_keys_do_not_cycle_completions_data() {
+        return [{tag: "control-shift-n", key: Qt.Key_N, modifiers: Qt.ControlModifier | Qt.ShiftModifier},
+            {tag: "control-shift-p", key: Qt.Key_P, modifiers: Qt.ControlModifier | Qt.ShiftModifier},
+            {tag: "control-alt-n", key: Qt.Key_N, modifiers: Qt.ControlModifier | Qt.AltModifier},
+            {tag: "control-alt-p", key: Qt.Key_P, modifiers: Qt.ControlModifier | Qt.AltModifier},
+            {tag: "control-tab", key: Qt.Key_Tab, modifiers: Qt.ControlModifier},
+            {tag: "control-shift-tab", key: Qt.Key_Backtab, modifiers: Qt.ControlModifier | Qt.ShiftModifier}]
+    }
+    function test_other_modified_keys_do_not_cycle_completions(data) {
+        var command = create()
+        command.completionSelected = 1
+        keyClick(data.key, data.modifiers)
+        compare(completionMoves, 0)
+        compare(historyRequests, 0)
+        compare(submissions, 0)
+    }
+    function test_keypad_arrows_keep_browser_navigation_data() {
+        return [{tag: "up", key: Qt.Key_Up}, {tag: "down", key: Qt.Key_Down},
+            {tag: "right", key: Qt.Key_Right}]
+    }
+    function test_keypad_arrows_keep_browser_navigation(data) {
+        var command = create()
+        command.completionSelected = 1
+        command.historyResponse = "zoom 1.2"
+        keyClick(data.key, Qt.KeypadModifier)
+        compare(command.commandText, data.key === Qt.Key_Right ? "command-1" : "zoom 1.2")
+        compare(historyRequests, data.key === Qt.Key_Right ? 0 : 1)
+        compare(submissions, 0)
+    }
+    function test_preedit_keeps_browser_actions_inactive_data() {
+        return [{tag: "right", key: Qt.Key_Right}, {tag: "space", key: Qt.Key_Space},
+            {tag: "up", key: Qt.Key_Up}, {tag: "down", key: Qt.Key_Down},
+            {tag: "tab", key: Qt.Key_Tab},
+            {tag: "backtab", key: Qt.Key_Backtab, modifiers: Qt.ShiftModifier},
+            {tag: "control-n", key: Qt.Key_N, modifiers: Qt.ControlModifier},
+            {tag: "control-p", key: Qt.Key_P, modifiers: Qt.ControlModifier},
+            {tag: "escape", key: Qt.Key_Escape}, {tag: "return", key: Qt.Key_Return}]
+    }
+    function test_preedit_keeps_browser_actions_inactive(data) {
+        var command = create()
+        var input = findChild(command, "commandLineInput")
+        command.completionSelected = 1
+        command.historyResponse = "zoom 1.2"
+        testInputMethod.sendInputMethod(input, "にほ", "")
+        tryCompare(input, "inputMethodComposing", true)
+        keyClick(data.key, data.modifiers || Qt.NoModifier)
+        compare(historyRequests, 0)
+        compare(completionMoves, 0)
+        compare(submissions, 0)
+        compare(escapes, 0)
+        command.focusInput()
+        testInputMethod.sendInputMethod(input, "", "日本")
+        tryCompare(input, "inputMethodComposing", false)
+        verify(command.commandText.indexOf("日本") >= 0)
+        command.completionSelected = -1
+        var committed = command.commandText
+        keyClick(Qt.Key_Return)
+        compare(submissions, 1)
+        compare(lastSubmission, committed)
+    }
     function test_completion_is_one_undoable_edit_data() {
         return [{tag: "typed-command", typed: "co", start: 0, end: 2, expected: "command-1"},
                 {tag: "empty-argument", typed: "open ", start: 5, end: 5, expected: "open command-1"},
@@ -254,6 +368,45 @@ TestCase {
         keyClick(Qt.Key_Right)
         compare(command.commandText, "co")
         compare(command.feedbackText, "Check this command")
+    }
+    function test_history_is_one_undoable_edit_data() {
+        return [{tag: "draft", typed: "open draft", recalled: "zoom 120"},
+                {tag: "empty-draft", typed: "", recalled: "zoom 120"},
+                {tag: "return-to-empty-draft", typed: "zoom 120", recalled: ""},
+                {tag: "unicode-history", typed: "open draft", recalled: "open https://example.test/🦀/λ"},
+                {tag: "selected-draft", typed: "open draft", recalled: "zoom 120", selected: true}]
+    }
+    function test_history_is_one_undoable_edit(data) {
+        var command = create()
+        command.clearInput()
+        for (var i = 0; i < data.typed.length; ++i) keyClick(data.typed[i])
+        var input = findChild(command, "commandLineInput")
+        if (data.selected) input.selectAll()
+        command.historyResponse = data.recalled
+        command.refreshAfterEdit = true
+        keyClick(Qt.Key_Up)
+        compare(command.commandText, data.recalled)
+        compare(command.cursorPosition, data.recalled.length)
+        compare(submissions, 0)
+        keyClick(Qt.Key_Z, Qt.ControlModifier)
+        compare(command.commandText, data.typed)
+        keyClick(Qt.Key_Z, Qt.ControlModifier | Qt.ShiftModifier)
+        compare(command.commandText, data.recalled)
+        compare(input.activeFocus, true)
+    }
+    function test_history_boundary_preserves_selection_and_undo() {
+        var command = create()
+        command.clearInput()
+        keyClick("d"); keyClick("r"); keyClick("a"); keyClick("f"); keyClick("t")
+        command.historyResponse = command.commandText
+        var input = findChild(command, "commandLineInput")
+        input.select(1, 4)
+        keyClick(Qt.Key_Down)
+        compare(command.commandText, "draft")
+        compare(input.selectedText, "raf")
+        compare(input.cursorPosition, 4)
+        keyClick(Qt.Key_Z, Qt.ControlModifier)
+        verify(command.commandText !== "draft")
     }
     function test_help_fits_narrow_large_font_popup() {
         host.width = 390

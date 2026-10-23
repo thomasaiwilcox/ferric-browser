@@ -100,6 +100,7 @@ pub enum SearchCase {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchState {
     pub query: String,
+    /// Direction chosen when the query started; individual steps do not change it.
     pub backward: bool,
     pub case: SearchCase,
 }

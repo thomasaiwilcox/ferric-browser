@@ -7,6 +7,7 @@ import "../scripts/ChromePresentation.js" as ChromePresentation
 // policy remain at the composition root; this component only derives chrome.
 Rectangle {
     id: statusBar
+    objectName: "browserStatusBar"
     required property var browserWindow
     required property bool statusVisible
     required property string mode
@@ -40,6 +41,14 @@ Rectangle {
     Accessible.name: "Browser status bar. " + mode + ". " + displayUrl
         + ". " + hintPreviewText + ". " + statusText + accessibleDetails + ". " + ChromePresentation.inputModeDescription(mode)
     Accessible.role: Accessible.StatusBar
+
+    // The bar overlays WebEngine; unused chrome space must still own pointer input.
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.AllButtons
+        hoverEnabled: true
+        onWheel: function(wheel) { wheel.accepted = true }
+    }
 
     function modeColor() {
         if (mode === "insert" || mode === "insert-locked") return browserWindow.modeInsertColor

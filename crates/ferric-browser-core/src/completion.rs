@@ -102,6 +102,21 @@ pub fn complete(
     }
 }
 
+fn search_next_flags(tokens: &[&str]) -> &'static [&'static str] {
+    if tokens.last().copied() == Some("--count") {
+        return &[];
+    }
+    let has_direction = tokens
+        .iter()
+        .any(|token| matches!(*token, "--forward" | "--backward"));
+    match (has_direction, tokens.contains(&"--count")) {
+        (true, true) => &[],
+        (true, false) => &["--count"],
+        (false, true) => &["--forward", "--backward"],
+        (false, false) => &["--forward", "--backward", "--count"],
+    }
+}
+
 fn enum_candidates(command_prefix: &str, prefix: &str) -> Option<Vec<CompletionCandidate>> {
     let tokens = command_prefix.split_ascii_whitespace().collect::<Vec<_>>();
     let command = tokens.first().copied().unwrap_or_default();
@@ -163,7 +178,7 @@ fn enum_candidates(command_prefix: &str, prefix: &str) -> Option<Vec<CompletionC
                     "line-start",
                     "line-end",
                 ],
-                "search-next" => &["forward", "backward"],
+                "search-next" => search_next_flags(&tokens),
                 "zoom" => &["in", "out", "reset"],
                 "context-route" => &["add", "remove", "list"],
                 "switcher" if tokens.last().copied() == Some("--scope") => &[
@@ -527,6 +542,30 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["document"]
         );
+    }
+
+    #[test]
+    fn search_next_completion_offers_executable_direction_flags() {
+        let registry = CommandRegistry::default_v1();
+        for (input, expected) in [
+            ("search-next ", vec!["--backward", "--count", "--forward"]),
+            ("search-next --f", vec!["--forward"]),
+            ("search-next --backward ", vec!["--count"]),
+            ("search-next --count ", vec![]),
+            ("search-next --count 2 ", vec!["--backward", "--forward"]),
+            ("search-next --forward --count 2 ", vec![]),
+        ] {
+            let result = complete(input, input.chars().count(), &registry, &[], 100);
+            assert_eq!(
+                result
+                    .candidates
+                    .iter()
+                    .map(|candidate| candidate.insert_text.as_str())
+                    .collect::<Vec<_>>(),
+                expected,
+                "{input}"
+            );
+        }
     }
 
     #[test]

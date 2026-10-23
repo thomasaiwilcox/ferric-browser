@@ -340,21 +340,72 @@ fn storage_result<T>(
 }
 
 fn restore_session_paths(paths: Vec<PathBuf>) -> Result<SessionRestoreSnapshot, String> {
-    paths.into_iter().try_fold(
-        SessionRestoreSnapshot {
-            entries: Vec::new(),
-            closed_tabs: Vec::new(),
-        },
-        |mut restored, path| {
-            let snapshot = load_session(&path).map_err(|error| error.to_string())?;
-            let mut entries = snapshot.restore_plan().map_err(|error| error.to_string())?;
-            restored.entries.append(&mut entries);
-            if restored.closed_tabs.is_empty() {
-                restored.closed_tabs = snapshot.closed_tabs;
+    let mut snapshots = paths
+        .into_iter()
+        .map(|path| load_session(path).map_err(|error| error.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    // A retained copy of the same session is not another window. Prefer its
+    // newest valid revision before resolving recovery ancestry.
+    snapshots.sort_by_key(|snapshot| (snapshot.session_id, std::cmp::Reverse(snapshot.revision)));
+    snapshots.dedup_by_key(|snapshot| snapshot.session_id);
+    let indices = snapshots
+        .iter()
+        .enumerate()
+        .map(|(index, snapshot)| (snapshot.session_id, index))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut incoming = vec![0_usize; snapshots.len()];
+    for snapshot in &snapshots {
+        for id in &snapshot.recovered_session_ids {
+            if let Some(index) = indices.get(id) {
+                incoming[*index] += 1;
             }
-            Ok(restored)
-        },
-    )
+        }
+    }
+    let roots = incoming
+        .iter()
+        .enumerate()
+        .filter_map(|(index, count)| (*count == 0).then_some(index))
+        .collect::<Vec<_>>();
+    let mut pending = roots.clone();
+    let mut visited = 0;
+    while let Some(index) = pending.pop() {
+        visited += 1;
+        for id in &snapshots[index].recovered_session_ids {
+            if let Some(index) = indices.get(id) {
+                incoming[*index] -= 1;
+                if incoming[*index] == 0 {
+                    pending.push(*index);
+                }
+            }
+        }
+    }
+    if visited != snapshots.len() {
+        return Err("recovery checkpoint ancestry is cyclic".into());
+    }
+    let mut restored = SessionRestoreSnapshot {
+        source_session_ids: snapshots
+            .iter()
+            .map(|snapshot| snapshot.session_id)
+            .collect(),
+        entries: Vec::new(),
+        closed_tabs: Vec::new(),
+    };
+    for index in roots {
+        let snapshot = &snapshots[index];
+        restored
+            .entries
+            .extend(snapshot.restore_plan().map_err(|error| error.to_string())?);
+        restored
+            .closed_tabs
+            .extend(snapshot.closed_tabs.iter().cloned());
+    }
+    restored
+        .closed_tabs
+        .sort_by_key(|tab| std::cmp::Reverse(tab.closed_at));
+    let mut seen = std::collections::BTreeSet::new();
+    restored.closed_tabs.retain(|tab| seen.insert(tab.id));
+    restored.closed_tabs.truncate(100);
+    Ok(restored)
 }
 
 fn load_library(store: &ProfileStore, limit: usize) -> Result<ProfileLibrarySnapshot, String> {
@@ -440,4 +491,122 @@ fn load_journey_export(store: &ProfileStore) -> Result<JourneyQuerySnapshot, Str
             .journey_edges(100_000)
             .map_err(|error| error.to_string())?,
     })
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::restore_session_paths;
+    use crate::{
+        RestoreSafety, SessionSnapshot, SnapshotTabInput, SnapshotWindowInput, save_session_atomic,
+    };
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
+    use uuid::Uuid;
+
+    fn checkpoint(root: &Path, name: &str, urls: &[&str]) -> (PathBuf, SessionSnapshot) {
+        let id = Uuid::new_v4();
+        let snapshot = SessionSnapshot::new(
+            id,
+            name,
+            Uuid::nil(),
+            1,
+            "now",
+            vec![SnapshotWindowInput {
+                selected_tab: None,
+                workspace: None,
+                tabs: urls
+                    .iter()
+                    .map(|url| SnapshotTabInput {
+                        id: Uuid::new_v4(),
+                        url: (*url).into(),
+                        safety: RestoreSafety::SafeGet,
+                        private: false,
+                        pinned: false,
+                        muted: false,
+                        zoom: 1.0,
+                        scroll_position: None,
+                    })
+                    .collect(),
+            }],
+        )
+        .unwrap();
+        let path = root.join(format!("current-{id}.json"));
+        save_session_atomic(&path, &snapshot).unwrap();
+        (path, snapshot)
+    }
+
+    #[test]
+    fn durable_recovery_lineage_prevents_duplicate_restore_after_another_crash() {
+        let root = std::env::temp_dir().join(format!("ferric-lineage-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let (old_path, mut old) = checkpoint(&root, "old", &["https://example.test/old"]);
+        old.closed_tabs = [2_u128, 1]
+            .into_iter()
+            .map(|id| crate::ClosedTabSnapshot {
+                id: Uuid::from_u128(id),
+                url: format!("https://example.test/closed-{id}"),
+                title: String::new(),
+                closed_at: 42,
+                group_index: None,
+                pinned: false,
+                muted: false,
+                zoom_hundredths: 100,
+            })
+            .collect();
+        save_session_atomic(&old_path, &old).unwrap();
+        let (new_path, mut combined) =
+            checkpoint(&root, "combined", &["https://example.test/current"]);
+        combined.windows[0]
+            .tabs
+            .push(old.windows[0].tabs[0].clone());
+        combined.closed_tabs.clone_from(&old.closed_tabs);
+        combined.revision = 2;
+        combined.recovered_session_ids = vec![old.session_id];
+        save_session_atomic(&new_path, &combined).unwrap();
+        let restored = restore_session_paths(vec![old_path.clone(), new_path.clone()]).unwrap();
+        assert_eq!(restored.entries.len(), 2);
+        assert_eq!(restored.source_session_ids.len(), 2);
+        assert_eq!(
+            restored.closed_tabs, old.closed_tabs,
+            "same-second Undo order must remain stable"
+        );
+        assert!(restored.source_session_ids.contains(&old.session_id));
+        assert!(restored.source_session_ids.contains(&combined.session_id));
+        // Corrupting the replacement falls back to its previous generation.
+        // The retained old source must still supply any work that generation
+        // had not incorporated.
+        fs::write(&new_path, b"interrupted replacement").unwrap();
+        let fallback = restore_session_paths(vec![old_path, new_path]).unwrap();
+        assert_eq!(fallback.entries.len(), 2);
+        assert_eq!(
+            fallback
+                .entries
+                .iter()
+                .filter(|entry| entry.url.as_deref() == Some("https://example.test/old"))
+                .count(),
+            1
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn recovery_lineage_cycles_are_rejected_even_with_an_independent_checkpoint() {
+        let root = std::env::temp_dir().join(format!("ferric-lineage-cycle-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let (a_path, mut a) = checkpoint(&root, "a", &["https://example.test/a"]);
+        let (b_path, mut b) = checkpoint(&root, "b", &["https://example.test/b"]);
+        let (c_path, _) = checkpoint(&root, "c", &["https://example.test/c"]);
+        a.recovered_session_ids = vec![b.session_id];
+        b.recovered_session_ids = vec![a.session_id];
+        save_session_atomic(&a_path, &a).unwrap();
+        save_session_atomic(&b_path, &b).unwrap();
+        assert!(
+            restore_session_paths(vec![a_path, b_path, c_path])
+                .unwrap_err()
+                .contains("cyclic")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
 }

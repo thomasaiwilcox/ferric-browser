@@ -577,8 +577,8 @@ fn search_next_arguments(
     let mut index = 0;
     while index < parsed.arguments.len() {
         match parsed.arguments[index].as_str() {
-            "--backward" if backward.is_none() => {
-                backward = Some(true);
+            direction @ ("--forward" | "--backward") if backward.is_none() => {
+                backward = Some(direction == "--backward");
                 index += 1;
             }
             "--count" if requested_count.is_none() => {
@@ -1195,6 +1195,59 @@ mod tests {
         ));
         assert!(dispatch_cli(&state, &registry, "search-next --backward --backward").is_err());
         assert!(dispatch_cli(&state, &registry, "search-next --count 0").is_err());
+    }
+
+    #[test]
+    fn search_next_keeps_the_original_direction_after_an_opposite_step() {
+        let registry = CommandRegistry::default_v1();
+        for backward in [false, true] {
+            let mut state = state();
+            let tab = state.active_tab().unwrap().id;
+            let target = state.capture_target(tab).unwrap();
+            reduce(
+                &mut state,
+                Event::StartSearch {
+                    target,
+                    query: "needle".into(),
+                    backward,
+                    case: crate::SearchCase::Smart,
+                },
+            )
+            .unwrap();
+            reduce(
+                &mut state,
+                Event::SearchNext {
+                    target,
+                    backward: !backward,
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                state.tabs()[&tab].search.as_ref().unwrap().backward,
+                backward
+            );
+            assert_eq!(
+                dispatch_cli(&state, &registry, "search-next").unwrap(),
+                vec![Event::SearchNext { target, backward }]
+            );
+            assert_eq!(
+                dispatch_cli(&state, &registry, "search-next --forward --count 2").unwrap(),
+                vec![
+                    Event::SearchNext {
+                        target,
+                        backward: false
+                    };
+                    2
+                ]
+            );
+            for input in [
+                "search-next --forward --backward",
+                "search-next --backward --forward",
+                "search-next --forward --forward",
+            ] {
+                assert!(dispatch_cli(&state, &registry, input).is_err(), "{input}");
+            }
+        }
     }
 
     #[test]

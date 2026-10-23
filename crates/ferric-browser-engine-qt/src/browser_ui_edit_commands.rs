@@ -803,8 +803,10 @@ impl qobject::BrowserUi {
             .get_mut()
             .pending_link_navigation = Some(PendingLinkNavigation {
             target: Some(target),
+            new_tab_route: None,
             new_window_action: None,
             journey_parent: None,
+            repeat_route: None,
             url: cleaned,
         });
         value["requires_confirmation"] = Value::Bool(true);

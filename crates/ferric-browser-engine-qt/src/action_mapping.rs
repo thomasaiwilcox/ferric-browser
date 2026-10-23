@@ -188,11 +188,7 @@ pub(super) fn map_basic(
         "search-next" => match arguments {
             [] => Vec::new(),
             [direction] if matches!(direction.as_str(), "forward" | "backward") => {
-                if direction == "backward" {
-                    vec!["--backward".into()]
-                } else {
-                    Vec::new()
-                }
+                vec![format!("--{direction}")]
             }
             [direction, count]
                 if matches!(direction.as_str(), "forward" | "backward")
@@ -200,12 +196,7 @@ pub(super) fn map_basic(
                         .parse::<u32>()
                         .is_ok_and(|count| (1..=100).contains(&count)) =>
             {
-                let mut args = Vec::new();
-                if direction == "backward" {
-                    args.push("--backward".into());
-                }
-                args.extend(["--count".into(), count.clone()]);
-                args
+                vec![format!("--{direction}"), "--count".into(), count.clone()]
             }
             _ => return Err("action tab search-next expects [forward|backward] [count]".into()),
         },

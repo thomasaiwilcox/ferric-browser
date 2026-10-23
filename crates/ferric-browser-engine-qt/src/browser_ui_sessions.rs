@@ -1,3 +1,4 @@
+use super::feature_state::SessionRestoreIntent;
 use super::{
     CatalogReadState, CleanLinkResult, ClosedTabDescriptor, ClosedTabSnapshot, ContextMember,
     CxxQtType, Event, FeedbackLane, FeedbackState, JourneyEdgeKind, PendingExternalNavigation, Pin,
@@ -100,42 +101,115 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn recover_session(mut self: Pin<&mut Self>) -> QString {
-        let (root, profile_id) = {
+        if self.as_ref().rust().session_recovery_pending {
+            return QString::from("QUEUED");
+        }
+        self.as_mut().set_session_recovery_error(QString::default());
+        let paths = {
             let pinned = self.as_ref();
             let rust = pinned.rust();
             match (rust.session_state_root.as_ref(), rust.profile_id) {
-                (Some(root), Some(profile_id)) => (root.clone(), profile_id),
+                (Some(_), Some(_)) => rust.recovery_paths.clone(),
                 _ => {
+                    self.as_mut().set_session_recovery_error(QString::from(
+                        "Recovery isn't available in this profile. You can start without recovery.",
+                    ));
                     self.set_status_text(QString::from("No durable recovery profile"));
                     return QString::default();
                 }
             }
         };
-        let result = Some(
-            self.as_mut()
-                .submit_storage(StorageRequest::SessionRecovery { root, profile_id }),
-        );
-        match result {
-            Some(Ok(())) => {
+        if paths.is_empty() {
+            self.as_mut().set_session_recovery_error(QString::from(
+                "There are no saved tabs to recover. You can start without recovery.",
+            ));
+            self.set_status_text(QString::from("Recovery session is empty"));
+            return QString::default();
+        }
+        match self
+            .as_mut()
+            .submit_storage_with_ticket(StorageRequest::SessionRestore { paths })
+        {
+            Ok(ticket) => {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                this.library.session_restore_recovery_pending = true;
+                this.library
+                    .session_restores
+                    .insert(ticket, SessionRestoreIntent::Recovery);
                 this.session_restore_values = QString::default();
                 drop(rust);
+                self.as_mut().set_session_recovery_pending(true);
                 self.set_status_text(QString::from("Loading recovery session"));
                 QString::from("QUEUED")
             }
-            Some(Err(error)) => {
+            Err(error) => {
+                self.as_mut().set_session_recovery_error(QString::from(
+                    "Saved tabs couldn't be read. Try again, or start without recovery.",
+                ));
                 self.set_status_text(QString::from(format!("Recovery unavailable: {error}")));
                 QString::default()
             }
-            None => {
-                self.set_status_text(QString::from(
-                    "Recovery is unavailable in this window. Reopen the window and try again.",
-                ));
-                QString::default()
-            }
         }
+    }
+
+    pub(super) fn remember_recovery_placeholder(mut self: Pin<&mut Self>) {
+        let target = current_target(
+            self.as_ref().rust().state.as_ref(),
+            self.as_ref().rust().tab,
+        );
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .recovery_placeholder = target;
+    }
+
+    pub(super) fn can_reuse_recovery_placeholder(&self) -> bool {
+        let rust = self.rust();
+        let Some(target) = rust.recovery_placeholder else {
+            return false;
+        };
+        let Some(state) = rust.state.as_ref() else {
+            return false;
+        };
+        let Some(tab) = state.tabs().get(&target.tab) else {
+            return false;
+        };
+        current_target(Some(state), Some(target.tab)) == Some(target)
+            && Some(tab.window) == rust.window
+            && rust.tab == Some(target.tab)
+            && rust.tab_ids == [target.tab]
+            && state
+                .windows()
+                .get(&tab.window)
+                .is_some_and(|window| window.tabs == [target.tab])
+            && matches!(
+                tab.url.as_deref(),
+                Some("rb://start" | "rb://blank" | "about:blank")
+            )
+            && matches!(
+                tab.loading,
+                super::LoadingState::Idle | super::LoadingState::Complete
+            )
+            && !tab.pinned
+            && !tab.muted
+            && (tab.zoom - 1.0).abs() < f64::EPSILON
+            && rust.closed_tabs.is_empty()
+    }
+
+    pub(super) fn cancel_session_recovery(mut self: Pin<&mut Self>) {
+        // The worker may already be reading. Revoke its publication intent so
+        // its eventual completion cannot restore tabs or become a preview.
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .library
+            .session_restores
+            .retain(|_, intent| *intent != SessionRestoreIntent::Recovery);
+        self.as_mut().set_session_recovery_pending(false);
+        self.as_mut().set_session_recovery_error(QString::default());
+        self.set_status_text(QString::from("Started without recovery"));
     }
 
     /// Materializes the safe portion of a saved context membership into the
@@ -279,8 +353,7 @@ impl qobject::BrowserUi {
             this.tab = Some(selected_tab);
             this.pending_engine_action = None;
             this.pending_engine_actions.clear();
-            this.navigation.pending_journey_traversal = None;
-            this.navigation.pending_journey_traversals.clear();
+            this.navigation.engine_navigation_kinds.clear();
         }
         self.as_mut()
             .set_session_restore_values(QString::from(format!(
@@ -315,11 +388,24 @@ impl qobject::BrowserUi {
                 profile: self.as_ref().rust().profile_name.clone(),
                 private: false,
                 closed_at: closed.closed_at,
+                group_index: closed.group_index,
+                pinned: closed.pinned,
+                muted: closed.muted,
+                zoom_hundredths: closed.zoom_hundredths,
             })
             .take(configured_undo_limit(&self.as_ref().rust().config))
             .collect::<Vec<_>>();
         let mut rust = self.as_mut().rust_mut();
-        rust.as_mut().get_mut().closed_tabs = restored;
+        let this = rust.as_mut().get_mut();
+        let mut seen = this
+            .closed_tabs
+            .iter()
+            .map(|tab| tab.id)
+            .collect::<super::BTreeSet<_>>();
+        this.closed_tabs
+            .extend(restored.into_iter().filter(|tab| seen.insert(tab.id)));
+        this.closed_tabs
+            .truncate(configured_undo_limit(&this.config));
     }
 
     #[allow(clippy::too_many_lines)]
@@ -405,10 +491,12 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.tab_ids = restored_tabs.clone();
-            this.popup_tab_ids.clear();
-            this.navigation.popup_journey_targets.clear();
-            this.navigation.page_document_identities.clear();
-            this.navigation.pending_same_document_pass_through = None;
+            if !append {
+                this.popup_tab_ids.clear();
+                this.navigation.popup_journey_targets.clear();
+                this.navigation.page_document_identities.clear();
+                this.navigation.pending_same_document_pass_through = None;
+            }
             this.tab = Some(selected_tab);
             if !append {
                 this.navigation.scroll_positions.clear();
@@ -452,9 +540,24 @@ impl qobject::BrowserUi {
                 return QString::default();
             }
         }
+        for (tab, entry) in restored_tabs[first_restored_index..].iter().zip(&entries) {
+            if let Some(target) = current_target(self.as_ref().rust().state.as_ref(), Some(*tab))
+                && let Ok(url) = ValidatedUrl::parse(entry.url.as_deref().unwrap_or("about:blank"))
+            {
+                let _ = self
+                    .as_mut()
+                    .reduce_event(Event::RestoreTabAddress { target, url });
+            }
+        }
         self.as_mut().sync_tab_order_from_core();
-        let urls = entries.iter().map(restore_entry_line).collect::<Vec<_>>();
-        let selected_url = &urls[0];
+        // Pinning can reorder the Core tabs independently of the selected-first
+        // restore plan. Keep each row attached to its new runtime identity.
+        let restore_rows = entries
+            .iter()
+            .zip(&restored_tabs[first_restored_index..])
+            .map(|(entry, tab)| format!("{}\t{tab}", restore_entry_line(entry)))
+            .collect::<Vec<_>>();
+        let selected_url = entries[0].url.as_deref().unwrap_or("about:blank");
         let inactive_restore_tabs = restored_tabs
             .iter()
             .skip(first_restored_index.saturating_add(1))
@@ -501,8 +604,11 @@ impl qobject::BrowserUi {
             this.checkpoint.restore_pending = None;
             this.checkpoint.mark_dirty(elapsed_ms(this.binding_clock));
         }
-        self.set_status_text(QString::from(format!("Recovered {} tab(s)", urls.len())));
-        QString::from(urls.join("\n"))
+        self.set_status_text(QString::from(format!(
+            "Recovered {} tab(s)",
+            restore_rows.len()
+        )));
+        QString::from(restore_rows.join("\n"))
     }
 
     pub(super) fn request_named_session_load(
@@ -526,13 +632,15 @@ impl qobject::BrowserUi {
         };
         let result = Some(
             self.as_mut()
-                .submit_storage(StorageRequest::SessionRestore { paths: vec![path] }),
+                .submit_storage_with_ticket(StorageRequest::SessionRestore { paths: vec![path] }),
         );
         match result {
-            Some(Ok(())) => {
+            Some(Ok(ticket)) => {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                this.library.session_restore_load_append = Some(append);
+                this.library
+                    .session_restores
+                    .insert(ticket, SessionRestoreIntent::Load { append });
                 this.session_restore_values = QString::default();
                 this.session_preview = QString::default();
                 drop(rust);
@@ -632,13 +740,15 @@ impl qobject::BrowserUi {
         };
         let result = Some(
             self.as_mut()
-                .submit_storage(StorageRequest::SessionRestore { paths: vec![path] }),
+                .submit_storage_with_ticket(StorageRequest::SessionRestore { paths: vec![path] }),
         );
         match result {
-            Some(Ok(())) => {
+            Some(Ok(ticket)) => {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                this.library.session_restore_preview_pending = true;
+                this.library
+                    .session_restores
+                    .insert(ticket, SessionRestoreIntent::Preview);
                 this.session_preview = QString::default();
                 drop(rust);
                 self.as_mut().clear_session_preview_rows();
@@ -910,6 +1020,20 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("No pending clean-link navigation"));
             return false;
         };
+        if let Some(route) = pending.repeat_route.as_ref()
+            && let Err(error) = self.as_ref().validate_ipc_route_public(route)
+        {
+            self.set_status_text(QString::from(error.to_string()));
+            return false;
+        }
+        let repeated = pending.repeat_route.map(|route| super::RepeatableCommand {
+            command: super::ParsedCommand {
+                name: "open".into(),
+                arguments: vec![pending.url.to_string()],
+            },
+            count: 1,
+            route: Some(route),
+        });
         let journey_parent = pending.journey_parent;
         if let Some(action) = pending.new_window_action {
             self.as_mut()
@@ -917,6 +1041,16 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .get_mut()
                 .pending_engine_action = Some(action);
+        } else if let Some(route) = pending.new_tab_route {
+            if let Err(error) =
+                self.as_mut()
+                    .dispatch_new_tab_open(pending.url.as_str(), &route, None)
+            {
+                self.set_status_text(QString::from(format!(
+                    "Clean-link navigation rejected: {error}"
+                )));
+                return false;
+            }
         } else if let Some(target) = pending.target {
             match self.as_mut().reduce_event(Event::StartNavigation {
                 target,
@@ -938,6 +1072,13 @@ impl qobject::BrowserUi {
         } else {
             self.set_status_text(QString::from("Clean-link target is no longer available"));
             return false;
+        }
+        if let Some(recorded) = repeated {
+            self.as_mut().note_repeatable_invocation(
+                &recorded.command,
+                recorded.route.as_ref(),
+                recorded.count,
+            );
         }
         self.as_mut().set_link_preview_visible(false);
         self.as_mut().clear_link_preview_presentation();
