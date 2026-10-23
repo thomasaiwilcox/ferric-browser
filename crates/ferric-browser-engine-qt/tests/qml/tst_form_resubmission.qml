@@ -109,6 +109,18 @@ TestCase {
         tryCompare(findChild(surface,"commandDialogAction-cancel"),"activeFocus",true)
         return surface
     }
+    function test_form_surface_releases_its_missing_host_data() {
+        return [{tag:"unused",open:false},{tag:"open",open:true}]
+    }
+    function test_form_surface_releases_its_missing_host(data) {
+        var content=createTemporaryObject(contentFixture,host.contentItem)
+        if (data.open) prompt(content,false)
+        content.browserHost=null
+        wait(0)
+        verify(!findChild(host,"formResubmissionSurface"))
+        compare(web.reloads,0)
+        compare(web.bypassReloads,0)
+    }
     function test_cancel_preserves_the_completed_document_data() {
         return [{tag:"enter",key:Qt.Key_Return},{tag:"escape",key:Qt.Key_Escape},{tag:"n",key:Qt.Key_N}]
     }

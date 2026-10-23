@@ -174,6 +174,7 @@ Item {
 
     FerricCommandDialog {
         id: certificateErrorPrompt
+        objectName: "certificateErrorPrompt"
         browserWindow: root.browserWindow
         hostWindow: root.hostWindow
         visible: false

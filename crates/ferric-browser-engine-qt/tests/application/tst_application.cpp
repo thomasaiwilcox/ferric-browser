@@ -2395,8 +2395,13 @@ void ApplicationTests::productPolishTlsPrompt() {
     evaluate(pageReceiver + ".url=" + quoted(origin + "/tls"));
     QTRY_VERIFY(evaluate("testWindow.pendingCertificateError !== null").toBool());
     QCOMPARE(evaluate("testWindow.pendingCertificateErrorHost").toString(), origin);
-    auto back = findVisualItem(host->contentItem(), "commandDialogAction-back");
-    auto proceed = findVisualItem(host->contentItem(), "commandDialogAction-accept");
+    auto prompt = findVisualItem(host->contentItem(), "certificateErrorPrompt");
+    QVERIFY(prompt);
+    QTRY_VERIFY(prompt->isVisible());
+    // Navigation recovery also has a Go back action. Resolve choices inside
+    // the certificate prompt, regardless of the host's child/reparent order.
+    auto back = findVisualItem(prompt, "commandDialogAction-back");
+    auto proceed = findVisualItem(prompt, "commandDialogAction-accept");
     QVERIFY(back && proceed);
     QTRY_VERIFY(back->hasActiveFocus());
     const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");

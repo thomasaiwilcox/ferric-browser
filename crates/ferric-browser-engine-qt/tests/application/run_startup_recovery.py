@@ -51,6 +51,8 @@ def scenario(build, browser, startup):
         def wait(check, label, timeout=30):
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
+                if processes and processes[-1].poll() is not None:
+                    raise AssertionError(f"Owned browser exited with {processes[-1].returncode}: {label}")
                 for error in root.glob("*/error"):
                     raise AssertionError(error.read_text())
                 value = check()
@@ -74,6 +76,10 @@ def scenario(build, browser, startup):
                 return None
 
         def tabs():
+            # Query also initializes storage. Let the GUI finish first-use
+            # schema initialization before another process inspects its roots.
+            if not any((base / "runtime" / "instances").glob("*/browser.sock")):
+                return []
             result = cli("query", "tabs", "--format", "json", check=False)
             return json.loads(result.stdout)["tabs"] if result.returncode == 0 else []
 

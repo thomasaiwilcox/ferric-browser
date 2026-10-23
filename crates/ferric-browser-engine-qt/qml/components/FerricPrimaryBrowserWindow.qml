@@ -3214,13 +3214,18 @@ GridLayout {
                 }
                 property int tabIndex: -1
                 property string stableTabId: ""
-                onStableTabIdChanged: Qt.callLater(function() {
-                    // A transferred live view acquires a new core tab without
-                    // loading another document. Capture its admitted owner.
-                    if (!ownsTab() || loading || !nativeContent.engineDocumentReady) return
-                    documentTitleTarget = viewUi.navigation_target_for_index(tabIndex)
-                    publishPageTitle()
-                })
+                onStableTabIdChanged: documentTitleOwnerTimer.restart()
+                Timer {
+                    id: documentTitleOwnerTimer
+                    interval: 0
+                    // The view owns this deferred work, so destroying a
+                    // provisional view during transfer cancels the callback.
+                    onTriggered: {
+                        if (!webView.ownsTab() || webView.loading || !nativeContent.engineDocumentReady) return
+                        webView.documentTitleTarget = webView.viewUi.navigation_target_for_index(webView.tabIndex)
+                        webView.publishPageTitle()
+                    }
+                }
                 property var viewUi: browserUi
         property var selectionSource: null
                 property var viewHost: window

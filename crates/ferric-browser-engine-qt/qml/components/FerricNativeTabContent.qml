@@ -739,12 +739,12 @@ Item {
     }
     Rectangle { anchors.fill: parent; visible: content.nativeUrl.length > 0; color: content.browserWindow.backgroundColor }
     Loader {
-        parent: content.browserHost.contentItem
+        parent: content.browserHost ? content.browserHost.contentItem : null
         anchors.fill: parent
         z: 65
-        active: content.formReloadCreated
+        active: content.formReloadCreated && !!content.browserHost && !!content.browserUi
         sourceComponent: FerricFormResubmission {
-            browserWindow: content.browserHost.chromeAppearance || content.browserWindow
+            browserWindow: (content.browserHost && content.browserHost.chromeAppearance) || content.browserWindow
             hostWindow: content.browserHost
             browserUi: content.browserUi
             reloadRequest: content.formReloadRequest

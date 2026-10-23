@@ -1727,6 +1727,9 @@ class SwitcherTests final : public QObject {
         type("ui.font_size_pt");
         QCOMPARE(search->property("text").toString(), QString("ui.font_size_pt"));
         QTRY_COMPARE(list->property("count").toInt(), 1);
+        QSignalSpy initialFilterFrame(host, &QQuickWindow::frameSwapped);
+        host->update();
+        QTRY_VERIFY(!initialFilterFrame.isEmpty());
         QTRY_VERIFY(field());
         QPointer<QQuickItem> editor = field();
         QVERIFY(editor);
@@ -1746,11 +1749,15 @@ class SwitcherTests final : public QObject {
         QCOMPARE(search->property("text").toString(), QString("ui.font_size_pt"));
         QTRY_COMPARE(list->property("count").toInt(), 1);
         QTRY_VERIFY(field());
-        editor = field();
-        QCOMPARE(editor->property("text").toString(), QString("21"));
         QSignalSpy filteredFrame(host, &QQuickWindow::frameSwapped);
         host->update();
         QTRY_VERIFY(!filteredFrame.isEmpty());
+        // ListView can still expose a delegate queued for removal before
+        // its next frame. Capture the replacement editor after layout settles.
+        QTRY_VERIFY(field());
+        editor = field();
+        QVERIFY(editor);
+        QCOMPARE(editor->property("text").toString(), QString("21"));
         for (int step = 0; step < 6 && host->activeFocusItem() != editor; ++step) key(host, Qt::Key_Tab);
         QTRY_COMPARE(host->activeFocusItem(), editor.data());
         QKeyEvent repeatedPress(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier, "\r", true);

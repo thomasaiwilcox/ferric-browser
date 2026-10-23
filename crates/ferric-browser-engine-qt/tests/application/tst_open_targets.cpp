@@ -113,15 +113,27 @@ void ApplicationTests::productPolishOpenTargets() {
     QTRY_VERIFY(!evaluate(destinationView + ".loading").toBool());
     if (scenario == "tab" || scenario == "tab-bg") {
         // Export committed relationships from either the memory-only or
-        // durable profile API; durable preview readiness is asynchronous.
-        QTRY_VERIFY2(!evaluate(ui + ".journey_export_preview()").toString().isEmpty()
-            || !evaluate(ui + ".journey_export_preview_text").toString().isEmpty(),
-            qPrintable(evaluate(ui + ".status_text").toString()));
+        // durable profile API. A native load can finish before Core observes
+        // its commit, and an earlier durable preview can contain only source.
         const auto exportPath = directory.filePath("open-target-journey-" + hostKind + "-" + scenario + ".json");
-        QVERIFY(evaluate(ui + ".export_journey(" + quoted(exportPath) + ")").toBool());
-        QFile exported(exportPath);
-        QVERIFY(exported.open(QIODevice::ReadOnly));
-        const auto graph = QJsonDocument::fromJson(exported.readAll()).object();
+        QJsonObject graph;
+        QTRY_VERIFY2(([&] {
+            const auto preview = evaluate(ui + ".journey_export_preview()").toString();
+            if (preview.isEmpty() && evaluate(ui + ".journey_export_preview_text").toString().isEmpty())
+                return false;
+            QFile exported(exportPath);
+            if (exported.exists() && !exported.remove()) return false;
+            if (!evaluate(ui + ".export_journey(" + quoted(exportPath) + ")").toBool()
+                    || !exported.open(QIODevice::ReadOnly)) return false;
+            graph = QJsonDocument::fromJson(exported.readAll()).object();
+            bool sourceReady = false, destinationReady = false;
+            for (const auto &value : graph.value("nodes").toArray()) {
+                const auto url = value.toObject().value("url").toString();
+                sourceReady |= url == initial;
+                destinationReady |= url == destination;
+            }
+            return sourceReady && destinationReady;
+        })(), qPrintable(evaluate(ui + ".status_text").toString()));
         QSet<QString> sourceNodes;
         QString destinationNode;
         for (const auto &value : graph.value("nodes").toArray()) {
