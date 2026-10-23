@@ -822,7 +822,7 @@ Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cance
 
 Cancel pending browser work.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -830,7 +830,7 @@ Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cance
 
 Record eligible commands into a named macro register.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -838,7 +838,7 @@ Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cance
 
 Stop recording the current macro.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -846,7 +846,7 @@ Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cance
 
 Replay a named macro register.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -854,7 +854,7 @@ Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cance
 
 Invoke a stable typed action on an explicit subject.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -862,7 +862,7 @@ Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cance
 
 List available stable typed actions.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -910,7 +910,7 @@ Exit and recovery: Escape closes the switcher or help and restores prior focus. 
 
 Execute a registered command by stable ID with typed arguments.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 

@@ -210,7 +210,7 @@ pub fn guide_article(command: &str) -> Option<GuideArticle> {
         "repeat" | "cancel" | "macro-record" | "macro-stop" | "macro-play" | "command-execute"
         | "action" | "action-list" => (
             "Configuration and Advanced Commands",
-            "Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.",
+            "Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.",
             "Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.",
         ),
         "switcher" | "command-help" | "binding-list" | "binding-explain" | "learning-mode"
