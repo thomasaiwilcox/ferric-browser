@@ -11,7 +11,8 @@ permissions:
 jobs:
   workspace:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # Cold Qt/Rust builds and the expanded serial browser suite exceed an hour.
+    timeout-minutes: 120
     env:
       QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu --js-flags=--expose-gc
     steps:
@@ -76,8 +77,10 @@ jobs:
       - name: Production clipboard regressions
         run: cargo xtask test application-clipboard
       - name: Production browser surface regressions
+        # Bound this phase separately so a timeout leaves time to upload logs.
+        timeout-minutes: 75
         run: |
-          ctest --test-dir target/application-tests --output-on-failure -R '^(application_(product_polish|context_reload|switcher|close_requests|downloads|download_finalization|download_runtime_guard|notification_transport|native_notifications|notification_consent|file_chooser_backend|file_chooser_privacy|action_feedback|navigation_usability|navigation_recovery|navigation_recovery_wayland|keyboard_guide|keyboard_guide_wayland|live_titles|live_titles_wayland|privacy_identity|privacy_identity_wayland|switcher_live_updates|switcher_live_updates_wayland|switcher_navigation|switcher_navigation_wayland|bottom_chrome_wayland|form_reload|form_reload_wayland|streaming_history|streaming_history_wayland|journey_history|command_editing_wayland|keyboard_chrome_wayland|tab_focus_wayland|stop_state|stop_state_wayland|tab_recovery|tab_recovery_wayland|last_tab_undo|last_tab_undo_wayland|repeat|repeat_cli|open_targets|open_targets_wayland|open_targets_cli|cli_output|context_selection_cli|session_recovery|session_recovery_wayland|startup_recovery|startup_recovery_wayland|startup_recovery_restart|page_search|page_search_wayland|hint_controls|hint_controls_dpr2)|portal_(browser|download_history))$'
+          ctest --test-dir target/application-tests --output-on-failure --output-junit "$RUNNER_TEMP/browser-surface-results.xml" -R '^(application_(product_polish|context_reload|switcher|close_requests|downloads|download_finalization|download_runtime_guard|notification_transport|native_notifications|notification_consent|file_chooser_backend|file_chooser_privacy|action_feedback|navigation_usability|navigation_recovery|navigation_recovery_wayland|keyboard_guide|keyboard_guide_wayland|live_titles|live_titles_wayland|privacy_identity|privacy_identity_wayland|switcher_live_updates|switcher_live_updates_wayland|switcher_navigation|switcher_navigation_wayland|bottom_chrome_wayland|form_reload|form_reload_wayland|streaming_history|streaming_history_wayland|journey_history|command_editing_wayland|keyboard_chrome_wayland|tab_focus_wayland|stop_state|stop_state_wayland|tab_recovery|tab_recovery_wayland|last_tab_undo|last_tab_undo_wayland|repeat|repeat_cli|open_targets|open_targets_wayland|open_targets_cli|cli_output|context_selection_cli|session_recovery|session_recovery_wayland|startup_recovery|startup_recovery_wayland|startup_recovery_restart|page_search|page_search_wayland|hint_controls|hint_controls_dpr2)|portal_(browser|download_history))$'
           python3 crates/ferric-browser-engine-qt/tests/application/run_ipc_probe.py
           python3 crates/ferric-browser-engine-qt/tests/application/run_startup_recovery_probe.py --executable target/release/ferric-browser --artifacts "$RUNNER_TEMP/startup-recovery-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           python3 crates/ferric-browser-engine-qt/tests/application/run_context_delete_probe.py
@@ -87,6 +90,17 @@ jobs:
           python3 crates/ferric-browser-engine-qt/tests/application/run_window_ipc_probe.py
           python3 crates/ferric-browser-engine-qt/tests/application/run_download_ipc_probe.py --executable target/release/ferric-browser --artifacts "$RUNNER_TEMP/download-ipc-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
       - run: desktop-file-validate packaging/io.github.ferricbrowser.FerricBrowser.desktop
+      - name: Upload browser test reports
+        if: always()
+        timeout-minutes: 5
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/browser-surface-results.xml
+            target/application-tests/Testing/Temporary/
+          if-no-files-found: ignore
+          retention-days: 7
 
   dependency-policy:
     runs-on: ubuntu-24.04
