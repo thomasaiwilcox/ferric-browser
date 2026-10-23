@@ -1052,7 +1052,7 @@ mod tests {
         fs::write(&path, &original).unwrap();
         let mut loaded = load_session(&path).unwrap();
         assert_eq!(loaded.schema_version, SNAPSHOT_SCHEMA_VERSION);
-        assert!(loaded.recovered_session_ids.is_empty());
+        assert_eq!(loaded.recovered_session_ids, Vec::<Uuid>::new());
         assert_eq!(fs::read(&path).unwrap(), original);
         for ids in [vec![loaded.session_id], vec![Uuid::nil(), Uuid::nil()]] {
             loaded.recovered_session_ids = ids;

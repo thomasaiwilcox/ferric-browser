@@ -1610,7 +1610,7 @@ mod tests {
         assert!(matches!(effects.as_slice(), [Effect::Persist(_)]));
         // A retained descriptor cannot later overwrite either itself or a
         // document whose navigation has started.
-        assert!(
+        assert_eq!(
             reduce(
                 &mut state,
                 Event::RestoreTabAddress {
@@ -1618,8 +1618,8 @@ mod tests {
                     url: url("https://example.test/replacement"),
                 }
             )
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+            Vec::<Effect>::new()
         );
         reduce(
             &mut state,
@@ -1631,7 +1631,7 @@ mod tests {
         .unwrap();
         let live_target = state.capture_target(tab).unwrap();
         let live = state.tabs[&tab].clone();
-        assert!(
+        assert_eq!(
             reduce(
                 &mut state,
                 Event::RestoreTabAddress {
@@ -1639,8 +1639,8 @@ mod tests {
                     url: url("https://example.test/overwrite"),
                 }
             )
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+            Vec::<Effect>::new()
         );
         let ignored = reduce(
             &mut state,
@@ -1816,7 +1816,7 @@ mod tests {
         assert_eq!(state.capture_target(tab), Some(target));
         assert_eq!(state.revision, revision + 1);
         assert!(matches!(effects.as_slice(), [Effect::Persist(_)]));
-        assert!(
+        assert_eq!(
             reduce(
                 &mut state,
                 Event::PageTitleChanged {
@@ -1824,8 +1824,8 @@ mod tests {
                     title: "Inbox (2)".into(),
                 }
             )
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+            Vec::<Effect>::new()
         );
         assert_eq!(state.revision, revision + 1);
         reduce(
@@ -1836,7 +1836,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(state.tabs[&tab].title.is_empty());
+        assert_eq!(state.tabs[&tab].title, "");
         assert_eq!(state.journey, journey);
     }
 
@@ -2201,10 +2201,9 @@ mod tests {
         let journey = state.journey.clone();
         let window_state = state.windows[&window].clone();
         let revision = state.revision;
-        assert!(
-            reduce(&mut state, Event::NavigationStarted { target })
-                .unwrap()
-                .is_empty()
+        assert_eq!(
+            reduce(&mut state, Event::NavigationStarted { target }).unwrap(),
+            Vec::<Effect>::new()
         );
         assert_eq!(state.tabs[&tab], expected);
         assert_eq!(state.capture_target(tab), Some(target));
@@ -2273,10 +2272,9 @@ mod tests {
             vec![Effect::Diagnostic(Diagnostic::IgnoredStaleTarget { tab })]
         );
         assert_eq!(state.tabs[&tab].loading, LoadingState::Provisional);
-        assert!(
-            reduce(&mut state, Event::CancelNavigation { target })
-                .unwrap()
-                .is_empty()
+        assert_eq!(
+            reduce(&mut state, Event::CancelNavigation { target }).unwrap(),
+            Vec::<Effect>::new()
         );
         assert_eq!(state.tabs[&tab].loading, LoadingState::Cancelled);
         assert_eq!(state.capture_target(tab), Some(target));
