@@ -52,6 +52,91 @@ pub(super) fn context_definition_by_route_name<'a>(
         .find(|context| context.name == context_name)
 }
 
+pub(super) fn pending_context_route_for_target(
+    config: &ContextsConfig,
+    url: &ValidatedUrl,
+    entry_point: &str,
+    target: Target,
+    target_window: WindowId,
+    owner_window: WindowId,
+    owner_token: String,
+    foreground: bool,
+) -> Option<PendingContextRoute> {
+    let route = matching_context_routes(config, url.as_str(), entry_point)
+        .into_iter()
+        .next()?;
+    let context = context_definition_by_route_name(config, &route.context)?;
+    Some(PendingContextRoute {
+        route_id: route.id.clone(),
+        behavior: route.behavior.clone(),
+        context_name: context.name.clone(),
+        profile_name: context.profile.clone(),
+        url: url.as_str().to_owned(),
+        target,
+        target_window,
+        owner_window,
+        owner_token,
+        foreground,
+        open_route: None,
+    })
+}
+
+pub(super) fn take_current_context_route_record(
+    pending: &mut Option<PendingContextRoute>,
+    application: Option<&BrowserApplication>,
+    owner_window: Option<WindowId>,
+    owner_token: &str,
+    view_alive: bool,
+) -> Option<PendingContextRoute> {
+    let is_current = pending.as_ref().is_some_and(|pending| {
+        context_route_target_is_current(application, owner_window, owner_token, view_alive, pending)
+    });
+    if !is_current {
+        pending.take();
+        return None;
+    }
+    pending.take()
+}
+
+pub(super) fn capture_context_route_target(
+    application: &BrowserApplication,
+    owner_window: Option<WindowId>,
+    owner_token: &str,
+    view_alive: bool,
+    route: &IpcRoute,
+    target_window: WindowId,
+) -> Option<(Target, WindowId, String, bool)> {
+    if !view_alive || !application.windows().contains_key(&target_window) {
+        return None;
+    }
+    let owner_window = owner_window?;
+    let target_tab = match route.selector {
+        DispatchTarget::Tab(tab) => tab,
+        DispatchTarget::Active | DispatchTarget::LastFocused | DispatchTarget::Window(_) => {
+            application.windows().get(&target_window)?.active_tab?
+        }
+    };
+    let tab = application.tabs().get(&target_tab)?;
+    if tab.window != target_window
+        || application
+            .profiles()
+            .get(&tab.profile)
+            .is_none_or(|profile| profile.privacy.is_transient())
+    {
+        return None;
+    }
+    let target = current_target(Some(application), Some(target_tab))?;
+    let foreground = match super::browser_ui_ipc::page_open_intent(
+        &application.configuration().tabs.presentation,
+        route.open_target,
+    ) {
+        PageOpenIntent::NewPage { foreground } => foreground,
+        PageOpenIntent::ExistingPresentation => route.open_target != IpcOpenTarget::BackgroundTab,
+        PageOpenIntent::CurrentPage | PageOpenIntent::NewWindow { .. } => true,
+    };
+    Some((target, owner_window, owner_token.to_owned(), foreground))
+}
+
 impl qobject::BrowserUi {
     pub(super) fn queue_context_route(
         mut self: Pin<&mut Self>,
@@ -85,28 +170,19 @@ impl qobject::BrowserUi {
             let Ok(config) = serde_json::from_str::<ContextsConfig>(&contexts_json) else {
                 return false;
             };
-            let Some(route) = matching_context_routes(&config, url.as_str(), entry_point)
-                .into_iter()
-                .next()
-            else {
-                return false;
-            };
-            let Some(context) = context_definition_by_route_name(&config, &route.context) else {
-                return false;
-            };
-            PendingContextRoute {
-                route_id: route.id.clone(),
-                behavior: route.behavior.clone(),
-                context_name: context.name.clone(),
-                profile_name: context.profile.clone(),
-                url: url.as_str().to_owned(),
+            let Some(pending) = pending_context_route_for_target(
+                &config,
+                url,
+                entry_point,
                 target,
                 target_window,
                 owner_window,
                 owner_token,
                 foreground,
-                open_route: None,
-            }
+            ) else {
+                return false;
+            };
+            pending
         };
         let route_id = QString::from(&pending.route_id);
         let behavior = QString::from(&pending.behavior);
@@ -168,43 +244,14 @@ impl qobject::BrowserUi {
         target_window: WindowId,
     ) -> Option<(Target, WindowId, String, bool)> {
         let rust = self.rust();
-        if !rust.view_alive {
-            return None;
-        }
-        let owner_window = rust.window?;
-        let state = rust.state.as_ref()?;
-        let target_tab = match route.selector {
-            DispatchTarget::Tab(tab) => tab,
-            DispatchTarget::Active | DispatchTarget::LastFocused | DispatchTarget::Window(_) => {
-                state.windows().get(&target_window)?.active_tab?
-            }
-        };
-        let tab = state.tabs().get(&target_tab)?;
-        if tab.window != target_window
-            || state
-                .profiles()
-                .get(&tab.profile)
-                .is_none_or(|profile| profile.privacy.is_transient())
-        {
-            return None;
-        }
-        let target = current_target(Some(state), Some(target_tab))?;
-        let foreground = match super::browser_ui_ipc::page_open_intent(
-            &state.configuration().tabs.presentation,
-            route.open_target,
-        ) {
-            PageOpenIntent::NewPage { foreground } => foreground,
-            PageOpenIntent::ExistingPresentation => {
-                route.open_target != IpcOpenTarget::BackgroundTab
-            }
-            PageOpenIntent::CurrentPage | PageOpenIntent::NewWindow { .. } => true,
-        };
-        Some((
-            target,
-            owner_window,
-            rust.window_token.to_string(),
-            foreground,
-        ))
+        capture_context_route_target(
+            rust.state.as_ref()?,
+            rust.window,
+            &rust.window_token.to_string(),
+            rust.view_alive,
+            route,
+            target_window,
+        )
     }
 
     pub(super) fn clear_context_route(mut self: Pin<&mut Self>) -> Option<PendingContextRoute> {
@@ -254,25 +301,34 @@ impl qobject::BrowserUi {
     }
 
     fn take_current_context_route(mut self: Pin<&mut Self>) -> Option<PendingContextRoute> {
-        let Some(pending) = self.as_ref().rust().pending_context_route.as_ref().cloned() else {
+        let Some(pending) = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .pending_context_route
+            .take()
+        else {
             self.set_status_text(QString::from("No context route is pending"));
             return None;
         };
         let rust = self.as_ref().rust();
-        if !context_route_target_is_current(
+        let mut current = Some(pending);
+        let Some(pending) = take_current_context_route_record(
+            &mut current,
             rust.state.as_ref(),
             rust.window,
             &rust.window_token.to_string(),
             rust.view_alive,
-            &pending,
-        ) {
+        ) else {
             self.as_mut().clear_context_route();
             self.set_status_text(QString::from(
                 "Context route target changed; the request was discarded",
             ));
             return None;
-        }
-        self.as_mut().clear_context_route()
+        };
+        self.as_mut().clear_context_route();
+        Some(pending)
     }
 
     pub(super) fn accept_context_route(mut self: Pin<&mut Self>) -> bool {
