@@ -43,3 +43,21 @@ add_test(NAME everyday_T006_isolated_portal_fixture
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/fixture_server.py"
         --run-filter "${CMAKE_BINARY_DIR}" --filter "^portal_activation$")
 set_tests_properties(everyday_T006_isolated_portal_fixture PROPERTIES TIMEOUT 100)
+
+# F02 acceptance coverage exercises the production application harness and the
+# shared page factory through cold creation, native popup handoff/transfer, and
+# captured document-title callbacks.
+add_test(NAME everyday_T013_factory_equivalence
+    COMMAND $<TARGET_FILE:application_tests> productPolishSecondaryTabs)
+set_tests_properties(everyday_T013_factory_equivalence PROPERTIES
+    TIMEOUT 300 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME everyday_T014_popup_transfer_preservation
+    COMMAND $<TARGET_FILE:application_tests> productPolishPopupCommands productPolishSecondaryTabs)
+set_tests_properties(everyday_T014_popup_transfer_preservation PROPERTIES
+    TIMEOUT 600 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME everyday_T015_document_owner_callbacks
+    COMMAND $<TARGET_FILE:application_tests> productPolishLiveTitles)
+set_tests_properties(everyday_T015_document_owner_callbacks PROPERTIES
+    TIMEOUT 600 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
