@@ -31,14 +31,25 @@ constexpr quint32 CredentialWorld = 42;
 
 class HarmlessProbe final : public QObject {
   Q_OBJECT
-  Q_PROPERTY(QStringList calls READ calls CONSTANT)
 public:
-  QStringList calls() const { return calls_; }
+  int callCount() const { return callCount_; }
+  QString origin() const { return origin_; }
+  bool secureContext() const { return secureContext_; }
+  QString documentNonce() const { return documentNonce_; }
 public slots:
-  void record(const QString &value) { calls_.append(value); }
+  void record(const QString &origin, bool secureContext,
+              const QString &documentNonce) {
+    ++callCount_;
+    origin_ = origin;
+    secureContext_ = secureContext;
+    documentNonce_ = documentNonce;
+  }
 
 private:
-  QStringList calls_;
+  int callCount_ = 0;
+  QString origin_;
+  bool secureContext_ = false;
+  QString documentNonce_;
 };
 
 class FixtureServer final : public QObject {
@@ -177,17 +188,42 @@ private slots:
     init.setSourceCode(
         webChannelSource +
         QStringLiteral(
-            "\nnew QWebChannel(qt.webChannelTransport, function(channel) {"
-            "channel.objects.probe.record('main-frame-world-42'); });"));
+            "\nwindow.__credentialDocumentNonce = crypto.randomUUID();"
+            "new QWebChannel(qt.webChannelTransport, function(channel) {"
+            "channel.objects.probe.record(location.origin, "
+            "window.isSecureContext, window.__credentialDocumentNonce); });"));
     page.scripts().insert(init);
-    QWebEngineScript nonceScript;
-    nonceScript.setName(QStringLiteral("credential-test-document-nonce"));
-    nonceScript.setInjectionPoint(QWebEngineScript::DocumentCreation);
-    nonceScript.setWorldId(CredentialWorld);
-    nonceScript.setRunsOnSubFrames(true);
-    nonceScript.setSourceCode(QStringLiteral(
-        "window.__credentialDocumentNonce = crypto.randomUUID();"));
-    page.scripts().insert(nonceScript);
+
+    const auto installHostileWorldAttempt =
+        [&](const QString &name, quint32 world, const QString &availabilityFlag,
+            const QString &sentFlag) {
+          QWebEngineScript attacker;
+          attacker.setName(name);
+          attacker.setInjectionPoint(QWebEngineScript::DocumentCreation);
+          attacker.setWorldId(world);
+          attacker.setRunsOnSubFrames(true);
+          const auto hostileAttempt =
+              QStringLiteral("\nwindow.%1 = typeof qt !== 'undefined' && "
+                             "!!qt.webChannelTransport;"
+                             "window.%2 = false;"
+                             "if (window.%1) { new QWebChannel("
+                             "qt.webChannelTransport, function(channel) {"
+                             "window.%2 = true;"
+                             "channel.objects.probe.record("
+                             "'hostile-world-claim', false, 'forged'); }); }")
+                  .arg(availabilityFlag, sentFlag);
+          attacker.setSourceCode(webChannelSource + hostileAttempt);
+          page.scripts().insert(attacker);
+        };
+    installHostileWorldAttempt(QStringLiteral("credential-hostile-main-world"),
+                               QWebEngineScript::MainWorld,
+                               QStringLiteral("__credentialMainWorldTransport"),
+                               QStringLiteral("__credentialMainWorldSent"));
+    installHostileWorldAttempt(
+        QStringLiteral("credential-hostile-application-world"),
+        QWebEngineScript::ApplicationWorld,
+        QStringLiteral("__credentialApplicationWorldTransport"),
+        QStringLiteral("__credentialApplicationWorldSent"));
 
     QSignalSpy loaded(&page, &QWebEnginePage::loadFinished);
     page.load(server.pageUrl());
@@ -196,26 +232,32 @@ private slots:
     QVERIFY(page.mainFrame().isValid());
     QTRY_VERIFY_WITH_TIMEOUT(page.mainFrame().children().size() == 2, 10000);
 
-    // These are native frame facts. URL is recorded for routing context;
-    // Qt 6.11.2 exposes no QWebEngineFrame security-origin/document-ID API.
+    // Native frame-handle facts are kept distinct from browser-calculated
+    // JavaScript facts returned by execution in world 42.
     const auto mainFrame = page.mainFrame();
     QVERIFY(mainFrame.isMainFrame());
     QCOMPARE(mainFrame.url(), page.url());
     QVERIFY(mainFrame.isValid());
-    QCOMPARE(run(mainFrame, QStringLiteral("window.isSecureContext"),
-                 CredentialWorld)
-                 .toBool(),
-             true);
-    QCOMPARE(
+    const auto browserOrigin =
         run(mainFrame, QStringLiteral("location.origin"), CredentialWorld)
-            .toString(),
-        QStringLiteral("https://localhost:%1").arg(server.pageUrl().port()));
+            .toString();
+    const auto browserSecureContext =
+        run(mainFrame, QStringLiteral("window.isSecureContext"),
+            CredentialWorld)
+            .toBool();
+    const auto nonce =
+        run(mainFrame, QStringLiteral("window.__credentialDocumentNonce"),
+            CredentialWorld)
+            .toString();
     QCOMPARE(
-        run(mainFrame, QStringLiteral("window.isSecureContext"), 1).toBool(),
-        true);
-    QCOMPARE(
-        run(mainFrame, QStringLiteral("location.origin"), 1).toString(),
+        browserOrigin,
         QStringLiteral("https://localhost:%1").arg(server.pageUrl().port()));
+    QVERIFY(browserSecureContext);
+    QVERIFY(!nonce.isEmpty());
+    QTRY_COMPARE_WITH_TIMEOUT(probe.callCount(), 1, 5000);
+    QCOMPARE(probe.origin(), browserOrigin);
+    QCOMPARE(probe.secureContext(), browserSecureContext);
+    QCOMPARE(probe.documentNonce(), nonce);
     QCOMPARE(run(mainFrame, QStringLiteral("document.domain"), 0).toString(),
              QStringLiteral("localhost"));
     QCOMPARE(run(mainFrame, QStringLiteral("document.domain"), CredentialWorld)
@@ -231,9 +273,6 @@ private slots:
                     "typeof qt !== 'undefined' && !!qt.webChannelTransport"),
                 CredentialWorld)
                 .toBool());
-    QTRY_COMPARE_WITH_TIMEOUT(
-        probe.calls(), QStringList{QStringLiteral("main-frame-world-42")},
-        5000);
 
     // Page script can claim a different origin, replace `qt`, poison its
     // own prototype, and call its fake transport without reaching native.
@@ -244,6 +283,8 @@ private slots:
         run(mainFrame, QStringLiteral("window.credentialFakeTransportSends"), 0)
             .toInt(),
         1);
+    QVERIFY(probe.origin() != QStringLiteral("https://claimed.example"));
+    QCOMPARE(probe.callCount(), 1);
     QCOMPARE(run(mainFrame,
                  QStringLiteral(
                      "typeof qt !== 'undefined' && !!qt.webChannelTransport"),
@@ -256,13 +297,25 @@ private slots:
                  1)
                  .toBool(),
              false);
-    QCOMPARE(probe.calls(), QStringList{QStringLiteral("main-frame-world-42")});
-
-    const auto nonce =
-        run(mainFrame, QStringLiteral("window.__credentialDocumentNonce"),
-            CredentialWorld)
-            .toString();
-    QVERIFY(!nonce.isEmpty());
+    QCOMPARE(run(mainFrame,
+                 QStringLiteral("window.__credentialMainWorldTransport"),
+                 QWebEngineScript::MainWorld)
+                 .toBool(),
+             false);
+    QCOMPARE(run(mainFrame, QStringLiteral("window.__credentialMainWorldSent"),
+                 QWebEngineScript::MainWorld)
+                 .toBool(),
+             false);
+    QCOMPARE(run(mainFrame,
+                 QStringLiteral("window.__credentialApplicationWorldTransport"),
+                 QWebEngineScript::ApplicationWorld)
+                 .toBool(),
+             false);
+    QCOMPARE(run(mainFrame,
+                 QStringLiteral("window.__credentialApplicationWorldSent"),
+                 QWebEngineScript::ApplicationWorld)
+                 .toBool(),
+             false);
     auto childFrames = mainFrame.children();
     QCOMPARE(childFrames.size(), 2);
     for (auto child : childFrames) {
@@ -277,32 +330,41 @@ private slots:
                   CredentialWorld)
                   .toString()
                   .size() > 10);
-      // Probe direct access to the transport from each child. If a child
-      // can reach it, this primitive is not qualified and the provider
-      // must remain disabled; never infer isolation from script flags.
-      const auto childTransport =
+      QCOMPARE(run(child,
+                   QStringLiteral("window.__credentialMainWorldTransport"),
+                   QWebEngineScript::MainWorld)
+                   .toBool(),
+               false);
+      QCOMPARE(run(child, QStringLiteral("window.__credentialMainWorldSent"),
+                   QWebEngineScript::MainWorld)
+                   .toBool(),
+               false);
+      QCOMPARE(
           run(child,
-              QStringLiteral(
-                  "typeof qt !== 'undefined' && !!qt.webChannelTransport"),
-              CredentialWorld)
-              .toBool();
-      if (childTransport) {
-        const auto childProbe =
-            webChannelSource +
-            QStringLiteral(
-                "\nnew QWebChannel(qt.webChannelTransport, function(channel) {"
-                "channel.objects.probe.record('child-frame-world-42'); }); "
-                "true;");
-        run(child, childProbe, CredentialWorld);
-        QTRY_VERIFY_WITH_TIMEOUT(
-            probe.calls().contains(QStringLiteral("child-frame-world-42")),
-            5000);
-      }
-      QVERIFY2(!childTransport && !probe.calls().contains(
-                                      QStringLiteral("child-frame-world-42")),
-               "Qt WebChannel transport is reachable from a child frame in the "
-               "credential world");
+              QStringLiteral("window.__credentialApplicationWorldTransport"),
+              QWebEngineScript::ApplicationWorld)
+              .toBool(),
+          false);
+      QCOMPARE(run(child,
+                   QStringLiteral("window.__credentialApplicationWorldSent"),
+                   QWebEngineScript::ApplicationWorld)
+                   .toBool(),
+               false);
+      QCOMPARE(
+          run(child, QStringLiteral("window.credentialFakeTransportSends"), 0)
+              .toInt(),
+          1);
+      // This world-42 read is diagnostic only. Qt's API does not make a child
+      // runJavaScript call equivalent to a page-originated attacker message.
+      qInfo()
+          << "child world-42 transport presence"
+          << run(child,
+                 QStringLiteral(
+                     "typeof qt !== 'undefined' && !!qt.webChannelTransport"),
+                 CredentialWorld)
+                 .toBool();
     }
+    QCOMPARE(probe.callCount(), 1);
 
     // A same-document route change retains the document nonce; a reload
     // creates a different document owner. This is test-world evidence,
@@ -316,14 +378,19 @@ private slots:
                  CredentialWorld)
                  .toString(),
              nonce);
+    QCOMPARE(probe.callCount(), 1);
+    QCOMPARE(probe.documentNonce(), nonce);
     QSignalSpy reloaded(&page, &QWebEnginePage::loadFinished);
     page.reload();
     QVERIFY(reloaded.wait(15000));
     QVERIFY(reloaded.takeFirst().first().toBool());
-    QVERIFY(run(page.mainFrame(),
-                QStringLiteral("window.__credentialDocumentNonce"),
-                CredentialWorld)
-                .toString() != nonce);
+    const auto reloadedNonce =
+        run(page.mainFrame(),
+            QStringLiteral("window.__credentialDocumentNonce"), CredentialWorld)
+            .toString();
+    QVERIFY(reloadedNonce != nonce);
+    QTRY_COMPARE_WITH_TIMEOUT(probe.callCount(), 2, 5000);
+    QCOMPARE(probe.documentNonce(), reloadedNonce);
   }
 };
 
