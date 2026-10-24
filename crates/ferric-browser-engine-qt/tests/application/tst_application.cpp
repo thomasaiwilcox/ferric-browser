@@ -1,5 +1,6 @@
 #include "tst_application.h"
 #include "owned_renderer_process.h"
+#include "owned_browser_keyboard.h"
 #include "../../src/url_display.h"
 #include "../../src/gui_application.h"
 #include <QClipboard>
@@ -3856,6 +3857,17 @@ void ApplicationTests::productPolishPopupCommands() {
     QVERIFY(child);
     pageReceiver=entry+".view";
     QTRY_VERIFY(page("document.readyState==='complete' && document.getElementById('input')!==null").toBool());
+    QVERIFY(page("window.opener !== null").toBool());
+    pageReceiver = "testWindow.activeWebView()";
+    page("window.popupOpenerMessage=null;"
+         "window.addEventListener('message',e=>window.popupOpenerMessage=e."
+         "data);true");
+    pageReceiver = entry + ".view";
+    page("window.opener.postMessage('qt-popup-opener-live','*');true");
+    pageReceiver = "testWindow.activeWebView()";
+    QTRY_COMPARE(page("window.popupOpenerMessage").toString(),
+                 QString("qt-popup-opener-live"));
+    pageReceiver = entry + ".view";
     QTRY_VERIFY(!evaluate(entry+".ui.profile_bootstrap_pending").toBool());
     const auto desired=page("new URL('/fixture.html?popup-command=1',location.href).href").toString();
     QVERIFY(evaluate(entry+".ui.execute_secondary_interactive_command("+quoted("open "+desired)+")").toBool());
@@ -3905,7 +3917,30 @@ void ApplicationTests::productPolishPopupCommands() {
     QVERIFY(evaluate(nested+".view.profile === "+entry+".view.profile && "+nested+".ui !== "+entry+".ui").toBool());
     pageReceiver=nested+".view";
     QTRY_VERIFY(page("document.readyState==='complete' && document.getElementById('input')!==null").toBool());
+    QVERIFY(page("window.opener !== null").toBool());
     page("window.nestedPopupState=95");
+    const auto popupSource =
+        evaluate(nested + ".host.activeView").value<QObject *>();
+    QVERIFY(popupSource);
+    const auto popupHistoryBefore =
+        evaluate(nested + ".ui.content_history_export(0)").toString();
+    const auto popupUrlBefore =
+        evaluate(nested + ".host.activeView.url").toString();
+    QVERIFY(evaluate(nested + ".host.prepareTransferFallback()").toBool());
+    const auto transferReserve =
+        evaluate(nested + ".host.preparedTransferFallback").value<QObject *>();
+    QVERIFY(transferReserve);
+    QVERIFY(transferReserve != popupSource);
+    QVERIFY(!transferReserve->property("visible").toBool());
+    QCOMPARE(transferReserve->property("tabIndex").toInt(), -1);
+    QCOMPARE(evaluate(nested + ".host.activeView").value<QObject *>(),
+             popupSource);
+    QCOMPARE(evaluate(nested + ".host.activeView.url").toString(),
+             popupUrlBefore);
+    QCOMPARE(evaluate(nested + ".ui.content_history_export(0)").toString(),
+             popupHistoryBefore);
+    QCOMPARE(page("window.nestedPopupState").toInt(), 95);
+    evaluate(nested + ".host.discardPreparedTransferFallback()");
     evaluate(entry+".host.windowShutdownApproved=true");
     QVERIFY(child->close());child->deleteLater();
     QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
@@ -3964,6 +3999,47 @@ void ApplicationTests::productPolishSecondaryTabs() {
     pageReceiver = entry + ".host.activeView";
     QTRY_VERIFY(page("location.href === " + quoted(primaryUrl)
         + " && document.readyState === 'complete'").toBool());
+    QTRY_COMPARE(evaluate(entry + ".host.activeView.nativeUrl").toString(),
+                 QString());
+    page("document.title='Factory created page';window.retainedState=41;true");
+    QTRY_COMPARE(evaluate(entry + ".ui.page_title").toString(),
+                 QString("Factory created page"));
+    QTRY_COMPARE(evaluate(entry + ".host.tabsModel.get(0).title").toString(),
+                 QString("Factory created page"));
+    const auto initialHistory =
+        evaluate("JSON.parse(" + entry + ".ui.content_history_export(0))")
+            .toMap();
+    const auto historyEntries = initialHistory.value("entries").toList();
+    const auto historyCursor = initialHistory.value("cursor").toInt();
+    QVERIFY(historyCursor >= 0);
+    QVERIFY(historyCursor < historyEntries.size());
+    const auto currentHistoryEntry = historyEntries.at(historyCursor).toMap();
+    QCOMPARE(currentHistoryEntry.value("url").toString(), primaryUrl);
+    QCOMPARE(currentHistoryEntry.value("engine_index").toInt(),
+             evaluate(entry + ".host.activeView.engineHistoryIndex").toInt());
+    QVERIFY(evaluate(entry +
+                     ".ui.execute_secondary_interactive_command('zoom 1.25')")
+                .toBool());
+    evaluate(entry + ".host.processRuntimeWork()");
+    QTRY_COMPARE(
+        qRound(evaluate(entry + ".host.activeView.zoomFactor").toDouble() *
+               100),
+        125);
+    QPointer<QQuickWindow> secondaryHost = qobject_cast<QQuickWindow *>(
+        evaluate(entry + ".host").value<QObject *>());
+    QVERIFY(secondaryHost);
+    secondaryHost->requestActivate();
+    QTRY_VERIFY(secondaryHost->isActive());
+    auto focusedPage = qobject_cast<QQuickItem *>(
+        evaluate(entry + ".host.activeView").value<QObject *>());
+    QVERIFY(focusedPage);
+    focusedPage->forceActiveFocus();
+    QTRY_VERIFY(secondaryHost->activeFocusItem() &&
+                (secondaryHost->activeFocusItem() == focusedPage ||
+                 focusedPage->isAncestorOf(secondaryHost->activeFocusItem())));
+    page("window.keys=[];true");
+    sendOwnedBrowserKey(secondaryHost, Qt::Key_X);
+    QTRY_VERIFY(page("window.keys.indexOf('x') >= 0").toBool());
     page("window.retainedState=41");
     const QPointer<QObject> firstPage = evaluate(entry + ".host.activeView").value<QObject *>();
     QVERIFY2(evaluate(entry + ".ui.execute_secondary_interactive_command(" + quoted("tab-open " + primaryUrl) + ")").toBool(),
