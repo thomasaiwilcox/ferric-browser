@@ -560,7 +560,7 @@ impl qobject::BrowserUi {
             )));
         self.as_mut().update_chrome_preferences(&active_settings);
         self.as_mut()
-            .update_feature_preferences(&active_settings, &requested_settings);
+            .update_feature_preferences_for_state(&active_settings, &requested_settings);
         self.as_mut().update_hint_preferences(&active_settings);
         let current_url = self.as_ref().rust().current_url.to_string();
         self.as_mut()
@@ -652,7 +652,11 @@ impl qobject::BrowserUi {
             .set_chrome_reduced_motion(QString::from(preferences.reduced_motion));
     }
 
-    pub(super) fn update_feature_preferences(
+    pub(super) fn update_feature_preferences(self: Pin<&mut Self>, config: &Config) {
+        self.update_feature_preferences_for_state(config, config);
+    }
+
+    pub(super) fn update_feature_preferences_for_state(
         mut self: Pin<&mut Self>,
         effective: &Config,
         requested: &Config,
