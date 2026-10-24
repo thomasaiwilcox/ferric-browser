@@ -3,6 +3,8 @@
 #include "owned_browser_keyboard.h"
 #include "../../src/url_display.h"
 #include "../../src/gui_application.h"
+#include <QEvent>
+#include <QKeyEvent>
 #include <QClipboard>
 #include <QtWebEngineQuick/QQuickWebEngineProfile>
 #include <QMimeData>
@@ -50,6 +52,28 @@ static QQuickItem *findVisualItem(QQuickItem *parent, const QString &name) {
     }
     return nullptr;
 }
+
+class HostKeyPressObserver final : public QObject {
+public:
+  HostKeyPressObserver(QQuickWindow *host, int key)
+      : QObject(host), host(host), key(key) {
+    host->installEventFilter(this);
+  }
+  int presses = 0;
+
+protected:
+  bool eventFilter(QObject *watched, QEvent *event) override {
+    if (watched == host && event->type() == QEvent::KeyPress &&
+        static_cast<QKeyEvent *>(event)->key() == key) {
+      ++presses;
+    }
+    return false;
+  }
+
+private:
+  QQuickWindow *host;
+  int key;
+};
 
 // Only observation and fixture orchestration live here. Policy, BrowserUi,
 // chrome, key routing and pointer dispatch all come from the production module.
@@ -4038,8 +4062,23 @@ void ApplicationTests::productPolishSecondaryTabs() {
     QTRY_VERIFY(secondaryHost->activeFocusItem() &&
                 (secondaryHost->activeFocusItem() == focusedPage ||
                  focusedPage->isAncestorOf(secondaryHost->activeFocusItem())));
+    // This T013 fixture deliberately selects the supported Mixed page-key
+    // route through the secondary UI's normal temporary-settings command.
+    // It does not change the browser's default BrowserFirst policy.
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command(" +
+                     quoted("set --temp input.shortcut_policy=mixed") + ")")
+                .toBool());
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command(" +
+                     quoted("set --temp \"input.page_keys=['x']\"") + ")")
+                .toBool());
+    evaluate(entry + ".host.processRuntimeWork()");
+    const auto xRoute = evaluate(entry + ".ui.mixed_key_route('x')").toString();
+    qInfo() << "T013 effective mixed_key_route(x)" << xRoute;
+    QCOMPARE(xRoute, QString("page"));
     page("window.keys=[];true");
+    HostKeyPressObserver keyPressObserver(secondaryHost, Qt::Key_X);
     sendOwnedBrowserKey(secondaryHost, Qt::Key_X);
+    QTRY_COMPARE(keyPressObserver.presses, 1);
     QTRY_VERIFY(page("window.keys.indexOf('x') >= 0").toBool());
     page("window.retainedState=41");
     const QPointer<QObject> firstPage = evaluate(entry + ".host.activeView").value<QObject *>();
