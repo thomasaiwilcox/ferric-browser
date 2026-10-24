@@ -70,32 +70,32 @@ The helper declares Rust 1.88 and pins `rust-toolchain.toml` to 1.88.0. The
 Ferric root workspace remains at Rust 1.85. The included lock is based on the
 `Cargo.lock` shipped at the pinned upstream revision, with its local
 `libwebauthn` package recorded as the exact git source and the helper root
-package added. The external `evidence/P01-a1/DEPENDENCY_AUDIT.json` inventories
-all 487 committed lock records, including upstream workspace-only records.
-Cargo metadata for an evidence-only helper copy resolved 330 packages including
-the helper; 157 records in the committed lock were not in that graph. A direct
-`cargo metadata --locked` check refused because Cargo would rewrite the lock.
-Therefore this lock is not yet verified for the helper and T049 remains
-unqualified. Do not treat the copied upstream lock as a validated helper lock.
+package added. Its lock was regenerated offline from the standalone helper
+manifest with Cargo 1.98.0. That removed 157 unused records inherited from the
+upstream workspace; the retained package identities and versions did not
+change. The resulting 330 records are the helper root, 328 registry packages,
+and the pinned `libwebauthn` Git package. The external
+`evidence/P01-a1/DEPENDENCY_AUDIT.json` inventories every record and confirms
+the exact Git revision. `cargo metadata --locked --offline` now succeeds; this
+metadata check did not compile the helper.
 
-The declared Rust floors are present for 314 of 487 records; 173 records do not
+Declared Rust floors are present for 246 of 330 records; 84 records do not
 declare one. The highest declared floor is Rust 1.88.0 (`time-macros` 0.2.27).
-The pinned 1.88.0 toolchain is not installed here, so no tested floor or build
-result is claimed. 481 registry archive checksums were compared with Cargo.lock
-and all matched. The full per-package record, including unavailable fields, is
-in the external audit receipt.
+The pinned 1.88.0 toolchain is not installed here, so T049 remains unqualified
+and no build result is claimed. All 328 registry archive checksums were
+compared with Cargo.lock and matched. The full per-package record, including
+unavailable fields, is in the external audit receipt.
 
 The helper source uses Ferric's GPL-3.0-or-later project license. The linked
 `libwebauthn` package is LGPL-2.1-or-later and is statically linked by Rust; a
 release must satisfy the LGPL notice, source, and relinking obligations. The
-The lock inventory found SPDX license expressions for 486 records; one local
-test-workspace package declares `license-file = "../COPYING"` but no SPDX
-expression. Some upstream expressions use legacy slash separators, and some
-license identifiers are outside the current `deny.toml` allowlist. The external
-audit records these gaps. It is metadata inventory, not a complete legal
-compatibility, notice, or relinking review. Keep unreviewed third-party
-licenses outside the allowlist until they are reviewed. The helper's own
-GPL-3.0-or-later project license is explicitly allowed by `deny.toml`.
+All 330 resolved records declare an SPDX license expression. The audit still
+found license identifiers outside the current `deny.toml` allowlist, including
+alternatives in upstream expressions, which require review before changing
+policy. This is metadata inventory, not a complete legal compatibility,
+notice, or relinking review. Keep unreviewed third-party licenses outside the
+allowlist. The helper's own GPL-3.0-or-later project license is explicitly
+allowed by `deny.toml`.
 
 ## Build status
 
