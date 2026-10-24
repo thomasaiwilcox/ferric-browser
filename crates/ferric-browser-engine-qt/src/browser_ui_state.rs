@@ -2,7 +2,7 @@
 
 use super::{
     BrowserApplication, BrowserUiRust, ConfigurationLayers, ProfileOpenEffect, QString,
-    RuntimeOverrides, TabId, Value,
+    RuntimeOverrides, TabId, Target, Value, WindowId,
 };
 use std::{path::PathBuf, time::Instant};
 
@@ -13,6 +13,11 @@ pub(super) struct PendingContextRoute {
     pub(super) context_name: String,
     pub(super) profile_name: String,
     pub(super) url: String,
+    pub(super) target: Target,
+    pub(super) target_window: WindowId,
+    pub(super) owner_window: WindowId,
+    pub(super) owner_token: String,
+    pub(super) foreground: bool,
     pub(super) open_route: Option<super::IpcRoute>,
 }
 

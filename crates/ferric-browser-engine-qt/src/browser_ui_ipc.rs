@@ -686,18 +686,18 @@ impl qobject::BrowserUi {
             && route.profile.is_none()
             && route.open_target != IpcOpenTarget::PrivateWindow
             && command.arguments.first().is_some_and(|input| {
-                self.as_mut().queue_context_route_for_input(
+                self.as_mut().queue_context_route_for_input_with_route(
                     input,
                     if route.external_open {
                         "external-open"
                     } else {
                         "explicit-open"
                     },
+                    route,
                 )
             })
         {
             let mut captured = route.clone();
-            captured.selector = DispatchTarget::Window(self.as_ref().ipc_route_window(route)?);
             if let Some(pending) = self
                 .as_mut()
                 .rust_mut()
@@ -706,6 +706,7 @@ impl qobject::BrowserUi {
                 .pending_context_route
                 .as_mut()
             {
+                captured.selector = DispatchTarget::Tab(pending.target.tab);
                 pending.open_route = Some(captured);
             }
             self.as_mut()

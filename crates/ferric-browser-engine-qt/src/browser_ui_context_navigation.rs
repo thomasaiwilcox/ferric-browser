@@ -1,19 +1,85 @@
 use super::{
-    CommandSource, ContextsConfig, CxxQtType, Effect, EngineEffect, Event, NavigationError,
-    NavigationSource, PendingContextRoute, Pin, QString, ValidatedUrl, current_target,
-    matching_context_routes, qobject, resolve_input, safe_ipc_url,
-    validate_clipboard_navigation_input,
+    BrowserApplication, CommandSource, ContextsConfig, CxxQtType, DispatchTarget, Effect,
+    EngineEffect, Event, IpcOpenTarget, IpcRoute, NavigationError, NavigationSource,
+    PageOpenIntent, PendingContextRoute, Pin, QString, Target, ValidatedUrl, WindowId,
+    captured_target_is_current, current_target, matching_context_routes, qobject, resolve_input,
+    safe_ipc_url, validate_clipboard_navigation_input,
 };
+
+pub(super) fn context_route_target_is_current(
+    application: Option<&BrowserApplication>,
+    owner_window: Option<WindowId>,
+    owner_token: &str,
+    view_alive: bool,
+    pending: &PendingContextRoute,
+) -> bool {
+    if !view_alive
+        || owner_window != Some(pending.owner_window)
+        || owner_token != pending.owner_token
+    {
+        return false;
+    }
+    let Some(application) = application else {
+        return false;
+    };
+    application.windows().contains_key(&pending.target_window)
+        && application
+            .tabs()
+            .get(&pending.target.tab)
+            .and_then(|tab| application.profiles().get(&tab.profile))
+            .is_some_and(|profile| !profile.privacy.is_transient())
+        && application
+            .tabs()
+            .get(&pending.target.tab)
+            .is_some_and(|tab| tab.window == pending.target_window)
+        && captured_target_is_current(Some(application), pending.target)
+}
+
+pub(super) const fn context_route_host_intent_supported(
+    profile_changed: bool,
+    foreground: bool,
+) -> bool {
+    !profile_changed || foreground
+}
+
+pub(super) fn context_definition_by_route_name<'a>(
+    config: &'a ContextsConfig,
+    context_name: &str,
+) -> Option<&'a ferric_browser_config::ContextDefinition> {
+    config
+        .contexts
+        .iter()
+        .find(|context| context.name == context_name)
+}
 
 impl qobject::BrowserUi {
     pub(super) fn queue_context_route(
         mut self: Pin<&mut Self>,
         url: &ValidatedUrl,
         entry_point: &str,
+        route: Option<&IpcRoute>,
     ) -> bool {
         if self.as_ref().active_profile_is_transient() {
             return false;
         }
+        let fallback_route = IpcRoute {
+            selector: DispatchTarget::Active,
+            open_target: IpcOpenTarget::Current,
+            profile: None,
+            context: None,
+            external_open: false,
+            source: CommandSource::Ui,
+        };
+        let route = route.unwrap_or(&fallback_route);
+        let Some(target_window) = self.as_ref().ipc_route_window(route).ok() else {
+            return false;
+        };
+        let Some((target, owner_window, owner_token, foreground)) = self
+            .as_ref()
+            .capture_context_route_target(route, target_window)
+        else {
+            return false;
+        };
         let pending = {
             let contexts_json = self.as_ref().rust().contexts_json.to_string();
             let Ok(config) = serde_json::from_str::<ContextsConfig>(&contexts_json) else {
@@ -25,11 +91,7 @@ impl qobject::BrowserUi {
             else {
                 return false;
             };
-            let Some(context) = config
-                .contexts
-                .iter()
-                .find(|context| context.name == route.context)
-            else {
+            let Some(context) = context_definition_by_route_name(&config, &route.context) else {
                 return false;
             };
             PendingContextRoute {
@@ -38,6 +100,11 @@ impl qobject::BrowserUi {
                 context_name: context.name.clone(),
                 profile_name: context.profile.clone(),
                 url: url.as_str().to_owned(),
+                target,
+                target_window,
+                owner_window,
+                owner_token,
+                foreground,
                 open_route: None,
             }
         };
@@ -61,9 +128,26 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn queue_context_route_for_input(
+        self: Pin<&mut Self>,
+        input: &str,
+        entry_point: &str,
+    ) -> bool {
+        let route = IpcRoute {
+            selector: DispatchTarget::Active,
+            open_target: IpcOpenTarget::Current,
+            profile: None,
+            context: None,
+            external_open: false,
+            source: CommandSource::Keyboard,
+        };
+        self.queue_context_route_for_input_with_route(input, entry_point, &route)
+    }
+
+    pub(super) fn queue_context_route_for_input_with_route(
         mut self: Pin<&mut Self>,
         input: &str,
         entry_point: &str,
+        route: &IpcRoute,
     ) -> bool {
         let Ok(result) = resolve_input(input, &self.as_ref().navigation_context()) else {
             return false;
@@ -74,7 +158,53 @@ impl qobject::BrowserUi {
         ) {
             return false;
         }
-        self.as_mut().queue_context_route(&result.url, entry_point)
+        self.as_mut()
+            .queue_context_route(&result.url, entry_point, Some(route))
+    }
+
+    fn capture_context_route_target(
+        &self,
+        route: &IpcRoute,
+        target_window: WindowId,
+    ) -> Option<(Target, WindowId, String, bool)> {
+        let rust = self.rust();
+        if !rust.view_alive {
+            return None;
+        }
+        let owner_window = rust.window?;
+        let state = rust.state.as_ref()?;
+        let target_tab = match route.selector {
+            DispatchTarget::Tab(tab) => tab,
+            DispatchTarget::Active | DispatchTarget::LastFocused | DispatchTarget::Window(_) => {
+                state.windows().get(&target_window)?.active_tab?
+            }
+        };
+        let tab = state.tabs().get(&target_tab)?;
+        if tab.window != target_window
+            || state
+                .profiles()
+                .get(&tab.profile)
+                .is_none_or(|profile| profile.privacy.is_transient())
+        {
+            return None;
+        }
+        let target = current_target(Some(state), Some(target_tab))?;
+        let foreground = match super::browser_ui_ipc::page_open_intent(
+            &state.configuration().tabs.presentation,
+            route.open_target,
+        ) {
+            PageOpenIntent::NewPage { foreground } => foreground,
+            PageOpenIntent::ExistingPresentation => {
+                route.open_target != IpcOpenTarget::BackgroundTab
+            }
+            PageOpenIntent::CurrentPage | PageOpenIntent::NewWindow { .. } => true,
+        };
+        Some((
+            target,
+            owner_window,
+            rust.window_token.to_string(),
+            foreground,
+        ))
     }
 
     pub(super) fn clear_context_route(mut self: Pin<&mut Self>) -> Option<PendingContextRoute> {
@@ -123,31 +253,103 @@ impl qobject::BrowserUi {
         );
     }
 
-    pub(super) fn accept_context_route(mut self: Pin<&mut Self>) -> bool {
-        let Some(pending) = self.as_mut().clear_context_route() else {
+    fn take_current_context_route(mut self: Pin<&mut Self>) -> Option<PendingContextRoute> {
+        let Some(pending) = self.as_ref().rust().pending_context_route.as_ref().cloned() else {
             self.set_status_text(QString::from("No context route is pending"));
+            return None;
+        };
+        let rust = self.as_ref().rust();
+        if !context_route_target_is_current(
+            rust.state.as_ref(),
+            rust.window,
+            &rust.window_token.to_string(),
+            rust.view_alive,
+            &pending,
+        ) {
+            self.as_mut().clear_context_route();
+            self.set_status_text(QString::from(
+                "Context route target changed; the request was discarded",
+            ));
+            return None;
+        }
+        self.as_mut().clear_context_route()
+    }
+
+    pub(super) fn accept_context_route(mut self: Pin<&mut Self>) -> bool {
+        let Some(pending) = self.as_mut().take_current_context_route() else {
             return false;
         };
         let Ok(url) = ValidatedUrl::parse(pending.url.clone()) else {
             self.set_status_text(QString::from("Context route URL is invalid"));
             return false;
         };
-        if pending
+        let profile_changed = pending.profile_name != self.as_ref().rust().profile_name;
+        if !context_route_host_intent_supported(profile_changed, pending.foreground) {
+            self.set_status_text(QString::from(
+                "A background context open cannot create a nonactivated window",
+            ));
+            return false;
+        }
+        let planned_intent = self.as_ref().rust().state.as_ref().and_then(|state| {
+            pending.open_route.as_ref().map(|route| {
+                super::browser_ui_ipc::page_open_intent(
+                    &state.configuration().tabs.presentation,
+                    route.open_target,
+                )
+            })
+        });
+        let explicit_window = pending
             .open_route
             .as_ref()
-            .is_some_and(|route| route.open_target == super::IpcOpenTarget::Window)
-            || pending.profile_name != self.as_ref().rust().profile_name
-        {
+            .is_some_and(|route| route.open_target == super::IpcOpenTarget::Window);
+        if explicit_window || profile_changed {
+            let presentation = self
+                .as_ref()
+                .rust()
+                .state
+                .as_ref()
+                .map(|state| &state.configuration().tabs.presentation);
+            let window_privacy = if profile_changed {
+                presentation.and_then(
+                    |presentation| match super::browser_ui_ipc::page_open_intent(
+                        presentation,
+                        super::IpcOpenTarget::Window,
+                    ) {
+                        PageOpenIntent::NewWindow { privacy } => Some(privacy),
+                        PageOpenIntent::ExistingPresentation => {
+                            Some(super::PageOpenPrivacy::Normal)
+                        }
+                        _ => None,
+                    },
+                )
+            } else {
+                planned_intent.and_then(|intent| match intent {
+                    PageOpenIntent::NewWindow { privacy } => Some(privacy),
+                    PageOpenIntent::ExistingPresentation => Some(super::PageOpenPrivacy::Normal),
+                    _ => None,
+                })
+            };
+            let Some(window_privacy) = window_privacy else {
+                self.set_status_text(QString::from("Context route host intent is unavailable"));
+                return false;
+            };
+            if window_privacy != super::PageOpenPrivacy::Normal {
+                self.set_status_text(QString::from("Context routing cannot open a private host"));
+                return false;
+            }
+            let profile = pending.profile_name.clone();
+            let action = super::browser_ui_ipc_preparation::window_open_action(
+                false,
+                &profile,
+                Some(&pending.context_name),
+                false,
+                url.as_str(),
+            );
             self.as_mut()
                 .rust_mut()
                 .as_mut()
                 .get_mut()
-                .pending_engine_action = Some(format!(
-                "new-window\tfalse\t{}\t{}\t{}",
-                pending.profile_name,
-                pending.context_name,
-                url.as_str()
-            ));
+                .pending_engine_action = Some(action);
             self.as_mut().note_context_route_navigation(&pending, true);
             self.set_status_text(QString::from(format!(
                 "Context route accepted; opening {} in profile {}",
@@ -155,20 +357,15 @@ impl qobject::BrowserUi {
             )));
             return true;
         }
-        let Some(window) = self.as_ref().rust().window else {
-            self.set_status_text(QString::from("Context route window is unavailable"));
-            return false;
-        };
         let context_exists = self
             .as_ref()
             .rust()
             .contexts
             .as_ref()
             .is_some_and(|contexts| {
-                contexts
-                    .contexts()
-                    .iter()
-                    .any(|context| context.name == pending.context_name)
+                contexts.contexts().iter().any(|context| {
+                    context.name == pending.context_name && context.profile == pending.profile_name
+                })
             });
         if !context_exists {
             self.set_status_text(QString::from("Context route target is unavailable"));
@@ -177,7 +374,7 @@ impl qobject::BrowserUi {
         if self
             .as_mut()
             .reduce_event(Event::SetWindowContext {
-                window,
+                window: pending.target_window,
                 context: Some(pending.context_name.clone()),
             })
             .is_err()
@@ -191,11 +388,15 @@ impl qobject::BrowserUi {
                 super::IpcOpenTarget::Tab | super::IpcOpenTarget::BackgroundTab
             )
         }) {
+            let foreground = match planned_intent {
+                Some(PageOpenIntent::NewPage { foreground }) => foreground,
+                _ => route.open_target != super::IpcOpenTarget::BackgroundTab,
+            };
             self.as_mut()
-                .dispatch_new_tab_open(url.as_str(), route, None)
+                .dispatch_planned_new_tab_open(url.as_str(), route, foreground, None)
                 .map(|_| ())
         } else {
-            self.as_mut().navigate_url(&url)
+            self.as_mut().navigate_url_to_target(pending.target, &url)
         };
         if navigation.is_err() {
             self.set_status_text(QString::from("Context route navigation was rejected"));
@@ -211,14 +412,21 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn dismiss_context_route(mut self: Pin<&mut Self>) -> bool {
-        let Some(pending) = self.as_mut().clear_context_route() else {
-            self.set_status_text(QString::from("No context route is pending"));
+        let Some(pending) = self.as_mut().take_current_context_route() else {
             return false;
         };
         let Ok(url) = ValidatedUrl::parse(pending.url.clone()) else {
             self.set_status_text(QString::from("Context route URL is invalid"));
             return false;
         };
+        let planned_intent = self.as_ref().rust().state.as_ref().and_then(|state| {
+            pending.open_route.as_ref().map(|route| {
+                super::browser_ui_ipc::page_open_intent(
+                    &state.configuration().tabs.presentation,
+                    route.open_target,
+                )
+            })
+        });
         if pending
             .open_route
             .as_ref()
@@ -249,11 +457,15 @@ impl qobject::BrowserUi {
                 super::IpcOpenTarget::Tab | super::IpcOpenTarget::BackgroundTab
             )
         }) {
+            let foreground = match planned_intent {
+                Some(PageOpenIntent::NewPage { foreground }) => foreground,
+                _ => route.open_target != super::IpcOpenTarget::BackgroundTab,
+            };
             self.as_mut()
-                .dispatch_new_tab_open(url.as_str(), route, None)
+                .dispatch_planned_new_tab_open(url.as_str(), route, foreground, None)
                 .map(|_| ())
         } else {
-            self.as_mut().navigate_url(&url)
+            self.as_mut().navigate_url_to_target(pending.target, &url)
         };
         match navigation {
             Ok(()) => {
@@ -274,6 +486,14 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         )
         .ok_or_else(|| "Tab is no longer live".to_owned())?;
+        self.navigate_url_to_target(target, url)
+    }
+
+    fn navigate_url_to_target(
+        mut self: Pin<&mut Self>,
+        target: Target,
+        url: &ValidatedUrl,
+    ) -> Result<(), String> {
         let effects = self
             .as_mut()
             .reduce_event(Event::StartNavigation {
@@ -304,7 +524,7 @@ impl qobject::BrowserUi {
                     NavigationSource::ExplicitUrl | NavigationSource::Host
                 ) && self
                     .as_mut()
-                    .queue_context_route(&result.url, "explicit-open")
+                    .queue_context_route(&result.url, "explicit-open", None)
                 {
                     self.set_status_text(QString::from("Context route confirmation required"));
                     return;
@@ -354,7 +574,9 @@ impl qobject::BrowserUi {
                 if matches!(
                     result.source,
                     NavigationSource::ExplicitUrl | NavigationSource::Host
-                ) && self.as_mut().queue_context_route(&result.url, &entry_point)
+                ) && self
+                    .as_mut()
+                    .queue_context_route(&result.url, &entry_point, None)
                 {
                     self.set_status_text(QString::from("Context route confirmation required"));
                     return;
