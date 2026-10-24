@@ -70,26 +70,37 @@ The helper declares Rust 1.88 and pins `rust-toolchain.toml` to 1.88.0. The
 Ferric root workspace remains at Rust 1.85. The included lock is based on the
 `Cargo.lock` shipped at the pinned upstream revision, with its local
 `libwebauthn` package recorded as the exact git source and the helper root
-package added. This lock was not generated or checked by Cargo in P01 because
-the coordinator has not registered the helper build. The transitive compiler
-floor and actual Cargo 1.88.0 build result are therefore unverified; 1.88.0 is
-the intended floor, not a tested floor. The upstream lock snapshot SHA-256 is
-`a07e51b5cf5f9953beec6fc62a45aaf8c372ebeb050f81f2d34e7363249ef0aa`. It
-retains upstream workspace entries; a post-review `cargo --locked` run must
-confirm helper-specific resolution without changing the lock.
+package added. The external `evidence/P01-a1/DEPENDENCY_AUDIT.json` inventories
+all 487 committed lock records, including upstream workspace-only records.
+Cargo metadata for an evidence-only helper copy resolved 330 packages including
+the helper; 157 records in the committed lock were not in that graph. A direct
+`cargo metadata --locked` check refused because Cargo would rewrite the lock.
+Therefore this lock is not yet verified for the helper and T049 remains
+unqualified. Do not treat the copied upstream lock as a validated helper lock.
+
+The declared Rust floors are present for 314 of 487 records; 173 records do not
+declare one. The highest declared floor is Rust 1.88.0 (`time-macros` 0.2.27).
+The pinned 1.88.0 toolchain is not installed here, so no tested floor or build
+result is claimed. 481 registry archive checksums were compared with Cargo.lock
+and all matched. The full per-package record, including unavailable fields, is
+in the external audit receipt.
 
 The helper source uses Ferric's GPL-3.0-or-later project license. The linked
 `libwebauthn` package is LGPL-2.1-or-later and is statically linked by Rust; a
 release must satisfy the LGPL notice, source, and relinking obligations. The
-lock snapshot includes the upstream package graph, but a complete transitive
-license audit has not run. `deny.toml` allows only the currently reviewed common
-SPDX identifiers and the direct LGPL license; additional licenses must be
-reviewed and explicitly added instead of being silently accepted.
+The lock inventory found SPDX license expressions for 486 records; one local
+test-workspace package declares `license-file = "../COPYING"` but no SPDX
+expression. Some upstream expressions use legacy slash separators, and some
+license identifiers are outside the current `deny.toml` allowlist. The external
+audit records these gaps. It is metadata inventory, not a complete legal
+compatibility, notice, or relinking review. Keep unreviewed third-party
+licenses outside the allowlist until they are reviewed. The helper's own
+GPL-3.0-or-later project license is explicitly allowed by `deny.toml`.
 
 ## Build status
 
 This placeholder does not enable the phone provider. After independent source
 review and coordinator build registration, use the separate-helper commands in
 `docs/implementation/everyday-v1/TESTING.md`. The pinned library's API inventory
-is source inspection only; neither the Cargo.lock nor this helper has been
-built or tested in P01.
+and dependency metadata are source inspection only; neither the Cargo.lock nor
+this helper has been built or tested. No phone provider is enabled.
