@@ -30,7 +30,8 @@ impl Default for BrowserUiRust {
         let theme_palette = ThemePalette::default();
         let chrome_theme = theme_presentation::project(&theme_palette);
         let chrome_preferences = chrome_preferences::project(&Config::default());
-        let feature_preferences = feature_preferences::project(&Config::default());
+        let default_config = Config::default();
+        let feature_preferences = feature_preferences::project(&default_config, &default_config);
         let settings_config = serde_json::to_value(Config::default()).unwrap_or(Value::Null);
         let settings_rows = settings_presentation::project_variant(&settings_config);
         let empty_overrides_json =
@@ -364,6 +365,31 @@ impl Default for BrowserUiRust {
             feature_link_cleaning_update_sha256: QString::from(
                 feature_preferences.link_cleaning_update_sha256,
             ),
+            feature_tabs_presentation_requested: QString::from(
+                feature_preferences.tabs_presentation_requested,
+            ),
+            feature_tabs_presentation_effective: QString::from(
+                feature_preferences.tabs_presentation_effective,
+            ),
+            feature_tabs_presentation_status: QString::from(
+                feature_preferences.tabs_presentation_status,
+            ),
+            feature_tabs_presentation_reason: QString::from(
+                feature_preferences.tabs_presentation_reason,
+            ),
+            feature_hot_tab_requested: QString::from(feature_preferences.hot_tab_requested),
+            feature_hot_tab_status: QString::from(feature_preferences.hot_tab_status),
+            feature_hot_tab_reason: QString::from(feature_preferences.hot_tab_reason),
+            feature_phone_passkeys_requested: QString::from(
+                feature_preferences.phone_passkeys_requested,
+            ),
+            feature_phone_passkeys_status: QString::from(feature_preferences.phone_passkeys_status),
+            feature_phone_passkeys_reason: QString::from(feature_preferences.phone_passkeys_reason),
+            feature_page_grouping_requested: QString::from(
+                feature_preferences.page_grouping_requested,
+            ),
+            feature_page_grouping_status: QString::from(feature_preferences.page_grouping_status),
+            feature_page_grouping_reason: QString::from(feature_preferences.page_grouping_reason),
             config_base_json: QString::from(
                 serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into()),
             ),

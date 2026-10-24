@@ -434,6 +434,9 @@ impl qobject::BrowserUi {
         };
         let snapshot = prepared.snapshot();
         let active_settings = snapshot.effective;
+        let requested_settings = policy_layers
+            .resolve()
+            .map_err(|error| format!("could not resolve requested configuration: {error}"))?;
         let active_config = serde_json::to_value(&active_settings)
             .map_err(|error| format!("could not serialize active configuration: {error}"))?;
         let (candidate_mixed_policy, policy_changed) = self
@@ -556,7 +559,8 @@ impl qobject::BrowserUi {
                 &active_settings.desktop.portals,
             )));
         self.as_mut().update_chrome_preferences(&active_settings);
-        self.as_mut().update_feature_preferences(&active_settings);
+        self.as_mut()
+            .update_feature_preferences(&active_settings, &requested_settings);
         self.as_mut().update_hint_preferences(&active_settings);
         let current_url = self.as_ref().rust().current_url.to_string();
         self.as_mut()
@@ -648,8 +652,12 @@ impl qobject::BrowserUi {
             .set_chrome_reduced_motion(QString::from(preferences.reduced_motion));
     }
 
-    pub(super) fn update_feature_preferences(mut self: Pin<&mut Self>, config: &Config) {
-        let preferences: FeaturePreferences = feature_preferences::project(config);
+    pub(super) fn update_feature_preferences(
+        mut self: Pin<&mut Self>,
+        effective: &Config,
+        requested: &Config,
+    ) {
+        let preferences: FeaturePreferences = feature_preferences::project(effective, requested);
         self.as_mut()
             .set_feature_switcher_max_results(preferences.switcher_max_results);
         self.as_mut()
@@ -686,6 +694,44 @@ impl qobject::BrowserUi {
             .set_feature_link_cleaning_update_sha256(QString::from(
                 preferences.link_cleaning_update_sha256,
             ));
+        self.as_mut()
+            .set_feature_tabs_presentation_requested(QString::from(
+                preferences.tabs_presentation_requested,
+            ));
+        self.as_mut()
+            .set_feature_tabs_presentation_effective(QString::from(
+                preferences.tabs_presentation_effective,
+            ));
+        self.as_mut()
+            .set_feature_tabs_presentation_status(QString::from(
+                preferences.tabs_presentation_status,
+            ));
+        self.as_mut()
+            .set_feature_tabs_presentation_reason(QString::from(
+                preferences.tabs_presentation_reason,
+            ));
+        self.as_mut()
+            .set_feature_hot_tab_requested(QString::from(preferences.hot_tab_requested));
+        self.as_mut()
+            .set_feature_hot_tab_status(QString::from(preferences.hot_tab_status));
+        self.as_mut()
+            .set_feature_hot_tab_reason(QString::from(preferences.hot_tab_reason));
+        self.as_mut()
+            .set_feature_phone_passkeys_requested(QString::from(
+                preferences.phone_passkeys_requested,
+            ));
+        self.as_mut()
+            .set_feature_phone_passkeys_status(QString::from(preferences.phone_passkeys_status));
+        self.as_mut()
+            .set_feature_phone_passkeys_reason(QString::from(preferences.phone_passkeys_reason));
+        self.as_mut()
+            .set_feature_page_grouping_requested(QString::from(
+                preferences.page_grouping_requested,
+            ));
+        self.as_mut()
+            .set_feature_page_grouping_status(QString::from(preferences.page_grouping_status));
+        self.as_mut()
+            .set_feature_page_grouping_reason(QString::from(preferences.page_grouping_reason));
     }
 
     pub(super) fn update_hint_preferences(mut self: Pin<&mut Self>, config: &Config) {
