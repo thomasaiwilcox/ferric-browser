@@ -1,9 +1,11 @@
+use ferric_browser_application::{PageOpenIntent, PageOpenPrivacy};
+
 use super::{
     BrowserApplication, CommandSource, ContextsConfig, CxxQtType, DispatchTarget, Effect,
     EngineEffect, Event, IpcOpenTarget, IpcRoute, NavigationError, NavigationSource,
-    PageOpenIntent, PendingContextRoute, Pin, QString, Target, ValidatedUrl, WindowId,
-    captured_target_is_current, current_target, matching_context_routes, qobject, resolve_input,
-    safe_ipc_url, validate_clipboard_navigation_input,
+    PendingContextRoute, Pin, QString, Target, ValidatedUrl, WindowId, captured_target_is_current,
+    current_target, matching_context_routes, qobject, resolve_input, safe_ipc_url,
+    validate_clipboard_navigation_input,
 };
 
 pub(super) fn context_route_target_is_current(
@@ -312,15 +314,19 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("No context route is pending"));
             return None;
         };
-        let rust = self.as_ref().rust();
         let mut current = Some(pending);
-        let Some(pending) = take_current_context_route_record(
-            &mut current,
-            rust.state.as_ref(),
-            rust.window,
-            &rust.window_token.to_string(),
-            rust.view_alive,
-        ) else {
+        let pending = {
+            let rust = self.as_ref().rust();
+            let owner_token = rust.window_token.to_string();
+            take_current_context_route_record(
+                &mut current,
+                rust.state.as_ref(),
+                rust.window,
+                &owner_token,
+                rust.view_alive,
+            )
+        };
+        let Some(pending) = pending else {
             self.as_mut().clear_context_route();
             self.set_status_text(QString::from(
                 "Context route target changed; the request was discarded",
@@ -372,16 +378,14 @@ impl qobject::BrowserUi {
                         super::IpcOpenTarget::Window,
                     ) {
                         PageOpenIntent::NewWindow { privacy } => Some(privacy),
-                        PageOpenIntent::ExistingPresentation => {
-                            Some(super::PageOpenPrivacy::Normal)
-                        }
+                        PageOpenIntent::ExistingPresentation => Some(PageOpenPrivacy::Normal),
                         _ => None,
                     },
                 )
             } else {
                 planned_intent.and_then(|intent| match intent {
                     PageOpenIntent::NewWindow { privacy } => Some(privacy),
-                    PageOpenIntent::ExistingPresentation => Some(super::PageOpenPrivacy::Normal),
+                    PageOpenIntent::ExistingPresentation => Some(PageOpenPrivacy::Normal),
                     _ => None,
                 })
             };
@@ -389,7 +393,7 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Context route host intent is unavailable"));
                 return false;
             };
-            if window_privacy != super::PageOpenPrivacy::Normal {
+            if window_privacy != PageOpenPrivacy::Normal {
                 self.set_status_text(QString::from("Context routing cannot open a private host"));
                 return false;
             }
