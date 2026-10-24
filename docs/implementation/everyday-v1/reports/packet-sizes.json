@@ -12,15 +12,31 @@
     },
     {
       "slice": "F00",
-      "utf8_bytes": 11167
+      "utf8_bytes": 11284
     },
     {
       "slice": "F01",
-      "utf8_bytes": 11377
+      "utf8_bytes": 9542
+    },
+    {
+      "slice": "F01b",
+      "utf8_bytes": 9302
+    },
+    {
+      "slice": "F01c",
+      "utf8_bytes": 9183
     },
     {
       "slice": "F02",
-      "utf8_bytes": 11853
+      "utf8_bytes": 8996
+    },
+    {
+      "slice": "F02a",
+      "utf8_bytes": 11253
+    },
+    {
+      "slice": "F02b",
+      "utf8_bytes": 11269
     },
     {
       "slice": "F03",
@@ -64,7 +80,19 @@
     },
     {
       "slice": "P00",
-      "utf8_bytes": 12335
+      "utf8_bytes": 9321
+    },
+    {
+      "slice": "P00a",
+      "utf8_bytes": 9671
+    },
+    {
+      "slice": "P00b",
+      "utf8_bytes": 9389
+    },
+    {
+      "slice": "P00c",
+      "utf8_bytes": 9255
     },
     {
       "slice": "P01",
@@ -140,7 +168,19 @@
     },
     {
       "slice": "W01",
-      "utf8_bytes": 14012
+      "utf8_bytes": 11195
+    },
+    {
+      "slice": "W01a",
+      "utf8_bytes": 12489
+    },
+    {
+      "slice": "W01b",
+      "utf8_bytes": 12558
+    },
+    {
+      "slice": "W01c",
+      "utf8_bytes": 12056
     },
     {
       "slice": "W02",

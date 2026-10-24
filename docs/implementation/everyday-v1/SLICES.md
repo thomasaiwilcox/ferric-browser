@@ -1,6 +1,6 @@
 # Dependency-ordered work inventory
 
-62 execution-plan entries (60 work slices plus two coordinator aggregates) and 165 acceptance cases. Mutable execution status is recorded in the external run ledger.
+65 execution-plan entries (62 work slices plus three coordinator aggregates) and 165 acceptance cases. Mutable execution status is recorded in the external run ledger.
 
 | ID | Outcome | Depends on |
 |---|---|---|
@@ -21,7 +21,10 @@
 | H04 | Add trustworthy hot/cold benchmark instrumentation | H02, S01 |
 | H05 | Qualify unmapped window-mode spare independently | H03, W02 |
 | H06 | Run native performance and constrained-machine acceptance | H03, H04, H05 |
-| P00 | Prove isolated-world credential boundary on qualified Qt | S01, S00 |
+| P00 | Aggregate isolated-world credential boundary proof | P00a, P00b, P00c |
+| P00a | Prove isolated transport and main-frame authority facts | S01, S00 |
+| P00b | Reject stale and cross-document credential completions | P00a |
+| P00c | Resolve the feasible public Qt API route and document limits | P00b |
 | P01 | Create separately pinned helper build and dependency inventory | S00 |
 | P02 | Implement pure credential admission and ceremony state | F00, S00 |
 | P03 | Implement production document-bound native credential bridge | P00, P02, F03 |

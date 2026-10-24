@@ -139,3 +139,15 @@
 - **Change:** add `tst_live_titles.cpp` as an F02a read-only anchor and document its T015 assertions. Add the existing path and exact blob `b3e3a37bbe039ae47ecb5f30da022ea4f85ccd03` at authoring and integration source to `source_manifest.json`, `source-map.execution.json`, and the planned path inventory. Counts become 190 unique planned paths, 70 existing product paths, and 17 entries in each source manifest.
 - **Dependency/lock/path effect:** no allowed edit path, dependency, lock, test owner or attempt limit changes. The test file remains read-only for F02a. Existing F02a candidate `87231dd31c1d6da5815fb79af9659bc1c8861703` remains attempt 1 and must be re-reviewed against the corrected map.
 - **Test effect:** T015 and its existing expected behavior are unchanged. No test or product code was modified; exact-source runtime qualification remains pending.
+
+
+## A24 — Split exhausted P00 at distinct credential-proof boundaries
+
+- **Status:** independently accepted by `/root/a09_reviewer`; decision recorded at external `evidence/A24-a2/PLAN_REVIEW.json`.
+- **Review record:** `evidence/A24-a1/PLAN_REVIEW.json` preserves the initial request-changes finding; attempt 2 accepted the corrected index.
+- **Trigger:** P00 exhausted its three attempts while the final attempt failed to compile the credential test harness, so zero T046–T048 cases ran. The task joins separate outcomes: transport/main-frame authority and hostile-world reachability (T046), cross-document/stale-source rejection (T047), and inspection of the public Qt route/native-choice activation feasibility plus unresolved primitives (T048).
+- **Change:** retain P00 as a coordinator-only aggregate and create P00a/T046, P00b/T047, and P00c/T048. Keep T046–T048 IDs, levels and expected behaviors unchanged and assign each to exactly one child. P00a depends on S01 and S00; P00b depends on P00a; P00c depends on P00b; P00 depends on all children.
+- **History and attempt effect:** preserve live P00 as failed at 3/3 with its original failed-build evidence and blocker. Children start at zero attempts with no inherited acceptance. After all children pass, P00 can receive only a coordinator no-code aggregate record.
+- **Path and lock effect:** P00a and P00b reuse P00’s bounded five existing paths and its `credential-boundary`/`test-registration` locks, serialized by P00a→P00b. P00c edits only the ADR and holds `credential-boundary`, without the test-registration lock. No product code or phone-bridge path is added.
+- **Dependency effect:** P03 continues to depend on P00, so no production bridge can start until every child is accepted. The split introduces no dependency cycle. EF-P00 remains owned by aggregate P00.
+- **Test effect:** T046, T047 and T048 retain their original expected behavior and evidence levels. No real credential, native trust check, frame/document guard, skip rule or acceptance threshold is relaxed.

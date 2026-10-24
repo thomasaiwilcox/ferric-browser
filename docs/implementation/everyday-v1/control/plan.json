@@ -969,7 +969,50 @@
     },
     {
       "id": "P00",
-      "title": "Prove isolated-world credential boundary on qualified Qt",
+      "title": "Aggregate isolated-world credential boundary proof",
+      "lane": "security",
+      "depends_on": [
+        "P00a",
+        "P00b",
+        "P00c"
+      ],
+      "contracts": [
+        "C04",
+        "C14"
+      ],
+      "allowed_paths": [],
+      "steps": [
+        "Coordinator-only aggregate. Do not dispatch P00 to an implementation worker.",
+        "Preserve the original P00 failed 3/3 history, blocker, candidates and evidence while any child remains unaccepted; the parent has no retry or inherited acceptance.",
+        "P00a independently proves isolated transport and main-frame authority facts (T046); P00b independently proves cross-document and stale-source rejection (T047); P00c independently resolves/document the feasible public Qt API route and unresolved primitives (T048).",
+        "After all three children are independently accepted, record a no-code aggregate referencing their exact evidence and reviewer decisions. Do not imply real-credential qualification or production WebChannel integration.",
+        "P03 remains gated on aggregate P00 and cannot introduce a native credential bridge until all proof outcomes pass."
+      ],
+      "kind": "aggregate",
+      "locks": [],
+      "recipe": "review",
+      "requirement_id": "EF-P00",
+      "test_ids": [],
+      "max_changed_product_files": 0,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P00.md",
+      "read_anchors": [],
+      "aggregate_test_ids": [
+        "T046",
+        "T047",
+        "T048"
+      ],
+      "aggregate_of": [
+        "P00a",
+        "P00b",
+        "P00c"
+      ]
+    },
+    {
+      "id": "P00a",
+      "title": "Prove isolated transport and main-frame authority facts",
       "lane": "security",
       "depends_on": [
         "S01",
@@ -987,11 +1030,10 @@
         "docs/architecture/ADR-everyday-credential-boundary.md"
       ],
       "steps": [
-        "Create a narrow public-API spike using actual Qt 6.11.2 WebEngine/WebChannel world selection with no real authenticator material.",
-        "Demonstrate trusted main-frame document facts, per-document challenge and native lease binding, and inability of MainWorld/ordinary script worlds/subframes to reach native authority.",
-        "Test same-URL navigation, BFCache, frame messages, prototype/clobber attempts, opaque/sandboxed/insecure contexts and queued old completions.",
-        "Enumerate existing script worlds and reserve a non-conflicting world in the ADR. Evaluate native-choice activation compatibility, not only channel connectivity.",
-        "Produce proof/failed-primitive evidence. No generic console/scheme fallback or Chromium patch as an implicit workaround."
+        "Build a narrow public-API proof on qualified Qt 6.11.2 WebEngine/WebChannel that isolates a dedicated transport from ordinary page and script worlds.",
+        "Prove that main-frame origin/context facts are obtained from native trusted frame/document facts rather than page claims, and bind each challenge/lease to the current document.",
+        "Exercise hostile MainWorld/ApplicationWorld access and subframe probes. Use no real authenticator material and add no production WebChannel wiring, scheme or console fallback.",
+        "Resolve compile/setup issues only within this child\u2019s five existing paths so the registered T046 application proof can run; preserve zero-skip evidence."
       ],
       "kind": "proof",
       "locks": [
@@ -1001,22 +1043,108 @@
       "recipe": "credential",
       "requirement_id": "EF-P00",
       "test_ids": [
-        "T046",
-        "T047",
-        "T048"
+        "T046"
       ],
       "max_changed_product_files": 8,
       "max_attempts": 3,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
-      "slice_file": "slices/P00.md",
+      "slice_file": "slices/P00a.md",
       "read_anchors": [
         "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_boundary.cpp",
         "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-hostile.html",
         "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-frame.html",
         "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
         "docs/architecture/ADR-everyday-credential-boundary.md"
-      ]
+      ],
+      "parent_id": "P00"
+    },
+    {
+      "id": "P00b",
+      "title": "Reject stale and cross-document credential completions",
+      "lane": "security",
+      "depends_on": [
+        "P00a"
+      ],
+      "contracts": [
+        "C04",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_boundary.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-hostile.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-frame.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "docs/architecture/ADR-everyday-credential-boundary.md"
+      ],
+      "steps": [
+        "Extend the isolated proof to cover same-URL document replacement, BFCache transitions, stale queued completions and source-frame confusion.",
+        "Keep transport identity and document-generation checks explicit; an old request/reply must be rejected even when the URL is unchanged.",
+        "Use no real credentials and add no production bridge. Reuse only the bounded five paths and locks, serialized after P00a.",
+        "Run registered T047 on exact source with zero skips and retain the concrete document/frame identities in evidence."
+      ],
+      "kind": "proof",
+      "locks": [
+        "credential-boundary",
+        "test-registration"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P00",
+      "test_ids": [
+        "T047"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P00b.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_boundary.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-hostile.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-frame.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "docs/architecture/ADR-everyday-credential-boundary.md"
+      ],
+      "parent_id": "P00"
+    },
+    {
+      "id": "P00c",
+      "title": "Resolve the feasible public Qt API route and document limits",
+      "lane": "security",
+      "depends_on": [
+        "P00b"
+      ],
+      "contracts": [
+        "C04",
+        "C14"
+      ],
+      "allowed_paths": [
+        "docs/architecture/ADR-everyday-credential-boundary.md"
+      ],
+      "steps": [
+        "Trace the documented public Qt 6.11.2 WebEngine/WebChannel API path for isolated-world transport and native trusted main-frame/document facts.",
+        "Determine whether the native provider-choice activation path can use that API without losing user activation; state the precise observation and any unproven part.",
+        "Record the chosen feasible route, exact unresolved primitives, source links and stop conditions in the ADR before any real credential or production bridge work.",
+        "Keep this inspection/documentation-only: no test-registration lock, production wiring, real credential material or claim beyond the observed public API behavior."
+      ],
+      "kind": "proof",
+      "locks": [
+        "credential-boundary"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P00",
+      "test_ids": [
+        "T048"
+      ],
+      "max_changed_product_files": 1,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P00c.md",
+      "read_anchors": [
+        "docs/architecture/ADR-everyday-credential-boundary.md"
+      ],
+      "parent_id": "P00"
     },
     {
       "id": "P01",

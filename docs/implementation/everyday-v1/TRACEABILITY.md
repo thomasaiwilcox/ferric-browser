@@ -9,7 +9,7 @@ The full original proposal is in reference/ORIGINAL_PROPOSAL.md. Contracts and c
 | Secondary keyboard parity | C01,C09 | F05 verifies/reuses current HintWorkspace/PageSearch, not old disabled-hint premise |
 | One speculative hot view, no external prefetch | C02,C03 | H00–H03 |
 | Hot native-window variant and measured adoption | C03 | H04–H06 |
-| Origin/document-bound isolated phone bridge | C04 | P00,P02–P04; security review P16 |
+| Origin/document-bound isolated phone bridge | C04 | P00 aggregate (P00a/T046, P00b/T047, P00c/T048), P02–P04; security review P16 |
 | Helper transport reuse and supervised protocol | C06,C07 | P01,P05–P08 |
 | Native provider choice, QR and response compatibility | C05,C08 | P09–P12 |
 | Independent RP, adversarial/fuzz/device evidence | C14 | P13–P17 |

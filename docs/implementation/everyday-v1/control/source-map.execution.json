@@ -1629,7 +1629,8 @@
         "working_tree_file_present": false,
         "slices": [
           "H04",
-          "P00",
+          "P00a",
+          "P00b",
           "P14",
           "S01",
           "W00",
@@ -1696,7 +1697,8 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "P00",
+          "P00a",
+          "P00b",
           "P14"
         ],
         "roles": [
@@ -1712,7 +1714,8 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "P00",
+          "P00a",
+          "P00b",
           "P14"
         ],
         "roles": [
@@ -1938,7 +1941,8 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "P00"
+          "P00a",
+          "P00b"
         ],
         "roles": [
           "allowed",
@@ -2494,7 +2498,9 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "P00",
+          "P00a",
+          "P00b",
+          "P00c",
           "P16"
         ],
         "roles": [
@@ -3195,7 +3201,7 @@
     "page_world_uses": "Explicit page evaluation and installed user scripts execute in WebEngineScript.MainWorld; these are page-observable and must not become credential authority.",
     "native_webauthn": "Existing WebEngineWebAuthUxRequest path is handled by FerricWindowRequestsController.qml and FerricWebAuthPrompt.qml, with captured view/UI, prompt lease and cancellation; preserve coexistence.",
     "phone_provider": "No phone credential bridge, mediator, isolated-world admission protocol or helper exists at the product baseline; all are proposed work.",
-    "credential_authority": "No page-origin-only native bridge is present in current sources; P00 must prove qualified-world/document authority before P03 introduces one."
+    "credential_authority": "No page-origin-only native bridge is present in current sources; P00a/P00b/P00c must prove qualified-world/document authority and a feasible public API route before P03 introduces one."
   },
   "build_environment": {
     "os": "Omarchy 4.0.6 / Arch Linux compatible, Linux x86_64",

@@ -453,7 +453,7 @@
     },
     {
       "id": "T046",
-      "slice": "P00",
+      "slice": "P00a",
       "requirement": "EF-P00",
       "level": "application",
       "name": "Authority proof",
@@ -463,7 +463,7 @@
     },
     {
       "id": "T047",
-      "slice": "P00",
+      "slice": "P00b",
       "requirement": "EF-P00",
       "level": "application",
       "name": "Cross-document rejection",
@@ -473,7 +473,7 @@
     },
     {
       "id": "T048",
-      "slice": "P00",
+      "slice": "P00c",
       "requirement": "EF-P00",
       "level": "inspection",
       "name": "Reviewed feasible route",
