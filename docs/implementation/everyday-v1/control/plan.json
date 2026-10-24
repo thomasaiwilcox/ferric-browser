@@ -399,7 +399,48 @@
     },
     {
       "id": "F02b",
-      "title": "Qualify secondary-host focus and popup/transfer preservation",
+      "title": "Aggregate secondary-host focus and popup/transfer preservation",
+      "lane": "presentation",
+      "depends_on": [
+        "F02b1",
+        "F02b2"
+      ],
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "allowed_paths": [],
+      "steps": [
+        "Coordinator-only aggregate. Do not dispatch F02b to an implementation worker.",
+        "Preserve the original F02 failed 3/3 and F02b failed 3/3 histories, candidates, evidence and blockers while either child remains unaccepted. No fourth parent or F02b attempt is authorized.",
+        "F02b1 owns only T013 and must diagnose effective key routing and native host KeyPress before interpreting renderer delivery/focus; retain the original page-key assertion and full secondary-host behavior checks.",
+        "F02b2 owns only T014 and must preserve actual opener/source identity and transfer-reserve behavior while capturing the production component factory warnings/status/error text at the null creation seam.",
+        "After both children are independently reviewed, integrated and accepted on their own exact-source gates, record a no-code F02b aggregate citing their evidence. Do not inherit prior partial subcase results or invent acceptance cases.",
+        "F02 and its downstream factory/window consumers remain gated until this F02b aggregate and F02a are accepted."
+      ],
+      "kind": "aggregate",
+      "locks": [],
+      "recipe": "review",
+      "requirement_id": "EF-F02",
+      "test_ids": [],
+      "max_changed_product_files": 0,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F02b.md",
+      "read_anchors": [],
+      "aggregate_test_ids": [
+        "T013",
+        "T014"
+      ],
+      "aggregate_of": [
+        "F02b1",
+        "F02b2"
+      ]
+    },
+    {
+      "id": "F02b1",
+      "title": "Diagnose and qualify secondary-host keyboard routing",
       "lane": "presentation",
       "depends_on": [
         "F02a"
@@ -412,13 +453,15 @@
         "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
         "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
         "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
-        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml"
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml"
       ],
       "steps": [
-        "Run the original T013/T014 assertions on accepted F02a source; preserve every URL/title/history/settings and keyboard-focus assertion plus actual popup/opener and transfer-reserve checks.",
-        "Before injecting the secondary-host key, request activation and wait until that exact host is active; assert the intended page owns focus and that the key is delivered. This is fixture setup only and does not change expected behavior.",
-        "If the expected key/focus behavior still fails after verified host activation and page focus, trace and fix a reproduced production defect only within the listed existing F02 QML paths. Do not weaken, skip, relabel or bypass an unavailable assertion.",
-        "A still-failing or unavailable application assertion remains unqualified; preserve the receipt and blocker. Do not claim the prior attempt-3 popup subcase pass as this child acceptance."
+        "Run the unchanged T013 acceptance behavior on accepted F02a source: cold-created primary/secondary pages preserve URL, title, history, settings, intended focus and actual page key delivery.",
+        "Before interpreting a missing page key, record the effective configured key route and require an observed native host KeyPress for the injected key. Keep the page-key assertion; do not count key injection or focus state alone as delivery.",
+        "If the host receives the key and the page does not, trace the reproduced production route and repair only a defect demonstrated in the listed paths. FerricBrowserWindow.qml is the current owner of the secondary key router and may be edited only if its defect is reproduced.",
+        "Preserve all original positive and negative T013 assertions. If the native press, effective route or renderer cause cannot be established in the available Qt runner, leave T013 unqualified and report which observation is missing.",
+        "No T014 or T015 result is owned by this child. Keep the existing test-registration lock even though the T013 case is already registered; do not modify unlisted registration files."
       ],
       "kind": "implementation",
       "locks": [
@@ -430,25 +473,78 @@
       "recipe": "application",
       "requirement_id": "EF-F02",
       "test_ids": [
-        "T013",
-        "T014"
+        "T013"
       ],
-      "max_changed_product_files": 4,
+      "max_changed_product_files": 5,
       "max_attempts": 3,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
-      "slice_file": "slices/F02b.md",
+      "slice_file": "slices/F02b1.md",
       "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
         "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
         "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
         "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
-        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
-        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
         "crates/ferric-browser-engine-qt/build.rs",
-        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
         "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
       ],
-      "parent_id": "F02"
+      "parent_id": "F02b"
+    },
+    {
+      "id": "F02b2",
+      "title": "Diagnose and qualify popup transfer reserve preservation",
+      "lane": "presentation",
+      "depends_on": [
+        "F02b1"
+      ],
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml"
+      ],
+      "steps": [
+        "Run the unchanged T014 acceptance behavior after accepted F02b1: actual Qt popup opener/source identity is preserved, transfer reserve remains live, and URL/history/page state are not recreated from the address alone.",
+        "At the production component-factory creation that currently returns null, capture QQmlEngine warnings and QQmlComponent status/errorString so the failure has an exact cause. Keep opener, source identity, transfer, URL, history and page-state assertions intact.",
+        "If a production defect is reproduced, repair only within the listed existing paths. FerricBrowserWindow.qml is the current prepareTransferFallback caller and may be edited only when its responsibility is demonstrated. Never replace the failed transfer with URL recreation or permissive fallback.",
+        "Keep the T014 case non-skipping and run its registered exact-source CTest gate with zero skips. If the runtime cannot expose the failure cause or the reserve path remains unavailable, preserve the failed result and blocker.",
+        "T013 belongs only to F02b1; T015 remains owned by F02a. Keep the shared test-registration lock and do not modify unlisted registration files."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "page-factory",
+        "primary-shell",
+        "secondary-shell",
+        "test-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014"
+      ],
+      "max_changed_product_files": 5,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F02b2.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+      ],
+      "parent_id": "F02b"
     },
     {
       "id": "F03",
@@ -1033,7 +1129,7 @@
         "Build a narrow public-API proof on qualified Qt 6.11.2 WebEngine/WebChannel that isolates a dedicated transport from ordinary page and script worlds.",
         "Prove that main-frame origin/context facts are obtained from native trusted frame/document facts rather than page claims, and bind each challenge/lease to the current document.",
         "Exercise hostile MainWorld/ApplicationWorld access and subframe probes. Use no real authenticator material and add no production WebChannel wiring, scheme or console fallback.",
-        "Resolve compile/setup issues only within this child\u2019s five existing paths so the registered T046 application proof can run; preserve zero-skip evidence."
+        "Resolve compile/setup issues only within this child’s five existing paths so the registered T046 application proof can run; preserve zero-skip evidence."
       ],
       "kind": "proof",
       "locks": [
@@ -1489,7 +1585,7 @@
         "helpers/ferric-phone-auth/tests/hybrid_contract.rs"
       ],
       "steps": [
-        "Use the pinned library\u2019s actual QR-initiated hybrid API for both create and get; do not implement protocol crypto.",
+        "Use the pinned library’s actual QR-initiated hybrid API for both create and get; do not implement protocol crypto.",
         "Report bounded QR and closed progress states; use library transient-device mode, not remembered-pairing persistence.",
         "Convert actual registration/assertion responses through library serialization and preserve supported extensions.",
         "Do not automatically replay an uncertain create. Document retry handling only for explicitly safe device responses.",
@@ -2972,7 +3068,7 @@
         "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
       ],
       "steps": [
-        "Cover mode \u00d7 hot on/off \u00d7 phone on/off with actual production owners and realistic asynchronous scheduling.",
+        "Cover mode × hot on/off × phone on/off with actual production owners and realistic asynchronous scheduling.",
         "Run credential request from a freshly adopted page, concurrent windows, renderer loss, config/profile changes and shutdown.",
         "Combine popup opening, background grouping and transfer-reserve allocation without confusing the three kinds of prepared resources.",
         "Keep privacy, history, native search, focus and accepted storage-work assertions visible across the matrix."
@@ -3224,7 +3320,7 @@
       "steps": [
         "Follow RESOURCE_POLICY dry run; retain source/commits/evidence and delete only inactive explicitly owned build products.",
         "Rebuild from accepted source/lockfiles with correct native dependencies and no stale static library.",
-        "Prove no dependence on another worktree build, user\u2019s caches/profile or hidden fixture state.",
+        "Prove no dependence on another worktree build, user’s caches/profile or hidden fixture state.",
         "Record storage/inode/Btrfs metadata observations where available; never run balance/delete snapshots automatically."
       ],
       "kind": "verification",

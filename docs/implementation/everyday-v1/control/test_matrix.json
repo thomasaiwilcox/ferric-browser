@@ -123,7 +123,7 @@
     },
     {
       "id": "T013",
-      "slice": "F02b",
+      "slice": "F02b1",
       "requirement": "EF-F02",
       "level": "application",
       "name": "Factory equivalence",
@@ -133,7 +133,7 @@
     },
     {
       "id": "T014",
-      "slice": "F02b",
+      "slice": "F02b2",
       "requirement": "EF-F02",
       "level": "application",
       "name": "Popup and transfer preservation",

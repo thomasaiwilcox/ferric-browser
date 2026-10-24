@@ -524,6 +524,22 @@
       "reviewer": null,
       "evidence": null,
       "blocker": null
+    },
+    "F02b1": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02b2": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
     }
   }
 }

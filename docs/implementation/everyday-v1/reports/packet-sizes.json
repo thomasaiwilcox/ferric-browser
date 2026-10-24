@@ -36,7 +36,15 @@
     },
     {
       "slice": "F02b",
-      "utf8_bytes": 11269
+      "utf8_bytes": 8896
+    },
+    {
+      "slice": "F02b1",
+      "utf8_bytes": 9795
+    },
+    {
+      "slice": "F02b2",
+      "utf8_bytes": 9740
     },
     {
       "slice": "F03",
