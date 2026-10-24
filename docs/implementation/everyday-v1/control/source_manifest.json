@@ -116,6 +116,13 @@
       "inspection": "lines 1-180, displayed output truncated",
       "purpose": "Existing production-engine harness, suite names and FERRIC_ENGINE_LIBRARY override",
       "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/tests/application/tst_live_titles.cpp",
+      "git_blob": "b3e3a37bbe039ae47ecb5f30da022ea4f85ccd03",
+      "inspection": "productPolishLiveTitles data rows and assertions",
+      "purpose": "T015 live-title owner transfer and stale source-target rejection",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-engine-qt/tests/application/tst_live_titles.cpp"
     }
   ]
 }

@@ -392,7 +392,8 @@
         "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
         "crates/ferric-browser-engine-qt/build.rs",
         "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
-        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/application/tst_live_titles.cpp"
       ],
       "parent_id": "F02"
     },

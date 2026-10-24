@@ -150,11 +150,19 @@
       "authoring_blob": null,
       "product_baseline_blob": "a77cb631ef6bf3c4d1dbed954d3cc2443e8be6c5",
       "authoring_blob_resolved": true
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/tests/application/tst_live_titles.cpp",
+      "inspection": "productPolishLiveTitles data rows and assertions",
+      "purpose": "T015 live-title owner transfer and stale source-target rejection",
+      "authoring_blob": "b3e3a37bbe039ae47ecb5f30da022ea4f85ccd03",
+      "product_baseline_blob": "b3e3a37bbe039ae47ecb5f30da022ea4f85ccd03",
+      "authoring_blob_resolved": true
     }
   ],
   "planned_path_inventory": {
-    "unique_paths": 189,
-    "existing_product_paths": 69,
+    "unique_paths": 190,
+    "existing_product_paths": 70,
     "execution_pack_artifacts": 2,
     "planned_execution_outputs": 8,
     "proposed_product_deliverables": 110,
@@ -1595,6 +1603,21 @@
         "roles": [
           "allowed",
           "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/application/tst_live_titles.cpp",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "b3e3a37bbe039ae47ecb5f30da022ea4f85ccd03",
+        "integration_head_blob": "b3e3a37bbe039ae47ecb5f30da022ea4f85ccd03",
+        "working_tree_file_present": true,
+        "slices": [
+          "F02a"
+        ],
+        "roles": [
+          "read_anchor",
+          "source_manifest"
         ],
         "history_at_product_baseline": true
       },
