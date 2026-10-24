@@ -3,13 +3,13 @@
 use super::{
     BTreeMap, CollisionPolicy, Deserialize, DownloadDirectory, EntryMode, ExternalLinks,
     HintAutoFollow, HintProxyTargets, HintSelectorFamily, HintSelectorPolicy, HintUnmatchedPolicy,
-    LastClose, LogLevel, PermissionDecision, PortalMode, Serialize, SessionRestore,
-    default_builtin, default_checkpoint, default_command_limit, default_count_limit,
-    default_hint_chars, default_hint_marker_scale, default_hint_min_chars,
-    default_keychain_timeout, default_languages, default_lists, default_log_size, default_new_tab,
-    default_overlay_delay, default_related_position, default_retained_files, default_retention,
-    default_search_engine, default_start_pages, default_true, default_undo_limit,
-    default_update_interval, default_zoom,
+    HotTabPolicy, LastClose, LogLevel, PageGroupingPolicy, PermissionDecision, PhonePasskeyPolicy,
+    PortalMode, Serialize, SessionRestore, TabsPresentation, default_builtin, default_checkpoint,
+    default_command_limit, default_count_limit, default_hint_chars, default_hint_marker_scale,
+    default_hint_min_chars, default_keychain_timeout, default_languages, default_lists,
+    default_log_size, default_new_tab, default_overlay_delay, default_related_position,
+    default_retained_files, default_retention, default_search_engine, default_start_pages,
+    default_true, default_undo_limit, default_update_interval, default_zoom,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -186,6 +186,8 @@ pub struct LinksConfig {
 #[serde(deny_unknown_fields)]
 pub struct TabsConfig {
     #[serde(default)]
+    pub presentation: TabsPresentation,
+    #[serde(default)]
     pub last_close: LastClose,
     #[serde(default = "default_related_position")]
     pub related_position: String,
@@ -198,12 +200,27 @@ pub struct TabsConfig {
 impl Default for TabsConfig {
     fn default() -> Self {
         Self {
+            presentation: TabsPresentation::default(),
             last_close: LastClose::default(),
             related_position: default_related_position(),
             undo_limit: default_undo_limit(),
             auto_discard: false,
         }
     }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PerformanceConfig {
+    #[serde(default)]
+    pub hot_tab: HotTabPolicy,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PasskeysConfig {
+    #[serde(default)]
+    pub phone: PhonePasskeyPolicy,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -445,6 +462,8 @@ pub struct HyprlandConfig {
     pub enabled: TriState,
     #[serde(default)]
     pub workspace_routing: bool,
+    #[serde(default)]
+    pub page_grouping: PageGroupingPolicy,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

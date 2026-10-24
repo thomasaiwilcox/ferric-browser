@@ -14,6 +14,88 @@ fn defaults_are_the_starter_configuration() {
 }
 
 #[test]
+fn everyday_feature_settings_default_off_for_old_configs() {
+    let config = toml::from_str::<Config>("schema_version = 3\n").expect("old config parses");
+    validate(&config).expect("old config validates");
+    assert_eq!(config.tabs.presentation, TabsPresentation::Internal);
+    assert_eq!(config.performance.hot_tab, HotTabPolicy::Off);
+    assert_eq!(config.passkeys.phone, PhonePasskeyPolicy::Off);
+    assert_eq!(config.hyprland.page_grouping, PageGroupingPolicy::Off);
+}
+
+#[test]
+fn everyday_feature_settings_reject_invalid_grammar_and_site_overrides() {
+    for source in [
+        "schema_version=3\n[tabs]\npresentation='external'\n",
+        "schema_version=3\n[performance]\nhot_tab='sometimes'\n",
+        "schema_version=3\n[passkeys]\nphone='auto'\n",
+        "schema_version=3\n[hyprland]\npage_grouping='on'\n",
+        "schema_version=3\n[performance]\nhot_tab=true\n",
+        "schema_version=3\n[passkeys]\nphone=1\n",
+        "schema_version=3\n[performance]\nhelper='/tmp/helper'\n",
+        "schema_version=3\n[passkeys]\norigin='https://example.test'\n",
+    ] {
+        assert!(
+            toml::from_str::<Config>(source).is_err(),
+            "accepted {source:?}"
+        );
+    }
+
+    let mut rule = SiteRule {
+        id: "feature-override".into(),
+        pattern: "https://example.test/*".into(),
+        priority: 0,
+        set: BTreeMap::new(),
+    };
+    for (key, value) in [
+        ("tabs.presentation", toml::Value::String("windows".into())),
+        ("performance.hot_tab", toml::Value::String("on".into())),
+        ("passkeys.phone", toml::Value::String("on".into())),
+        ("hyprland.page_grouping", toml::Value::String("auto".into())),
+    ] {
+        rule.set.clear();
+        rule.set.insert(key.into(), value);
+        assert!(
+            validate_site_rule(&rule).is_err(),
+            "accepted site override {key}"
+        );
+    }
+}
+
+#[test]
+fn everyday_feature_settings_round_trip_without_losing_existing_fields() {
+    for presentation in [TabsPresentation::Internal, TabsPresentation::Windows] {
+        for hot_tab in [HotTabPolicy::Off, HotTabPolicy::Auto, HotTabPolicy::On] {
+            for phone in [PhonePasskeyPolicy::Off, PhonePasskeyPolicy::On] {
+                for page_grouping in [PageGroupingPolicy::Off, PageGroupingPolicy::Auto] {
+                    let mut config = Config::default();
+                    config.navigation.default_search = "g".into();
+                    config.tabs.presentation = presentation.clone();
+                    config.tabs.last_close = LastClose::Window;
+                    config.tabs.undo_limit = 17;
+                    config.performance.hot_tab = hot_tab.clone();
+                    config.passkeys.phone = phone.clone();
+                    config.hyprland.enabled = TriState::On;
+                    config.hyprland.workspace_routing = true;
+                    config.hyprland.page_grouping = page_grouping.clone();
+
+                    validate(&config).expect("supported choices validate");
+                    let encoded = toml::to_string(&config).expect("config serializes");
+                    let decoded =
+                        toml::from_str::<Config>(&encoded).expect("serialized config parses");
+                    assert_eq!(decoded, config);
+                    assert_eq!(decoded.navigation.default_search, "g");
+                    assert_eq!(decoded.tabs.last_close, LastClose::Window);
+                    assert_eq!(decoded.tabs.undo_limit, 17);
+                    assert_eq!(decoded.hyprland.enabled, TriState::On);
+                    assert!(decoded.hyprland.workspace_routing);
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn s18_opt_in_interaction_example_uses_only_supported_site_rule_settings() {
     let source = include_str!(
         "../../../docs/implementation/keyboard_interaction-v03/examples/new-settings.toml"

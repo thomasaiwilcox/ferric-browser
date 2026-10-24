@@ -4,6 +4,39 @@ use super::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum TabsPresentation {
+    #[default]
+    Internal,
+    Windows,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HotTabPolicy {
+    #[default]
+    Off,
+    Auto,
+    On,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PhonePasskeyPolicy {
+    #[default]
+    Off,
+    On,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PageGroupingPolicy {
+    #[default]
+    Off,
+    Auto,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ReducedMotion {
     #[default]
     System,
