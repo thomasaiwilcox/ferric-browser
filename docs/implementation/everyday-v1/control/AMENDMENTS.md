@@ -47,7 +47,7 @@
 
 ## A14 — F02 uses the registered application test harness
 
-- **Status:** pending independent plan review; F02 implementation and validation remain paused until this amendment is accepted.
+- **Status:** independently reviewed and accepted by `/root/a09_reviewer` on review attempt 1 at `2026-10-24T16:19:37Z`; source implementation/build validation remain paused until the single build slot is released.
 - **Trigger:** F02 attempt 1 uses the existing `tests/application/tst_application.cpp` and its registered `ApplicationTests` slots for T013–T015. The proposed `tests/everyday/tst_page_factory.cpp` is not needed; the added CTest registrations invoke the production `application_tests` target. The test source was missing from F02's edit allowlist, which otherwise prohibits the submitted test assertions.
 - **Change:** replace F02's unused proposed test source with `tests/application/tst_application.cpp` in `allowed_paths` and `read_anchors`; remove unused edit paths `FerricBrowserWindow.qml`, `FerricPageServices.qml`, and `build.rs`, retaining them as read-only anchors. Keep the primary shell, two extracted QML components, the existing application test source and everyday CMake registration as F02's five allowed product paths. Remove the unused `tst_page_factory.cpp` proposal from the source map, add the baseline/application-blob record for the application harness and retain the A13 `test-registration` lock.
 - **Dependency/lock effect:** no dependency graph change. F02 still depends only on accepted S01 and now has five allowed product paths, below the eight-file cap. Existing `page-factory`, `primary-shell`, `secondary-shell`, `build-registration` and `test-registration` locks remain.
