@@ -153,8 +153,8 @@
     }
   ],
   "planned_path_inventory": {
-    "unique_paths": 187,
-    "existing_product_paths": 67,
+    "unique_paths": 189,
+    "existing_product_paths": 69,
     "execution_pack_artifacts": 2,
     "planned_execution_outputs": 8,
     "proposed_product_deliverables": 110,
@@ -1002,6 +1002,36 @@
           "read_anchor"
         ],
         "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "b4af99d9b20f2820a26879aaffd97bce1fdf3d95",
+        "integration_head_blob": "b4af99d9b20f2820a26879aaffd97bce1fdf3d95",
+        "working_tree_file_present": true,
+        "slices": [
+          "W01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_ipc_runtime_dispatch.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "070d2eef93efd44ff1638a5cfc3feb9627a87477",
+        "integration_head_blob": "070d2eef93efd44ff1638a5cfc3feb9627a87477",
+        "working_tree_file_present": true,
+        "slices": [
+          "W01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
       },
       {
         "path": "crates/ferric-browser-engine-qt/src/browser_ui_persistence.rs",

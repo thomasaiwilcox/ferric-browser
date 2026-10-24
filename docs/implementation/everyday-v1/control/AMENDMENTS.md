@@ -61,3 +61,13 @@
 - **Change:** update only `slices/W01.md` and `SLICES.md` to say `F01b, S00`. Leave the existing plan unchanged as the authoritative dependency record.
 - **Dependency/lock effect:** no graph or lock change. W01 remains dependent on the already accepted F01b and S00 slices; F01b itself depends on F01 in the plan.
 - **Test effect:** no product code, tests, or acceptance thresholds change. The amendment only makes the human-readable W01 prerequisite text match the scheduler.
+
+
+## A16 — Include W01's typed open-target dispatch seams
+
+- **Status:** pending independent review; W01 remains paused until the decision is recorded.
+- **Trigger:** W01's required routing behavior cannot reach the existing tab/window behavior through its original edit boundary. `browser_ui_ipc.rs::execute_adapter_ipc_command` matches `IpcOpenTarget` and sends tab requests to `dispatch_new_tab_open`; `browser_ui_ipc_runtime_dispatch.rs::dispatch_new_tab_open` and `dispatch_tab_open_ipc_command` create the core dispatch and captured navigation effect. Neither file was in W01's original allowlist.
+- **Change:** add those two dispatch files to W01's exact edit boundary and source map. Remove `open_policy.rs` from W01's edit boundary while keeping it as a read-only anchor: it parses the typed route, while the behavior under change occurs downstream. `open_policy.rs` remains in W07's existing allowlist. W01 now has exactly eight allowed product paths; its eight-file cap remains unchanged. Refresh `CHECKSUMS.sha256`, including four stale entries found for `SLICES.md`, `control/state.initial.json`, `control/test_matrix.json`, and `slices/F01.md`.
+- **Evidence:** at the A15 integration head, `browser_ui_ipc.rs:653-757` handles `tab-open`, context/profile routing, explicit window targets, and tab targets; `browser_ui_ipc_runtime_dispatch.rs:188-251` converts tab targets into typed core navigation dispatch and captures the resulting `Target`.
+- **Dependency/lock effect:** no graph, dependency, or lock changes. W01 still depends on accepted F01b and S00 and retains `open-policy`, `application-interface`, and `command-dispatch` locks. No other slice currently lists either new dispatch file as an edit path.
+- **Test effect:** T103-T105, their expected behaviors, the three-attempt limit, and all executable evidence requirements remain unchanged. This amendment only makes the existing route decision and target-preservation behavior editable within W01's unchanged eight-file cap; it does not relax test registration, assertions, security behavior, defaults, or evidence thresholds.
