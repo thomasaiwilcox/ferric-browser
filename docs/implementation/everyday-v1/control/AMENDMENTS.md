@@ -35,3 +35,11 @@
 - **Change:** split F01 into core config/atomic apply (four product paths plus generated `docs/user/configuration.md`), F01b typed UI projection (six product paths), and F01c disable-semantics verification (two registered test paths). Keep the eight-product-file cap for each implementation slice. Add both adapter paths to the execution source map. Move T011 to F01b and T012 to F01c without changing either expected behavior.
 - **Dependency effect:** F01b depends on F01; F01c waits for F01b, H01, P12 and S01. H01, W01 and P03 depend on F01b so consumers cannot use the new settings before requested/effective state reaches the UI.
 - **Test effect:** T010 remains in F01; T011 is tested in F01b; T012 remains intact and is exercised across the H01 hot-preparation and P12 credential lifecycle tests. No positive or disable assertion is waived.
+
+## A13 — F02 production-backed page-factory test registration
+
+- **Status:** independently reviewed and accepted by `/root/a09_reviewer` on review attempt 2 before F02 implementation begins.
+- **Trigger:** F02 requires behavioral assertions in the new `tests/everyday/tst_page_factory.cpp`, but that file cannot execute unless it is added to the existing production `application_tests` target. `tests/everyday/CMakeLists.txt` is included after that target exists, but was absent from F02's original allowlist. The registered suite is necessary to verify T013–T015; leaving the test source unregistered would make the required application evidence impossible.
+- **Change:** add `crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt` as F02's eighth allowed product path and read anchor; add F02 to the existing source-map record; add the `test-registration` lock while retaining `build-registration`; keep test registration in the existing production-backed target.
+- **Dependency/lock effect:** no dependency graph change. F02 still depends only on accepted S01. The extra named lock and allowed path serialize F02 with W00 and all other users of the shared CMake registration file.
+- **Test effect:** T013–T015 and their expected behaviors are unchanged. The amendment only permits compiling/registering the F02 behavioral test file in the existing production application test binary; no test, security guard, default, or acceptance threshold is weakened. F02 remains within the eight-product-file cap.

@@ -318,7 +318,8 @@
         "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
         "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
         "crates/ferric-browser-engine-qt/build.rs",
-        "crates/ferric-browser-engine-qt/tests/everyday/tst_page_factory.cpp"
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_page_factory.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
       ],
       "steps": [
         "Locate current inline webViewComponent and all creation/transfer callers. Reuse an existing factory if upstream already extracted it.",
@@ -331,7 +332,8 @@
         "page-factory",
         "primary-shell",
         "secondary-shell",
-        "build-registration"
+        "build-registration",
+        "test-registration"
       ],
       "recipe": "application",
       "requirement_id": "EF-F02",
@@ -352,7 +354,8 @@
         "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
         "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
         "crates/ferric-browser-engine-qt/build.rs",
-        "crates/ferric-browser-engine-qt/tests/everyday/tst_page_factory.cpp"
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_page_factory.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
       ]
     },
     {
