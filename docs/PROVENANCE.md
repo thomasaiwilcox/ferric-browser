@@ -16,3 +16,10 @@ application license.
 current working identifiers, not a claim that the final project namespace,
 repository, or trademark has been cleared. Before public V1, maintainers must
 check name/namespace availability and record the owned identifiers.
+
+The separate `helpers/ferric-phone-auth` workspace pins
+[`linux-credentials/libwebauthn`](https://github.com/linux-credentials/libwebauthn/tree/9c0e5f78ac445d35dca05170efbb0afefc5a89ae)
+at `9c0e5f78ac445d35dca05170efbb0afefc5a89ae`. That upstream revision is
+LGPL-2.1-or-later and carries its license text as `COPYING`; static helper
+distribution must preserve the corresponding source and relinking obligations.
+The dependency is not part of Ferric's root Cargo workspace.

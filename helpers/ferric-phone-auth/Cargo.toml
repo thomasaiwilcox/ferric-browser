@@ -1,0 +1,16 @@
+[package]
+name = "ferric-phone-auth"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "GPL-3.0-or-later"
+publish = false
+description = "Private helper protocol placeholder; phone authentication is not implemented"
+
+[workspace]
+members = ["."]
+resolver = "2"
+
+[dependencies]
+libwebauthn = { git = "https://github.com/linux-credentials/libwebauthn", rev = "9c0e5f78ac445d35dca05170efbb0afefc5a89ae", default-features = false }
+serde_json = "=1.0.149"
