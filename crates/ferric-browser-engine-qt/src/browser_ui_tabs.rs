@@ -528,7 +528,8 @@ impl qobject::BrowserUi {
     ) -> Result<Value, String> {
         if command.name == "tab-pin" {
             let event = {
-                let rust = self.as_ref().rust();
+                let binding = self.as_ref();
+                let rust = binding.rust();
                 let state = rust
                     .state
                     .as_ref()
