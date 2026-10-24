@@ -1884,7 +1884,7 @@
         "crates/ferric-browser-core/src/dispatcher.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_ipc_runtime_dispatch.rs",
-        "crates/ferric-browser-engine-qt/src/browser_ui_browsing_commands.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_context_navigation.rs",
         "crates/ferric-browser-engine-qt/src/effect_projection.rs",
         "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs"
       ],
@@ -1919,6 +1919,7 @@
         "crates/ferric-browser-engine-qt/src/open_policy.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_ipc_runtime_dispatch.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_context_navigation.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_sessions.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_browsing_commands.rs",
         "crates/ferric-browser-engine-qt/src/effect_projection.rs",

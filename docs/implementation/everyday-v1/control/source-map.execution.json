@@ -944,6 +944,7 @@
         "integration_head_blob": "0e0eaf85446d5901e7e6219799bad6fb09f80c84",
         "working_tree_file_present": true,
         "slices": [
+          "W01",
           "W11"
         ],
         "roles": [
