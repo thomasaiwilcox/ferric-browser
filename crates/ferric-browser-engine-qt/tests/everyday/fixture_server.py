@@ -5,7 +5,6 @@ import argparse
 import http.server
 import json
 import pathlib
-import socket
 import ssl
 import subprocess
 import tempfile
@@ -112,15 +111,20 @@ def check_discovery(build_dir, test_filter):
     matched = json.loads(filtered.stdout).get("tests", [])
     if not matched:
         raise SystemExit(f"CTest filter matched zero tests: {test_filter!r}")
-    print(f"CTest discovery found {len(tests)} tests; filter matched {len(matched)}; "
-          f"S01 inventory present: {', '.join(sorted(required))}")
+    inventory_names = sorted(names)
+    matched_names = sorted(entry.get("name", "") for entry in matched)
+    print(f"CTest discovery found {len(inventory_names)} tests; actual names: "
+          f"{json.dumps(inventory_names, separators=(',', ':'))}")
+    print(f"Filter {test_filter!r} matched {len(matched_names)} tests; actual names: "
+          f"{json.dumps(matched_names, separators=(',', ':'))}")
+    print(f"Required S01 inventory present: {', '.join(sorted(required))}")
 
 
 def run_filter(build_dir, test_filter):
     import subprocess
     if not test_filter or not test_filter.strip():
         raise SystemExit("empty CTest filter is not allowed")
-    subprocess.run(["ctest", "--test-dir", build_dir, "--output-on-failure",
+    subprocess.run(["ctest", "--test-dir", build_dir, "--verbose", "--output-on-failure",
                     "--no-tests=error", "-R", test_filter], check=True)
 
 
