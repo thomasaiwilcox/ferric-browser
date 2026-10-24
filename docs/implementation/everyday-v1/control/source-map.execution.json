@@ -153,8 +153,8 @@
     }
   ],
   "planned_path_inventory": {
-    "unique_paths": 185,
-    "existing_product_paths": 64,
+    "unique_paths": 187,
+    "existing_product_paths": 66,
     "execution_pack_artifacts": 2,
     "planned_execution_outputs": 8,
     "proposed_product_deliverables": 111,
@@ -895,7 +895,7 @@
         "integration_head_blob": "dc2775c3e4262fbe0255afd20e57948745c4e0ce",
         "working_tree_file_present": true,
         "slices": [
-          "F01",
+          "F01b",
           "F03",
           "H01",
           "P03"
@@ -915,6 +915,21 @@
         "slices": [
           "W01",
           "W03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_configuration.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "f5d743d9fa6df0bada6154cf48e177f75524f302",
+        "integration_head_blob": "f5d743d9fa6df0bada6154cf48e177f75524f302",
+        "working_tree_file_present": true,
+        "slices": [
+          "F01b"
         ],
         "roles": [
           "allowed",
@@ -956,6 +971,21 @@
           "read_anchor"
         ],
         "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_defaults.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "e9c38a320e58163fb71e9afc1fc7efe535b95c1c",
+        "integration_head_blob": "e9c38a320e58163fb71e9afc1fc7efe535b95c1c",
+        "working_tree_file_present": true,
+        "slices": [
+          "F01b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
       },
       {
         "path": "crates/ferric-browser-engine-qt/src/browser_ui_hot_pages.rs",
@@ -1027,7 +1057,7 @@
         "integration_head_blob": "00ba388382c713015e4b2176216eaf5a94c79d60",
         "working_tree_file_present": true,
         "slices": [
-          "F01"
+          "F01b"
         ],
         "roles": [
           "allowed",
@@ -1165,7 +1195,7 @@
         "integration_head_blob": "bc5485d0ed7bcf513e31b37107a6a0cbe44974cf",
         "working_tree_file_present": true,
         "slices": [
-          "F01"
+          "F01b"
         ],
         "roles": [
           "allowed",
@@ -1265,7 +1295,7 @@
         "integration_head_blob": "26c9cbf75357482b3e59d890a5b1b71daeb100a3",
         "working_tree_file_present": true,
         "slices": [
-          "F01",
+          "F01b",
           "F03",
           "H00",
           "H01",
@@ -1870,7 +1900,8 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "P12"
+          "P12",
+          "F01c"
         ],
         "roles": [
           "allowed",
@@ -2110,7 +2141,8 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "H01"
+          "H01",
+          "F01c"
         ],
         "roles": [
           "allowed",
@@ -2655,7 +2687,8 @@
         "integration_head_blob": "ee10ce34de5432d8b08b006d053f9ec2335c0af4",
         "working_tree_file_present": true,
         "slices": [
-          "X03"
+          "X03",
+          "F01"
         ],
         "roles": [
           "allowed",

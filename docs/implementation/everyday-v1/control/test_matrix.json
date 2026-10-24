@@ -103,23 +103,23 @@
     },
     {
       "id": "T011",
-      "slice": "F01",
+      "slice": "F01b",
       "requirement": "EF-F01",
       "level": "application",
       "name": "Pending restart clarity",
       "expected": "Changing presentation updates pending status but leaves current host routing intact until controlled restart.",
       "result": "not_run",
-      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+      "binding": "Bind to the typed application/UI projection and a controlled pending-restart assertion."
     },
     {
       "id": "T012",
-      "slice": "F01",
+      "slice": "F01c",
       "requirement": "EF-F01",
       "level": "application",
       "name": "Disable semantics",
       "expected": "Disabling prewarm/auth invalidates corresponding work without changing unrelated browsing or native auth.",
       "result": "not_run",
-      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+      "binding": "Requires both hot-preparation invalidation and owned phone-request cancellation after H01/P12 are accepted; see F01c."
     },
     {
       "id": "T013",

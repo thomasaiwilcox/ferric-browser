@@ -26,3 +26,12 @@
 - **Change:** add `diagnostics_overview.rs` to F00 `allowed_paths`, `read_anchors`, the slice's exact edit list, and the execution source map. F00 now allows 7 product files, below the 8-file limit.
 - **Dependency/lock effect:** no graph or lock changes. F00 retains `config-model`; later X03 access remains serial under its task dependency/locks.
 - **Test effect:** T007–T009 and the focused config crate gate are unchanged. The added path updates the existing diagnostic config literal to compile with the new typed field; no requirement or security behavior is relaxed.
+
+
+## A12 — Split F01 at existing UI adapter boundaries
+
+- **Status:** independently reviewed and accepted by `/root/a09_reviewer` on review attempt 2; F01 core implementation may proceed under the amended split.
+- **Trigger:** F01 source tracing found two existing UI publication call sites outside the original eight-path product allowlist: `browser_ui_defaults.rs` initializes `FeaturePreferences`, and `browser_ui_configuration.rs` publishes the projection. The current `FeaturePreferences`, `bridge.rs`, and `lib.rs` fields cannot reach QML without both call sites. F01 T012 also depends on hot-page and phone-request consumers supplied by later H01/P12 work.
+- **Change:** split F01 into core config/atomic apply (four product paths plus generated `docs/user/configuration.md`), F01b typed UI projection (six product paths), and F01c disable-semantics verification (two registered test paths). Keep the eight-product-file cap for each implementation slice. Add both adapter paths to the execution source map. Move T011 to F01b and T012 to F01c without changing either expected behavior.
+- **Dependency effect:** F01b depends on F01; F01c waits for F01b, H01, P12 and S01. H01, W01 and P03 depend on F01b so consumers cannot use the new settings before requested/effective state reaches the UI.
+- **Test effect:** T010 remains in F01; T011 is tested in F01b; T012 remains intact and is exercised across the H01 hot-preparation and P12 credential lifecycle tests. No positive or disable assertion is waived.

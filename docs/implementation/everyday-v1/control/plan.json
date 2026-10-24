@@ -177,31 +177,25 @@
         "crates/ferric-browser-config/src/runtime_config.rs",
         "crates/ferric-browser-application/src/configuration.rs",
         "crates/ferric-browser-application/src/configuration_write.rs",
-        "crates/ferric-browser-engine-qt/src/config_projection.rs",
-        "crates/ferric-browser-engine-qt/src/feature_preferences.rs",
-        "crates/ferric-browser-engine-qt/src/bridge.rs",
-        "crates/ferric-browser-engine-qt/src/lib.rs"
+        "docs/user/configuration.md"
       ],
       "steps": [
-        "Register exact scopes/apply boundaries and generated help metadata through current registry owners.",
-        "Presentation is restart-scoped. Hot eviction is live; phone installation changes at the next eligible document with disable canceling owned phone requests.",
-        "Expose requested versus effective state using existing typed presentation mechanisms. Preserve atomic persistence and settings-draft/error UX.",
-        "No actual capability is marked available merely because the setting is on; consumers added later supply proof/runtime reasons."
+        "Register exact scopes and apply boundaries for the typed settings, with generated help metadata in the existing configuration reference.",
+        "Apply combined configuration updates atomically; invalid settings must not partially persist or publish.",
+        "Keep tabs.presentation startup-scoped, hot_tab and page_grouping live-scoped, and passkeys.phone next-document-scoped in the persisted model.",
+        "Do not mark a capability available solely because its requested setting is enabled; later consumers supply runtime proof and reasons."
       ],
       "kind": "implementation",
       "locks": [
         "config-registry",
-        "bridge",
         "application-config"
       ],
       "recipe": "config",
       "requirement_id": "EF-F01",
       "test_ids": [
-        "T010",
-        "T011",
-        "T012"
+        "T010"
       ],
-      "max_changed_product_files": 8,
+      "max_changed_product_files": 4,
       "max_attempts": 3,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
@@ -211,10 +205,99 @@
         "crates/ferric-browser-config/src/runtime_config.rs",
         "crates/ferric-browser-application/src/configuration.rs",
         "crates/ferric-browser-application/src/configuration_write.rs",
+        "docs/user/configuration.md"
+      ]
+    },
+    {
+      "id": "F01b",
+      "title": "Project requested and effective feature settings into browser UI",
+      "lane": "core",
+      "depends_on": [
+        "F01"
+      ],
+      "contracts": [
+        "C01",
+        "C13"
+      ],
+      "allowed_paths": [
         "crates/ferric-browser-engine-qt/src/config_projection.rs",
         "crates/ferric-browser-engine-qt/src/feature_preferences.rs",
         "crates/ferric-browser-engine-qt/src/bridge.rs",
-        "crates/ferric-browser-engine-qt/src/lib.rs"
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_defaults.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_configuration.rs"
+      ],
+      "steps": [
+        "Project requested and effective settings through the existing typed FeaturePreferences and BrowserUi publication path.",
+        "Keep presentation changes pending until controlled restart while current host routing remains unchanged.",
+        "Show effective availability and reason from consumers; settings alone never imply capability proof.",
+        "Do not implement hot-page or credential consumers here; their disable invalidation is verified after those consumers land."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "bridge",
+        "application-config"
+      ],
+      "recipe": "config",
+      "requirement_id": "EF-F01",
+      "test_ids": [
+        "T011"
+      ],
+      "max_changed_product_files": 6,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "All listed adapter paths exist in the reconciled source map; do not add another product path without a coordinator scope amendment.",
+      "slice_file": "slices/F01b.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/config_projection.rs",
+        "crates/ferric-browser-engine-qt/src/feature_preferences.rs",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_defaults.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_configuration.rs"
+      ]
+    },
+    {
+      "id": "F01c",
+      "title": "Verify setting disable semantics across hot-page and credential consumers",
+      "lane": "qualification",
+      "depends_on": [
+        "F01b",
+        "H01",
+        "P12",
+        "S01"
+      ],
+      "contracts": [
+        "C01",
+        "C13"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_prepare.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_lifecycle.cpp"
+      ],
+      "steps": [
+        "Add explicit hot-tab disable assertions to the accepted H01 test, proving queued preparation is invalidated without changing live browsing.",
+        "Add explicit phone-passkey disable assertions to the accepted P12 test, proving owned phone requests are cancelled while native authentication and unrelated browsing remain intact.",
+        "Run the production-backed application acceptance tests on the exact integration source; do not substitute source checks or mocks for either positive transition."
+      ],
+      "kind": "verification",
+      "locks": [
+        "test-registration",
+        "native-build"
+      ],
+      "recipe": "baseline",
+      "requirement_id": "EF-F01",
+      "test_ids": [
+        "T012"
+      ],
+      "max_changed_product_files": 2,
+      "max_attempts": 2,
+      "worker_may_delegate": false,
+      "new_paths_notice": "Both test paths are created by prerequisite slices H01 and P12; edit only these two existing registered tests.",
+      "slice_file": "slices/F01c.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_prepare.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_lifecycle.cpp"
       ]
     },
     {
@@ -486,7 +569,7 @@
       "depends_on": [
         "F03",
         "H00",
-        "F01"
+        "F01b"
       ],
       "contracts": [
         "C02",
@@ -949,7 +1032,8 @@
       "depends_on": [
         "P00",
         "P02",
-        "F03"
+        "F03",
+        "F01b"
       ],
       "contracts": [
         "C04",
@@ -1786,7 +1870,7 @@
       "title": "Implement presentation/open-target policy at Rust boundary",
       "lane": "core",
       "depends_on": [
-        "F01",
+        "F01b",
         "S00"
       ],
       "contracts": [
