@@ -1023,7 +1023,7 @@
     },
     {
       "id": "T103",
-      "slice": "W01",
+      "slice": "W01a",
       "requirement": "EF-W01",
       "level": "unit",
       "name": "Open intent mapping",
@@ -1033,7 +1033,7 @@
     },
     {
       "id": "T104",
-      "slice": "W01",
+      "slice": "W01b",
       "requirement": "EF-W01",
       "level": "unit",
       "name": "Privacy/context routing",
@@ -1043,7 +1043,7 @@
     },
     {
       "id": "T105",
-      "slice": "W01",
+      "slice": "W01c",
       "requirement": "EF-W01",
       "level": "unit",
       "name": "Destructive scope",

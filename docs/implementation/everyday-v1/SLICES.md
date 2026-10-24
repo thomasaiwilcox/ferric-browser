@@ -1,6 +1,6 @@
 # Dependency-ordered work inventory
 
-55 bounded work orders and 165 acceptance cases. All are unstarted.
+60 execution-plan entries (59 work slices plus one coordinator aggregate) and 165 acceptance cases. All are unstarted.
 
 | ID | Outcome | Depends on |
 |---|---|---|
@@ -38,7 +38,10 @@
 | P16 | Independent credential security and conformance review | P15, P14 |
 | P17 | Physical iPhone, Android and native-key qualification | P16, P13 |
 | W00 | Prove exact native-host correlation and grouping primitives | S00, S01 |
-| W01 | Implement presentation/open-target policy at Rust boundary | F01b, S00 |
+| W01 | Aggregate presentation/open-target policy children | W01a, W01b, W01c |
+| W01a | Map explicit page-open targets to typed presentation intents | F01b, S00 |
+| W01b | Preserve profile, privacy and captured targets through context confirmation | W01a |
+| W01c | Keep destructive command effects within their explicit scopes | F01b, S00 |
 | W02 | Create single-page native hosts using existing workspaces | W01, F02, F04, F05 |
 | W03 | Implement tab traversal, close, pin and undo in window mode | W02 |
 | W04 | Add bounded compositor observation and capability layer | W00 |

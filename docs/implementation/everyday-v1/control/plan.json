@@ -1266,7 +1266,7 @@
         "helpers/ferric-phone-auth/tests/hybrid_contract.rs"
       ],
       "steps": [
-        "Use the pinned library’s actual QR-initiated hybrid API for both create and get; do not implement protocol crypto.",
+        "Use the pinned library\u2019s actual QR-initiated hybrid API for both create and get; do not implement protocol crypto.",
         "Report bounded QR and closed progress states; use library transient-device mode, not remembered-pairing persistence.",
         "Convert actual registration/assertion responses through library serialization and preserve supported extensions.",
         "Do not automatically replay an uncertain create. Document retry handling only for explicitly safe device responses.",
@@ -1867,21 +1867,118 @@
     },
     {
       "id": "W01",
-      "title": "Implement presentation/open-target policy at Rust boundary",
+      "title": "Aggregate the typed presentation and open-target policy outcome",
       "lane": "core",
       "depends_on": [
-        "F01b",
-        "S00"
+        "W01a",
+        "W01b",
+        "W01c"
       ],
       "contracts": [
         "C01",
         "C09",
         "C13"
       ],
+      "allowed_paths": [],
+      "steps": [
+        "Coordinator-only aggregate. Do not dispatch this parent to an implementation worker.",
+        "Keep the existing three-attempt failure, blocker and final evidence intact while any child remains unaccepted.",
+        "After all children are independently accepted, the coordinator submits a no-code aggregate record that references every child evidence record and reviewer decision; do not rerun or invent acceptance cases.",
+        "Only aggregate acceptance of all three original test IDs permits W02 to proceed."
+      ],
+      "kind": "aggregate",
+      "locks": [],
+      "recipe": "review",
+      "requirement_id": "EF-W01",
+      "test_ids": [],
+      "aggregate_test_ids": [
+        "T103",
+        "T104",
+        "T105"
+      ],
+      "aggregate_of": [
+        "W01a",
+        "W01b",
+        "W01c"
+      ],
+      "max_changed_product_files": 0,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W01.md",
+      "read_anchors": []
+    },
+    {
+      "lane": "core",
+      "contracts": [
+        "C01",
+        "C09",
+        "C13"
+      ],
+      "kind": "implementation",
+      "recipe": "application-rust",
+      "requirement_id": "EF-W01",
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "parent_id": "W01",
+      "id": "W01a",
+      "title": "Map explicit page-open targets to typed presentation intents",
+      "depends_on": [
+        "F01b",
+        "S00"
+      ],
       "allowed_paths": [
         "crates/ferric-browser-application/src/page_presentation.rs",
         "crates/ferric-browser-application/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_ipc_runtime_dispatch.rs",
+        "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs"
+      ],
+      "steps": [
+        "Add the typed presentation selection and pure page-open planner while preserving current TabId, window and runtime ownership.",
+        "Map Current, Tab, BackgroundTab, Window and PrivateWindow exactly once; retain existing internal-mode effects and correct foreground intent.",
+        "Keep the policy at the application boundary and wire only the production adapter needed to exercise T103.",
+        "Do not implement queued context confirmation or destructive command scope in this child."
+      ],
+      "locks": [
+        "open-policy",
+        "application-interface",
+        "command-dispatch"
+      ],
+      "test_ids": [
+        "T103"
+      ],
+      "max_changed_product_files": 4,
+      "slice_file": "slices/W01a.md",
+      "read_anchors": [
+        "crates/ferric-browser-application/src/page_presentation.rs",
+        "crates/ferric-browser-application/src/lib.rs",
         "crates/ferric-browser-core/src/dispatcher.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_ipc_runtime_dispatch.rs",
+        "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs",
+        "crates/ferric-browser-engine-qt/src/open_policy.rs"
+      ]
+    },
+    {
+      "lane": "core",
+      "contracts": [
+        "C01",
+        "C09",
+        "C13"
+      ],
+      "kind": "implementation",
+      "recipe": "application-rust",
+      "requirement_id": "EF-W01",
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "parent_id": "W01",
+      "id": "W01b",
+      "title": "Preserve profile, privacy and captured targets through context confirmation",
+      "depends_on": [
+        "W01a"
+      ],
+      "allowed_paths": [
         "crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_ipc_runtime_dispatch.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_context_navigation.rs",
@@ -1889,41 +1986,73 @@
         "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs"
       ],
       "steps": [
-        "Add typed presentation selection and page-host creation intent preserving current TabId/window/runtime ownership.",
-        "Route ordinary tab/current/tab-bg/window intents, including opens queued for automatic context confirmation, through one decision after profile/context destination resolution; retain and revalidate the full captured page Target and foreground choice.",
-        "Define exact destructive/traversal scopes; do not rewrite global default commands or user custom bindings.",
-        "Preserve typed captured EngineRequests targets and maintain internal mode as unchanged control."
+        "Route queued context opens through the typed planner only after profile/context destination resolution.",
+        "Retain the full captured Target and requested foreground choice through confirmation; revalidate TabId, generation, DocumentId and window ownership before accept or dismiss.",
+        "Keep same-named contexts in distinct profiles and privacy scopes; reject unsupported nonforeground host intents before context mutation or action scheduling.",
+        "Do not alter destructive command scope in this child."
       ],
-      "kind": "implementation",
       "locks": [
         "open-policy",
         "application-interface",
         "command-dispatch"
       ],
-      "recipe": "application-rust",
-      "requirement_id": "EF-W01",
       "test_ids": [
-        "T103",
-        "T104",
-        "T105"
+        "T104"
       ],
-      "max_changed_product_files": 8,
-      "max_attempts": 3,
-      "worker_may_delegate": false,
-      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
-      "slice_file": "slices/W01.md",
+      "max_changed_product_files": 5,
+      "slice_file": "slices/W01b.md",
       "read_anchors": [
         "crates/ferric-browser-application/src/page_presentation.rs",
-        "crates/ferric-browser-application/src/lib.rs",
-        "crates/ferric-browser-core/src/dispatcher.rs",
-        "crates/ferric-browser-engine-qt/src/open_policy.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_ipc_runtime_dispatch.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_context_navigation.rs",
-        "crates/ferric-browser-engine-qt/src/browser_ui_sessions.rs",
-        "crates/ferric-browser-engine-qt/src/browser_ui_browsing_commands.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_state.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_sessions.rs",
+        "crates/ferric-browser-engine-qt/src/open_policy.rs",
         "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs"
+      ]
+    },
+    {
+      "lane": "core",
+      "contracts": [
+        "C01",
+        "C09",
+        "C13"
+      ],
+      "kind": "implementation",
+      "recipe": "application-rust",
+      "requirement_id": "EF-W01",
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "parent_id": "W01",
+      "id": "W01c",
+      "title": "Keep destructive command effects within their explicit scopes",
+      "depends_on": [
+        "F01b",
+        "S00"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-core/src/dispatcher.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tabs.rs"
+      ],
+      "steps": [
+        "Exercise tab-close, pin and quit behavior with distinct tabs and windows.",
+        "Keep tab operations targeted to their explicit tab/window scope and keep global shutdown explicit.",
+        "Do not widen defaults, custom bindings or group-wide behavior."
+      ],
+      "locks": [
+        "command-dispatch"
+      ],
+      "test_ids": [
+        "T105"
+      ],
+      "max_changed_product_files": 2,
+      "slice_file": "slices/W01c.md",
+      "read_anchors": [
+        "crates/ferric-browser-core/src/dispatcher.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tabs.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_browsing_commands.rs"
       ]
     },
     {
@@ -2618,7 +2747,7 @@
         "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
       ],
       "steps": [
-        "Cover mode × hot on/off × phone on/off with actual production owners and realistic asynchronous scheduling.",
+        "Cover mode \u00d7 hot on/off \u00d7 phone on/off with actual production owners and realistic asynchronous scheduling.",
         "Run credential request from a freshly adopted page, concurrent windows, renderer loss, config/profile changes and shutdown.",
         "Combine popup opening, background grouping and transfer-reserve allocation without confusing the three kinds of prepared resources.",
         "Keep privacy, history, native search, focus and accepted storage-work assertions visible across the matrix."
@@ -2870,7 +2999,7 @@
       "steps": [
         "Follow RESOURCE_POLICY dry run; retain source/commits/evidence and delete only inactive explicitly owned build products.",
         "Rebuild from accepted source/lockfiles with correct native dependencies and no stale static library.",
-        "Prove no dependence on another worktree build, user’s caches/profile or hidden fixture state.",
+        "Prove no dependence on another worktree build, user\u2019s caches/profile or hidden fixture state.",
         "Record storage/inode/Btrfs metadata observations where available; never run balance/delete snapshots automatically."
       ],
       "kind": "verification",

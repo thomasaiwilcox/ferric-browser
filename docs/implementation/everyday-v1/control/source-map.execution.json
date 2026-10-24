@@ -286,7 +286,7 @@
         "working_tree_file_present": true,
         "slices": [
           "P02",
-          "W01"
+          "W01a"
         ],
         "roles": [
           "allowed",
@@ -301,7 +301,8 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "W01"
+          "W01a",
+          "W01b"
         ],
         "roles": [
           "allowed",
@@ -450,7 +451,8 @@
         "integration_head_blob": "4af14655c48d8b3ccc752cc1b54585f81db8feeb",
         "working_tree_file_present": true,
         "slices": [
-          "W01"
+          "W01a",
+          "W01c"
         ],
         "roles": [
           "allowed",
@@ -913,11 +915,10 @@
         "integration_head_blob": "ed4b2937a809372b797cfe1cbec84aa151cb63f7",
         "working_tree_file_present": true,
         "slices": [
-          "W01",
-          "W03"
+          "W03",
+          "W01c"
         ],
         "roles": [
-          "allowed",
           "read_anchor"
         ],
         "history_at_product_baseline": true
@@ -944,8 +945,8 @@
         "integration_head_blob": "0e0eaf85446d5901e7e6219799bad6fb09f80c84",
         "working_tree_file_present": true,
         "slices": [
-          "W01",
-          "W11"
+          "W11",
+          "W01b"
         ],
         "roles": [
           "allowed",
@@ -1011,7 +1012,7 @@
         "integration_head_blob": "b4af99d9b20f2820a26879aaffd97bce1fdf3d95",
         "working_tree_file_present": true,
         "slices": [
-          "W01"
+          "W01b"
         ],
         "roles": [
           "allowed",
@@ -1026,7 +1027,8 @@
         "integration_head_blob": "070d2eef93efd44ff1638a5cfc3feb9627a87477",
         "working_tree_file_present": true,
         "slices": [
-          "W01"
+          "W01a",
+          "W01b"
         ],
         "roles": [
           "allowed",
@@ -1056,12 +1058,11 @@
         "integration_head_blob": "345c42663adda0f521e5f76752c454447ff8b0e5",
         "working_tree_file_present": true,
         "slices": [
-          "W01",
           "W09",
-          "W10"
+          "W10",
+          "W01b"
         ],
         "roles": [
-          "allowed",
           "read_anchor"
         ],
         "history_at_product_baseline": true
@@ -1073,7 +1074,7 @@
         "integration_head_blob": "bb71b29ab877e658ad570b6349664de96b7bc895",
         "working_tree_file_present": true,
         "slices": [
-          "W01"
+          "W01b"
         ],
         "roles": [
           "allowed",
@@ -1089,7 +1090,8 @@
         "working_tree_file_present": true,
         "slices": [
           "W03",
-          "W08"
+          "W08",
+          "W01c"
         ],
         "roles": [
           "allowed",
@@ -1365,11 +1367,11 @@
         "integration_head_blob": "33c003853d4514d9cdd5e42d647667d83c15ea72",
         "working_tree_file_present": true,
         "slices": [
-          "W01",
-          "W07"
+          "W07",
+          "W01b",
+          "W01a"
         ],
         "roles": [
-          "allowed",
           "read_anchor"
         ],
         "history_at_product_baseline": true
@@ -1517,7 +1519,8 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "W01"
+          "W01a",
+          "W01b"
         ],
         "roles": [
           "allowed",
