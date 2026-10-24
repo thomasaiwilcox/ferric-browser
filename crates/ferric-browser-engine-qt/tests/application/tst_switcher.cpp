@@ -1961,8 +1961,19 @@ class SwitcherTests final : public QObject {
         auto open = visual(row, "downloadOpenButton");
         QVERIFY(open && open->isEnabled());
         QTRY_COMPARE(host->activeFocusItem(), open);
-        QVERIFY(open->mapToItem(list, QPointF()).y() >= -1);
-        QVERIFY(open->mapToItem(list, QPointF(0, open->height())).y() <= list->height() + 1);
+        // Focus changes synchronously, but the manager reveals it on a timer
+        // while newly materialized rows finish layout. Observe a rendered
+        // frame and wait for the actual bounds rather than sampling keyClick's
+        // intermediate geometry.
+        QSignalSpy actionFrame(host, &QQuickWindow::frameSwapped);
+        host->update();
+        QTRY_VERIFY(!actionFrame.isEmpty());
+        QTRY_VERIFY2(open->mapToItem(list, QPointF()).y() >= -1
+            && open->mapToItem(list, QPointF(0, open->height())).y() <= list->height() + 1,
+            qPrintable(QString::fromUtf8(listGeometry(list)) + QString(" actionTop=%1 actionBottom=%2")
+                .arg(open->mapToItem(list, QPointF()).y())
+                .arg(open->mapToItem(list, QPointF(0, open->height())).y())));
+        QCOMPARE(host->activeFocusItem(), open);
         key(host, Qt::Key_Backtab, Qt::ShiftModifier);
         QTRY_VERIFY(list->hasActiveFocus());
         key(host, Qt::Key_Return);
