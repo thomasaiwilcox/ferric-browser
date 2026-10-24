@@ -219,16 +219,8 @@ impl qobject::BrowserUi {
         self.as_ref()
             .validate_ipc_route_public(route)
             .map_err(|error| error.to_string())?;
-        let mut arguments = Vec::new();
-        if !foreground {
-            arguments.push("--background".into());
-        }
-        arguments.extend(["--".into(), input.to_owned()]);
         self.dispatch_tab_open_ipc_command(
-            ParsedCommand {
-                name: "tab-open".into(),
-                arguments,
-            },
+            planned_tab_open_command(input, foreground),
             route,
             operation_id,
         )
@@ -282,6 +274,18 @@ impl qobject::BrowserUi {
             "status": "accepted",
             "tab_id": tab_id
         }))
+    }
+}
+
+pub(super) fn planned_tab_open_command(input: &str, foreground: bool) -> ParsedCommand {
+    let mut arguments = Vec::new();
+    if !foreground {
+        arguments.push("--background".into());
+    }
+    arguments.extend(["--".into(), input.to_owned()]);
+    ParsedCommand {
+        name: "tab-open".into(),
+        arguments,
     }
 }
 

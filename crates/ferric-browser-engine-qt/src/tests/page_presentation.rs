@@ -56,4 +56,20 @@ fn t103_open_targets_map_once_and_keep_background_inactive() {
         PageOpenIntent::NewPage { foreground: false },
         "background intent must never be promoted to foreground"
     );
+
+    let PageOpenIntent::NewPage { foreground } =
+        page_open_intent(&TabsPresentation::Windows, IpcOpenTarget::BackgroundTab)
+    else {
+        panic!("background target must reach the new-page dispatcher");
+    };
+    let dispatched = super::planned_tab_open_command("https://example.test/", foreground);
+    assert_eq!(dispatched.name, "tab-open");
+    assert_eq!(
+        dispatched.arguments,
+        vec![
+            "--background".to_owned(),
+            "--".to_owned(),
+            "https://example.test/".to_owned(),
+        ]
+    );
 }
