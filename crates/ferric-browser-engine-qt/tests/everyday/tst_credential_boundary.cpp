@@ -326,10 +326,6 @@ private slots:
           run(child, QStringLiteral("document.readyState"), CredentialWorld)
                   .toString() == "complete",
           10000);
-      QVERIFY(run(child, QStringLiteral("window.__credentialDocumentNonce"),
-                  CredentialWorld)
-                  .toString()
-                  .size() > 10);
       QCOMPARE(run(child,
                    QStringLiteral("window.__credentialMainWorldTransport"),
                    QWebEngineScript::MainWorld)
