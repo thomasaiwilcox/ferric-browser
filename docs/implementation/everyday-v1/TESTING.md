@@ -47,16 +47,29 @@ Pure crate selection: `ferric-browser-core`, `ferric-browser-config`, `ferric-br
 The following paths/targets are **deliverables**, not preexisting commands at authoring. S01 creates their CMake registration before downstream tasks invoke them. Reuse the real release engine and shipped QML, current application/portal fixture utilities and the current compiled-resource manifest. Do not paste production implementations into a fake test browser.
 
 ```sh
+NATIVE="$RUN/builds/native-S01-a1"
+export CARGO_TARGET_DIR="$NATIVE/cargo-target"
 cargo build --release --locked -p ferric-browser -p ferric-browser-engine-qt
-cmake -S crates/ferric-browser-engine-qt/tests/everyday       -B "$RUN/builds/native-integration/everyday"       -DFERRIC_ENGINE_LIBRARY="$REPO/target/release/libferric_browser_engine_qt.a"
-cmake --build "$RUN/builds/native-integration/everyday" --parallel 2
-ctest --test-dir "$RUN/builds/native-integration/everyday" --show-only=json-v1
-ctest --test-dir "$RUN/builds/native-integration/everyday"       --output-on-failure --no-tests=error
+cmake -S "$REPO/crates/ferric-browser-engine-qt/tests/application" \
+  -B "$NATIVE/cmake" \
+  -DFERRIC_ENGINE_LIBRARY="$CARGO_TARGET_DIR/release/libferric_browser_engine_qt.a"
+cmake --build "$NATIVE/cmake" --parallel 2
+ctest --test-dir "$NATIVE/cmake" --show-only=json-v1
+ctest --test-dir "$NATIVE/cmake" --verbose --output-on-failure --no-tests=error
+
+# Capture the S01 acceptance tests with visible QtTest totals/skips. The test
+# command is the production-backed CTest filter; the run_gate guard rejects
+# empty summaries and any reported skipped test.
+python3 "$PACK/tools/run_gate.py" --repo "$REPO" \
+  --out "$RUN/evidence/S01-a1/everyday-acceptance" \
+  --label S01-everyday-acceptance --timeout 1800 --require-tests -- \
+  ctest --test-dir "$NATIVE/cmake" --verbose --output-on-failure \
+    --no-tests=error -R '^everyday_'
 ```
 
-Before using that build path, register and mark its ownership as RESOURCE_POLICY requires. If Cargo's target directory differs, pass its real absolute library path. Inspect CMake and the compile/link output to establish which library was linked. A native suite built from an older candidate does not qualify the current candidate.
+Configure the `tests/application` parent project: it creates `application_tests` and includes `tests/everyday` as an additive child, so configuring the child directory alone is invalid. Register and mark the native build root as RESOURCE_POLICY requires. If Cargo's target directory differs, pass its real absolute library path. Inspect CMake and the compile/link output to establish which library was linked. A native suite built from an older candidate does not qualify the current candidate.
 
-S01's test inventory must map each acceptance ID to executable/test method, fixture and evidence level. Reject missing registrations and an empty `ctest -R` filter. Use `--no-tests=error` with CTest. A skipped test is not equivalent to a pass. Don't add placeholder tests just to get the inventory nonempty.
+S01's test inventory must map each acceptance ID to executable/test method, fixture and evidence level. Reject missing registrations and an empty `ctest -R` filter. Use `--no-tests=error` with CTest. Run the acceptance filter through `run_gate.py --require-tests` and verbose CTest so QtTest totals and skips are visible; any skipped required test fails that gate. A skipped test is not equivalent to a pass. Don't add placeholder tests just to get the inventory nonempty.
 
 Current existing application tests are under `tests/application/` and configured by current xtask/application setup. Preserve suites including page_search, hint_controls (including DPR2), navigation_usability/recovery, privacy_identity, switcher, close_requests, tab_recovery, last_tab_undo, open_targets, form_reload/streaming_history, downloads and startup/session recovery. Obtain exact test names via CTest inventory rather than hardcoding the whole old CI regex into a new pack.
 
