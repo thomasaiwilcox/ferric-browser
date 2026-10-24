@@ -1190,6 +1190,52 @@ void ApplicationTests::selectorReloadActivatesAtBoundary() {
     QVERIFY(command("hint all"));
     QTRY_VERIFY(evaluate("testWindow.hintResults.length").toInt()>1);
 }
+void ApplicationTests::requestedWindowPresentationRemainsPendingUntilRestart() {
+    auto *browserUi = evaluate("testWindow.browserUi").value<QObject *>();
+    QVERIFY(browserUi);
+
+    const auto requestedIndex =
+        browserUi->metaObject()->indexOfProperty("feature_tabs_presentation_requested");
+    const auto effectiveIndex =
+        browserUi->metaObject()->indexOfProperty("feature_tabs_presentation_effective");
+    const auto statusIndex =
+        browserUi->metaObject()->indexOfProperty("feature_tabs_presentation_status");
+    QVERIFY(requestedIndex >= 0);
+    QVERIFY(effectiveIndex >= 0);
+    QVERIFY(statusIndex >= 0);
+
+    QObject *const activePage = evaluate("testWindow.activeWebView()").value<QObject *>();
+    QVERIFY(activePage);
+    const auto hostCount = evaluate("testWindow.browserWindowRegistry.length").toInt();
+    const auto liveWindowCount = QGuiApplication::allWindows().size();
+
+    const auto path = directory.filePath("window-presentation.toml");
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("schema_version=3\n[tabs]\npresentation='windows'\n");
+    file.close();
+    evaluate("testWindow.browserUi.config_path=" + quoted(path));
+    QVERIFY(command("config-reload"));
+
+    QTRY_COMPARE_WITH_TIMEOUT(
+        browserUi->metaObject()->property(requestedIndex).read(browserUi).toString(),
+        QString("windows"), 6000);
+    QCOMPARE(
+        browserUi->metaObject()->property(effectiveIndex).read(browserUi).toString(),
+        QString("internal"));
+    QCOMPARE(
+        browserUi->metaObject()->property(statusIndex).read(browserUi).toString(),
+        QString("pending-restart"));
+    QVERIFY(text("status_text").contains("some changes need a browser restart"));
+
+    const auto effectiveConfig =
+        QJsonDocument::fromJson(text("config_json").toUtf8()).object();
+    QCOMPARE(effectiveConfig["tabs"].toObject()["presentation"].toString(),
+             QString("internal"));
+    QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), activePage);
+    QCOMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), hostCount);
+    QCOMPARE(QGuiApplication::allWindows().size(), liveWindowCount);
+}
 void ApplicationTests::selectorReloadRejectsInvalidAndStaleCandidates() {
     const auto path = directory.filePath("config.toml");
     auto write = [&](const QString &selector) {

@@ -269,6 +269,7 @@ class ApplicationTests final : public QObject {
     void clipboardPermissionOutcomes();
     void selectorReloadActivatesAtBoundary_data();
     void selectorReloadActivatesAtBoundary();
+    void requestedWindowPresentationRemainsPendingUntilRestart();
     void selectorReloadRejectsInvalidAndStaleCandidates();
     void selectorReloadTimeoutPreservesConfiguration();
     void selectorDiscoveryUsesProductionPolicy_data();
