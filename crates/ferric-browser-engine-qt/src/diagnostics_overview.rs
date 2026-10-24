@@ -1,5 +1,5 @@
 use crate::hyprland;
-use ferric_browser_config::{HyprlandConfig, TriState};
+use ferric_browser_config::{HyprlandConfig, PageGroupingPolicy, TriState};
 use ferric_browser_storage::inspect_store;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, path::Path};
@@ -11,6 +11,7 @@ pub(crate) fn hyprland_version_fact() -> Value {
     let adapter = hyprland::HyprlandAdapter::from_config(&HyprlandConfig {
         enabled: TriState::On,
         workspace_routing: true,
+        page_grouping: PageGroupingPolicy::default(),
     });
     if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none() {
         return json!({
