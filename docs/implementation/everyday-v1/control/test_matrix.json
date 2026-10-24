@@ -133,7 +133,7 @@
     },
     {
       "id": "T014",
-      "slice": "F02b2",
+      "slice": "F02b2a",
       "requirement": "EF-F02",
       "level": "application",
       "name": "Popup and transfer preservation",

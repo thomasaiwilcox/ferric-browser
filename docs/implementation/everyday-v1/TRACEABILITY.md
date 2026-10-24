@@ -5,7 +5,7 @@ The full original proposal is in reference/ORIGINAL_PROPOSAL.md. Contracts and c
 | Original work/outcome | Current contract | Implementation and acceptance owners |
 |---|---|---|
 | Latest baseline, ownership and defaults | C00,C01,C13 | S00,F00,F01; initial state and source map |
-| Shared page factory and view lifecycle | C01,C02 | F02 aggregate (F02a T015, F02b aggregate: F02b1 T013, F02b2 T014), F03,F04 |
+| Shared page factory and view lifecycle | C01,C02 | F02 aggregate (F02a T015, F02b aggregate: F02b1 T013, F02b2 aggregate/F02b2a T014), F03,F04 |
 | Secondary keyboard parity | C01,C09 | F05 verifies/reuses current HintWorkspace/PageSearch, not old disabled-hint premise |
 | One speculative hot view, no external prefetch | C02,C03 | H00–H03 |
 | Hot native-window variant and measured adoption | C03 | H04–H06 |

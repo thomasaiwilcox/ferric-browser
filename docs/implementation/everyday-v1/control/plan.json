@@ -414,8 +414,8 @@
         "Coordinator-only aggregate. Do not dispatch F02b to an implementation worker.",
         "Preserve the original F02 failed 3/3 and F02b failed 3/3 histories, candidates, evidence and blockers while either child remains unaccepted. No fourth parent or F02b attempt is authorized.",
         "F02b1 owns only T013 and must diagnose effective key routing and native host KeyPress before interpreting renderer delivery/focus; retain the original page-key assertion and full secondary-host behavior checks.",
-        "F02b2 owns only T014 and must preserve actual opener/source identity and transfer-reserve behavior while capturing the production component factory warnings/status/error text at the null creation seam.",
-        "After both children are independently reviewed, integrated and accepted on their own exact-source gates, record a no-code F02b aggregate citing their evidence. Do not inherit prior partial subcase results or invent acceptance cases.",
+        "F02b2a owns T014 under the F02b2 coordinator aggregate. It must preserve actual opener/source identity and transfer-reserve behavior while diagnosing the recorded QtWebEngine hover crash; do not weaken or skip the acceptance behavior.",
+        "After F02b1 and F02b2a are independently reviewed, integrated and accepted on their own exact-source gates, record no-code F02b2 and F02b aggregates citing their respective evidence. Do not inherit prior partial subcase results or invent acceptance cases.",
         "F02 and its downstream factory/window consumers remain gated until this F02b aggregate and F02a are accepted."
       ],
       "kind": "aggregate",
@@ -494,7 +494,45 @@
     },
     {
       "id": "F02b2",
-      "title": "Diagnose and qualify popup transfer reserve preservation",
+      "title": "Aggregate popup transfer reserve qualification",
+      "lane": "presentation",
+      "depends_on": [
+        "F02b2a"
+      ],
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "allowed_paths": [],
+      "steps": [
+        "Coordinator-only aggregate over F02b2a. Do not dispatch F02b2 to an implementation worker.",
+        "Preserve the original F02b2 attempt 1 request-changes result, attempt 2 runtime failure and attempt 3/3 SIGSEGV, candidates, receipts and crash diagnosis. No fourth F02b2 implementation attempt is authorized.",
+        "F02b2a independently owns T014 and must diagnose the exact QtWebEngine hover crash that occurred after the production transfer reserve call returned true. It must preserve the actual popup opener/source and complete transfer-reserve, URL, history and page-state assertions.",
+        "After F02b2a is independently reviewed, integrated and accepted on its own exact-source gate, record a no-code F02b2 aggregate citing the new child evidence and reviewer decision. Do not inherit any earlier T014 partial result.",
+        "F02b and F02 remain gated until both F02b1/F02b2 and F02a are accepted."
+      ],
+      "kind": "aggregate",
+      "locks": [],
+      "recipe": "review",
+      "requirement_id": "EF-F02",
+      "test_ids": [],
+      "max_changed_product_files": 0,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F02b2.md",
+      "read_anchors": [],
+      "parent_id": "F02b",
+      "aggregate_test_ids": [
+        "T014"
+      ],
+      "aggregate_of": [
+        "F02b2a"
+      ]
+    },
+    {
+      "id": "F02b2a",
+      "title": "Diagnose and qualify the popup transfer reserve hover crash",
       "lane": "presentation",
       "depends_on": [
         "F02b1"
@@ -511,11 +549,11 @@
         "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml"
       ],
       "steps": [
-        "Run the unchanged T014 acceptance behavior after accepted F02b1: actual Qt popup opener/source identity is preserved, transfer reserve remains live, and URL/history/page state are not recreated from the address alone.",
-        "At the production component-factory creation that currently returns null, capture QQmlEngine warnings and QQmlComponent status/errorString so the failure has an exact cause. Keep opener, source identity, transfer, URL, history and page-state assertions intact.",
-        "If a production defect is reproduced, repair only within the listed existing paths. FerricBrowserWindow.qml is the current prepareTransferFallback caller and may be edited only when its responsibility is demonstrated. Never replace the failed transfer with URL recreation or permissive fallback.",
-        "Keep the T014 case non-skipping and run its registered exact-source CTest gate with zero skips. If the runtime cannot expose the failure cause or the reserve path remains unavailable, preserve the failed result and blocker.",
-        "T013 belongs only to F02b1; T015 remains owned by F02a. Keep the shared test-registration lock and do not modify unlisted registration files."
+        "Reproduce the exact-source T014 failure from prior F02b2 attempts on the qualified Qt 6.11.2 application harness. The final reviewed candidate created the real transfer reserve (prepareTransferFallback returned true, component Ready, no QML warnings) before the registered test process crashed in QtWebEngine hover delivery.",
+        "Trace the Qt Quick/WebEngine view, delegate, popup host and reserve ownership path to identify a reproduced product or test-fixture defect. The recorded stack includes RenderWidgetHostViewQtDelegateItem::hoverMoveEvent, QQuick hover/update delivery and ApplicationTests::page/productPolishPopupCommands; the optimized binary does not identify the exact source line.",
+        "Repair only a defect demonstrated within the existing listed paths. Keep the actual reserve and original Qt popup; preserve opener communication, source identity, non-null/distinct/hidden reserve, tab index, active source, URL, history, page state and cleanup assertions. Do not recreate a page from URL or make transfer permissive.",
+        "Do not mask the crash by disabling hover/input, weakening event handling or assertions, skipping, retrying, or converting the positive reserve to null. If the issue is genuinely specific to the available Qt/offscreen environment and cannot be repaired in scope, return a precise blocked_environment result with supporting evidence.",
+        "Keep T014 registered and non-skipping. After fresh source review and the coordinator build lease, run exact T014 with zero skips plus CTest discovery and affected T013/T015 regressions. T014 alone is this child’s acceptance; preserve the two regressions separately."
       ],
       "kind": "implementation",
       "locks": [
@@ -533,7 +571,7 @@
       "max_attempts": 3,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
-      "slice_file": "slices/F02b2.md",
+      "slice_file": "slices/F02b2a.md",
       "read_anchors": [
         "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
         "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
@@ -544,7 +582,7 @@
         "crates/ferric-browser-engine-qt/build.rs",
         "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
       ],
-      "parent_id": "F02b"
+      "parent_id": "F02b2"
     },
     {
       "id": "F03",
