@@ -38,7 +38,7 @@
 | P16 | Independent credential security and conformance review | P15, P14 |
 | P17 | Physical iPhone, Android and native-key qualification | P16, P13 |
 | W00 | Prove exact native-host correlation and grouping primitives | S00, S01 |
-| W01 | Implement presentation/open-target policy at Rust boundary | F01, S00 |
+| W01 | Implement presentation/open-target policy at Rust boundary | F01b, S00 |
 | W02 | Create single-page native hosts using existing workspaces | W01, F02, F04, F05 |
 | W03 | Implement tab traversal, close, pin and undo in window mode | W02 |
 | W04 | Add bounded compositor observation and capability layer | W00 |

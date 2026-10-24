@@ -52,3 +52,12 @@
 - **Change:** replace F02's unused proposed test source with `tests/application/tst_application.cpp` in `allowed_paths` and `read_anchors`; remove unused edit paths `FerricBrowserWindow.qml`, `FerricPageServices.qml`, and `build.rs`, retaining them as read-only anchors. Keep the primary shell, two extracted QML components, the existing application test source and everyday CMake registration as F02's five allowed product paths. Remove the unused `tst_page_factory.cpp` proposal from the source map, add the baseline/application-blob record for the application harness and retain the A13 `test-registration` lock.
 - **Dependency/lock effect:** no dependency graph change. F02 still depends only on accepted S01 and now has five allowed product paths, below the eight-file cap. Existing `page-factory`, `primary-shell`, `secondary-shell`, `build-registration` and `test-registration` locks remain.
 - **Test effect:** T013–T015 and acceptance thresholds remain unchanged. The existing production harness exercises the same cold page creation, actual popup/transfer path and captured title-owner callbacks, and its commands remain registered as CTest cases in `tests/everyday/CMakeLists.txt`. This changes only where the required assertions live; it does not weaken assertions, security behavior, defaults or evidence requirements.
+
+
+## A15 — Align W01 dependency metadata with the plan
+
+- **Review gate:** independent acceptance is required before W01 dispatch; the decision is recorded at `evidence/A15-a1/PLAN_REVIEW.json`.
+- **Trigger:** `control/plan.json` lists W01 dependencies as `F01b` and `S00`, while the worker-facing W01 packet and `SLICES.md` index list `F01` and `S00`. The scheduler reads `control/plan.json`, so the conflicting worker documents can misstate the accepted prerequisites.
+- **Change:** update only `slices/W01.md` and `SLICES.md` to say `F01b, S00`. Leave the existing plan unchanged as the authoritative dependency record.
+- **Dependency/lock effect:** no graph or lock change. W01 remains dependent on the already accepted F01b and S00 slices; F01b itself depends on F01 in the plan.
+- **Test effect:** no product code, tests, or acceptance thresholds change. The amendment only makes the human-readable W01 prerequisite text match the scheduler.
