@@ -31,7 +31,9 @@ use ferric_browser_storage::{
     ContextRecord, ContextRegistry, ContextRegistryError, StorageWorkerError,
 };
 
+mod page_presentation;
 mod view_requests;
+pub use page_presentation::{PageOpenDestination, PageOpenIntent, PageOpenPrivacy, plan_page_open};
 pub use view_requests::{
     ScriptWorld, ScrollDirection, ScrollEdge, ScrollTargetPolicy, VerticalDirection, ViewCommand,
     ViewRequest,

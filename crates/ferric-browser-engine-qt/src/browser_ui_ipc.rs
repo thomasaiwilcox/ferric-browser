@@ -4,6 +4,24 @@ use super::{
     is_profile_command, is_zoom_command, learning_mode_request, normalize_active_tab_command,
     parse_hint_options, qobject, resolve_input, selection_yank_command,
 };
+use ferric_browser_application::{
+    PageOpenDestination, PageOpenIntent, PageOpenPrivacy, plan_page_open,
+};
+use ferric_browser_config::TabsPresentation;
+
+pub(super) fn page_open_intent(
+    presentation: &TabsPresentation,
+    destination: IpcOpenTarget,
+) -> PageOpenIntent {
+    let destination = match destination {
+        IpcOpenTarget::Current => PageOpenDestination::Current,
+        IpcOpenTarget::Tab => PageOpenDestination::Tab,
+        IpcOpenTarget::BackgroundTab => PageOpenDestination::BackgroundTab,
+        IpcOpenTarget::Window => PageOpenDestination::Window,
+        IpcOpenTarget::PrivateWindow => PageOpenDestination::PrivateWindow,
+    };
+    plan_page_open(presentation, destination)
+}
 
 impl qobject::BrowserUi {
     // Existing effect handlers retain their own validation and safe fallback
@@ -703,47 +721,88 @@ impl qobject::BrowserUi {
             return (self.execute_clean_open_ipc(&command, route, operation_id))
                 .map_err(Into::into);
         }
-        match route.open_target {
-            IpcOpenTarget::PrivateWindow | IpcOpenTarget::Window => {
-                if command.name != "open" {
-                    return Err("window targets are only valid for open".into());
-                }
-                let input = command
-                    .arguments
-                    .first()
-                    .ok_or_else(|| "open requires an input".to_owned())?;
-                let navigation = resolve_input(
-                    input,
-                    &self.as_ref().navigation_context_for_source(route.source),
-                )
-                .map_err(|error| error.to_string())?;
-                let private = route.open_target == IpcOpenTarget::PrivateWindow;
-                let profile = self.as_ref().get_ref().new_window_profile_name(route)?;
-                let pending_action = super::browser_ui_ipc_preparation::window_open_action(
-                    private,
-                    &profile,
-                    route.context.as_deref(),
-                    !private && route.profile.is_none() && route.context.is_none(),
-                    navigation.url.as_str(),
-                );
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_engine_action = Some(pending_action);
-                return Ok(serde_json::json!({
-                    "status": "accepted",
-                    "target_window": "pending",
-                    "context": route.context,
-                    "profile": profile
-                }));
-            }
-            IpcOpenTarget::BackgroundTab if command.name != "open" => {
-                return Err("tab-bg is only valid for open".into());
-            }
-            IpcOpenTarget::Current | IpcOpenTarget::Tab | IpcOpenTarget::BackgroundTab => {}
+        let planned_intent = if command.name == "open" {
+            let presentation = self
+                .as_ref()
+                .rust()
+                .state
+                .as_ref()
+                .ok_or_else(|| super::PublicError::engine("application is unavailable"))?
+                .configuration()
+                .tabs
+                .presentation
+                .clone();
+            Some(page_open_intent(&presentation, route.open_target))
+        } else {
+            None
+        };
+        if let Some(PageOpenIntent::NewPage { foreground }) = planned_intent {
+            let input = command
+                .arguments
+                .first()
+                .ok_or_else(|| super::PublicError::engine("open requires an input"))?;
+            return self
+                .dispatch_planned_new_tab_open(input, route, foreground, operation_id)
+                .map_err(Into::into);
         }
-        if command.name == "open"
+        let window_privacy = match planned_intent {
+            Some(PageOpenIntent::NewWindow { privacy }) => Some(privacy),
+            Some(PageOpenIntent::CurrentPage) => None,
+            Some(PageOpenIntent::ExistingPresentation) | None => match route.open_target {
+                IpcOpenTarget::Window => Some(PageOpenPrivacy::Normal),
+                IpcOpenTarget::PrivateWindow => Some(PageOpenPrivacy::Private),
+                IpcOpenTarget::Current | IpcOpenTarget::Tab | IpcOpenTarget::BackgroundTab => None,
+            },
+            Some(PageOpenIntent::NewPage { .. }) => unreachable!("handled above"),
+        };
+        if let Some(privacy) = window_privacy {
+            if command.name != "open" {
+                return Err("window targets are only valid for open".into());
+            }
+            let input = command
+                .arguments
+                .first()
+                .ok_or_else(|| "open requires an input".to_owned())?;
+            let navigation = resolve_input(
+                input,
+                &self.as_ref().navigation_context_for_source(route.source),
+            )
+            .map_err(|error| error.to_string())?;
+            let private = privacy == PageOpenPrivacy::Private;
+            let profile = self.as_ref().get_ref().new_window_profile_name(route)?;
+            let pending_action = super::browser_ui_ipc_preparation::window_open_action(
+                private,
+                &profile,
+                route.context.as_deref(),
+                !private && route.profile.is_none() && route.context.is_none(),
+                navigation.url.as_str(),
+            );
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_engine_action = Some(pending_action);
+            return Ok(serde_json::json!({
+                "status": "accepted",
+                "target_window": "pending",
+                "context": route.context,
+                "profile": profile
+            }));
+        }
+        if planned_intent == Some(PageOpenIntent::ExistingPresentation) || planned_intent.is_none()
+        {
+            match route.open_target {
+                IpcOpenTarget::BackgroundTab if command.name != "open" => {
+                    return Err("tab-bg is only valid for open".into());
+                }
+                IpcOpenTarget::Current | IpcOpenTarget::Tab | IpcOpenTarget::BackgroundTab => {}
+                IpcOpenTarget::Window | IpcOpenTarget::PrivateWindow => {
+                    unreachable!("window targets were handled by the existing window dispatch")
+                }
+            }
+        }
+        if planned_intent == Some(PageOpenIntent::ExistingPresentation)
+            && command.name == "open"
             && matches!(
                 route.open_target,
                 IpcOpenTarget::Tab | IpcOpenTarget::BackgroundTab

@@ -209,6 +209,31 @@ impl qobject::BrowserUi {
         )
     }
 
+    pub(super) fn dispatch_planned_new_tab_open(
+        self: Pin<&mut Self>,
+        input: &str,
+        route: &IpcRoute,
+        foreground: bool,
+        operation_id: Option<&str>,
+    ) -> Result<Value, String> {
+        self.as_ref()
+            .validate_ipc_route_public(route)
+            .map_err(|error| error.to_string())?;
+        let mut arguments = Vec::new();
+        if !foreground {
+            arguments.push("--background".into());
+        }
+        arguments.extend(["--".into(), input.to_owned()]);
+        self.dispatch_tab_open_ipc_command(
+            ParsedCommand {
+                name: "tab-open".into(),
+                arguments,
+            },
+            route,
+            operation_id,
+        )
+    }
+
     pub(super) fn dispatch_tab_open_ipc_command(
         mut self: Pin<&mut Self>,
         command: ParsedCommand,
@@ -259,3 +284,7 @@ impl qobject::BrowserUi {
         }))
     }
 }
+
+#[cfg(test)]
+#[path = "tests/page_presentation.rs"]
+mod page_presentation_tests;
