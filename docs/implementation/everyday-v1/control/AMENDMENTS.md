@@ -12,7 +12,7 @@
 
 ## A10 — Correct S01 CMake entry point and skip-visible gate
 
-- **Status:** coordinator correction committed locally; independent review pending.
+- **Status:** independently reviewed and accepted by `/root/a09_reviewer` during S01 attempt-2 review.
 - **Trigger:** S01 review found that `tests/everyday/CMakeLists.txt` is an include-only child and requires the production `application_tests` target; configuring that child directly cannot pass. Review also found that test output must expose QtTest skip totals for the required-test guard.
 - **Change:** baseline recipe now configures `crates/ferric-browser-engine-qt/tests/application`, which creates `application_tests` and includes the everyday harness. It supplies the actual Cargo-built engine archive from the registered external target directory. The required S01 acceptance run uses verbose CTest under `run_gate.py --require-tests`; `T005` discovery output retains test counts and names.
 - **Dependency/lock effect:** no graph, product-file scope, or dependency change. Coordinator used `integration` and `plan` locks to correct the execution recipe.
