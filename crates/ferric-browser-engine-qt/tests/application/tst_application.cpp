@@ -3985,7 +3985,8 @@ void ApplicationTests::productPolishPopupCommands() {
                        .arg(componentErrorBefore, componentErrorAfter,
                             factoryWarnings.join(QStringLiteral(" | ")))));
     const auto transferReserve =
-        evaluate(nested + ".host.preparedTransferFallback").value<QObject *>();
+        evaluate(nested + ".host.windowPreparedTransferFallback")
+            .value<QObject *>();
     QVERIFY(transferReserve);
     QVERIFY(transferReserve != popupSource);
     QVERIFY(!transferReserve->property("visible").toBool());
