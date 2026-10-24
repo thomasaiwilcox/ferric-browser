@@ -126,7 +126,8 @@
         "crates/ferric-browser-config/src/lib.rs",
         "crates/ferric-browser-config/src/validation.rs",
         "crates/ferric-browser-config/src/tests.rs",
-        "crates/ferric-browser-config/src/runtime_config.rs"
+        "crates/ferric-browser-config/src/runtime_config.rs",
+        "crates/ferric-browser-engine-qt/src/diagnostics_overview.rs"
       ],
       "steps": [
         "Add TabsPresentation, HotTabPolicy and PhonePasskeyPolicy using existing enum naming; extend the existing HyprlandConfig with off/auto page_grouping.",
@@ -156,7 +157,8 @@
         "crates/ferric-browser-config/src/lib.rs",
         "crates/ferric-browser-config/src/validation.rs",
         "crates/ferric-browser-config/src/tests.rs",
-        "crates/ferric-browser-config/src/runtime_config.rs"
+        "crates/ferric-browser-config/src/runtime_config.rs",
+        "crates/ferric-browser-engine-qt/src/diagnostics_overview.rs"
       ]
     },
     {

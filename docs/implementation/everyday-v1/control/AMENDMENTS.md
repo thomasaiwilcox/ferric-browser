@@ -17,3 +17,12 @@
 - **Change:** baseline recipe now configures `crates/ferric-browser-engine-qt/tests/application`, which creates `application_tests` and includes the everyday harness. It supplies the actual Cargo-built engine archive from the registered external target directory. The required S01 acceptance run uses verbose CTest under `run_gate.py --require-tests`; `T005` discovery output retains test counts and names.
 - **Dependency/lock effect:** no graph, product-file scope, or dependency change. Coordinator used `integration` and `plan` locks to correct the execution recipe.
 - **Test effect:** no acceptance behavior is waived. A zero-test result or visible skip fails the required gate. No feature, security, default, or test assertion is weakened.
+
+
+## A11 — F00 diagnostics config literal
+
+- **Status:** independently reviewed and accepted by `/root/a09_reviewer`; F00 attempt 2 may proceed.
+- **Trigger:** F00 attempt-1 review found that adding `HyprlandConfig.page_grouping` makes the existing struct literal in `crates/ferric-browser-engine-qt/src/diagnostics_overview.rs` incomplete. The literal is outside F00's current six-file allowlist and would block compilation.
+- **Change:** add `diagnostics_overview.rs` to F00 `allowed_paths`, `read_anchors`, the slice's exact edit list, and the execution source map. F00 now allows 7 product files, below the 8-file limit.
+- **Dependency/lock effect:** no graph or lock changes. F00 retains `config-model`; later X03 access remains serial under its task dependency/locks.
+- **Test effect:** T007–T009 and the focused config crate gate are unchanged. The added path updates the existing diagnostic config literal to compile with the new typed field; no requirement or security behavior is relaxed.
