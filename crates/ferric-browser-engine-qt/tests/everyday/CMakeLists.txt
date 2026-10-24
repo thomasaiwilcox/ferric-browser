@@ -5,7 +5,19 @@ if(NOT TARGET application_tests)
 endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-find_package(Qt6 REQUIRED COMPONENTS Test)
+find_package(Qt6 REQUIRED COMPONENTS Test WebChannel)
+find_program(FERRIC_TEST_OPENSSL openssl REQUIRED)
+
+add_executable(credential_boundary_tests tst_credential_boundary.cpp)
+target_link_libraries(credential_boundary_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}"
+    Qt6::Quick Qt6::WebEngineQuick Qt6::Network Qt6::WebChannel Qt6::Test)
+target_compile_definitions(credential_boundary_tests PRIVATE
+    FERRIC_CREDENTIAL_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    FERRIC_TEST_OPENSSL="${FERRIC_TEST_OPENSSL}")
+add_test(NAME everyday_T046_credential_isolated_world
+    COMMAND $<TARGET_FILE:credential_boundary_tests> isolatedTransportAndMainFrameFacts)
+set_tests_properties(everyday_T046_credential_isolated_world PROPERTIES
+    TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 
 add_executable(everyday_fixture_tests tst_everyday.cpp tst_everyday.h)
 target_link_libraries(everyday_fixture_tests PRIVATE Qt6::Test)
