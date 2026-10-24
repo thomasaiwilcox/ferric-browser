@@ -1055,6 +1055,7 @@
         "integration_head_blob": "345c42663adda0f521e5f76752c454447ff8b0e5",
         "working_tree_file_present": true,
         "slices": [
+          "W01",
           "W09",
           "W10"
         ],
