@@ -110,3 +110,13 @@
 - **Dependency/lock effect:** W01c retains the `command-dispatch` lock; W03 already depends on W02, which depends on aggregate W01, so the new allowed-path intersection is serialized and creates no cycle. W01c now allows two product paths.
 - **Test effect:** T105 and its expected behavior are unchanged. W01c must assert the actual pin command target across distinct tabs/windows, in addition to exact close and explicit quit scope. A reducer-only pin state assertion is insufficient.
 - **Ledger effect:** add W01a/W01b/W01c to the live execution state with zero attempts and `not_started`; preserve W01's `failed`, 3/3 status, evidence and blocker. Stateful validation must pass before dispatch.
+
+
+## A21 — Add W01a production open-target adapter path
+
+- **Status:** independently accepted by `/root/a09_reviewer`; decision recorded at `evidence/A21-a1/PLAN_REVIEW.json`. W01a may resume from the regenerated packet.
+- **Trigger:** during W01a attempt 1, source tracing found the actual destination match for Current/Tab/BackgroundTab/Window/PrivateWindow in `browser_ui_ipc.rs`. The runtime-dispatch module only contains `dispatch_new_tab_open`; without the IPC adapter, T103 could test a pure helper without proving that production opens use it. The worker had already made uncommitted changes only in W01a's existing allowlist and stopped before build/test.
+- **Change:** add `crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs` to W01a's allowed paths and read anchors, update the source-map association, and revise the W01a slice instructions. The child grows from four to five allowed product paths, still below the eight-file limit.
+- **Dependency/lock effect:** no graph or lock change. W01b already edits `browser_ui_ipc.rs` and depends on W01a, so the shared path is serialized.
+- **Attempt effect:** retain W01a attempt 1 at `in_progress`; the worker made no commit, build or test, and will continue only after independent A21 acceptance. This does not change W01's failed 3/3 history.
+- **Test effect:** T103 and its expected behavior are unchanged. The implementation and test must exercise the actual production adapter mapping, not only a new pure helper.

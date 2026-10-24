@@ -1932,7 +1932,8 @@
         "crates/ferric-browser-application/src/page_presentation.rs",
         "crates/ferric-browser-application/src/lib.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_ipc_runtime_dispatch.rs",
-        "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs"
+        "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs"
       ],
       "steps": [
         "Add the typed presentation selection and pure page-open planner while preserving current TabId, window and runtime ownership.",
@@ -1948,7 +1949,7 @@
       "test_ids": [
         "T103"
       ],
-      "max_changed_product_files": 4,
+      "max_changed_product_files": 5,
       "slice_file": "slices/W01a.md",
       "read_anchors": [
         "crates/ferric-browser-application/src/page_presentation.rs",
@@ -1956,7 +1957,8 @@
         "crates/ferric-browser-core/src/dispatcher.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_ipc_runtime_dispatch.rs",
         "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs",
-        "crates/ferric-browser-engine-qt/src/open_policy.rs"
+        "crates/ferric-browser-engine-qt/src/open_policy.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs"
       ]
     },
     {

@@ -1012,7 +1012,8 @@
         "integration_head_blob": "b4af99d9b20f2820a26879aaffd97bce1fdf3d95",
         "working_tree_file_present": true,
         "slices": [
-          "W01b"
+          "W01b",
+          "W01a"
         ],
         "roles": [
           "allowed",
