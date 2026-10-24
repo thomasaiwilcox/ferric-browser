@@ -89,13 +89,13 @@ unavailable fields, is in the external audit receipt.
 The helper source uses Ferric's GPL-3.0-or-later project license. The linked
 `libwebauthn` package is LGPL-2.1-or-later and is statically linked by Rust; a
 release must satisfy the LGPL notice, source, and relinking obligations. The
-All 330 resolved records declare an SPDX license expression. The audit still
-found license identifiers outside the current `deny.toml` allowlist, including
-alternatives in upstream expressions, which require review before changing
-policy. This is metadata inventory, not a complete legal compatibility,
-notice, or relinking review. Keep unreviewed third-party licenses outside the
-allowlist. The helper's own GPL-3.0-or-later project license is explicitly
-allowed by `deny.toml`.
+All 330 resolved records have a license metadata value. Some use legacy slash
+separators and need SPDX review. The audit also found license identifiers
+outside the current `deny.toml` allowlist, including alternatives in upstream
+expressions, which require review before changing policy. This is metadata
+inventory, not a complete legal compatibility, notice, or relinking review.
+Keep unreviewed third-party licenses outside the allowlist. The helper's own
+GPL-3.0-or-later project license is explicitly allowed by `deny.toml`.
 
 ## Build status
 
