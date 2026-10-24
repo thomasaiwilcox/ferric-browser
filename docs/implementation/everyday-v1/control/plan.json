@@ -1885,12 +1885,12 @@
         "crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_ipc_runtime_dispatch.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_context_navigation.rs",
-        "crates/ferric-browser-engine-qt/src/effect_projection.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_state.rs",
         "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs"
       ],
       "steps": [
         "Add typed presentation selection and page-host creation intent preserving current TabId/window/runtime ownership.",
-        "Route ordinary tab/current/tab-bg/window intents through one decision after profile/context destination resolution.",
+        "Route ordinary tab/current/tab-bg/window intents, including opens queued for automatic context confirmation, through one decision after profile/context destination resolution; retain and revalidate the full captured page Target and foreground choice.",
         "Define exact destructive/traversal scopes; do not rewrite global default commands or user custom bindings.",
         "Preserve typed captured EngineRequests targets and maintain internal mode as unchanged control."
       ],
@@ -1922,7 +1922,7 @@
         "crates/ferric-browser-engine-qt/src/browser_ui_context_navigation.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_sessions.rs",
         "crates/ferric-browser-engine-qt/src/browser_ui_browsing_commands.rs",
-        "crates/ferric-browser-engine-qt/src/effect_projection.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_state.rs",
         "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs"
       ]
     },

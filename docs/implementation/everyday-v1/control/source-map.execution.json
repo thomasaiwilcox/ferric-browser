@@ -1067,6 +1067,21 @@
         "history_at_product_baseline": true
       },
       {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_state.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "bb71b29ab877e658ad570b6349664de96b7bc895",
+        "integration_head_blob": "bb71b29ab877e658ad570b6349664de96b7bc895",
+        "working_tree_file_present": true,
+        "slices": [
+          "W01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
         "path": "crates/ferric-browser-engine-qt/src/browser_ui_tabs.rs",
         "resolution": "existing_product_source",
         "product_baseline_blob": "fcb9e222f7e18315b9258c881a71789aa5d83e1c",
@@ -1198,21 +1213,6 @@
         "working_tree_file_present": true,
         "slices": [
           "X03"
-        ],
-        "roles": [
-          "allowed",
-          "read_anchor"
-        ],
-        "history_at_product_baseline": true
-      },
-      {
-        "path": "crates/ferric-browser-engine-qt/src/effect_projection.rs",
-        "resolution": "existing_product_source",
-        "product_baseline_blob": "47c252b648595bec04b426e193b6a6b67b931e9f",
-        "integration_head_blob": "47c252b648595bec04b426e193b6a6b67b931e9f",
-        "working_tree_file_present": true,
-        "slices": [
-          "W01"
         ],
         "roles": [
           "allowed",
