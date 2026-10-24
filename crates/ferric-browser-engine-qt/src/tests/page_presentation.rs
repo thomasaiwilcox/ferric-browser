@@ -153,7 +153,7 @@ fn t104_context_routes_keep_scope_and_reject_stale_targets_before_completion() {
     assert_eq!(owner_window, window);
     assert_eq!(owner_token, "window-owner");
     assert!(!foreground);
-    let url = ValidatedUrl::parse("https://example.test/").expect("valid route URL");
+    let url = ValidatedUrl::parse("https://example.test/".into()).expect("valid route URL");
     let pending = browser_ui_context_navigation::pending_context_route_for_target(
         &contexts,
         &url,
@@ -225,7 +225,7 @@ fn t104_context_routes_keep_scope_and_reject_stale_targets_before_completion() {
     application
         .dispatch_runtime(RuntimeInput::Command(RuntimeCommand::Navigate {
             target,
-            url: ValidatedUrl::parse("https://example.test/replaced")
+            url: ValidatedUrl::parse("https://example.test/replaced".into())
                 .expect("valid navigation URL"),
         }))
         .expect("replace source document");
