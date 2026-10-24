@@ -32,6 +32,7 @@
 #include <QQmlExpression>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QQmlError>
 #include <QTcpSocket>
 #include <QSslServer>
 #include <QSslKey>
@@ -3951,7 +3952,38 @@ void ApplicationTests::productPolishPopupCommands() {
         evaluate(nested + ".ui.content_history_export(0)").toString();
     const auto popupUrlBefore =
         evaluate(nested + ".host.activeView.url").toString();
-    QVERIFY(evaluate(nested + ".host.prepareTransferFallback()").toBool());
+    const auto factoryExpression = nested + ".host.webViewFactory";
+    const auto factory = evaluate(factoryExpression).value<QObject *>();
+    QVERIFY(factory);
+    const auto componentStatusBefore = factory->property("status").toInt();
+    const auto componentErrorBefore =
+        evaluate(factoryExpression + ".errorString()").toString();
+    QStringList factoryWarnings;
+    const auto warningConnection =
+        connect(engine.get(), &QQmlEngine::warnings, this,
+                [&factoryWarnings](const QList<QQmlError> &warnings) {
+                  for (const auto &warning : warnings)
+                    factoryWarnings.append(warning.toString());
+                });
+    const bool fallbackPrepared =
+        evaluate(nested + ".host.prepareTransferFallback()").toBool();
+    QObject::disconnect(warningConnection);
+    const auto componentStatusAfter = factory->property("status").toInt();
+    const auto componentErrorAfter =
+        evaluate(factoryExpression + ".errorString()").toString();
+    qInfo() << "T014 transfer factory diagnostics"
+            << "created" << fallbackPrepared << "component status before/after"
+            << componentStatusBefore << componentStatusAfter
+            << "component error before/after" << componentErrorBefore
+            << componentErrorAfter << "engine warnings" << factoryWarnings;
+    QVERIFY2(
+        fallbackPrepared,
+        qPrintable(QStringLiteral("transfer reserve creation failed; component "
+                                  "status %1->%2, error %3->%4, warnings: %5")
+                       .arg(componentStatusBefore)
+                       .arg(componentStatusAfter)
+                       .arg(componentErrorBefore, componentErrorAfter,
+                            factoryWarnings.join(QStringLiteral(" | ")))));
     const auto transferReserve =
         evaluate(nested + ".host.preparedTransferFallback").value<QObject *>();
     QVERIFY(transferReserve);
