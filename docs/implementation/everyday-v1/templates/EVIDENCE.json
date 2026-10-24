@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "slice_id": "REPLACE",
+  "source_sha": "INTEGRATED_SOURCE_SHA",
+  "implementation_sha": "WORKER_CANDIDATE_SHA",
+  "author": "REAL_AGENT_SESSION_ID",
+  "reviewer": "DIFFERENT_REAL_REVIEW_SESSION",
+  "review_path": "evidence/SLICE/review.json",
+  "review_sha256": "REPLACE",
+  "cases": [
+    {
+      "test_id": "T_REPLACE",
+      "level": "REPLACE",
+      "result": "not_run",
+      "source_sha": "INTEGRATED_SOURCE_SHA",
+      "assertion": "Exact executable/test method and assertion description",
+      "artifacts": [
+        {
+          "path": "evidence/SLICE/gate/receipt.json",
+          "sha256": "REPLACE",
+          "kind": "command_receipt"
+        }
+      ]
+    }
+  ]
+}

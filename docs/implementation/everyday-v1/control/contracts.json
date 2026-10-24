@@ -1,0 +1,62 @@
+{
+  "C00": {
+    "path": "contracts/C00-scope-and-evidence.md",
+    "title": "C00 — Scope, authority and honest completion"
+  },
+  "C01": {
+    "path": "contracts/C01-ownership-and-integration.md",
+    "title": "C01 — Preserve existing ownership; extend only what is missing"
+  },
+  "C02": {
+    "path": "contracts/C02-view-factory-and-adoption.md",
+    "title": "C02 — View factory, roles and atomic adoption"
+  },
+  "C03": {
+    "path": "contracts/C03-hot-policy-and-measurement.md",
+    "title": "C03 — One bounded spare and proof of benefit"
+  },
+  "C04": {
+    "path": "contracts/C04-credential-authority.md",
+    "title": "C04 — Credential authority and boundary proof"
+  },
+  "C05": {
+    "path": "contracts/C05-webauthn-compatibility.md",
+    "title": "C05 — WebAuthn shim, native provider and truthful capabilities"
+  },
+  "C06": {
+    "path": "contracts/C06-helper-protocol-and-build.md",
+    "title": "C06 — Transport helper, pinned build and bounded IPC"
+  },
+  "C07": {
+    "path": "contracts/C07-network-and-privacy.md",
+    "title": "C07 — Network, privacy and authenticator semantics"
+  },
+  "C08": {
+    "path": "contracts/C08-credential-state-and-ui.md",
+    "title": "C08 — Credential actor and browser-owned UI"
+  },
+  "C09": {
+    "path": "contracts/C09-presentation-and-commands.md",
+    "title": "C09 — Two presentations, one browser"
+  },
+  "C10": {
+    "path": "contracts/C10-compositor-identity-and-proofs.md",
+    "title": "C10 — Exact compositor identity and capability gate"
+  },
+  "C11": {
+    "path": "contracts/C11-compositor-observation-and-focus.md",
+    "title": "C11 — Observation, focus and degraded operation"
+  },
+  "C12": {
+    "path": "contracts/C12-sessions-shutdown-and-recovery.md",
+    "title": "C12 — Sessions, closure, restoration and privacy"
+  },
+  "C13": {
+    "path": "contracts/C13-config-diagnostics-and-rollout.md",
+    "title": "C13 — Typed configuration and release states"
+  },
+  "C14": {
+    "path": "contracts/C14-testing-and-review.md",
+    "title": "C14 — Test construction, independent review and cross-feature proof"
+  }
+}

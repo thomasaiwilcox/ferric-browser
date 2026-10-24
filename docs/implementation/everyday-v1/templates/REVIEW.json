@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "slice_id": "REPLACE",
+  "reviewer": "DIFFERENT_REAL_REVIEW_SESSION",
+  "source_sha": "INTEGRATED_SOURCE_SHA",
+  "implementation_sha": "WORKER_CANDIDATE_SHA",
+  "decision": "pending",
+  "inspected_paths": [],
+  "rerun_receipts": [],
+  "findings": [],
+  "security_review_kind": "agent-review-not-external-certification"
+}

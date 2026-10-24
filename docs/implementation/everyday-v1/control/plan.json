@@ -1,0 +1,2848 @@
+{
+  "schema_version": 1,
+  "pack_id": "ferric-everyday-v1",
+  "baseline_sha": "e4aa108f9d63c99c3b3e977c2061d6d8dde48568",
+  "repo": "thomasaiwilcox/ferric-browser",
+  "limits": {
+    "max_noncoordinator_agents": 6,
+    "max_simultaneous_builds": 2,
+    "max_native_builds": 1,
+    "max_packet_bytes": 24000,
+    "source_read_soft_bytes": 48000,
+    "source_read_hard_bytes": 96000,
+    "max_worker_result_bytes": 6000,
+    "max_changed_product_files_per_slice": 8,
+    "max_attempts": 3,
+    "max_repair_rounds": 2
+  },
+  "completion_rule": "all slices accepted with required actual evidence; missing physical/platform qualification cannot be waived",
+  "slices": [
+    {
+      "id": "S00",
+      "title": "Clone, reconcile latest source and freeze the execution map",
+      "lane": "coordination",
+      "depends_on": [],
+      "contracts": [
+        "C00",
+        "C01"
+      ],
+      "allowed_paths": [
+        "docs/implementation/everyday-v1/control/source-map.execution.json",
+        "docs/implementation/everyday-v1/BASELINE.md"
+      ],
+      "steps": [
+        "Follow START_HERE; use bootstrap for a fresh clone or a clean explicitly provided checkout. Verify remote identity before executing repository-supplied code; never read credentials or live browser data.",
+        "Fetch origin/main; compare with pack authoring SHA and proposal SHA. Inspect applicable instructions and current branches/worktrees without merging other work.",
+        "Resolve every named source anchor locally; classify each as existing, renamed, removed or proposed. Record already-implemented prerequisites, especially secondary hints/profile ownership.",
+        "Read current SDK manifest/build.rs/CI and map shared-state owners and credential/script worlds. Produce an approved source map and lock amendment for moved files.",
+        "Freeze execution baseline, environmental limitations and branch policy. No product code in this task."
+      ],
+      "kind": "setup",
+      "locks": [
+        "integration",
+        "plan"
+      ],
+      "recipe": "preflight",
+      "requirement_id": "EF-S00",
+      "test_ids": [
+        "T001",
+        "T002",
+        "T003"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/S00.md",
+      "read_anchors": []
+    },
+    {
+      "id": "S01",
+      "title": "Register production-backed feature test harness and baseline inventory",
+      "lane": "integration",
+      "depends_on": [
+        "S00"
+      ],
+      "contracts": [
+        "C00",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_everyday.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_everyday.h",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixture_server.py",
+        "crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt",
+        "crates/xtask/src/main.rs"
+      ],
+      "steps": [
+        "Inspect current CMake/xtask registration. Add an everyday harness using the actual built production static engine and shipped QML resources, not copied implementation.",
+        "Use explicit FERRIC_ENGINE_LIBRARY and matching Qt/KF6 dependencies. Register baseline/core suites and inventory; add feature cases only when real assertions exist.",
+        "Provide disposable profile roots, local HTTP/HTTPS fixture origin support, deterministic event barriers and isolated native runner integration. Avoid sleep-only ordering tests.",
+        "Record existing regression inventory and execute reachable baseline gates. Keep existing failures visible and isolated; never remove a suite to get green.",
+        "Add discovery checks that fail on missing/zero/skipped expected tests. Worker test contributions use disjoint files; harness registrations are serial coordinator edits."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "test-registration",
+        "build-registration",
+        "native-build"
+      ],
+      "recipe": "baseline",
+      "requirement_id": "EF-S01",
+      "test_ids": [
+        "T004",
+        "T005",
+        "T006"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/S01.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_everyday.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_everyday.h",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixture_server.py",
+        "crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt",
+        "crates/xtask/src/main.rs"
+      ]
+    },
+    {
+      "id": "F00",
+      "title": "Add typed feature settings and validate defaults",
+      "lane": "core",
+      "depends_on": [
+        "S00"
+      ],
+      "contracts": [
+        "C00",
+        "C13"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-config/src/browser_config.rs",
+        "crates/ferric-browser-config/src/config_model.rs",
+        "crates/ferric-browser-config/src/lib.rs",
+        "crates/ferric-browser-config/src/validation.rs",
+        "crates/ferric-browser-config/src/tests.rs"
+      ],
+      "steps": [
+        "Add TabsPresentation, HotTabPolicy and PhonePasskeyPolicy using existing enum naming; extend the existing HyprlandConfig with off/auto page_grouping.",
+        "Default internal/off/off/off; no public pool-size, executable-path or insecure-origin settings. New performance/passkeys sections follow existing Config default and unknown-field handling.",
+        "Validate enum values and disallow unsupported site-scoped overrides. Keep current fields and stored configs compatible.",
+        "Add round-trip/default/invalid-value unit tests before wiring any behaviour."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "config-model"
+      ],
+      "recipe": "config",
+      "requirement_id": "EF-F00",
+      "test_ids": [
+        "T007",
+        "T008",
+        "T009"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F00.md",
+      "read_anchors": [
+        "crates/ferric-browser-config/src/browser_config.rs",
+        "crates/ferric-browser-config/src/config_model.rs",
+        "crates/ferric-browser-config/src/lib.rs",
+        "crates/ferric-browser-config/src/validation.rs",
+        "crates/ferric-browser-config/src/tests.rs"
+      ]
+    },
+    {
+      "id": "F01",
+      "title": "Wire setting registry, atomic application and effective status",
+      "lane": "core",
+      "depends_on": [
+        "F00"
+      ],
+      "contracts": [
+        "C01",
+        "C13"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-config/src/settings.rs",
+        "crates/ferric-browser-config/src/runtime_config.rs",
+        "crates/ferric-browser-application/src/configuration.rs",
+        "crates/ferric-browser-application/src/configuration_write.rs",
+        "crates/ferric-browser-engine-qt/src/config_projection.rs",
+        "crates/ferric-browser-engine-qt/src/feature_preferences.rs",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs"
+      ],
+      "steps": [
+        "Register exact scopes/apply boundaries and generated help metadata through current registry owners.",
+        "Presentation is restart-scoped. Hot eviction is live; phone installation changes at the next eligible document with disable canceling owned phone requests.",
+        "Expose requested versus effective state using existing typed presentation mechanisms. Preserve atomic persistence and settings-draft/error UX.",
+        "No actual capability is marked available merely because the setting is on; consumers added later supply proof/runtime reasons."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "config-registry",
+        "bridge",
+        "application-config"
+      ],
+      "recipe": "config",
+      "requirement_id": "EF-F01",
+      "test_ids": [
+        "T010",
+        "T011",
+        "T012"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F01.md",
+      "read_anchors": [
+        "crates/ferric-browser-config/src/settings.rs",
+        "crates/ferric-browser-config/src/runtime_config.rs",
+        "crates/ferric-browser-application/src/configuration.rs",
+        "crates/ferric-browser-application/src/configuration_write.rs",
+        "crates/ferric-browser-engine-qt/src/config_projection.rs",
+        "crates/ferric-browser-engine-qt/src/feature_preferences.rs",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs"
+      ]
+    },
+    {
+      "id": "F02",
+      "title": "Extract/adapt the existing page factory without behaviour changes",
+      "lane": "presentation",
+      "depends_on": [
+        "S01"
+      ],
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_page_factory.cpp"
+      ],
+      "steps": [
+        "Locate current inline webViewComponent and all creation/transfer callers. Reuse an existing factory if upstream already extracted it.",
+        "Extract production callbacks and required owner/profile/model properties into one reusable component/factory. Do not copy primary/secondary implementations.",
+        "Preserve native history/reload gates, prompt identities, download initiators, script runner and profileResourceRegistry wiring.",
+        "Run current internal and secondary navigation/popup/transfer tests with all new flags off before any hot behaviour."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "page-factory",
+        "primary-shell",
+        "secondary-shell",
+        "build-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T013",
+        "T014",
+        "T015"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F02.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_page_factory.cpp"
+      ]
+    },
+    {
+      "id": "F03",
+      "title": "Introduce explicit view role and generation guards",
+      "lane": "core",
+      "depends_on": [
+        "F02"
+      ],
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/page_view_policy.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_page_roles.cpp"
+      ],
+      "steps": [
+        "Implement Spare/Claiming/Live/Closing/Retired semantics using a narrow policy type and native incarnation tokens.",
+        "Assign construction role before initialization. Gate every page/profile signal side effect, script injection, accessibility/list registration and permission/auth exposure.",
+        "Make claim/retire transitions exactly once; late preparation completions retain old generation.",
+        "Instrument side-effect counters through test seams, not production secret logging."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "page-factory",
+        "bridge",
+        "profile-lifetime"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F03",
+      "test_ids": [
+        "T016",
+        "T017",
+        "T018"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F03.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/page_view_policy.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_page_roles.cpp"
+      ]
+    },
+    {
+      "id": "F04",
+      "title": "Qualify shared service and first-host lifetime",
+      "lane": "presentation",
+      "depends_on": [
+        "F02",
+        "S01"
+      ],
+      "contracts": [
+        "C01",
+        "C12"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml",
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.cpp",
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.h",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_shared_lifetime.cpp"
+      ],
+      "steps": [
+        "Trace existing registry/lifetime consumers through first visible host closure. Prefer tests and narrow repairs over another profile ownership layer.",
+        "Keep native profile/interceptor policy, script services and applicable Rust application resources available to survivors; closing the last actual consumer must drain them.",
+        "Distinguish retained service context from visible window and from spare; no new keepalive daemon.",
+        "Test captured download/portal ownership and private-profile release under both close orders."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "profile-lifetime",
+        "primary-shell",
+        "lifecycle"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F04",
+      "test_ids": [
+        "T019",
+        "T020",
+        "T021"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F04.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml",
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.cpp",
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.h",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_shared_lifetime.cpp"
+      ]
+    },
+    {
+      "id": "F05",
+      "title": "Verify current per-window interaction parity and fix only gaps",
+      "lane": "presentation",
+      "depends_on": [
+        "F02",
+        "S01"
+      ],
+      "contracts": [
+        "C01",
+        "C09",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricHintWorkspace.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageSearch.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricRuntimeController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricModalInputController.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_parity.cpp"
+      ],
+      "steps": [
+        "Exercise existing secondary HintWorkspace/PageSearch instead of implementing the obsolete hint_chrome_available=false prerequisite.",
+        "Cover hints, scoped grid, target search, explicit scroll target, transient/locked insert, pass-through, search n/N and confirmation, and safe modal return.",
+        "Remove only demonstrated root-active-view assumptions. Each operation follows actual host and captured target.",
+        "Keep current polished input/IME, command history and privacy chrome behaviour; preserve popup restrictions that are intentional security boundaries."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "interaction-workspaces",
+        "secondary-shell"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F05",
+      "test_ids": [
+        "T022",
+        "T023",
+        "T024"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F05.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricHintWorkspace.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageSearch.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricRuntimeController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricModalInputController.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_parity.cpp"
+      ]
+    },
+    {
+      "id": "H00",
+      "title": "Implement single-spare policy and deterministic state tests",
+      "lane": "core",
+      "depends_on": [
+        "F00",
+        "S00"
+      ],
+      "contracts": [
+        "C02",
+        "C03"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/tests/hot_page_policy.rs"
+      ],
+      "steps": [
+        "Implement one process-wide permit, exact environment key, bounded prepare/ready/claim/evict transitions and reason enums.",
+        "Never block allocation on a pending spare; represent ready hit and cold miss as separate effects.",
+        "Coalesce replenish requests; exclude private/ephemeral/protected recovery environments and transfer reserves.",
+        "Use deterministic clocks/tokens to test expiry and concurrent claims without real GUI."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "hot-policy"
+      ],
+      "recipe": "rust-policy",
+      "requirement_id": "EF-H00",
+      "test_ids": [
+        "T025",
+        "T026",
+        "T027"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/H00.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/tests/hot_page_policy.rs"
+      ]
+    },
+    {
+      "id": "H01",
+      "title": "Prepare an inert internal-mode view with bounded readiness",
+      "lane": "presentation",
+      "depends_on": [
+        "F03",
+        "H00",
+        "F01"
+      ],
+      "contracts": [
+        "C02",
+        "C03"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricHotPageController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/src/browser_ui_hot_pages.rs",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_prepare.cpp"
+      ],
+      "steps": [
+        "Connect the policy permit to one never-visited blank view in a same-window hidden inert container.",
+        "Use a safe readiness probe separate from Component.onCompleted; bind timeout to preparation incarnation.",
+        "Prevent profile-level userscripts or credential bridge from installing in the spare; audit all side-effect entry points.",
+        "Expose test-visible readiness/cold reasons without showing an ordinary tab or changing startup focus."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "page-factory",
+        "hot-adapter",
+        "bridge",
+        "build-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-H01",
+      "test_ids": [
+        "T028",
+        "T029",
+        "T030"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/H01.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricHotPageController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/src/browser_ui_hot_pages.rs",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_prepare.cpp"
+      ]
+    },
+    {
+      "id": "H02",
+      "title": "Adopt a matching spare through normal open routing",
+      "lane": "presentation",
+      "depends_on": [
+        "H01"
+      ],
+      "contracts": [
+        "C01",
+        "C02",
+        "C03"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricHotPageController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_claim.cpp"
+      ],
+      "steps": [
+        "Integrate hot claim at ordinary browser-created page allocation after destination resolution, never for engine-created popups.",
+        "Bind real tab/host/profile identity and settings before live scripts/navigation. On partial failure retire and allocate cold exactly once.",
+        "Prevent an extra blank history visit and preserve native start page behaviour/drafts.",
+        "Refill outside the immediate user input path; do not create a chain of hot spares during burst opens."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "page-factory",
+        "hot-adapter",
+        "primary-shell"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-H02",
+      "test_ids": [
+        "T031",
+        "T032",
+        "T033"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/H02.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricHotPageController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_claim.cpp"
+      ]
+    },
+    {
+      "id": "H03",
+      "title": "Eviction, resource pressure and teardown",
+      "lane": "presentation",
+      "depends_on": [
+        "H02",
+        "F04"
+      ],
+      "contracts": [
+        "C01",
+        "C03",
+        "C12"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricHotPageController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_hot_pages.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_eviction.cpp"
+      ],
+      "steps": [
+        "Connect profile/config/renderer/surface-recovery/last-host shutdown events to generation-bound eviction.",
+        "Use available reliable low-memory signals, not polling a new process monitor. Missing signals do not authorize aggressive prewarming.",
+        "Ensure spares do not keep the app/profile alive and do not compete with transfer fallback consumers.",
+        "Exercise cancellation while blank JavaScript/readiness callbacks are outstanding; verify safe async destruction."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "hot-adapter",
+        "profile-lifetime",
+        "lifecycle"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-H03",
+      "test_ids": [
+        "T034",
+        "T035",
+        "T036"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/H03.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricHotPageController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_hot_pages.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_eviction.cpp"
+      ]
+    },
+    {
+      "id": "H04",
+      "title": "Add trustworthy hot/cold benchmark instrumentation",
+      "lane": "integration",
+      "depends_on": [
+        "H02",
+        "S01"
+      ],
+      "contracts": [
+        "C00",
+        "C03",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/everyday/benchmark_hot_pages.py",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_benchmark.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/hot-target.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "docs/testing/everyday-hot-pages.md"
+      ],
+      "steps": [
+        "Add release-path timestamps for browser-input readiness, engine readiness and deterministic destination interactivity; no secret-bearing logs.",
+        "Run alternating/randomized off/on samples using the same binary/config except feature flag; retain raw data and failures.",
+        "Collect process-tree PSS where supported, idle CPU and object counts; distinguish offscreen and actual native timing.",
+        "Validate sample/statistic calculations and publish predetermined metric/budgets before target measurements."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "test-registration",
+        "benchmark"
+      ],
+      "recipe": "benchmark",
+      "requirement_id": "EF-H04",
+      "test_ids": [
+        "T037",
+        "T038",
+        "T039"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/H04.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/everyday/benchmark_hot_pages.py",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_benchmark.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/hot-target.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "docs/testing/everyday-hot-pages.md"
+      ]
+    },
+    {
+      "id": "H05",
+      "title": "Qualify unmapped window-mode spare independently",
+      "lane": "presentation",
+      "depends_on": [
+        "H03",
+        "W02"
+      ],
+      "contracts": [
+        "C02",
+        "C03",
+        "C09"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricHotPageController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_windows.cpp"
+      ],
+      "steps": [
+        "Implement optional prepared unmapped host variant keyed to exact normal profile/presentation. Never briefly map it to warm rendering.",
+        "Map only after atomic claim and live owner installation; preserve last-window and no-daemon behaviour.",
+        "Cold fallback remains available even when this variant cannot warm useful engine work.",
+        "Report window-hot support separately from internal-hot; qualify absence of taskbar/group/portal/focus artefacts."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "hot-adapter",
+        "page-factory",
+        "window-host"
+      ],
+      "recipe": "native",
+      "requirement_id": "EF-H05",
+      "test_ids": [
+        "T040",
+        "T041",
+        "T042"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/H05.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricHotPageController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_windows.cpp"
+      ]
+    },
+    {
+      "id": "H06",
+      "title": "Run native performance and constrained-machine acceptance",
+      "lane": "qualification",
+      "depends_on": [
+        "H03",
+        "H04",
+        "H05"
+      ],
+      "contracts": [
+        "C00",
+        "C03"
+      ],
+      "allowed_paths": [
+        "docs/implementation/everyday-v1/reports/HOT_QUALIFICATION.md"
+      ],
+      "steps": [
+        "Execute predetermined release benchmark on a constrained laptop and another machine with recorded Qt/GPU/compositor/display scale.",
+        "Include individual opens, bursts, cold misses, internal/windows variants, long-run memory and idle measurements.",
+        "Compare against retained thresholds without changing metrics or excluding slow/error samples after the fact.",
+        "Publish measured supported modes and keep failing/unmeasured modes disabled. A no-benefit finding is not a claim of faster tab loading."
+      ],
+      "kind": "qualification",
+      "locks": [
+        "benchmark",
+        "physical-host"
+      ],
+      "recipe": "native",
+      "requirement_id": "EF-H06",
+      "test_ids": [
+        "T043",
+        "T044",
+        "T045"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/H06.md",
+      "read_anchors": []
+    },
+    {
+      "id": "P00",
+      "title": "Prove isolated-world credential boundary on qualified Qt",
+      "lane": "security",
+      "depends_on": [
+        "S01",
+        "S00"
+      ],
+      "contracts": [
+        "C04",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_boundary.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-hostile.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-frame.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "docs/architecture/ADR-everyday-credential-boundary.md"
+      ],
+      "steps": [
+        "Create a narrow public-API spike using actual Qt 6.11.2 WebEngine/WebChannel world selection with no real authenticator material.",
+        "Demonstrate trusted main-frame document facts, per-document challenge and native lease binding, and inability of MainWorld/ordinary script worlds/subframes to reach native authority.",
+        "Test same-URL navigation, BFCache, frame messages, prototype/clobber attempts, opaque/sandboxed/insecure contexts and queued old completions.",
+        "Enumerate existing script worlds and reserve a non-conflicting world in the ADR. Evaluate native-choice activation compatibility, not only channel connectivity.",
+        "Produce proof/failed-primitive evidence. No generic console/scheme fallback or Chromium patch as an implicit workaround."
+      ],
+      "kind": "proof",
+      "locks": [
+        "credential-boundary",
+        "test-registration"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P00",
+      "test_ids": [
+        "T046",
+        "T047",
+        "T048"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P00.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_boundary.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-hostile.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-frame.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "docs/architecture/ADR-everyday-credential-boundary.md"
+      ]
+    },
+    {
+      "id": "P01",
+      "title": "Create separately pinned helper build and dependency inventory",
+      "lane": "security",
+      "depends_on": [
+        "S00"
+      ],
+      "contracts": [
+        "C06",
+        "C07"
+      ],
+      "allowed_paths": [
+        "helpers/ferric-phone-auth/Cargo.toml",
+        "helpers/ferric-phone-auth/Cargo.lock",
+        "helpers/ferric-phone-auth/rust-toolchain.toml",
+        "helpers/ferric-phone-auth/src/main.rs",
+        "helpers/ferric-phone-auth/README.md",
+        "helpers/ferric-phone-auth/deny.toml",
+        "docs/PROVENANCE.md"
+      ],
+      "steps": [
+        "Create independent helper workspace with exact candidate libwebauthn git pin; inspect actual features/APIs and locked transitive toolchain needs.",
+        "Keep Ferric root MSRV unchanged; declare helper floor >=1.88 with reproducible compatible toolchain and report tested floor separately.",
+        "Inventory D-Bus, BlueZ/hidraw/native dependencies, PSL and licenses; do not falsely assume default-features=false removes compiled transports.",
+        "Start with a non-production protocol skeleton only for later implementation; this task alone cannot make the phone capability available.",
+        "No broad cargo update or root dependency churn. Any pin replacement requires provenance/security justification."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "helper-manifest",
+        "helper-core"
+      ],
+      "recipe": "helper",
+      "requirement_id": "EF-P01",
+      "test_ids": [
+        "T049",
+        "T050",
+        "T051"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P01.md",
+      "read_anchors": [
+        "helpers/ferric-phone-auth/Cargo.toml",
+        "helpers/ferric-phone-auth/Cargo.lock",
+        "helpers/ferric-phone-auth/rust-toolchain.toml",
+        "helpers/ferric-phone-auth/src/main.rs",
+        "helpers/ferric-phone-auth/README.md",
+        "helpers/ferric-phone-auth/deny.toml",
+        "docs/PROVENANCE.md"
+      ]
+    },
+    {
+      "id": "P02",
+      "title": "Implement pure credential admission and ceremony state",
+      "lane": "core",
+      "depends_on": [
+        "F00",
+        "S00"
+      ],
+      "contracts": [
+        "C04",
+        "C08"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-application/src/credential_policy.rs",
+        "crates/ferric-browser-application/src/credential_state.rs",
+        "crates/ferric-browser-application/src/lib.rs",
+        "crates/ferric-browser-application/src/credential_tests.rs"
+      ],
+      "steps": [
+        "Add typed verified-origin/document lease and request-owner types without accepting page-supplied authority.",
+        "Implement admission, provider selection, one bridge-managed ceremony quota, deadline and exactly-once terminal transitions.",
+        "Handle invalidation, busy requests, private scope and stale helper results deterministically with a clock abstraction.",
+        "Preserve native requests that never enter the phone shim; feature-off cannot disable baseline auth."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-policy",
+        "application-interface"
+      ],
+      "recipe": "application-rust",
+      "requirement_id": "EF-P02",
+      "test_ids": [
+        "T052",
+        "T053",
+        "T054"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P02.md",
+      "read_anchors": [
+        "crates/ferric-browser-application/src/credential_policy.rs",
+        "crates/ferric-browser-application/src/credential_state.rs",
+        "crates/ferric-browser-application/src/lib.rs",
+        "crates/ferric-browser-application/src/credential_tests.rs"
+      ]
+    },
+    {
+      "id": "P03",
+      "title": "Implement production document-bound native credential bridge",
+      "lane": "security",
+      "depends_on": [
+        "P00",
+        "P02",
+        "F03"
+      ],
+      "contracts": [
+        "C04",
+        "C06"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/credential_bridge.cpp",
+        "crates/ferric-browser-engine-qt/src/credential_bridge.h",
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_bridge.cpp"
+      ],
+      "steps": [
+        "Wire the independently reviewed public-API bridge into the real live-view factory, never spare/internal/ineligible views.",
+        "Expose only a closed credential request/cancel/completion surface in the centrally reserved isolated world.",
+        "Bind handshake/admission/response to current native view/document/profile incarnation and runtime policy.",
+        "Implement bounded parsing and safe data marshaling; reject all generic evaluation/command/path inputs.",
+        "Rerun boundary proof against the shipped production resource/bridge; a standalone spike result does not qualify this implementation."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-boundary",
+        "bridge",
+        "page-factory",
+        "build-registration"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P03",
+      "test_ids": [
+        "T055",
+        "T056",
+        "T057"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P03.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/credential_bridge.cpp",
+        "crates/ferric-browser-engine-qt/src/credential_bridge.h",
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_bridge.cpp"
+      ]
+    },
+    {
+      "id": "P04",
+      "title": "Implement mediator and public-key request serialization",
+      "lane": "security",
+      "depends_on": [
+        "P03"
+      ],
+      "contracts": [
+        "C04",
+        "C05",
+        "C06"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/resources/credentials/mediator.js",
+        "crates/ferric-browser-engine-qt/resources/credentials/shim.js",
+        "crates/ferric-browser-engine-qt/src/credential_protocol.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_messages.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-options.html"
+      ],
+      "steps": [
+        "Install versioned browser-owned resources through the existing build/hash mechanism and reserved-world rules.",
+        "Keep native function references and exact request/signal semantics; bridge only eligible explicit publicKey operations.",
+        "Implement bounded BufferSource/JSON conversion, correct byteOffset/byteLength handling and closed messages.",
+        "Capture trusted facts only in mediator/native handshake. Reject iframe-origin authority and unknown schema versions.",
+        "Non-public-key and unsupported phone contexts keep native operation rather than being globally overwritten."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-scripts",
+        "credential-protocol",
+        "build-registration"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P04",
+      "test_ids": [
+        "T058",
+        "T059",
+        "T060"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P04.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/resources/credentials/mediator.js",
+        "crates/ferric-browser-engine-qt/resources/credentials/shim.js",
+        "crates/ferric-browser-engine-qt/src/credential_protocol.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_messages.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-options.html"
+      ]
+    },
+    {
+      "id": "P05",
+      "title": "Implement asynchronous helper supervision and bounded pipes",
+      "lane": "security",
+      "depends_on": [
+        "P02",
+        "P01"
+      ],
+      "contracts": [
+        "C06",
+        "C08"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/credential_process.cpp",
+        "crates/ferric-browser-engine-qt/src/credential_process.h",
+        "crates/ferric-browser-engine-qt/src/credential_protocol.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/fake_auth_helper.py"
+      ],
+      "steps": [
+        "Launch only packaged/test-authorized helper via private pipes, never shell/page-controlled path or secret argv.",
+        "Validate version/ID/types, bounded buffers, progress coalescing, QR dimensions and exactly one terminal result.",
+        "Handle start failure, malformed output, crash, timeout, cancel and asynchronous terminate/kill/reap without blocking GUI.",
+        "Use fake helper only for process/race/error testing; it cannot satisfy transport or final RP qualification."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-process",
+        "build-registration"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P05",
+      "test_ids": [
+        "T061",
+        "T062",
+        "T063"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P05.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/credential_process.cpp",
+        "crates/ferric-browser-engine-qt/src/credential_process.h",
+        "crates/ferric-browser-engine-qt/src/credential_protocol.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/fake_auth_helper.py"
+      ]
+    },
+    {
+      "id": "P06",
+      "title": "Implement helper RP validation, PSL and request preparation",
+      "lane": "security",
+      "depends_on": [
+        "P01",
+        "P02"
+      ],
+      "contracts": [
+        "C05",
+        "C06",
+        "C07"
+      ],
+      "allowed_paths": [
+        "helpers/ferric-phone-auth/src/main.rs",
+        "helpers/ferric-phone-auth/src/protocol.rs",
+        "helpers/ferric-phone-auth/src/admission.rs",
+        "helpers/ferric-phone-auth/src/errors.rs",
+        "helpers/ferric-phone-auth/tests/admission.rs"
+      ],
+      "steps": [
+        "Implement strict v1 envelope parsing before library request preparation, using browser-verified origin only.",
+        "Load packaged/maintained PSL deliberately; no suffix guessing or permissive fallback.",
+        "Validate requirements/attachment, UV, algorithms, discoverable credentials, allow/exclude lists and supported extensions.",
+        "Emit no QR/network work before admission succeeds; bound encoded and decoded fields consistently."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "helper-core"
+      ],
+      "recipe": "helper",
+      "requirement_id": "EF-P06",
+      "test_ids": [
+        "T064",
+        "T065",
+        "T066"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P06.md",
+      "read_anchors": [
+        "helpers/ferric-phone-auth/src/main.rs",
+        "helpers/ferric-phone-auth/src/protocol.rs",
+        "helpers/ferric-phone-auth/src/admission.rs",
+        "helpers/ferric-phone-auth/src/errors.rs",
+        "helpers/ferric-phone-auth/tests/admission.rs"
+      ]
+    },
+    {
+      "id": "P07",
+      "title": "Implement QR hybrid registration and assertion transport",
+      "lane": "security",
+      "depends_on": [
+        "P06"
+      ],
+      "contracts": [
+        "C05",
+        "C06",
+        "C07"
+      ],
+      "allowed_paths": [
+        "helpers/ferric-phone-auth/src/hybrid.rs",
+        "helpers/ferric-phone-auth/src/main.rs",
+        "helpers/ferric-phone-auth/src/progress.rs",
+        "helpers/ferric-phone-auth/src/errors.rs",
+        "helpers/ferric-phone-auth/tests/hybrid_contract.rs"
+      ],
+      "steps": [
+        "Use the pinned library’s actual QR-initiated hybrid API for both create and get; do not implement protocol crypto.",
+        "Report bounded QR and closed progress states; use library transient-device mode, not remembered-pairing persistence.",
+        "Convert actual registration/assertion responses through library serialization and preserve supported extensions.",
+        "Do not automatically replay an uncertain create. Document retry handling only for explicitly safe device responses.",
+        "Prepare deterministic transport seam tests; actual phone tests belong to P17."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "helper-core"
+      ],
+      "recipe": "helper",
+      "requirement_id": "EF-P07",
+      "test_ids": [
+        "T067",
+        "T068",
+        "T069"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P07.md",
+      "read_anchors": [
+        "helpers/ferric-phone-auth/src/hybrid.rs",
+        "helpers/ferric-phone-auth/src/main.rs",
+        "helpers/ferric-phone-auth/src/progress.rs",
+        "helpers/ferric-phone-auth/src/errors.rs",
+        "helpers/ferric-phone-auth/tests/hybrid_contract.rs"
+      ]
+    },
+    {
+      "id": "P08",
+      "title": "Enforce helper egress and Bluetooth capability policy",
+      "lane": "security",
+      "depends_on": [
+        "P06",
+        "P05"
+      ],
+      "contracts": [
+        "C06",
+        "C07"
+      ],
+      "allowed_paths": [
+        "helpers/ferric-phone-auth/src/network.rs",
+        "helpers/ferric-phone-auth/src/capabilities.rs",
+        "helpers/ferric-phone-auth/src/hybrid.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/src/network_policy.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_network.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/auth_proxy.py"
+      ],
+      "steps": [
+        "Resolve effective browser proxy/offline/egress policy through current application configuration, not just environment variables.",
+        "Inspect actual WebSocket/TLS network code and either implement supported policy propagation or refuse unsupported policy before connection.",
+        "Add bounded helper/PSL/BlueZ capability probes without adapter power changes, privileged access or continuous scanning.",
+        "Test actual socket destinations with an owned proxy/blocked network fixture; never silently direct-connect."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-process",
+        "helper-core",
+        "network-policy"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P08",
+      "test_ids": [
+        "T070",
+        "T071",
+        "T072"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P08.md",
+      "read_anchors": [
+        "helpers/ferric-phone-auth/src/network.rs",
+        "helpers/ferric-phone-auth/src/capabilities.rs",
+        "helpers/ferric-phone-auth/src/hybrid.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/src/network_policy.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_network.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/auth_proxy.py"
+      ]
+    },
+    {
+      "id": "P09",
+      "title": "Build native provider chooser and preserve native authentication",
+      "lane": "presentation",
+      "depends_on": [
+        "P04",
+        "P05",
+        "F05"
+      ],
+      "contracts": [
+        "C05",
+        "C08"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricCredentialProviderPrompt.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowRequestsController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWebAuthPrompt.qml",
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/resources/credentials/shim.js",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_choice.cpp"
+      ],
+      "steps": [
+        "Compose browser-owned keyboard-accessible chooser using current modal scopes and captured host leases.",
+        "Offer only semantically compatible providers. Native selection calls original native operation without synthetic activation.",
+        "Feature off/unqualified/unavailable retains baseline native path; do not globally cancel webAuthUxRequested.",
+        "Handle safe cancel and race where native requests a PIN/account chooser after provider selection; never show two competing prompts."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-ui",
+        "credential-scripts",
+        "native-prompts",
+        "build-registration"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P09",
+      "test_ids": [
+        "T073",
+        "T074",
+        "T075"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P09.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricCredentialProviderPrompt.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowRequestsController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWebAuthPrompt.qml",
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/resources/credentials/shim.js",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_choice.cpp"
+      ]
+    },
+    {
+      "id": "P10",
+      "title": "Implement owned QR/progress UI and accessible cancellation",
+      "lane": "presentation",
+      "depends_on": [
+        "P09",
+        "P07"
+      ],
+      "contracts": [
+        "C06",
+        "C08"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricPhonePasskeyPrompt.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricCredentialProviderPrompt.qml",
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_ui.cpp"
+      ],
+      "steps": [
+        "Render locally validated QR matrix with quiet zone/high contrast; never helper HTML or page-owned overlay.",
+        "Display verified plain-text site identity/progress and private-registration persistence explanation.",
+        "Keep keyboard safe default, Esc/Tab operation, large text/zoom and screen-reader labels without raw secret exposure.",
+        "Hide/suspend when owning host loses appropriate visibility, retain exact ceremony ownership, and avoid focus-stealing background prompts."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-ui",
+        "build-registration"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P10",
+      "test_ids": [
+        "T076",
+        "T077",
+        "T078"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P10.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricPhonePasskeyPrompt.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricCredentialProviderPrompt.qml",
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_ui.cpp"
+      ]
+    },
+    {
+      "id": "P11",
+      "title": "Complete WebAuthn response objects and capability semantics",
+      "lane": "security",
+      "depends_on": [
+        "P04",
+        "P07",
+        "P09"
+      ],
+      "contracts": [
+        "C05",
+        "C07"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/resources/credentials/shim.js",
+        "crates/ferric-browser-engine-qt/resources/credentials/mediator.js",
+        "helpers/ferric-phone-auth/src/admission.rs",
+        "helpers/ferric-phone-auth/src/errors.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_results.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/webauthn-compat.html",
+        "docs/testing/everyday-webauthn-conformance.md"
+      ],
+      "steps": [
+        "Implement real credential/response fields and methods, exact binary round trips, toJSON and extension output semantics.",
+        "Build explicit extension/attachment/UV/mediation conformance table; retain native-only unsupported paths.",
+        "Capability probes return promptly and truthfully without inventing a platform authenticator or autofill support.",
+        "Test representative site-library access patterns including response method mutation, bad inputs and DOMException names."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-scripts",
+        "helper-core"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P11",
+      "test_ids": [
+        "T079",
+        "T080",
+        "T081"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P11.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/resources/credentials/shim.js",
+        "crates/ferric-browser-engine-qt/resources/credentials/mediator.js",
+        "helpers/ferric-phone-auth/src/admission.rs",
+        "helpers/ferric-phone-auth/src/errors.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_results.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/webauthn-compat.html",
+        "docs/testing/everyday-webauthn-conformance.md"
+      ]
+    },
+    {
+      "id": "P12",
+      "title": "Wire complete credential lifecycle, abort and document invalidation",
+      "lane": "security",
+      "depends_on": [
+        "P03",
+        "P05",
+        "P09",
+        "P10",
+        "P11",
+        "F04"
+      ],
+      "contracts": [
+        "C04",
+        "C08",
+        "C12"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/src/credential_bridge.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml",
+        "crates/ferric-browser-engine-qt/resources/credentials/mediator.js",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_lifecycle.cpp"
+      ],
+      "steps": [
+        "Attach cancellation to the existing exact page/document/view retirement lifecycle and helper supervisor.",
+        "Handle AbortSignal, navigation, same-URL reload, renderer restart, profile close, BFCache and application shutdown with exactly one terminal outcome.",
+        "Preserve valid in-page SPA identity only when proven; hidden/focused transitions never retarget a ceremony.",
+        "Exercise late result, timer, parent destroy and helper-exit callback order permutations."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-boundary",
+        "credential-process",
+        "page-factory",
+        "lifecycle"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P12",
+      "test_ids": [
+        "T082",
+        "T083",
+        "T084"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P12.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/src/credential_bridge.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml",
+        "crates/ferric-browser-engine-qt/resources/credentials/mediator.js",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_lifecycle.cpp"
+      ]
+    },
+    {
+      "id": "P13",
+      "title": "Create independent relying-party verification fixture",
+      "lane": "security",
+      "depends_on": [
+        "S01",
+        "P06"
+      ],
+      "contracts": [
+        "C05",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/everyday/rp/server.py",
+        "crates/ferric-browser-engine-qt/tests/everyday/rp/requirements.in",
+        "crates/ferric-browser-engine-qt/tests/everyday/rp/requirements.lock",
+        "crates/ferric-browser-engine-qt/tests/everyday/rp/test_verification.py",
+        "crates/ferric-browser-engine-qt/tests/everyday/rp/README.md",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/phone-auth.html"
+      ],
+      "steps": [
+        "Use an established independent WebAuthn verification implementation (prefer python-fido2), pinned with reproducible dependency hashes in an isolated test environment.",
+        "Provide HTTPS origins with scoped fixture trust, registration then assertion endpoints and test-account cleanup.",
+        "Independently verify challenge/origin/RP/signature/UV flags with real response bytes; helper validation is not the sole oracle.",
+        "Add intentionally corrupted result controls which must fail; expose a guided physical test route without personal accounts."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "test-rp"
+      ],
+      "recipe": "rp",
+      "requirement_id": "EF-P13",
+      "test_ids": [
+        "T085",
+        "T086",
+        "T087"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P13.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/everyday/rp/server.py",
+        "crates/ferric-browser-engine-qt/tests/everyday/rp/requirements.in",
+        "crates/ferric-browser-engine-qt/tests/everyday/rp/requirements.lock",
+        "crates/ferric-browser-engine-qt/tests/everyday/rp/test_verification.py",
+        "crates/ferric-browser-engine-qt/tests/everyday/rp/README.md",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/phone-auth.html"
+      ]
+    },
+    {
+      "id": "P14",
+      "title": "Run composed phone flow and hostile bridge integration tests",
+      "lane": "security",
+      "depends_on": [
+        "P08",
+        "P11",
+        "P12",
+        "P13"
+      ],
+      "contracts": [
+        "C04",
+        "C05",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_phone_auth.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_adversarial.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-hostile.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-frame.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+      ],
+      "steps": [
+        "Exercise actual browser shim/mediator/native actor/supervisor together with a deterministic external authenticator seam and independent RP.",
+        "Cover malicious MainWorld messages, native-object discovery, iframe spoofing, inherited/opaque origin, dropped approvals and same-URL races.",
+        "Check native-provider non-regression and feature-off baseline end-to-end.",
+        "Use redaction sentinels and leak monitors; stub transport is explicitly fixture evidence only."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-integration",
+        "test-registration"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P14",
+      "test_ids": [
+        "T088",
+        "T089",
+        "T090"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P14.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_phone_auth.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_adversarial.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-hostile.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-frame.html",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+      ]
+    },
+    {
+      "id": "P15",
+      "title": "Fuzz credential boundaries and verify resource/privacy caps",
+      "lane": "security",
+      "depends_on": [
+        "P14"
+      ],
+      "contracts": [
+        "C06",
+        "C07",
+        "C14"
+      ],
+      "allowed_paths": [
+        "helpers/ferric-phone-auth/fuzz/Cargo.toml",
+        "helpers/ferric-phone-auth/fuzz/fuzz_targets/protocol.rs",
+        "helpers/ferric-phone-auth/fuzz/fuzz_targets/options.rs",
+        "helpers/ferric-phone-auth/tests/resource_caps.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_limits.cpp",
+        "docs/testing/everyday-credential-fuzz.md"
+      ],
+      "steps": [
+        "Fuzz bounded schemas, decoded binary lengths, QR/control messages and terminal ordering with deterministic seed corpora.",
+        "Exercise repeated cancel/malformed/helper-crash storms and inspect retained processes/views/memory under defined budgets.",
+        "Assert no secret marker reaches logs, crash diagnostics, command history, pairing files or private session persistence.",
+        "Retain reproducible seeds/crashes and actual run settings; absence of a fuzzer tool is a recorded environment limitation, not a completed fuzz run."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "helper-core",
+        "credential-integration"
+      ],
+      "recipe": "fuzz",
+      "requirement_id": "EF-P15",
+      "test_ids": [
+        "T091",
+        "T092",
+        "T093"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P15.md",
+      "read_anchors": [
+        "helpers/ferric-phone-auth/fuzz/Cargo.toml",
+        "helpers/ferric-phone-auth/fuzz/fuzz_targets/protocol.rs",
+        "helpers/ferric-phone-auth/fuzz/fuzz_targets/options.rs",
+        "helpers/ferric-phone-auth/tests/resource_caps.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_limits.cpp",
+        "docs/testing/everyday-credential-fuzz.md"
+      ]
+    },
+    {
+      "id": "P16",
+      "title": "Independent credential security and conformance review",
+      "lane": "security",
+      "depends_on": [
+        "P15",
+        "P14"
+      ],
+      "contracts": [
+        "C00",
+        "C04",
+        "C14"
+      ],
+      "allowed_paths": [
+        "docs/implementation/everyday-v1/reports/CREDENTIAL_SECURITY_REVIEW.md",
+        "docs/architecture/ADR-everyday-credential-boundary.md"
+      ],
+      "steps": [
+        "Use a fresh reviewer not the implementation author; inspect full authority chain, document binding, native fallback, proxy routing and dependency provenance.",
+        "Check every C04-C08 invariant against executable tests and exact source. Reproduce high-risk negative cases.",
+        "Keep unresolved issues in a severity-ranked list; do not waive them because a phone flow is convenient.",
+        "Prepare external/human review dossier before public enablement; model review alone is not certification."
+      ],
+      "kind": "review",
+      "locks": [
+        "security-review"
+      ],
+      "recipe": "review",
+      "requirement_id": "EF-P16",
+      "test_ids": [
+        "T094",
+        "T095",
+        "T096"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P16.md",
+      "read_anchors": [
+        "docs/architecture/ADR-everyday-credential-boundary.md"
+      ]
+    },
+    {
+      "id": "P17",
+      "title": "Physical iPhone, Android and native-key qualification",
+      "lane": "qualification",
+      "depends_on": [
+        "P16",
+        "P13"
+      ],
+      "contracts": [
+        "C00",
+        "C08",
+        "C14"
+      ],
+      "allowed_paths": [
+        "docs/implementation/everyday-v1/reports/PHONE_DEVICE_QUALIFICATION.md",
+        "docs/testing/everyday-phone-manual.md"
+      ],
+      "steps": [
+        "Run browser release build against controlled HTTPS RP with actual iPhone and Android QR scan/proximity approval; user supplies physical actions.",
+        "Register and then authenticate; RP must independently verify results. Capture sanitized versions/outcomes, never credentials/QR material.",
+        "Test cancellation, missing Bluetooth, locked/absent phone, repeated use, multi-window owner and private registration explanation.",
+        "Qualify native security-key positive path and record untested device/transport combinations explicitly. No personal-account registration without authorisation."
+      ],
+      "kind": "qualification",
+      "locks": [
+        "physical-host",
+        "physical-authenticator"
+      ],
+      "recipe": "physical",
+      "requirement_id": "EF-P17",
+      "test_ids": [
+        "T097",
+        "T098",
+        "T099"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P17.md",
+      "read_anchors": [
+        "docs/testing/everyday-phone-manual.md"
+      ]
+    },
+    {
+      "id": "W00",
+      "title": "Prove exact native-host correlation and grouping primitives",
+      "lane": "compositor",
+      "depends_on": [
+        "S00",
+        "S01"
+      ],
+      "contracts": [
+        "C10",
+        "C11"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_compositor_identity.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/hyprland_proof.py",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "docs/architecture/ADR-everyday-window-identity.md"
+      ],
+      "steps": [
+        "Inspect installed Hyprland version/IPC/dispatch semantics and public per-window identity options; record capabilities.",
+        "Prototype exact native-host mapping, considering public protocol first and bounded opaque initial-marker route only if needed.",
+        "Demonstrate source/destination-specific placement and background behaviour under actual compositor races; no global next-window flag.",
+        "Record unsafe/unavailable primitives without replacing them with title/PID/active-window guessing.",
+        "A generic one-page host can proceed independently; automated grouping cannot claim completion without this positive proof."
+      ],
+      "kind": "proof",
+      "locks": [
+        "compositor-protocol",
+        "test-registration",
+        "physical-host"
+      ],
+      "recipe": "native",
+      "requirement_id": "EF-W00",
+      "test_ids": [
+        "T100",
+        "T101",
+        "T102"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W00.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_compositor_identity.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/hyprland_proof.py",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "docs/architecture/ADR-everyday-window-identity.md"
+      ]
+    },
+    {
+      "id": "W01",
+      "title": "Implement presentation/open-target policy at Rust boundary",
+      "lane": "core",
+      "depends_on": [
+        "F01",
+        "S00"
+      ],
+      "contracts": [
+        "C01",
+        "C09",
+        "C13"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-application/src/page_presentation.rs",
+        "crates/ferric-browser-application/src/lib.rs",
+        "crates/ferric-browser-core/src/dispatcher.rs",
+        "crates/ferric-browser-engine-qt/src/open_policy.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_browsing_commands.rs",
+        "crates/ferric-browser-engine-qt/src/effect_projection.rs",
+        "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs"
+      ],
+      "steps": [
+        "Add typed presentation selection and page-host creation intent preserving current TabId/window/runtime ownership.",
+        "Route ordinary tab/current/tab-bg/window intents through one decision after profile/context destination resolution.",
+        "Define exact destructive/traversal scopes; do not rewrite global default commands or user custom bindings.",
+        "Preserve typed captured EngineRequests targets and maintain internal mode as unchanged control."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "open-policy",
+        "application-interface",
+        "command-dispatch"
+      ],
+      "recipe": "application-rust",
+      "requirement_id": "EF-W01",
+      "test_ids": [
+        "T103",
+        "T104",
+        "T105"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W01.md",
+      "read_anchors": [
+        "crates/ferric-browser-application/src/page_presentation.rs",
+        "crates/ferric-browser-application/src/lib.rs",
+        "crates/ferric-browser-core/src/dispatcher.rs",
+        "crates/ferric-browser-engine-qt/src/open_policy.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_browsing_commands.rs",
+        "crates/ferric-browser-engine-qt/src/effect_projection.rs",
+        "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs"
+      ]
+    },
+    {
+      "id": "W02",
+      "title": "Create single-page native hosts using existing workspaces",
+      "lane": "presentation",
+      "depends_on": [
+        "W01",
+        "F02",
+        "F04",
+        "F05"
+      ],
+      "contracts": [
+        "C01",
+        "C09"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_presentation.cpp"
+      ],
+      "steps": [
+        "Instantiate a reusable one-page host with current HintWorkspace/PageSearch/modal/appearance services; no copy of the entire browser shell.",
+        "Hide only irrelevant tab strip; preserve privacy header, status/command and close/undo safeguards.",
+        "Register exact host/page identities and shared profile resources; do not spawn a browser process for each page.",
+        "Support generic Wayland without Hyprland and survive closure of original visible host."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "window-host",
+        "primary-shell",
+        "secondary-shell",
+        "page-factory",
+        "build-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-W02",
+      "test_ids": [
+        "T106",
+        "T107",
+        "T108"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W02.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_presentation.cpp"
+      ]
+    },
+    {
+      "id": "W03",
+      "title": "Implement tab traversal, close, pin and undo in window mode",
+      "lane": "presentation",
+      "depends_on": [
+        "W02"
+      ],
+      "contracts": [
+        "C09",
+        "C12"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/browser_ui_tabs.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_browsing_commands.rs",
+        "crates/ferric-browser-engine-qt/src/tab_presentation.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_commands.cpp"
+      ],
+      "steps": [
+        "Implement same-scope fallback order for ungrouped windows while retaining existing tab commands/custom bindings.",
+        "Close exactly the page via current beforeunload/download decisions; preserve user drafts and last-close setting.",
+        "Keep pin as browser protection, restore existing recoverable metadata on undo and never claim unavailable DOM/POST restoration.",
+        "Handle targets disappearing after command issue and late close responses without acting on a replacement."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "command-dispatch",
+        "window-host"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-W03",
+      "test_ids": [
+        "T109",
+        "T110",
+        "T111"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W03.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/browser_ui_tabs.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_browsing_commands.rs",
+        "crates/ferric-browser-engine-qt/src/tab_presentation.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_commands.cpp"
+      ]
+    },
+    {
+      "id": "W04",
+      "title": "Add bounded compositor observation and capability layer",
+      "lane": "compositor",
+      "depends_on": [
+        "W00"
+      ],
+      "contracts": [
+        "C10",
+        "C11"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/hyprland.rs",
+        "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
+        "crates/ferric-browser-engine-qt/src/background_workers.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs"
+      ],
+      "steps": [
+        "Extend existing transport with event/snapshot observations and typed capability outcomes.",
+        "Parse supported clients/groups/order/version fields with limits; invalidate identity on compositor epoch/reconnect.",
+        "Run I/O off UI thread with bounded backoff/coalescing; no polling hyprctl subprocess loop.",
+        "Keep workspace routing permission distinct from page grouping and preserve enabled=off."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "compositor-protocol",
+        "background-workers"
+      ],
+      "recipe": "rust-policy",
+      "requirement_id": "EF-W04",
+      "test_ids": [
+        "T112",
+        "T113",
+        "T114"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W04.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/hyprland.rs",
+        "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
+        "crates/ferric-browser-engine-qt/src/background_workers.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs"
+      ]
+    },
+    {
+      "id": "W05",
+      "title": "Bind actual host IDs to compositor clients",
+      "lane": "compositor",
+      "depends_on": [
+        "W04",
+        "W02"
+      ],
+      "contracts": [
+        "C10",
+        "C11"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/page_host_identity.cpp",
+        "crates/ferric-browser-engine-qt/src/page_host_identity.h",
+        "crates/ferric-browser-engine-qt/src/hyprland.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_host_identity.cpp"
+      ],
+      "steps": [
+        "Implement only the reviewed W00 identity strategy on actual hosts and native lifetime/generation.",
+        "Validate instance/host incarnation plus expected app/PID and exact native client; never infer mapping from arbitrary title.",
+        "Handle initial marker/privacy/no-flicker constraints if that approved backend is used; restore ordinary title safely.",
+        "Do not persist native addresses or treat KWaylandExtras export handle as a compositor ID."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "compositor-identity",
+        "window-host",
+        "build-registration"
+      ],
+      "recipe": "native",
+      "requirement_id": "EF-W05",
+      "test_ids": [
+        "T115",
+        "T116",
+        "T117"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W05.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/page_host_identity.cpp",
+        "crates/ferric-browser-engine-qt/src/page_host_identity.h",
+        "crates/ferric-browser-engine-qt/src/hyprland.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_host_identity.cpp"
+      ]
+    },
+    {
+      "id": "W06",
+      "title": "Implement transaction-scoped grouped foreground creation",
+      "lane": "compositor",
+      "depends_on": [
+        "W05",
+        "W03"
+      ],
+      "contracts": [
+        "C09",
+        "C10",
+        "C11"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/group_placement.rs",
+        "crates/ferric-browser-engine-qt/src/hyprland.rs",
+        "crates/ferric-browser-engine-qt/src/background_workers.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_group_placement.cpp"
+      ],
+      "steps": [
+        "Capture source host/group/privacy/context at user intent time and give each placement its own token.",
+        "After exact destination mapping, revalidate source, membership, locks and backend operation before placement.",
+        "Prefer supported atomic/serialized operations; reject ambiguous direction/focus-dependent effects instead of guessing.",
+        "On timeout after possible non-idempotent effect, resnapshot before any retry; always retain a usable destination page."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "compositor-protocol",
+        "window-routing"
+      ],
+      "recipe": "native",
+      "requirement_id": "EF-W06",
+      "test_ids": [
+        "T118",
+        "T119",
+        "T120"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W06.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/group_placement.rs",
+        "crates/ferric-browser-engine-qt/src/hyprland.rs",
+        "crates/ferric-browser-engine-qt/src/background_workers.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_group_placement.cpp"
+      ]
+    },
+    {
+      "id": "W07",
+      "title": "Preserve background creation, popup and standalone semantics",
+      "lane": "presentation",
+      "depends_on": [
+        "W06",
+        "W02"
+      ],
+      "contracts": [
+        "C09",
+        "C10",
+        "C11"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/open_policy.rs",
+        "crates/ferric-browser-engine-qt/src/group_placement.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_openers.cpp"
+      ],
+      "steps": [
+        "Implement tab-bg without focus theft using the qualified backend path; otherwise honest standalone nonactivated fallback or explicit unavailable.",
+        "Explicit new-window remains standalone without a broad global autogroup change.",
+        "Preserve actual engine popup request handoff and opener, auth context/private state; do not consume spares for popup requests.",
+        "Do not intercept modal native/DevTools windows as ordinary page hosts."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "open-policy",
+        "window-routing",
+        "secondary-shell"
+      ],
+      "recipe": "native",
+      "requirement_id": "EF-W07",
+      "test_ids": [
+        "T121",
+        "T122",
+        "T123"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W07.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/open_policy.rs",
+        "crates/ferric-browser-engine-qt/src/group_placement.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_openers.cpp"
+      ]
+    },
+    {
+      "id": "W08",
+      "title": "Use observed group order for non-destructive traversal",
+      "lane": "compositor",
+      "depends_on": [
+        "W06",
+        "W03"
+      ],
+      "contracts": [
+        "C09",
+        "C11"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/group_navigation.rs",
+        "crates/ferric-browser-engine-qt/src/hyprland.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tabs.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_group_navigation.cpp"
+      ],
+      "steps": [
+        "Use current observed group membership/order for eligible Ferric traversal, with documented same-scope fallback outside groups.",
+        "Filter mixed-app/private/context members; do not import their state into browser tab metadata.",
+        "Request exact host activation following user intent and honour refusal without loops.",
+        "Observe manual reorder/ungroup without continuously repairing compositor arrangement."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "compositor-protocol",
+        "command-dispatch"
+      ],
+      "recipe": "native",
+      "requirement_id": "EF-W08",
+      "test_ids": [
+        "T124",
+        "T125",
+        "T126"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W08.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/group_navigation.rs",
+        "crates/ferric-browser-engine-qt/src/hyprland.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tabs.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_group_navigation.cpp"
+      ]
+    },
+    {
+      "id": "W09",
+      "title": "Extend session presentation metadata compatibly",
+      "lane": "core",
+      "depends_on": [
+        "W02",
+        "W03"
+      ],
+      "contracts": [
+        "C09",
+        "C12"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-storage/src/sessions.rs",
+        "crates/ferric-browser-application/src/sessions.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_sessions.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_persistence.rs",
+        "crates/ferric-browser-engine-qt/src/tests/window_sessions.rs"
+      ],
+      "steps": [
+        "Locate current schema/recovery APIs before extending optional presentation and logical grouping hints.",
+        "Never persist native addresses, live leases, spare state or credentials. Preserve older sessions and back up before any required schema change.",
+        "Keep private data nonpersistent and unknown group hints ignorable without discarding pages.",
+        "Do not reimplement the current lazy restored-tab and last-tab-undo logic from an outdated proposal."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "sessions",
+        "storage-schema"
+      ],
+      "recipe": "storage",
+      "requirement_id": "EF-W09",
+      "test_ids": [
+        "T127",
+        "T128",
+        "T129"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W09.md",
+      "read_anchors": [
+        "crates/ferric-browser-storage/src/sessions.rs",
+        "crates/ferric-browser-application/src/sessions.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_sessions.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_persistence.rs",
+        "crates/ferric-browser-engine-qt/src/tests/window_sessions.rs"
+      ]
+    },
+    {
+      "id": "W10",
+      "title": "Implement bounded restore and presentation conversion",
+      "lane": "presentation",
+      "depends_on": [
+        "W09",
+        "W02"
+      ],
+      "contracts": [
+        "C09",
+        "C12"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/browser_ui_sessions.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricSessionPreview.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_restore.cpp"
+      ],
+      "steps": [
+        "Reuse existing recovery decision before materializing windows; preserve new user pages and unvisited lazy entries.",
+        "Preview/confirm expansion above twelve windows and materialize in bounded batches; cancellation retains remaining restore records.",
+        "Restore available browser state without POST replay/auth recreation or pretending full page memory restoration.",
+        "Ignore unavailable compositor placement hints safely and preserve original session across a restart-mode conversion."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "sessions",
+        "window-routing"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-W10",
+      "test_ids": [
+        "T130",
+        "T131",
+        "T132"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W10.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/browser_ui_sessions.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricSessionPreview.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_restore.cpp"
+      ]
+    },
+    {
+      "id": "W11",
+      "title": "Qualify context/private isolation and prompt ownership",
+      "lane": "security",
+      "depends_on": [
+        "W02",
+        "W07",
+        "F04"
+      ],
+      "contracts": [
+        "C01",
+        "C09",
+        "C12"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_privacy.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "crates/ferric-browser-engine-qt/src/browser_ui_context_navigation.rs"
+      ],
+      "steps": [
+        "Exercise same display names across different profile/session/partition identities and context routes.",
+        "Ensure private identity headers/titles follow current rules in page windows and auth popups.",
+        "Validate permission/download/file-dialog ownership under window closure and reactivation without broadening sharing.",
+        "Repair only demonstrated routing gaps; preserve existing application ProfileSession/lifetime distinctions."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "profile-lifetime",
+        "window-routing"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-W11",
+      "test_ids": [
+        "T133",
+        "T134",
+        "T135"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W11.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_privacy.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "crates/ferric-browser-engine-qt/src/browser_ui_context_navigation.rs"
+      ]
+    },
+    {
+      "id": "W12",
+      "title": "Separate visibility, focus and renderer lifecycle",
+      "lane": "core",
+      "depends_on": [
+        "W04",
+        "W02"
+      ],
+      "contracts": [
+        "C01",
+        "C11"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/view_lifecycle.rs",
+        "crates/ferric-browser-engine-qt/src/renderer_lifecycle.rs",
+        "crates/ferric-browser-engine-qt/src/group_navigation.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_visibility.cpp"
+      ],
+      "steps": [
+        "Map known native/compositor visibility facts without equating keyboard focus with visibility or selected internal tab.",
+        "Keep simultaneously tiled views eligible for rendering; unknown occlusion stays active.",
+        "Preserve media/capture/dirty-form/download/auth lifecycle blockers and explicit resume behaviour.",
+        "Test locked/minimized/group-hidden/backend-unknown cases with exact ownership."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "view-lifecycle",
+        "compositor-observation"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-W12",
+      "test_ids": [
+        "T136",
+        "T137",
+        "T138"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W12.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/view_lifecycle.rs",
+        "crates/ferric-browser-engine-qt/src/renderer_lifecycle.rs",
+        "crates/ferric-browser-engine-qt/src/group_navigation.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_window_visibility.cpp"
+      ]
+    },
+    {
+      "id": "W13",
+      "title": "Handle compositor disconnect and grouping recovery",
+      "lane": "compositor",
+      "depends_on": [
+        "W06",
+        "W08",
+        "W12"
+      ],
+      "contracts": [
+        "C10",
+        "C11",
+        "C12"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
+        "crates/ferric-browser-engine-qt/src/group_placement.rs",
+        "crates/ferric-browser-engine-qt/src/group_navigation.rs",
+        "crates/ferric-browser-engine-qt/src/background_workers.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_compositor_recovery.cpp"
+      ],
+      "steps": [
+        "Invalidate connection-epoch mappings and pending group effects on IPC loss; keep generic page windows usable.",
+        "Reconnect with bounded resnapshot and no replay of ambiguous toggles.",
+        "Display concise effective capability reason; do not rewrite config, force focus or assume display-server crash recovery is live-window survival.",
+        "Test privacy/group lock changes during reconnect and reject stale source records."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "compositor-protocol",
+        "background-workers"
+      ],
+      "recipe": "native",
+      "requirement_id": "EF-W13",
+      "test_ids": [
+        "T139",
+        "T140",
+        "T141"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W13.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
+        "crates/ferric-browser-engine-qt/src/group_placement.rs",
+        "crates/ferric-browser-engine-qt/src/group_navigation.rs",
+        "crates/ferric-browser-engine-qt/src/background_workers.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_compositor_recovery.cpp"
+      ]
+    },
+    {
+      "id": "W14",
+      "title": "Qualify actual Hyprland and generic Wayland experience",
+      "lane": "qualification",
+      "depends_on": [
+        "W07",
+        "W08",
+        "W10",
+        "W11",
+        "W12",
+        "W13"
+      ],
+      "contracts": [
+        "C00",
+        "C09",
+        "C14"
+      ],
+      "allowed_paths": [
+        "docs/implementation/everyday-v1/reports/WINDOW_QUALIFICATION.md",
+        "docs/testing/everyday-windows-manual.md"
+      ],
+      "steps": [
+        "Run real supported Hyprland positive grouped/background/standalone operations plus generic Wayland fallback.",
+        "Exercise two workspaces, manual mixed groups/locks, simultaneous opens, primary-first closure, popups and session expansion.",
+        "Use compositor-delivered keyboard input where available; distinguish synthetic nested test evidence.",
+        "Record exact versions and supported operations; unsupported background/grouping remains visibly gated."
+      ],
+      "kind": "qualification",
+      "locks": [
+        "physical-host"
+      ],
+      "recipe": "native",
+      "requirement_id": "EF-W14",
+      "test_ids": [
+        "T142",
+        "T143",
+        "T144"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/W14.md",
+      "read_anchors": [
+        "docs/testing/everyday-windows-manual.md"
+      ]
+    },
+    {
+      "id": "X00",
+      "title": "Add cross-feature composition and lifecycle stress matrix",
+      "lane": "integration",
+      "depends_on": [
+        "H05",
+        "P14",
+        "W10",
+        "W11",
+        "W13"
+      ],
+      "contracts": [
+        "C01",
+        "C12",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_feature_composition.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_shutdown_stress.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+      ],
+      "steps": [
+        "Cover mode × hot on/off × phone on/off with actual production owners and realistic asynchronous scheduling.",
+        "Run credential request from a freshly adopted page, concurrent windows, renderer loss, config/profile changes and shutdown.",
+        "Combine popup opening, background grouping and transfer-reserve allocation without confusing the three kinds of prepared resources.",
+        "Keep privacy, history, native search, focus and accepted storage-work assertions visible across the matrix."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "test-registration",
+        "integration-tests"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-X00",
+      "test_ids": [
+        "T145",
+        "T146",
+        "T147"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/X00.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_feature_composition.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_shutdown_stress.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+      ]
+    },
+    {
+      "id": "X01",
+      "title": "Package helper, PSL, system prerequisites and license inventory",
+      "lane": "integration",
+      "depends_on": [
+        "P07",
+        "P08",
+        "F01"
+      ],
+      "contracts": [
+        "C06",
+        "C07",
+        "C13"
+      ],
+      "allowed_paths": [
+        "packaging/PKGBUILD",
+        "packaging/dependencies.toml",
+        "packaging/installed-files.txt",
+        "packaging/README.md",
+        "docs/PROVENANCE.md",
+        "helpers/ferric-phone-auth/README.md"
+      ],
+      "steps": [
+        "Resolve actual current packaging entrypoints in S00; update package/local build to explicitly build/install the separate locked helper.",
+        "Install helper to a fixed non-page-controlled location and declare PSL/BlueZ/native build dependencies deliberately.",
+        "Retain exact third-party notices/provenance and root/helper toolchain distinctions; review distribution obligations without claiming process separation removes them.",
+        "Uninstall removes only installed owned files and never user profile/credentials; no daemon/autostart or Bluetooth/compositor reconfiguration."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "packaging",
+        "helper-manifest"
+      ],
+      "recipe": "package",
+      "requirement_id": "EF-X01",
+      "test_ids": [
+        "T148",
+        "T149",
+        "T150"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/X01.md",
+      "read_anchors": [
+        "packaging/PKGBUILD",
+        "packaging/dependencies.toml",
+        "packaging/installed-files.txt",
+        "packaging/README.md",
+        "docs/PROVENANCE.md",
+        "helpers/ferric-phone-auth/README.md"
+      ]
+    },
+    {
+      "id": "X02",
+      "title": "Integrate new suites and helper checks into CI",
+      "lane": "integration",
+      "depends_on": [
+        "X00",
+        "X01",
+        "P15"
+      ],
+      "contracts": [
+        "C00",
+        "C14"
+      ],
+      "allowed_paths": [
+        ".github/workflows/ci.yml",
+        "crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "crates/xtask/src/main.rs",
+        "helpers/ferric-phone-auth/deny.toml"
+      ],
+      "steps": [
+        "Run all existing gates plus root/helper formatting/lint/build/tests/dependency checks and new production suites.",
+        "Use actual test inventory and fail for zero/missing tests; preserve logs/results on failure.",
+        "Keep native/device qualifications separate from mocked/offscreen CI and label absent hardware honestly.",
+        "Use bounded job/build concurrency and current SDK private-header/KWindowSystem requirements; no unsupported SDK upgrades to make setup easier."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "ci",
+        "test-registration",
+        "build-registration"
+      ],
+      "recipe": "ci",
+      "requirement_id": "EF-X02",
+      "test_ids": [
+        "T151",
+        "T152",
+        "T153"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/X02.md",
+      "read_anchors": [
+        ".github/workflows/ci.yml",
+        "crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "crates/xtask/src/main.rs",
+        "helpers/ferric-phone-auth/deny.toml"
+      ]
+    },
+    {
+      "id": "X03",
+      "title": "Generate user references, diagnostics and recovery guidance",
+      "lane": "integration",
+      "depends_on": [
+        "F01",
+        "W03",
+        "P10",
+        "H04"
+      ],
+      "contracts": [
+        "C09",
+        "C12",
+        "C13"
+      ],
+      "allowed_paths": [
+        "docs/user/configuration.md",
+        "docs/user/commands.md",
+        "docs/user/everyday-features.md",
+        "docs/TESTING.md",
+        "README.md",
+        "crates/ferric-browser-engine-qt/src/diagnostics_overview.rs",
+        "crates/ferric-browser-engine-qt/src/diagnostics_snapshot.rs"
+      ],
+      "steps": [
+        "Generate registry-owned files via cargo xtask docs rather than hand editing generated tables.",
+        "Document precise internal/windows command semantics, opt-in/restart behaviour, supported native grouping and hot measurements.",
+        "Document phone top-level scope, actual prerequisites, safe cancellation/private-registration persistence and native fallback.",
+        "Expose requested/effective/qualified status without private information. Rollback disables features without profile reset."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "generated-docs",
+        "diagnostics"
+      ],
+      "recipe": "docs",
+      "requirement_id": "EF-X03",
+      "test_ids": [
+        "T154",
+        "T155",
+        "T156"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/X03.md",
+      "read_anchors": [
+        "docs/user/configuration.md",
+        "docs/user/commands.md",
+        "docs/user/everyday-features.md",
+        "docs/TESTING.md",
+        "README.md",
+        "crates/ferric-browser-engine-qt/src/diagnostics_overview.rs",
+        "crates/ferric-browser-engine-qt/src/diagnostics_snapshot.rs"
+      ]
+    },
+    {
+      "id": "X04",
+      "title": "Independent integrated architecture and regression review",
+      "lane": "integration",
+      "depends_on": [
+        "X00",
+        "X02",
+        "X03",
+        "F04",
+        "F05"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C14"
+      ],
+      "allowed_paths": [
+        "docs/implementation/everyday-v1/reports/INTEGRATION_REVIEW.md"
+      ],
+      "steps": [
+        "Fresh reviewer traces actual changed code across all three capabilities, shared services, generation checks and existing regressions.",
+        "Check no duplicate browser core, global next-window flag, arbitrary bridge, profile-by-name isolation or unsafe cleanup was introduced.",
+        "Run integrated targeted regressions against exact merged source, then full gates with preserved baseline failures reported separately.",
+        "Any repair is a bounded new attempt with affected test/qualification invalidation; do not append unlimited fixes into final review."
+      ],
+      "kind": "review",
+      "locks": [
+        "integration",
+        "review"
+      ],
+      "recipe": "review",
+      "requirement_id": "EF-X04",
+      "test_ids": [
+        "T157",
+        "T158",
+        "T159"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/X04.md",
+      "read_anchors": []
+    },
+    {
+      "id": "X05",
+      "title": "Run safe build cleanup and reproducible rebuild checkpoint",
+      "lane": "integration",
+      "depends_on": [
+        "X04"
+      ],
+      "contracts": [
+        "C00",
+        "C14"
+      ],
+      "allowed_paths": [
+        "docs/implementation/everyday-v1/reports/REBUILD_AND_RESOURCE_CHECK.md"
+      ],
+      "steps": [
+        "Follow RESOURCE_POLICY dry run; retain source/commits/evidence and delete only inactive explicitly owned build products.",
+        "Rebuild from accepted source/lockfiles with correct native dependencies and no stale static library.",
+        "Prove no dependence on another worktree build, user’s caches/profile or hidden fixture state.",
+        "Record storage/inode/Btrfs metadata observations where available; never run balance/delete snapshots automatically."
+      ],
+      "kind": "verification",
+      "locks": [
+        "integration",
+        "native-build",
+        "cleanup"
+      ],
+      "recipe": "rebuild",
+      "requirement_id": "EF-X05",
+      "test_ids": [
+        "T160",
+        "T161",
+        "T162"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/X05.md",
+      "read_anchors": []
+    },
+    {
+      "id": "X06",
+      "title": "Final capability qualification and handover",
+      "lane": "qualification",
+      "depends_on": [
+        "X05",
+        "H06",
+        "P17",
+        "W14"
+      ],
+      "contracts": [
+        "C00",
+        "C13",
+        "C14"
+      ],
+      "allowed_paths": [
+        "docs/implementation/everyday-v1/reports/FINAL_REPORT.md",
+        "docs/implementation/everyday-v1/control/release-capabilities.json"
+      ],
+      "steps": [
+        "Assemble per-feature implementation/security/native/physical/performance evidence at exact final source revision; rerun impacted gates if source changed.",
+        "Validate all requirements/tests/review receipts, capability statuses and explicitly unresolved blockers with strict mode.",
+        "Provide local branch/SHA, installation/build instructions, safe configuration, measured results and known limitations. Do not push/merge/publish/install over the user browser.",
+        "Call full delivery complete only if all required positive qualification passes. Otherwise deliver an honest implemented/unqualified inventory and resumable checkpoint."
+      ],
+      "kind": "qualification",
+      "locks": [
+        "integration",
+        "release"
+      ],
+      "recipe": "release",
+      "requirement_id": "EF-X06",
+      "test_ids": [
+        "T163",
+        "T164",
+        "T165"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/X06.md",
+      "read_anchors": []
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "run_id": "COPY_FROM_RUN_CONTEXT",
+  "artifact_name": "REPLACE",
+  "owner": "REAL_AGENT_SESSION_ID",
+  "source_sha": "REPLACE",
+  "created_at": "REPLACE"
+}

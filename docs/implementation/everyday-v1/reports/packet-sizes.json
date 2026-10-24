@@ -1,0 +1,226 @@
+{
+  "goal_utf8_bytes": 732,
+  "packet_limit_bytes": 24000,
+  "packets": [
+    {
+      "slice": "S00",
+      "utf8_bytes": 11893
+    },
+    {
+      "slice": "S01",
+      "utf8_bytes": 12085
+    },
+    {
+      "slice": "F00",
+      "utf8_bytes": 11167
+    },
+    {
+      "slice": "F01",
+      "utf8_bytes": 11377
+    },
+    {
+      "slice": "F02",
+      "utf8_bytes": 11853
+    },
+    {
+      "slice": "F03",
+      "utf8_bytes": 11666
+    },
+    {
+      "slice": "F04",
+      "utf8_bytes": 11491
+    },
+    {
+      "slice": "F05",
+      "utf8_bytes": 14548
+    },
+    {
+      "slice": "H00",
+      "utf8_bytes": 11420
+    },
+    {
+      "slice": "H01",
+      "utf8_bytes": 11894
+    },
+    {
+      "slice": "H02",
+      "utf8_bytes": 14794
+    },
+    {
+      "slice": "H03",
+      "utf8_bytes": 14388
+    },
+    {
+      "slice": "H04",
+      "utf8_bytes": 14696
+    },
+    {
+      "slice": "H05",
+      "utf8_bytes": 14443
+    },
+    {
+      "slice": "H06",
+      "utf8_bytes": 11524
+    },
+    {
+      "slice": "P00",
+      "utf8_bytes": 12335
+    },
+    {
+      "slice": "P01",
+      "utf8_bytes": 11885
+    },
+    {
+      "slice": "P02",
+      "utf8_bytes": 11542
+    },
+    {
+      "slice": "P03",
+      "utf8_bytes": 12493
+    },
+    {
+      "slice": "P04",
+      "utf8_bytes": 15486
+    },
+    {
+      "slice": "P05",
+      "utf8_bytes": 11613
+    },
+    {
+      "slice": "P06",
+      "utf8_bytes": 14530
+    },
+    {
+      "slice": "P07",
+      "utf8_bytes": 14672
+    },
+    {
+      "slice": "P08",
+      "utf8_bytes": 11825
+    },
+    {
+      "slice": "P09",
+      "utf8_bytes": 11573
+    },
+    {
+      "slice": "P10",
+      "utf8_bytes": 11510
+    },
+    {
+      "slice": "P11",
+      "utf8_bytes": 11699
+    },
+    {
+      "slice": "P12",
+      "utf8_bytes": 14356
+    },
+    {
+      "slice": "P13",
+      "utf8_bytes": 11733
+    },
+    {
+      "slice": "P14",
+      "utf8_bytes": 15034
+    },
+    {
+      "slice": "P15",
+      "utf8_bytes": 14625
+    },
+    {
+      "slice": "P16",
+      "utf8_bytes": 14727
+    },
+    {
+      "slice": "P17",
+      "utf8_bytes": 14076
+    },
+    {
+      "slice": "W00",
+      "utf8_bytes": 11093
+    },
+    {
+      "slice": "W01",
+      "utf8_bytes": 14012
+    },
+    {
+      "slice": "W02",
+      "utf8_bytes": 11644
+    },
+    {
+      "slice": "W03",
+      "utf8_bytes": 11034
+    },
+    {
+      "slice": "W04",
+      "utf8_bytes": 10828
+    },
+    {
+      "slice": "W05",
+      "utf8_bytes": 10949
+    },
+    {
+      "slice": "W06",
+      "utf8_bytes": 13751
+    },
+    {
+      "slice": "W07",
+      "utf8_bytes": 13759
+    },
+    {
+      "slice": "W08",
+      "utf8_bytes": 11020
+    },
+    {
+      "slice": "W09",
+      "utf8_bytes": 10878
+    },
+    {
+      "slice": "W10",
+      "utf8_bytes": 11017
+    },
+    {
+      "slice": "W11",
+      "utf8_bytes": 13904
+    },
+    {
+      "slice": "W12",
+      "utf8_bytes": 11138
+    },
+    {
+      "slice": "W13",
+      "utf8_bytes": 13416
+    },
+    {
+      "slice": "W14",
+      "utf8_bytes": 14087
+    },
+    {
+      "slice": "X00",
+      "utf8_bytes": 14012
+    },
+    {
+      "slice": "X01",
+      "utf8_bytes": 14166
+    },
+    {
+      "slice": "X02",
+      "utf8_bytes": 11485
+    },
+    {
+      "slice": "X03",
+      "utf8_bytes": 13435
+    },
+    {
+      "slice": "X04",
+      "utf8_bytes": 14346
+    },
+    {
+      "slice": "X05",
+      "utf8_bytes": 11286
+    },
+    {
+      "slice": "X06",
+      "utf8_bytes": 14068
+    }
+  ]
+}

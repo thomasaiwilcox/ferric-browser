@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "slice_id": "REPLACE",
+  "status": "blocked_environment",
+  "source_sha": "REPLACE",
+  "attempt": 1,
+  "missing_primitive_or_environment": "REPLACE",
+  "reproduction": [],
+  "observed_results": [],
+  "rejected_unsafe_workarounds": [],
+  "independent_work_can_continue": [],
+  "resume_requirements": []
+}
