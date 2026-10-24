@@ -4,7 +4,7 @@ use super::{
 };
 
 fn tab_pin_command_event(
-    state: &ferric_browser_core::ApplicationState,
+    state: &ferric_browser_application::BrowserApplication,
     window: WindowId,
     tab_ids: &[TabId],
     command: &ParsedCommand,
@@ -1043,49 +1043,38 @@ impl qobject::BrowserUi {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ferric_browser_core::{ApplicationState, Event, PrivacyKind, reduce};
+    use ferric_browser_config::Config;
+    use ferric_browser_core::{Event, PrivacyKind};
+    use ferric_browser_runtime::RuntimeInput;
 
     #[test]
     fn tab_pin_command_event_targets_only_the_requested_live_tab_in_its_window() {
-        let mut state = ApplicationState::new();
-        reduce(
-            &mut state,
-            Event::CreateProfile {
-                label: "default".into(),
-                privacy: PrivacyKind::Normal,
-            },
-        )
-        .expect("profile");
-        let profile = *state.profiles().keys().next().expect("profile ID");
-        reduce(&mut state, Event::CreateWindow { profile }).expect("first window");
-        let first_window = *state.windows().keys().next().expect("first window ID");
-        reduce(
-            &mut state,
-            Event::OpenTab {
+        let (mut state, first_window, first_tab) =
+            ferric_browser_application::BrowserApplication::bootstrap(
+                Config::default(),
+                PrivacyKind::Normal,
+                "default",
+            )
+            .expect("bootstrap browser application");
+        state
+            .dispatch_runtime(RuntimeInput::Lifecycle(Event::OpenTab {
                 window: first_window,
-            },
-        )
-        .expect("first tab");
-        reduce(
-            &mut state,
-            Event::OpenTab {
-                window: first_window,
-            },
-        )
-        .expect("second tab");
-        reduce(&mut state, Event::CreateWindow { profile }).expect("second window");
+            }))
+            .expect("second tab");
+        let profile = state.windows()[&first_window].profile;
+        state
+            .dispatch_runtime(RuntimeInput::Lifecycle(Event::CreateWindow { profile }))
+            .expect("second window");
         let second_window = *state
             .windows()
             .keys()
             .find(|window| **window != first_window)
             .expect("second window ID");
-        reduce(
-            &mut state,
-            Event::OpenTab {
+        state
+            .dispatch_runtime(RuntimeInput::Lifecycle(Event::OpenTab {
                 window: second_window,
-            },
-        )
-        .expect("foreign window tab");
+            }))
+            .expect("foreign window tab");
 
         let first_window_tabs = state.windows()[&first_window].tabs.clone();
         let foreign_tab = state.windows()[&second_window].tabs[0];
@@ -1104,7 +1093,10 @@ mod tests {
                 pinned: true,
             }
         );
-        reduce(&mut state, event).expect("apply tab pin");
+        state
+            .dispatch_runtime(RuntimeInput::Lifecycle(event))
+            .expect("apply tab pin");
+        assert_eq!(state.tabs().get(&first_tab).unwrap().window, first_window);
         assert!(!state.tabs()[&first_window_tabs[0]].pinned);
         assert!(state.tabs()[&first_window_tabs[1]].pinned);
         assert!(!state.tabs()[&foreign_tab].pinned);
