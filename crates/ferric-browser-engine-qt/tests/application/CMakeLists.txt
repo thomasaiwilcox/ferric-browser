@@ -300,3 +300,8 @@ add_test(NAME application_repeat_cli COMMAND "${DBUS_RUN_SESSION}"
     "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_repeat.py"
     --browser "${FERRIC_BROWSER_EXECUTABLE}" --output "${CMAKE_CURRENT_BINARY_DIR}/repeat-cli")
 set_tests_properties(application_repeat_cli PROPERTIES TIMEOUT 180)
+
+# Everyday v1 acceptance inventory.  These invoke the existing production
+# BrowserUi/WebEngine test executable, which links the Cargo-built engine and
+# its shipped QML resources.  Keep this registration additive to the baseline.
+add_subdirectory(../everyday everyday)
