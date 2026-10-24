@@ -302,7 +302,48 @@
     },
     {
       "id": "F02",
-      "title": "Extract/adapt the existing page factory without behaviour changes",
+      "title": "Aggregate page-factory, callback and focus outcomes",
+      "lane": "presentation",
+      "depends_on": [
+        "F02a",
+        "F02b"
+      ],
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "allowed_paths": [],
+      "steps": [
+        "Coordinator-only aggregate. Do not dispatch this parent to an implementation worker.",
+        "Keep the original F02 failed 3/3 history, blocker, candidates and evidence unchanged while either child remains unaccepted; there is no F02 attempt 4.",
+        "F02a must independently review, integrate and qualify T015 on its own exact source. F02b must independently review, integrate and qualify the original T013 and T014 behaviors on top of accepted F02a.",
+        "After both children are independently accepted, record a no-code aggregate referencing their exact evidence and reviewer decisions; do not inherit the attempt-3 partial pass or invent acceptance cases.",
+        "F03, F04, F05, W02 and every consumer requiring full page-factory and focus parity remain gated on aggregate F02."
+      ],
+      "kind": "aggregate",
+      "locks": [],
+      "recipe": "review",
+      "requirement_id": "EF-F02",
+      "test_ids": [],
+      "max_changed_product_files": 0,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F02.md",
+      "read_anchors": [],
+      "aggregate_test_ids": [
+        "T013",
+        "T014",
+        "T015"
+      ],
+      "aggregate_of": [
+        "F02a",
+        "F02b"
+      ]
+    },
+    {
+      "id": "F02a",
+      "title": "Extract page factory and qualify document-owner callbacks",
       "lane": "presentation",
       "depends_on": [
         "S01"
@@ -319,10 +360,11 @@
         "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
       ],
       "steps": [
-        "Locate current inline webViewComponent and all creation/transfer callers. Reuse an existing factory if upstream already extracted it.",
-        "Extract production callbacks and required owner/profile/model properties into one reusable component/factory. Do not copy primary/secondary implementations.",
-        "Preserve native history/reload gates, prompt identities, download initiators, script runner and profileResourceRegistry wiring.",
-        "Run current internal and secondary navigation/popup/transfer tests with all new flags off before any hot behaviour."
+        "Starting from the current integration source, extract/adapt the production page factory and preserve profile, owner and callback wiring. Attempt-3 F02 code may be consulted or reused as a starting point, but is not inherited acceptance and must be re-reviewed on this child scope.",
+        "Preserve native history/reload gates, prompt identities, download initiators, script runner and profileResourceRegistry wiring; do not implement speculative hot-page behavior.",
+        "Keep or add the registered production CTest entries for T013, T014 and T015 in the everyday harness so F02b can execute its cases. This is registration setup only: F02a accepts T015 alone; T013/T014 remain owned and accepted only by F02b.",
+        "Run T015 through the registered production application harness and prove delayed callbacks after close/move cannot update another page or active chrome.",
+        "Do not claim T013 or T014 from the former F02 attempt; those are owned and qualified only by F02b after this child is accepted."
       ],
       "kind": "implementation",
       "locks": [
@@ -335,15 +377,13 @@
       "recipe": "application",
       "requirement_id": "EF-F02",
       "test_ids": [
-        "T013",
-        "T014",
         "T015"
       ],
-      "max_changed_product_files": 8,
+      "max_changed_product_files": 5,
       "max_attempts": 3,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
-      "slice_file": "slices/F02.md",
+      "slice_file": "slices/F02a.md",
       "read_anchors": [
         "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
         "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
@@ -353,7 +393,61 @@
         "crates/ferric-browser-engine-qt/build.rs",
         "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
         "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
-      ]
+      ],
+      "parent_id": "F02"
+    },
+    {
+      "id": "F02b",
+      "title": "Qualify secondary-host focus and popup/transfer preservation",
+      "lane": "presentation",
+      "depends_on": [
+        "F02a"
+      ],
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml"
+      ],
+      "steps": [
+        "Run the original T013/T014 assertions on accepted F02a source; preserve every URL/title/history/settings and keyboard-focus assertion plus actual popup/opener and transfer-reserve checks.",
+        "Before injecting the secondary-host key, request activation and wait until that exact host is active; assert the intended page owns focus and that the key is delivered. This is fixture setup only and does not change expected behavior.",
+        "If the expected key/focus behavior still fails after verified host activation and page focus, trace and fix a reproduced production defect only within the listed existing F02 QML paths. Do not weaken, skip, relabel or bypass an unavailable assertion.",
+        "A still-failing or unavailable application assertion remains unqualified; preserve the receipt and blocker. Do not claim the prior attempt-3 popup subcase pass as this child acceptance."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "page-factory",
+        "primary-shell",
+        "secondary-shell",
+        "test-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T013",
+        "T014"
+      ],
+      "max_changed_product_files": 4,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F02b.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+      ],
+      "parent_id": "F02"
     },
     {
       "id": "F03",

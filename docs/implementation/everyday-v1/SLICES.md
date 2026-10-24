@@ -1,6 +1,6 @@
 # Dependency-ordered work inventory
 
-60 execution-plan entries (59 work slices plus one coordinator aggregate) and 165 acceptance cases. All are unstarted.
+62 execution-plan entries (60 work slices plus two coordinator aggregates) and 165 acceptance cases. Mutable execution status is recorded in the external run ledger.
 
 | ID | Outcome | Depends on |
 |---|---|---|
@@ -8,7 +8,9 @@
 | S01 | Register production-backed feature test harness and baseline inventory | S00 |
 | F00 | Add typed feature settings and validate defaults | S00 |
 | F01 | Wire setting registry, atomic application and effective status | F00 |
-| F02 | Extract/adapt the existing page factory without behaviour changes | S01 |
+| F02 | Aggregate page-factory, callback and focus outcomes | F02a, F02b |
+| F02a | Extract page factory and qualify document-owner callbacks | S01 |
+| F02b | Qualify secondary-host focus and popup/transfer preservation | F02a |
 | F03 | Introduce explicit view role and generation guards | F02 |
 | F04 | Qualify shared service and first-host lifetime | F02, S01 |
 | F05 | Verify current per-window interaction parity and fix only gaps | F02, S01 |

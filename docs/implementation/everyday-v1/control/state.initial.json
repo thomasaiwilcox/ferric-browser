@@ -45,6 +45,22 @@
       "evidence": null,
       "blocker": null
     },
+    "F02a": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02b": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
     "F03": {
       "status": "not_started",
       "attempts": 0,
