@@ -154,10 +154,10 @@
   ],
   "planned_path_inventory": {
     "unique_paths": 187,
-    "existing_product_paths": 66,
+    "existing_product_paths": 67,
     "execution_pack_artifacts": 2,
     "planned_execution_outputs": 8,
-    "proposed_product_deliverables": 111,
+    "proposed_product_deliverables": 110,
     "paths": [
       {
         "path": ".github/workflows/ci.yml",
@@ -1541,6 +1541,21 @@
         "history_at_product_baseline": true
       },
       {
+        "path": "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "4efab65c5b1706a1e9ba8116074a4c1a2f90bd1d",
+        "integration_head_blob": "8bd1539527c693c0adb2f7f7e29399be98ac0a0c",
+        "working_tree_file_present": true,
+        "slices": [
+          "F02"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
         "path": "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
         "resolution": "proposed_product_deliverable",
         "product_baseline_blob": null,
@@ -2159,21 +2174,6 @@
         "working_tree_file_present": false,
         "slices": [
           "H05"
-        ],
-        "roles": [
-          "allowed",
-          "read_anchor"
-        ],
-        "history_at_product_baseline": false
-      },
-      {
-        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_page_factory.cpp",
-        "resolution": "proposed_product_deliverable",
-        "product_baseline_blob": null,
-        "integration_head_blob": null,
-        "working_tree_file_present": false,
-        "slices": [
-          "F02"
         ],
         "roles": [
           "allowed",
