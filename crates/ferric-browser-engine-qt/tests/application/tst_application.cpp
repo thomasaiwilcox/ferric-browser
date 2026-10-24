@@ -3921,6 +3921,7 @@ void ApplicationTests::productPolishPopupCommands() {
     page("window.nestedPopupState=95");
     const auto popupSource =
         evaluate(nested + ".host.activeView").value<QObject *>();
+    QCOMPARE(popupSource, evaluate(nested + ".view").value<QObject *>());
     QVERIFY(popupSource);
     const auto popupHistoryBefore =
         evaluate(nested + ".ui.content_history_export(0)").toString();
