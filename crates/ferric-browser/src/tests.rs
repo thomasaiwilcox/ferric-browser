@@ -118,7 +118,7 @@ fn generated_command_usage_preserves_typed_flag_shapes() {
         .expect("search-next definition");
     assert_eq!(
         command_usage(search_next),
-        "search-next [--backward] [--count <COUNT>]"
+        "search-next [--forward|--backward] [--count <COUNT>]"
     );
     let context = registry
         .resolve("context-create")
@@ -520,7 +520,7 @@ fn cli_open_accepts_typed_route_options_and_joins_input_tail() {
             target: Some(target),
             explicit_input: true,
             ..
-        } if input == "quarterly report" && target == "tab"
+        } if input == "quarterly report" && target == "current"
     ));
 }
 
@@ -665,7 +665,7 @@ fn startup_profile_selection_follows_context_profile_definition() {
         ..ContextsConfig::default()
     };
     let (_, name, label, startup_context) =
-        select_startup_profile(&options, &profiles, &contexts, "default", "Default")
+        select_startup_profile(&options, &profiles, &contexts, "default", "Default", None)
             .expect("context selects a valid startup profile");
     assert_eq!(name, "work");
     assert_eq!(label, "Work");
@@ -697,9 +697,10 @@ fn startup_profile_selection_rejects_conflicting_context_profile() {
         &contexts,
         "default",
         "Default",
+        None,
     )
     .expect_err("conflicting selectors must be rejected");
-    assert!(error.contains("profile and context selectors disagree"));
+    assert_eq!(error.code(), ErrorCode::InvalidArgument);
 }
 
 #[test]
@@ -2574,4 +2575,66 @@ fn engine_security_flag_guard_rejects_boolean_forms() {
         Some("--single-process")
     );
     assert_eq!(find_disabling_engine_flag("--disable-gpu"), None);
+}
+
+#[test]
+fn startup_profile_selection_uses_saved_context_affinity_and_checks_its_name() {
+    let roots = StorageRoots::resolve(RootSpec::Temporary).unwrap();
+    let mut registry = ContextRegistry::open(&roots).unwrap();
+    let context = registry.create("saved", "Saved", "work").unwrap().clone();
+    let profiles = ProfilesConfig {
+        profiles: vec![ProfileDefinition {
+            name: "work".into(),
+            label: "Work".into(),
+            default: false,
+            overrides: BTreeMap::default(),
+        }],
+        ..ProfilesConfig::default()
+    };
+    let mut options = CliOptions {
+        context: Some("saved".into()),
+        ..CliOptions::default()
+    };
+    let (_, profile, label, selected) = select_startup_profile(
+        &options,
+        &profiles,
+        &ContextsConfig::default(),
+        "default",
+        "Default",
+        Some(&context),
+    )
+    .unwrap();
+    assert_eq!(profile, "work");
+    assert_eq!(label, "Work");
+    assert_eq!(selected.as_deref(), Some("saved"));
+    options.profile = Some("personal".into());
+    assert_eq!(
+        select_startup_profile(
+            &options,
+            &profiles,
+            &ContextsConfig::default(),
+            "default",
+            "Default",
+            Some(&context)
+        )
+        .unwrap_err()
+        .code(),
+        ErrorCode::InvalidArgument
+    );
+    options.profile = None;
+    options.context = Some("missing".into());
+    assert_eq!(
+        select_startup_profile(
+            &options,
+            &profiles,
+            &ContextsConfig::default(),
+            "default",
+            "Default",
+            Some(&context)
+        )
+        .unwrap_err()
+        .code(),
+        ErrorCode::NotFound
+    );
+    roots.cleanup().unwrap();
 }

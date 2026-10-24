@@ -1101,6 +1101,7 @@ QtObject {
         }
         if (search !== undefined) {
             window.bindingHelpSearch = String(search)
+            window.runtime_keyboardHelpSurface.setSearchQuery(search)
         }
         window.refreshBindingHelp()
         window.bindingHelpVisible = true

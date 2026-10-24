@@ -135,6 +135,8 @@ pub(crate) mod qobject {
         #[qproperty(QString, search_text)]
         #[qproperty(bool, search_backward)]
         #[qproperty(QString, session_restore_values)]
+        #[qproperty(bool, session_recovery_pending)]
+        #[qproperty(QString, session_recovery_error)]
         #[qproperty(QStringList, session_preview_labels)]
         #[qproperty(QStringList, session_preview_urls)]
         #[qproperty(QStringList, session_preview_pinned)]
@@ -381,6 +383,9 @@ pub(crate) mod qobject {
         #[qsignal]
         fn runtime_work_available(self: Pin<&mut BrowserUi>);
 
+        #[qsignal]
+        fn switcher_sources_changed(self: Pin<&mut BrowserUi>);
+
         #[qinvokable]
         fn activate_runtime_wake(self: Pin<&mut BrowserUi>);
 
@@ -616,6 +621,9 @@ pub(crate) mod qobject {
         fn tab_muted_at(&self, index: i32) -> bool;
 
         #[qinvokable]
+        fn display_page_title(self: &BrowserUi, title: &QString) -> QString;
+
+        #[qinvokable]
         fn tab_transfer_payload(self: Pin<&mut BrowserUi>, id: &QString) -> QString;
 
         #[qinvokable]
@@ -671,6 +679,12 @@ pub(crate) mod qobject {
 
         #[qinvokable]
         fn recover_session(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn remember_recovery_placeholder(self: Pin<&mut BrowserUi>);
+
+        #[qinvokable]
+        fn cancel_session_recovery(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
         fn checkpoint_session(self: Pin<&mut BrowserUi>) -> bool;
@@ -1073,6 +1087,9 @@ pub(crate) mod qobject {
         ) -> bool;
 
         #[qinvokable]
+        fn report_undo_fallback(self: Pin<&mut BrowserUi>, id: &QString, ready: bool);
+
+        #[qinvokable]
         fn activate_switcher_action(
             self: Pin<&mut BrowserUi>,
             kind: &QString,
@@ -1386,6 +1403,9 @@ pub(crate) mod qobject {
         fn select_site_rule_settings(self: Pin<&mut BrowserUi>, url: &QString) -> bool;
 
         #[qinvokable]
+        fn navigation_kind_for(self: Pin<&mut BrowserUi>, index: i32, history: bool);
+
+        #[qinvokable]
         fn navigation_started(self: Pin<&mut BrowserUi>, url: QString);
 
         #[qinvokable]
@@ -1442,6 +1462,9 @@ pub(crate) mod qobject {
 
         #[qinvokable]
         fn navigation_completed_for(self: Pin<&mut BrowserUi>, index: i32);
+
+        #[qinvokable]
+        fn navigation_stopped_for(self: Pin<&mut BrowserUi>, index: i32);
 
         #[qinvokable]
         fn navigation_failed(self: Pin<&mut BrowserUi>);
@@ -1550,6 +1573,18 @@ pub(crate) mod qobject {
             tab: &QString,
             generation: &QString,
             document: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn navigation_target_for_index(&self, index: i32) -> QVariant;
+
+        #[qinvokable]
+        fn document_title_changed(
+            self: Pin<&mut BrowserUi>,
+            tab: &QString,
+            generation: &QString,
+            document: &QString,
+            title: &QString,
         ) -> bool;
 
         #[qinvokable]

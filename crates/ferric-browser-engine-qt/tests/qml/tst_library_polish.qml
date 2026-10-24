@@ -274,6 +274,7 @@ TestCase {
         keyClick(Qt.Key_Backtab, Qt.ShiftModifier)
         keyClick(Qt.Key_End)
         compare(list.currentIndex, 39)
+        host.update()
         verify(waitForRendering(host.contentItem))
         tryVerify(function() { return list.itemAtIndex(0) === null }, 5000,
             "The original editor is outside the virtualized viewport")

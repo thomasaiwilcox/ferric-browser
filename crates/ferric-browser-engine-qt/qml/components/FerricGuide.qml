@@ -15,6 +15,7 @@ Item {
     property var rows: []
     property var categories: []
     property var activeTextSelection: null
+    property string renderedQuery: ""
     readonly property bool compact: width < Math.max(740, fontSize * 74)
     readonly property bool inputActive: search.activeFocus || sectionFilter.activeFocus || sectionFilter.popup.visible
         || backToIndex.activeFocus || advanced.activeFocus
@@ -22,10 +23,17 @@ Item {
     readonly property var currentRow: entries.currentIndex >= 0 && entries.currentIndex < rows.length && !rows[entries.currentIndex].heading ? rows[entries.currentIndex] : null
     readonly property bool articleOpen: currentRow !== null && (!compact || readerActive)
     readonly property bool handlesEscape: (search.activeFocus && searchText.length > 0)
-        || articlePane.activeFocus || (compact && readerActive)
-    readonly property string navigationHelp: articlePane.activeFocus || (compact && readerActive)
-        ? "j/k scroll · Space page · Esc all features"
-        : compact ? "j/k browse · Enter open feature" : "j/k browse · Enter focus article · PgUp/PgDn scroll"
+        || sectionFilter.popup.visible || articlePane.activeFocus || (compact && readerActive)
+    readonly property string navigationHelp: search.activeFocus
+        ? "Type to search · ↓ browse" + (searchText.length > 0 ? " · Esc clear search" : "")
+        : sectionFilter.popup.visible ? "↑/↓ choose section · Enter apply · Esc cancel"
+        : sectionFilter.activeFocus ? "↑/↓ change section · Space open sections"
+        : activeTextSelection && activeTextSelection.activeFocus ? "Ctrl+C copy · Esc return to article"
+        : backToIndex.activeFocus ? "Enter/Esc feature list"
+        : advanced.activeFocus ? "Space toggle command details · Esc feature list"
+        : articlePane.activeFocus || (compact && readerActive)
+        ? "j/k scroll · Space page · / search · Esc feature list"
+        : compact ? "j/k browse · Enter open feature · / search" : "j/k browse · Enter focus article · / search · PgUp/PgDn scroll"
     readonly property var currentShortcuts: currentRow ? currentRow.bindings.map(function(binding) { return binding.keys })
         .filter(function(keys, index, values) { return keys.indexOf("Unbound") !== 0 && values.indexOf(keys) === index }) : []
     readonly property real readingWidth: article.width
@@ -62,20 +70,37 @@ Item {
         for (var n = 0; n < features.length; ++n) {
             var item = features[n]
             if (selectedCategory.length > 0 && item.category !== selectedCategory) continue
-            if (item.category !== previous) { result.push({ heading: true, category: item.category, key: "heading:" + item.category }); previous = item.category }
+            if (searchText.trim().length === 0 && item.category !== previous) { result.push({ heading: true, category: item.category, key: "heading:" + item.category }); previous = item.category }
             result.push(item)
         }
-        var oldKey = currentRow ? currentRow.key : ""
+        var query = searchText.trim()
+        var oldKey = query === renderedQuery && currentRow ? currentRow.key : ""
+        renderedQuery = query
         rows = result
         var next = result.findIndex(function(row) { return row.key === oldKey && !row.heading })
-        if (next < 0 && searchText.length === 0 && selectedCategory.length === 0)
+        if (next < 0 && query.length === 0 && selectedCategory.length === 0)
             next = result.findIndex(function(row) { return row.identity === "mode-enter" })
         entries.currentIndex = next >= 0 ? next : result.findIndex(function(row) { return !row.heading })
         if (!currentRow) readerActive = false
         positionCurrentTimer.restart()
     }
     function refresh() { browserUi.refresh_guide(searchText); rebuild() }
+    function setSearchQuery(text) {
+        selectedCategory = ""
+        sectionFilter.currentIndex = 0
+        readerActive = false
+        searchText = String(text)
+        refresh()
+    }
+    function focusSearch() {
+        readerActive = false
+        focusReaderTimer.stop()
+        focusEntriesTimer.stop()
+        search.forceActiveFocus()
+        focusSearchTimer.restart()
+    }
     function focusEntries() {
+        focusSearchTimer.stop()
         var returning = compact && readerActive
         readerActive = false
         entries.forceActiveFocus()
@@ -84,6 +109,7 @@ Item {
         focusEntriesTimer.restart()
     }
     function focusReader() {
+        focusSearchTimer.stop()
         if (!currentRow) return
         readerActive = true
         if (activeTextSelection) activeTextSelection.focus = false
@@ -92,6 +118,12 @@ Item {
         focusReaderTimer.restart()
     }
     // Owned timers cancel deferred layout/focus work when this view unloads.
+    Timer {
+        id: focusSearchTimer
+        interval: 0
+        onTriggered: if (guide.visible && search.visible && (search.focus || !guide.inputActive))
+                         search.forceActiveFocus()
+    }
     Timer {
         id: positionCurrentTimer
         interval: 0
@@ -127,19 +159,26 @@ Item {
         return result
     }
     function modeName(mode) { return mode.split(", ").map(function(value) { return value.replace(/-/g, " ").replace(/^./, function(letter) { return letter.toUpperCase() }) }).join(" · ") }
-    function scrollArticle(delta) {
+    function scrollArticle(delta, pageStep) {
+        // A queued key can arrive before the newly opened article is laid out.
+        guideColumns.ensurePolished()
+        articleScroll.ensurePolished()
+        article.ensurePolished()
         var viewport = articleScroll.contentItem
-        if (viewport && viewport.contentY !== undefined) viewport.contentY = Math.max(0, Math.min(viewport.contentHeight - viewport.height, viewport.contentY + delta))
+        if (!viewport || viewport.contentY === undefined) return
+        var distance = pageStep ? viewport.height * delta : delta
+        viewport.contentY = Math.max(0, Math.min(viewport.contentHeight - viewport.height, viewport.contentY + distance))
     }
     function handleNavigation(event) {
         if (inputActive || (!entries.activeFocus && !articlePane.activeFocus)) return false
         if (typeof browserUi.start_page_key_available === "function" && !browserUi.start_page_key_available()) return false
         var plain = event.modifiers === Qt.NoModifier
         var reading = articlePane.activeFocus
-        if (plain && articleOpen && event.key === Qt.Key_PageDown) scrollArticle(articleScroll.height * 0.8)
-        else if (plain && articleOpen && event.key === Qt.Key_PageUp) scrollArticle(-articleScroll.height * 0.8)
+        if (plain && event.key === Qt.Key_Slash) { focusSearch(); search.selectAll() }
+        else if (plain && articleOpen && event.key === Qt.Key_PageDown) scrollArticle(0.8, true)
+        else if (plain && articleOpen && event.key === Qt.Key_PageUp) scrollArticle(-0.8, true)
         else if (articleOpen && reading && event.key === Qt.Key_Space
-                 && (plain || event.modifiers === Qt.ShiftModifier)) scrollArticle(articleScroll.height * (plain ? 0.8 : -0.8))
+                 && (plain || event.modifiers === Qt.ShiftModifier)) scrollArticle(plain ? 0.8 : -0.8, true)
         else if (plain && (event.key === Qt.Key_Down || event.key === Qt.Key_J)) { if (reading) scrollArticle(guide.fontSize * 4); else move(1) }
         else if (plain && (event.key === Qt.Key_Up || event.key === Qt.Key_K)) { if (reading) scrollArticle(-guide.fontSize * 4); else move(-1) }
         else if (plain && (event.key === Qt.Key_Right || event.key === Qt.Key_L)) focusReader()
@@ -150,7 +189,13 @@ Item {
         event.accepted = true
         return true
     }
-    onSearchTextChanged: { selectedCategory = ""; sectionFilter.currentIndex = 0 }
+    onSearchTextChanged: {
+        selectedCategory = ""
+        sectionFilter.currentIndex = 0
+        // Escape can replace the TextField's initial binding while clearing
+        // it. Later command queries must update the visible input as well.
+        if (search && search.text !== searchText) search.text = searchText
+    }
     onCurrentRowChanged: { if (articleScroll.contentItem) articleScroll.contentItem.contentY = 0; advanced.checked = false }
     Keys.onEscapePressed: function(event) {
         if (articlePane.activeFocus || (compact && readerActive)) { focusEntries(); event.accepted = true }
@@ -163,6 +208,7 @@ Item {
         function onGuide_detailsChanged() { guide.rebuild() }
     }
     RowLayout {
+        id: guideColumns
         anchors.fill: parent
         spacing: 24
         ColumnLayout {
@@ -189,6 +235,7 @@ Item {
             }
             FerricStartComboBox {
                 id: sectionFilter
+                objectName: "ferricGuideSectionFilter"
                 Layout.fillWidth: true
                 browserWindow: guide.browserWindow
                 model: ["All sections"].concat(guide.categories)

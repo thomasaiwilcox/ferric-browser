@@ -10,14 +10,13 @@ use super::{
     PendingSameDocumentPassThrough, PendingSelection, PendingSelectorValidation, PendingSpawn,
     PendingUserscript, ProfileLibrarySnapshot, QString, RefCell, SessionSaveIntent, SpatialSession,
     SpawnCompletion, StorageTicket, SwitcherLibraryIndex, SwitcherLibraryIndexResult,
-    SwitcherQueryCache, TabId, Target, UserscriptCompletion, Value, VecDeque,
+    SwitcherQueryCache, TabId, Target, UserscriptCompletion, Value,
 };
 
 pub(super) struct NavigationState {
     pub(super) pending_journey_transitions: Vec<(Target, JourneyEdgeKind, String)>,
     pub(super) pending_journey_parent: Option<(Target, JourneyNodeId)>,
-    pub(super) pending_journey_traversal: Option<Target>,
-    pub(super) pending_journey_traversals: VecDeque<Target>,
+    pub(super) engine_navigation_kinds: BTreeMap<TabId, (Target, bool)>,
     pub(super) pending_journey_mappings: BTreeMap<StorageTicket, (JourneyNodeId, String)>,
     pub(super) pending_journey_reopen: Option<(String, String, Option<TabId>, String)>,
     pub(super) pending_navigation_urls: BTreeMap<TabId, String>,
@@ -29,6 +28,23 @@ pub(super) struct NavigationState {
     pub(super) scroll_positions: BTreeMap<TabId, (f64, f64)>,
     pub(super) content_histories: BTreeMap<TabId, ferric_browser_core::ContentHistory>,
     pub(super) journey_durable_ids: RefCell<BTreeMap<JourneyNodeId, String>>,
+}
+
+impl NavigationState {
+    pub(super) fn durable_journey_id(&self, node: JourneyNodeId) -> Option<String> {
+        // Queued writes already own their UUID before the worker acknowledges
+        // them. A later FIFO pointer write must retain that exact identity.
+        self.journey_durable_ids
+            .borrow()
+            .get(&node)
+            .cloned()
+            .or_else(|| {
+                self.pending_journey_mappings
+                    .values()
+                    .rev()
+                    .find_map(|(owner, id)| (*owner == node).then(|| id.clone()))
+            })
+    }
 }
 
 pub(super) struct ProcessState {
@@ -104,13 +120,18 @@ pub(super) struct LibraryState {
     pub(super) session_names: Vec<String>,
     pub(super) session_names_dirty: Cell<bool>,
     pub(super) session_names_refresh_again: bool,
-    pub(super) session_restore_preview_pending: bool,
-    pub(super) session_restore_load_append: Option<bool>,
-    pub(super) session_restore_recovery_pending: bool,
+    pub(super) session_restores: BTreeMap<StorageTicket, SessionRestoreIntent>,
     pub(super) session_saves: BTreeMap<StorageTicket, SessionSaveIntent>,
     pub(super) session_checkpoint_clear_pending: bool,
     pub(super) storage_flush_pending: bool,
     pub(super) storage_flush_error: Option<String>,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(super) enum SessionRestoreIntent {
+    Preview,
+    Load { append: bool },
+    Recovery,
 }
 
 pub(super) struct InteractionState {

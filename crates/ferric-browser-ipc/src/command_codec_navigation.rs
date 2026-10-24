@@ -92,11 +92,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                 ("external".into(), serde_json::Value::Bool(true)),
             ]);
             if let Some(target) = target {
-                let target = if target == "current" { "tab" } else { &target };
-                value.insert(
-                    "target".into(),
-                    serde_json::Value::String(target.to_owned()),
-                );
+                value.insert("target".into(), serde_json::Value::String(target));
             }
             if clean_link {
                 value.insert("clean_link".into(), serde_json::Value::Bool(true));
@@ -245,12 +241,18 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             serde_json::json!({"factor": command.arguments[0]})
         }
         "search-next" => {
-            let mut direction = "forward";
+            let mut direction = None;
             let mut count = None;
             let mut index = 0;
             while index < command.arguments.len() {
                 match command.arguments[index].as_str() {
-                    "--backward" if direction == "forward" => direction = "backward",
+                    flag @ ("--forward" | "--backward") if direction.is_none() => {
+                        direction = Some(if flag == "--backward" {
+                            "backward"
+                        } else {
+                            "forward"
+                        });
+                    }
                     "--count" if count.is_none() => {
                         let value = command.arguments.get(index + 1).ok_or_else(|| {
                             "search-next --count requires a value from 1 to 100".to_owned()
@@ -270,7 +272,11 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                 }
                 index += 1;
             }
-            serde_json::json!({"direction": direction, "count": count.unwrap_or(1)})
+            let mut arguments = serde_json::json!({"count": count.unwrap_or(1)});
+            if let Some(direction) = direction {
+                arguments["direction"] = direction.into();
+            }
+            arguments
         }
         "scroll" => {
             let direction = command

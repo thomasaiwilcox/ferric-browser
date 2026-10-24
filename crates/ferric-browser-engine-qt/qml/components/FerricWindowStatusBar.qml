@@ -7,6 +7,7 @@ import "../scripts/ChromePresentation.js" as ChromePresentation
 // status snapshot; this component does not inspect runtime or engine objects.
 Rectangle {
     id: statusBar
+    objectName: "browserStatusBar"
     required property var browserWindow
     required property bool statusVisible
     required property string mode
@@ -31,6 +32,13 @@ Rectangle {
     Accessible.name: "Browser status bar. " + mode + ". " + displayUrl
         + ". " + hintPreviewText + ". " + statusText + accessibleDetails + ". " + ChromePresentation.inputModeDescription(mode)
     Accessible.role: Accessible.StatusBar
+
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.AllButtons
+        hoverEnabled: true
+        onWheel: function(wheel) { wheel.accepted = true }
+    }
 
     RowLayout {
         anchors.fill: parent

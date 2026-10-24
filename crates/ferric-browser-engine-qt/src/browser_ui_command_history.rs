@@ -15,6 +15,28 @@ fn durable_history_commands(commands: &[ParsedCommand]) -> bool {
     })
 }
 
+fn reconcile_history_cursor(
+    history: &[String],
+    cursor: Option<usize>,
+    draft: Option<&str>,
+    current: &str,
+) -> Option<usize> {
+    let draft = draft?;
+    if let Some(cursor) = cursor
+        && history.get(cursor).is_some_and(|entry| entry == current)
+    {
+        return Some(cursor);
+    }
+    // Native Undo/Redo can restore another recalled line without moving the
+    // history cursor, even after Down returned to the draft. The saved draft
+    // stays outside recorded entries; other exact lines resume from their
+    // own positions.
+    if current == draft {
+        return None;
+    }
+    history.iter().position(|entry| entry == current)
+}
+
 fn secondary_command_supported(command: &ParsedCommand) -> bool {
     if command.name == "help" {
         return matches!(command.arguments.as_slice(), [topic] if super::setting_metadata(topic).is_some());
@@ -40,8 +62,6 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
         command.name.as_str(),
         "action"
             | "action-list"
-            | "binding-explain"
-            | "binding-list"
             | "blocking-toggle"
             | "blocklist-update"
             | "bookmark-list"
@@ -80,6 +100,11 @@ mod settings_surface_tests {
             arguments: arguments.iter().map(|value| (*value).to_owned()).collect(),
         };
         assert!(secondary_command_supported(&command("settings", &[])));
+        assert!(secondary_command_supported(&command("binding-list", &[])));
+        assert!(secondary_command_supported(&command(
+            "binding-explain",
+            &["x"]
+        )));
         for arguments in [vec![], vec!["--private"], vec!["--profile", "work"]] {
             assert!(secondary_command_supported(&command(
                 "window-new",
@@ -207,7 +232,7 @@ impl qobject::BrowserUi {
                 this.command_history.insert(0, text.to_owned());
                 this.command_history.truncate(limit);
                 this.command_history_index = None;
-                this.command_history_draft.clear();
+                this.command_history_draft = None;
             }
             if durable && !self.as_ref().active_profile_is_transient() {
                 self.as_mut().queue_command_history_write(text.to_owned());
@@ -236,20 +261,18 @@ impl qobject::BrowserUi {
         let current = current.to_string();
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
-        if let Some(index) = this.command_history_index
-            && this
-                .command_history
-                .get(index)
-                .is_none_or(|entry| entry != &current)
-        {
-            this.command_history_index = None;
-        }
+        this.command_history_index = reconcile_history_cursor(
+            &this.command_history,
+            this.command_history_index,
+            this.command_history_draft.as_deref(),
+            &current,
+        );
         let next = this
             .command_history_index
             .map_or(0, |index| index.saturating_add(1));
         if let Some(entry) = this.command_history.get(next) {
             if this.command_history_index.is_none() {
-                this.command_history_draft = current;
+                this.command_history_draft = Some(current);
             }
             this.command_history_index = Some(next);
             QString::from(entry.as_str())
@@ -262,20 +285,18 @@ impl qobject::BrowserUi {
         let current = current.to_string();
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
+        this.command_history_index = reconcile_history_cursor(
+            &this.command_history,
+            this.command_history_index,
+            this.command_history_draft.as_deref(),
+            &current,
+        );
         let Some(index) = this.command_history_index else {
             return QString::from(current);
         };
-        if this
-            .command_history
-            .get(index)
-            .is_none_or(|entry| entry != &current)
-        {
-            this.command_history_index = None;
-            return QString::from(current);
-        }
         if index == 0 {
             this.command_history_index = None;
-            QString::from(this.command_history_draft.as_str())
+            QString::from(this.command_history_draft.as_deref().unwrap_or(&current))
         } else {
             this.command_history_index = Some(index - 1);
             QString::from(this.command_history[index - 1].as_str())
@@ -285,7 +306,72 @@ impl qobject::BrowserUi {
 
 #[cfg(test)]
 mod tests {
-    use super::{ParsedCommand, durable_history_commands, secondary_command_supported};
+    use super::{
+        ParsedCommand, durable_history_commands, reconcile_history_cursor,
+        secondary_command_supported,
+    };
+
+    #[test]
+    fn history_cursor_follows_recovered_recorded_lines() {
+        let history = vec!["recent".into(), "middle".into(), "older 🦀".into()];
+        for (cursor, current, expected) in [
+            (Some(2), "recent", Some(0)),
+            (Some(0), "older 🦀", Some(2)),
+            (Some(1), "middle", Some(1)),
+            (Some(8), "middle", Some(1)),
+            (None, "middle", Some(1)),
+        ] {
+            assert_eq!(
+                reconcile_history_cursor(&history, cursor, Some("draft"), current),
+                expected,
+                "cursor={cursor:?}, current={current}"
+            );
+        }
+    }
+
+    #[test]
+    fn history_cursor_preserves_drafts_and_detaches_unrecorded_edits() {
+        let history = vec!["recent".into(), "older".into()];
+        assert_eq!(
+            reconcile_history_cursor(&history, Some(1), Some("draft"), "draft"),
+            None
+        );
+        assert_eq!(
+            reconcile_history_cursor(&history, Some(1), Some("draft"), "new edit"),
+            None
+        );
+        assert_eq!(
+            reconcile_history_cursor(&history, Some(1), Some("draft"), "recently edited"),
+            None
+        );
+        // A recovered draft wins over an equal historical value. An explicit
+        // recall already at that entry remains a valid history selection.
+        assert_eq!(
+            reconcile_history_cursor(&history, Some(1), Some("recent"), "recent"),
+            None
+        );
+        assert_eq!(
+            reconcile_history_cursor(&history, Some(0), Some("recent"), "recent"),
+            Some(0)
+        );
+        assert_eq!(
+            reconcile_history_cursor(&[], Some(0), Some("draft"), "recent"),
+            None
+        );
+        assert_eq!(
+            reconcile_history_cursor(&history, None, None, "recent"),
+            None
+        );
+        assert_eq!(
+            reconcile_history_cursor(&history, Some(0), None, "recent"),
+            None
+        );
+        assert_eq!(
+            reconcile_history_cursor(&history, None, Some(""), "recent"),
+            Some(0)
+        );
+        assert_eq!(reconcile_history_cursor(&history, None, Some(""), ""), None);
+    }
 
     fn command(name: &str, arguments: &[&str]) -> ParsedCommand {
         ParsedCommand {

@@ -161,6 +161,7 @@ pub(super) enum WorkerMessage {
 /// existing semantics while crash recovery can restore profile-local undo.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SessionRestoreSnapshot {
+    pub source_session_ids: Vec<Uuid>,
     pub entries: Vec<RestorePlanEntry>,
     pub closed_tabs: Vec<ClosedTabSnapshot>,
 }
@@ -237,7 +238,12 @@ impl StorageCommand {
         }
     }
 
-    pub(super) fn validate(&self) -> Result<(), StorageWorkerError> {
+    /// Validates bounded request fields before worker or application admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns the request's validation error when a field or batch is invalid.
+    pub fn validate(&self) -> Result<(), StorageWorkerError> {
         match self {
             Self::Library { limit } if !(1..=MAX_LIBRARY_LIMIT).contains(limit) => {
                 Err(StorageWorkerError::InvalidLimit)

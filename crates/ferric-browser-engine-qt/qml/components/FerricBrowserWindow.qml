@@ -12,13 +12,19 @@ ApplicationWindow {
     required property var rootWindow
     id: secondaryWindow
     readonly property var modalInputScope: FerricModalInputController { hostWindow: secondaryWindow }
+    FerricFocusOverlayController {
+        id: secondaryFocusController
+        browserWindow: secondaryWindow
+        followTabFocus: true
+    }
     readonly property alias browserKeyRouterObject: secondaryKeyRouter
     width: 1180
     height: 760
     visible: true
-    title: secondaryWindow.windowEphemeralProfile
-           ? "Ferric Browser · " + secondaryWindow.windowProfileLabel
-           : "Ferric Browser · " + secondaryWindow.windowProfileName
+    readonly property string windowPrivacyLabel: secondaryPrivacyHeader.label
+    title: "Ferric Browser · "
+           + (secondaryWindow.windowPrivacyLabel.length > 0 ? secondaryWindow.windowPrivacyLabel + " · " : "")
+           + (secondaryWindow.windowEphemeralProfile ? secondaryWindow.windowProfileLabel : secondaryWindow.windowProfileName)
     color: secondaryAppearance.backgroundColor
     font: secondaryAppearance.font
     palette.window: secondaryAppearance.backgroundColor
@@ -90,7 +96,10 @@ ApplicationWindow {
     readonly property real bottomControlsHeight:
         inputBarActive ? secondaryAppearance.inputBarHeight
                        : (statusBarVisible ? secondaryAppearance.statusBarHeight : 0)
-    readonly property real bottomChromeHeight: bottomControlsHeight + secondaryProfileNotice.height
+    // Keep transient bars out of the page geometry, including in popup windows.
+    readonly property real bottomContentInset: secondaryProfileNotice.height
+        + (tabStripVisible && tabPosition === "bottom" ? secondaryAppearance.tabBarHeight : 0)
+    readonly property real bottomChromeHeight: bottomContentInset + bottomControlsHeight
     readonly property var activeView: tabViewAt(secondaryUi.active_tab_index)
     readonly property alias searchWorkspace: secondaryPageSearch
     FerricPageSearch {
@@ -112,12 +121,14 @@ ApplicationWindow {
         secondaryWindow.profileBootstrapComplete
         && !secondaryWindow.modalInputScope.activeSurface
         && !secondaryWindow.inputBarActive
+        && !secondaryWindow.bindingHelpVisible
         && !secondaryProfileNotice.inputActive
         && !(rootWindow.copyNoticeInputActive && rootWindow.copyNoticeHost === secondaryWindow)
         && !secondaryDevTools.inputActive
         && !secondaryHintWorkspace.rapidHintConfirmationVisible
         && !secondaryUi.target_search_active
         && !secondaryUi.link_preview_visible
+        && !secondaryUi.navigation_failure_visible
         && !secondaryWindow.pendingFileDialogRequest
         && secondaryWindow.pendingFileDialogLeaseToken.length === 0
         && !rootWindow.presentedPromptActiveFor(secondaryUi)
@@ -147,6 +158,9 @@ ApplicationWindow {
     property string pendingFileDialogLeaseToken: ""
     property bool profileBootstrapComplete: false
     property bool runtimeReleased: false
+    property bool bindingHelpVisible: false
+    property bool bindingHelpCreated: false
+    property string bindingHelpSearch: ""
     property bool windowShutdownApproved: false
     property bool windowCloseConfirmationVisible: false
     property bool windowShutdownPromptVisible: false
@@ -566,6 +580,10 @@ ApplicationWindow {
         hint_chrome_available: true
         status_text: "Ready"
         onRuntime_work_available: secondaryWindow.scheduleRuntimeWork(0)
+        onSwitcher_sources_changed: {
+            if (rootWindow && rootWindow.switcherVisible)
+                rootWindow.requestSwitcherLiveRefresh()
+        }
         onStatus_textChanged: {
             secondaryWindow.scheduleRuntimeWork(0)
             if (secondaryWindow.commandNoticeVisible
@@ -846,6 +864,23 @@ function onContext_workspaceChanged() {
         }
     }
 
+    function showBindingHelp(search) {
+        if (!bindingHelpVisible) rootWindow.captureOverlayFocus(secondaryWindow, activeView)
+        if (search !== undefined) bindingHelpSearch = String(search)
+        bindingHelpCreated = true
+        if (search !== undefined && secondaryBindingHelp.item)
+            secondaryBindingHelp.item.setSearchQuery(search)
+        bindingHelpVisible = true
+        Qt.callLater(function() {
+            if (secondaryWindow.bindingHelpVisible && secondaryBindingHelp.item)
+                secondaryBindingHelp.item.focusSearch()
+        })
+    }
+    function closeBindingHelp() {
+        if (!bindingHelpVisible) return
+        bindingHelpVisible = false
+        rootWindow.restoreOverlayFocus(secondaryWindow)
+    }
     function applySwitcherEngineAction() {
         if (EngineRequests.execute(secondaryUi.take_engine_request(), secondaryUi, secondaryWindow, rootWindow)) return
         var action = secondaryUi.take_engine_action()
@@ -918,6 +953,11 @@ function onContext_workspaceChanged() {
             return
         }
         if (action === "show-diagnostics") { rootWindow.showDiagnostics(secondaryUi); return }
+        if (action === "show-binding-help" || action.indexOf("show-binding-help\t") === 0) {
+            secondaryWindow.showBindingHelp(action === "show-binding-help"
+                ? undefined : action.slice("show-binding-help\t".length))
+            return
+        }
         if (action === "show-profiles") { secondaryManagers.showProfiles(); return }
         if (action === "show-sessions") { secondaryManagers.showSessions(); return }
         if (action.indexOf("profile-delete\t") === 0) {
@@ -1183,116 +1223,11 @@ function onContext_workspaceChanged() {
         onTriggered: secondaryWindow.processRuntimeWork()
     }
 
-    header: ToolBar {
-        height: 0
-        visible: false
-        RowLayout {
-            anchors.fill: parent
-            anchors.margins: 8
-            spacing: 8
-
-            ToolButton {
-                text: "‹"
-                Accessible.name: "Back"
-                onClicked: {
-                    if (secondaryWindow.activeView.contentCanGoBack) {
-                        secondaryUi.back()
-                        secondaryWindow.executePendingEngineAction()
-                    } else {
-                        secondaryUi.status_text = "History boundary reached"
-                    }
-                }
-            }
-            ToolButton {
-                text: "›"
-                Accessible.name: "Forward"
-                onClicked: {
-                    if (secondaryWindow.activeView.contentCanGoForward) {
-                        secondaryUi.forward()
-                        secondaryWindow.executePendingEngineAction()
-                    } else {
-                        secondaryUi.status_text = "History boundary reached"
-                    }
-                }
-            }
-            FerricTextField {
-                id: secondaryAddress
-                Layout.fillWidth: true
-                property bool addressEditing: false
-                function refreshAddressPresentation() {
-                    if (!addressEditing) {
-                        text = rootWindow.addressPresentation(
-                            secondaryUi.display_url,
-                            width / Math.max(1, font.pixelSize * 0.56))
-                    }
-                }
-                text: rootWindow.addressPresentation(
-                    secondaryUi.display_url,
-                    width / Math.max(1, font.pixelSize * 0.56))
-                placeholderText: "Enter a URL"
-                Accessible.name: "Address"
-                Accessible.description: secondaryUi.display_url
-                Accessible.role: Accessible.EditableText
-                Accessible.editable: true
-                selectByMouse: true
-                onActiveFocusChanged: {
-                    addressEditing = activeFocus
-                    if (addressEditing) {
-                        text = secondaryUi.display_url
-                        cursorPosition = text.length
-                    } else {
-                        refreshAddressPresentation()
-                    }
-                }
-                onWidthChanged: refreshAddressPresentation()
-                Connections {
-                    target: secondaryUi
-                    function onDisplay_urlChanged() {
-                        secondaryAddress.refreshAddressPresentation()
-                    }
-                }
-                onAccepted: {
-                    secondaryUi.navigate(text)
-                    secondaryWindow.executePendingEngineAction()
-                }
-            }
-            Label {
-                textFormat: Text.PlainText
-                text: secondaryWindow.windowEphemeralProfile
-                      ? secondaryWindow.windowProfileLabel
-                      : (secondaryWindow.windowPrivateProfile
-                         ? "private" : secondaryWindow.windowProfileName)
-                color: rootWindow.primaryTextColor
-                Accessible.name: "Profile"
-            }
-            ToolButton {
-                text: "−"
-                Accessible.name: "Zoom out"
-                onClicked: {
-                    if (secondaryUi.execute_ui_action("browser.tab.zoom", "out")) {
-                        secondaryWindow.applySwitcherEngineAction()
-                    }
-                }
-            }
-            ToolButton {
-                text: "100%"
-                Accessible.name: "Reset page zoom"
-                onClicked: {
-                    if (secondaryUi.execute_ui_action("browser.tab.zoom", "reset")) {
-                        secondaryWindow.applySwitcherEngineAction()
-                    }
-                }
-            }
-            ToolButton {
-                text: "+"
-                Accessible.name: "Zoom in"
-                onClicked: {
-                    if (secondaryUi.execute_ui_action("browser.tab.zoom", "in")) {
-                        secondaryWindow.applySwitcherEngineAction()
-                    }
-                }
-            }
-        }
+    header: FerricPrivacyHeader {
+        id: secondaryPrivacyHeader
+        browserWindow: secondaryAppearance
+        privateProfile: secondaryWindow.windowPrivateProfile
+        ephemeralProfile: secondaryWindow.windowEphemeralProfile
     }
 
     ListModel {
@@ -1314,10 +1249,10 @@ function onContext_workspaceChanged() {
     FerricTabStrip {
         id: secondaryTabStrip
         x: secondaryWindow.tabPosition === "right" ? parent.width - width : 0
-        y: secondaryWindow.tabPosition === "bottom" ? parent.height - secondaryWindow.bottomChromeHeight - height : 0
+        y: secondaryWindow.tabPosition === "bottom" ? parent.height - secondaryWindow.bottomContentInset : 0
         width: secondaryWindow.sideTabs ? secondaryWindow.sideTabWidth : parent.width
         height: !visible ? 0 : secondaryWindow.sideTabs
-                ? parent.height - secondaryWindow.bottomChromeHeight : secondaryAppearance.tabBarHeight
+                ? parent.height - secondaryWindow.bottomContentInset : secondaryAppearance.tabBarHeight
         z: 9
         vertical: secondaryWindow.sideTabs
         visible: secondaryWindow.tabStripVisible
@@ -1344,8 +1279,7 @@ function onContext_workspaceChanged() {
         anchors.topMargin: secondaryWindow.tabStripVisible && secondaryWindow.tabPosition === "top" ? secondaryTabStrip.height : 0
         anchors.leftMargin: secondaryWindow.tabStripVisible && secondaryWindow.tabPosition === "left" ? secondaryTabStrip.width : 0
         anchors.rightMargin: secondaryWindow.tabStripVisible && secondaryWindow.tabPosition === "right" ? secondaryTabStrip.width : 0
-        anchors.bottomMargin: secondaryWindow.bottomChromeHeight
-            + (secondaryWindow.tabStripVisible && secondaryWindow.tabPosition === "bottom" ? secondaryTabStrip.height : 0)
+        anchors.bottomMargin: secondaryWindow.bottomContentInset
         currentIndex: secondaryWindow.activeView ? secondaryWindow.activeView.StackLayout.index : -1
     }
     FerricHintWorkspace {
@@ -1517,6 +1451,7 @@ function onContext_workspaceChanged() {
     }
 
     FerricCommandLine {
+        anchors.bottomMargin: secondaryWindow.bottomContentInset
         id: secondaryCommandBar
         browserWindow: secondaryAppearance
         commandVisible: secondaryUi.mode === "command"
@@ -1538,10 +1473,9 @@ function onContext_workspaceChanged() {
         onCompletionMoveRequested: function(delta) { secondaryUi.completion_move(delta) }
         onCompletionSelectRequested: function(index) { secondaryUi.completion_select(index) }
         onHistoryMoveRequested: function(delta, current) {
-            secondaryCommandBar.commandText = delta < 0
+            secondaryCommandBar.recallHistory(delta < 0
                 ? secondaryUi.command_history_previous(current)
-                : secondaryUi.command_history_next(current)
-            secondaryCommandBar.cursorPosition = secondaryCommandBar.commandText.length
+                : secondaryUi.command_history_next(current))
         }
     }
 
@@ -1573,14 +1507,51 @@ function onContext_workspaceChanged() {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: secondaryWindow.bottomControlsHeight
         browserWindow: secondaryAppearance
         hostWindow: secondaryWindow
         noticeText: secondaryUi.profile_startup_notice
         onDetailsRequested: rootWindow.showDiagnostics(secondaryUi, secondaryWindow)
     }
 
+    FerricNavigationFailure {
+        browserWindow: secondaryAppearance
+        hostWindow: secondaryWindow
+        browserUi: secondaryUi
+        onReopenRequested: function(address) {
+            if (secondaryUi.execute_ui_action("browser.url.open", address)) secondaryWindow.applySwitcherEngineAction()
+            else secondaryWindow.showCommandNotice(secondaryUi.status_text, true)
+        }
+        onEditRequested: function(command) {
+            secondaryUi.enter_command()
+            secondaryCommandBar.clearInput()
+            secondaryCommandBar.commandText = command
+            secondaryCommandBar.cursorPosition = command.length - 1
+            secondaryCommandBar.focusInput()
+        }
+        onBackRequested: {
+            if (secondaryUi.execute_ui_action("browser.tab.back", "")) secondaryWindow.applySwitcherEngineAction()
+            else secondaryWindow.showCommandNotice(secondaryUi.status_text, true)
+        }
+    }
+
+    Loader {
+        id: secondaryBindingHelp
+        anchors.fill: parent
+        z: 74
+        active: secondaryWindow.bindingHelpCreated
+        sourceComponent: FerricBindingHelp {
+            browserWindow: secondaryAppearance
+            hostWindow: secondaryWindow
+            browserUi: secondaryUi
+            visible: secondaryWindow.bindingHelpVisible
+            searchText: secondaryWindow.bindingHelpSearch
+            onCloseRequested: secondaryWindow.closeBindingHelp()
+            onSearchChanged: function(text) { secondaryWindow.bindingHelpSearch = text }
+        }
+    }
+
     FerricSearchBar {
+        anchors.bottomMargin: secondaryWindow.bottomContentInset
         id: secondarySearchBar
         browserWindow: secondaryAppearance
         searchVisible: secondaryUi.mode === "search"
@@ -1600,6 +1571,7 @@ function onContext_workspaceChanged() {
     }
 
     FerricWindowStatusBar {
+        anchors.bottomMargin: secondaryWindow.bottomContentInset
         onCopyUrlRequested: secondaryUi.execute_ui_action("browser.url.copy", "")
         browserWindow: secondaryAppearance
         statusVisible: secondaryWindow.statusBarVisible
@@ -1924,6 +1896,13 @@ function onContext_workspaceChanged() {
     }
     Connections {
         target: secondaryUi
+        function onModeChanged() {
+            if (secondaryUi.mode === "command" || secondaryUi.mode === "search") {
+                secondaryFocusController.captureModeFocus()
+            } else {
+                secondaryFocusController.restoreModeFocus()
+            }
+        }
         function onActive_tab_indexChanged() {
             if (rootWindow.copyNoticeHost === secondaryWindow) rootWindow.copyNoticeVisible = false
             secondaryWindow.noteTabActivity(); secondaryWindow.scheduleRuntimeWork(0)
@@ -1961,6 +1940,7 @@ function onContext_workspaceChanged() {
     function releaseWindowResources() {
         if (secondaryWindow.runtimeReleased) return
         secondaryWindow.runtimeReleased = true
+        secondaryWindow.bindingHelpVisible = false
         secondaryDownloads.shutdown()
         secondaryDevTools.close()
         rootWindow.discardOverlayFocus(secondaryWindow)

@@ -8,13 +8,33 @@ use crate::{presentation_text::sanitize_display_text, qobject, url_safety::safe_
 use cxx_qt_lib::QString;
 use ferric_browser_core::{CleanLinkResult, CleaningRules, ValidatedUrl, canonical_origin};
 use serde_json::{Value, json};
+use std::borrow::Cow;
+
+fn native_url_text(value: &str) -> Cow<'_, str> {
+    if value.contains(' ') {
+        Cow::Owned(value.replace(' ', "%20"))
+    } else {
+        Cow::Borrowed(value)
+    }
+}
+
+pub(super) fn content_url_valid(value: &str) -> bool {
+    ValidatedUrl::parse(native_url_text(value).as_ref()).is_ok()
+}
 
 pub(super) fn canonical_engine_url(url: QString) -> Result<String, String> {
+    // QML's native QUrl string decodes spaces. Re-escape that display form
+    // before applying the unchanged strict Rust/Qt URL and origin checks.
     let raw_url = url.to_string();
-    let rust_raw_url = ValidatedUrl::parse(raw_url)
+    let native_url = native_url_text(&raw_url);
+    let rust_raw_url = ValidatedUrl::parse(native_url.as_ref())
         .map(|url| url.to_string())
         .map_err(|error| format!("Rust rejected the engine URL: {error}"))?;
-    let qt_url = qobject::ferric_browser_canonicalize_url(&url).to_string();
+    let qt_url = match native_url {
+        Cow::Borrowed(_) => qobject::ferric_browser_canonicalize_url(&url),
+        Cow::Owned(value) => qobject::ferric_browser_canonicalize_url(&QString::from(value)),
+    }
+    .to_string();
     if qt_url.is_empty() {
         return Err("Qt rejected the engine URL".into());
     }

@@ -2,6 +2,7 @@
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 #include <QElapsedTimer>
 #include <QApplication>
+#include <QInputMethodEvent>
 #include <QObject>
 #include <QQmlEngine>
 #include <QQmlContext>
@@ -36,12 +37,21 @@ static QObject *createPerformanceClock(QQmlEngine *, QJSEngine *)
 class TestSetup final : public QObject
 {
     Q_OBJECT
+public:
+    Q_INVOKABLE void sendInputMethod(QObject *receiver, const QString &preedit, const QString &commit)
+    {
+        if (!receiver) return;
+        QInputMethodEvent event(preedit, {});
+        event.setCommitString(commit);
+        QCoreApplication::sendEvent(receiver, &event);
+    }
 public slots:
     void qmlEngineAvailable(QQmlEngine *engine)
     {
         engine->rootContext()->setContextProperty(
             "testArtifactDirectory", qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR"));
         engine->rootContext()->setContextProperty("testEmptySettingsOptions", QStringList{});
+        engine->rootContext()->setContextProperty("testInputMethod", this);
     }
 };
 

@@ -800,12 +800,14 @@ QtObject {
                 || window.switcherBatchQuery !== window.runtime_switcherSurface.query
                 || window.switcherBatchScope !== window.switcherScope) {
             window.cancelSwitcherBatch()
+            if (window.switcherLiveRefreshPending) window.requestSwitcherLiveRefresh()
             return
         }
         if (window.switcherBatchIndex >= window.switcherBatchEntries.length) {
             window.switcherResults = window.publishedSwitcherBatch()
             window.switcherSourceState = SwitcherSources.aggregate(window.switcherBatchSources, false)
             window.switcherResultContext = {query: window.switcherBatchQuery, scope: window.switcherBatchScope, owner: window.switcherOwnerToken}
+            if (window.switcherLiveRefreshPending) window.requestSwitcherLiveRefresh()
             return
         }
         var entry = window.switcherBatchEntries[window.switcherBatchIndex]
@@ -876,7 +878,27 @@ QtObject {
         window.refreshSwitcher()
     }
 
+    function requestSwitcherLiveRefresh() {
+        if (!window.switcherVisible) return
+        window.switcherLiveRefreshPending = true
+        if (!window.switcherRefreshTimer.running) window.switcherRefreshTimer.start()
+    }
+
+    function processSwitcherRefresh() {
+        if (!window.switcherVisible) return
+        // Live facts must not repeatedly cancel the later window sources.
+        // Query edits invalidate their context immediately and take priority.
+        // Match the captured input even before the first source has published.
+        if (window.switcherLiveRefreshPending
+                && window.switcherBatchIndex < window.switcherBatchEntries.length
+                && window.switcherBatchQuery === window.runtime_switcherSurface.query
+                && window.switcherBatchScope === window.switcherScope) return
+        window.refreshSwitcher()
+    }
+
     function refreshSwitcher() {
+        window.switcherRefreshTimer.stop()
+        window.switcherLiveRefreshPending = false
         var keepCurrentRows = window.switcherResultsCurrent()
         window.cancelSwitcherBatch()
         if (!window.switcherRegistry.switcherInvocation()) {
@@ -937,6 +959,7 @@ QtObject {
         var wasVisible = window.switcherVisible
         var host = window.switcherHost
         window.switcherRefreshTimer.stop()
+        window.switcherLiveRefreshPending = false
         window.cancelSwitcherBatch()
         window.switcherVisible = false
         window.switcherResultContext = null

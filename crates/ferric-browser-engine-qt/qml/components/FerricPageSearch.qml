@@ -29,11 +29,13 @@ Item {
     readonly property bool retained: !!view && query.length > 0
     readonly property string previewText: !retained || (browserUi.mode !== "normal" && browserUi.mode !== "search") ? ""
         : following ? "Activating match…" : busy ? "Searching…"
-        : result.found ? (accepted ? "Match · " + followKeys() : "Match · Enter: keep result")
+        : result.found ? matchText() + " · " + (accepted ? followKeys() : "Enter: keep")
         : "No matches"
 
-    // Search feedback remains visible when the normal status bar is hidden.
+    // Keep feedback above the search input, and available when the normal
+    // status bar is hidden.
     Rectangle {
+        objectName: "pageSearchFeedback"
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.rightMargin: 12
@@ -43,15 +45,20 @@ Item {
         radius: 5
         color: search.appearance.panelColor
         border.color: search.appearance.mutedTextColor
-        visible: search.retained && search.previewText.length > 0 && search.hostWindow.statusBarVisible !== true
+        visible: search.retained && search.previewText.length > 0
+            && (search.browserUi.mode === "search" || search.hostWindow.statusBarVisible !== true)
         Text {
             id: preview
+            objectName: "pageSearchFeedbackText"
             anchors.fill: parent
             anchors.margins: 6
             text: search.previewText
             textFormat: Text.PlainText
             color: search.appearance.primaryTextColor
-            elide: Text.ElideMiddle
+            font: search.appearance.font
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
             Accessible.name: search.previewText
             Accessible.role: Accessible.StaticText
         }
@@ -85,6 +92,13 @@ Item {
     function current() {
         return !!view && view === activeView && !!captured
             && browserUi.request_target_current(captured.tabId, captured.generation, captured.documentId)
+    }
+    function matchText() {
+        var count = Number(result.count), position = Number(result.activeMatch)
+        // A count without an active position must not inherit an older number.
+        return position > 0 && position <= count
+            ? "Match " + position + " of " + count
+            : count + (count === 1 ? " match" : " matches")
     }
     function followKeys() {
         var labels = []
@@ -121,6 +135,7 @@ Item {
         pending = []
         query = ""
         result = ({})
+        nativeActiveMatch = 0
         busy = false
         accepted = false
         following = false

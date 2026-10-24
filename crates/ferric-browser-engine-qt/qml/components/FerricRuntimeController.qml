@@ -134,7 +134,12 @@ QtObject {
     }
 
     function executeHistoryTraversal(view, backwards, requestedCount) {
-        view.synchronizeContentHistory()
+        view.requestContentHistoryTraversal(backwards, requestedCount, function(direction, count) {
+            performHistoryTraversal(view, direction, count)
+        })
+    }
+
+    function performHistoryTraversal(view, backwards, requestedCount) {
         var originalHistory = view.viewUi.content_history_export(view.tabIndex >= 0 ? view.tabIndex : view.viewUi.active_tab_index)
         var count = Math.max(1, Math.min(100, Number(requestedCount) || 1))
         var destination = ""
@@ -152,7 +157,7 @@ QtObject {
             view.viewUi.status_text = "That history entry is no longer available."
             return
         }
-        view.setContentUrl(url, true, offset !== 0)
+        view.setContentUrl(url, true, offset !== 0, false, view.engineHistoryIndex + offset)
         if (offset !== 0 && url !== "rb://start" && url !== "rb://blank") view.goBackOrForward(offset)
     }
 
@@ -809,7 +814,7 @@ QtObject {
             }
         } else if (ui.mode === "normal" && ui.search_text.length > 0
                    && (logicalText === "n" || logicalText === "N")) {
-            ui.search_next(logicalText === "N")
+            ui.search_next(ui.search_backward !== (logicalText === "N"))
             window.completeBrowserKeyAction(ui, host)
             handled = true
         } else if (ui.mode === "normal" && pageSearch && pageSearch.retained && pageSearch.accepted
@@ -899,6 +904,12 @@ QtObject {
                         window.startupTrustedLocalInput)
         }
         window.updateActiveTabUrl()
+        if (window.recoveryAvailable && window.startupContext.length === 0
+                && !window.startupCleanLink && !window.startupBackground
+                && (window.startupAdditionalUrls || []).length === 0
+                && ["rb://start", "rb://blank", "about:blank"].indexOf(window.startupUrl) >= 0) {
+            window.browserUi.remember_recovery_placeholder()
+        }
         Qt.callLater(window.openAdditionalStartupUrls)
     }
 

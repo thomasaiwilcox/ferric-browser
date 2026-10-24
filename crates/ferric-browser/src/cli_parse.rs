@@ -292,13 +292,10 @@ pub(super) fn open_from_values(
     for additional in &additional_inputs {
         validate_cli_text(additional, "additional open input")?;
     }
-    if let Some(target) = target.as_mut() {
-        if target == "current" {
-            *target = "tab".into();
-        }
+    if let Some(target) = target.as_ref() {
         if !matches!(
             target.as_str(),
-            "tab" | "tab-bg" | "window" | "private-window"
+            "current" | "tab" | "tab-bg" | "window" | "private-window"
         ) {
             return Err("--target must be current, tab, tab-bg, window, or private-window".into());
         }
@@ -334,7 +331,7 @@ pub(super) fn emit_structured_log(configured_level: Option<&str>, level: &str, e
     if event_rank > configured_rank {
         return;
     }
-    eprintln!(
+    crate::cli_output::error_line(format_args!(
         "{}",
         serde_json::json!({
             "schema": 1,
@@ -342,7 +339,7 @@ pub(super) fn emit_structured_log(configured_level: Option<&str>, level: &str, e
             "event": event,
             "privacy": "redacted",
         })
-    );
+    ));
 }
 
 pub(super) fn cli_action_name(action: &CliAction) -> &'static str {

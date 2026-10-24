@@ -28,6 +28,13 @@ Rectangle {
     color: browserWindow.surfaceColor
     opacity: browserWindow.chromeOpacity
 
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.AllButtons
+        hoverEnabled: true
+        onWheel: function(wheel) { wheel.accepted = true }
+    }
+
     Rectangle {
         id: searchPrefixBackground
         anchors.left: parent.left
@@ -49,6 +56,7 @@ Rectangle {
 
     FerricTextField {
         id: searchLine
+        objectName: "pageSearchInput"
         anchors.left: searchPrefixBackground.right
         anchors.right: searchBackwardButton.left
         anchors.top: parent.top
@@ -71,8 +79,14 @@ Rectangle {
 
         onVisibleChanged: if (visible) forceActiveFocus()
         onTextChanged: searchBar.searchChanged(text)
-        onAccepted: searchBar.accepted()
+        onAccepted: {
+            if (!searchLine.inputMethodComposing) searchBar.accepted()
+        }
         Keys.onPressed: function(event) {
+            if (searchLine.inputMethodComposing) {
+                event.accepted = false
+                return
+            }
             if (event.key === Qt.Key_Escape) {
                 searchBar.escapeRequested()
                 event.accepted = true
@@ -82,6 +96,7 @@ Rectangle {
 
     ToolButton {
         id: searchBackwardButton
+        objectName: "pageSearchPreviousButton"
         anchors.right: searchForwardButton.left
         anchors.verticalCenter: parent.verticalCenter
         text: "↑"
@@ -93,6 +108,7 @@ Rectangle {
         }
         contentItem: Text {
             text: parent.text
+            font: searchBar.browserWindow.font
             color: searchBar.browserWindow.mutedTextColor
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
@@ -106,6 +122,7 @@ Rectangle {
 
     ToolButton {
         id: searchForwardButton
+        objectName: "pageSearchNextButton"
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         text: "↓"
@@ -117,6 +134,7 @@ Rectangle {
         }
         contentItem: Text {
             text: parent.text
+            font: searchBar.browserWindow.font
             color: searchBar.browserWindow.mutedTextColor
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter

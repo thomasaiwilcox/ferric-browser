@@ -10,6 +10,7 @@ const ADAPTER_SOURCE: &str = concat!(
     include_str!("bridge.rs"),
     include_str!("browser_ui_defaults.rs"),
     include_str!("browser_ui_browsing_commands.rs"),
+    include_str!("browser_ui_closed_tabs.rs"),
     include_str!("browser_ui_command_dispatch.rs"),
     include_str!("browser_ui_common_commands.rs"),
     include_str!("browser_ui_command_workflows.rs"),

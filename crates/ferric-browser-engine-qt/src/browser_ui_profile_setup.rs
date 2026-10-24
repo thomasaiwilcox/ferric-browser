@@ -213,6 +213,7 @@ impl qobject::BrowserUi {
         let profile_id = effect.profile.id;
         let session_path = effect.session_path;
         let session_state_root = effect.session_state_root;
+        let recovery_paths = effect.recovery_paths;
         let storage_roots = effect.profile.roots.clone();
         let base_config =
             serde_json::from_str::<Value>(&self.as_ref().rust().config_base_json.to_string())
@@ -310,7 +311,7 @@ impl qobject::BrowserUi {
             this.completion_visible = false;
             this.command_history.clear();
             this.command_history_index = None;
-            this.command_history_draft.clear();
+            this.command_history_draft = None;
             this.queued_command_history.clear();
             this.command_history_write_pending = false;
             this.command_history_write_error = None;
@@ -354,9 +355,7 @@ impl qobject::BrowserUi {
             this.session_catalog_read_state = super::CatalogReadState::Unrequested;
             this.journey_read_pending = false;
             this.profile_list_refresh_again = false;
-            this.library.session_restore_preview_pending = false;
-            this.library.session_restore_load_append = None;
-            this.library.session_restore_recovery_pending = false;
+            this.library.session_restores.clear();
             this.library.session_saves.clear();
             this.checkpoint = SessionCheckpoint::default();
             this.library.session_checkpoint_clear_pending = false;
@@ -515,6 +514,11 @@ impl qobject::BrowserUi {
             this.session_path = session_path
                 .map(|path| path.with_file_name(format!("current-{}.json", this.session_id)));
             this.session_state_root = session_state_root;
+            this.recovery_paths = recovery_paths;
+            this.recovery_placeholder = None;
+            this.undo_fallback = None;
+            this.undo_fallback_ready = false;
+            this.recovered_session_ids.clear();
             this.core_mode = Mode::Normal;
             if let Some(bindings) = this.bindings.as_mut() {
                 bindings.set_mode(Mode::Normal);
@@ -523,6 +527,8 @@ impl qobject::BrowserUi {
             this.status_text = status.clone();
             status
         };
+        self.as_mut().set_session_recovery_pending(false);
+        self.as_mut().set_session_recovery_error(QString::default());
         self.as_mut().clear_userscript_inventory_rows();
         self.as_mut().set_userscript_inventory_ready(false);
         self.as_mut().set_userscript_inventory_pending(false);

@@ -10,6 +10,7 @@ use ferric_browser_config::{
 use ferric_browser_core::PrivacyKind;
 use ferric_browser_storage::{
     ContextDefinitionUpdate, ContextRegistry, ProfileLock, ProfileRegistry, RootSpec, StorageRoots,
+    current_session_paths,
 };
 
 use crate::{ConfigurationLayers, ProfileActivation};
@@ -83,6 +84,8 @@ pub struct ProfileOpenEffect {
     pub runtime_overrides: RuntimeOverrides,
     pub session_path: Option<PathBuf>,
     pub session_state_root: Option<PathBuf>,
+    /// Current-session files discovered before this profile session writes.
+    pub recovery_paths: Vec<PathBuf>,
     pub storage_error: Option<String>,
     pub configuration_error: Option<String>,
     pub context_error: Option<String>,
@@ -99,6 +102,7 @@ pub(crate) struct PreparedProfile {
     pub(crate) runtime_overrides: RuntimeOverrides,
     pub(crate) session_path: Option<PathBuf>,
     pub(crate) session_state_root: Option<PathBuf>,
+    pub(crate) recovery_paths: Vec<PathBuf>,
     pub(crate) storage_error: Option<String>,
     pub(crate) configuration_error: Option<String>,
     pub(crate) context_error: Option<String>,
@@ -173,12 +177,14 @@ fn prepare_profile(request: ProfileOpenRequest) -> PreparedProfile {
     };
     let mut session_path = None;
     let mut session_state_root = None;
+    let mut recovery_paths = Vec::new();
     let mut storage_error = None;
     let mut context_error = request.context_configuration_error;
 
     if let ProfileStorage::Durable(spec) = request.storage {
         match prepare_durable_profile(&request.name, &request.label, spec, &request.contexts) {
             Ok(durable) => {
+                recovery_paths = current_session_paths(&durable.roots.state, durable.profile_id);
                 match load_runtime_overrides(durable.roots.state.join("runtime-overrides.toml")) {
                     Ok(overrides) => runtime_overrides = overrides,
                     Err(error) => {
@@ -249,6 +255,7 @@ fn prepare_profile(request: ProfileOpenRequest) -> PreparedProfile {
         runtime_overrides,
         session_path,
         session_state_root,
+        recovery_paths,
         storage_error,
         configuration_error,
         context_error,

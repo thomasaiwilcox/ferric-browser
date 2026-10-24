@@ -127,6 +127,17 @@ pub enum Event {
         target: Target,
         url: ValidatedUrl,
     },
+    /// Retain an unloaded restored tab's address without starting a document.
+    /// Only a fresh idle tab can receive this initial descriptor.
+    RestoreTabAddress {
+        target: Target,
+        url: ValidatedUrl,
+    },
+    /// The engine began loading, including a page-initiated navigation.
+    /// This fact preserves the target and never requests another navigation.
+    NavigationStarted {
+        target: Target,
+    },
     CommitNavigation {
         target: Target,
         url: ValidatedUrl,
@@ -140,11 +151,27 @@ pub enum Event {
         source: Option<String>,
         parent: Option<JourneyNodeId>,
     },
+    CommitNavigationAtVisit {
+        target: Target,
+        url: ValidatedUrl,
+        title: String,
+        visit: Option<JourneyNodeId>,
+        transition: JourneyEdgeKind,
+        source: Option<String>,
+        parent: Option<JourneyNodeId>,
+    },
     SameDocumentNavigation {
         target: Target,
         url: ValidatedUrl,
     },
+    PageTitleChanged {
+        target: Target,
+        title: String,
+    },
     CompleteNavigation {
+        target: Target,
+    },
+    CancelNavigation {
         target: Target,
     },
     FailNavigation {
@@ -302,6 +329,11 @@ impl fmt::Display for ReduceError {
 
 impl std::error::Error for ReduceError {}
 
+enum JourneyDestination {
+    Offset,
+    Visit(Option<JourneyNodeId>),
+}
+
 #[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
 fn commit_navigation(
     state: &mut ApplicationState,
@@ -312,6 +344,7 @@ fn commit_navigation(
     transition: JourneyEdgeKind,
     source: Option<String>,
     parent: Option<JourneyNodeId>,
+    destination: JourneyDestination,
 ) {
     let Some(tab) = state.tabs.get_mut(&target.tab).filter(|tab| {
         tab.generation == target.generation
@@ -329,9 +362,24 @@ fn commit_navigation(
     tab.renderer = RendererState::Healthy;
     let profile = tab.profile;
     if crate::InternalPage::from_url(url.as_str()).is_some() {
+        if matches!(destination, JourneyDestination::Visit(_)) {
+            state.journey.complete_traversal_to(target.tab, None);
+        }
         return;
     }
-    let traversed = state.journey.complete_traversal(target.tab).is_some();
+    let traversed = match destination {
+        JourneyDestination::Offset => state.journey.complete_traversal(target.tab),
+        JourneyDestination::Visit(visit) => {
+            let visit = visit.filter(|id| {
+                state
+                    .journey
+                    .node(*id)
+                    .is_some_and(|node| node.profile == profile && node.url == url.as_str())
+            });
+            state.journey.complete_traversal_to(target.tab, visit)
+        }
+    }
+    .is_some();
     if !traversed || transition != JourneyEdgeKind::Navigate {
         state.journey.record_navigation_from(
             &mut state.ids,
@@ -791,6 +839,20 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
             tab_state.zoom = f64::from(zoom_hundredths) / 100.0;
             persist(state, &mut effects);
         }
+        Event::RestoreTabAddress { target, url } => {
+            if !target_is_current(state, target) {
+                effects.push(Effect::Diagnostic(Diagnostic::IgnoredStaleTarget {
+                    tab: target.tab,
+                }));
+                return Ok(effects);
+            }
+            let tab = state.tabs.get_mut(&target.tab).unwrap();
+            if tab.loading != LoadingState::Idle || tab.url.is_some() {
+                return Ok(effects);
+            }
+            tab.url = Some(url.as_str().to_owned());
+            persist(state, &mut effects);
+        }
         Event::StartNavigation { target, url } => {
             let tab = match state.tabs.get_mut(&target.tab) {
                 Some(tab)
@@ -838,6 +900,7 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                 JourneyEdgeKind::Navigate,
                 None,
                 None,
+                JourneyDestination::Offset,
             );
         }
         Event::CommitNavigationWithTransition {
@@ -857,7 +920,42 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                 transition,
                 source,
                 parent,
+                JourneyDestination::Offset,
             );
+        }
+        Event::CommitNavigationAtVisit {
+            target,
+            url,
+            title,
+            visit,
+            transition,
+            source,
+            parent,
+        } => {
+            commit_navigation(
+                state,
+                &mut effects,
+                target,
+                url,
+                title,
+                transition,
+                source,
+                parent,
+                JourneyDestination::Visit(visit),
+            );
+        }
+        Event::NavigationStarted { target } => {
+            if !target_is_current(state, target) {
+                effects.push(Effect::Diagnostic(Diagnostic::IgnoredStaleTarget {
+                    tab: target.tab,
+                }));
+                return Ok(effects);
+            }
+            state
+                .tabs
+                .get_mut(&target.tab)
+                .expect("current tab exists")
+                .loading = LoadingState::Provisional;
         }
         Event::SameDocumentNavigation { target, url } => {
             let tab = match state.tabs.get_mut(&target.tab) {
@@ -877,6 +975,19 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
             };
             tab.url = Some(url.to_string());
         }
+        Event::PageTitleChanged { target, title } => {
+            if !target_is_current(state, target) {
+                effects.push(Effect::Diagnostic(Diagnostic::IgnoredStaleTarget {
+                    tab: target.tab,
+                }));
+                return Ok(effects);
+            }
+            let tab = state.tabs.get_mut(&target.tab).expect("current tab exists");
+            if tab.title != title {
+                tab.title = title;
+                persist(state, &mut effects);
+            }
+        }
         Event::CompleteNavigation { target } => {
             let tab = match state.tabs.get_mut(&target.tab) {
                 Some(tab)
@@ -894,6 +1005,24 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                 }
             };
             tab.loading = LoadingState::Complete;
+        }
+        Event::CancelNavigation { target } => {
+            let tab = match state.tabs.get_mut(&target.tab) {
+                Some(tab)
+                    if tab.generation == target.generation
+                        && tab.document == target.document
+                        && tab.existence == ExistenceState::Live =>
+                {
+                    tab
+                }
+                _ => {
+                    effects.push(Effect::Diagnostic(Diagnostic::IgnoredStaleTarget {
+                        tab: target.tab,
+                    }));
+                    return Ok(effects);
+                }
+            };
+            tab.loading = LoadingState::Cancelled;
         }
         Event::FailNavigation { target } => {
             let tab = match state.tabs.get_mut(&target.tab) {
@@ -967,7 +1096,14 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                     return Ok(effects);
                 }
             };
-            tab.loading = LoadingState::Cancelled;
+            if matches!(
+                tab.loading,
+                LoadingState::Provisional | LoadingState::Committed
+            ) {
+                tab.loading = LoadingState::Cancelled;
+            }
+            // Always forward a valid request: the native engine may have begun
+            // loading before its start notification reaches the reducer.
             effects.push(Effect::Engine(EngineEffect::Stop { target }));
         }
         Event::TraverseHistory { target, offset } => {
@@ -1024,18 +1160,17 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                 }));
                 return Ok(effects);
             }
-            let Some(search) = state.tabs.get_mut(&target.tab).and_then(|tab| {
-                tab.search.as_mut().map(|search| {
-                    search.backward = backward;
-                    search.clone()
-                })
-            }) else {
+            let Some(search) = state
+                .tabs
+                .get(&target.tab)
+                .and_then(|tab| tab.search.as_ref())
+            else {
                 return Ok(effects);
             };
             effects.push(Effect::Engine(EngineEffect::FindText {
                 new_search: false,
                 target,
-                query: search.query,
+                query: search.query.clone(),
                 backward,
                 case: search.case,
             }));
@@ -1451,8 +1586,181 @@ impl ApplicationState {
 mod tests {
     use super::*;
 
+    #[test]
+    fn lazy_restore_retains_an_address_without_loading_or_recording_a_visit() {
+        let (mut state, _, _, tab, target) = setup();
+        let journey = state.journey.clone();
+        let revision = state.revision;
+        let effects = reduce(
+            &mut state,
+            Event::RestoreTabAddress {
+                target,
+                url: url("https://example.test/unvisited?keep=yes"),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            state.tabs[&tab].url.as_deref(),
+            Some("https://example.test/unvisited?keep=yes")
+        );
+        assert_eq!(state.tabs[&tab].loading, LoadingState::Idle);
+        assert_eq!(state.capture_target(tab), Some(target));
+        assert_eq!(state.journey, journey);
+        assert_eq!(state.revision, revision + 1);
+        assert!(matches!(effects.as_slice(), [Effect::Persist(_)]));
+        // A retained descriptor cannot later overwrite either itself or a
+        // document whose navigation has started.
+        assert_eq!(
+            reduce(
+                &mut state,
+                Event::RestoreTabAddress {
+                    target,
+                    url: url("https://example.test/replacement"),
+                }
+            )
+            .unwrap(),
+            Vec::<Effect>::new()
+        );
+        reduce(
+            &mut state,
+            Event::StartNavigation {
+                target,
+                url: url("https://example.test/live"),
+            },
+        )
+        .unwrap();
+        let live_target = state.capture_target(tab).unwrap();
+        let live = state.tabs[&tab].clone();
+        assert_eq!(
+            reduce(
+                &mut state,
+                Event::RestoreTabAddress {
+                    target: live_target,
+                    url: url("https://example.test/overwrite"),
+                }
+            )
+            .unwrap(),
+            Vec::<Effect>::new()
+        );
+        let ignored = reduce(
+            &mut state,
+            Event::RestoreTabAddress {
+                target,
+                url: url("https://example.test/stale"),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            ignored.as_slice(),
+            [Effect::Diagnostic(Diagnostic::IgnoredStaleTarget { .. })]
+        ));
+        assert_eq!(state.tabs[&tab], live);
+    }
+
     fn url(value: &str) -> ValidatedUrl {
         ValidatedUrl::parse(value).expect("test URL")
+    }
+
+    fn commit_at_visit(
+        state: &mut ApplicationState,
+        target: Target,
+        address: &str,
+        visit: Option<JourneyNodeId>,
+    ) {
+        reduce(
+            state,
+            Event::CommitNavigationAtVisit {
+                target,
+                url: url(address),
+                title: "Observed document".into(),
+                visit,
+                transition: JourneyEdgeKind::Navigate,
+                source: None,
+                parent: None,
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn engine_visit_identity_does_not_consume_an_offset_from_a_shorter_journey_path() {
+        let (mut state, _, _, tab, target) = setup();
+        commit_at_visit(&mut state, target, "https://example.test/first", None);
+        commit_at_visit(&mut state, target, "https://example.test/form", None);
+        let form = state.journey.current_node(tab).unwrap();
+        reduce(&mut state, Event::TraverseHistory { target, offset: -1 }).unwrap();
+        commit_at_visit(&mut state, target, "https://example.test/form", Some(form));
+        assert_eq!(state.journey.current_node(tab), Some(form));
+        assert_eq!(state.journey.nodes().count(), 2);
+        assert_eq!(
+            state.tabs[&tab].url.as_deref(),
+            Some("https://example.test/form")
+        );
+    }
+
+    #[test]
+    fn engine_visit_identity_distinguishes_two_documents_with_the_same_url() {
+        let (mut state, _, _, tab, target) = setup();
+        commit_at_visit(&mut state, target, "https://example.test/same", None);
+        let first = state.journey.current_node(tab).unwrap();
+        commit_at_visit(&mut state, target, "https://example.test/bridge", None);
+        commit_at_visit(&mut state, target, "https://example.test/same", None);
+        let second = state.journey.current_node(tab).unwrap();
+        assert_ne!(first, second);
+        reduce(&mut state, Event::TraverseHistory { target, offset: -1 }).unwrap();
+        commit_at_visit(&mut state, target, "https://example.test/same", Some(first));
+        assert_eq!(state.journey.current_node(tab), Some(first));
+        commit_at_visit(
+            &mut state,
+            target,
+            "https://example.test/same",
+            Some(second),
+        );
+        assert_eq!(state.journey.current_node(tab), Some(second));
+        assert_eq!(state.journey.nodes().count(), 3);
+    }
+
+    #[test]
+    fn missing_or_mismatched_engine_visit_records_the_actual_destination() {
+        for missing in [false, true] {
+            let (mut state, _, _, tab, target) = setup();
+            commit_at_visit(&mut state, target, "https://example.test/first", None);
+            let first = state.journey.current_node(tab).unwrap();
+            commit_at_visit(&mut state, target, "https://example.test/form", None);
+            reduce(&mut state, Event::TraverseHistory { target, offset: -1 }).unwrap();
+            commit_at_visit(
+                &mut state,
+                target,
+                "https://example.test/actual",
+                (!missing).then_some(first),
+            );
+            let actual = state.journey.current_node(tab).unwrap();
+            assert_ne!(actual, first);
+            assert_eq!(
+                state.journey.node(actual).unwrap().url,
+                "https://example.test/actual"
+            );
+            assert_eq!(state.journey.nodes().count(), 3);
+        }
+    }
+
+    #[test]
+    fn engine_visit_cannot_adopt_a_peer_tabs_document_with_the_same_url() {
+        let (mut state, _, window, tab, target) = setup();
+        commit_at_visit(&mut state, target, "https://example.test/same", None);
+        let own = state.journey.current_node(tab).unwrap();
+        reduce(&mut state, Event::OpenTab { window }).unwrap();
+        let peer = state.windows[&window].active_tab.unwrap();
+        let peer_target = state.capture_target(peer).unwrap();
+        commit_at_visit(
+            &mut state,
+            peer_target,
+            "https://example.test/same",
+            Some(own),
+        );
+        assert_ne!(state.journey.current_node(peer), Some(own));
+        assert_eq!(state.journey.current_node(tab), Some(own));
+        assert_eq!(state.journey.nodes().count(), 2);
     }
 
     fn setup() -> (ApplicationState, ProfileId, WindowId, TabId, Target) {
@@ -1472,6 +1780,109 @@ mod tests {
         let tab = state.tabs.keys().next().copied().unwrap();
         let target = state.capture_target(tab).expect("test tab exists");
         (state, profile, window, tab, target)
+    }
+
+    #[test]
+    fn live_title_changes_preserve_document_and_navigation_state() {
+        let (mut state, _, window, tab, target) = setup();
+        commit_at_visit(&mut state, target, "https://example.test/inbox", None);
+        reduce(&mut state, Event::CompleteNavigation { target }).unwrap();
+        reduce(
+            &mut state,
+            Event::StartSearch {
+                target,
+                query: "message".into(),
+                backward: true,
+                case: SearchCase::Smart,
+            },
+        )
+        .unwrap();
+        let mut expected_tab = state.tabs[&tab].clone();
+        let journey = state.journey.clone();
+        let window_state = state.windows[&window].clone();
+        let revision = state.revision;
+        expected_tab.title = "Inbox (2)".into();
+        let effects = reduce(
+            &mut state,
+            Event::PageTitleChanged {
+                target,
+                title: expected_tab.title.clone(),
+            },
+        )
+        .unwrap();
+        assert_eq!(state.tabs[&tab], expected_tab);
+        assert_eq!(state.journey, journey);
+        assert_eq!(state.windows[&window], window_state);
+        assert_eq!(state.capture_target(tab), Some(target));
+        assert_eq!(state.revision, revision + 1);
+        assert!(matches!(effects.as_slice(), [Effect::Persist(_)]));
+        assert_eq!(
+            reduce(
+                &mut state,
+                Event::PageTitleChanged {
+                    target,
+                    title: "Inbox (2)".into(),
+                }
+            )
+            .unwrap(),
+            Vec::<Effect>::new()
+        );
+        assert_eq!(state.revision, revision + 1);
+        reduce(
+            &mut state,
+            Event::PageTitleChanged {
+                target,
+                title: String::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(state.tabs[&tab].title, "");
+        assert_eq!(state.journey, journey);
+    }
+
+    #[test]
+    fn live_title_changes_reject_replaced_and_closed_documents() {
+        let (mut state, _, _, tab, target) = setup();
+        reduce(
+            &mut state,
+            Event::StartNavigation {
+                target,
+                url: url("https://example.test/new"),
+            },
+        )
+        .unwrap();
+        let revision = state.revision;
+        let expected = state.tabs[&tab].clone();
+        let effects = reduce(
+            &mut state,
+            Event::PageTitleChanged {
+                target,
+                title: "Old document".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(state.tabs[&tab], expected);
+        assert_eq!(state.revision, revision);
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::Diagnostic(Diagnostic::IgnoredStaleTarget { .. })]
+        ));
+        let current = state.capture_target(tab).unwrap();
+        reduce(&mut state, Event::CloseTab { tab }).unwrap();
+        let revision = state.revision;
+        let effects = reduce(
+            &mut state,
+            Event::PageTitleChanged {
+                target: current,
+                title: "Closed document".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(state.revision, revision);
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::Diagnostic(Diagnostic::IgnoredStaleTarget { .. })]
+        ));
     }
 
     #[test]
@@ -1755,6 +2166,121 @@ mod tests {
     }
 
     #[test]
+    fn stop_preserves_settled_pages_and_always_reaches_the_engine() {
+        for loading in [
+            LoadingState::Idle,
+            LoadingState::Provisional,
+            LoadingState::Committed,
+            LoadingState::Complete,
+            LoadingState::Failed,
+            LoadingState::Cancelled,
+        ] {
+            let (mut state, _, _, tab, target) = setup();
+            state.tabs.get_mut(&tab).unwrap().loading = loading;
+            let mut expected = state.tabs[&tab].clone();
+            if matches!(loading, LoadingState::Provisional | LoadingState::Committed) {
+                expected.loading = LoadingState::Cancelled;
+            }
+            let revision = state.revision;
+            assert_eq!(
+                reduce(&mut state, Event::Stop { target }).unwrap(),
+                vec![Effect::Engine(EngineEffect::Stop { target })]
+            );
+            assert_eq!(state.tabs[&tab], expected);
+            assert_eq!(state.revision, revision);
+        }
+    }
+
+    #[test]
+    fn native_navigation_start_preserves_target_metadata_and_history() {
+        let (mut state, _, window, tab, target) = setup();
+        commit_at_visit(&mut state, target, "https://example.test/current", None);
+        reduce(&mut state, Event::CompleteNavigation { target }).unwrap();
+        let mut expected = state.tabs[&tab].clone();
+        expected.loading = LoadingState::Provisional;
+        let journey = state.journey.clone();
+        let window_state = state.windows[&window].clone();
+        let revision = state.revision;
+        assert_eq!(
+            reduce(&mut state, Event::NavigationStarted { target }).unwrap(),
+            Vec::<Effect>::new()
+        );
+        assert_eq!(state.tabs[&tab], expected);
+        assert_eq!(state.capture_target(tab), Some(target));
+        assert_eq!(state.journey, journey);
+        assert_eq!(state.windows[&window], window_state);
+        assert_eq!(state.revision, revision);
+        assert_eq!(
+            reduce(&mut state, Event::Stop { target }).unwrap(),
+            vec![Effect::Engine(EngineEffect::Stop { target })]
+        );
+        assert_eq!(state.tabs[&tab].loading, LoadingState::Cancelled);
+    }
+
+    #[test]
+    fn native_navigation_start_rejects_retired_targets() {
+        let (mut state, _, _, tab, target) = setup();
+        for stale in [
+            Target {
+                generation: target.generation + 1,
+                ..target
+            },
+            Target {
+                document: state.ids.document(),
+                ..target
+            },
+        ] {
+            let before = state.tabs[&tab].clone();
+            assert_eq!(
+                reduce(&mut state, Event::NavigationStarted { target: stale }).unwrap(),
+                vec![Effect::Diagnostic(Diagnostic::IgnoredStaleTarget { tab })]
+            );
+            assert_eq!(state.tabs[&tab], before);
+        }
+        reduce(&mut state, Event::CloseTab { tab }).unwrap();
+        let before = state.tabs[&tab].clone();
+        assert_eq!(
+            reduce(&mut state, Event::NavigationStarted { target }).unwrap(),
+            vec![Effect::Diagnostic(Diagnostic::IgnoredStaleTarget { tab })]
+        );
+        assert_eq!(state.tabs[&tab], before);
+    }
+
+    #[test]
+    fn engine_stop_acknowledgement_settles_only_its_current_target() {
+        let (mut state, _, _, tab, target) = setup();
+        reduce(
+            &mut state,
+            Event::Reload {
+                target,
+                bypass_cache: false,
+            },
+        )
+        .unwrap();
+        let stale_target = Target {
+            generation: target.generation + 1,
+            ..target
+        };
+        assert_eq!(
+            reduce(
+                &mut state,
+                Event::CancelNavigation {
+                    target: stale_target
+                }
+            )
+            .unwrap(),
+            vec![Effect::Diagnostic(Diagnostic::IgnoredStaleTarget { tab })]
+        );
+        assert_eq!(state.tabs[&tab].loading, LoadingState::Provisional);
+        assert_eq!(
+            reduce(&mut state, Event::CancelNavigation { target }).unwrap(),
+            Vec::<Effect>::new()
+        );
+        assert_eq!(state.tabs[&tab].loading, LoadingState::Cancelled);
+        assert_eq!(state.capture_target(tab), Some(target));
+    }
+
+    #[test]
     fn search_is_targeted_retained_and_cleared_explicitly() {
         let (mut state, _, _, tab, target) = setup();
         assert_eq!(
@@ -1794,7 +2320,7 @@ mod tests {
                 case: SearchCase::Smart,
             })]
         );
-        assert!(state.tabs[&tab].search.as_ref().unwrap().backward);
+        assert!(!state.tabs[&tab].search.as_ref().unwrap().backward);
         assert_eq!(
             reduce(&mut state, Event::EndSearch { target }).unwrap(),
             vec![Effect::Engine(EngineEffect::ClearFindText { target })]

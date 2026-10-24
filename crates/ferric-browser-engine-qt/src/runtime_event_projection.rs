@@ -23,6 +23,8 @@ pub fn ipc_event_type(event: &Event) -> &'static str {
         | Event::SetTabPinned { .. }
         | Event::SetTabMuted { .. }
         | Event::SetTabZoom { .. }
+        | Event::RestoreTabAddress { .. }
+        | Event::PageTitleChanged { .. }
         | Event::ActivateTab { .. }
         | Event::CloseTab { .. }
         | Event::SuspendTab { .. }
@@ -30,10 +32,13 @@ pub fn ipc_event_type(event: &Event) -> &'static str {
         | Event::ResumeTab { .. }
         | Event::ViewClosed { .. } => "tab.changed",
         Event::StartNavigation { .. }
+        | Event::NavigationStarted { .. }
         | Event::CommitNavigation { .. }
         | Event::CommitNavigationWithTransition { .. }
+        | Event::CommitNavigationAtVisit { .. }
         | Event::SameDocumentNavigation { .. }
         | Event::CompleteNavigation { .. }
+        | Event::CancelNavigation { .. }
         | Event::FailNavigation { .. }
         | Event::Reload { .. }
         | Event::Stop { .. }
@@ -104,11 +109,20 @@ pub fn ipc_event_payload(observation: &RuntimeObservation) -> Value {
         } => serde_json::json!({
             "tab": tab_payload(observation, *tab), "zoom_hundredths": zoom_hundredths
         }),
+        Event::PageTitleChanged { target, .. } => serde_json::json!({
+            "target": target_payload(observation, *target), "title_changed": true
+        }),
+        Event::RestoreTabAddress { target, .. } => serde_json::json!({
+            "target": target_payload(observation, *target), "restore_address_changed": true
+        }),
         Event::StartNavigation { target, .. }
+        | Event::NavigationStarted { target }
         | Event::CommitNavigation { target, .. }
         | Event::CommitNavigationWithTransition { target, .. }
+        | Event::CommitNavigationAtVisit { target, .. }
         | Event::SameDocumentNavigation { target, .. }
         | Event::CompleteNavigation { target }
+        | Event::CancelNavigation { target }
         | Event::FailNavigation { target }
         | Event::Reload { target, .. }
         | Event::Stop { target }

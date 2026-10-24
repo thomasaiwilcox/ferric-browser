@@ -1,6 +1,7 @@
 extern crate ferric_browser_engine_qt;
 
 mod cli_error;
+mod cli_output;
 mod cli_parse;
 mod ipc_client;
 #[cfg(test)]
@@ -24,7 +25,8 @@ use ferric_browser_ipc::{
     instance_paths, read_frame, write_frame,
 };
 use ferric_browser_storage::{
-    CrashMarker, RootSpec, StorageRoots, crash_diagnostics, inspect_store, transient_marker_scan,
+    ContextRecord, ContextRegistry, CrashMarker, RootSpec, StorageRoots, crash_diagnostics,
+    inspect_store, transient_marker_scan,
 };
 use ipc_client::{
     acquire_instance, existing_instance_paths, finish_forward, forward_activate, forward_command,
@@ -33,7 +35,7 @@ use ipc_client::{
 use std::{
     collections::BTreeSet,
     fs,
-    os::unix::net::UnixStream,
+    os::unix::net::{UnixListener, UnixStream},
     path::Path,
     process::{Command as ProcessCommand, Stdio},
     sync::{
@@ -45,8 +47,19 @@ use std::{
 use uuid::Uuid;
 
 struct InstanceRuntime {
+    pending_listener: Option<UnixListener>,
     _lock: InstanceLock,
     paths: InstancePaths,
+}
+
+impl InstanceRuntime {
+    fn start_server(&mut self) {
+        let listener = self
+            .pending_listener
+            .take()
+            .expect("instance server starts once");
+        ferric_browser_engine_qt::spawn_ipc_server(listener, Uuid::new_v4().to_string());
+    }
 }
 
 enum InstanceStart {
@@ -120,13 +133,16 @@ const MAX_STARTUP_SETTINGS: usize = 256;
 fn main() {
     let arguments = std::env::args().skip(1).collect::<Vec<_>>();
     if let Err(error) = run(&arguments) {
+        if error.is_broken_pipe() {
+            return;
+        }
         let code = error.code();
         let status = error.status();
         let error = error.into_protocol();
         if wants_structured_error(&arguments) {
-            eprintln!("{}", cli_error::structured(&error));
+            crate::cli_output::error_line(format_args!("{}", cli_error::structured(&error)));
         } else {
-            eprintln!("{}", cli_error::text(&error));
+            crate::cli_output::error_line(format_args!("{}", cli_error::text(&error)));
         }
         let reference = error
             .details
@@ -154,30 +170,45 @@ fn select_startup_profile(
     contexts: &ContextsConfig,
     default_name: &str,
     default_label: &str,
-) -> Result<(RuntimeOverrides, String, String, Option<String>), String> {
-    let context = options.context.as_deref().map(|name| {
-        contexts
-            .contexts
-            .iter()
-            .find(|context| context.name == name)
-            .ok_or_else(|| format!("context not found: {name}"))
-    });
-    let context = match context {
-        Some(context) => Some(context?),
-        None => None,
-    };
-    if let (Some(profile), Some(context)) = (options.profile.as_deref(), context)
-        && profile != context.profile
+    saved_context: Option<&ContextRecord>,
+) -> Result<(RuntimeOverrides, String, String, Option<String>), CliError> {
+    let context = options
+        .context
+        .as_deref()
+        .map(|name| {
+            let profile = contexts
+                .contexts
+                .iter()
+                .find(|context| context.name == name)
+                .map(|context| context.profile.as_str())
+                .or_else(|| {
+                    saved_context
+                        .filter(|context| context.name == name)
+                        .map(|context| context.profile.as_str())
+                })
+                .ok_or_else(|| CliError::local(
+                    ErrorCode::NotFound,
+                    "The requested context was not found. Open the browser to choose or create one.",
+                    format!("context not found: {name}"),
+                ))?;
+            Ok::<_, CliError>((name, profile))
+        })
+        .transpose()?;
+    if let (Some(profile), Some((name, context_profile))) = (options.profile.as_deref(), context)
+        && profile != context_profile
     {
-        return Err(format!(
-            "profile and context selectors disagree (context {} belongs to {})",
-            context.name, context.profile
+        return Err(CliError::local(
+            ErrorCode::InvalidArgument,
+            "The profile and context selectors refer to different profiles.",
+            format!(
+                "profile and context selectors disagree (context {name} belongs to {context_profile})"
+            ),
         ));
     }
     let name = options
         .profile
         .as_deref()
-        .or_else(|| context.map(|context| context.profile.as_str()))
+        .or_else(|| context.map(|(_, profile)| profile))
         .unwrap_or(default_name);
     let definition = profiles
         .profiles
@@ -186,7 +217,7 @@ fn select_startup_profile(
     let overrides = definition
         .map(profile_override_layer)
         .transpose()
-        .map_err(|error| format!("profile overrides are invalid: {error}"))?
+        .map_err(|error| CliError::config(format!("profile overrides are invalid: {error}")))?
         .unwrap_or_default();
     let label = definition.map_or_else(
         || {
@@ -202,7 +233,7 @@ fn select_startup_profile(
         overrides,
         name.to_owned(),
         label,
-        context.map(|context| context.name.clone()),
+        context.map(|(name, _)| name.to_owned()),
     ))
 }
 
@@ -211,14 +242,13 @@ fn run(arguments: &[String]) -> Result<(), CliError> {
         .iter()
         .any(|argument| argument == "--help" || argument == "-h")
     {
-        print_help();
-        return Ok(());
+        return print_help();
     }
     if arguments
         .iter()
         .any(|argument| argument == "--version" || argument == "-V")
     {
-        println!("ferric-browser {}", env!("CARGO_PKG_VERSION"));
+        crate::cli_output::line(format_args!("ferric-browser {}", env!("CARGO_PKG_VERSION")))?;
         return Ok(());
     }
     let request = parse_cli(arguments).map_err(CliError::invalid)?;
@@ -345,7 +375,8 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
             .or_else(|| default_config_path(&options))
     };
     if let CliAction::ConfigCheck = action {
-        check_config(config_path.as_deref()).map_err(CliError::config)?;
+        let summary = check_config(config_path.as_deref()).map_err(CliError::config)?;
+        crate::cli_output::line(format_args!("{summary}"))?;
         return Ok(());
     }
     if let CliAction::ResetData = action {
@@ -358,14 +389,14 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
         roots.initialize_current_schema().map_err(|error| {
             CliError::storage(format!("could not initialize Ferric data: {error}"))
         })?;
-        println!(
+        crate::cli_output::line(format_args!(
             "Reset Ferric Browser data: cleared {} roots and removed {} entries. Legacy browser data was not modified.",
             report.roots_cleared, report.entries_removed
-        );
+        ))?;
         return Ok(());
     }
     if let CliAction::DefaultBrowser { operation } = &action {
-        return run_default_browser_operation(*operation).map_err(CliError::from);
+        return run_default_browser_operation(*operation);
     }
     let temporary_storage = options.temp_basedir
         || options.safe_mode
@@ -480,32 +511,6 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
         );
     }
 
-    let (profile_overrides, normal_profile_name, normal_profile_label, startup_context) =
-        if matches!(&action, CliAction::Open { .. }) {
-            select_startup_profile(
-                &options,
-                &profiles,
-                &serde_json::from_str(&contexts_json).map_err(|error| {
-                    CliError::config(format!("contexts configuration is invalid: {error}"))
-                })?,
-                &normal_profile_name,
-                &normal_profile_label,
-            )
-            .map_err(CliError::config)?
-        } else {
-            (
-                profile_overrides,
-                normal_profile_name,
-                normal_profile_label,
-                None,
-            )
-        };
-    let base_config_json = serde_json::to_string(&config).map_err(|error| {
-        CliError::config(format!("could not serialize base configuration: {error}"))
-    })?;
-    config = apply_runtime_overrides(&config, &profile_overrides)
-        .map_err(|error| CliError::config(format!("profile overrides are invalid: {error}")))?;
-
     let ephemeral_profile = match &action {
         CliAction::Open { ephemeral, .. } => *ephemeral,
         _ => false,
@@ -519,15 +524,6 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
     );
     let temporary_profile =
         options.temp_basedir || options.safe_mode || ephemeral_profile || private_initial;
-    let (ephemeral_profile_name, ephemeral_profile_label) = if ephemeral_profile {
-        let id = Uuid::new_v4().simple().to_string();
-        let short_id = &id[..8];
-        (format!("ephemeral-{id}"), format!("Ephemeral · {short_id}"))
-    } else if private_initial {
-        ("private".into(), "Private".into())
-    } else {
-        (normal_profile_name, normal_profile_label)
-    };
     let (storage_base, temporary_roots) = resolve_storage_base(
         temporary_profile,
         if options.safe_mode {
@@ -560,6 +556,94 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
             CliError::config(format!("invalid runtime setting {key:?}: {error}"))
         })?;
     }
+    let startup_instance = if matches!(&action, CliAction::Open { .. }) {
+        Some(acquire_instance(
+            storage_base.as_deref(),
+            options.instance.as_deref(),
+        )?)
+    } else {
+        None
+    };
+    if let (
+        Some(InstanceStart::Existing(paths)),
+        CliAction::Open {
+            input,
+            additional_inputs,
+            target,
+            clean_link,
+            explicit_input: true,
+            ..
+        },
+    ) = (&startup_instance, &action)
+    {
+        let result = if options.software_rendering {
+            Err(
+                "software-rendering startup requested but another instance is already running"
+                    .into(),
+            )
+        } else if ephemeral_profile {
+            Err(
+                "ephemeral open requires a fresh GUI owner; the running instance was not changed"
+                    .into(),
+            )
+        } else {
+            forward_open(
+                paths,
+                input,
+                additional_inputs,
+                target.as_deref(),
+                *clean_link,
+                &options,
+            )
+        };
+        return finish_forward(result, temporary_roots);
+    }
+    let (profile_overrides, normal_profile_name, normal_profile_label, startup_context) =
+        if matches!(&action, CliAction::Open { .. }) {
+            let contexts: ContextsConfig =
+                serde_json::from_str(&contexts_json).map_err(|error| {
+                    CliError::config(format!("contexts configuration is invalid: {error}"))
+                })?;
+            let saved_context = if let Some(name) = options.context.as_deref()
+                && !contexts.contexts.iter().any(|context| context.name == name)
+            {
+                ContextRegistry::load_created_context(&runtime_roots, name).map_err(|error| {
+                    CliError::storage(format!("could not read the context catalog: {error}"))
+                })?
+            } else {
+                None
+            };
+            select_startup_profile(
+                &options,
+                &profiles,
+                &contexts,
+                &normal_profile_name,
+                &normal_profile_label,
+                saved_context.as_ref(),
+            )?
+        } else {
+            (
+                profile_overrides,
+                normal_profile_name,
+                normal_profile_label,
+                None,
+            )
+        };
+    let base_config_json = serde_json::to_string(&config).map_err(|error| {
+        CliError::config(format!("could not serialize base configuration: {error}"))
+    })?;
+    config = apply_runtime_overrides(&config, &profile_overrides)
+        .map_err(|error| CliError::config(format!("profile overrides are invalid: {error}")))?;
+
+    let (ephemeral_profile_name, ephemeral_profile_label) = if ephemeral_profile {
+        let id = Uuid::new_v4().simple().to_string();
+        let short_id = &id[..8];
+        (format!("ephemeral-{id}"), format!("Ephemeral · {short_id}"))
+    } else if private_initial {
+        ("private".into(), "Private".into())
+    } else {
+        (normal_profile_name, normal_profile_label)
+    };
     config = apply_runtime_overrides(&config, &runtime_overrides)
         .map_err(|error| CliError::config(format!("runtime overrides are invalid: {error}")))?;
     config = apply_runtime_overrides(&config, &cli_overrides)
@@ -585,35 +669,15 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
             input = pages.next().cloned().unwrap_or_else(|| "rb://start".into());
             additional_inputs = pages.cloned().collect();
         }
-        let instance = match acquire_instance(storage_base.as_deref(), options.instance.as_deref())?
-        {
+        let mut instance = match startup_instance.expect("open acquired an instance") {
             InstanceStart::Owner(instance) => instance,
             InstanceStart::Existing(paths) => {
-                if options.software_rendering {
-                    return finish_forward(
-                        Err("software-rendering startup requested but another instance is already running".into()),
-                        temporary_roots,
-                    );
-                }
-                if !explicit_input {
-                    let result = if ephemeral_profile {
-                        Err("ephemeral open requires a fresh GUI owner; the running instance was not changed".into())
-                    } else {
-                        forward_focus(&paths)
-                    };
-                    return finish_forward(result, temporary_roots);
-                }
-                let result = if ephemeral_profile {
+                let result = if options.software_rendering {
+                    Err("software-rendering startup requested but another instance is already running".into())
+                } else if ephemeral_profile {
                     Err("ephemeral open requires a fresh GUI owner; the running instance was not changed".into())
                 } else {
-                    forward_open(
-                        &paths,
-                        &input,
-                        &additional_inputs,
-                        target.as_deref(),
-                        clean_link,
-                        &options,
-                    )
+                    forward_focus(&paths)
                 };
                 return finish_forward(result, temporary_roots);
             }
@@ -625,6 +689,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
             drop(instance);
             return finish_forward(Err(error.into()), temporary_roots);
         }
+        instance.start_server();
         let startup_background = target.as_deref() == Some("tab-bg");
         let startup_url = if startup_background {
             "about:blank"
@@ -728,18 +793,18 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
     finish_forward(result, temporary_roots)
 }
 
-fn run_default_browser_operation(operation: DefaultBrowserOperation) -> Result<(), String> {
+fn run_default_browser_operation(operation: DefaultBrowserOperation) -> Result<(), CliError> {
     let current = xdg_settings_default_browser("get", None)?;
     match operation {
         DefaultBrowserOperation::Status => {
-            println!(
+            crate::cli_output::line(format_args!(
                 "{}",
                 serde_json::json!({
                     "desktop_entry": DESKTOP_ENTRY_ID,
                     "is_default": current == DESKTOP_ENTRY_ID,
                     "current": current,
                 })
-            );
+            ))?;
             Ok(())
         }
         DefaultBrowserOperation::Set => {
@@ -750,11 +815,11 @@ fn run_default_browser_operation(operation: DefaultBrowserOperation) -> Result<(
             if verified != DESKTOP_ENTRY_ID {
                 return Err(format!(
                     "desktop handler did not verify Ferric Browser as the default browser (reported {verified:?})"
-                ));
+                ).into());
             }
-            println!(
+            crate::cli_output::line(format_args!(
                 "Ferric Browser is now the default browser ({DESKTOP_ENTRY_ID}); no other browser defaults were changed"
-            );
+            ))?;
             Ok(())
         }
     }
@@ -881,7 +946,7 @@ fn finish_runtime(
     result
 }
 
-fn check_config(path: Option<&str>) -> Result<(), String> {
+fn check_config(path: Option<&str>) -> Result<String, String> {
     if let Some(path) = path {
         let loaded = load(path).map_err(|error| format!("configuration is invalid: {error}"))?;
         let contexts_path = Path::new(path)
@@ -900,7 +965,7 @@ fn check_config(path: Option<&str>) -> Result<(), String> {
             load_profiles(&profiles_path)
                 .map_err(|error| format!("profiles configuration is invalid: {error}"))?;
         }
-        println!(
+        Ok(format!(
             "configuration structure valid ({} source file{}{}); selector syntax not checked (no WebEngine in CLI)",
             loaded.sources.len(),
             if loaded.sources.len() == 1 { "" } else { "s" },
@@ -909,13 +974,10 @@ fn check_config(path: Option<&str>) -> Result<(), String> {
             } else {
                 ""
             }
-        );
+        ))
     } else {
-        println!(
-            "built-in configuration structure valid; selector syntax not checked (no WebEngine in CLI)"
-        );
+        Ok("built-in configuration structure valid; selector syntax not checked (no WebEngine in CLI)".into())
     }
-    Ok(())
 }
 
 fn default_config_path(options: &CliOptions) -> Option<String> {
@@ -1013,9 +1075,9 @@ fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
             ));
         }
         if matches!(platform.as_str(), "xcb" | "xwayland") {
-            eprintln!(
+            crate::cli_output::error_line(format_args!(
                 "warning: running on Qt platform '{platform}' via explicit development override; this is not a native Wayland-qualified run"
-            );
+            ));
         }
     }
     let mut engine = QQmlApplicationEngine::new();
@@ -1164,57 +1226,51 @@ fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
     }
 }
 
-fn print_help() {
-    println!("Ferric Browser — keyboard-driven browser");
-    println!();
-    println!("Usage: ferric-browser [OPTIONS] [COMMAND]");
-    println!();
-    println!("Options:");
-    println!("  --basedir PATH  redirect browser-owned storage to an absolute directory");
-    println!("  --temp-basedir  start with an isolated disposable core profile");
-    println!("  --ephemeral     start a fresh isolated ephemeral profile");
-    println!(
-        "  --safe-mode     start a disposable diagnostic profile with built-in config and no userscripts"
-    );
-    println!(
-        "  --userscripts-off  open the selected normal profile with page userscripts disabled"
-    );
-    println!("  --software-rendering  start with explicit software rendering for diagnostics");
-    println!("  --config PATH   validate and use a TOML configuration");
-    println!("  --profile NAME  select a profile for forwarded commands");
-    println!("  --context NAME  select a context for forwarded commands");
-    println!("  --instance ID   select an explicit instance identifier");
-    println!("  --set KEY=VALUE provide a validated runtime setting");
-    println!("  --log-level L   select error, warn, info, or debug logging");
-    println!();
-    println!("Commands:");
-    println!(
-        "  open [--target current|tab|tab-bg|window|private-window] [--profile NAME] [--context NAME] [--clean-link] [--ephemeral] [--] INPUT..."
-    );
-    println!("  command [--window WINDOW] -- COMMAND");
-    println!("  profile-list");
-    println!("  profile-open NAME [URL]");
-    println!("  profile-create NAME [--ephemeral]");
-    println!("  window-new [--profile NAME] [--private]");
-    println!("  tab-give WINDOW_ID");
-    println!("  tab-close [--id TAB_ID] [--count N]");
-    println!("  reload [--bypass-cache]");
-    println!("  search [--backward] [--case smart|sensitive|insensitive] TEXT");
-    println!("  fullscreen [on|off|toggle]");
-    println!("    action SUBJECT VERB [ARG...] | action-list [SUBJECT]");
-    println!(
-        "  query tabs|active-tab|windows|operations|blocking|permissions|bindings|binding-explain|contexts|switcher|config [--url URL] --format json"
-    );
-    println!("  activate tab TAB_ID");
-    println!("  diagnostics --format json");
-    println!("  default-browser status|set");
-    println!("  reset-data --confirm  erase incompatible Ferric-owned data");
-    println!("  command -- blocking-toggle [--site]");
-    println!("  config check    validate configuration without starting the GUI");
-    println!("  -h, --help      show this help");
-    println!("  -V, --version   show the application version");
-    println!();
-    println!("Registry command catalog:");
+const CLI_HELP_HEADER: &str = "Ferric Browser — keyboard-driven browser
+
+Usage: ferric-browser [OPTIONS] [COMMAND]
+
+Options:
+  --basedir PATH  redirect browser-owned storage to an absolute directory
+  --temp-basedir  start with an isolated disposable core profile
+  --ephemeral     start a fresh isolated ephemeral profile
+  --safe-mode     start a disposable diagnostic profile with built-in config and no userscripts
+  --userscripts-off  open the selected normal profile with page userscripts disabled
+  --software-rendering  start with explicit software rendering for diagnostics
+  --config PATH   validate and use a TOML configuration
+  --profile NAME  select a profile for forwarded commands
+  --context NAME  select a context for forwarded commands
+  --instance ID   select an explicit instance identifier
+  --set KEY=VALUE provide a validated runtime setting
+  --log-level L   select error, warn, info, or debug logging
+
+Commands:
+  open [--target current|tab|tab-bg|window|private-window] [--profile NAME] [--context NAME] [--clean-link] [--ephemeral] [--] INPUT...
+  command [--window WINDOW] -- COMMAND
+  profile-list
+  profile-open NAME [URL]
+  profile-create NAME [--ephemeral]
+  window-new [--profile NAME] [--private]
+  tab-give WINDOW_ID
+  tab-close [--id TAB_ID] [--count N]
+  reload [--bypass-cache]
+  search [--backward] [--case smart|sensitive|insensitive] TEXT
+  fullscreen [on|off|toggle]
+    action SUBJECT VERB [ARG...] | action-list [SUBJECT]
+  query tabs|active-tab|windows|operations|blocking|permissions|bindings|binding-explain|contexts|switcher|config [--url URL] --format json
+  activate tab TAB_ID
+  diagnostics --format json
+  default-browser status|set
+  reset-data --confirm  erase incompatible Ferric-owned data
+  command -- blocking-toggle [--site]
+  config check    validate configuration without starting the GUI
+  -h, --help      show this help
+  -V, --version   show the application version
+
+Registry command catalog:";
+
+fn print_help() -> Result<(), CliError> {
+    crate::cli_output::line(format_args!("{CLI_HELP_HEADER}"))?;
     let registry = CommandRegistry::default_v1();
     for definition in registry.definitions() {
         let usage = command_usage(definition);
@@ -1231,15 +1287,16 @@ fn print_help() {
             .chain(definition.aliases.iter().map(String::as_str))
             .collect::<Vec<_>>();
         if aliases.is_empty() {
-            println!("  {usage:<48} {}", definition.description);
+            crate::cli_output::line(format_args!("  {usage:<48} {}", definition.description))?;
         } else {
-            println!(
+            crate::cli_output::line(format_args!(
                 "  {usage:<48} {} (aliases: {})",
                 definition.description,
                 aliases.join(", ")
-            );
+            ))?;
         }
     }
+    Ok(())
 }
 
 fn command_usage(definition: &ferric_browser_core::CommandDefinition) -> String {
@@ -1267,7 +1324,7 @@ fn command_argument_usage(
     }
 
     let flag = if command == "search-next" && argument.name == "direction" {
-        "--backward".to_owned()
+        "--forward|--backward".to_owned()
     } else {
         format!("--{display_name}")
     };

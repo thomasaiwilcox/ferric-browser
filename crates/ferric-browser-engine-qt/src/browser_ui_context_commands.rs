@@ -234,10 +234,22 @@ impl qobject::BrowserUi {
         })
     }
 
-    pub(super) fn handle_profile_command(
+    pub(super) fn execute_profile_command(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
-    ) -> bool {
+    ) -> Result<Value, String> {
+        self.as_ref()
+            .rust()
+            .registry
+            .validate(command, self.as_ref().rust().core_mode)
+            .map_err(|error| error.to_string())?;
+        if !self.as_mut().handle_profile_command(command) {
+            return Err(self.as_ref().rust().status_text.to_string());
+        }
+        Ok(serde_json::json!({"status": "accepted"}))
+    }
+
+    fn handle_profile_command(mut self: Pin<&mut Self>, command: &ParsedCommand) -> bool {
         match command.name.as_str() {
             "profile-list" => {
                 if !command.arguments.is_empty() {

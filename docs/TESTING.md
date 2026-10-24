@@ -36,8 +36,294 @@ Set `FERRIC_PORTAL_TEST_ARTIFACTS` to a disposable output directory when running
 that CTest entry to save the updating and ready Downloads panel renders. The
 fixture's pointer and keyboard events target its own Wayland client surfaces.
 
+`application_repeat` checks rejected commands, partial chains, canceled clean-link
+previews, counted keyboard navigation, scrolling, zoom and new-window replay in
+the production Qt adapter. `application_repeat_cli` exercises rejection and
+recording through a real disposable browser process. The open-target gates also
+check `.` and macro playback after clean-link and context decisions, including
+background tabs and changing contexts before replay:
+
+```sh
+ctest --test-dir target/application-tests --output-on-failure \
+  -R '^application_(repeat|repeat_cli|open_targets|open_targets_wayland)$'
+```
+
+`application_context_selection_cli` checks browser-created contexts through
+real CLI opens and three owned browser processes. Its 19 scenarios cover live
+selection, saved membership, cold launches with user and built-in configuration,
+profile affinity, removed authored definitions and corrupt generated catalogs.
+Both created context IDs must survive restarts. See
+[the context selection evidence](testing/context-selection-2026-10-23.md).
+
+`application_cli_output` checks closed pipes and genuine stdout failures through
+the public CLI. Its 32 process cases include a reader that closes early, closed
+stderr, `/dev/full`, and accepted commands in an isolated live browser. The
+fixture uses disposable XDG/data directories and a stub for desktop-status output.
+It never changes the desktop's default browser. See
+[the CLI output evidence](testing/cli-output-2026-10-23.md).
+
+`application_open_targets`, `application_open_targets_wayland` and
+`application_open_targets_cli` check destination routing through the running
+browser. Explicit `tab` opens preserve the original document, `tab-bg` keeps the
+selected tab, and `current` remains the default. Native cases include clean-link
+confirmation/cancellation and accepted or dismissed context prompts in primary
+and secondary windows. The public CLI fixture also covers profile/context
+selectors and multiple URL inputs. See
+[open destination routing](testing/open-target-routing-2026-10-23.md) for evidence.
+
+`application_tab_recovery` and `application_tab_recovery_wayland` exercise `u`
+and Ctrl+Shift+T in primary, secondary, private, temporary and popup windows.
+Their 40 keyboard cases check original tab position, pin/mute/zoom, neighbors,
+fresh renderer identity and page focus. Pinned cases use an explicit targeted
+close. Two additional cases consume the live undo record and reload a saved
+checkpoint through the storage worker, covering current and version-2 files.
+They also select the recovered pinned neighbor and require its saved page.
+Focused QML checks cover row identity and lazy loading when pin grouping
+reorders replacement or appended session plans.
+The CI browser-surface selection includes both entries. See
+[the closed-tab recovery evidence](testing/closed-tab-recovery-2026-10-23.md).
+
+`application_last_tab_undo` and `application_last_tab_undo_wayland` cover Undo
+after closing the sole tab. Their 39 scenarios use `u` and Ctrl+Shift+T across
+primary, secondary, private, temporary and popup hosts. They require reuse of
+the exact automatic fallback, restored pin/mute/zoom, a focused web document
+and removal of the automatic start-page history entry. Incoming pages and
+drafts, navigation back to start, explicitly opened native tabs, changed tab
+settings and unfinished favourite edits must survive. A further close/undo
+sequence checks descriptor order and one-time fallback reuse. Favourite edits
+use an independently delivered command because the editor owns ordinary keys.
+The Wayland gate observes owned-seat delivery. Both gates are in the CI filter.
+
+`application_session_recovery` and `application_session_recovery_wayland`
+exercise the recovery dialog with a corrupt checkpoint, no checkpoint, and an
+owned storage read held behind a test interposer. Eight scenarios cover retry,
+Escape, `n`, Alt+D, repeated restore keys, document identity and draft retention,
+late completion rejection, subsequent named-session preview, and page focus.
+The Wayland entry delivers keys through the owned seat. Both entries are in
+the browser CI selection. These isolate the real dialog and worker after
+bootstrap; they do not qualify process-crash startup or merging recovery with
+existing live tabs. See [the recovery dialog evidence](testing/recovery-dialog-2026-10-23.md).
+
+`application_startup_recovery` and `application_startup_recovery_wayland`
+exercise an untouched initial start page, an incoming link, multiple incoming
+tabs with closed work, and a new tab arriving during a held recovery read.
+They reopen the actual profile before recovery, check current renderer and form
+draft identity, pin/mute/zoom, merged Undo, and a save made before a restored tab
+is visited. `application_startup_recovery_restart` launches real browser
+processes on an owned bus and loopback server, kills them after durable saves,
+and recovers twice through native input. It verifies live CLI-created tabs,
+exact saved addresses, lazy HTTP request counts and duplicate-free second
+recovery. Its input plugin is offscreen-only and never shipped with Ferric.
+All three entries are in the CI browser selection. See
+[the startup recovery evidence](testing/startup-recovery-2026-10-23.md).
+
 The keyboard chrome gates use the same release engine and temporary browser
-roots. `application_switcher` checks completion editing, text navigation,
+roots. `application_navigation_recovery` uses an owned loopback server that
+first drops requests and then serves a recovered document. It checks keyboard
+reopening, exact addresses with hidden query parameters, same-address Open,
+editing and submission of an address containing command separators, focus
+handoff, Back and window isolation in primary, secondary, private and popup
+windows. After a failed POST, reopening must produce GET without another POST.
+Opening a completed POST's address without its fragment must also produce GET.
+Fragment visits on completed GET and POST documents must preserve the document
+and its method, settle the loading state, and preserve Back history.
+Reloading a completed or failed POST must select Keep page initially: Enter cancels
+without another request, and `y` confirms exactly one POST with the captured
+cache option. The same journey checks these decisions in every window type.
+Cancelling a failed-form reload preserves its failed state and restores the
+error dialog only if it had been visible before the reload decision.
+`application_navigation_recovery_wayland` repeats the recovery journey using
+compositor seat keys and checks native press/release delivery. The fixtures
+compare the compiled recovery, window and navigation resources with source
+before running. QML checks additionally cover stale tabs/views/addresses, safe
+initial Enter, unavailable Back and 320-pixel windows at 26-point text.
+`application_form_reload` and `application_form_reload_wayland` hold an owned
+POST response open and exercise pending, streaming and stopped responses,
+completion during confirmation, and Stay on unfinished or completed pages,
+including immediate Reload retry and cancellation of Open address and Back in
+primary, secondary, private and popup windows: 44 data rows per platform.
+The setup waits for completed startup and form visits to enter Ferric's history;
+Back cases require an available previous entry before invoking the command.
+A callback from the response proves the streaming document has run
+before Reload. The server counts requests and records their bodies. Keep page
+must send no POST and retain the document and its current loading state;
+approval must send exactly one additional POST with the original body and
+requested cache option. A response may finish while confirmation remains open.
+Before response headers, Reload must reopen the previous GET without another
+POST. Rejecting BeforeUnload must allow another browser Reload decision.
+Stay must retain the document and page scrolling without a failure dialog.
+The unfinished response settles as cancelled and a completed page remains
+complete. QML checks retain real DNS, network, TLS, HTTP, download and error-page
+failures, expire cancellation records with their owner, and consume them once.
+Both entries compare the compiled form, navigation, request-controller and window
+resources with source; the Wayland entry uses compositor seat keys.
+`application_stop_state` and `application_stop_state_wayland` send the configured
+`s` binding in all four hosts across seven phases: complete, failed, pending
+GET/POST, streaming GET/POST and queued Open. Native start notifications must
+reach retained tab state; reselecting a loading tab must retain provisional
+feedback. Stop must preserve settled states, stop active loads, keep the captured
+target and page focus, and avoid resubmitting a request. The fixture compares
+retained state, visible state, actual engine loading events and document markers.
+The CI browser-surface selection includes both Stop gates.
+See [the Stop evidence](testing/stop-loading-state-2026-10-23.md).
+`application_streaming_history` and `application_streaming_history_wayland`
+hold an owned GET or POST response open, prove its document has run, then press
+Shift+H and require the immediately preceding page. Their 64 rows per platform
+also cover `2H`, a native start-page anchor, returning to an earlier document at
+the same URL across an intermediate visit, two completed visits at the same
+address with a response nonce proving the returned document, and requests
+still awaiting headers. Initial completed visits must be recorded before each
+journey, and no response tail is sent before Back. Every window
+type uses its own view and UI; the fixtures compare their compiled navigation
+resources with source before running. QML checks cover delayed owner expiry,
+signed queued counts and unavailable proof. Recording a streaming visit must
+leave its loading and form state unchanged.
+The same journeys query Journey before and after traversal and compare the
+actual visit ID, including the earlier of two visits to the same URL and
+an address containing encoded spaces and Unicode. Two queued Back commands
+followed by a fresh Open and another Back must still select the original
+Journey node. These native fixtures qualify the memory-backed state. QML
+regressions exercise both native URL/index update orders and distinct visits
+at the same URL, preserving the selected visit while those facts settle. Load
+success before a native model update must retain the resolved destination
+position, including stale logical anchors and redirects. Stop and BeforeUnload
+Stay must release that position. Counted Forward checks assert that the numeric
+prefix was accepted and include the final history snapshot on failure.
+Follow-up commands while a preceding Back's model is stale must stay queued:
+count two must resolve offset two after the model moves. Signed counts combine,
+and an expired owner prevents execution.
+
+`application_journey_history` uses the production executable, public CLI,
+isolated profiles and a loopback server. Tab polling uses public `tabs.query`
+IPC to avoid starting a process for every observation. It inspects the durable
+SQLite `journey_current` row in three cases: returning from an unfinished stream to an
+exact completed visit; returning to an unrecorded stream whose second response
+completes, requiring exactly one new durable node; and returning to the older
+of two same-URL visits while their writes await an owned SQLite writer lock.
+The last case waits for the returned document's title before releasing the
+lock. With ordered application admission, a later saved background visit provides
+a FIFO storage barrier before pointer assertions. A deterministic application
+test queues two visits before selecting the older pointer and checks the actual
+SQLite result, preventing new requests from passing older queued writes.
+The database reader caches the Journey database and opens
+it read-only. Each run keeps observations and browser logs beneath
+`target/application-tests/journey-history-artifacts`. All three durable cases
+pass for v6. The 64-case native matrices
+pass on both platforms, but an earlier offscreen `private-post-pending` run
+retained a cancelled UI state after reaching the completed destination. This
+intermittent observation remains unresolved; subsequent diagnostic runs and
+their limits are recorded in
+[the dated evidence](testing/navigation-recovery-2026-10-22.md#v6-compiled-verification).
+
+```sh
+ctest --test-dir target/application-tests -R '^application_streaming_history(_wayland)?$' --output-on-failure
+ctest --test-dir target/application-tests -R '^application_journey_history$' --output-on-failure
+```
+
+To stress the pending-header case in one owned private window, the native
+fixture accepts `FERRIC_HISTORY_PENDING_REPEATS` (1–32, default 1). Other phases
+always run once. The fixture buffers native loading metadata and prints it
+when its completion check observes a cancelled state; the completion assertion
+and Journey identity check remain required.
+
+```sh
+QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QPA_PLATFORMTHEME= \
+QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu FERRIC_HISTORY_PENDING_REPEATS=32 \
+target/application-tests/application_tests streamingHistoryTraversal:private-post-pending
+```
+
+`application_keyboard_guide` and `application_keyboard_guide_wayland` verify
+the Guide's window and UI owner in primary, secondary, private and popup
+windows. They cover command-bar entry, the default `g ?` shortcut, search,
+Escape, page focus after closing, independent queries in overlapping windows,
+and a new `binding-explain` query after editing and clearing the old search.
+Six QML cases open or reopen a compact article and immediately request Page
+Down, Space or `j` without a render barrier, then reverse the movement.
+The native journey retains failure-only focus and scroll-geometry facts;
+source/resource checks include the Guide and focus controller. See the
+[first-scroll evidence](testing/guide-first-scroll-2026-10-23.md).
+The Guide journey also checks that `zoom` selects Page zoom, compact `gg`
+finds the top/bottom feature, reader and list hints follow real key events,
+and a configured shortcut retains the feature's other bindings. `/` from the
+list and reader returns to search with the query selected, preserving webpage
+scroll, browser mode and page-search text. The seat uses the physical `AB10`
+key for this gesture. QML checks
+cover selection on query changes versus refreshes, focused search/copy/control
+hints, Escape in the section chooser, and compact hints at 26-point text.
+The Wayland entry sends compositor seat keys and checks their native identity.
+Both gates reject stale embedded Guide and window resources.
+`application_privacy_identity` and `application_privacy_identity_wayland` check
+regular/private/temporary identity in primary, secondary and popup windows.
+They compare labels with actual engine profile persistence, cover hidden chrome,
+all three status policies, command/search entry and cancellation, all tab edges,
+large fonts and popup title changes, and require stable page geometry and focus.
+The shared seat driver preserves the real title binding and requires a unique
+mapped title/PID match. QML adds 320-pixel header checks at 26 and 60 points.
+See the [privacy identity evidence](testing/privacy-window-identity-2026-10-23.md).
+
+`application_live_titles` and `application_live_titles_wayland` exercise a
+settled page changing its title in primary, secondary, private and popup windows.
+They seed a cached search, verify the new title in Switcher and `yank title`,
+change matching titles with the Switcher open, and require unchanged query,
+focus, URL, document target and history position/count. They also cover bounded
+Unicode/control filtering, background tab updates, retained titles after tab
+selection, rejected stale callbacks, and a live detach without document reload.
+See the [live title evidence](testing/live-page-titles-2026-10-23.md).
+
+```sh
+ctest --test-dir target/application-tests -R '^application_live_titles(_wayland)?$' --output-on-failure
+```
+
+`application_switcher_navigation` and `application_switcher_navigation_wayland`
+cover full navigation and `history.pushState` with the Switcher already open in
+primary, secondary, private and popup hosts. A fixed initial title prevents
+title-change notifications from masking URL invalidation. Repeated backend
+queries and visible rows must reflect the destination, preserve the query and
+focus, carry the current generation and activate through Enter. Non-popup cases
+also navigate a background tab without changing the selected page. See the
+[navigation freshness evidence](testing/switcher-navigation-freshness-2026-10-23.md).
+
+```sh
+ctest --test-dir target/application-tests -R '^application_switcher_navigation(_wayland)?$' --output-on-failure
+```
+
+`application_switcher_live_updates` and `application_switcher_live_updates_wayland`
+edit a search while real pages change their titles every 10 ms. Primary,
+secondary, private and popup scenarios require results and further label updates
+before that activity stops, stable query/action focus, Escape returning to the
+page, and unchanged document targets. An eight-window scenario finds and updates
+a result in the last window while the invoker stays busy. Focused QML checks use
+twelve paced sources, including slow first results, and cover query replacement
+and closing with work pending. See the
+[live-update evidence](testing/switcher-live-updates-2026-10-23.md).
+
+```sh
+ctest --test-dir target/application-tests -R '^application_switcher_live_updates(_wayland)?$' --output-on-failure
+```
+
+`application_page_search` and `application_page_search_wayland` cover native
+matching, result retention and activation. The shared search-feedback matrix
+checks all three status policies in primary, secondary, private and popup
+windows: native match position/total, n/N and wrapping, no matches, page focus
+after acceptance/cancellation, and unchanged webpage viewport dimensions.
+It also checks a narrow window with 26-point configuration, including the
+feedback and previous/next symbols using their window's effective font.
+The preedit matrix uses real `QInputMethodEvent` events and requires Return and
+Escape to leave the search surface in charge until composition finishes; a
+fresh action after commit must work. The Wayland gate sends fresh search and
+activation gestures through its owned compositor seat. Preedit and held-repeat
+probes use explicit Qt events.
+QML adds keypad Enter and 320-pixel feedback/font checks. These checks do not
+qualify a platform IME. See the [search usability evidence](testing/page-search-usability-2026-10-23.md).
+The direction matrix starts searches with both `/` and `?` in all four hosts.
+It checks repeated n/N steps and wrapping, counted explicit/default commands,
+forward actions, Guide command equivalents, preserved page focus, and a fresh
+query in the opposite direction. Previous/next button clicks must preserve the
+query direction and return focus to the editor. The Wayland matrix uses owned
+seat keyboard events and explicit Qt pointer events for those button clicks.
+See the [direction evidence](testing/page-search-direction-2026-10-23.md).
+
+`application_switcher` checks completion editing, text navigation,
 selection, action focus and list paging offscreen. It first compares the
 compiled chrome resources, including the paging script, with the current source.
 Paging waits for the complete search batch and also traverses uncached results
@@ -138,6 +424,39 @@ The separate `application_command_editing_wayland` gate sends Qt-generated
 key/mouse events to Wayland windows to check completion insertion, caret,
 undo and explicit preedit events. These gates do not qualify physical hardware,
 a full desktop compositor, GPU rendering or platform IMEs.
+`commandHistoryEditing`, included in both Wayland gates and the offscreen
+switcher suite, has 24 cases across primary, secondary and private windows.
+Each types a draft and recalls two real profile-local commands. Undo must step
+through each recall to the draft and its earlier typed edit; Redo and Down must
+restore the expected commands and draft without execution or focus loss. The
+matrix also checks Up/Down after Undo, fully restoring the draft, editing a
+recalled line, Escape followed by fresh command entry, and Undo after Down
+returned to an empty or non-empty draft. Two Rust policy
+checks cover exact recorded text, Unicode, unavailable positions, new edits and
+a draft equal to a history value. Six QML cases
+also cover empty drafts, Unicode, selected text and unchanged history boundaries.
+See the [command-history editing evidence](testing/command-history-editing-2026-10-22.md).
+The expanded compositor-seat gate has a 180-second process budget and a
+210-second CTest budget; all delivery, focus and completion assertions remain.
+`tabKeyboardContinuity` checks command and Alt+1 tab selection, Switcher
+selection, closing the active first or last tab, cancellation after a tab changes behind
+Switcher, and command/search cancellation in primary, secondary and private
+windows. Each case checks the actual document, native page focus, Tab reaching
+a real page button, and `j` scrolling. The fixture establishes initial page
+focus once and never repairs focus after the operation under test.
+`application_tab_focus_wayland` runs the same matrix with compositor seat keys
+in a separate gate. See the [tab focus evidence](testing/tab-keyboard-focus-2026-10-23.md).
+`commandModifiedArrows` compares Shift+Up/Down with a plain Qt TextField in the
+same primary, secondary or private window. The actual command editor must keep
+the same text, cursor and selection. It runs in both Wayland gates and the full
+offscreen switcher suite. `commandCompletionPreedit` now checks ten gestures
+against real `QInputMethodEvent` preedit: Right, Space, Up/Down, Tab/Backtab,
+Ctrl+N/P, Escape and Return. No history, completion, submission or dismissal
+request may escape during composition; normal shortcuts must resume afterward.
+The QML runner also injects real input-method events into the source component,
+commits Japanese text and verifies a fresh Return submits that exact text.
+These are explicit preedit-event checks, not platform-IME qualification. The
+full offscreen switcher gate has a 360-second budget for the expanded matrix.
 
 ```sh
 ctest --test-dir target/application-tests --parallel 1 -R '^application_(switcher|keyboard_chrome_wayland|command_editing_wayland)$' --output-on-failure

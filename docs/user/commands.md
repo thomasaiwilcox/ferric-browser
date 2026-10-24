@@ -266,15 +266,17 @@ Exit and recovery: Use the opposite traversal direction to return. Stop can canc
 
 Set or adjust the current tab's page zoom factor.
 
-Normal-mode H and L go back and forward through the current tab history. Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
+Make the current webpage easier to read with zoom in or zoom out. The default + shortcut enlarges the page; - makes it smaller. Use zoom 1.25 for 125%, or zoom reset (default =) to return to 100%. The status bar reports the resulting percentage.
 
-Exit and recovery: Select scroll-target auto to leave a manually chosen container. Reset zoom when text or controls become difficult to use.
+Zoom applies to the current tab. It changes the webpage's text, images and layout; the browser's controls keep their own font size.
+
+Exit and recovery: Use :zoom reset to return this tab to 100% if text or controls become difficult to use.
 
 ### `search-next`
 
 Traverse retained in-page search matches.
 
-Page search finds text within the current web document. / searches forward and ? searches backward; enter a query and press Enter. n advances to the next match and N reverses direction. Smart-case and explicit case settings determine matching. Counts advance through multiple matches where supported. This is separate from an address-bar search, which navigates to a search engine.
+Page search finds text within the current web document. / searches forward and ? searches backward; enter a query and press Enter. n continues the original search direction and N steps in the opposite direction without changing the next n. Search arrows and explicit --forward or --backward steps also leave the original direction intact. search-next continues that direction; --count advances through multiple matches. Smart-case and explicit case settings determine matching. This is separate from an address-bar search, which navigates to a search engine.
 
 Exit and recovery: Escape cancels search entry or clears the active search through the browser recovery path. Use o for an Internet search.
 
@@ -282,7 +284,7 @@ Exit and recovery: Escape cancels search entry or clears the active search throu
 
 Search the current page without navigating.
 
-Page search finds text within the current web document. / searches forward and ? searches backward; enter a query and press Enter. n advances to the next match and N reverses direction. Smart-case and explicit case settings determine matching. Counts advance through multiple matches where supported. This is separate from an address-bar search, which navigates to a search engine.
+Page search finds text within the current web document. / searches forward and ? searches backward; enter a query and press Enter. n continues the original search direction and N steps in the opposite direction without changing the next n. Search arrows and explicit --forward or --backward steps also leave the original direction intact. search-next continues that direction; --count advances through multiple matches. Smart-case and explicit case settings determine matching. This is separate from an address-bar search, which navigates to a search engine.
 
 Exit and recovery: Escape cancels search entry or clears the active search through the browser recovery path. Use o for an Internet search.
 
@@ -290,33 +292,41 @@ Exit and recovery: Escape cancels search entry or clears the active search throu
 
 Scroll the resolved page scroll target in one direction.
 
-Normal-mode H and L go back and forward through the current tab history. Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
+Move a short distance through the webpage without reaching for the mouse. In Normal mode, the default h/j/k/l shortcuts scroll left/down/up/right. A numeric prefix increases the distance: 3j moves three steps down.
 
-Exit and recovery: Select scroll-target auto to leave a manually chosen container. Reset zoom when text or controls become difficult to use.
+Movement follows the current scroll area, which can be a panel inside the page. Use scroll-target select to choose a panel, or scroll-target document to move the whole page. On the start page, a focused site grid uses hjkl to select tiles.
+
+Exit and recovery: Use the opposite direction to move back. If the wrong panel moves, :scroll-target auto releases a manual choice or :scroll-target document selects the whole page.
 
 ### `scroll-page`
 
 Scroll the resolved page scroll target by viewport pages.
 
-Normal-mode H and L go back and forward through the current tab history. Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
+Read a long webpage one screen at a time. The default Ctrl+f and Ctrl+b shortcuts move down and up by a page, keeping a little overlap so you can keep your place. Ctrl+d and Ctrl+u move by half a page. Add a numeric prefix to cover more distance in one action.
 
-Exit and recovery: Select scroll-target auto to leave a manually chosen container. Reset zoom when text or controls become difficult to use.
+Page steps use the current scroll area's viewport, so they also work inside a selected panel. In command entry, use scroll-page down or scroll-page up; add --half for a half-page step or --count 3 for three steps.
+
+Exit and recovery: Move in the opposite direction to return. If you need to scroll the whole page instead of a panel, use :scroll-target document.
 
 ### `scroll-to`
 
 Scroll the resolved page scroll target to its top or bottom.
 
-Normal-mode H and L go back and forward through the current tab history. Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
+Jump directly to the top or bottom of the current scroll area. With the default shortcuts, g g goes to the top and G goes to the bottom. The equivalent commands are scroll-to top and scroll-to bottom.
 
-Exit and recovery: Select scroll-target auto to leave a manually chosen container. Reset zoom when text or controls become difficult to use.
+A selected panel keeps these jumps inside that panel. Use scroll-target document first when you want the top or bottom of the whole webpage.
+
+Exit and recovery: Continue reading with j/k or the page-step shortcuts. Use :scroll-target auto to release a manually chosen scroll area.
 
 ### `scroll-target`
 
 Select, clear, inspect, or pin the active page's keyboard scroll target.
 
-Normal-mode H and L go back and forward through the current tab history. Normal-mode hjkl scrolls left/down/up/right. Page movement supports full-page and half-page steps; a count multiplies commands that explicitly support counts. gg moves to the top and G to the bottom. scroll-target selects the scrolling container when a page has nested panels; auto restores automatic selection. Zoom changes document scale, with reset returning to the configured baseline. On the start page, focused grids use hjkl for tile selection instead of webpage scrolling.
+Choose which part of a webpage receives keyboard scrolling. This is useful for pages with sidebars, message lists or other panels that scroll independently. With the default shortcuts, ;s labels scrollable areas; type a label to choose one. Movement commands then use that area.
 
-Exit and recovery: Select scroll-target auto to leave a manually chosen container. Reset zoom when text or controls become difficult to use.
+Use scroll-target status to inspect the current choice. scroll-target document selects the whole page, and scroll-target auto (default ;S) restores automatic selection. If the picker is unavailable in your window, scroll-target document can still select the whole page.
+
+Exit and recovery: Escape cancels the picker. Use :scroll-target auto to release a manual choice and return to automatic selection.
 
 ### `window-close`
 
@@ -804,7 +814,7 @@ Exit and recovery: Escape exits entry dialogs; close DevTools using its control 
 
 Repeat the last eligible browser command.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -812,7 +822,7 @@ Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cance
 
 Cancel pending browser work.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -820,7 +830,7 @@ Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cance
 
 Record eligible commands into a named macro register.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -828,7 +838,7 @@ Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cance
 
 Stop recording the current macro.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -836,7 +846,7 @@ Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cance
 
 Replay a named macro register.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -844,7 +854,7 @@ Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cance
 
 Invoke a stable typed action on an explicit subject.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -852,7 +862,7 @@ Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cance
 
 List available stable typed actions.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 
@@ -900,7 +910,7 @@ Exit and recovery: Escape closes the switcher or help and restores prior focus. 
 
 Execute a registered command by stable ID with typed arguments.
 
-Repeat reissues the last eligible browser command with supported count behavior. Macros record key gestures into named registers and replay through the normal resolver; stop recording before playback. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
+Repeat reissues the last accepted eligible command, including its count and destination. A rejected command leaves the previous action available. Macros record accepted eligible commands into memory-only registers; stop recording before playback. Clean-link previews and context-route prompts enter the recording after their navigation is confirmed. Playback rechecks routing and availability. Typed actions expose supported subject/verb operations with required arguments and availability checks. command-execute and chained commands use Ferric's command parser, not shell syntax. Cancel targets supported pending operations and does not roll back already committed work.
 
 Exit and recovery: Stop macro recording explicitly with macro-stop. Escape cancels command entry; use cancel for a supported pending operation.
 

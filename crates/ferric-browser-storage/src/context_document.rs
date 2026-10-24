@@ -233,4 +233,64 @@ mod tests {
             selected_index: Some(0),
         }
     }
+    #[test]
+    fn startup_lookup_reads_created_context_identity_without_rewriting() {
+        let roots = StorageRoots::resolve(RootSpec::Temporary).unwrap();
+        let mut registry = ContextRegistry::open(&roots).unwrap();
+        let created = registry.create("saved", "Saved", "work").unwrap().clone();
+        drop(registry);
+        let path = roots.state.join("contexts.json");
+        let bytes = fs::read(&path).unwrap();
+        let loaded = ContextRegistry::load_created_context(&roots, "saved")
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded, created);
+        assert!(
+            ContextRegistry::load_created_context(&roots, "missing")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(fs::read(path).unwrap(), bytes);
+        roots.cleanup().unwrap();
+    }
+
+    #[test]
+    fn startup_lookup_excludes_configuration_owned_identities_after_restart() {
+        let roots = StorageRoots::resolve(RootSpec::Temporary).unwrap();
+        let mut registry = ContextRegistry::open(&roots).unwrap();
+        let id = registry.create("saved", "Saved", "default").unwrap().id;
+        registry
+            .reconcile_configured(&[], &[definition("configured")])
+            .unwrap();
+        drop(registry);
+        assert!(
+            ContextRegistry::load_created_context(&roots, "configured")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            ContextRegistry::load_created_context(&roots, "saved")
+                .unwrap()
+                .unwrap()
+                .id,
+            id
+        );
+        let mut reopened = ContextRegistry::open(&roots).unwrap();
+        reopened.reconcile_configured(&[], &[]).unwrap();
+        assert_eq!(reopened.contexts().len(), 1);
+        assert_eq!(reopened.contexts()[0].id, id);
+        roots.cleanup().unwrap();
+    }
+
+    #[test]
+    fn startup_lookup_reports_corrupt_catalog_without_changing_it() {
+        let roots = StorageRoots::resolve(RootSpec::Temporary).unwrap();
+        roots.ensure().unwrap();
+        let path = roots.state.join("contexts.json");
+        let corrupt = b"{invalid context catalog";
+        fs::write(&path, corrupt).unwrap();
+        assert!(ContextRegistry::load_created_context(&roots, "saved").is_err());
+        assert_eq!(fs::read(path).unwrap(), corrupt);
+        roots.cleanup().unwrap();
+    }
 }

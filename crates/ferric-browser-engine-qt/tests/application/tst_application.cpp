@@ -199,10 +199,15 @@ void ApplicationTests::init() {
     });
     engine = std::make_unique<QQmlApplicationEngine>();
     const auto testName = QString::fromLatin1(QTest::currentTestFunction());
-    const bool durable = testName.startsWith("durablePersistence")
+    const auto dataTag = QString::fromLatin1(QTest::currentDataTag());
+    const bool identityPrivate = testName == "productPolishPrivacyIdentity" && dataTag.endsWith("-private");
+    const bool identityTemporary = testName == "productPolishPrivacyIdentity" && dataTag.endsWith("-temporary");
+    const bool recoveryTemporary = (testName == "productPolishTabRecovery" || testName == "productPolishLastTabUndo")
+        && dataTag.startsWith("temporary-");
+    const bool durable = !identityPrivate && !identityTemporary && !recoveryTemporary && (testName.startsWith("durablePersistence")
                          || testName == "selectorValidationRejectsWholeCandidate"
                          || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary"
-                             && !(testName == "productPolishDiagnosticLifecycle" && QString::fromLatin1(QTest::currentDataTag()) == "private"));
+                             && !(testName == "productPolishDiagnosticLifecycle" && QString::fromLatin1(QTest::currentDataTag()) == "private")));
     QString startupConfig = "{\"schema_version\":3}";
     if (testName == "productPolishExternalActionFeedback") {
         const auto tag = QString::fromLatin1(QTest::currentDataTag());
@@ -270,6 +275,9 @@ void ApplicationTests::init() {
     }
     engine->setInitialProperties(
         {{"temporaryProfile", !durable},
+         {"ephemeralProfile", identityTemporary || recoveryTemporary},
+         {"ephemeralInvocationToken", identityTemporary ? QString("privacy-identity-fixture")
+             : recoveryTemporary ? QString("tab-recovery-fixture") : QString()},
          {"storageBasePath", storageBase},
          {"softwareRendering", true},
          {"nativeWayland", QGuiApplication::platformName() == "wayland"},
@@ -2387,8 +2395,13 @@ void ApplicationTests::productPolishTlsPrompt() {
     evaluate(pageReceiver + ".url=" + quoted(origin + "/tls"));
     QTRY_VERIFY(evaluate("testWindow.pendingCertificateError !== null").toBool());
     QCOMPARE(evaluate("testWindow.pendingCertificateErrorHost").toString(), origin);
-    auto back = findVisualItem(host->contentItem(), "commandDialogAction-back");
-    auto proceed = findVisualItem(host->contentItem(), "commandDialogAction-accept");
+    auto prompt = findVisualItem(host->contentItem(), "certificateErrorPrompt");
+    QVERIFY(prompt);
+    QTRY_VERIFY(prompt->isVisible());
+    // Navigation recovery also has a Go back action. Resolve choices inside
+    // the certificate prompt, regardless of the host's child/reparent order.
+    auto back = findVisualItem(prompt, "commandDialogAction-back");
+    auto proceed = findVisualItem(prompt, "commandDialogAction-accept");
     QVERIFY(back && proceed);
     QTRY_VERIFY(back->hasActiveFocus());
     const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");

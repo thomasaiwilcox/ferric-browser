@@ -299,7 +299,7 @@ impl qobject::BrowserUi {
         tab: TabId,
         url: &str,
         title: &str,
-        was_traversal: bool,
+        reused_visit: bool,
         journey_parent: Option<JourneyNodeId>,
     ) {
         if !is_safe_history_url(url) {
@@ -332,25 +332,16 @@ impl qobject::BrowserUi {
             let Some(profile_id) = rust.profile_id else {
                 return;
             };
-            if was_traversal {
-                let write = if let Some(state) = rust.state.as_ref()
-                    && let Some(core_node_id) = state.journey().current_node(tab)
-                    && let Some(durable_node_id) = rust
-                        .navigation
-                        .journey_durable_ids
-                        .borrow()
-                        .get(&core_node_id)
-                        .cloned()
-                {
-                    JourneyWrite::SetCurrentById {
-                        tab_id: tab.to_string(),
-                        node_id: durable_node_id,
-                    }
-                } else {
-                    JourneyWrite::SetCurrentForUrl {
-                        tab_id: tab.to_string(),
-                        url: url.to_owned(),
-                    }
+            let durable_visit = reused_visit
+                .then(|| {
+                    let node = rust.state.as_ref()?.journey().current_node(tab)?;
+                    rust.navigation.durable_journey_id(node)
+                })
+                .flatten();
+            if let Some(node_id) = durable_visit {
+                let write = JourneyWrite::SetCurrentById {
+                    tab_id: tab.to_string(),
+                    node_id,
                 };
                 (retention_days, profile_id, Some((write, None)))
             } else if let Some(state) = rust.state.as_ref()
@@ -359,13 +350,8 @@ impl qobject::BrowserUi {
             {
                 let timestamp = unix_timestamp();
                 let durable_node_id = Uuid::new_v4().to_string();
-                let durable_parent_id = journey_parent.and_then(|parent| {
-                    rust.navigation
-                        .journey_durable_ids
-                        .borrow()
-                        .get(&parent)
-                        .cloned()
-                });
+                let durable_parent_id =
+                    journey_parent.and_then(|parent| rust.navigation.durable_journey_id(parent));
                 let write = JourneyWrite::RecordNode {
                     id: durable_node_id.clone(),
                     profile_id: profile_id.to_string(),
@@ -411,7 +397,7 @@ impl qobject::BrowserUi {
                 }
             }
         }
-        if !was_traversal {
+        if !reused_visit {
             let timestamp = unix_timestamp();
             self.as_mut().queue_history_visit(VisitInput {
                 url: url.to_owned(),

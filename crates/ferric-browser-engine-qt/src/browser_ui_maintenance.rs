@@ -195,8 +195,7 @@ impl qobject::BrowserUi {
             || rust.processes.pending_editor.is_some()
             || rust.processes.pending_editor_write.is_some()
             || rust.library.switcher_library_index_building
-            || rust.library.session_restore_preview_pending
-            || rust.library.session_restore_recovery_pending
+            || !rust.library.session_restores.is_empty()
             || !rust.library.session_saves.is_empty()
             || rust.library.session_checkpoint_clear_pending
             || rust.library.storage_flush_pending;

@@ -824,7 +824,7 @@ TestCase {
         page.guideSurface.searchText = "nothing-matches"
         compare(page.guideSurface.rows.length, 0)
         page.guideSurface.searchText = "o"
-        compare(page.guideSurface.rows.length, 2)
+        compare(page.guideSurface.rows.length, 1)
     }
     function test_guide_groups_shortcuts_without_losing_invocations() {
         ui.multipleBindings = true
@@ -837,6 +837,41 @@ TestCase {
         compare(guide.currentRow.bindings[1].command, "open --target tab")
         compare(guide.currentRow.bindings[1].mode, "caret")
         compare(guide.currentRow.recovery, "Escape cancels address entry.")
+    }
+    function test_guide_changed_query_selects_first_result_but_refresh_keeps_selection() {
+        ui.twoFeatures = true
+        var guide = createPage().guideSurface
+        guide.searchInput.text = "open"
+        guide.focusEntries()
+        keyClick(Qt.Key_Down)
+        compare(guide.currentRow.identity, "reload")
+        guide.refresh()
+        compare(guide.currentRow.identity, "reload")
+        guide.searchInput.text = "o"
+        compare(guide.currentRow.identity, "open")
+        verify(guide.rows.every(function(row) { return !row.heading }))
+        guide.searchInput.text = ""
+        verify(guide.rows.some(function(row) { return row.heading }))
+    }
+    function test_guide_hints_follow_the_focused_keyboard_recipient() {
+        var guide = createPage().guideSurface
+        guide.focusSearch()
+        tryCompare(guide.searchInput, "activeFocus", true)
+        verify(guide.navigationHelp.indexOf("Type to search") >= 0)
+        verify(guide.navigationHelp.indexOf("j/k") < 0)
+        keyClick(Qt.Key_O)
+        verify(guide.navigationHelp.indexOf("Esc clear search") >= 0)
+        keyClick(Qt.Key_Down)
+        tryCompare(guide.entriesList, "activeFocus", true)
+        verify(guide.navigationHelp.indexOf("j/k browse") >= 0)
+        keyClick(Qt.Key_Return)
+        tryCompare(findChild(guide, "ferricGuideArticle"), "activeFocus", true)
+        verify(guide.navigationHelp.indexOf("j/k scroll") >= 0)
+        var command = findChild(guide, "ferricGuideInvocation")
+        command.forceActiveFocus()
+        verify(guide.navigationHelp.indexOf("Ctrl+C copy") >= 0)
+        keyClick(Qt.Key_Escape)
+        verify(guide.navigationHelp.indexOf("j/k scroll") >= 0)
     }
     function test_guide_reader_is_bounded_and_narrow_back_restores_focus() {
         host.width = 1800
@@ -856,6 +891,32 @@ TestCase {
         tryVerify(function() { return guide.entriesList.visible && guide.entriesList.activeFocus })
         verify(!guide.articleOpen)
         compare(ui.navigations, 0)
+    }
+    function test_guide_slash_returns_to_search_with_query_selected_data() {
+        return [{tag:"wide-list",width:1000,reader:false},
+                {tag:"wide-reader",width:1000,reader:true},
+                {tag:"compact-list",width:390,reader:false},
+                {tag:"compact-reader",width:390,reader:true}]
+    }
+    function test_guide_slash_returns_to_search_with_query_selected(data) {
+        host.width=data.width
+        var guide=createPage().guideSurface
+        guide.searchInput.text="open"
+        guide.focusEntries()
+        if(data.reader) guide.focusReader()
+        wait(0)
+        var help=guide.navigationHelp
+        keyClick(Qt.Key_Slash)
+        tryCompare(guide.searchInput,"activeFocus",true)
+        verify(help.indexOf("/ search")>=0)
+        verify(guide.searchInput.visible)
+        verify(!guide.readerActive)
+        compare(guide.searchInput.selectedText,"open")
+        keyClick(Qt.Key_O)
+        compare(guide.searchInput.text,"o")
+        keyClick(Qt.Key_Slash)
+        compare(guide.searchInput.text,"o/")
+        compare(ui.navigations,0)
     }
     function test_guide_reader_scroll_and_copy_keep_keyboard_actions_local() {
         host.height = 520

@@ -107,10 +107,15 @@ fn event_target(event: &Event) -> Option<Target> {
     match event {
         Event::OpenPopup { opener: target, .. }
         | Event::StartNavigation { target, .. }
+        | Event::RestoreTabAddress { target, .. }
+        | Event::NavigationStarted { target }
         | Event::CommitNavigation { target, .. }
         | Event::CommitNavigationWithTransition { target, .. }
+        | Event::CommitNavigationAtVisit { target, .. }
         | Event::SameDocumentNavigation { target, .. }
+        | Event::PageTitleChanged { target, .. }
         | Event::CompleteNavigation { target }
+        | Event::CancelNavigation { target }
         | Event::FailNavigation { target }
         | Event::Reload { target, .. }
         | Event::Stop { target }

@@ -1,5 +1,7 @@
 //! Native tab surfaces and their positions relative to `WebEngine` history.
 
+use crate::JourneyNodeId;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InternalPage {
     Start,
@@ -21,6 +23,7 @@ impl InternalPage {
 pub struct ContentEntry {
     pub url: String,
     pub engine_index: i32,
+    pub journey_node: Option<JourneyNodeId>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -33,7 +36,10 @@ impl ContentHistory {
     pub fn record(&mut self, url: String, engine_index: i32, traversal: bool) {
         if traversal {
             if let Some(current) = self.entries.get_mut(self.cursor) {
-                current.url = url;
+                if current.url != url {
+                    current.journey_node = None;
+                    current.url = url;
+                }
                 if InternalPage::from_url(&current.url).is_none() {
                     current.engine_index = engine_index;
                 }
@@ -47,7 +53,11 @@ impl ContentHistory {
             return;
         }
         self.entries.truncate(self.cursor.saturating_add(1));
-        self.entries.push(ContentEntry { url, engine_index });
+        self.entries.push(ContentEntry {
+            url,
+            engine_index,
+            journey_node: None,
+        });
         if self.entries.len() > 4096 {
             self.entries.remove(0);
         }
@@ -57,6 +67,16 @@ impl ContentHistory {
     #[must_use]
     pub fn snapshot(&self) -> (&[ContentEntry], usize) {
         (&self.entries, self.cursor)
+    }
+
+    pub fn bind_current_journey(&mut self, url: &str, node: JourneyNodeId) {
+        if let Some(entry) = self
+            .entries
+            .get_mut(self.cursor)
+            .filter(|entry| entry.url == url)
+        {
+            entry.journey_node = Some(node);
+        }
     }
 
     #[must_use]
@@ -99,6 +119,9 @@ impl ContentHistory {
             .min_by_key(|(index, entry)| (entry.url != url, index.abs_diff(self.cursor)))
             .map(|(index, _)| index);
         if let Some(index) = existing {
+            if self.entries[index].url != url {
+                self.entries[index].journey_node = None;
+            }
             self.entries[index].url = url;
             self.cursor = index;
         } else {
@@ -110,8 +133,14 @@ impl ContentHistory {
                         && entry.engine_index > engine_index
                 })
                 .unwrap_or(self.entries.len());
-            self.entries
-                .insert(index, ContentEntry { url, engine_index });
+            self.entries.insert(
+                index,
+                ContentEntry {
+                    url,
+                    engine_index,
+                    journey_node: None,
+                },
+            );
             self.cursor = index;
             if self.entries.len() > 4096 {
                 if self.cursor == 0 {
@@ -129,6 +158,25 @@ impl ContentHistory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn journey_identity_follows_the_entry_and_expires_when_its_document_url_changes() {
+        let mut history = super::ContentHistory::default();
+        let mut ids = crate::IdSource::new();
+        let first = ids.journey_node();
+        let second = ids.journey_node();
+        history.record("https://a.test".into(), 0, false);
+        history.bind_current_journey("https://a.test", first);
+        history.record("https://b.test".into(), 1, false);
+        history.bind_current_journey("https://b.test", second);
+        let (entries, cursor) = history.snapshot();
+        let mut restored = super::ContentHistory::from_snapshot(entries.to_vec(), cursor).unwrap();
+        assert_eq!(restored.traverse(-1).unwrap().journey_node, Some(first));
+        assert_eq!(restored.traverse(1).unwrap().journey_node, Some(second));
+        restored.record("https://redirected.test".into(), 1, true);
+        let (entries, cursor) = restored.snapshot();
+        assert_eq!(entries[cursor].journey_node, None);
+    }
     #[test]
     fn native_entries_share_anchors_without_losing_web_history() {
         let mut history = ContentHistory::default();
@@ -211,6 +259,7 @@ mod tests {
             .map(|engine_index| ContentEntry {
                 url: format!("https://a.test/{engine_index}"),
                 engine_index,
+                journey_node: None,
             })
             .collect();
         let mut history = ContentHistory::from_snapshot(entries, 4095).unwrap();

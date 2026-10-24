@@ -325,13 +325,13 @@ fn diagnostics_component_is_intent_only_and_replaces_the_inline_surface() {
 }
 
 #[test]
-fn binding_help_component_renders_rows_and_emits_root_owned_intents() {
+fn binding_help_component_renders_rows_for_its_window_and_emits_intents() {
     let qml = include_str!("../../qml/components/FerricBindingHelp.qml");
     let composition_root = QML_SOURCE;
     let projection = include_str!("../binding_presentation.rs");
     assert!(qml.contains("signal searchChanged(string text)"));
     assert!(qml.contains("FerricGuide {"));
-    assert!(qml.contains("browserUi: bindingHelp.browserWindow.primaryBrowserUi"));
+    assert!(qml.contains("browserUi: bindingHelp.browserUi"));
     let guide = include_str!("../../qml/components/FerricGuide.qml");
     assert!(guide.contains("guide_explanations") && guide.contains("guide_recoveries"));
     assert!(guide.contains("readonly property var currentRow"));
@@ -776,7 +776,7 @@ fn all_hints_cover_qutebrowser_control_families_and_activate_controls() {
 fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
     let source = include_str!("../browser_ui_hint_selection.rs");
     let ipc = include_str!("../browser_ui_ipc.rs");
-    let ipc_preparation = include_str!("../browser_ui_ipc_preparation.rs");
+    let ipc_dispatch = include_str!("../browser_ui_ipc_runtime_dispatch.rs");
     let qml = include_str!("../../qml/components/FerricHintWorkspace.qml");
 
     assert!(source.contains("hint_rapid_target == \"tab-bg\""));
@@ -784,8 +784,9 @@ fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
     assert!(source.contains("open_target: IpcOpenTarget::BackgroundTab"));
     assert!(source.contains("rapid_hint_keeps_mode("));
 
-    let background_open = ipc
-        .split("if route.open_target == IpcOpenTarget::BackgroundTab")
+    assert!(ipc.contains(".dispatch_new_tab_open(input, route, operation_id)"));
+    let background_open = ipc_dispatch
+        .split("fn dispatch_tab_open_ipc_command(")
         .nth(1)
         .expect("background-tab IPC route")
         .split("dispatch_fallback_ipc_command")
@@ -798,7 +799,6 @@ fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
         .find("set_pending_engine_action(&effects)")
         .expect("background open must queue navigation");
     assert!(sync < navigate, "the background tab view must exist before navigation");
-    assert!(ipc_preparation.contains("self.as_mut().sync_tab_order_from_core();"));
 
     let runtime = concat!(include_str!("../../qml/components/FerricRuntimeController.qml"), include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"));
     let runtime_work = runtime

@@ -37,6 +37,8 @@ TestCase {
         property bool sessionManagerVisible: true
         property bool temporaryProfile: false
         property bool ephemeralProfile: false
+        property var currentView: recoveryView
+        function activeWebView() { return currentView }
         color: backgroundColor
         palette.window: backgroundColor
         palette.windowText: primaryTextColor
@@ -49,7 +51,15 @@ TestCase {
         palette.highlightedText: backgroundColor
     }
     QtObject {
+        id: recoveryView
+        property bool contentCanGoBack: true
+        property bool formResubmissionPending: false
+    }
+    QtObject {
         id: navigationUi
+        property int active_tab_index: 0
+        property string current_url: "https://unreachable.example/"
+        function tab_id_for_index(index) { return "tab-" + index }
         property bool navigation_failure_visible: true
         property string navigation_failure_kind: "dns"
         property string navigation_failure_url: "https://unreachable.example/"
@@ -102,6 +112,11 @@ TestCase {
         host.requestActivate()
         tryCompare(host, "active", true)
         navigationUi.navigation_failure_visible = true
+        navigationUi.active_tab_index = 0
+        navigationUi.current_url = "https://unreachable.example/"
+        host.currentView = recoveryView
+        recoveryView.contentCanGoBack = true
+        recoveryView.formResubmissionPending = false
         host.temporaryProfile = false
         host.ephemeralProfile = false
         downloadActionId = ""
@@ -229,6 +244,89 @@ TestCase {
         tryCompare(host, "active", true)
         keyClick(Qt.Key_Escape)
         tryCompare(navigationUi, "navigation_failure_visible", false)
+    }
+    function test_navigation_recovery_keys_data() {
+        return [{tag:"reopen",key:Qt.Key_R,signal:"reopenRequested"},
+                {tag:"edit",key:Qt.Key_E,signal:"editRequested"},
+                {tag:"back",key:Qt.Key_B,signal:"backRequested"}]
+    }
+    function test_navigation_recovery_actions_at_large_text_data() {
+        return [{tag:"compact",width:640,height:480,font:20},
+                {tag:"narrow",width:320,height:600,font:26}]
+    }
+    function test_navigation_recovery_actions_at_large_text(data) {
+        host.width=data.width;host.height=data.height;host.font.pointSize=data.font
+        var surface=create(navigationFixture)
+        var scroll=findChild(surface,"commandDialogActionScroll")
+        tryCompare(findChild(surface,"commandDialogAction-cancel"),"activeFocus",true)
+        for(var i=0;i<surface.actions.length;i++) {
+            keyClick(Qt.Key_J)
+            var row=findChild(surface,"commandDialogAction-"+surface.actions[i].id)
+            tryCompare(row,"activeFocus",true)
+            verify(waitForPolish(host))
+            var y=row.mapToItem(scroll,0,0).y
+            verify(y+row.height>0 && y<scroll.height,"Selected action must be visible")
+            if(row.height<=scroll.height) verify(y>=-1 && y+row.height<=scroll.height+1)
+        }
+        capture("navigation-large-text-"+data.tag)
+    }
+    function test_navigation_recovery_keys(data) {
+        navigationUi.current_url = 'https://unreachable.example/?q=a;;b&token=secret#fragment'
+        var surface = create(navigationFixture)
+        var spy = createTemporaryObject(signalSpyFixture, surface, {target:surface,signalName:data.signal})
+        tryCompare(findChild(surface,"commandDialogAction-cancel"),"activeFocus",true)
+        keyClick(data.key)
+        compare(spy.count,1)
+        compare(navigationUi.navigation_failure_visible,false)
+        if(data.tag==="reopen") compare(spy.signalArguments[0][0],navigationUi.current_url)
+        if(data.tag==="edit") compare(spy.signalArguments[0][0],'open "'+navigationUi.current_url+'"')
+    }
+    function test_navigation_recovery_rejects_retired_owner_data() {
+        return [{tag:"tab"},{tag:"address"},{tag:"view"}]
+    }
+    function test_navigation_recovery_rejects_retired_owner(data) {
+        var surface = create(navigationFixture)
+        var spy = createTemporaryObject(signalSpyFixture,surface,{target:surface,signalName:"reopenRequested"})
+        if(data.tag==="tab") navigationUi.active_tab_index++
+        else if(data.tag==="address") navigationUi.current_url="https://other.example/"
+        else host.currentView=null
+        surface.requestAction("reopen")
+        compare(spy.count,0)
+        tryCompare(navigationUi,"navigation_failure_visible",false)
+    }
+    function test_navigation_recovery_keeps_enter_safe_and_disables_back_at_boundary() {
+        recoveryView.contentCanGoBack=false
+        var surface=create(navigationFixture)
+        var spy=createTemporaryObject(signalSpyFixture,surface,{target:surface,signalName:"backRequested"})
+        verify(!findChild(surface,"commandDialogAction-back").enabled)
+        tryCompare(findChild(surface,"commandDialogAction-cancel"),"activeFocus",true)
+        keyClick(Qt.Key_B);compare(spy.count,0)
+        verify(navigationUi.navigation_failure_visible)
+        keyClick(Qt.Key_Return)
+        tryCompare(navigationUi,"navigation_failure_visible",false)
+    }
+    function test_error_dialog_is_suspended_while_form_confirmation_owns_input() {
+        var surface=create(navigationFixture)
+        tryCompare(findChild(surface,"commandDialogAction-cancel"),"activeFocus",true)
+        var detail=navigationUi.navigation_failure_detail
+        recoveryView.formResubmissionPending=true
+        verify(surface.visible)
+        verify(!surface.enabled)
+        compare(surface.opacity,0)
+        verify(surface.Accessible.ignored)
+        verify(navigationUi.navigation_failure_visible)
+        recoveryView.formResubmissionPending=false
+        verify(surface.enabled)
+        compare(surface.opacity,1)
+        compare(navigationUi.navigation_failure_detail,detail)
+        tryCompare(findChild(surface,"commandDialogAction-cancel"),"activeFocus",true)
+    }
+    function test_suspended_error_dialog_still_expires_with_its_original_owner() {
+        var surface=create(navigationFixture)
+        recoveryView.formResubmissionPending=true
+        host.currentView=null
+        tryCompare(navigationUi,"navigation_failure_visible",false)
+        verify(!surface.visible)
     }
     function test_saving_controls_fit_compact_large_fonts_data() {
         return [{tag:"normal",privateMode:false},{tag:"private",privateMode:true}]

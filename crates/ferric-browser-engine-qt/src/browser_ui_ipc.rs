@@ -1,7 +1,7 @@
 use super::{
-    CxxQtType, DispatchTarget, Event, IpcOpenTarget, IpcRoute, ParsedCommand, Pin, QString, Value,
-    binding_command_parameters, current_target, ipc_mode_name, is_context_command,
-    is_library_command, is_zoom_command, learning_mode_request, normalize_active_tab_command,
+    CxxQtType, DispatchTarget, IpcOpenTarget, IpcRoute, ParsedCommand, Pin, QString, Value,
+    binding_command_parameters, ipc_mode_name, is_context_command, is_library_command,
+    is_profile_command, is_zoom_command, learning_mode_request, normalize_active_tab_command,
     parse_hint_options, qobject, resolve_input, selection_yank_command,
 };
 
@@ -238,6 +238,15 @@ impl qobject::BrowserUi {
             }
             self.as_ref().validate_ipc_route_public(route)?;
             return (self.as_mut().execute_window_new_command(&command)).map_err(Into::into);
+        }
+        if is_profile_command(&command.name) {
+            if route.context.is_some() || route.profile.is_some() {
+                return Err(
+                    "context/profile routing is not valid for profile lifecycle commands".into(),
+                );
+            }
+            self.as_ref().validate_ipc_route_public(route)?;
+            return self.execute_profile_command(&command).map_err(Into::into);
         }
         if is_context_command(&command.name) {
             if route.context.is_some() || route.profile.is_some() {
@@ -644,7 +653,6 @@ impl qobject::BrowserUi {
                 .dispatch_tab_open_ipc_command(command, route, operation_id))
             .map_err(Into::into);
         }
-        self.as_mut().note_repeatable_command(&command);
         if route.context.is_some() && command.name != "open" {
             return Err("context routing is only valid for open".into());
         }
@@ -670,6 +678,8 @@ impl qobject::BrowserUi {
                 )
             })
         {
+            let mut captured = route.clone();
+            captured.selector = DispatchTarget::Window(self.as_ref().ipc_route_window(route)?);
             if let Some(pending) = self
                 .as_mut()
                 .rust_mut()
@@ -678,7 +688,7 @@ impl qobject::BrowserUi {
                 .pending_context_route
                 .as_mut()
             {
-                pending.new_window = route.open_target == IpcOpenTarget::Window;
+                pending.open_route = Some(captured);
             }
             self.as_mut()
                 .set_status_text(QString::from("Context route confirmation required"));
@@ -731,99 +741,21 @@ impl qobject::BrowserUi {
             IpcOpenTarget::BackgroundTab if command.name != "open" => {
                 return Err("tab-bg is only valid for open".into());
             }
-            IpcOpenTarget::Tab | IpcOpenTarget::BackgroundTab => {}
+            IpcOpenTarget::Current | IpcOpenTarget::Tab | IpcOpenTarget::BackgroundTab => {}
         }
-        if route.open_target == IpcOpenTarget::BackgroundTab {
+        if command.name == "open"
+            && matches!(
+                route.open_target,
+                IpcOpenTarget::Tab | IpcOpenTarget::BackgroundTab
+            )
+        {
             let input = command
                 .arguments
                 .first()
                 .ok_or_else(|| "open requires an input".to_owned())?;
-            let navigation = resolve_input(
-                input,
-                &self.as_ref().navigation_context_for_source(route.source),
-            )
-            .map_err(|error| error.to_string())?;
-            let (window, original_window, original_tab, journey_parent) = {
-                let binding = self.as_ref();
-                let state = binding
-                    .rust()
-                    .state
-                    .as_ref()
-                    .ok_or_else(|| "core state unavailable".to_owned())?;
-                let window = match route.selector {
-                    DispatchTarget::Active => state.active_window(),
-                    DispatchTarget::LastFocused => {
-                        state.last_focused_window().or(state.active_window())
-                    }
-                    DispatchTarget::Window(window) => Some(window),
-                    DispatchTarget::Tab(tab) => state.tabs().get(&tab).map(|tab| tab.window),
-                }
-                .ok_or_else(|| "requested window is not available".to_owned())?;
-                let source_tab = match route.selector {
-                    DispatchTarget::Tab(tab) => Some(tab),
-                    _ => state
-                        .windows()
-                        .get(&window)
-                        .and_then(|window| window.active_tab),
-                };
-                let journey_parent = source_tab.and_then(|tab| state.journey().current_node(tab));
-                (
-                    window,
-                    state.active_window(),
-                    state.windows()[&window].active_tab,
-                    journey_parent,
-                )
-            };
-            self.as_mut()
-                .reduce_event(Event::OpenTab { window })
-                .map_err(|error| error.clone())?;
-            let tab = self
-                .as_ref()
-                .rust()
-                .state
-                .as_ref()
-                .and_then(|state| state.windows().get(&window))
-                .and_then(|window| window.active_tab)
-                .ok_or_else(|| "new background tab was not created".to_owned())?;
-            if let Some(original_tab) = original_tab {
-                self.as_mut()
-                    .reduce_event(Event::ActivateTab {
-                        window,
-                        tab: original_tab,
-                    })
-                    .map_err(|error| error.clone())?;
-            } else if let Some(original_window) = original_window
-                && original_window != window
-            {
-                self.as_mut()
-                    .reduce_event(Event::FocusWindow {
-                        window: original_window,
-                    })
-                    .map_err(|error| error.clone())?;
-            }
-            let target = current_target(self.as_ref().rust().state.as_ref(), Some(tab))
-                .ok_or_else(|| "new background tab target is not live".to_owned())?;
-            let effects = self
-                .as_mut()
-                .reduce_event(Event::StartNavigation {
-                    target,
-                    url: navigation.url,
-                })
-                .map_err(|error| error.clone())?;
-            if let Some(parent) = journey_parent {
-                self.as_mut().mark_journey_parent(&effects, parent);
-            }
-            // A background open restores the original active tab before this
-            // point. Reconcile the complete core order so the new tab is
-            // projected even though it is not active, and so navigation can
-            // resolve its stable tab ID to a QML view index.
-            self.as_mut().sync_tab_order_from_core();
-            self.as_mut().set_pending_engine_action(&effects);
-            return Ok(serde_json::json!({
-                "status": "accepted",
-                "tab_id": tab.to_string(),
-                "target_window": window.to_string()
-            }));
+            return self
+                .dispatch_new_tab_open(input, route, operation_id)
+                .map_err(Into::into);
         }
         self.as_mut()
             .dispatch_fallback_ipc_command(command, route, operation_id)

@@ -7,6 +7,7 @@ use ferric_browser_ipc::{ErrorCode, PublicError};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum IpcOpenTarget {
+    Current,
     Tab,
     BackgroundTab,
     Window,

@@ -33,6 +33,45 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn search_next_preserves_omitted_and_explicit_directions() {
+        for (flag, direction) in [
+            (None, None),
+            (Some("--forward"), Some("forward")),
+            (Some("--backward"), Some("backward")),
+        ] {
+            let mut arguments: Vec<String> = flag.into_iter().map(str::to_owned).collect();
+            arguments.extend(["--count".into(), "2".into()]);
+            let command = ferric_browser_core::ParsedCommand {
+                name: "search-next".into(),
+                arguments,
+            };
+            let envelope = encode_command(&command).unwrap();
+            assert_eq!(
+                envelope["arguments"]
+                    .get("direction")
+                    .and_then(serde_json::Value::as_str),
+                direction
+            );
+            assert_eq!(
+                decode_command_invocation(&envelope).unwrap().command,
+                command
+            );
+        }
+        for arguments in [
+            vec!["--forward", "--backward"],
+            vec!["--backward", "--forward"],
+            vec!["--forward", "--forward"],
+            vec!["--backward", "--backward"],
+        ] {
+            let command = ferric_browser_core::ParsedCommand {
+                name: "search-next".into(),
+                arguments: arguments.into_iter().map(str::to_owned).collect(),
+            };
+            assert!(encode_command(&command).is_err());
+        }
+    }
+
+    #[test]
     fn browser_panels_round_trip_without_accepting_payloads() {
         for name in ["settings", "profiles", "sessions"] {
             let command = ferric_browser_core::ParsedCommand {

@@ -220,64 +220,7 @@ impl qobject::BrowserUi {
         }
 
         if kind == "closed" {
-            let Some(closed) = self
-                .as_ref()
-                .rust()
-                .closed_tabs
-                .iter()
-                .find(|closed| closed.id.to_string() == id)
-                .cloned()
-            else {
-                self.set_status_text(QString::from(
-                    "That closed tab is no longer available to reopen.",
-                ));
-                return false;
-            };
-            let Some(window) = self.as_ref().rust().window else {
-                return false;
-            };
-            let Ok(url) = ValidatedUrl::parse(closed.url.clone()) else {
-                self.set_status_text(QString::from("Closed tab URL is no longer safe to reopen"));
-                return false;
-            };
-            if self
-                .as_mut()
-                .reduce_event(Event::OpenTab { window })
-                .is_err()
-            {
-                return false;
-            }
-            let Some(tab) = self
-                .as_ref()
-                .rust()
-                .state
-                .as_ref()
-                .and_then(|state| state.windows().get(&window))
-                .and_then(|window| window.active_tab)
-            else {
-                return false;
-            };
-            let Some(target) = current_target(self.as_ref().rust().state.as_ref(), Some(tab))
-            else {
-                return false;
-            };
-            let Ok(effects) = self
-                .as_mut()
-                .reduce_event(Event::StartNavigation { target, url })
-            else {
-                return false;
-            };
-            self.as_mut().sync_tab_order_from_core();
-            self.as_mut().set_pending_engine_action(&effects);
-            {
-                let mut rust = self.as_mut().rust_mut();
-                rust.as_mut()
-                    .get_mut()
-                    .closed_tabs
-                    .retain(|candidate| candidate.id != closed.id);
-            }
-            self.set_status_text(QString::from("Closed tab reopened"));
-            return true;
+            return self.reopen_closed_tab(id);
         }
 
         if kind == "action" {

@@ -1,7 +1,7 @@
 use super::{
-    CommandRegistry, CxxQtType, IpcRoute, MAX_MACRO_COMMANDS, ParsedCommand, Pin, PublicError,
-    QString, Value, interactive_open_command, is_context_command, is_profile_command,
-    is_session_command, parse_action_invocation, qobject,
+    CommandRegistry, CxxQtType, IpcRoute, ParsedCommand, Pin, PublicError, QString, Value,
+    interactive_open_command, is_context_command, is_profile_command, is_session_command,
+    parse_action_invocation, qobject,
 };
 use ferric_browser_ipc::ErrorCode;
 
@@ -125,6 +125,9 @@ impl qobject::BrowserUi {
         command: &mut ParsedCommand,
         registry: &CommandRegistry,
     ) -> CommandDispatchControl {
+        if !self.as_mut().admit_macro_command() {
+            return CommandDispatchControl::Failed;
+        }
         if let Some(result) = self
             .as_mut()
             .handle_spatial_command(&command.name, &command.arguments)
@@ -169,20 +172,6 @@ impl qobject::BrowserUi {
                     return CommandDispatchControl::Failed;
                 }
             }
-        }
-        if self.as_ref().rust().macro_depth > 0 {
-            let expanded = self.as_ref().rust().macro_expanded_commands;
-            if expanded >= MAX_MACRO_COMMANDS {
-                self.set_status_text(QString::from(
-                    "Macro expansion stopped at the 1000-command limit",
-                ));
-                return CommandDispatchControl::Failed;
-            }
-            self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .macro_expanded_commands = expanded + 1;
         }
         if matches!(command.name.as_str(), "settings" | "profiles" | "sessions") {
             return match self.as_mut().execute_management_surface_command(command) {
@@ -383,12 +372,8 @@ impl qobject::BrowserUi {
             return CommandDispatchControl::Continue;
         }
         if is_profile_command(&command.name) {
-            let mode = self.as_ref().rust().core_mode;
-            if let Err(error) = registry.validate(command, mode) {
-                self.set_status_text(QString::from(error.to_string()));
-                return CommandDispatchControl::Failed;
-            }
-            if !self.as_mut().handle_profile_command(command) {
+            if let Err(error) = self.as_mut().execute_profile_command(command) {
+                self.set_status_text(QString::from(error));
                 return CommandDispatchControl::Failed;
             }
             return CommandDispatchControl::Continue;

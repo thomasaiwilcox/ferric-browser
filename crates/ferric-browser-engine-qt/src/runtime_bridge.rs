@@ -97,6 +97,9 @@ impl qobject::BrowserUi {
         if accepted {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
+            // Navigation and mode facts can change live query rows without
+            // advancing the durable revision used by the cache key.
+            this.library.switcher_cache = None;
             this.checkpoint.mark_dirty(elapsed_ms(this.binding_clock));
             for effect in &effects {
                 if let RuntimeEffect::Observed(observation) = effect {
@@ -109,6 +112,9 @@ impl qobject::BrowserUi {
             }
         }
         self.as_mut().refresh_ipc_owner();
+        if accepted {
+            self.as_mut().switcher_sources_changed();
+        }
         effects
             .into_iter()
             .filter_map(|effect| match effect {

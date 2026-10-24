@@ -45,9 +45,6 @@ impl qobject::BrowserUi {
             this.pending_engine_actions
                 .push_back(super::engine_requests::NativeRequest::Presentation(action));
         }
-        if let Some(target) = this.navigation.pending_journey_traversal.take() {
-            this.navigation.pending_journey_traversals.push_back(target);
-        }
     }
 
     #[allow(clippy::too_many_lines)]
@@ -167,7 +164,6 @@ impl qobject::BrowserUi {
                     let _ = self.as_mut().execute_parsed_commands(vec![parsed]);
                     return;
                 }
-                self.as_mut().note_repeatable_command(&parsed);
                 let effects = {
                     if self.as_ref().rust().state.is_none() {
                         self.set_status_text(QString::from("Core state unavailable"));
@@ -175,7 +171,7 @@ impl qobject::BrowserUi {
                     }
                     let navigation = self.as_ref().navigation_context();
                     self.as_mut().dispatch_runtime(RuntimeDispatch {
-                        invocation: CommandInvocation::with_count(parsed, count),
+                        invocation: CommandInvocation::with_count(parsed.clone(), count),
                         navigation,
                         target: DispatchTarget::Active,
                     })
@@ -187,6 +183,8 @@ impl qobject::BrowserUi {
                         return;
                     }
                 };
+                self.as_mut()
+                    .note_repeatable_invocation(&parsed, None, count);
                 // Captured engine effects must use the typed request queue, just
                 // like command-bar dispatch. Presentation names no longer execute
                 // navigation, reload or stop operations in the QML dispatcher.

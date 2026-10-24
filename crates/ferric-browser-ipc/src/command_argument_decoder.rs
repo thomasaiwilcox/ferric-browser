@@ -562,7 +562,7 @@ pub(super) fn decode_command_arguments(
             let mut args = Vec::new();
             if let Some(direction) = optional_text_argument("direction")? {
                 match direction.as_str() {
-                    "forward" => {}
+                    "forward" => args.push("--forward".into()),
                     "backward" => args.push("--backward".into()),
                     _ => {
                         return Err("command argument direction must be forward or backward".into());

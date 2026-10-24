@@ -42,6 +42,7 @@ struct State {
   QWaylandCompositor *compositor = nullptr;
   QVariantList exports;
   QHash<int, uint32_t> modifierMasks;
+  QHash<QString, uint32_t> physicalKeys;
 };
 bool initializeModifiers(State *state) {
   auto settings = state->compositor->defaultSeat()->keymap();
@@ -66,8 +67,14 @@ bool initializeModifiers(State *state) {
     auto index = xkb_keymap_mod_get_index(keymap, modifier.second);
     if (index < 32) state->modifierMasks.insert(modifier.first, uint32_t(1) << index);
   }
+  for (const auto &position : {"AB10", "AC10"}) {
+    const auto code = xkb_keymap_key_by_name(keymap, position);
+    if (code != XKB_KEYCODE_INVALID && code >= 8)
+      state->physicalKeys.insert(QString::fromLatin1(position), code);
+  }
   xkb_keymap_unref(keymap);
-  return state->modifierMasks.size() == modifiers.size();
+  return state->modifierMasks.size() == modifiers.size()
+      && state->physicalKeys.contains("AB10") && state->physicalKeys.contains("AC10");
 }
 void sendModifiers(State *state, QWaylandSurface *surface, int modifiers) {
   struct Update { uint32_t serial, mask; } update{state->compositor->nextSerial(), 0};
@@ -190,6 +197,18 @@ public slots:
     }
     return {};
   }
+  bool Move(const QString &id, double x, double y) {
+    auto seat = state->compositor->defaultSeat();
+    if (!seat)
+      return false;
+    for (const auto &window : state->windows) {
+      if (window.id == id && window.surface && window.view && window.surface->hasContent()) {
+        seat->sendMouseMoveEvent(window.view, QPointF(x, y), QPointF(x, y));
+        return true;
+      }
+    }
+    return false;
+  }
   bool Click(const QString &id, double x, double y) {
     auto seat = state->compositor->defaultSeat();
     if (!seat)
@@ -210,6 +229,15 @@ public slots:
     return Key(id, Qt::Key_Escape, 0);
   }
   bool Key(const QString &id, int key, int modifiers) {
+    return sendKey(id, key, modifiers, false);
+  }
+  bool KeyPosition(const QString &id, const QString &position, int modifiers) {
+    if (!state->physicalKeys.contains(position)) return false;
+    return sendKey(id, state->physicalKeys.value(position), modifiers, true);
+  }
+
+private:
+  bool sendKey(const QString &id, int key, int modifiers, bool physical) {
     if (modifiers & ~(Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))
       return false;
     auto seat = state->compositor->defaultSeat();
@@ -222,14 +250,19 @@ public slots:
       const QList<QPair<int, int>> modifierKeys{
           {Qt::ShiftModifier, Qt::Key_Shift}, {Qt::ControlModifier, Qt::Key_Control},
           {Qt::AltModifier, Qt::Key_Alt}, {Qt::MetaModifier, Qt::Key_Meta}};
-      if (!seat->keyboard()->keyToScanCode(key)) return false;
+      if (!physical && !seat->keyboard()->keyToScanCode(key)) return false;
       for (const auto &modifier : modifierKeys)
         if ((modifiers & modifier.first) && !seat->keyboard()->keyToScanCode(modifier.second)) return false;
       for (const auto &modifier : modifierKeys)
         if (modifiers & modifier.first) seat->sendKeyEvent(modifier.second, true);
       sendModifiers(state, window.surface, modifiers);
-      seat->sendKeyEvent(key, true);
-      seat->sendKeyEvent(key, false);
+      if (physical) {
+        seat->sendKeyPressEvent(key);
+        seat->sendKeyReleaseEvent(key);
+      } else {
+        seat->sendKeyEvent(key, true);
+        seat->sendKeyEvent(key, false);
+      }
       for (auto modifier = modifierKeys.crbegin(); modifier != modifierKeys.crend(); ++modifier)
         if (modifiers & modifier->first) seat->sendKeyEvent(modifier->second, false);
       sendModifiers(state, window.surface, 0);
@@ -303,7 +336,7 @@ int main(int argc, char **argv) {
   QTextStream(stdout) << "ready" << Qt::endl;
   const int lifetime = qBound(
       60000, qEnvironmentVariableIntValue("FERRIC_PORTAL_FIXTURE_LIFETIME_MS"),
-      180000);
+      480000);
   QTimer::singleShot(lifetime, &app, &QCoreApplication::quit);
   return app.exec();
 }

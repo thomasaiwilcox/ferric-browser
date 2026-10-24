@@ -11,13 +11,12 @@ function execute(request, ui, host, services, source) {
     switch (request.kind) {
     case "navigate":
         if (host.tabsModel) host.tabsModel.setProperty(index, "loaded", true)
-        view.setContentUrl(request.url, false)
+        view.setContentUrl(request.url, false, false, true)
         break
     case "reload":
         if (view.nativeUrl && view.nativeUrl.length > 0) {
             if (view.nativeUrl === "rb://start" && view.startPage) view.startPage.refresh()
-        } else if (request.bypassCache) view.reloadAndBypassCache()
-        else view.reload()
+        } else view.requestContentReload(request)
         break
     case "stop": view.stop(); break
     case "history":

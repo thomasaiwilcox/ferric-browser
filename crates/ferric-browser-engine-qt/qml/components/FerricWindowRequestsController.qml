@@ -188,6 +188,9 @@ QtObject {
         }
         window.completeNativePromptLease(ui, leaseToken, view)
         if (rejectRequest && request) {
+            if (!authentication && window.pageDialogType(request) === "beforeunload"
+                    && view && typeof view.cancelPendingContentReload === "function")
+                view.cancelPendingContentReload()
             window.resolveQtRequest(ui, request, authentication ? "authentication" : "page-dialog", "dialogReject", [])
             if (ui) {
                 ui.status_text = authentication
@@ -1033,6 +1036,8 @@ QtObject {
         if (!request) {
             return
         }
+        if (kind === "beforeunload" && view && typeof view.noteBeforeUnloadRejected === "function")
+            view.noteBeforeUnloadRejected()
         window.resolveQtRequest(
             ui, request, kind === "authentication" ? "authentication" : "page-dialog",
             "dialogReject", [])

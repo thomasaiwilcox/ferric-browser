@@ -94,11 +94,11 @@ ApplicationWindow {
     width: 1280
     height: 800
     visible: true
-    title: window.ephemeralProfile
-           ? "Ferric Browser · " + window.profileLabel
-             + (!window.tabStripVisible ? " · " + browserUi.tab_count + " tabs" : "")
-           : "Ferric Browser"
-             + (!window.tabStripVisible ? " · " + browserUi.tab_count + " tabs" : "")
+    readonly property string windowPrivacyLabel: primaryPrivacyHeader.label
+    title: "Ferric Browser"
+           + (window.windowPrivacyLabel.length > 0 ? " · " + window.windowPrivacyLabel : "")
+           + (window.ephemeralProfile ? " · " + window.profileLabel : "")
+           + (!window.tabStripVisible ? " · " + browserUi.tab_count + (browserUi.tab_count === 1 ? " tab" : " tabs") : "")
     color: window.backgroundColor
     font.family: window.chromeFontFamily
     font.pointSize: window.chromeFontPointSize
@@ -166,10 +166,12 @@ ApplicationWindow {
         inputBarActive ? inputBarHeight : (statusBarVisible ? statusBarHeight : 0)
     property real profileNoticeHeight: profileNotice.height
     property bool profileNoticeInputActive: profileNotice.inputActive
-    readonly property real bottomChromeHeight:
-        bottomControlsHeight + profileNoticeHeight
+    // Only persistent chrome reserves page space; mode changes must not resize WebEngine.
+    readonly property real bottomContentInset:
+        profileNoticeHeight
         + (tabStripVisible && tabPosition === "bottom"
            ? tabBarHeight : 0)
+    readonly property real bottomChromeHeight: bottomContentInset + bottomControlsHeight
     readonly property real chromeOpacity: 1.0
     property var browserWindowRegistry: []
     property var popupWindowRegistry: []
@@ -251,6 +253,7 @@ ApplicationWindow {
     FerricFocusOverlayController {
         id: focusOverlayController
         browserWindow: window
+        followTabFocus: true
     }
 
     FerricChromePresentationController {
@@ -616,6 +619,7 @@ ApplicationWindow {
     property var switcherResults: []
     property var switcherResultContext: null
     property string switcherScope: "all"
+    property bool switcherLiveRefreshPending: false
     property var switcherBatchEntries: []
     property var switcherBatchMerged: []
     property var switcherBatchSources: []
@@ -947,7 +951,7 @@ ApplicationWindow {
                 }
             }
             if (consumed && window.switcherVisible) {
-                window.refreshSwitcher()
+                window.requestSwitcherLiveRefresh()
             }
             if (consumed && window.downloadManagerVisible) {
                 window.refreshDownloads()
@@ -1077,6 +1081,9 @@ ApplicationWindow {
         id: browserUi
         status_text: "Ready"
         onRuntime_work_available: window.scheduleRuntimeWork(0)
+        onSwitcher_sources_changed: {
+            if (window.switcherVisible) window.requestSwitcherLiveRefresh()
+        }
         onStatus_textChanged: {
             window.scheduleRuntimeWork(0)
             if (window.commandNoticeVisible && browserUi.mode !== "command"
@@ -1519,8 +1526,10 @@ ApplicationWindow {
         transientProfile: window.temporaryProfile
         onActivity: window.noteTabActivity()
         onRestored: {
+            var recovered = window.recoveryAvailable
             if (window.profileSessionWorkspaceObject) window.profileSessionWorkspaceObject.finishSessionRestore(window.recoveryAvailable)
             window.recoveryAvailable = false
+            if (recovered) window.closeInternalSurface()
         }
     }
     property var preparedTransferFallback: null
@@ -1764,18 +1773,21 @@ ApplicationWindow {
 
     function refreshSwitcher() { return runtimePresentation.refreshSwitcher() }
 
+    function requestSwitcherLiveRefresh() { return runtimePresentation.requestSwitcherLiveRefresh() }
+
+    function processSwitcherRefresh() { return runtimePresentation.processSwitcherRefresh() }
+
     // Querying every key event synchronously across all browser windows can
     // build a backlog while the user is typing. Coalesce edits into one
     // latest-input refresh; activation and scope changes still refresh
-    // immediately at their explicit boundaries.
+    // immediately at their explicit boundaries. Live changes start an idle
+    // timer, so a busy page cannot keep postponing keyboard work.
     Timer {
         id: switcherRefreshTimer
         interval: 35
         repeat: false
         onTriggered: {
-            if (window.switcherVisible) {
-                window.refreshSwitcher()
-            }
+            window.processSwitcherRefresh()
         }
     }
 
@@ -2212,8 +2224,8 @@ ApplicationWindow {
 
     header: ToolBar {
 id: browserHeader
-height: window.tabPosition === "top" && window.tabStripVisible
-        ? window.tabBarHeight : 0
+height: primaryPrivacyHeader.implicitHeight
+        + (window.tabPosition === "top" && window.tabStripVisible ? window.tabBarHeight : 0)
 visible: height > 0
 
 background: Rectangle {
@@ -2234,6 +2246,17 @@ GridLayout {
     anchors.fill: parent
     rowSpacing: 0
 
+    FerricPrivacyHeader {
+        id: primaryPrivacyHeader
+        browserWindow: window
+        privateProfile: window.temporaryProfile && !window.ephemeralProfile
+        ephemeralProfile: window.ephemeralProfile
+        Layout.row: 0
+        Layout.fillWidth: true
+        Layout.preferredHeight: implicitHeight
+        Layout.maximumHeight: implicitHeight
+    }
+
     FerricTabStrip {
         id: compactTabStrip
         browserWindow: window
@@ -2246,16 +2269,16 @@ GridLayout {
         x: parent === headerColumn ? 0
            : (window.tabPosition === "right" ? parent.width - width : 0)
         y: parent === headerColumn || vertical ? 0
-           : parent.height - window.bottomChromeHeight
+           : parent.height - window.bottomContentInset
         width: parent === headerColumn ? headerColumn.width
                : (vertical ? window.sideTabWidth : parent.width)
         height: parent === headerColumn ? window.tabBarHeight
                 : (vertical
                    ? parent.height
-                     - window.bottomChromeHeight
+                     - window.bottomContentInset
                    : window.tabBarHeight)
         z: 9
-        Layout.row: 0
+        Layout.row: 1
         Layout.fillWidth: parent === headerColumn
         Layout.preferredHeight: window.tabBarHeight
         Layout.maximumHeight: visible && parent === headerColumn
@@ -2281,7 +2304,7 @@ GridLayout {
     }
 
     RowLayout {
-        Layout.row: 1
+        Layout.row: 2
         Layout.fillWidth: true
         Layout.preferredHeight: 0
         Layout.maximumHeight: 0
@@ -2730,26 +2753,34 @@ GridLayout {
         id: navigationFailureSurface
         browserWindow: window
         browserUi: window.browserUi
+        onReopenRequested: function(address) {
+            if (browserUi.execute_ui_action("browser.url.open", address)) window.executePendingEngineAction()
+            else window.showCommandNotice(browserUi.status_text, true)
+        }
+        onEditRequested: function(command) {
+            browserUi.enter_command()
+            commandSurface.clearInput()
+            commandSurface.commandText = command
+            commandSurface.cursorPosition = command.length - 1
+            commandSurface.focusInput()
+        }
+        onBackRequested: {
+            if (browserUi.execute_ui_action("browser.tab.back", "")) window.executePendingEngineAction()
+            else window.showCommandNotice(browserUi.status_text, true)
+        }
     }
 
     FerricRecoveryBanner {
         browserWindow: window
-        onRecoveryRequested: {
-            var restored = browserUi.recover_session()
-            if (restored === "QUEUED") {
-                window.sessionPreviewLoading = true
-                return
-            }
-            if (restored.length === 0) {
-                return
-            }
-            tabs.clear()
-            window.applyRestorePayload(restored, false)
+        onOpening: window.captureOverlayFocus(window, window.activeWebView())
+        recoveryPending: browserUi.session_recovery_pending
+        recoveryError: browserUi.session_recovery_error
+        onRecoveryRequested: browserUi.recover_session()
+        onDismissalRequested: {
+            browserUi.cancel_session_recovery()
             window.recoveryAvailable = false
-            window.syncTabModel()
-            window.executePendingEngineAction()
+            window.closeInternalSurface()
         }
-        onDismissalRequested: window.recoveryAvailable = false
     }
 
     Connections {
@@ -2818,7 +2849,6 @@ GridLayout {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: window.bottomControlsHeight
         browserWindow: window
         hostWindow: window
         noticeText: browserUi.profile_startup_notice
@@ -2862,6 +2892,7 @@ GridLayout {
     FerricBindingHelp {
         id: keyboardHelpSurface
         browserWindow: window
+        browserUi: window.browserUi
         onCloseRequested: window.closeBindingHelp()
         onRefreshRequested: window.refreshBindingHelp()
         onSearchChanged: function(text) {
@@ -3097,7 +3128,7 @@ GridLayout {
                             ? window.sideTabWidth : 0
         anchors.rightMargin: window.tabStripVisible && window.tabPosition === "right"
                              ? window.sideTabWidth : 0
-        anchors.bottomMargin: window.bottomChromeHeight
+        anchors.bottomMargin: window.bottomContentInset
         currentIndex: {
             var selected = window.activeWebView()
             return selected ? selected.StackLayout.index : -1
@@ -3128,6 +3159,7 @@ GridLayout {
                 onTabIndexChanged: refreshPromptViewIdentity()
                 onViewUiChanged: {
                     documentRequestOwner = ({})
+                    documentTitleTarget = null
                     refreshPromptViewIdentity()
                     if (resourceTracked) window.profileResourceRegistry.trackView(webView,viewHost,viewUi)
                 }
@@ -3137,7 +3169,10 @@ GridLayout {
                 }
                 property bool resourceTracked: false
                 property alias nativeUrl: nativeContent.nativeUrl
-                onNativeUrlChanged: documentRequestOwner = ({})
+                onNativeUrlChanged: {
+                    documentRequestOwner = ({})
+                    documentTitleTarget = null
+                }
                 property alias contentTraversalPending: nativeContent.traversalPending
                 readonly property var startPage: nativeContent.startPage
                 readonly property int engineHistoryIndex: nativeContent.engineHistoryIndex
@@ -3145,9 +3180,16 @@ GridLayout {
                 readonly property bool contentCanGoForward: nativeContent.canNavigateForward
                 property bool contentInitialized: false
                 readonly property string modelContentUrl: viewModel.loaded ? viewModel.url : ""
-                function setContentUrl(destination, traversal, engineMoves) { contentInitialized = true; nativeContent.setContentUrl(destination, traversal, engineMoves) }
+                function setContentUrl(destination, traversal, engineMoves, freshRequest, historyIndex) { contentInitialized = true; nativeContent.setContentUrl(destination, traversal, engineMoves, freshRequest, historyIndex) }
+                function requestContentReload(request) { nativeContent.requestReload(request) }
+                function cancelPendingContentReload() { nativeContent.cancelReloadAttempt() }
+                function noteBeforeUnloadRejected() { nativeContent.noteBeforeUnloadRejected() }
+                readonly property bool formResubmissionPending: !!nativeContent.formReloadRequest
                 function contentEngineOffset(destination, expected, backwards) { return nativeContent.engineOffset(destination, expected, backwards) }
                 function synchronizeContentHistory() { nativeContent.synchronizeHistory() }
+                function requestContentHistoryTraversal(backwards, count, perform) {
+                    nativeContent.requestHistoryTraversal(backwards, count, perform)
+                }
                 // Bootstrap can publish a temporary blank tab before choosing
                 // its startup content. Initialize from the settled model, or
                 // let an explicit navigation take ownership first.
@@ -3172,6 +3214,18 @@ GridLayout {
                 }
                 property int tabIndex: -1
                 property string stableTabId: ""
+                onStableTabIdChanged: documentTitleOwnerTimer.restart()
+                Timer {
+                    id: documentTitleOwnerTimer
+                    interval: 0
+                    // The view owns this deferred work, so destroying a
+                    // provisional view during transfer cancels the callback.
+                    onTriggered: {
+                        if (!webView.ownsTab() || webView.loading || !nativeContent.engineDocumentReady) return
+                        webView.documentTitleTarget = webView.viewUi.navigation_target_for_index(webView.tabIndex)
+                        webView.publishPageTitle()
+                    }
+                }
                 property var viewUi: browserUi
         property var selectionSource: null
                 property var viewHost: window
@@ -3183,6 +3237,14 @@ GridLayout {
                 property bool viewTransferred: false
                 property bool viewRetired: false
                 property var documentRequestOwner: ({})
+                property var documentTitleTarget: null
+                function publishPageTitle() {
+                    var target = documentTitleTarget
+                    if (!target || !ownsTab() || nativeUrl.length > 0 || loading
+                            || !nativeContent.engineDocumentReady) return
+                    viewUi.document_title_changed(target.tabId, target.generation,
+                            target.documentId, title)
+                }
                 function ownsTab() {
                     return !viewRetired && !!viewUi && tabIndex >= 0 && stableTabId.length > 0
                         && viewUi.tab_id_for_index(tabIndex) === stableTabId
@@ -3285,7 +3347,11 @@ GridLayout {
                 }
 
                 onNavigationRequested: function(request) {
-                    if (request.isMainFrame) nativeContent.beginNavigation(request.navigationType === WebEngineView.BackForwardNavigation)
+                    if (request.isMainFrame && request.navigationType === WebEngineView.ReloadNavigation
+                            && nativeContent.interceptReloadNavigation(request)) return
+                    if (request.isMainFrame) nativeContent.beginNavigation(
+                        request.navigationType === WebEngineView.BackForwardNavigation, request.hasFormData,
+                        request.navigationType === WebEngineView.ReloadNavigation)
                 }
                 onUrlChanged: {
                     if (nativeUrl.length > 0) return
@@ -3310,17 +3376,28 @@ GridLayout {
                 onTitleChanged: {
                     if (nativeUrl.length > 0) return
                     if (!ownsTab()) return
+                    publishPageTitle()
                     if (viewModel.loaded && viewTabs && tabIndex >= 0) {
-                        viewTabs.setProperty(tabIndex, "title", title || "New tab")
+                        viewTabs.setProperty(tabIndex, "title", viewUi.display_page_title(title) || "New tab")
                         if (tabIndex === viewUi.active_tab_index && viewUi === browserUi) {
                             window.updateMprisForPrimaryView(webView)
                         }
                     }
                 }
                 onLoadingChanged: function(loadRequest) {
-                    if (loadRequest.status === WebEngineView.LoadStartedStatus) documentRequestOwner = ({})
+                    var stage = loadRequest.status === WebEngineView.LoadStartedStatus ? "started"
+                        : loadRequest.status === WebEngineView.LoadStoppedStatus ? "stopped"
+                        : loadRequest.status === WebEngineView.LoadSucceededStatus ? "succeeded"
+                        : loadRequest.status === WebEngineView.LoadFailedStatus ? "failed" : ""
+                    if (nativeContent.settleBeforeUnloadLoading(stage, loadRequest)) return
+                    if (nativeContent.blockedReloadLoading(stage)) return
+                    if (loadRequest.status === WebEngineView.LoadStartedStatus) {
+                        documentRequestOwner = ({})
+                        documentTitleTarget = null
+                    }
                     if (!viewModel.loaded || nativeUrl.length > 0 || !ownsTab()) return
                     if (loadRequest.status === WebEngineView.LoadStartedStatus) {
+                        nativeContent.engineLoadState = "loading"
                         viewUi.invalidate_native_prompt_leases()
                         webView.scrollPositionRestored = false
                         window.clearPageDialogForView(webView)
@@ -3355,7 +3432,7 @@ GridLayout {
                             viewUi.navigation_started(loadRequest.url.toString())
                         }
                     } else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
-                        nativeContent.noteCommit()
+                        nativeContent.noteCommit(true)
                         if (viewTabs && tabIndex >= 0) {
                             viewUi.navigation_committed_for(tabIndex, webView.url.toString(), webView.title)
                         } else {
@@ -3379,6 +3456,8 @@ GridLayout {
                         } else {
                             viewUi.navigation_completed()
                         }
+                        documentTitleTarget = viewUi.navigation_target_for_index(tabIndex)
+                        publishPageTitle()
                         if (viewUi === browserUi
                                 && tabIndex === viewUi.active_tab_index) {
                             window.scheduleFocusProbe(3)
@@ -3386,8 +3465,10 @@ GridLayout {
                     if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
                             window.finishSiteDoctorAfterLoad(viewUi, true)
                         }
+                    } else if (loadRequest.status === WebEngineView.LoadStoppedStatus) {
+                        nativeContent.noteStopped()
                     } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
-                        nativeContent.noteCommit()
+                        nativeContent.noteCommit(false)
                         if (viewTabs && tabIndex >= 0) {
                             viewUi.navigation_failed_with_details(
                                 tabIndex,
@@ -3580,6 +3661,7 @@ GridLayout {
     }
 
     FerricStatusBar {
+        anchors.bottomMargin: window.bottomContentInset
         onCopyUrlRequested: browserUi.execute_ui_action("browser.url.copy", "")
         browserWindow: window
         statusVisible: window.statusBarVisible
@@ -3609,6 +3691,7 @@ GridLayout {
     function submitInteractiveCommand(text) { return runtimeChrome.submitInteractiveCommand(text) }
 
     FerricCommandLine {
+        anchors.bottomMargin: window.bottomContentInset
         id: commandSurface
         browserWindow: window
         commandVisible: browserUi.mode === "command"
@@ -3630,14 +3713,14 @@ GridLayout {
         onCompletionMoveRequested: function(delta) { browserUi.completion_move(delta) }
         onCompletionSelectRequested: function(index) { browserUi.completion_select(index) }
         onHistoryMoveRequested: function(delta, current) {
-            commandSurface.commandText = delta < 0
+            commandSurface.recallHistory(delta < 0
                 ? browserUi.command_history_previous(current)
-                : browserUi.command_history_next(current)
-            commandSurface.cursorPosition = commandSurface.commandText.length
+                : browserUi.command_history_next(current))
         }
     }
 
     FerricSearchBar {
+        anchors.bottomMargin: window.bottomContentInset
         id: searchSurface
         browserWindow: window
         searchVisible: browserUi.mode === "search"

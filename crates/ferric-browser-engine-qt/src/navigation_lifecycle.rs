@@ -6,12 +6,36 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn navigation_kind_for(mut self: Pin<&mut Self>, index: i32, history: bool) {
+        let Some(target) = self.as_ref().get_ref().target_for_index(index) else {
+            return;
+        };
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .navigation
+            .engine_navigation_kinds
+            .insert(target.tab, (target, history));
+    }
+
+    fn clear_engine_navigation_kind(mut self: Pin<&mut Self>, target: super::Target) {
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .navigation
+            .engine_navigation_kinds
+            .remove(&target.tab);
+    }
+
     pub(super) fn navigation_completed(mut self: Pin<&mut Self>) {
         let target = current_target(
             self.as_ref().rust().state.as_ref(),
             self.as_ref().rust().tab,
         );
         if let Some(target) = target {
+            self.as_mut().clear_engine_navigation_kind(target);
             let _ = self
                 .as_mut()
                 .reduce_event(Event::CompleteNavigation { target });
@@ -22,6 +46,7 @@ impl qobject::BrowserUi {
 
     pub(super) fn navigation_completed_for(mut self: Pin<&mut Self>, index: i32) {
         if let Some(target) = self.as_ref().get_ref().target_for_index(index) {
+            self.as_mut().clear_engine_navigation_kind(target);
             let _ = self
                 .as_mut()
                 .reduce_event(Event::CompleteNavigation { target });
@@ -42,12 +67,26 @@ impl qobject::BrowserUi {
         }
     }
 
+    pub(super) fn navigation_stopped_for(mut self: Pin<&mut Self>, index: i32) {
+        if let Some(target) = self.as_ref().get_ref().target_for_index(index) {
+            self.as_mut().clear_engine_navigation_kind(target);
+            let _ = self
+                .as_mut()
+                .reduce_event(Event::CancelNavigation { target });
+        }
+        if index == self.as_ref().rust().active_tab_index {
+            self.as_mut().set_load_state(QString::from("cancelled"));
+            self.set_status_text(QString::from("Loading stopped"));
+        }
+    }
+
     pub(super) fn navigation_failed(mut self: Pin<&mut Self>) {
         let target = current_target(
             self.as_ref().rust().state.as_ref(),
             self.as_ref().rust().tab,
         );
         if let Some(target) = target {
+            self.as_mut().clear_engine_navigation_kind(target);
             let _ = self.as_mut().take_journey_redirect(target);
             let _ = self.as_mut().take_journey_transition(target);
             let _ = self.as_mut().take_journey_parent(target);
@@ -59,6 +98,7 @@ impl qobject::BrowserUi {
 
     pub(super) fn navigation_failed_for(mut self: Pin<&mut Self>, index: i32) {
         if let Some(target) = self.as_ref().get_ref().target_for_index(index) {
+            self.as_mut().clear_engine_navigation_kind(target);
             let _ = self.as_mut().take_journey_redirect(target);
             let _ = self.as_mut().take_journey_transition(target);
             let _ = self.as_mut().take_journey_parent(target);

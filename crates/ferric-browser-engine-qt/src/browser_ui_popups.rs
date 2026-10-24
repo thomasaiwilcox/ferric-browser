@@ -177,6 +177,9 @@ impl qobject::BrowserUi {
             return;
         };
         self.as_mut().note_navigation_started(target, &url);
+        let _ = self
+            .as_mut()
+            .reduce_event(Event::NavigationStarted { target });
         if self.as_ref().rust().tab == Some(target.tab) {
             self.as_mut().set_load_state(QString::from("provisional"));
         }
@@ -241,33 +244,39 @@ impl qobject::BrowserUi {
             was_traversal,
             redirect_observed,
         );
-        let commit_event = journey_transition.map_or_else(
-            || Event::CommitNavigation {
-                target,
-                url: parsed.clone(),
-                title: title.clone(),
-            },
-            |(transition, source)| Event::CommitNavigationWithTransition {
-                target,
-                url: parsed.clone(),
-                title: title.clone(),
-                transition,
-                source: Some(source),
-                parent: journey_parent,
-            },
+        let index = self
+            .as_mut()
+            .tab_index_for_id(&QString::from(target.tab.to_string()));
+        let visit = was_traversal
+            .then(|| self.as_ref().content_journey_visit(index, &canonical_url))
+            .flatten();
+        let (transition, source) = journey_transition.map_or(
+            (ferric_browser_core::JourneyEdgeKind::Navigate, None),
+            |(transition, source)| (transition, Some(source)),
         );
+        let commit_event = Event::CommitNavigationAtVisit {
+            target,
+            url: parsed.clone(),
+            title: title.clone(),
+            visit,
+            transition,
+            source,
+            parent: journey_parent,
+        };
         if self.as_mut().reduce_event(commit_event).is_ok() {
+            self.as_mut().bind_content_journey(index, &canonical_url);
             if self.as_ref().rust().tab == Some(target.tab) {
                 self.as_mut()
                     .update_current_url(QString::from(canonical_url.clone()));
                 self.as_mut().set_page_title(QString::from(title.clone()));
                 self.as_mut().set_load_state(QString::from("committed"));
             }
+            let reused = self.as_ref().content_journey_reused(target.tab, visit);
             self.as_mut().record_committed_visit(
                 target.tab,
                 &canonical_url,
                 &title,
-                was_traversal,
+                reused,
                 journey_parent,
             );
             if let Some(next_target) =
