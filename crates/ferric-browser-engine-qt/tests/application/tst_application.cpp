@@ -3952,7 +3952,7 @@ void ApplicationTests::productPolishPopupCommands() {
         evaluate(nested + ".ui.content_history_export(0)").toString();
     const auto popupUrlBefore =
         evaluate(nested + ".host.activeView.url").toString();
-    const auto factoryExpression = nested + ".host.webViewFactory";
+    const auto factoryExpression = nested + ".host.rootWindow.webViewFactory";
     const auto factory = evaluate(factoryExpression).value<QObject *>();
     QVERIFY(factory);
     const auto componentStatusBefore = factory->property("status").toInt();
