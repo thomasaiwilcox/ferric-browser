@@ -3036,7 +3036,8 @@
         "slices": [
           "P06",
           "P11",
-          "P07a"
+          "P07a",
+          "P07b"
         ],
         "roles": [
           "allowed",
@@ -3068,8 +3069,7 @@
         "slices": [
           "P06",
           "P07",
-          "P11",
-          "P07b"
+          "P11"
         ],
         "roles": [
           "allowed",
@@ -3644,6 +3644,15 @@
       "design_review": "evidence/D35-P07-test-design/REVIEW-r2.json",
       "design_proposal": "evidence/D35-P07-test-design/PROPOSAL-r2.json",
       "mandatory_conditions": "Actual one-Git-package identity, full dev license/MSRV/locked Git closure, no virt/test graph in normal production build, unchanged real Cable factory and P08/P17 gates."
+    },
+    {
+      "id": "A34",
+      "slice": "P07b",
+      "old_path": "helpers/ferric-phone-auth/src/errors.rs",
+      "new_path": "helpers/ferric-phone-auth/src/admission.rs",
+      "reason": "Read-only operation-kind accessor on sealed PreparedCredentialRequest supplies correct freshQRhint; errors remain implemented in existing hybrid/lib files, so unused errors.rs is not a writable path.",
+      "limits": "Seven allowed paths/max7 preserved; all original T067-T069 unit requirements and addedT067a regression, contracts/dependencies/security/P08/P17 gates unchanged. Prior pre-amendment edit/scope-review oversight recorded externally; no acceptance before approved amendment.",
+      "attempts": "P07b attempt2 retained; no reset or extra implementation attempt."
     }
   ]
 }

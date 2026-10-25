@@ -2215,7 +2215,7 @@
       "allowed_paths": [
         "helpers/ferric-phone-auth/src/main.rs",
         "helpers/ferric-phone-auth/src/progress.rs",
-        "helpers/ferric-phone-auth/src/errors.rs",
+        "helpers/ferric-phone-auth/src/admission.rs",
         "helpers/ferric-phone-auth/src/lib.rs",
         "helpers/ferric-phone-auth/src/hybrid.rs",
         "helpers/ferric-phone-auth/tests/hybrid_contract.rs",
@@ -2249,7 +2249,7 @@
       "read_anchors": [
         "helpers/ferric-phone-auth/src/main.rs",
         "helpers/ferric-phone-auth/src/progress.rs",
-        "helpers/ferric-phone-auth/src/errors.rs",
+        "helpers/ferric-phone-auth/src/admission.rs",
         "helpers/ferric-phone-auth/src/lib.rs",
         "helpers/ferric-phone-auth/src/hybrid.rs",
         "helpers/ferric-phone-auth/tests/hybrid_contract.rs",
