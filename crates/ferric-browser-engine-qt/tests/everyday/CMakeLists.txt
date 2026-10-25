@@ -89,6 +89,7 @@ endif()
 get_target_property(_ferric_application_test_links application_tests LINK_LIBRARIES)
 add_executable(credential_process_bridge_tests tst_credential_process_bridge.cpp)
 target_include_directories(credential_process_bridge_tests PRIVATE
+  "${CMAKE_CURRENT_LIST_DIR}/../../src"
   "${FERRIC_ENGINE_CXX_INCLUDE_DIR}")
 target_link_libraries(credential_process_bridge_tests PRIVATE
   "${FERRIC_ENGINE_LIBRARY}" ${_ferric_application_test_links})
