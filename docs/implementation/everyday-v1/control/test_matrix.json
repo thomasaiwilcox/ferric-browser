@@ -613,33 +613,33 @@
     },
     {
       "id": "T061",
-      "slice": "P05",
+      "slice": "P05b",
       "requirement": "EF-P05",
       "level": "application",
       "name": "Process failure cases",
       "expected": "Start/crash/truncated/oversized/output-after-terminal helper cases settle correctly without UI hangs.",
       "result": "not_run",
-      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+      "binding": "CTest everyday_T061_helper_process_failures; credential_process_app_tests QtTest slot processFailures through actual production controller/QML/app route."
     },
     {
       "id": "T062",
-      "slice": "P05",
+      "slice": "P05b",
       "requirement": "EF-P05",
       "level": "application",
       "name": "Owned cancellation",
       "expected": "Cancel terminates only this child, reaps it and rejects late results without killing unrelated processes.",
       "result": "not_run",
-      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+      "binding": "CTest everyday_T062_helper_owned_cancel; credential_process_app_tests QtTest slot ownedCancellation through actual production controller/QML/app route."
     },
     {
       "id": "T063",
-      "slice": "P05",
+      "slice": "P05b",
       "requirement": "EF-P05",
       "level": "application",
       "name": "Secret-free diagnostics",
       "expected": "Injected secret markers in input/stdout/stderr never appear in ordinary logs/exports/argv.",
       "result": "not_run",
-      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+      "binding": "CTest everyday_T063_helper_secret_free_diagnostics; credential_process_app_tests QtTest slot secretFreeDiagnostics through actual production controller/QML/app route."
     },
     {
       "id": "T064",
@@ -1680,6 +1680,16 @@
       "expected": "All scoped lease/retirement identity, boundedness, positive and negative lifecycle cases pass using actual production source with zero skips.",
       "result": "not_run",
       "binding": "Existing production application CTest everyday_T014d_popup_retirement_leases plus unchanged T014a/T013/T015 affected regressions."
+    },
+    {
+      "id": "T061a",
+      "slice": "P05a",
+      "requirement": "EF-P05",
+      "level": "component",
+      "name": "Native helper supervisor lifecycle substrate",
+      "expected": "Actual production supervisor executes bounded private-pipe framing/failure/cancel/reap/late-event cases using owned fake subprocesses, with an unrelated child preserved; no skipped/zero-test pass. This does not replace T061-T063 application cases.",
+      "result": "not_run",
+      "binding": "CTest everyday_T061a_helper_supervisor_component; credential_process_tests QtTest slot helperSupervisor, linked to current production engine supervisor."
     }
   ],
   "note": "Specifications only. Nothing is marked passed at authoring."

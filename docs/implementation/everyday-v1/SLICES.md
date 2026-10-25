@@ -1,6 +1,6 @@
 # Dependency-ordered work inventory
 
-77 execution-plan entries (71 work slices plus six coordinator aggregates) and 168 acceptance cases. Mutable execution status is recorded in the external run ledger.
+79 execution-plan entries (72 work slices plus seven coordinator aggregates) and 169 acceptance cases. Mutable execution status is recorded in the external run ledger.
 
 | ID | Outcome | Depends on |
 |---|---|---|
@@ -41,7 +41,9 @@
 | P02c | Qualify credential admission and provider isolation | P02b |
 | P03 | Implement production document-bound native credential bridge | P00, P02, F03 |
 | P04 | Implement mediator and public-key request serialization | P03 |
-| P05 | Implement asynchronous helper supervision and bounded pipes | P02, P01 |
+| P05a | Native helper supervisor component | P01, P02 |
+| P05b | Strict protocol and real production application route | P05a, P02 |
+| P05 | No-code helper supervision/application aggregate | P05a, P05b |
 | P06 | Implement helper RP validation, PSL and request preparation | P01, P02 |
 | P07 | Implement QR hybrid registration and assertion transport | P06 |
 | P08 | Enforce helper egress and Bluetooth capability policy | P06, P05 |

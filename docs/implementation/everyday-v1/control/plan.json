@@ -1930,31 +1930,34 @@
       ]
     },
     {
-      "id": "P05",
-      "title": "Implement asynchronous helper supervision and bounded pipes",
+      "id": "P05a",
+      "title": "Implement native helper process supervision substrate",
       "lane": "security",
       "depends_on": [
-        "P02",
-        "P01"
+        "P01",
+        "P02"
       ],
       "contracts": [
+        "C00",
         "C06",
-        "C08"
+        "C08",
+        "C14"
       ],
       "allowed_paths": [
         "crates/ferric-browser-engine-qt/src/credential_process.cpp",
         "crates/ferric-browser-engine-qt/src/credential_process.h",
-        "crates/ferric-browser-engine-qt/src/credential_protocol.rs",
-        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
         "crates/ferric-browser-engine-qt/build.rs",
         "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process.cpp",
-        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/fake_auth_helper.py"
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/fake_auth_helper.py",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
       ],
       "steps": [
-        "Launch only packaged/test-authorized helper via private pipes, never shell/page-controlled path or secret argv.",
-        "Validate version/ID/types, bounded buffers, progress coalescing, QR dimensions and exactly one terminal result.",
-        "Handle start failure, malformed output, crash, timeout, cancel and asynchronous terminate/kill/reap without blocking GUI.",
-        "Use fake helper only for process/race/error testing; it cannot satisfy transport or final RP qualification."
+        "Reuse the existing CXX-Qt/native build boundary and add actual production-compiled QProcess supervision with immutable per-launch owner/incarnation tokens and private bounded stdin/stdout/stderr pipes. No second browser/runtime, shell, PATH search, page-controlled executable/arguments or ceremony secrets in argv/environment.",
+        "Production launch resolves only its packaged helper. Fake helper path/interpreter/mode authority is internal native test-only authority constructed by the harness, never a QML/page-settable path/property/environment fallback and never native-origin/phone qualification. Keep fixture modes fixed and secret-free in arguments.",
+        "Implement bounded framing, buffer/resource limits, asynchronous start/error/finish handling and owned cancel/terminate/kill/reap. Never block the GUI thread; late callbacks and output after terminal/cancel cannot affect a successor. Raw helper frames stay internal; no raw stdout/stderr/QR/challenge/credential bytes in ordinary diagnostics/exports.",
+        "Provide the narrow internal frame-validation/terminal acknowledgment boundary needed by P05b. Full strict v1 Rust message interpretation, QR dimensions/progress semantics and application routing belong to P05b; this component does not inherit or replace T061-T063.",
+        "Add exact CTest everyday_T061a_helper_supervisor_component selecting QtTest slot helperSupervisor in tests/everyday/tst_credential_process.cpp. Link/use the current Cargo-built production supervisor via the existing application/everyday harness; no copied model or fake process implementation. Execute real owned fake subprocesses through framing/start/crash/truncation/oversize/cancel/reap/stale-callback cases, including an unrelated sentinel child that must survive cancellation.",
+        "Preserve all current CTest registrations, SDK/security guards and original P05 requirements. Capture exact production source/build/test/binary and fixture hashes with zero-skip executable evidence. This is component evidence, not composed application, actual native origin, transport, signature or phone qualification."
       ],
       "kind": "implementation",
       "locks": [
@@ -1964,23 +1967,121 @@
       "recipe": "credential",
       "requirement_id": "EF-P05",
       "test_ids": [
+        "T061a"
+      ],
+      "max_changed_product_files": 6,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P05a.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/credential_process.cpp",
+        "crates/ferric-browser-engine-qt/src/credential_process.h",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/fake_auth_helper.py",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+      ],
+      "parent_id": "P05"
+    },
+    {
+      "id": "P05b",
+      "title": "Wire strict helper protocol into the production application",
+      "lane": "security",
+      "depends_on": [
+        "P05a",
+        "P02"
+      ],
+      "contracts": [
+        "C00",
+        "C04",
+        "C06",
+        "C08",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/credential_protocol.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process_app.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+      ],
+      "steps": [
+        "Register the real Rust protocol/controller modules in lib.rs and the existing single bridge.rs CXX-Qt interface. Wire the P05a production supervisor through the actual BrowserUi/QML/application route; do not create parallel process/state infrastructure or bypass the accepted owner-bound C08 actor.",
+        "Validate closed v1 version/ID/kind/body types, recursive/encoded/decoded and QR limits, progress coalescing and exactly one terminal result. Only validated messages may drive typed effects; malformed/unknown/late output never retargets an owner or reaches a generic evaluator/command/path interface.",
+        "Capture original request ID/document/profile generation/host and process incarnation; preserve deadline/cancel/teardown once-only behavior and bounded rejection. Keep production admission unqualified until P00/P03 and all separate gates pass; no public synthetic native-origin or qualified-phone constructor.",
+        "Use the P05a internal test-helper launch authority only for controlled process-failure/race/error tests. Its fake result is never RP/transport/phone proof and must not enable ordinary phone admission. Test the actual production-compiled supervisor, controller and QML/app route with disposable profile/fixture roots and sandbox; a component-only or source-string result cannot satisfy the application cases.",
+        "Register exact CTests everyday_T061_helper_process_failures -> QtTest processFailures, everyday_T062_helper_owned_cancel -> ownedCancellation, everyday_T063_helper_secret_free_diagnostics -> secretFreeDiagnostics in the new existing-harness test target credential_process_app_tests from tst_credential_process_app.cpp. Preserve T061/T062/T063 expected behavior and application levels unchanged, plus rerun T061a as affected regression.",
+        "Prove actual startup failure/crash/truncated/oversized/output-after-terminal settlement without GUI hangs; cancel only this child and reap it with late results ignored; inject secret markers into stdin/stdout/stderr and verify ordinary logs/exports/argv contain none. Return fresh independently reviewed exact integrated evidence; P00, helper transport and physical qualification remain separate."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-process",
+        "credential-protocol",
+        "bridge",
+        "build-registration"
+      ],
+      "recipe": "credential",
+      "requirement_id": "EF-P05",
+      "test_ids": [
         "T061",
         "T062",
         "T063"
       ],
-      "max_changed_product_files": 8,
+      "max_changed_product_files": 6,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P05b.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/credential_protocol.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process_app.cpp",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+      ],
+      "parent_id": "P05"
+    },
+    {
+      "id": "P05",
+      "title": "Aggregate helper supervision and application protocol outcomes",
+      "lane": "security",
+      "depends_on": [
+        "P05a",
+        "P05b"
+      ],
+      "contracts": [
+        "C06",
+        "C08"
+      ],
+      "allowed_paths": [],
+      "steps": [
+        "Coordinator-only no-code aggregate of independently accepted P05a native supervisor/component and P05b real production application protocol outcomes. No parent implementation attempt or inherited pass.",
+        "Preserve original P05 T061/T062/T063 application behavior and levels unchanged in P05b; T061a is additional component evidence only.",
+        "Require distinct author/reviewer, fresh exact integrated gates, source-dependency review and all children accepted before downstream acceptance. No actual native authority/transport/phone/device proof follows from fake helper tests."
+      ],
+      "kind": "aggregate",
+      "locks": [],
+      "recipe": "review",
+      "requirement_id": "EF-P05",
+      "test_ids": [],
+      "max_changed_product_files": 0,
       "max_attempts": 3,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
       "slice_file": "slices/P05.md",
-      "read_anchors": [
-        "crates/ferric-browser-engine-qt/src/credential_process.cpp",
-        "crates/ferric-browser-engine-qt/src/credential_process.h",
-        "crates/ferric-browser-engine-qt/src/credential_protocol.rs",
-        "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
-        "crates/ferric-browser-engine-qt/build.rs",
-        "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process.cpp",
-        "crates/ferric-browser-engine-qt/tests/everyday/fixtures/fake_auth_helper.py"
+      "read_anchors": [],
+      "aggregate_of": [
+        "P05a",
+        "P05b"
+      ],
+      "aggregate_test_ids": [
+        "T061a",
+        "T061",
+        "T062",
+        "T063"
       ]
     },
     {

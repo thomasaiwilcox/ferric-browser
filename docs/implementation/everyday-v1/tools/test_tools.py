@@ -24,7 +24,7 @@ class StructureTests(unittest.TestCase):
     def test_structure(self):self.assertEqual(validate_pack.validate_structure(),[])
     def test_all_packets_bounded(self):
         plan=load(PACK/'control/plan.json')
-        self.assertEqual(len(plan['slices']),77)
+        self.assertEqual(len(plan['slices']),79)
         for t in plan['slices']:self.assertLessEqual(len(packet(t).encode()),24000,t['id'])
     def test_goal_limit(self):self.assertLess(len((PACK/'GOAL_PROMPT.txt').read_bytes()),1000)
     def test_cycle_rejected(self):
