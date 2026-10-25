@@ -76,6 +76,32 @@ QtObject {
                 && group.lifetime.adoptView(view,host,ui)
     }
 
+    function acquirePopupOpenerLease(sourceView, targetView) {
+        if (!sourceView || !targetView || sourceView===targetView) return ""
+        var sourceGroup=forProfile(sourceView.profile)
+        var targetGroup=forProfile(targetView.profile)
+        if (!sourceGroup || sourceGroup!==targetGroup) return ""
+        return sourceGroup.lifetime.acquirePopupOpenerLease(sourceView,targetView)
+    }
+
+    function beginPopupOpenerLease(sourceView, leaseId) {
+        if (!sourceView || !leaseId) return false
+        var group=forProfile(sourceView.profile)
+        return !!group && group.lifetime.beginPopupOpenerLease(leaseId)
+    }
+
+    function confirmPopupOpenerLease(sourceView, leaseId) {
+        if (!sourceView || !leaseId) return false
+        var group=forProfile(sourceView.profile)
+        return !!group && group.lifetime.confirmPopupOpenerLease(leaseId)
+    }
+
+    function cancelPopupOpenerLease(sourceView, leaseId) {
+        if (!sourceView || !leaseId) return false
+        var group=forProfile(sourceView.profile)
+        return !!group && group.lifetime.cancelPopupOpenerLease(leaseId)
+    }
+
     function releaseWindow(host) {
         cancelDownloadsForHost(host)
         for (var i=0;i<groups.length;++i) groups[i].lifetime.releaseWindow(host)
