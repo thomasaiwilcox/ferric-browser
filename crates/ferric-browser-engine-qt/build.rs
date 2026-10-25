@@ -86,6 +86,8 @@ fn main() {
             "src/settings_model.cpp",
             "src/url_display.h",
             "src/url_display.cpp",
+            "src/credential_process.h",
+            "src/credential_process.cpp",
         ])
         .qrc(&qrc_path)
         .qt_module("Gui")

@@ -5,8 +5,15 @@ if(NOT TARGET application_tests)
 endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-find_package(Qt6 REQUIRED COMPONENTS Test WebChannel)
+find_package(Qt6 REQUIRED COMPONENTS Core Test WebChannel)
 find_program(FERRIC_TEST_OPENSSL openssl REQUIRED)
+
+add_executable(everyday_T061a_helper_supervisor_component tst_credential_process.cpp)
+target_link_libraries(everyday_T061a_helper_supervisor_component PRIVATE
+    "${FERRIC_ENGINE_LIBRARY}" Qt6::Core Qt6::Test)
+add_test(NAME everyday_T061a_helper_supervisor_component
+    COMMAND $<TARGET_FILE:everyday_T061a_helper_supervisor_component> helperSupervisor)
+set_tests_properties(everyday_T061a_helper_supervisor_component PROPERTIES TIMEOUT 45)
 
 add_executable(credential_boundary_tests tst_credential_boundary.cpp)
 target_link_libraries(credential_boundary_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}"
