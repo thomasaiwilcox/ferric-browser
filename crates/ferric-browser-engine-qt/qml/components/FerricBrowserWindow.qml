@@ -1828,7 +1828,10 @@ function onContext_workspaceChanged() {
         if (runtimeReleased || profileBootstrapComplete || !secondaryUi.profile_available()
                 || (!windowPopup && secondaryUi.profile_bootstrap_pending)) return
         rootWindow.profileResourceRegistry.activateWindow(secondaryWindow)
-        profileBootstrapComplete = true
+        // Popup visibility is bound to profileBootstrapComplete. Keep the
+        // native window hidden until WebEngine has transferred its live
+        // NewWindowRequest into the newly created page below.
+        if (!windowPopup) profileBootstrapComplete = true
         secondaryWindow.syncTabModel()
         if (!secondaryWindow.registerWindowOwner()) {
             if (windowPopup) rejectPopupAdmission()
@@ -1849,8 +1852,10 @@ function onContext_workspaceChanged() {
             view.contentInitialized = true
             request.openIn(view)
             windowPopupRequest=null
+            profileBootstrapComplete = true
             return
         }
+        profileBootstrapComplete = true
         if (secondaryWindow.windowTransferMode) {
             var bootstrapTabId = secondaryUi.tab_count === 1
                     ? secondaryUi.tab_id_for_index(0) : ""
