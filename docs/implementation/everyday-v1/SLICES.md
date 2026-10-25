@@ -1,6 +1,6 @@
 # Dependency-ordered work inventory
 
-68 execution-plan entries (64 work slices plus four coordinator aggregates) and 165 acceptance cases. Mutable execution status is recorded in the external run ledger.
+69 execution-plan entries (65 work slices plus four coordinator aggregates) and 166 acceptance cases. Mutable execution status is recorded in the external run ledger.
 
 | ID | Outcome | Depends on |
 |---|---|---|
@@ -12,8 +12,9 @@
 | F02a | Extract page factory and qualify document-owner callbacks | S01 |
 | F02b | Aggregate secondary-host focus and popup/transfer outcomes | F02b1, F02b2 |
 | F02b1 | Diagnose and qualify secondary-host keyboard routing | F02a |
-| F02b2 | Aggregate popup transfer reserve qualification | F02b2a |
-| F02b2a | Diagnose and qualify the popup transfer reserve hover crash | F02b1 |
+| F02b2 | Aggregate popup command and transfer reserve outcomes | F02b2a, F02b2b |
+| F02b2a | Isolate and qualify popup commands and opener identity | F02b1 |
+| F02b2b | Diagnose and qualify popup transfer reserve hover preservation | F02b2a |
 | F03 | Introduce explicit view role and generation guards | F02 |
 | F04 | Qualify shared service and first-host lifetime | F02, S01 |
 | F05 | Verify current per-window interaction parity and fix only gaps | F02, S01 |

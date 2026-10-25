@@ -132,14 +132,24 @@
       "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
     },
     {
-      "id": "T014",
+      "id": "T014a",
       "slice": "F02b2a",
       "requirement": "EF-F02",
       "level": "application",
-      "name": "Popup and transfer preservation",
-      "expected": "Actual Qt popup handoff/opener and transfer reserve remain live and are not replaced by URL recreation.",
+      "name": "Popup commands and opener identity",
+      "expected": "The actual Qt popup handoff and live opener communication preserve the correct popup source/view while secondary commands, tab state and nested popup setup retain the original page identity and state.",
       "result": "not_run",
-      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+      "binding": "Run the exact registered everyday_T014a_popup_commands_opener_identity CTest with zero skips; it covers the original T014 assertions before transfer-reserve preparation."
+    },
+    {
+      "id": "T014b",
+      "slice": "F02b2b",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Transfer reserve and hover preservation",
+      "expected": "The production transfer reserve is non-null, distinct, hidden and untabbed while the original popup stays active with its URL, history and page state; QtWebEngine hover/update delivery and cleanup complete without a crash or URL recreation.",
+      "result": "not_run",
+      "binding": "Run the exact registered everyday_T014b_transfer_reserve_hover_preservation CTest with zero skips; it covers every original T014 reserve/lifecycle assertion after separate T014a setup."
     },
     {
       "id": "T015",

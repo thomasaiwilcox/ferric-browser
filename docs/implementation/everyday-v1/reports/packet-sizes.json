@@ -28,15 +28,15 @@
     },
     {
       "slice": "F02",
-      "utf8_bytes": 8996
+      "utf8_bytes": 9032
     },
     {
       "slice": "F02a",
-      "utf8_bytes": 11253
+      "utf8_bytes": 11277
     },
     {
       "slice": "F02b",
-      "utf8_bytes": 9040
+      "utf8_bytes": 9067
     },
     {
       "slice": "F02b1",
@@ -44,11 +44,15 @@
     },
     {
       "slice": "F02b2",
-      "utf8_bytes": 8865
+      "utf8_bytes": 9277
     },
     {
       "slice": "F02b2a",
-      "utf8_bytes": 10711
+      "utf8_bytes": 9803
+    },
+    {
+      "slice": "F02b2b",
+      "utf8_bytes": 10885
     },
     {
       "slice": "F03",

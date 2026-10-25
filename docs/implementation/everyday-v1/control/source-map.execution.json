@@ -161,8 +161,8 @@
     }
   ],
   "planned_path_inventory": {
-    "unique_paths": 190,
-    "existing_product_paths": 70,
+    "unique_paths": 191,
+    "existing_product_paths": 71,
     "execution_pack_artifacts": 2,
     "planned_execution_outputs": 8,
     "proposed_product_deliverables": 110,
@@ -485,7 +485,8 @@
           "W05",
           "F02a",
           "F02b1",
-          "F02b2a"
+          "F02b2a",
+          "F02b2b"
         ],
         "roles": [
           "allowed",
@@ -505,7 +506,8 @@
           "W07",
           "F02a",
           "F02b1",
-          "F02b2a"
+          "F02b2a",
+          "F02b2b"
         ],
         "roles": [
           "allowed",
@@ -593,7 +595,8 @@
           "W02",
           "F02a",
           "F02b1",
-          "F02b2a"
+          "F02b2a",
+          "F02b2b"
         ],
         "roles": [
           "allowed",
@@ -648,7 +651,8 @@
           "H02",
           "F02a",
           "F02b1",
-          "F02b2a"
+          "F02b2a",
+          "F02b2b"
         ],
         "roles": [
           "allowed",
@@ -670,7 +674,8 @@
           "P12",
           "F02a",
           "F02b1",
-          "F02b2a"
+          "F02b2a",
+          "F02b2b"
         ],
         "roles": [
           "allowed",
@@ -705,7 +710,8 @@
           "W02",
           "F02a",
           "F02b1",
-          "F02b2a"
+          "F02b2a",
+          "F02b2b"
         ],
         "roles": [
           "allowed",
@@ -1605,7 +1611,24 @@
         "slices": [
           "F02a",
           "F02b1",
-          "F02b2a"
+          "F02b2a",
+          "F02b2b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/application/tst_application.h",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "8a02be1a33e11afae231d897fec49634b2fc7f70",
+        "integration_head_blob": "ea463c3dbef164dfdb29245092a1c580403d2978",
+        "working_tree_file_present": true,
+        "slices": [
+          "F02b2a",
+          "F02b2b"
         ],
         "roles": [
           "allowed",
@@ -1645,7 +1668,8 @@
           "X02",
           "F02a",
           "F02b1",
-          "F02b2a"
+          "F02b2a",
+          "F02b2b"
         ],
         "roles": [
           "allowed",
