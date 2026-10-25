@@ -43,6 +43,25 @@ impl EnvironmentKey {
     }
 }
 
+/// Policy-level eligibility supplied by a future native caller.
+/// `NormalPersistentCandidate` does not itself prove actual Qt profile,
+/// partition, or generation identity; those facts remain the caller's job.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum EnvironmentEligibility {
+    NormalPersistentCandidate,
+    Private,
+    Ephemeral,
+    ProtectedRecovery,
+    TransferReserve,
+    Unqualified,
+}
+
+impl EnvironmentEligibility {
+    fn permits_hot_page(self) -> bool {
+        matches!(self, Self::NormalPersistentCandidate)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum EvictionReason {
     Timeout,
@@ -118,18 +137,12 @@ impl HotPageCoordinator {
     pub(super) fn request_prepare(
         &self,
         key: EnvironmentKey,
-        eligible: bool,
+        eligibility: EnvironmentEligibility,
         now_ms: u64,
     ) -> PrepareDecision {
         let mut inner = self.0.lock().expect("hot-page policy mutex poisoned");
         Self::expire_if_needed(&mut inner, now_ms);
-        if !eligible || !key.is_well_formed() {
-            inner.requests_pending = false;
-            if !matches!(inner.state, State::Disabled | State::Claimed { .. }) {
-                inner.state = State::Evicted {
-                    reason: EvictionReason::PrivacyChanged,
-                };
-            }
+        if !eligibility.permits_hot_page() || !key.is_well_formed() {
             return PrepareDecision::Ineligible;
         }
         match inner.state {
@@ -193,9 +206,14 @@ impl HotPageCoordinator {
 
     /// Returns immediately: only a ready matching spare is claimed; every
     /// other open follows its independent cold allocation path.
-    pub(super) fn claim(&self, key: &EnvironmentKey, eligible: bool) -> ClaimResult {
+    pub(super) fn claim(
+        &self,
+        key: &EnvironmentKey,
+        eligibility: EnvironmentEligibility,
+    ) -> ClaimResult {
         let mut inner = self.0.lock().expect("hot-page policy mutex poisoned");
-        if eligible && inner.key.as_ref() == Some(key) {
+        if eligibility.permits_hot_page() && key.is_well_formed() && inner.key.as_ref() == Some(key)
+        {
             if let State::Ready { token } = inner.state {
                 inner.state = State::Claimed { token };
                 return ClaimResult::ReadyHit { token };

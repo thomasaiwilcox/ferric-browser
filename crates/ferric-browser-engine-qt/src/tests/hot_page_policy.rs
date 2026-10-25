@@ -1,6 +1,6 @@
 use super::{
-    ClaimResult, EnvironmentKey, EvictionReason, HotPageCoordinator, PrepareDecision,
-    PresentationKind, State,
+    ClaimResult, EnvironmentEligibility, EnvironmentKey, EvictionReason, HotPageCoordinator,
+    PrepareDecision, PresentationKind, State,
 };
 use std::sync::{Arc, Barrier};
 
@@ -27,11 +27,25 @@ fn started(decision: PrepareDecision) -> u64 {
 fn t025_many_windows_and_requests_grant_only_one_spare_then_refill_after_claim() {
     let policy = HotPageCoordinator::default();
     let first_env = key(6);
-    let first_token = started(policy.request_prepare(first_env.clone(), true, 10));
-    assert_eq!(policy.claim(&first_env, true), ClaimResult::ColdMiss);
+    let first_token = started(policy.request_prepare(
+        first_env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        10,
+    ));
+    assert_eq!(
+        policy.claim(
+            &first_env,
+            EnvironmentEligibility::NormalPersistentCandidate
+        ),
+        ClaimResult::ColdMiss
+    );
     for _ in 0..100 {
         assert_eq!(
-            policy.request_prepare(first_env.clone(), true, 11),
+            policy.request_prepare(
+                first_env.clone(),
+                EnvironmentEligibility::NormalPersistentCandidate,
+                11
+            ),
             PrepareDecision::AlreadyPreparing
         );
     }
@@ -41,12 +55,19 @@ fn t025_many_windows_and_requests_grant_only_one_spare_then_refill_after_claim()
     // A newly active window replaces the old preparation incarnation; the
     // old callback cannot make a second spare ready.
     let second_env = key(7);
-    let second_token = started(policy.request_prepare(second_env.clone(), true, 12));
+    let second_token = started(policy.request_prepare(
+        second_env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        12,
+    ));
     assert_ne!(first_token, second_token);
     assert!(!policy.mark_ready(first_token, 12));
     assert!(policy.mark_ready(second_token, 12));
     assert_eq!(
-        policy.claim(&second_env, true),
+        policy.claim(
+            &second_env,
+            EnvironmentEligibility::NormalPersistentCandidate
+        ),
         ClaimResult::ReadyHit {
             token: second_token
         }
@@ -54,12 +75,16 @@ fn t025_many_windows_and_requests_grant_only_one_spare_then_refill_after_claim()
 
     let third_env = key(8);
     assert_eq!(
-        policy.request_prepare(third_env.clone(), false, 13),
+        policy.request_prepare(third_env.clone(), EnvironmentEligibility::Unqualified, 13),
         PrepareDecision::Ineligible,
         "an ineligible refill cannot release a claimed permit"
     );
     assert_eq!(
-        policy.request_prepare(third_env.clone(), true, 13),
+        policy.request_prepare(
+            third_env.clone(),
+            EnvironmentEligibility::NormalPersistentCandidate,
+            13
+        ),
         PrepareDecision::Suppressed,
         "the claimed spare retains the sole permit until adoption completes"
     );
@@ -68,21 +93,36 @@ fn t025_many_windows_and_requests_grant_only_one_spare_then_refill_after_claim()
         ..third_env.clone()
     };
     assert_eq!(
-        policy.request_prepare(malformed_env, true, 13),
+        policy.request_prepare(
+            malformed_env,
+            EnvironmentEligibility::NormalPersistentCandidate,
+            13
+        ),
         PrepareDecision::Ineligible,
         "a malformed refill cannot release a claimed permit"
     );
     assert_eq!(
-        policy.request_prepare(third_env.clone(), true, 13),
+        policy.request_prepare(
+            third_env.clone(),
+            EnvironmentEligibility::NormalPersistentCandidate,
+            13
+        ),
         PrepareDecision::Suppressed
     );
     assert!(!policy.fail_preparation(second_token, EvictionReason::RendererFailure));
     assert!(policy.finish_claim(second_token));
-    let refill_token = started(policy.request_prepare(third_env.clone(), true, 14));
+    let refill_token = started(policy.request_prepare(
+        third_env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        14,
+    ));
     assert_ne!(refill_token, second_token);
     assert!(policy.mark_ready(refill_token, 14));
     assert_eq!(
-        policy.claim(&third_env, true),
+        policy.claim(
+            &third_env,
+            EnvironmentEligibility::NormalPersistentCandidate
+        ),
         ClaimResult::ReadyHit {
             token: refill_token
         }
@@ -93,9 +133,16 @@ fn t025_many_windows_and_requests_grant_only_one_spare_then_refill_after_claim()
 fn t025_claimed_permit_survives_evictions_until_matching_finish() {
     let policy = HotPageCoordinator::default();
     let env = key(6);
-    let token = started(policy.request_prepare(env.clone(), true, 0));
+    let token = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        0,
+    ));
     assert!(policy.mark_ready(token, 0));
-    assert_eq!(policy.claim(&env, true), ClaimResult::ReadyHit { token });
+    assert_eq!(
+        policy.claim(&env, EnvironmentEligibility::NormalPersistentCandidate),
+        ClaimResult::ReadyHit { token }
+    );
 
     let reasons = [
         EvictionReason::Timeout,
@@ -114,7 +161,11 @@ fn t025_claimed_permit_survives_evictions_until_matching_finish() {
     for reason in reasons {
         policy.evict(reason);
         assert_eq!(
-            policy.request_prepare(env.clone(), true, 1),
+            policy.request_prepare(
+                env.clone(),
+                EnvironmentEligibility::NormalPersistentCandidate,
+                1
+            ),
             PrepareDecision::Suppressed,
             "{reason:?} cannot release a claimed permit"
         );
@@ -122,16 +173,24 @@ fn t025_claimed_permit_survives_evictions_until_matching_finish() {
 
     assert!(!policy.finish_claim(token.wrapping_add(1)));
     assert_eq!(
-        policy.request_prepare(env.clone(), true, 1),
+        policy.request_prepare(
+            env.clone(),
+            EnvironmentEligibility::NormalPersistentCandidate,
+            1
+        ),
         PrepareDecision::Suppressed,
         "a stale finish cannot release the claimed permit"
     );
     assert!(policy.finish_claim(token));
 
-    let refill = started(policy.request_prepare(env.clone(), true, 2));
+    let refill = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        2,
+    ));
     assert_ne!(refill, token);
     assert_eq!(
-        policy.request_prepare(env, true, 2),
+        policy.request_prepare(env, EnvironmentEligibility::NormalPersistentCandidate, 2),
         PrepareDecision::AlreadyPreparing,
         "matching finish releases exactly one preparation permit"
     );
@@ -141,9 +200,16 @@ fn t025_claimed_permit_survives_evictions_until_matching_finish() {
 fn t026_preparing_open_is_immediate_cold_miss_without_state_change() {
     let policy = HotPageCoordinator::default();
     let env = key(6);
-    let token = started(policy.request_prepare(env.clone(), true, 0));
+    let token = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        0,
+    ));
 
-    assert_eq!(policy.claim(&env, true), ClaimResult::ColdMiss);
+    assert_eq!(
+        policy.claim(&env, EnvironmentEligibility::NormalPersistentCandidate),
+        ClaimResult::ColdMiss
+    );
     assert!(matches!(
         policy.0.lock().expect("hot-page policy mutex poisoned").state,
         State::Preparing {
@@ -152,7 +218,7 @@ fn t026_preparing_open_is_immediate_cold_miss_without_state_change() {
         } if current == token
     ));
     assert_eq!(
-        policy.request_prepare(env, true, 1),
+        policy.request_prepare(env, EnvironmentEligibility::NormalPersistentCandidate, 1),
         PrepareDecision::AlreadyPreparing,
         "a cold open neither waits for nor cancels preparation"
     );
@@ -162,7 +228,11 @@ fn t026_preparing_open_is_immediate_cold_miss_without_state_change() {
 fn t026_racing_opens_have_exactly_one_ready_hit_and_one_cold_miss() {
     let policy = Arc::new(HotPageCoordinator::default());
     let env = key(6);
-    let token = started(policy.request_prepare(env.clone(), true, 0));
+    let token = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        0,
+    ));
     assert!(policy.mark_ready(token, 0));
 
     let barrier = Arc::new(Barrier::new(3));
@@ -173,7 +243,7 @@ fn t026_racing_opens_have_exactly_one_ready_hit_and_one_cold_miss() {
             let env = env.clone();
             std::thread::spawn(move || {
                 barrier.wait();
-                policy.claim(&env, true)
+                policy.claim(&env, EnvironmentEligibility::NormalPersistentCandidate)
             })
         })
         .collect();
@@ -204,16 +274,24 @@ fn t026_racing_opens_have_exactly_one_ready_hit_and_one_cold_miss() {
     assert!(!policy.fail_preparation(token, EvictionReason::RendererFailure));
     assert!(!policy.finish_claim(token.wrapping_add(1)));
     assert_eq!(
-        policy.request_prepare(env.clone(), true, 1),
+        policy.request_prepare(
+            env.clone(),
+            EnvironmentEligibility::NormalPersistentCandidate,
+            1
+        ),
         PrepareDecision::Suppressed,
         "a stale finish cannot release the adopted page"
     );
     assert!(policy.finish_claim(token));
 
-    let refill = started(policy.request_prepare(env.clone(), true, 2));
+    let refill = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        2,
+    ));
     assert_ne!(refill, token);
     assert_eq!(
-        policy.request_prepare(env, true, 2),
+        policy.request_prepare(env, EnvironmentEligibility::NormalPersistentCandidate, 2),
         PrepareDecision::AlreadyPreparing,
         "matching completion permits exactly one refill"
     );
@@ -223,20 +301,40 @@ fn t026_racing_opens_have_exactly_one_ready_hit_and_one_cold_miss() {
 fn preparation_expiry_allows_two_retries_then_suppresses_stale_callbacks() {
     let policy = HotPageCoordinator::default();
     let env = key(6);
-    let first = started(policy.request_prepare(env.clone(), true, 100));
+    let first = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        100,
+    ));
     assert_eq!(
-        policy.request_prepare(env.clone(), true, 5_099),
+        policy.request_prepare(
+            env.clone(),
+            EnvironmentEligibility::NormalPersistentCandidate,
+            5_099
+        ),
         PrepareDecision::AlreadyPreparing
     );
 
-    let second = started(policy.request_prepare(env.clone(), true, 5_100));
+    let second = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        5_100,
+    ));
     assert_ne!(first, second);
     assert!(!policy.mark_ready(first, 5_100));
-    let third = started(policy.request_prepare(env.clone(), true, 10_100));
+    let third = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        10_100,
+    ));
     assert_ne!(second, third);
     assert!(!policy.mark_ready(second, 10_100));
     assert_eq!(
-        policy.request_prepare(env, true, 15_100),
+        policy.request_prepare(
+            env,
+            EnvironmentEligibility::NormalPersistentCandidate,
+            15_100
+        ),
         PrepareDecision::Suppressed,
         "the initial attempt plus two retries are the full timeout budget"
     );
@@ -254,7 +352,11 @@ fn retryable_failure_reasons_share_the_two_retry_cap() {
     ];
     let mut stale_token = None;
     for (attempt, reason) in reasons.into_iter().enumerate() {
-        let token = started(policy.request_prepare(env.clone(), true, attempt as u64));
+        let token = started(policy.request_prepare(
+            env.clone(),
+            EnvironmentEligibility::NormalPersistentCandidate,
+            attempt as u64,
+        ));
         if let Some(stale) = stale_token {
             assert!(!policy.fail_preparation(stale, reason));
         }
@@ -262,7 +364,7 @@ fn retryable_failure_reasons_share_the_two_retry_cap() {
         stale_token = Some(token);
     }
     assert_eq!(
-        policy.request_prepare(env, true, 4),
+        policy.request_prepare(env, EnvironmentEligibility::NormalPersistentCandidate, 4),
         PrepareDecision::Suppressed
     );
 }
@@ -278,7 +380,11 @@ fn ready_spare_failures_consume_two_retries_for_the_same_environment() {
     ];
     let mut previous_token = None;
     for (attempt, reason) in reasons.into_iter().enumerate() {
-        let token = started(policy.request_prepare(env.clone(), true, attempt as u64));
+        let token = started(policy.request_prepare(
+            env.clone(),
+            EnvironmentEligibility::NormalPersistentCandidate,
+            attempt as u64,
+        ));
         assert!(policy.mark_ready(token, attempt as u64));
         if let Some(stale) = previous_token {
             assert!(!policy.fail_preparation(stale, reason));
@@ -287,7 +393,7 @@ fn ready_spare_failures_consume_two_retries_for_the_same_environment() {
         previous_token = Some(token);
     }
     assert_eq!(
-        policy.request_prepare(env, true, 4),
+        policy.request_prepare(env, EnvironmentEligibility::NormalPersistentCandidate, 4),
         PrepareDecision::Suppressed,
         "Ready failures count toward the same initial-attempt plus two-retry budget"
     );
@@ -298,27 +404,47 @@ fn ready_completion_is_rejected_at_or_after_deadline_and_spends_retry() {
     let policy = HotPageCoordinator::default();
     let env = key(6);
 
-    let before_deadline = started(policy.request_prepare(env.clone(), true, 100));
+    let before_deadline = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        100,
+    ));
     assert!(policy.mark_ready(before_deadline, 5_099));
     assert_eq!(
-        policy.claim(&env, true),
+        policy.claim(&env, EnvironmentEligibility::NormalPersistentCandidate),
         ClaimResult::ReadyHit {
             token: before_deadline
         }
     );
     assert!(policy.finish_claim(before_deadline));
 
-    let at_deadline = started(policy.request_prepare(env.clone(), true, 10_000));
+    let at_deadline = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        10_000,
+    ));
     assert!(!policy.mark_ready(at_deadline, 15_000));
     assert!(!policy.mark_ready(at_deadline, 15_001));
-    let retry = started(policy.request_prepare(env.clone(), true, 15_001));
+    let retry = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        15_001,
+    ));
     assert_ne!(retry, at_deadline);
     assert!(!policy.mark_ready(retry, 20_002));
-    let final_retry = started(policy.request_prepare(env.clone(), true, 20_002));
+    let final_retry = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        20_002,
+    ));
     assert_ne!(final_retry, retry);
     assert!(!policy.mark_ready(final_retry, 25_003));
     assert_eq!(
-        policy.request_prepare(env, true, 25_003),
+        policy.request_prepare(
+            env,
+            EnvironmentEligibility::NormalPersistentCandidate,
+            25_003
+        ),
         PrepareDecision::Suppressed,
         "late ready callbacks consume the same initial-attempt plus two-retry budget"
     );
@@ -328,9 +454,14 @@ fn ready_completion_is_rejected_at_or_after_deadline_and_spends_retry() {
 fn stale_completion_cannot_expire_the_current_preparation() {
     let policy = HotPageCoordinator::default();
     let old = key(6);
-    let old_token = started(policy.request_prepare(old, true, 0));
+    let old_token =
+        started(policy.request_prepare(old, EnvironmentEligibility::NormalPersistentCandidate, 0));
     let current = key(7);
-    let current_token = started(policy.request_prepare(current, true, 1_000));
+    let current_token = started(policy.request_prepare(
+        current,
+        EnvironmentEligibility::NormalPersistentCandidate,
+        1_000,
+    ));
 
     assert!(!policy.mark_ready(old_token, 6_001));
     assert!(matches!(
@@ -349,4 +480,132 @@ fn stale_completion_cannot_expire_the_current_preparation() {
             reason: EvictionReason::Timeout
         }
     ));
+}
+
+#[test]
+fn t027_every_environment_identity_dimension_must_match_for_claim() {
+    let policy = HotPageCoordinator::default();
+    let env = key(6);
+    let token = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        0,
+    ));
+    assert!(policy.mark_ready(token, 0));
+
+    let mut wrong_profile = env.clone();
+    wrong_profile.profile_identity += 1;
+    let mut wrong_profile_generation = env.clone();
+    wrong_profile_generation.profile_generation += 1;
+    let mut wrong_partition = env.clone();
+    wrong_partition.partition_identity += 1;
+    let mut wrong_context_isolation = env.clone();
+    wrong_context_isolation.context_isolation += 1;
+    let mut wrong_settings_generation = env.clone();
+    wrong_settings_generation.settings_generation += 1;
+    let mut wrong_presentation = env.clone();
+    wrong_presentation.presentation = PresentationKind::Window;
+    wrong_presentation.host_window = None;
+    let mut wrong_host_window = env.clone();
+    wrong_host_window.host_window = Some(7);
+
+    for (dimension, candidate) in [
+        ("actual profile identity", wrong_profile),
+        ("profile generation", wrong_profile_generation),
+        ("storage partition", wrong_partition),
+        ("context isolation", wrong_context_isolation),
+        ("settings generation", wrong_settings_generation),
+        ("presentation kind", wrong_presentation),
+        ("internal destination window", wrong_host_window),
+    ] {
+        assert_eq!(
+            policy.claim(
+                &candidate,
+                EnvironmentEligibility::NormalPersistentCandidate,
+            ),
+            ClaimResult::ColdMiss,
+            "wrong {dimension} must not claim the ready spare"
+        );
+    }
+    assert_eq!(
+        policy.claim(&env, EnvironmentEligibility::NormalPersistentCandidate),
+        ClaimResult::ReadyHit { token },
+        "mismatched cold opens leave the eligible spare unchanged"
+    );
+}
+
+#[test]
+fn t027_malformed_host_layout_is_never_prepared_or_claimed() {
+    let policy = HotPageCoordinator::default();
+    let env = key(6);
+    let token = started(policy.request_prepare(
+        env.clone(),
+        EnvironmentEligibility::NormalPersistentCandidate,
+        0,
+    ));
+    assert!(policy.mark_ready(token, 0));
+
+    let internal_without_host = EnvironmentKey {
+        host_window: None,
+        ..env.clone()
+    };
+    let window_with_internal_host = EnvironmentKey {
+        presentation: PresentationKind::Window,
+        host_window: Some(6),
+        ..env.clone()
+    };
+    for malformed in [internal_without_host, window_with_internal_host] {
+        assert_eq!(
+            policy.request_prepare(
+                malformed.clone(),
+                EnvironmentEligibility::NormalPersistentCandidate,
+                1,
+            ),
+            PrepareDecision::Ineligible
+        );
+        assert_eq!(
+            policy.claim(
+                &malformed,
+                EnvironmentEligibility::NormalPersistentCandidate
+            ),
+            ClaimResult::ColdMiss
+        );
+    }
+    assert_eq!(
+        policy.claim(&env, EnvironmentEligibility::NormalPersistentCandidate),
+        ClaimResult::ReadyHit { token },
+        "malformed requests do not corrupt the eligible spare"
+    );
+}
+
+#[test]
+fn t027_excluded_contexts_cannot_prepare_or_claim_an_identical_key() {
+    for excluded in [
+        EnvironmentEligibility::Private,
+        EnvironmentEligibility::Ephemeral,
+        EnvironmentEligibility::ProtectedRecovery,
+        EnvironmentEligibility::TransferReserve,
+        EnvironmentEligibility::Unqualified,
+    ] {
+        let policy = HotPageCoordinator::default();
+        let env = key(6);
+        let token = started(policy.request_prepare(
+            env.clone(),
+            EnvironmentEligibility::NormalPersistentCandidate,
+            0,
+        ));
+        assert!(policy.mark_ready(token, 0));
+
+        assert_eq!(
+            policy.request_prepare(env.clone(), excluded, 1),
+            PrepareDecision::Ineligible,
+            "{excluded:?} cannot prepare even with an identical environment key"
+        );
+        assert_eq!(policy.claim(&env, excluded), ClaimResult::ColdMiss);
+        assert_eq!(
+            policy.claim(&env, EnvironmentEligibility::NormalPersistentCandidate),
+            ClaimResult::ReadyHit { token },
+            "{excluded:?} requests leave the eligible spare unchanged"
+        );
+    }
 }
