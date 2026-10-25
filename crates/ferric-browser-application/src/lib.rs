@@ -94,8 +94,9 @@ pub use credential_policy::{
 };
 mod credential_state;
 pub use credential_state::{
-    CeremonyAdmissionError, CeremonyToken, CredentialCeremonyState, CredentialTerminalEffect,
-    CredentialTerminalReason, HelperCompletion, TransitionOutcome,
+    CeremonyAdmissionError, CeremonyToken, CredentialCeremonyPhase, CredentialCeremonyState,
+    CredentialTeardownReason, CredentialTerminalEffect, CredentialTerminalReason, HelperCompletion,
+    TransitionOutcome,
 };
 
 /// The Qt-independent owner of runtime state, effective configuration, and
