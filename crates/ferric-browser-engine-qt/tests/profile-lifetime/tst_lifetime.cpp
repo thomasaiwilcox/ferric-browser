@@ -931,6 +931,215 @@ ApplicationWindow {
     QVERIFY(leaseReleased.count() >= 4);
     QVERIFY(openerRetired.count() >= 4);
 
+    QPointer<QObject> shutdownProfileGuard;
+    bool shutdownProfileDestroyedAfterConsumers = false;
+    {
+        FerricProfileLifetime shutdownLifetime;
+        activeLifetime_ = &shutdownLifetime;
+        QQmlApplicationEngine shutdownEngine;
+        shutdownEngine.rootContext()->setContextProperty("fixtureUrlForTest",
+                                                         fixtureUrl_);
+        shutdownEngine.rootContext()->setContextProperty("lifetime",
+                                                         &shutdownLifetime);
+        shutdownEngine.rootContext()->setContextProperty("testHarness", this);
+        QQmlComponent shutdownComponent(&shutdownEngine);
+        shutdownComponent.setData(QByteArray(qml),
+                                  QUrl(QStringLiteral("qrc:/shutdown.qml")));
+        QObject *shutdownRoot = shutdownComponent.create();
+        QVERIFY2(shutdownRoot, qPrintable(shutdownComponent.errorString()));
+        auto *shutdownWindow = qobject_cast<QQuickWindow *>(shutdownRoot);
+        QVERIFY(shutdownWindow);
+        auto *shutdownOpener = qobject_cast<QQuickItem *>(
+            shutdownRoot->property("openerViewObject").value<QObject *>());
+        QVERIFY(shutdownOpener);
+        QObject *shutdownProfile = shutdownRoot->property("sharedProfile")
+                                       .value<QObject *>();
+        QVERIFY(shutdownProfile);
+        QVERIFY(shutdownLifetime.ownResource(shutdownProfile));
+        shutdownProfileGuard = shutdownProfile;
+        bool shutdownProfileAliveForEveryPage = true;
+        QVERIFY(retain(shutdownLifetime, shutdownWindow, shutdownWindow));
+        QVERIFY(shutdownLifetime.adoptView(shutdownOpener, shutdownWindow,
+                                           shutdownWindow));
+        shutdownWindow->show();
+        QTRY_VERIFY_WITH_TIMEOUT(
+            shutdownRoot->property("readyPages").toList().value(0).toBool(),
+            15000);
+
+        clickPopupLink(shutdownWindow, 35);
+        QTRY_COMPARE_WITH_TIMEOUT(
+            shutdownRoot->property("popupAdoptionCount").toInt(), 1, 15000);
+        auto *shutdownChild = popupView(shutdownRoot, 1);
+        auto *shutdownChildWindow = popupWindow(shutdownRoot, 1);
+        QVERIFY(shutdownChild && shutdownChildWindow);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            shutdownRoot->property("readyPages").toList().value(1).toBool(),
+            15000);
+        clickPopupLink(shutdownChildWindow, 35);
+        QTRY_COMPARE_WITH_TIMEOUT(
+            shutdownRoot->property("popupAdoptionCount").toInt(), 2, 15000);
+        auto *shutdownGrandchild = popupView(shutdownRoot, 2);
+        QVERIFY(shutdownGrandchild);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            shutdownRoot->property("readyPages").toList().value(2).toBool(),
+            15000);
+        clickPopupLink(shutdownWindow, 125);
+        QTRY_COMPARE_WITH_TIMEOUT(
+            shutdownRoot->property("popupAdoptionCount").toInt(), 3, 15000);
+        auto *shutdownSibling = popupView(shutdownRoot, 3);
+        QVERIFY(shutdownSibling);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            shutdownRoot->property("readyPages").toList().value(3).toBool(),
+            15000);
+
+        const QList<QQuickItem *> shutdownViews{
+            shutdownOpener, shutdownChild, shutdownGrandchild, shutdownSibling};
+        QList<QPointer<QQuickItem>> shutdownViewGuards;
+        for (QQuickItem *view : shutdownViews) {
+            QVERIFY(watchNativeDelegates(view) > 0);
+            shutdownViewGuards.append(view);
+            connect(view, &QObject::destroyed, this, [&] {
+                shutdownProfileAliveForEveryPage =
+                    shutdownProfileAliveForEveryPage &&
+                    bool(shutdownProfileGuard);
+            });
+        }
+        QList<QPointer<QObject>> shutdownNativeGuards;
+        for (const auto &candidate : std::as_const(watchedDelegates_)) {
+            QObject *delegate = candidate.data();
+            auto *item = qobject_cast<QQuickItem *>(delegate);
+            if (!item)
+                continue;
+            for (QQuickItem *view : shutdownViews) {
+                bool ownedByView = false;
+                for (QQuickItem *parent = item; parent;
+                     parent = parent->parentItem()) {
+                    if (parent == view) {
+                        ownedByView = true;
+                        break;
+                    }
+                }
+                if (ownedByView) {
+                    shutdownNativeGuards.append(candidate);
+                    break;
+                }
+            }
+        }
+        connect(shutdownProfile, &QObject::destroyed, this, [&] {
+            shutdownProfileDestroyedAfterConsumers =
+                std::all_of(shutdownViewGuards.cbegin(),
+                            shutdownViewGuards.cend(),
+                            [](const QPointer<QQuickItem> &view) {
+                                return view.isNull();
+                            }) &&
+                std::all_of(shutdownNativeGuards.cbegin(),
+                            shutdownNativeGuards.cend(),
+                            [](const QPointer<QObject> &delegate) {
+                                return delegate.isNull();
+                            });
+        });
+        const QByteArray expectedShutdownDelegate = QByteArrayLiteral(
+            "QtWebEngineCore::RenderWidgetHostViewQtDelegateItem");
+        QHash<QString, QPointer<QObject>> childDelegateForLease;
+        QHash<QString, QPointer<QQuickItem>> childViewForLease;
+        QHash<QString, QPointer<QQuickItem>> sourceForLease;
+        const auto delegateInView = [expectedShutdownDelegate](QQuickItem *view)
+            -> QObject * {
+            QList<QQuickItem *> pending{view};
+            while (!pending.isEmpty()) {
+                QQuickItem *item = pending.takeLast();
+                if (QByteArray(item->metaObject()->className()) ==
+                        expectedShutdownDelegate &&
+                    item->inherits(expectedShutdownDelegate.constData()))
+                    return item;
+                pending.append(item->childItems());
+            }
+            return nullptr;
+        };
+        for (int i = 0; i < 3; ++i) {
+            const QString leaseId = shutdownRoot->property("popupLeaseIds")
+                                        .value<QJSValue>().property(i).toString();
+            QVERIFY(!leaseId.isEmpty());
+            const int sourceIndex = i == 2 ? 0 : i;
+            const int childIndex = i + 1;
+            QQuickItem *sourceView = shutdownViews.at(sourceIndex);
+            QQuickItem *childView = shutdownViews.at(childIndex);
+            QObject *childDelegate = delegateInView(childView);
+            QVERIFY(childDelegate);
+            childDelegateForLease.insert(leaseId, childDelegate);
+            childViewForLease.insert(leaseId, childView);
+            sourceForLease.insert(leaseId, sourceView);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                shutdownLifetime.popupOpenerLeaseDelegateCount(leaseId) > 0,
+                10000);
+        }
+        bool eachLeaseReleasedAfterChildDelegate = true;
+        bool eachLeaseReleasedWithRetiredTarget = true;
+        bool eachLeaseReleasedBeforeSourceDeath = true;
+        QSignalSpy shutdownLeaseReleased(
+            &shutdownLifetime,
+            &FerricProfileLifetime::popupOpenerLeaseReleased);
+        connect(&shutdownLifetime,
+                &FerricProfileLifetime::popupOpenerLeaseReleased, this,
+                [&](const QString &leaseId) {
+                    if (!childDelegateForLease.contains(leaseId))
+                        return;
+                    eachLeaseReleasedAfterChildDelegate =
+                        eachLeaseReleasedAfterChildDelegate &&
+                        childDelegateForLease.value(leaseId).isNull();
+                    QQuickItem *target = childViewForLease.value(leaseId);
+                    const bool targetRetired =
+                        !target ||
+                        (target->property("lifecycleState").toInt() == 2 &&
+                         target->property("renderProcessPid").toLongLong() == 0 &&
+                         !target->isVisible() && !target->isEnabled() &&
+                         shutdownLifetime.ownerUi(target) == nullptr);
+                    eachLeaseReleasedWithRetiredTarget =
+                        eachLeaseReleasedWithRetiredTarget && targetRetired;
+                    eachLeaseReleasedBeforeSourceDeath =
+                        eachLeaseReleasedBeforeSourceDeath &&
+                        !sourceForLease.value(leaseId).isNull();
+                });
+        for (int i = 0; i < 3; ++i) {
+            const QString leaseId = shutdownRoot->property("popupLeaseIds")
+                                        .value<QJSValue>().property(i).toString();
+            QVERIFY(!leaseId.isEmpty());
+            QTRY_VERIFY_WITH_TIMEOUT(
+                shutdownLifetime.popupOpenerLeaseDelegateCount(leaseId) > 0,
+                10000);
+        }
+        QCOMPARE(shutdownLifetime.windowCount(), 4);
+        QCOMPARE(shutdownLifetime.viewCount(), 4);
+        QCOMPARE(shutdownLifetime.popupOpenerLeaseCount(), 3);
+        QSignalSpy shutdownDrained(&shutdownLifetime,
+                                   &FerricProfileLifetime::drained);
+        shutdownLifetime.shutdown();
+        QCOMPARE(shutdownLifetime.windowCount(), 0);
+        QVERIFY(shutdownLifetime.popupOpenerLeaseCount() <= 3);
+        QVERIFY(shutdownLifetime.acquirePopupOpenerLease(
+                    shutdownOpener, shutdownChild).isEmpty());
+        QVERIFY(!shutdownLifetime.retainWindow(shutdownWindow, shutdownRoot));
+        QTRY_COMPARE_WITH_TIMEOUT(shutdownLifetime.viewCount(), 0, 15000);
+        QTRY_COMPARE_WITH_TIMEOUT(shutdownLifetime.popupOpenerLeaseCount(), 0,
+                                 15000);
+        QTRY_COMPARE_WITH_TIMEOUT(shutdownDrained.count(), 1, 15000);
+        QCOMPARE(shutdownLeaseReleased.count(), 3);
+        QVERIFY(eachLeaseReleasedAfterChildDelegate);
+        QVERIFY(eachLeaseReleasedWithRetiredTarget);
+        QVERIFY(eachLeaseReleasedBeforeSourceDeath);
+        for (const auto &view : std::as_const(shutdownViewGuards))
+            QVERIFY(view.isNull());
+        QVERIFY(shutdownProfileAliveForEveryPage);
+        QVERIFY(shutdownProfileGuard);
+        delete shutdownRoot;
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCoreApplication::processEvents();
+        QVERIFY(shutdownProfileGuard);
+    }
+    QVERIFY(shutdownProfileGuard.isNull());
+    QVERIFY(shutdownProfileDestroyedAfterConsumers);
+    activeLifetime_ = lifetime.get();
+
     lifetime->releaseWindow(rootWindow);
     lifetime->shutdown();
     QTRY_COMPARE_WITH_TIMEOUT(lifetime->viewCount(), 0, 10000);
