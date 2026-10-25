@@ -723,7 +723,9 @@ name = "ferric-phone-auth"
 version = "0.1.0"
 dependencies = [
  "libwebauthn",
+ "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
