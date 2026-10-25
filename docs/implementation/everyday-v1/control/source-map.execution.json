@@ -161,11 +161,11 @@
     }
   ],
   "planned_path_inventory": {
-    "unique_paths": 195,
+    "unique_paths": 196,
     "existing_product_paths": 74,
     "execution_pack_artifacts": 2,
     "planned_execution_outputs": 8,
-    "proposed_product_deliverables": 111,
+    "proposed_product_deliverables": 112,
     "paths": [
       {
         "path": ".github/workflows/ci.yml",
@@ -2875,7 +2875,8 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "P01"
+          "P01",
+          "P06"
         ],
         "roles": [
           "allowed",
@@ -2890,7 +2891,8 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "P01"
+          "P01",
+          "P06"
         ],
         "roles": [
           "allowed",
@@ -3279,6 +3281,19 @@
         "history_at_product_baseline": true,
         "integration_head_blob": "e76bb3d4e454fea10c10689316a0b1143573abde",
         "product_baseline_blob": "e76bb3d4e454fea10c10689316a0b1143573abde"
+      },
+      {
+        "path": "helpers/ferric-phone-auth/src/lib.rs",
+        "resolution": "proposed_product_deliverable",
+        "working_tree_file_present": false,
+        "slices": [
+          "P06"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
       }
     ]
   },
@@ -3523,6 +3538,17 @@
       },
       "preserved_original": "F02b2a implemented_unqualified3/3; unchangedT014a qualification only after dependencies.",
       "architecture_review": "evidence/D31-popup-lease-design/ARCHITECTURE_REVIEW.json"
+    },
+    {
+      "id": "A31",
+      "reason": "P06 external integration tests need the same production-compiled library as the binary; strict typed envelope parsing needs direct already-locked serde dependency.",
+      "added_paths": [
+        "helpers/ferric-phone-auth/src/lib.rs",
+        "helpers/ferric-phone-auth/Cargo.toml",
+        "helpers/ferric-phone-auth/Cargo.lock"
+      ],
+      "slice": "P06",
+      "preserved": "All three existing unit cases, dependencies, attempt cap, security/physical/native gates, exact library pin and helper Rust1.88 unchanged."
     }
   ]
 }

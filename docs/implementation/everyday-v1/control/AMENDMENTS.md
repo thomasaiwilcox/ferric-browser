@@ -219,3 +219,11 @@
 - **Review repair r2:** T014c has explicit component evidence and QtTest slot `popupDelegateLifetime`. Validator adds only this evidence level with the existing executable, nonzero-test and zero-skip requirements; focused regression tests cover valid, missing-command, zero-test and skipped-test component records. No old case/evidence level or native/physical gate changes.
 
 - **Inventory test repair:** the preexisting packet-budget test still asserted the original55 slices (also stale before A30 at75). It now asserts the reviewed77-slice inventory and retains every actual packet24000B bound. Initial tooling run45tests:44pass, one stale-count failure; preserved separately, not reported green.
+
+
+## A31 — Helper RP admission production-library and typed-envelope registration
+
+- **Status:** proposed; independent exact-content review precedes product edits/dispatch.
+- **Reason and paths:** P06 originally names binary main/protocol/admission/errors plus external tests/admission.rs, but no library root for the external tests to exercise normal production code. Add helpers/ferric-phone-auth/src/lib.rs. Strict typed serde envelopes can reject duplicate and unknown fields directly; add that helper Cargo.toml and Cargo.lock for direct serde1.0.228 (derive if required), already present in the reviewed helper lock. Exactly eight allowed paths, existing max8 unchanged. Targeted source/lock/API reads stay bounded.
+- **Guardrails:** no root Cargo edits, libwebauthn revision/default-feature change, helper MSRV/workspace change, new dependency version, transport/crypto feature change, runtime PSL fetching or suffix guessing. Tests use the same production parser/admission; only real library+usable PSL preparation constructs private-field PreparedCredentialRequest. Extra dependency/ninth path requires another real amendment.
+- **Dependency/test/history impact:** none. P06 still requires acceptedP01 andP02; T064/T065/T066 stay unit cases, positive/negative executable tests and fresh integration/review required. P00/C04 native authority and phones remain separately gated. No attempt/reset/feature-default/physical qualification change. Source map records one proposed library path and two existing helper manifest owners.

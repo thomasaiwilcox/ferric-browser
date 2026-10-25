@@ -2001,13 +2001,18 @@
         "helpers/ferric-phone-auth/src/protocol.rs",
         "helpers/ferric-phone-auth/src/admission.rs",
         "helpers/ferric-phone-auth/src/errors.rs",
-        "helpers/ferric-phone-auth/tests/admission.rs"
+        "helpers/ferric-phone-auth/tests/admission.rs",
+        "helpers/ferric-phone-auth/src/lib.rs",
+        "helpers/ferric-phone-auth/Cargo.toml",
+        "helpers/ferric-phone-auth/Cargo.lock"
       ],
       "steps": [
         "Implement strict v1 envelope parsing before library request preparation, using browser-verified origin only.",
         "Load packaged/maintained PSL deliberately; no suffix guessing or permissive fallback.",
         "Validate requirements/attachment, UV, algorithms, discoverable credentials, allow/exclude lists and supported extensions.",
-        "Emit no QR/network work before admission succeeds; bound encoded and decoded fields consistently."
+        "Emit no QR/network work before admission succeeds; bound encoded and decoded fields consistently.",
+        "Expose the actual helper protocol/admission implementation through a normal Rust library used by main and external integration tests; cfg(test)-only admission implementations or copied test models do not qualify. Keep PreparedCredentialRequest fields private and construct it only through the real pinned-library/PSL preparation path.",
+        "Helper manifest/lock edits are limited to a direct serde dependency at already locked1.0.228 (derive if required for strict envelope duplicate/unknown-field rejection). Preserve libwebauthn exact revision/default-features=false, Rust1.88 floor and isolated helper workspace; no root Cargo/dependency/transport/crypto changes. Any additional dependency or ninth path requires a new explicit amendment."
       ],
       "kind": "implementation",
       "locks": [
@@ -2030,7 +2035,10 @@
         "helpers/ferric-phone-auth/src/protocol.rs",
         "helpers/ferric-phone-auth/src/admission.rs",
         "helpers/ferric-phone-auth/src/errors.rs",
-        "helpers/ferric-phone-auth/tests/admission.rs"
+        "helpers/ferric-phone-auth/tests/admission.rs",
+        "helpers/ferric-phone-auth/src/lib.rs",
+        "helpers/ferric-phone-auth/Cargo.toml",
+        "helpers/ferric-phone-auth/Cargo.lock"
       ]
     },
     {
