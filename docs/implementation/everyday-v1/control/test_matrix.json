@@ -149,7 +149,7 @@
       "name": "Transfer reserve and hover preservation",
       "expected": "The production transfer reserve is non-null, distinct, hidden and untabbed while the original popup stays active with its URL, history and page state; QtWebEngine hover/update delivery and cleanup complete without a crash or URL recreation.",
       "result": "not_run",
-      "binding": "Run the exact registered everyday_T014b_transfer_reserve_hover_preservation CTest with zero skips; it covers every original T014 reserve/lifecycle assertion after separate T014a setup."
+      "binding": "Run the exact registered everyday_T014b_transfer_reserve_hover_preservation CTest with zero skips; rerun T014a, T013 and T015 as affected regressions on the same integrated source."
     },
     {
       "id": "T015",

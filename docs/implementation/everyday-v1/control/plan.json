@@ -456,9 +456,7 @@
         "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
         "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
         "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
-        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
-        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
-        "crates/ferric-browser-engine-qt/build.rs"
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml"
       ],
       "steps": [
         "Run the unchanged T013 acceptance behavior on accepted F02a source: cold-created primary/secondary pages preserve URL, title, history, settings, intended focus and actual page key delivery.",
