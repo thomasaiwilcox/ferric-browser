@@ -1,6 +1,7 @@
 #include "../../src/credential_process.h"
 
 #include <QCoreApplication>
+#include <QPointer>
 #include <QProcess>
 #include <QtTest>
 
@@ -23,6 +24,10 @@ public:
     return process.startConfigured(request,
                                    QCoreApplication::applicationFilePath(),
                                    {QStringLiteral("--fixture-helper"), mode});
+  }
+
+  static qint64 childPid(const CredentialProcess &process) {
+    return process.active_ ? process.active_->process.processId() : 0;
   }
 };
 
@@ -81,6 +86,12 @@ int helperMain(const QString &mode) {
     for (;;)
       ::pause();
   }
+  if (mode == QStringLiteral("frame-hang")) {
+    std::fputs("progress\n", stdout);
+    std::fflush(stdout);
+    for (;;)
+      ::pause();
+  }
   if (mode == QStringLiteral("tree")) {
 #ifdef Q_OS_UNIX
     const pid_t child = ::fork();
@@ -105,6 +116,16 @@ int helperMain(const QString &mode) {
     return 7;
   }
   return 2;
+}
+
+bool processIsGone(qint64 pid) {
+#ifdef Q_OS_UNIX
+  errno = 0;
+  return ::kill(static_cast<pid_t>(pid), 0) == -1 && errno == ESRCH;
+#else
+  Q_UNUSED(pid);
+  return true;
+#endif
 }
 } // namespace
 
@@ -218,6 +239,67 @@ private slots:
     QCOMPARE(sentinel.state(), QProcess::Running);
     sentinel.kill();
     QVERIFY(sentinel.waitForFinished(5000));
+
+    int callbacks = 0;
+    qint64 childPid = 0;
+    auto *startedOwner = new CredentialProcess;
+    QPointer<CredentialProcess> startedGuard(startedOwner);
+    startedOwner->setEvents({[&](quint64) {
+                               ++callbacks;
+                               childPid = CredentialProcessTestAccess::childPid(
+                                   *startedOwner);
+                               delete startedOwner;
+                               startedOwner = nullptr;
+                             },
+                             [&](quint64, const QByteArray &) { ++callbacks; },
+                             [&](quint64, Failure, int) { ++callbacks; }});
+    QVERIFY(CredentialProcessTestAccess::startMode(
+                *startedOwner, request, QStringLiteral("hang")) != 0);
+    QTRY_VERIFY_WITH_TIMEOUT(startedGuard.isNull(), 5000);
+    QVERIFY(childPid > 0);
+    QTRY_VERIFY_WITH_TIMEOUT(processIsGone(childPid), 5000);
+    QCOMPARE(callbacks, 1);
+
+    callbacks = 0;
+    childPid = 0;
+    bool expectedFrame = false;
+    auto *frameOwner = new CredentialProcess;
+    QPointer<CredentialProcess> frameGuard(frameOwner);
+    frameOwner->setEvents({[&](quint64) { ++callbacks; },
+                           [&](quint64, const QByteArray &frame) {
+                             ++callbacks;
+                             expectedFrame = frame == "progress";
+                             childPid = CredentialProcessTestAccess::childPid(
+                                 *frameOwner);
+                             delete frameOwner;
+                             frameOwner = nullptr;
+                           },
+                           [&](quint64, Failure, int) { ++callbacks; }});
+    QVERIFY(CredentialProcessTestAccess::startMode(
+                *frameOwner, request, QStringLiteral("frame-hang")) != 0);
+    QTRY_VERIFY_WITH_TIMEOUT(frameGuard.isNull(), 5000);
+    QVERIFY(childPid > 0);
+    QTRY_VERIFY_WITH_TIMEOUT(processIsGone(childPid), 5000);
+    QCOMPARE(callbacks, 2);
+    QVERIFY(expectedFrame);
+
+    callbacks = 0;
+    Failure finishFailure = Failure::ProcessFailure;
+    auto *finishedOwner = new CredentialProcess;
+    QPointer<CredentialProcess> finishedGuard(finishedOwner);
+    finishedOwner->setEvents({[&](quint64) { ++callbacks; },
+                              [&](quint64, const QByteArray &) { ++callbacks; },
+                              [&](quint64, Failure failure, int) {
+                                ++callbacks;
+                                finishFailure = failure;
+                                delete finishedOwner;
+                                finishedOwner = nullptr;
+                              }});
+    QVERIFY(CredentialProcessTestAccess::startMode(
+                *finishedOwner, request, QStringLiteral("clean")) != 0);
+    QTRY_VERIFY_WITH_TIMEOUT(finishedGuard.isNull(), 5000);
+    QCOMPARE(callbacks, 4);
+    QCOMPARE(finishFailure, Failure::None);
   }
 };
 

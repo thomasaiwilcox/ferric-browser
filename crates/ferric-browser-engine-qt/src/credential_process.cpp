@@ -1,6 +1,7 @@
 #include "credential_process.h"
 
 #include <QCoreApplication>
+#include <QPointer>
 #include <QProcess>
 #include <QTimer>
 
@@ -121,15 +122,17 @@ quint64 CredentialProcess::startConfigured(const QByteArray &request,
     const auto current = weak.lock();
     if (!current || !isCurrent(current) || current->terminating)
       return;
-    if (events_.started)
-      events_.started(current->token);
-    if (!isCurrent(current) || current->terminating)
-      return;
     if (current->process.write(request) != request.size()) {
       fail(current, Failure::WriteFailure);
       return;
     }
     current->process.closeWriteChannel();
+    QPointer<CredentialProcess> guard(this);
+    const auto callback = events_.started;
+    if (callback)
+      callback(current->token);
+    if (!guard)
+      return;
   });
   connect(&run->process, &QProcess::readyReadStandardOutput, this,
           [this, weak] {
@@ -215,10 +218,14 @@ void CredentialProcess::drainStdout(const std::shared_ptr<Run> &run) {
       return;
     }
     if (byte == '\n') {
-      if (events_.frame)
-        events_.frame(run->token, run->pending);
+      QPointer<CredentialProcess> guard(this);
+      const auto callback = events_.frame;
+      if (callback)
+        callback(run->token, run->pending);
+      if (!guard)
+        return;
       run->pending.clear();
-      if (!isCurrent(run) || run->terminating)
+      if (!guard->isCurrent(run) || run->terminating)
         return;
     } else {
       run->pending.append(byte);
@@ -280,14 +287,15 @@ void CredentialProcess::finish(const std::shared_ptr<Run> &run, int exitCode,
   run->deadline.stop();
   run->grace.stop();
   run->terminalDelivered = true;
-  if (events_.finished)
-    events_.finished(run->token, run->failure, exitCode);
   QTimer::singleShot(0, this, [this, weak = std::weak_ptr<Run>(run)] {
     const auto current = weak.lock();
     if (current && isCurrent(current) &&
         current->process.state() == QProcess::NotRunning)
       active_.reset();
   });
+  const auto callback = events_.finished;
+  if (callback)
+    callback(run->token, run->failure, exitCode);
 }
 
 } // namespace ferric::credentials
