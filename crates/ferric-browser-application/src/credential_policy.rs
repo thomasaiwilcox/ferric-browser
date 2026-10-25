@@ -10,15 +10,14 @@ use ferric_browser_core::{DocumentId, PrivacyKind, ProfileId, TabId, WindowId};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CredentialAdmissionError {
     UnsupportedContext,
-    RpIdMismatch,
     InvalidRequest,
 }
 
-/// A syntactically valid HTTPS origin paired with the host used for RP checks.
+/// Browser-verified origin serialization. Its constructor is intentionally
+/// unavailable until the engine boundary is qualified.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedOrigin {
     origin: String,
-    rp_id: String,
 }
 
 impl VerifiedOrigin {
@@ -65,10 +64,7 @@ impl VerifiedOrigin {
             None | Some(443) => format!("https://{host}"),
             Some(port) => format!("https://{host}:{port}"),
         };
-        Ok(Self {
-            origin,
-            rp_id: host.to_owned(),
-        })
+        Ok(Self { origin })
     }
 
     #[must_use]
@@ -224,15 +220,18 @@ pub struct CredentialRequestOptions {
 }
 
 impl CredentialRequestOptions {
+    /// Keeps the optional RP ID raw for the pinned helper's full IDNA and PSL
+    /// validation. Only a byte bound is applied at this boundary.
+    ///
     /// # Errors
-    /// Rejects an empty, oversized, or malformed requested RP ID.
+    /// Rejects an RP ID larger than [`MAX_REQUESTED_RP_ID_BYTES`].
     pub fn new(
         operation: CredentialOperation,
         requested_rp_id: Option<&str>,
     ) -> Result<Self, CredentialAdmissionError> {
         let requested_rp_id = requested_rp_id
             .map(|rp_id| {
-                if !valid_rp_id(rp_id) {
+                if rp_id.len() > MAX_REQUESTED_RP_ID_BYTES {
                     Err(CredentialAdmissionError::InvalidRequest)
                 } else {
                     Ok(rp_id.to_owned())
@@ -249,21 +248,15 @@ impl CredentialRequestOptions {
     pub const fn operation(&self) -> CredentialOperation {
         self.operation
     }
+
+    #[must_use]
+    pub fn requested_rp_id(&self) -> Option<&str> {
+        self.requested_rp_id.as_deref()
+    }
 }
 
-fn valid_rp_id(rp_id: &str) -> bool {
-    !rp_id.is_empty()
-        && rp_id.len() <= 253
-        && rp_id.split('.').all(|label| {
-            !label.is_empty()
-                && label.len() <= 63
-                && !label.starts_with('-')
-                && !label.ends_with('-')
-                && label
-                    .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-        })
-}
+/// Maximum raw RP ID size carried from the page to P06's pinned validator.
+pub const MAX_REQUESTED_RP_ID_BYTES: usize = 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CredentialOperation {
@@ -312,21 +305,60 @@ impl CredentialRequestOwner {
     }
 }
 
-// Used by this slice's T052 tests and by the later ceremony-state admission.
+/// Explicitly records that a candidate has not received helper PSL validation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RpValidationStatus {
+    Pending,
+}
+
+/// Bounded raw page options captured against one immutable native owner.
+///
+/// This candidate does not authorize an RP or admit a ceremony. Only P06's
+/// pinned helper preparation with maintained PSL data may make that decision.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OriginBoundRpCandidate {
+    owner: CredentialRequestOwner,
+    operation: CredentialOperation,
+    requested_rp_id: Option<String>,
+    status: RpValidationStatus,
+}
+
+impl OriginBoundRpCandidate {
+    #[must_use]
+    pub fn owner(&self) -> &CredentialRequestOwner {
+        &self.owner
+    }
+
+    #[must_use]
+    pub const fn operation(&self) -> CredentialOperation {
+        self.operation
+    }
+
+    #[must_use]
+    pub fn requested_rp_id(&self) -> Option<&str> {
+        self.requested_rp_id.as_deref()
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> RpValidationStatus {
+        self.status
+    }
+}
+
+// The state manager binds immutable native ownership before handing only the
+// bounded raw candidate to the helper. This performs no RP validation.
 #[allow(dead_code)]
-pub(crate) fn validate_request_for_lease(
-    request: &CredentialRequestOptions,
-    lease: &CredentialDocumentLease,
-) -> Result<(), CredentialAdmissionError> {
-    if let Some(error) = lease.admission_error() {
+pub(crate) fn bind_request_to_owner(
+    request: CredentialRequestOptions,
+    owner: CredentialRequestOwner,
+) -> Result<OriginBoundRpCandidate, CredentialAdmissionError> {
+    if let Some(error) = owner.lease.admission_error() {
         return Err(error);
     }
-    if request
-        .requested_rp_id
-        .as_deref()
-        .is_some_and(|rp_id| rp_id != lease.origin.rp_id)
-    {
-        return Err(CredentialAdmissionError::RpIdMismatch);
-    }
-    Ok(())
+    Ok(OriginBoundRpCandidate {
+        owner,
+        operation: request.operation,
+        requested_rp_id: request.requested_rp_id,
+        status: RpValidationStatus::Pending,
+    })
 }

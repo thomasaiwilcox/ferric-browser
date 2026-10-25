@@ -89,7 +89,8 @@ pub use storage::{StorageEffect, StorageTicket};
 mod credential_policy;
 pub use credential_policy::{
     CredentialAdmissionError, CredentialDocumentLease, CredentialOperation, CredentialRequestId,
-    CredentialRequestOptions, CredentialRequestOwner, VerifiedOrigin,
+    CredentialRequestOptions, CredentialRequestOwner, OriginBoundRpCandidate, RpValidationStatus,
+    VerifiedOrigin,
 };
 
 /// The Qt-independent owner of runtime state, effective configuration, and
