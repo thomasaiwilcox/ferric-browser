@@ -1660,6 +1660,26 @@
       "expected": "Local changes are committed/recoverable with no unauthorized remote/system/user-profile modifications.",
       "result": "not_run",
       "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T014c",
+      "slice": "F02c",
+      "requirement": "EF-F02",
+      "level": "component",
+      "name": "Implement SDK-qualified popup opener lifetime leases",
+      "expected": "All scoped lease/retirement identity, boundedness, positive and negative lifecycle cases pass using actual production source with zero skips.",
+      "result": "not_run",
+      "binding": "Existing profile-lifetime real-WebEngine component CTest everyday_T014c_popup_delegate_lifetime; QtTest slot popupDelegateLifetime. Actual production C++ and real native objects; not composed Ferric or physical."
+    },
+    {
+      "id": "T014d",
+      "slice": "F02d",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Wire popup adoption and retirement through native leases",
+      "expected": "All scoped lease/retirement identity, boundedness, positive and negative lifecycle cases pass using actual production source with zero skips.",
+      "result": "not_run",
+      "binding": "Existing production application CTest everyday_T014d_popup_retirement_leases plus unchanged T014a/T013/T015 affected regressions."
     }
   ],
   "note": "Specifications only. Nothing is marked passed at authoring."

@@ -536,31 +536,92 @@
       ]
     },
     {
-      "id": "F02b2a",
-      "title": "Isolate and qualify popup commands and opener identity",
+      "id": "F02c",
+      "title": "Implement SDK-qualified popup opener lifetime leases",
       "lane": "presentation",
       "depends_on": [
         "F02b1"
       ],
       "contracts": [
+        "C00",
         "C01",
-        "C02"
+        "C02",
+        "C14"
       ],
       "allowed_paths": [
-        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
-        "crates/ferric-browser-engine-qt/tests/application/tst_application.h",
-        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
-        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
-        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
-        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
-        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml"
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.h",
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml",
+        "crates/ferric-browser-engine-qt/tests/profile-lifetime/tst_lifetime.cpp",
+        "crates/ferric-browser-engine-qt/tests/profile-lifetime/CMakeLists.txt",
+        "docs/architecture/ADR-popup-opener-lifetime.md"
       ],
       "steps": [
-        "Decompose the exhausted monolithic T014 test into a distinct registered T014a outcome for popup command and opener/source identity behavior. T014b separately owns the transfer-reserve lifecycle and hover-crash outcome.",
-        "Keep every original pre-reserve T014 assertion: actual Qt popup handoff, live opener communication, source/view identity, secondary interactive commands and tab state, nested popup opener/source checks, original URL/history/page state and cleanup.",
-        "Add a dedicated QtTest slot and exact CTest registration named everyday_T014a_popup_commands_opener_identity. Do not run the old monolithic T014 command or include the T014b reserve lifecycle in this case.",
-        "Do not remove, weaken, skip, or replace any original assertion. T014a is a new acceptance boundary with no inherited pass; prior T014 failures remain historical evidence.",
-        "After fresh source review and the coordinator build lease, run the exact registered T014a gate with zero skips and discovery. Record T013/T015 only as affected regressions; T013 remains owned by F02b1."
+        "Reuse the existing actual-profile FerricProfileLifetime; add opaque per-edge source/target lease IDs and generations. Admit only distinct tracked current views with same native profile/QQmlEngine, owning ready hosts and GUI thread; acquire before request.openIn.",
+        "Implement the reviewed Qt6.11.2-qualified QObject metadata observer for RenderWidgetHostViewQtDelegateItem lifetime. Its implementation-name assumption must be explicit, SDK-gated and never used as credential/origin authority. No Qt fork, private memory offset, page bridge, input suppression or arbitrary timer/PID-based release.",
+        "Use public childrenChanged plus QPointer/actual QObject destruction to handle delayed/replaced native items. Reject stale edge/epoch notifications. Unknown metadata is unqualified; a child-QObject-only fallback is not accepted as chain-bounded.",
+        "On retirement emit existing row/core/callback retirement first; hide/disable, set public Discarded and require renderer-free state, detach parentItem, retain the QObject in the existing native lifetime only while child native delegates need it. Never reload a survivor, resurrect a row, or reuse a visited retired view as a spare.",
+        "Keep the actual profile/factory alive until all views truly die. Multiple children release independently, closed chains cannot retain all ancestors, and shutdown/destructor cleanup must be safe in child-before-opener order.",
+        "Extend the existing profile-lifetime harness with real WebEngineQuick fixtures using the actual production C++ source, matched Qt6.11.2, disposable XDG/profile roots and sandbox. Prove source host closure, parked Discarded/PID0, nonce/opener state, actual native hover delivery, matching-item death before ancestor release, delayed/replacement/stale cases, multiple/deep chains, wrong profile/engine/thread/host and final drain/shutdown.",
+        "Register exact CTest everyday_T014c_popup_delegate_lifetime selecting QtTest slot popupDelegateLifetime in that existing component harness; preserve original profile_lifetime tests and timeout. This is component evidence, not composed Ferric, physical input or compositor qualification. Record exact source/build/binary/SDK hashes. Commit the ADR with the private-name compatibility dependency and unsupported-state policy."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "profile-lifetime",
+        "profile-registry",
+        "test-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014c"
+      ],
+      "max_changed_product_files": 7,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F02c.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.h",
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml",
+        "crates/ferric-browser-engine-qt/tests/profile-lifetime/tst_lifetime.cpp",
+        "crates/ferric-browser-engine-qt/tests/profile-lifetime/CMakeLists.txt",
+        "docs/architecture/ADR-popup-opener-lifetime.md"
+      ],
+      "parent_id": "F02b2a"
+    },
+    {
+      "id": "F02d",
+      "title": "Wire popup adoption and retirement through native leases",
+      "lane": "presentation",
+      "depends_on": [
+        "F02c"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C02",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPopupWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.h",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+      ],
+      "steps": [
+        "Pass the actual captured source WebEngineView from newWindowRequested through FerricPopupWindow into the destination bootstrap. Native UI/view/profile ownership remains distinct; do not look up a later active tab/window.",
+        "Acquire the qualified per-profile lease before synchronous request.openIn; preserve exact inherited profile, current source identity, once-only cold handoff and existing popup visibility/bootstrap ordering. Roll back failed admission without URL recreation or duplicate navigation.",
+        "Route primary PageServices and secondary BrowserWindow direct removed-view destroy paths through the existing registry/lifetime. Preserve transfer-reserve transactions and existing core row/model/sidecar retirement, current-target guards, callback generations and profile drain.",
+        "Add composed real-browser lifecycle assertions for source tab and host closure, multiple/nested popups, same document/JS/opener state, native pointer/keyboard delivery, renderer replacement, private/profile ownership, shutdown and bounded final drain.",
+        "Add exact CTest everyday_T014d_popup_retirement_leases and QtTest slot productPolishPopupRetirementLeases in the existing production harness. Keep original T014a/T013/T015 functions/assertions/registrations unchanged and rerun those affected regressions with zero skips on fresh exact-source engine/harness builds.",
+        "Do not promote F02b2a or any feature capability from source review or a component pass. After F02c/F02d acceptance, the coordinator separately qualifies unchanged T014a on the repaired dependency source; native compositor/device/benchmark gates remain separate."
       ],
       "kind": "implementation",
       "locks": [
@@ -572,9 +633,51 @@
       "recipe": "application",
       "requirement_id": "EF-F02",
       "test_ids": [
-        "T014a"
+        "T014d"
       ],
       "max_changed_product_files": 7,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F02d.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPopupWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.h",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+      ],
+      "parent_id": "F02b2a"
+    },
+    {
+      "id": "F02b2a",
+      "title": "Qualify unchanged popup command/opener case after lifetime repair",
+      "lane": "presentation",
+      "depends_on": [
+        "F02b1",
+        "F02d"
+      ],
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "allowed_paths": [],
+      "steps": [
+        "Coordinator-only no-code qualification; do not dispatch another F02b2a implementation attempt. Preserve original implemented_unqualified3/3 status, candidates, failed receipts and root-cause evidence until new dependency repair is accepted.",
+        "F02c owns the new native lifetime primitive; F02d owns actual production adoption/retirement wiring and separate T014d. Neither inherits a prior pass or changes T014a assertions.",
+        "After both new slices are independently accepted, run unchanged exact CTest everyday_T014a_popup_commands_opener_identity on the current repaired source. Do not increment/reset the exhausted implementation counter or claim a fourth implementation attempt.",
+        "Independently review source-dependency equivalence and the exact zero-skip T014a runtime receipt; only that new qualification can accept this original behavior. F02b2b remains gated until it passes."
+      ],
+      "kind": "qualification",
+      "locks": [],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014a"
+      ],
+      "max_changed_product_files": 0,
       "max_attempts": 3,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",

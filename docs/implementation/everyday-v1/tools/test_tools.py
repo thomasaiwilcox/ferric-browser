@@ -24,7 +24,7 @@ class StructureTests(unittest.TestCase):
     def test_structure(self):self.assertEqual(validate_pack.validate_structure(),[])
     def test_all_packets_bounded(self):
         plan=load(PACK/'control/plan.json')
-        self.assertEqual(len(plan['slices']),55)
+        self.assertEqual(len(plan['slices']),77)
         for t in plan['slices']:self.assertLessEqual(len(packet(t).encode()),24000,t['id'])
     def test_goal_limit(self):self.assertLess(len((PACK/'GOAL_PROMPT.txt').read_bytes()),1000)
     def test_cycle_rejected(self):
@@ -170,6 +170,25 @@ class EvidenceTests(TempRepo):
         return task,state,test,ev
     def test_valid_unit_ledger(self):
         t,s,ts,e=self.make_evidence();self.assertEqual(validate_pack.validate_acceptance(t,s,self.root,ts),[])
+    def test_valid_component_ledger(self):
+        t,s,ts,e=self.make_evidence('component')
+        self.assertEqual(validate_pack.validate_acceptance(t,s,self.root,ts),[])
+    def test_component_requires_executable_evidence(self):
+        t,s,ts,e=self.make_evidence('component')
+        e['cases'][0]['artifacts'][0]['kind']='report'
+        write_json(self.root/'evidence/Z.json',e)
+        self.assertTrue(any('executable evidence missing' in x for x in validate_pack.validate_acceptance(t,s,self.root,ts)))
+    def check_component_test_guard(self,field,value):
+        t,s,ts,e=self.make_evidence('component')
+        receipt=self.root/'evidence/gate/receipt.json'
+        rc=json.loads(receipt.read_text());rc[field]=value;write_json(receipt,rc)
+        e['cases'][0]['artifacts'][0]['sha256']=digest(receipt)
+        write_json(self.root/'evidence/Z.json',e)
+        self.assertTrue(any('no executed tests or skipped tests' in x for x in validate_pack.validate_acceptance(t,s,self.root,ts)))
+    def test_component_rejects_zero_tests(self):
+        self.check_component_test_guard('observed_test_summary_count',0)
+    def test_component_rejects_skipped_tests(self):
+        self.check_component_test_guard('observed_skips',1)
     def test_self_review_rejected(self):
         t,s,ts,e=self.make_evidence();s['reviewer']=s['author'];self.assertTrue(validate_pack.validate_acceptance(t,s,self.root,ts))
     def test_log_tamper_rejected(self):

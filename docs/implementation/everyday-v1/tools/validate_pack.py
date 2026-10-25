@@ -5,7 +5,7 @@ import argparse,json,re,sys
 from pathlib import Path
 from common import PACK,load,read_plan,packet,safe_relative,digest
 STATUSES={"not_started","ready","in_progress","submitted","reviewing","accepted","blocked_environment","blocked_specification","implemented_unqualified","failed"}
-LEVELS={"inspection","unit","application","native","physical","benchmark","build","fuzz"}
+LEVELS={"inspection","unit","component","application","native","physical","benchmark","build","fuzz"}
 RECIPES={"preflight","baseline","config","rust-policy","application-rust","storage","application","credential","helper","rp","fuzz","benchmark","native","physical","package","ci","docs","review","rebuild","release"}
 HEX=re.compile(r"^[0-9a-f]{40}$")
 
@@ -98,7 +98,7 @@ def validate_acceptance(task,record,root,tests):
                         raise ValueError(f"{tid}: failed command receipt")
                     for key in ("source_before","source_after"):
                         if rc[key]["sha"]!=sha or rc[key]["dirty"]:raise ValueError(f"{tid}: dirty/different receipt source")
-                    if expected in {"unit","application","native","physical"} and (rc.get("observed_test_summary_count",0)<=0 or rc.get("observed_skips",0)>0):
+                    if expected in {"unit","component","application","native","physical"} and (rc.get("observed_test_summary_count",0)<=0 or rc.get("observed_skips",0)>0):
                         raise ValueError(f"{tid}: no executed tests or skipped tests")
                     log=safe_relative(path.parent,rc["log"])
                     if digest(log)!=rc["log_sha256"]:raise ValueError(f"{tid}: log digest mismatch")
@@ -112,7 +112,7 @@ def validate_acceptance(task,record,root,tests):
                 elif kind=="report":report=True
                 else:raise ValueError(f"{tid}: unknown artifact kind")
             if expected in {"native","physical","benchmark"} and not qualification:raise ValueError(f"{tid}: actual environment qualification missing")
-            if expected in {"unit","application","build","fuzz"} and not command:raise ValueError(f"{tid}: executable evidence missing")
+            if expected in {"unit","component","application","build","fuzz"} and not command:raise ValueError(f"{tid}: executable evidence missing")
             if expected=="inspection" and not (report or command):raise ValueError(f"{tid}: reviewable inspection output missing")
         if record.get("source_sha")!=sha:raise ValueError("accepted state's source_sha missing or differs")
     except (OSError,KeyError,TypeError,ValueError) as e:errors.append(f"{sid}: {e}")

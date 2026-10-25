@@ -21,3 +21,9 @@ Old blank-load/script callbacks retain their preparation incarnation and cannot 
 ## Placement
 
 Internal-mode spare belongs to an inert container in the destination QQuickWindow, outside StackLayout/tabViews. Never make a cross-window scenegraph transfer part of its hot path. Window-mode spare is a separately qualified unmapped host; map only after claim. Failure to benefit from an unmapped host does not justify map/hide flicker.
+
+## Retired popup opener compatibility ownership
+
+The Qt6.11.2 delegate-parent defect may use the independently reviewed, SDK-qualified QObject metadata observer in the existing profile lifetime. Its native class-name selector is an explicit private implementation-name dependency, never origin/document/credential authority and never a class-agnostic support claim. Keep the existing exact SDK guard; unknown metadata is unqualified. Public child-tree notifications and actual matching QObject destruction must justify early release, with delayed/replacement/multiple-child/long-chain and shutdown proofs. A child-QObject-only fallback cannot be described as chain-bounded.
+
+A leased retired opener has no core row/active callbacks, is hidden/disabled and Discarded with no renderer, stays owned by the existing profile lifetime, and dies only after the relevant child delegate dependencies end. It is never a spare or a navigation/reload fallback. Keep the actual profile alive until all pages die. Acquisition uses distinct current tracked views, actual same profile/QQmlEngine/GUI thread/ready host before synchronous openIn; existing identity/cancellation and input behavior remain mandatory. This compatibility rule changes no credential boundary, user defaults, performance threshold or native/device qualification.

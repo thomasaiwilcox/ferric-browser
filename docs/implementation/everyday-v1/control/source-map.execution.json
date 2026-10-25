@@ -161,11 +161,11 @@
     }
   ],
   "planned_path_inventory": {
-    "unique_paths": 191,
-    "existing_product_paths": 71,
+    "unique_paths": 195,
+    "existing_product_paths": 74,
     "execution_pack_artifacts": 2,
     "planned_execution_outputs": 8,
-    "proposed_product_deliverables": 110,
+    "proposed_product_deliverables": 111,
     "paths": [
       {
         "path": ".github/workflows/ci.yml",
@@ -500,7 +500,10 @@
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": true
+        "history_at_product_baseline": true,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
       },
       {
         "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
@@ -515,14 +518,18 @@
           "F02a",
           "F02b1",
           "F02b2a",
-          "F02b2b"
+          "F02b2b",
+          "F02d"
         ],
         "roles": [
           "allowed",
           "read_anchor",
           "source_manifest"
         ],
-        "history_at_product_baseline": true
+        "history_at_product_baseline": true,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
       },
       {
         "path": "crates/ferric-browser-engine-qt/qml/components/FerricCredentialProviderPrompt.qml",
@@ -610,7 +617,10 @@
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": false
+        "history_at_product_baseline": false,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
       },
       {
         "path": "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
@@ -660,14 +670,18 @@
           "F02a",
           "F02b1",
           "F02b2a",
-          "F02b2b"
+          "F02b2b",
+          "F02d"
         ],
         "roles": [
           "allowed",
           "read_anchor",
           "source_manifest"
         ],
-        "history_at_product_baseline": true
+        "history_at_product_baseline": true,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
       },
       {
         "path": "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
@@ -683,13 +697,17 @@
           "F02a",
           "F02b1",
           "F02b2a",
-          "F02b2b"
+          "F02b2b",
+          "F02d"
         ],
         "roles": [
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": false
+        "history_at_product_baseline": false,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
       },
       {
         "path": "crates/ferric-browser-engine-qt/qml/components/FerricPhonePasskeyPrompt.qml",
@@ -726,7 +744,10 @@
           "read_anchor",
           "source_manifest"
         ],
-        "history_at_product_baseline": true
+        "history_at_product_baseline": true,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
       },
       {
         "path": "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
@@ -738,7 +759,8 @@
           "F03",
           "F04",
           "H03",
-          "W11"
+          "W11",
+          "F02c"
         ],
         "roles": [
           "allowed",
@@ -754,7 +776,8 @@
         "integration_head_blob": "40aef374e0217194f42e9312a512634274a450ee",
         "working_tree_file_present": true,
         "slices": [
-          "F04"
+          "F04",
+          "F02c"
         ],
         "roles": [
           "allowed",
@@ -1467,7 +1490,8 @@
         "integration_head_blob": "06ff62f5d5d786529ab371c4eb846c092ff80e5f",
         "working_tree_file_present": true,
         "slices": [
-          "F04"
+          "F04",
+          "F02c"
         ],
         "roles": [
           "allowed",
@@ -1482,7 +1506,8 @@
         "integration_head_blob": "21a179f1b035168295fba94af340c962b6918374",
         "working_tree_file_present": true,
         "slices": [
-          "F04"
+          "F04",
+          "F02c"
         ],
         "roles": [
           "allowed",
@@ -1626,13 +1651,17 @@
           "F02a",
           "F02b1",
           "F02b2a",
-          "F02b2b"
+          "F02b2b",
+          "F02d"
         ],
         "roles": [
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": true
+        "history_at_product_baseline": true,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
       },
       {
         "path": "crates/ferric-browser-engine-qt/tests/application/tst_application.h",
@@ -1642,13 +1671,17 @@
         "working_tree_file_present": true,
         "slices": [
           "F02b2a",
-          "F02b2b"
+          "F02b2b",
+          "F02d"
         ],
         "roles": [
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": true
+        "history_at_product_baseline": true,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
       },
       {
         "path": "crates/ferric-browser-engine-qt/tests/application/tst_live_titles.cpp",
@@ -1683,13 +1716,17 @@
           "F02a",
           "F02b1",
           "F02b2a",
-          "F02b2b"
+          "F02b2b",
+          "F02d"
         ],
         "roles": [
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": false
+        "history_at_product_baseline": false,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
       },
       {
         "path": "crates/ferric-browser-engine-qt/tests/everyday/benchmark_hot_pages.py",
@@ -3184,6 +3221,64 @@
           "read_anchor"
         ],
         "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/profile-lifetime/tst_lifetime.cpp",
+        "resolution": "existing_product_source",
+        "working_tree_file_present": true,
+        "slices": [
+          "F02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true,
+        "integration_head_blob": "0b3c58f851ba7c79bd0dc87b1cad37a030eff615",
+        "product_baseline_blob": "0b3c58f851ba7c79bd0dc87b1cad37a030eff615"
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/profile-lifetime/CMakeLists.txt",
+        "resolution": "existing_product_source",
+        "working_tree_file_present": true,
+        "slices": [
+          "F02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true,
+        "integration_head_blob": "d9e93069f7791e400a32957ff7e379e4a556f0f7",
+        "product_baseline_blob": "d9e93069f7791e400a32957ff7e379e4a556f0f7"
+      },
+      {
+        "path": "docs/architecture/ADR-popup-opener-lifetime.md",
+        "resolution": "proposed_product_deliverable",
+        "working_tree_file_present": false,
+        "slices": [
+          "F02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricPopupWindow.qml",
+        "resolution": "existing_product_source",
+        "working_tree_file_present": true,
+        "slices": [
+          "F02d"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true,
+        "integration_head_blob": "e76bb3d4e454fea10c10689316a0b1143573abde",
+        "product_baseline_blob": "e76bb3d4e454fea10c10689316a0b1143573abde"
       }
     ]
   },
@@ -3418,6 +3513,16 @@
       "full_validation_owner": "P06",
       "packaging_owner": "X01",
       "design_review": "evidence/P02a-a1/DESIGN_REVIEW-r1.json"
+    },
+    {
+      "id": "A30",
+      "reason": "Separate newly demonstrated native delegate-lifetime primitive and production repair from exhausted original popup implementation.",
+      "new_slices": {
+        "F02c": "T014c",
+        "F02d": "T014d"
+      },
+      "preserved_original": "F02b2a implemented_unqualified3/3; unchangedT014a qualification only after dependencies.",
+      "architecture_review": "evidence/D31-popup-lease-design/ARCHITECTURE_REVIEW.json"
     }
   ]
 }
