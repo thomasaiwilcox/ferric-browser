@@ -150,6 +150,7 @@ mod feature_state;
 mod focus_policy;
 mod hint_payload;
 mod hint_policy;
+mod hot_page_policy;
 mod hyprland;
 mod input_validation;
 mod ipc_command_decoder;
