@@ -8,15 +8,15 @@ use super::{
 };
 use ferric_browser_core::{DocumentId, PrivacyKind, ProfileId, TabId, WindowId};
 
-fn synthetic_lease(foreground: bool) -> CredentialDocumentLease {
+fn synthetic_lease_for(foreground: bool, document: &str, host: &str) -> CredentialDocumentLease {
     CredentialDocumentLease::synthetic(
-        VerifiedOrigin::synthetic_from_security_origin("https://login.example.com")
+        VerifiedOrigin::synthetic_from_security_origin(&format!("https://{host}"))
             .expect("synthetic secure origin"),
         ProfileId::from_display("profileid-2").expect("profile ID"),
         7,
         WindowId::from_display("windowid-11").expect("window ID"),
         TabId::from_display("tabid-13").expect("tab ID"),
-        DocumentId::from_display("documentid-5").expect("document ID"),
+        DocumentId::from_display(document).expect("document ID"),
         19,
         23,
         PrivacyKind::Normal,
@@ -28,9 +28,18 @@ fn synthetic_lease(foreground: bool) -> CredentialDocumentLease {
 }
 
 fn synthetic_owner(foreground: bool) -> CredentialRequestOwner {
+    synthetic_owner_with(foreground, 1, "documentid-5", "login.example.com")
+}
+
+fn synthetic_owner_with(
+    foreground: bool,
+    request_id: u64,
+    document: &str,
+    host: &str,
+) -> CredentialRequestOwner {
     CredentialRequestOwner::capture(
-        CredentialRequestId::from_sequence(1),
-        synthetic_lease(foreground),
+        CredentialRequestId::from_sequence(request_id),
+        synthetic_lease_for(foreground, document, host),
     )
 }
 
@@ -120,13 +129,22 @@ fn t053_abort_helper_and_stale_result_permutations_emit_once_for_captured_owner(
         CredentialCeremonyState, CredentialTerminalReason, HelperCompletion, TransitionOutcome,
     };
 
-    let owner = synthetic_owner(true);
+    let owner = synthetic_owner_with(true, 11, "documentid-11", "first-login.example.com");
     let mut state = CredentialCeremonyState::synthetic_with_capacity(4);
     let token = state
         .admit(candidate_for(owner.clone()), 10, 50)
         .expect("admission reserves a terminal slot");
     assert_eq!(
-        state.admit(candidate_for(synthetic_owner(true)), 10, 50),
+        state.admit(
+            candidate_for(synthetic_owner_with(
+                true,
+                12,
+                "documentid-12",
+                "busy-login.example.net",
+            )),
+            10,
+            50,
+        ),
         Err(super::CeremonyAdmissionError::Busy),
         "a concurrent request cannot replace the active owner"
     );
@@ -144,27 +162,24 @@ fn t053_abort_helper_and_stale_result_permutations_emit_once_for_captured_owner(
     assert_eq!(terminal.owner(), &owner);
     assert_eq!(terminal.reason(), CredentialTerminalReason::Aborted);
 
-    let second_owner = synthetic_owner(true);
+    let second_owner = synthetic_owner_with(true, 22, "documentid-22", "second-login.example.net");
     let second = state
         .admit(candidate_for(second_owner.clone()), 20, 50)
         .expect("slot was released by drain");
     assert_eq!(
-        state.helper_result(token, HelperCompletion::Success, 20),
+        state.helper_result(token, HelperCompletion::Success, 71),
         TransitionOutcome::StaleOrAlreadyTerminal,
-        "a queued callback from the prior flow cannot complete its successor"
+        "a stale prior token cannot mutate a fresh owner, even past its deadline"
     );
     assert!(state.has_active_ceremony());
+    assert_eq!(state.expire(second, 71), TransitionOutcome::TerminalEmitted);
     assert_eq!(
-        state.helper_result(second, HelperCompletion::Failure, 21),
-        TransitionOutcome::TerminalEmitted
-    );
-    assert_eq!(
-        state.abort(second, 22),
+        state.abort(second, 72),
         TransitionOutcome::StaleOrAlreadyTerminal
     );
-    let terminal = state.drain_one().expect("helper terminal effect");
+    let terminal = state.drain_one().expect("successor terminal effect");
     assert_eq!(terminal.owner(), &second_owner);
-    assert_eq!(terminal.reason(), CredentialTerminalReason::HelperFailed);
+    assert_eq!(terminal.reason(), CredentialTerminalReason::DeadlineExpired);
 }
 
 #[test]
@@ -174,8 +189,8 @@ fn t053_navigation_and_deadline_transitions_preserve_original_owner() {
         CredentialCeremonyState, CredentialTerminalReason, HelperCompletion, TransitionOutcome,
     };
 
-    let owner = synthetic_owner(true);
-    let unrelated_owner = synthetic_owner(false);
+    let owner = synthetic_owner_with(true, 40, "documentid-40", "current.example.com");
+    let unrelated_owner = synthetic_owner_with(false, 40, "documentid-41", "other.example.net");
     let mut clock = SyntheticCredentialClock::default();
     let mut state = CredentialCeremonyState::synthetic_with_capacity(3);
     let token = state
@@ -202,7 +217,7 @@ fn t053_navigation_and_deadline_transitions_preserve_original_owner() {
         CredentialTerminalReason::DocumentInvalidated
     );
 
-    let deadline_owner = synthetic_owner(true);
+    let deadline_owner = synthetic_owner_with(true, 41, "documentid-42", "deadline.example.org");
     let deadline_token = state
         .admit(candidate_for(deadline_owner.clone()), clock.now_ms(), 10)
         .expect("admission after drain");
@@ -229,15 +244,119 @@ fn t053_navigation_and_deadline_transitions_preserve_original_owner() {
 }
 
 #[test]
+fn t053_first_terminal_event_at_or_after_deadline_is_timeout_for_each_event_kind() {
+    use super::{
+        CredentialCeremonyState, CredentialTerminalReason, HelperCompletion, TransitionOutcome,
+    };
+
+    #[derive(Clone, Copy)]
+    enum Event {
+        Abort,
+        HelperSuccess,
+        HelperFailure,
+        Navigation,
+    }
+
+    for (index, (event, event_time)) in [
+        (Event::Abort, 110),
+        (Event::HelperSuccess, 111),
+        (Event::HelperFailure, 110),
+        (Event::Navigation, 111),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let sequence = 60 + u64::try_from(index).expect("small test index");
+        let document = format!("documentid-{sequence}");
+        let host = format!("late{sequence}.example.com");
+        let owner = synthetic_owner_with(true, sequence, &document, &host);
+        let mut state = CredentialCeremonyState::synthetic_with_capacity(2);
+        let token = state
+            .admit(candidate_for(owner.clone()), 10, 100)
+            .expect("deadline-bound admission");
+
+        let outcome = match event {
+            Event::Abort => state.abort(token, event_time),
+            Event::HelperSuccess => {
+                state.helper_result(token, HelperCompletion::Success, event_time)
+            }
+            Event::HelperFailure => {
+                state.helper_result(token, HelperCompletion::Failure, event_time)
+            }
+            Event::Navigation => state.invalidate_document(token, &owner, event_time),
+        };
+        assert_eq!(outcome, TransitionOutcome::TerminalEmitted);
+        assert!(!state.has_active_ceremony());
+        assert_eq!(state.queued_terminal_count(), 1);
+
+        assert_eq!(
+            state.abort(token, event_time + 1),
+            TransitionOutcome::StaleOrAlreadyTerminal
+        );
+        assert_eq!(
+            state.helper_result(token, HelperCompletion::Success, event_time + 1),
+            TransitionOutcome::StaleOrAlreadyTerminal
+        );
+        assert_eq!(
+            state.helper_result(token, HelperCompletion::Failure, event_time + 1),
+            TransitionOutcome::StaleOrAlreadyTerminal
+        );
+        assert_eq!(
+            state.invalidate_document(token, &owner, event_time + 1),
+            TransitionOutcome::StaleOrAlreadyTerminal
+        );
+        assert_eq!(
+            state.expire(token, event_time + 1),
+            TransitionOutcome::StaleOrAlreadyTerminal
+        );
+        assert_eq!(state.queued_terminal_count(), 1);
+
+        let terminal = state.drain_one().expect("one reserved timeout effect");
+        assert_eq!(terminal.owner(), &owner);
+        assert_eq!(terminal.reason(), CredentialTerminalReason::DeadlineExpired);
+        assert!(state.drain_one().is_none());
+    }
+}
+
+#[test]
+fn t053_helper_success_before_deadline_completes_once_for_original_owner() {
+    use super::{
+        CredentialCeremonyState, CredentialTerminalReason, HelperCompletion, TransitionOutcome,
+    };
+
+    let owner = synthetic_owner_with(true, 80, "documentid-80", "success.example.org");
+    let mut state = CredentialCeremonyState::synthetic_with_capacity(2);
+    let token = state
+        .admit(candidate_for(owner.clone()), 100, 50)
+        .expect("deadline-bound admission");
+    assert_eq!(
+        state.helper_result(token, HelperCompletion::Success, 149),
+        TransitionOutcome::TerminalEmitted
+    );
+    assert_eq!(
+        state.abort(token, 149),
+        TransitionOutcome::StaleOrAlreadyTerminal
+    );
+    assert_eq!(
+        state.helper_result(token, HelperCompletion::Failure, 149),
+        TransitionOutcome::StaleOrAlreadyTerminal
+    );
+    assert_eq!(state.queued_terminal_count(), 1);
+    let terminal = state.drain_one().expect("single helper completion effect");
+    assert_eq!(terminal.owner(), &owner);
+    assert_eq!(terminal.reason(), CredentialTerminalReason::HelperCompleted);
+}
+
+#[test]
 fn t053_terminal_outbox_reserves_capacity_before_admission_and_recovers_on_drain() {
     use super::{
         CeremonyAdmissionError, CredentialCeremonyState, CredentialTerminalReason,
         TransitionOutcome,
     };
 
-    let first_owner = synthetic_owner(true);
-    let second_owner = synthetic_owner(true);
-    let third_owner = synthetic_owner(true);
+    let first_owner = synthetic_owner_with(true, 51, "documentid-51", "first.example.com");
+    let second_owner = synthetic_owner_with(true, 52, "documentid-52", "second.example.net");
+    let third_owner = synthetic_owner_with(true, 53, "documentid-53", "third.example.org");
     let mut state = CredentialCeremonyState::synthetic_with_capacity(2);
 
     let first = state
