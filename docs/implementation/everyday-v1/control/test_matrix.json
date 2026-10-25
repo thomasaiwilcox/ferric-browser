@@ -673,33 +673,33 @@
     },
     {
       "id": "T067",
-      "slice": "P07",
+      "slice": "P07b",
       "requirement": "EF-P07",
       "level": "unit",
       "name": "Both operations implemented",
       "expected": "Create and get execute distinct real library paths and return valid response envelopes, not static fixture credentials.",
       "result": "not_run",
-      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+      "binding": "hybrid::tests::t067_create_get_real_library_envelopes plus normal helper private-pipe/CLI contract tests."
     },
     {
       "id": "T068",
-      "slice": "P07",
+      "slice": "P07b",
       "requirement": "EF-P07",
       "level": "unit",
       "name": "No implicit pairing persistence",
       "expected": "Transient flow writes no pairing/credential metadata under a disposable filesystem observer.",
       "result": "not_run",
-      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+      "binding": "hybrid::tests::t068_transient_helper_writes_no_pairing_metadata with disposable helper filesystem observer and distinct virtual-authenticator state."
     },
     {
       "id": "T069",
-      "slice": "P07",
+      "slice": "P07b",
       "requirement": "EF-P07",
       "level": "unit",
       "name": "Uncertain outcome safety",
       "expected": "Disconnect after submission does not automatically repeat registration or silently try another provider.",
       "result": "not_run",
-      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+      "binding": "hybrid::tests::t069_uncertain_create_is_not_replayed after actual virtual create/reply loss; real CableChannel source replay audit, physical tunnel lifecycle separate."
     },
     {
       "id": "T070",
@@ -1690,6 +1690,16 @@
       "expected": "Actual production supervisor executes bounded private-pipe framing/failure/cancel/reap/late-event cases using owned fake subprocesses, with an unrelated child preserved; no skipped/zero-test pass. This does not replace T061-T063 application cases.",
       "result": "not_run",
       "binding": "CTest everyday_T061a_helper_supervisor_component; credential_process_tests QtTest slot helperSupervisor, linked to current production engine supervisor."
+    },
+    {
+      "id": "T067a",
+      "slice": "P07a",
+      "requirement": "EF-P07",
+      "level": "unit",
+      "name": "Shared real library operation core and supported test device",
+      "expected": "Real pinned make/get and IDL paths execute through the same production core using supported virtual library device, dynamic responses and actual local transient QR factory without egress. No static credentials, source-only pass or physical caBLE claim.",
+      "result": "not_run",
+      "binding": "hybrid::tests::t067a_supported_virtual_channel_executes_shared_operations, plus same-package-ID/dev-license-MSRV/normal-feature build reports."
     }
   ],
   "note": "Specifications only. Nothing is marked passed at authoring."

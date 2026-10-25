@@ -1,6 +1,6 @@
 # Dependency-ordered work inventory
 
-79 execution-plan entries (72 work slices plus seven coordinator aggregates) and 169 acceptance cases. Mutable execution status is recorded in the external run ledger.
+81 execution-plan entries (73 work slices plus eight coordinator aggregates) and 170 acceptance cases. Mutable execution status is recorded in the external run ledger.
 
 | ID | Outcome | Depends on |
 |---|---|---|
@@ -45,7 +45,9 @@
 | P05b | Strict protocol and real production application route | P05a, P02 |
 | P05 | No-code helper supervision/application aggregate | P05a, P05b |
 | P06 | Implement helper RP validation, PSL and request preparation | P01, P02 |
-| P07 | Implement QR hybrid registration and assertion transport | P06 |
+| P07a | Sealed real hybrid operation core and supported virtual tests | P06, P01 |
+| P07b | Bounded helper pipe/progress/result integration | P07a, P06 |
+| P07 | No-code real hybrid/helper aggregate | P07a, P07b |
 | P08 | Enforce helper egress and Bluetooth capability policy | P06, P05 |
 | P09 | Build native provider chooser and preserve native authentication | P04, P05, F05 |
 | P10 | Implement owned QR/progress UI and accessible cancellation | P09, P07 |

@@ -2143,30 +2143,92 @@
       ]
     },
     {
-      "id": "P07",
-      "title": "Implement QR hybrid registration and assertion transport",
+      "id": "P07a",
+      "title": "Implement sealed shared hybrid operation core and supported virtual tests",
       "lane": "security",
       "depends_on": [
-        "P06"
+        "P06",
+        "P01"
       ],
       "contracts": [
+        "C00",
         "C05",
         "C06",
-        "C07"
+        "C07",
+        "C14"
       ],
       "allowed_paths": [
         "helpers/ferric-phone-auth/src/hybrid.rs",
-        "helpers/ferric-phone-auth/src/main.rs",
-        "helpers/ferric-phone-auth/src/progress.rs",
-        "helpers/ferric-phone-auth/src/errors.rs",
+        "helpers/ferric-phone-auth/src/admission.rs",
+        "helpers/ferric-phone-auth/src/lib.rs",
+        "helpers/ferric-phone-auth/Cargo.toml",
+        "helpers/ferric-phone-auth/Cargo.lock",
         "helpers/ferric-phone-auth/tests/hybrid_contract.rs"
       ],
       "steps": [
-        "Use the pinned library\u2019s actual QR-initiated hybrid API for both create and get; do not implement protocol crypto.",
-        "Report bounded QR and closed progress states; use library transient-device mode, not remembered-pairing persistence.",
-        "Convert actual registration/assertion responses through library serialization and preserve supported extensions.",
-        "Do not automatically replay an uncertain create. Document retry handling only for explicitly safe device responses.",
-        "Prepare deterministic transport seam tests; actual phone tests belong to P17."
+        "Keep the production backend as actual pinned CableQrCodeDevice::new_transient with the correct create/get operation hint, CloudAssistedOnly and real CableChannel. Factor one production-compiled prepared-request operation/IDL serialization function over the public Channel bound, used by production CableChannel and supported test HID channel; never replace production hybrid transport with HID or fake credentials.",
+        "Consume only the private PreparedCredentialRequest from real P06 admission. Extend lib/admission registration and sealed extraction without a raw-JSON QR/network bypass or public native-origin/qualified-phone constructor. Keep every origin/RP/PSL/requirements/private-data guard; no production QR presentation, production caBLE Device::channel, radio or egress before P08 policy admission. Tests may construct the transient QR object locally without presenting/emitting its raw payload and call Device::channel only on supported in-process virtual HID, with no external radio/network/config effects. An unavailable production egress capability is explicit staging, not transport qualification.",
+        "Use dev-only libwebauthn-tests from the same exact Git URL/revision9c0e5f78ac445d35dca05170efbb0afefc5a89ae to obtain its supported public Trussed virtual HID device. It executes genuine dynamic CTAP/WebAuthn/signatures through the same generic production operation code. Do not implement the inaccessible Channel trait, fork/patch private visibility, rewrite crypto, or synthesize static browser credentials.",
+        "Before code acceptance, prove actual Cargo resolve nodes use exactly one libwebauthn package ID for direct production and companion sibling edges. Audit the full new dev-only license/source/MSRV1.88/immutable-lock-Git-SHA closure. Preserve the production exact pin/default-features=false/root graph; a separate normal production build/compiler-artifact feature graph must exclude virt/test backend. Any forced normal dependency/version/permission change needs a separate reviewed decision; do not silently update it.",
+        "Implement exact Rust test hybrid::tests::t067a_supported_virtual_channel_executes_shared_operations and actual no-egress/transient factory/IDL assertions. Unit seam tests may live privately in hybrid.rs while external hybrid_contract.rs exercises normal public helper/CLI guards; all tested operation logic must compile in production, with only fixture authority/virtual device construction test-only.",
+        "Return typed bounded operation outcomes and a narrow coarse-progress callback for P07b. This added core unit case does not replace original T067-T069: actual pipe/progress/envelope/no-replay/full helper cases stay in P07b. Supported HID shared-operation unit evidence is never caBLE proximity/tunnel/disconnect or phone proof; P17/final qualification remains mandatory."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "helper-core"
+      ],
+      "recipe": "helper",
+      "requirement_id": "EF-P07",
+      "test_ids": [
+        "T067a"
+      ],
+      "max_changed_product_files": 6,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P07a.md",
+      "read_anchors": [
+        "helpers/ferric-phone-auth/src/hybrid.rs",
+        "helpers/ferric-phone-auth/src/admission.rs",
+        "helpers/ferric-phone-auth/src/lib.rs",
+        "helpers/ferric-phone-auth/Cargo.toml",
+        "helpers/ferric-phone-auth/Cargo.lock",
+        "helpers/ferric-phone-auth/tests/hybrid_contract.rs"
+      ],
+      "parent_id": "P07"
+    },
+    {
+      "id": "P07b",
+      "title": "Wire bounded hybrid progress and responses through private helper pipes",
+      "lane": "security",
+      "depends_on": [
+        "P07a",
+        "P06"
+      ],
+      "contracts": [
+        "C00",
+        "C05",
+        "C06",
+        "C07",
+        "C14"
+      ],
+      "allowed_paths": [
+        "helpers/ferric-phone-auth/src/main.rs",
+        "helpers/ferric-phone-auth/src/progress.rs",
+        "helpers/ferric-phone-auth/src/errors.rs",
+        "helpers/ferric-phone-auth/src/lib.rs",
+        "helpers/ferric-phone-auth/src/hybrid.rs",
+        "helpers/ferric-phone-auth/tests/hybrid_contract.rs",
+        "helpers/ferric-phone-auth/README.md"
+      ],
+      "steps": [
+        "Wire the actual P07a sealed operation core through helper main/lib private-pipe dispatch and typed progress/result/error serialization. Production uses the real QR transient caBLE factory and shared make/get library execution, never HID/test backend. Keep production unavailable before P08 admits an allowed route; no production QR presentation, radio, real caBLE Device::channel, tunnel or proxy bypass from unqualified policy. Local non-presented transient construction and in-process virtual HID channel use are test-only fixtures, not production permits.",
+        "Enforce closed v1 version/ID/kind/body and C06 bounds: request/terminal1MiB, totalstdout4MiB, progressline32KiB, nesting32, nativeID128ASCII, <=10acceptedprogress/s with coalescing and bounded180s deadline. Raw QR payload remains secret and locally encoded; no raw options/results/QR/stderr in ordinary logs/exports/argv/environment. Do not install verbose secret-bearing library logging.",
+        "Use library WebAuthn IDL response serialization for actual create/get outcomes, preserving supported extensions and owner/request context. Handle multiple assertion results deliberately, never blindly pick the first. Validate total encoded output before allocation/emission. Preserve native baseline behavior outside the phone feature and all separate P00/provider/UI gates.",
+        "Retain original T067/T068/T069 unit behavior and expectations unchanged. Exact Rust bindings: hybrid::tests::t067_create_get_real_library_envelopes, hybrid::tests::t068_transient_helper_writes_no_pairing_metadata, hybrid::tests::t069_uncertain_create_is_not_replayed. Tests run the same production operation/stream policy with the supported virtual authenticator, dynamic real results and controlled private sinks/CLI guards; no source-string proof or static fixture credentials.",
+        "For uncertain-create testing, inject reply loss after an actual virtual authenticator create has executed but before response delivery. Assert one submission, no automatic retry/reselect/provider fallback, and preserved virtual device side effect. Separately audit real CableChannel/tunnel replay behavior; this fault seam does not claim actual encrypted-tunnel disconnect behavior. Retry only explicitly documented safe pre-submission/device responses.",
+        "Observe helper profile/XDG/output roots under a disposable filesystem observer for transient flow; simulated authenticator state is separate, not Ferric pairing/credential persistence. Use real new_transient/default nonpersistent token settings. No phone pairing, credential-cache or physical success claim from the unit backend.",
+        "Update helper README with exact build/test commands, explicit C05 extension conformance categories, retry/uncertain outcome rules, tested unit scope, missing-policy/PSL/native/device reasons and later P08/P17 obligations. Preserve current positive/negative P06 cases as regressions. Fresh source review, serial integration and exact integrated tests precede acceptance; original parent is a no-code child aggregate only."
       ],
       "kind": "implementation",
       "locks": [
@@ -2179,17 +2241,61 @@
         "T068",
         "T069"
       ],
-      "max_changed_product_files": 8,
+      "max_changed_product_files": 7,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P07b.md",
+      "read_anchors": [
+        "helpers/ferric-phone-auth/src/main.rs",
+        "helpers/ferric-phone-auth/src/progress.rs",
+        "helpers/ferric-phone-auth/src/errors.rs",
+        "helpers/ferric-phone-auth/src/lib.rs",
+        "helpers/ferric-phone-auth/src/hybrid.rs",
+        "helpers/ferric-phone-auth/tests/hybrid_contract.rs",
+        "helpers/ferric-phone-auth/README.md"
+      ],
+      "parent_id": "P07"
+    },
+    {
+      "id": "P07",
+      "title": "Aggregate real hybrid core and bounded helper transport outcomes",
+      "lane": "security",
+      "depends_on": [
+        "P07a",
+        "P07b"
+      ],
+      "contracts": [
+        "C05",
+        "C06",
+        "C07"
+      ],
+      "allowed_paths": [],
+      "steps": [
+        "Coordinator-only no-code aggregate after independently accepted P07a real operation core and P07b private-pipe/progress/envelope outcomes. No parent implementation attempt or inherited pass.",
+        "P07a adds T067a unit evidence; P07b retains original T067/T068/T069 expected behavior and unit levels unchanged, with real production compiled operation paths and no fake credential success.",
+        "Require actual same-source dependency identity, dev closure/MSRV/license and normal production feature audits, plus exact integrated tests and independent aggregate review. No virtual HID/shared-operation test proves caBLE proximity/tunnel/disconnect or physical phones; P08 egress and P17/final qualification remain required."
+      ],
+      "kind": "aggregate",
+      "locks": [],
+      "recipe": "review",
+      "requirement_id": "EF-P07",
+      "test_ids": [],
+      "max_changed_product_files": 0,
       "max_attempts": 3,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
       "slice_file": "slices/P07.md",
-      "read_anchors": [
-        "helpers/ferric-phone-auth/src/hybrid.rs",
-        "helpers/ferric-phone-auth/src/main.rs",
-        "helpers/ferric-phone-auth/src/progress.rs",
-        "helpers/ferric-phone-auth/src/errors.rs",
-        "helpers/ferric-phone-auth/tests/hybrid_contract.rs"
+      "read_anchors": [],
+      "aggregate_of": [
+        "P07a",
+        "P07b"
+      ],
+      "aggregate_test_ids": [
+        "T067a",
+        "T067",
+        "T068",
+        "T069"
       ]
     },
     {

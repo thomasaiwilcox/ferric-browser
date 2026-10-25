@@ -2908,7 +2908,8 @@
         "working_tree_file_present": false,
         "slices": [
           "P01",
-          "P06"
+          "P06",
+          "P07a"
         ],
         "roles": [
           "allowed",
@@ -2924,7 +2925,8 @@
         "working_tree_file_present": false,
         "slices": [
           "P01",
-          "P06"
+          "P06",
+          "P07a"
         ],
         "roles": [
           "allowed",
@@ -2940,7 +2942,8 @@
         "working_tree_file_present": false,
         "slices": [
           "P01",
-          "X01"
+          "X01",
+          "P07b"
         ],
         "roles": [
           "allowed",
@@ -3032,7 +3035,8 @@
         "working_tree_file_present": false,
         "slices": [
           "P06",
-          "P11"
+          "P11",
+          "P07a"
         ],
         "roles": [
           "allowed",
@@ -3064,13 +3068,17 @@
         "slices": [
           "P06",
           "P07",
-          "P11"
+          "P11",
+          "P07b"
         ],
         "roles": [
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": false
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P07"
+        ]
       },
       {
         "path": "helpers/ferric-phone-auth/src/hybrid.rs",
@@ -3080,13 +3088,18 @@
         "working_tree_file_present": false,
         "slices": [
           "P07",
-          "P08"
+          "P08",
+          "P07a",
+          "P07b"
         ],
         "roles": [
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": false
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P07"
+        ]
       },
       {
         "path": "helpers/ferric-phone-auth/src/main.rs",
@@ -3097,13 +3110,17 @@
         "slices": [
           "P01",
           "P06",
-          "P07"
+          "P07",
+          "P07b"
         ],
         "roles": [
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": false
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P07"
+        ]
       },
       {
         "path": "helpers/ferric-phone-auth/src/network.rs",
@@ -3127,13 +3144,17 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "P07"
+          "P07",
+          "P07b"
         ],
         "roles": [
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": false
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P07"
+        ]
       },
       {
         "path": "helpers/ferric-phone-auth/src/protocol.rs",
@@ -3172,13 +3193,18 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "P07"
+          "P07",
+          "P07a",
+          "P07b"
         ],
         "roles": [
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": false
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P07"
+        ]
       },
       {
         "path": "helpers/ferric-phone-auth/tests/resource_caps.rs",
@@ -3319,7 +3345,9 @@
         "resolution": "proposed_product_deliverable",
         "working_tree_file_present": false,
         "slices": [
-          "P06"
+          "P06",
+          "P07a",
+          "P07b"
         ],
         "roles": [
           "allowed",
@@ -3605,6 +3633,17 @@
       "source_audit": "evidence/D32-P05-scope/AUDIT.json",
       "coordinator_targeted_anchors": "evidence/A32-a1/COORDINATOR_ANCHORS.json",
       "preserved": "Original cases/levels/expectations, all gates and three-attempt child limits; no P05 implementation dispatched under oversize scope."
+    },
+    {
+      "id": "A33",
+      "reason": "Real P07 wiring needs lib/admission plus helper Cargo/lock dev support beyond original five paths. Split real shared-core/API/dev graph and actual helper pipe/progress integration without lowering original cases.",
+      "new_slices": {
+        "P07a": "additional T067a unit",
+        "P07b": "unchanged T067-T069 unit"
+      },
+      "design_review": "evidence/D35-P07-test-design/REVIEW-r2.json",
+      "design_proposal": "evidence/D35-P07-test-design/PROPOSAL-r2.json",
+      "mandatory_conditions": "Actual one-Git-package identity, full dev license/MSRV/locked Git closure, no virt/test graph in normal production build, unchanged real Cable factory and P08/P17 gates."
     }
   ]
 }
