@@ -25,3 +25,5 @@ The full original proposal is in reference/ORIGINAL_PROPOSAL.md. Contracts and c
 Machine-readable EF-* requirements map one outcome to an accountable slice; each work slice maps to its owned concrete T* acceptance cases; coordinator aggregates cite their children. Each case must be bound to actual implementation tests or specified independent/native/device evidence. Task-level cases are a minimum, not a replacement for the detailed edge cases within the contracts.
 
 Source-driven amendments: current extracted QML controllers, shared profile lifetime registry, captured EngineRequests dispatch, Qt6.11.2/private download-source guard, Widgets/KF6WindowSystem6.28, helper Rust1.88 versus root1.85, and existing per-window hints. These are included in BASELINE and S00 reuse decisions.
+
+A29: T052 owns closed native authority and pending owner-bound RP candidates. P06/T064–T065 retains complete library/PSL authorization, HTTPS/top-level gates, parent/sibling/public-suffix/IDN/default-port cases and missing-data refusal before QR/network; X01 stages and records maintained PSL package/data provenance. No RP or device qualification is moved into pure candidate tests.

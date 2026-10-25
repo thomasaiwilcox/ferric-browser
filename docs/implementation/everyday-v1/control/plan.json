@@ -1568,7 +1568,7 @@
     },
     {
       "id": "P02a",
-      "title": "Implement closed credential authority and RP admission types",
+      "title": "Implement closed credential owner and pending RP candidate types",
       "lane": "core",
       "depends_on": [
         "F00",
@@ -1576,6 +1576,7 @@
       ],
       "contracts": [
         "C04",
+        "C07",
         "C08"
       ],
       "allowed_paths": [
@@ -1585,10 +1586,12 @@
         "crates/ferric-browser-application/src/credential_tests.rs"
       ],
       "steps": [
-        "Implement only closed verified-origin/document-lease/request-owner types and RP binding. No page options may construct, replace or overwrite native authority fields.",
-        "Keep ownership fields private; resolve ID construction and sibling access through narrow crate-private methods instead of widening fields. Use test-only synthetic lease constructors; production qualification remains Unqualified by default.",
-        "Add actual T052 authority-overwrite and RP/origin mismatch/positive admission tests. Do not import the entire failed P02 candidate or its T053/T054 tests. Ceremony state is later P02b; production Qt bridge/provider is not authorized.",
-        "Run focused application-rust tests and Clippy with exact-source receipts after independent source review. Preserve root MSRV and dependencies."
+        "Implement closed native verified-origin/document-lease/request-owner types. Page options cannot construct, replace or overwrite captured native authority. No production native lease constructor until qualified engine boundary integration.",
+        "Bind bounded raw optional RP ID and operation to the immutable captured owner as OriginBoundRpCandidate with explicit pending status. A candidate never means RP authorization, admission or a prepared credential. Preserve raw IDN/parent RP strings for the pinned helper; no exact-host-only rejection or ad hoc suffix authorization.",
+        "Use private fields and narrow crate-private ID/owner accessors. Synthetic origin/lease construction is cfg(test) only; no public production qualification constructor or validated boolean.",
+        "T052 proves immutable captured owner/origin/document binding and pending status for parent, sibling, public-suffix and IDN candidates; it does not authorize any of those RPs. Actual parent acceptance, public-suffix/sibling rejection and IDN/default-port normalization remain mandatory P06/T064 using maintained PSL and pinned library.",
+        "No candidate/raw request can reach a QR/network/provider entrypoint directly. P06 prepares only from native captured HTTPS/top-level facts with OriginValidation::Validate and RelatedOrigins::Disabled, producing a private helper-only PreparedCredentialRequest. Missing or unusable PSL fails closed before side effects; X01 owns packaging provenance and staging.",
+        "Run focused exact-source application tests, formatting and Clippy after fresh review and coordinator lease. Existing P00 and production/provider gates remain unchanged; no native/phone qualification follows from T052."
       ],
       "kind": "implementation",
       "locks": [
@@ -1622,6 +1625,7 @@
       ],
       "contracts": [
         "C04",
+        "C07",
         "C08"
       ],
       "allowed_paths": [
@@ -1634,7 +1638,8 @@
         "Implement deterministic ceremony owner/token/deadline transitions: abort, timeout, navigation invalidation and helper result permutations emit one terminal effect for the original owner only.",
         "Use existing closed ID/lease accessors; no page-supplied authority or current-active-tab rebinding. Fix deterministic clock mutability within the test seam.",
         "Define bounded terminal-effect overflow semantics before accepting requests: reserve capacity or reject admission before ownership. Never silently drop a previously accepted ceremony terminal effect. Exercise saturation and drain recovery.",
-        "Add T053 executable order/race/stale result/deadline/saturation assertions and rerun T052. No Qt/device qualification or production credential delivery claim."
+        "Add T053 executable order/race/stale result/deadline/saturation assertions and rerun T052. No Qt/device qualification or production credential delivery claim.",
+        "An RP candidate is pending, not provider authority. Preserve captured native owner while helper validates; only the P06 private prepared-request boundary may feed helper QR/network. Test-only synthetic transitions cannot mint production qualification. No RP-validated page boolean or native HTTPS/top-level relaxation."
       ],
       "kind": "implementation",
       "locks": [

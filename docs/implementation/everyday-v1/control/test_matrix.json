@@ -529,7 +529,7 @@
       "name": "Closed authority types",
       "expected": "Untrusted options cannot construct or overwrite verified origin/profile/document lease.",
       "result": "not_run",
-      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+      "binding": "Closed owner/lease authority and explicitly pending bounded RP candidate tests. Full parent RP, public suffix/sibling, IDN/default port authorization remains P06 T064/T065 via pinned library and maintained PSL before QR/network; no candidate is an admitted credential."
     },
     {
       "id": "T053",

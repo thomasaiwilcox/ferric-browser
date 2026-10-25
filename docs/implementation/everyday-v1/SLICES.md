@@ -34,7 +34,7 @@
 | P00c | Resolve the feasible public Qt API route and document limits | P00b |
 | P01 | Create separately pinned helper build and dependency inventory | S00 |
 | P02 | Aggregate credential policy outcomes | P02a, P02b, P02c |
-| P02a | Implement closed credential authority and RP admission types | F00, S00 |
+| P02a | Implement closed credential owner and pending RP candidate types | F00, S00 |
 | P02b | Implement exactly-once credential ceremony terminal transitions | P02a |
 | P02c | Qualify credential admission and provider isolation | P02b |
 | P03 | Implement production document-bound native credential bridge | P00, P02, F03 |

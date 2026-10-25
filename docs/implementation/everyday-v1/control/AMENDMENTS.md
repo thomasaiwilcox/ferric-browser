@@ -196,3 +196,12 @@
 - **Children:** P02a/T052 closed native-authority types/RP binding depends on F00/S00; P02b/T053 terminal state and bounded non-dropping effects depends on P02a; P02c/T054 admission/provider/profile isolation depends on P02b. Shared four original paths and credential-policy/application-interface locks are serial.
 - **Gate effect:** P02 becomes coordinator-only aggregate, only after all children pass independent review/exact-source tests. P03 keeps P00 and P02 prerequisites; helper policy dependents retain P02. No native fact is synthesized from pure tests. Defaults/security/phone qualification unchanged.
 - **Metadata:** initial ledger, test owners, source-map owner arrays, inventory and traceability updated. Live parent failure and counters unchanged until reviewed aggregation.
+
+
+## A29 — Keep owner-bound RP candidates pending until helper authorization
+
+- **Status:** proposed; independent exact-content review required. Prepared in an isolated coordinator worktree while integration native gates run; no integration source mutation.
+- **Trigger:** P02a attempt1 exact-host equality rejected valid parent RP IDs and excluded IDNs. Source review and independently accepted design are preserved in external evidence/P02a-a1; design review r1 SHA256 12ee385c260c7d8a57f96303c74be29ffbdd855ab7317c4babbd6f20b6a4f49e.
+- **Boundary:** add C07 to P02a/P02b. T052 binds raw bounded options to an immutable native owner and returns an explicitly pending, non-authorizing candidate. No suffix heuristic, exact-host restriction, validated boolean, or production authority from synthetic tests.
+- **Full scope preserved:** P06/T064/T065 must use the pinned libwebauthn prepare path plus maintained PSL, explicit native HTTPS/top-level gates (its library HTTP-localhost allowance is not production policy), and RelatedOriginsDisabled before QR/network. Parent acceptance, public-suffix/sibling rejection, IDN/default-port normalization and unavailable PSL are mandatory. Only helper-private prepared requests feed transport. X01 already owns PSL packaging/staging provenance. No production/provider gate is removed.
+- **Paths/dependencies/history:** unchanged four P02 application paths and locks; no new dependency. P03 still requires P00 and P02. P02 failed3/3 history and P02a attempt1 source rejection unchanged; this corrects scope before attempt2, without resetting any counter. Existing P06 proposed paths are already authorized; no amendment is needed solely to create them.

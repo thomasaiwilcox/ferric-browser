@@ -3410,6 +3410,14 @@
         "crates/ferric-browser-application/src/credential_tests.rs"
       ],
       "parent_history_preserved": "P02 failed attempts3/3, candidate3b44e6ee5c015c02ad51761e409e36b62a8b16d0"
+    },
+    {
+      "id": "A29",
+      "reason": "C07 pending RP candidate boundary; no new source paths, dependency or lock change.",
+      "owner": "P02a",
+      "full_validation_owner": "P06",
+      "packaging_owner": "X01",
+      "design_review": "evidence/P02a-a1/DESIGN_REVIEW-r1.json"
     }
   ]
 }
