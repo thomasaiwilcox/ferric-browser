@@ -196,6 +196,7 @@ class ApplicationTests final : public QObject {
     void productPolishPopupSourceClose_data();
     void productPolishPopupSourceClose();
     void productPolishPopupCommands();
+    void productPolishPopupCommandsOpenerIdentity();
     void productPolishSecondaryHints_data();
     void productPolishSecondaryHints();
     void productPolishNewWindowRouting_data();

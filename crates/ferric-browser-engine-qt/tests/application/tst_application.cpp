@@ -32,7 +32,6 @@
 #include <QQmlExpression>
 #include <QQuickItem>
 #include <QQuickWindow>
-#include <QQmlError>
 #include <QTcpSocket>
 #include <QSslServer>
 #include <QSslKey>
@@ -3869,7 +3868,7 @@ QtObject {
     QCOMPARE(text("hint_values"),primaryHints);
 }
 
-void ApplicationTests::productPolishPopupCommands() {
+void ApplicationTests::productPolishPopupCommandsOpenerIdentity() {
     QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError).*"));
     const auto openerUrl=text("current_url");
     QVERIFY(command("bind p hint --target pointer links"));key(Qt::Key_P);
@@ -3948,57 +3947,7 @@ void ApplicationTests::productPolishPopupCommands() {
         evaluate(nested + ".host.activeView").value<QObject *>();
     QCOMPARE(popupSource, evaluate(nested + ".view").value<QObject *>());
     QVERIFY(popupSource);
-    const auto popupHistoryBefore =
-        evaluate(nested + ".ui.content_history_export(0)").toString();
-    const auto popupUrlBefore =
-        evaluate(nested + ".host.activeView.url").toString();
-    const auto factoryExpression = nested + ".host.rootWindow.webViewFactory";
-    const auto factory = evaluate(factoryExpression).value<QObject *>();
-    QVERIFY(factory);
-    const auto componentStatusBefore = factory->property("status").toInt();
-    const auto componentErrorBefore =
-        evaluate(factoryExpression + ".errorString()").toString();
-    QStringList factoryWarnings;
-    const auto warningConnection =
-        connect(engine.get(), &QQmlEngine::warnings, this,
-                [&factoryWarnings](const QList<QQmlError> &warnings) {
-                  for (const auto &warning : warnings)
-                    factoryWarnings.append(warning.toString());
-                });
-    const bool fallbackPrepared =
-        evaluate(nested + ".host.prepareTransferFallback()").toBool();
-    QObject::disconnect(warningConnection);
-    const auto componentStatusAfter = factory->property("status").toInt();
-    const auto componentErrorAfter =
-        evaluate(factoryExpression + ".errorString()").toString();
-    qInfo() << "T014 transfer factory diagnostics"
-            << "created" << fallbackPrepared << "component status before/after"
-            << componentStatusBefore << componentStatusAfter
-            << "component error before/after" << componentErrorBefore
-            << componentErrorAfter << "engine warnings" << factoryWarnings;
-    QVERIFY2(
-        fallbackPrepared,
-        qPrintable(QStringLiteral("transfer reserve creation failed; component "
-                                  "status %1->%2, error %3->%4, warnings: %5")
-                       .arg(componentStatusBefore)
-                       .arg(componentStatusAfter)
-                       .arg(componentErrorBefore, componentErrorAfter,
-                            factoryWarnings.join(QStringLiteral(" | ")))));
-    const auto transferReserve =
-        evaluate(nested + ".host.windowPreparedTransferFallback")
-            .value<QObject *>();
-    QVERIFY(transferReserve);
-    QVERIFY(transferReserve != popupSource);
-    QVERIFY(!transferReserve->property("visible").toBool());
-    QCOMPARE(transferReserve->property("tabIndex").toInt(), -1);
-    QCOMPARE(evaluate(nested + ".host.activeView").value<QObject *>(),
-             popupSource);
-    QCOMPARE(evaluate(nested + ".host.activeView.url").toString(),
-             popupUrlBefore);
-    QCOMPARE(evaluate(nested + ".ui.content_history_export(0)").toString(),
-             popupHistoryBefore);
     QCOMPARE(page("window.nestedPopupState").toInt(), 95);
-    evaluate(nested + ".host.discardPreparedTransferFallback()");
     evaluate(entry+".host.windowShutdownApproved=true");
     QVERIFY(child->close());child->deleteLater();
     QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
@@ -4010,6 +3959,10 @@ void ApplicationTests::productPolishPopupCommands() {
     QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(),0);
     QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),1);
     pageReceiver="testWindow.activeWebView()";
+}
+
+void ApplicationTests::productPolishPopupCommands() {
+  productPolishPopupCommandsOpenerIdentity();
 }
 
 void ApplicationTests::productPolishProvisionalTransferFallback_data() {

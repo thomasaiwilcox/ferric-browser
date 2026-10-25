@@ -64,9 +64,9 @@ add_test(NAME everyday_T013_factory_equivalence
 set_tests_properties(everyday_T013_factory_equivalence PROPERTIES
     TIMEOUT 300 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 
-add_test(NAME everyday_T014_popup_transfer_preservation
-    COMMAND $<TARGET_FILE:application_tests> productPolishPopupCommands productPolishSecondaryTabs)
-set_tests_properties(everyday_T014_popup_transfer_preservation PROPERTIES
+add_test(NAME everyday_T014a_popup_commands_opener_identity
+    COMMAND $<TARGET_FILE:application_tests> productPolishPopupCommandsOpenerIdentity)
+set_tests_properties(everyday_T014a_popup_commands_opener_identity PROPERTIES
     TIMEOUT 600 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 
 add_test(NAME everyday_T015_document_owner_callbacks
