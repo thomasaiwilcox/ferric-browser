@@ -1220,7 +1220,8 @@
         "working_tree_file_present": false,
         "slices": [
           "P05",
-          "P05a"
+          "P05a",
+          "P05b"
         ],
         "roles": [
           "allowed",
@@ -1239,7 +1240,8 @@
         "working_tree_file_present": false,
         "slices": [
           "P05",
-          "P05a"
+          "P05a",
+          "P05b"
         ],
         "roles": [
           "allowed",
@@ -3653,6 +3655,19 @@
       "reason": "Read-only operation-kind accessor on sealed PreparedCredentialRequest supplies correct freshQRhint; errors remain implemented in existing hybrid/lib files, so unused errors.rs is not a writable path.",
       "limits": "Seven allowed paths/max7 preserved; all original T067-T069 unit requirements and addedT067a regression, contracts/dependencies/security/P08/P17 gates unchanged. Prior pre-amendment edit/scope-review oversight recorded externally; no acceptance before approved amendment.",
       "attempts": "P07b attempt2 retained; no reset or extra implementation attempt."
+    },
+    {
+      "id": "A35",
+      "slice": "P05b",
+      "old_max_changed_product_files": 6,
+      "new_max_changed_product_files": 8,
+      "added_allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/credential_process.cpp",
+        "crates/ferric-browser-engine-qt/src/credential_process.h"
+      ],
+      "reason": "Actual std::function-native Events have no existing Rust CXX factory/callback adapter; existing compiled CPP/header plus six current Rust/application files fit global eight-path cap. D37 source audit and D38 corrected pure generator proof support the public API direction only.",
+      "native_proof_required": "Actual native ABI/GUI-thread ownership/cancellation/reentrancy/stale result and original application T061-T063 plus T061a regressions; real deadline path additionally tested.",
+      "unchanged": "Dependencies, locks, original expected cases and application levels, all guards/P00/P03/physical gates and counters unchanged; no implementation before P05a acceptance or plan review."
     }
   ]
 }

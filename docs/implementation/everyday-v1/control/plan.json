@@ -2005,7 +2005,9 @@
         "crates/ferric-browser-engine-qt/src/lib.rs",
         "crates/ferric-browser-engine-qt/src/bridge.rs",
         "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process_app.cpp",
-        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/src/credential_process.cpp",
+        "crates/ferric-browser-engine-qt/src/credential_process.h"
       ],
       "steps": [
         "Register the real Rust protocol/controller modules in lib.rs and the existing single bridge.rs CXX-Qt interface. Wire the P05a production supervisor through the actual BrowserUi/QML/application route; do not create parallel process/state infrastructure or bypass the accepted owner-bound C08 actor.",
@@ -2013,7 +2015,9 @@
         "Capture original request ID/document/profile generation/host and process incarnation; preserve deadline/cancel/teardown once-only behavior and bounded rejection. Keep production admission unqualified until P00/P03 and all separate gates pass; no public synthetic native-origin or qualified-phone constructor.",
         "Use the P05a internal test-helper launch authority only for controlled process-failure/race/error tests. Its fake result is never RP/transport/phone proof and must not enable ordinary phone admission. Test the actual production-compiled supervisor, controller and QML/app route with disposable profile/fixture roots and sandbox; a component-only or source-string result cannot satisfy the application cases.",
         "Register exact CTests everyday_T061_helper_process_failures -> QtTest processFailures, everyday_T062_helper_owned_cancel -> ownedCancellation, everyday_T063_helper_secret_free_diagnostics -> secretFreeDiagnostics in the new existing-harness test target credential_process_app_tests from tst_credential_process_app.cpp. Preserve T061/T062/T063 expected behavior and application levels unchanged, plus rerun T061a as affected regression.",
-        "Prove actual startup failure/crash/truncated/oversized/output-after-terminal settlement without GUI hangs; cancel only this child and reap it with late results ignored; inject secret markers into stdin/stdout/stderr and verify ordinary logs/exports/argv contain none. Return fresh independently reviewed exact integrated evidence; P00, helper transport and physical qualification remain separate."
+        "Prove actual startup failure/crash/truncated/oversized/output-after-terminal settlement without GUI hangs; cancel only this child and reap it with late results ignored; inject secret markers into stdin/stdout/stderr and verify ordinary logs/exports/argv contain none. Return fresh independently reviewed exact integrated evidence; P00, helper transport and physical qualification remain separate.",
+        "Use the already compiled native credential_process.cpp/h for the private CXX factory and owned opaque Rust callback adapter. The same pinned CXX/CXX-Qt generator accepts Box<CredentialEvents> and per-owner CxxQtThread queue support; this is generation-only evidence, not native ABI/lifetime proof. Keep callback context weak to the UI with immutable owner/process incarnation, no global credential registry, raw-frame QML invokable or public helper/path/native-origin qualifier. Native compilation and actual application tests must prove ABI, GUI-thread delivery, teardown/reentrancy/stale results before acceptance; stop for a genuine amendment if a ninth file or dependency/build registration change is needed.",
+        "Exercise the real native deadline timer expiry, owned termination/grace/kill/reap and once-only settlement in application processFailures. A fixed shorter private native test time configuration may drive the same production timer path; production remains bounded at 180 seconds, with no public/QML/page/environment timeout override. T061a did not runtime-qualify its deadline branch; preserve that limitation until this proof passes."
       ],
       "kind": "implementation",
       "locks": [
@@ -2029,7 +2033,7 @@
         "T062",
         "T063"
       ],
-      "max_changed_product_files": 6,
+      "max_changed_product_files": 8,
       "max_attempts": 3,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
@@ -2040,7 +2044,9 @@
         "crates/ferric-browser-engine-qt/src/lib.rs",
         "crates/ferric-browser-engine-qt/src/bridge.rs",
         "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process_app.cpp",
-        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/src/credential_process.cpp",
+        "crates/ferric-browser-engine-qt/src/credential_process.h"
       ],
       "parent_id": "P05"
     },

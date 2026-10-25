@@ -617,7 +617,7 @@
       "requirement": "EF-P05",
       "level": "application",
       "name": "Process failure cases",
-      "expected": "Start/crash/truncated/oversized/output-after-terminal helper cases settle correctly without UI hangs.",
+      "expected": "Start/crash/truncated/oversized/output-after-terminal helper cases settle correctly without UI hangs. Real native deadline expiry also settles once and reaps through the actual application route under private fixed test time configuration; production timeout is not increased.",
       "result": "not_run",
       "binding": "CTest everyday_T061_helper_process_failures; credential_process_app_tests QtTest slot processFailures through actual production controller/QML/app route."
     },
