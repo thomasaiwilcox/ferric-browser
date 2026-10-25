@@ -71,11 +71,6 @@ impl VerifiedOrigin {
     pub fn origin(&self) -> &str {
         &self.origin
     }
-
-    #[must_use]
-    pub fn rp_id(&self) -> &str {
-        &self.rp_id
-    }
 }
 
 fn valid_host(host: &str) -> bool {
