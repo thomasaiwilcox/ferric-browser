@@ -234,8 +234,13 @@ impl HotPageCoordinator {
 
     pub(super) fn evict(&self, reason: EvictionReason) {
         let mut inner = self.0.lock().expect("hot-page policy mutex poisoned");
-        inner.state = State::Evicted { reason };
         inner.requests_pending = false;
+        // Eviction events apply to the speculative spare, not an in-flight
+        // adoption. The claimed token retains the sole permit until its owner
+        // completes the claim.
+        if !matches!(inner.state, State::Claimed { .. }) {
+            inner.state = State::Evicted { reason };
+        }
     }
 
     pub(super) fn take_replenish_request(&self) -> bool {

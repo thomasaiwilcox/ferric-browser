@@ -88,6 +88,54 @@ fn t025_many_windows_and_requests_grant_only_one_spare_then_refill_after_claim()
 }
 
 #[test]
+fn t025_claimed_permit_survives_evictions_until_matching_finish() {
+    let policy = HotPageCoordinator::default();
+    let env = key(6);
+    let token = started(policy.request_prepare(env.clone(), true, 0));
+    assert!(policy.mark_ready(token, 0));
+    assert_eq!(policy.claim(&env, true), ClaimResult::ReadyHit { token });
+
+    let reasons = [
+        EvictionReason::Timeout,
+        EvictionReason::IncompatibleEnvironment,
+        EvictionReason::ProfileClosed,
+        EvictionReason::HostClosed,
+        EvictionReason::ConfigurationChanged,
+        EvictionReason::PrivacyChanged,
+        EvictionReason::PartitionChanged,
+        EvictionReason::RendererFailure,
+        EvictionReason::GraphicsFailure,
+        EvictionReason::MemoryPressure,
+        EvictionReason::Shutdown,
+        EvictionReason::Contaminated,
+    ];
+    for reason in reasons {
+        policy.evict(reason);
+        assert_eq!(
+            policy.request_prepare(env.clone(), true, 1),
+            PrepareDecision::Suppressed,
+            "{reason:?} cannot release a claimed permit"
+        );
+    }
+
+    assert!(!policy.finish_claim(token.wrapping_add(1)));
+    assert_eq!(
+        policy.request_prepare(env.clone(), true, 1),
+        PrepareDecision::Suppressed,
+        "a stale finish cannot release the claimed permit"
+    );
+    assert!(policy.finish_claim(token));
+
+    let refill = started(policy.request_prepare(env.clone(), true, 2));
+    assert_ne!(refill, token);
+    assert_eq!(
+        policy.request_prepare(env, true, 2),
+        PrepareDecision::AlreadyPreparing,
+        "matching finish releases exactly one preparation permit"
+    );
+}
+
+#[test]
 fn preparation_expiry_allows_two_retries_then_suppresses_stale_callbacks() {
     let policy = HotPageCoordinator::default();
     let env = key(6);
