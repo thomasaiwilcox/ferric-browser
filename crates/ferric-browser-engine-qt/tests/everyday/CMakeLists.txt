@@ -97,3 +97,5 @@ add_test(NAME everyday_T061c_helper_native_rust_bridge
   COMMAND credential_process_bridge_tests nativeRustBridge)
 set_tests_properties(everyday_T061c_helper_native_rust_bridge PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+
+target_include_directories(everyday_T061a_helper_supervisor_component PRIVATE "${FERRIC_ENGINE_CXX_INCLUDE_DIR}")
