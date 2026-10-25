@@ -157,6 +157,7 @@ ApplicationWindow {
     property var pendingFileDialogView: null
     property string pendingFileDialogLeaseToken: ""
     property bool profileBootstrapComplete: false
+    property bool popupViewCreationReady: false
     property bool runtimeReleased: false
     property bool bindingHelpVisible: false
     property bool bindingHelpCreated: false
@@ -1293,7 +1294,8 @@ function onContext_workspaceChanged() {
     }
     FerricTabViewController {
         id: secondaryTabController
-        ready: secondaryWindow.profileBootstrapComplete && !secondaryWindow.runtimeReleased
+        ready: (secondaryWindow.profileBootstrapComplete
+                || secondaryWindow.popupViewCreationReady) && !secondaryWindow.runtimeReleased
         browserUi: secondaryUi
         browserHost: secondaryWindow
         tabs: secondaryTabs
@@ -1831,7 +1833,15 @@ function onContext_workspaceChanged() {
         // Popup visibility is bound to profileBootstrapComplete. Keep the
         // native window hidden until WebEngine has transferred its live
         // NewWindowRequest into the newly created page below.
-        if (!windowPopup) profileBootstrapComplete = true
+        if (windowPopup) {
+            if (!windowPopupRequest) {
+                rejectPopupAdmission()
+                return
+            }
+            popupViewCreationReady = true
+        } else {
+            profileBootstrapComplete = true
+        }
         secondaryWindow.syncTabModel()
         if (!secondaryWindow.registerWindowOwner()) {
             if (windowPopup) rejectPopupAdmission()
