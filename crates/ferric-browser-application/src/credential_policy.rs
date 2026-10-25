@@ -73,6 +73,7 @@ impl VerifiedOrigin {
     }
 }
 
+#[cfg(test)]
 fn valid_host(host: &str) -> bool {
     !host.is_empty()
         && host.len() <= 253
@@ -94,6 +95,9 @@ fn valid_host(host: &str) -> bool {
 /// No production constructor is exposed until the engine boundary can prove
 /// the source of each fact. Tests use an explicit synthetic constructor.
 #[derive(Clone, Debug, Eq, PartialEq)]
+// Keep each browser-derived eligibility fact explicit; combining these facts
+// would make the captured lease less auditable at this security boundary.
+#[allow(clippy::struct_excessive_bools)]
 pub struct CredentialDocumentLease {
     origin: VerifiedOrigin,
     profile: ProfileId,
