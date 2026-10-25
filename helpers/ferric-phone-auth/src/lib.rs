@@ -13,6 +13,7 @@ mod protocol;
 use admission::prepare_request;
 use protocol::parse_envelope;
 use serde_json::{Value, json};
+use std::io::{self, Write};
 
 pub const MAX_REQUEST_BYTES: usize = protocol::MAX_REQUEST_BYTES;
 
@@ -25,9 +26,22 @@ pub fn process_request(line: &[u8]) -> Value {
     };
     let id = envelope.id.clone();
     match prepare_request(envelope) {
-        Ok(prepared) => error_response(Some(prepared.id()), "transport_unavailable"),
+        Ok(prepared) => {
+            let id = prepared.id().to_owned();
+            match hybrid::transient_device(&prepared) {
+                Ok(_private_qr_device) => error_response(Some(&id), "transport_unavailable"),
+                Err(_) => error_response(Some(&id), "unavailable"),
+            }
+        }
         Err(error) => error_response(Some(&id), error.code()),
     }
+}
+
+/// Processes a framed private-pipe request and writes its bounded terminal
+/// envelope through the same serializer used by hybrid progress/results.
+pub fn process_request_to_pipe(line: &[u8], writer: &mut impl Write) -> io::Result<()> {
+    let response = process_request(line);
+    hybrid::write_terminal(&response, |encoded| writer.write_all(encoded))
 }
 
 fn error_response(id: Option<&str>, code: &str) -> Value {

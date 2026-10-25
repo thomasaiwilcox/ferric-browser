@@ -28,6 +28,10 @@ impl PreparedCredentialRequest {
         &self.id
     }
 
+    pub(crate) fn is_create(&self) -> bool {
+        matches!(self.request, PreparedRequest::Create(_))
+    }
+
     pub(crate) fn into_parts(self) -> (String, PreparedRequest) {
         (self.id, self.request)
     }

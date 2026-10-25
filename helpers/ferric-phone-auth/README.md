@@ -1,11 +1,13 @@
-# Ferric phone-auth helper (protocol placeholder)
+# Ferric phone-auth helper
 
-This is a separate Cargo workspace. It is not part of Ferric's root Cargo graph,
-and it does not implement phone authentication. The executable reads one bounded
-newline-delimited request and always returns a coarse error; valid `create` and
-`get` requests receive `not_implemented`. Unknown versions, operations, fields,
-malformed JSON and over-limit input fail closed. There is no QR generation,
-Bluetooth scan, WebAuthn ceremony, network request or success response in P01.
+This is a separate Cargo workspace and is not part of Ferric's root Cargo graph.
+It validates and prepares bounded create/get requests, constructs the pinned
+library's transient caBLE QR device, and contains a shared operation and
+private-pipe serializer exercised by the supported virtual HID test backend.
+Production still returns `transport_unavailable` after preparation: P08 must
+admit a real route before QR progress, channel execution, or egress is enabled.
+The test backend does not represent a phone, Bluetooth transport, or physical
+authenticator.
 
 ## Pin and API inventory
 
@@ -97,10 +99,63 @@ inventory, not a complete legal compatibility, notice, or relinking review.
 Keep unreviewed third-party licenses outside the allowlist. The helper's own
 GPL-3.0-or-later project license is explicitly allowed by `deny.toml`.
 
+## Protocol and operation behavior
+
+Production admission requires HTTPS, a usable system Public Suffix List, and
+the pinned library's strict origin/RP checks with related origins disabled.
+The transient QR object uses nonpersistent settings and is never logged,
+emitted, or displayed in this slice. Production does not open a caBLE channel,
+network connection, or HID channel.
+
+Pipe messages use version 1 `{v,id,kind,body}` envelopes. Status is a closed
+enum (`submitted`, `completed`); a result or coarse error is terminal. Request
+and terminal lines are limited to 1 MiB, progress lines to 32 KiB, stdout to
+4 MiB, JSON depth to 32, native IDs to 128 ASCII bytes, and ceremonies to 180
+seconds. Progress coalesces repeated or too-fast states and is capped at 10
+accepted updates per second. Output is serialized into a bounded buffer before
+the sink sees it. Secret-bearing values and stderr are not logged.
+
+The operation core uses the pinned library's make/get calls and IDL
+serializers. Get results preserve every assertion returned by the library;
+the helper never selects the first assertion arbitrarily. An output failure
+after device submission is uncertain and never causes an automatic retry,
+provider reselection, or fallback.
+
+### C05 extension conformance in this slice
+
+| Category | Scope |
+| --- | --- |
+| Passed to the pinned parser and preserved by its response serializer | The P06 allowlisted fields represented by the pinned request/response types; this slice adds no independent extension-verifier claim. |
+| Optional ignored with no success claim | None newly ignored by P07b. |
+| Native-only | None newly classified by P07b. |
+| Rejected | Unknown/unmapped fields, including `hmacGetSecret` because the pinned prepared request does not retain it. |
+| Verified end to end here | None; P07b tests create/get envelopes, not extension semantics or independent RP verification. |
+
+## Build and test
+
+From this directory, with the assigned Rust 1.88 toolchain and the official
+P06 fixture at `builds/P06-fixtures/public_suffix_list.dat`:
+
+```sh
+cargo +1.88.0 test --locked --offline
+cargo +1.88.0 clippy --all-targets --locked --offline -- -D warnings
+cargo +1.88.0 fmt --check
+```
+
+The suite includes strict P06 admission regressions, dynamic virtual-HID
+create/get IDL envelopes, a disposable HOME/XDG/TMP observer for transient
+metadata, and a lost-reply case after a real virtual-authenticator create.
+Virtual HID is an in-process test fixture; it does not qualify required UV or
+resident-key support, caBLE tunnel behavior, phone compatibility, or physical
+success. No test opens a real radio or account.
+
+P08 owns production proxy/egress admission and real caBLE routing. P17 owns
+independent RP signature verification, native/application qualification, and
+physical authenticator evidence. System PSL, BlueZ, permissions, proxy, and
+phone availability remain runtime prerequisites, not claims from these tests.
+
 ## Build status
 
-This placeholder does not enable the phone provider. After independent source
-review and coordinator build registration, use the separate-helper commands in
-`docs/implementation/everyday-v1/TESTING.md`. The pinned library's API inventory
-and dependency metadata are source inspection only; neither the Cargo.lock nor
-this helper has been built or tested. No phone provider is enabled.
+This helper does not enable the phone provider. The separate package remains
+outside Ferric's root Cargo graph. Production request handling stays unavailable
+until a later reviewed slice connects an admitted transport.

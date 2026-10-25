@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, Write};
 
-use ferric_phone_auth::process_request;
+use ferric_phone_auth::process_request_to_pipe;
 use serde_json::{Value, json};
 
 const MAX_REQUEST_BYTES: usize = ferric_phone_auth::MAX_REQUEST_BYTES;
@@ -55,7 +55,14 @@ fn error_response(id: Option<&str>, code: &str) -> Value {
 }
 
 fn write_response(mut writer: impl Write, response: &Value) -> io::Result<()> {
-    serde_json::to_writer(&mut writer, response).map_err(io::Error::other)?;
+    let encoded = serde_json::to_vec(response).map_err(io::Error::other)?;
+    if encoded.len().saturating_add(1) > 1024 * 1024 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "terminal response too large",
+        ));
+    }
+    writer.write_all(&encoded)?;
     writer.write_all(b"\n")?;
     writer.flush()
 }
@@ -66,22 +73,22 @@ fn run() -> io::Result<()> {
     let stdout = io::stdout();
     let mut writer = stdout.lock();
 
-    let (response, malformed_input) = match read_request_line(&mut reader)? {
-        InputLine::Complete(line) => (process_request(&line), false),
-        InputLine::TooLarge => (error_response(None, "request_too_large"), true),
-        InputLine::MissingDelimiter => (error_response(None, "invalid_envelope"), true),
+    match read_request_line(&mut reader)? {
+        InputLine::Complete(line) => return process_request_to_pipe(&line, &mut writer),
+        InputLine::TooLarge => {
+            write_response(&mut writer, &error_response(None, "request_too_large"))?
+        }
+        InputLine::MissingDelimiter => {
+            write_response(&mut writer, &error_response(None, "invalid_envelope"))?
+        }
         InputLine::NoInput => {
             return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "no request"));
         }
-    };
-    write_response(&mut writer, &response)?;
-    if malformed_input {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid request framing",
-        ));
     }
-    Ok(())
+    Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "invalid request framing",
+    ))
 }
 
 fn main() {
@@ -93,7 +100,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{InputLine, error_response, process_request, read_request_line};
+    use super::{InputLine, error_response, read_request_line};
+    use ferric_phone_auth::process_request;
     use serde_json::Value;
     use std::io::Cursor;
 
