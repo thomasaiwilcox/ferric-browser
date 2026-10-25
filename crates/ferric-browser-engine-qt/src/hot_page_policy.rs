@@ -125,7 +125,7 @@ impl HotPageCoordinator {
         Self::expire_if_needed(&mut inner, now_ms);
         if !eligible || !key.is_well_formed() {
             inner.requests_pending = false;
-            if !matches!(inner.state, State::Disabled) {
+            if !matches!(inner.state, State::Disabled | State::Claimed { .. }) {
                 inner.state = State::Evicted {
                     reason: EvictionReason::PrivacyChanged,
                 };

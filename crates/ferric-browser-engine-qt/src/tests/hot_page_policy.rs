@@ -1,6 +1,6 @@
 use super::{
     ClaimResult, EnvironmentKey, EvictionReason, HotPageCoordinator, PrepareDecision,
-    PresentationKind,
+    PresentationKind, State,
 };
 fn key(host_window: u64) -> EnvironmentKey {
     EnvironmentKey {
@@ -52,9 +52,27 @@ fn t025_many_windows_and_requests_grant_only_one_spare_then_refill_after_claim()
 
     let third_env = key(8);
     assert_eq!(
+        policy.request_prepare(third_env.clone(), false, 13),
+        PrepareDecision::Ineligible,
+        "an ineligible refill cannot release a claimed permit"
+    );
+    assert_eq!(
         policy.request_prepare(third_env.clone(), true, 13),
         PrepareDecision::Suppressed,
         "the claimed spare retains the sole permit until adoption completes"
+    );
+    let malformed_env = EnvironmentKey {
+        host_window: None,
+        ..third_env.clone()
+    };
+    assert_eq!(
+        policy.request_prepare(malformed_env, true, 13),
+        PrepareDecision::Ineligible,
+        "a malformed refill cannot release a claimed permit"
+    );
+    assert_eq!(
+        policy.request_prepare(third_env.clone(), true, 13),
+        PrepareDecision::Suppressed
     );
     assert!(!policy.fail_preparation(second_token, EvictionReason::RendererFailure));
     assert!(policy.finish_claim(second_token));
@@ -182,6 +200,21 @@ fn stale_completion_cannot_expire_the_current_preparation() {
     let current = key(7);
     let current_token = started(policy.request_prepare(current, true, 1_000));
 
-    assert!(!policy.mark_ready(old_token, 5_999));
-    assert!(policy.mark_ready(current_token, 5_999));
+    assert!(!policy.mark_ready(old_token, 6_001));
+    assert!(matches!(
+        policy.0.lock().expect("hot-page policy mutex poisoned").state,
+        State::Preparing { token, .. } if token == current_token
+    ));
+
+    assert!(!policy.mark_ready(current_token, 6_001));
+    assert!(matches!(
+        policy
+            .0
+            .lock()
+            .expect("hot-page policy mutex poisoned")
+            .state,
+        State::Evicted {
+            reason: EvictionReason::Timeout
+        }
+    ));
 }

@@ -150,6 +150,8 @@ mod feature_state;
 mod focus_policy;
 mod hint_payload;
 mod hint_policy;
+// Remove this module-scoped allowance when H01 adds its production caller.
+#[allow(dead_code)]
 mod hot_page_policy;
 mod hyprland;
 mod input_validation;
