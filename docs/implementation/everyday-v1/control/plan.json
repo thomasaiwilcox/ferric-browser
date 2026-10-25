@@ -1527,7 +1527,48 @@
     },
     {
       "id": "P02",
-      "title": "Implement pure credential admission and ceremony state",
+      "title": "Aggregate credential authority, terminal and admission policy outcomes",
+      "lane": "core",
+      "depends_on": [
+        "P02a",
+        "P02b",
+        "P02c"
+      ],
+      "contracts": [
+        "C04",
+        "C08"
+      ],
+      "allowed_paths": [],
+      "steps": [
+        "Coordinator-only no-code aggregate; preserve original P02 failed 3/3 history, candidate and compilation failures. No fourth P02 attempt.",
+        "Require independent review and exact-source executable evidence for P02a/T052 closed authority, P02b/T053 terminal state and P02c/T054 admission isolation. No inherited pass.",
+        "P03 still requires P00 separately. Pure policy qualification never supplies missing native document authority or physical phone evidence."
+      ],
+      "kind": "aggregate",
+      "locks": [],
+      "recipe": "review",
+      "requirement_id": "EF-P02",
+      "test_ids": [],
+      "max_changed_product_files": 0,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P02.md",
+      "read_anchors": [],
+      "aggregate_of": [
+        "P02a",
+        "P02b",
+        "P02c"
+      ],
+      "aggregate_test_ids": [
+        "T052",
+        "T053",
+        "T054"
+      ]
+    },
+    {
+      "id": "P02a",
+      "title": "Implement closed credential authority and RP admission types",
       "lane": "core",
       "depends_on": [
         "F00",
@@ -1544,10 +1585,10 @@
         "crates/ferric-browser-application/src/credential_tests.rs"
       ],
       "steps": [
-        "Add typed verified-origin/document lease and request-owner types without accepting page-supplied authority.",
-        "Implement admission, provider selection, one bridge-managed ceremony quota, deadline and exactly-once terminal transitions.",
-        "Handle invalidation, busy requests, private scope and stale helper results deterministically with a clock abstraction.",
-        "Preserve native requests that never enter the phone shim; feature-off cannot disable baseline auth."
+        "Implement only closed verified-origin/document-lease/request-owner types and RP binding. No page options may construct, replace or overwrite native authority fields.",
+        "Keep ownership fields private; resolve ID construction and sibling access through narrow crate-private methods instead of widening fields. Use test-only synthetic lease constructors; production qualification remains Unqualified by default.",
+        "Add actual T052 authority-overwrite and RP/origin mismatch/positive admission tests. Do not import the entire failed P02 candidate or its T053/T054 tests. Ceremony state is later P02b; production Qt bridge/provider is not authorized.",
+        "Run focused application-rust tests and Clippy with exact-source receipts after independent source review. Preserve root MSRV and dependencies."
       ],
       "kind": "implementation",
       "locks": [
@@ -1557,21 +1598,111 @@
       "recipe": "application-rust",
       "requirement_id": "EF-P02",
       "test_ids": [
-        "T052",
-        "T053",
-        "T054"
+        "T052"
       ],
-      "max_changed_product_files": 8,
+      "max_changed_product_files": 4,
       "max_attempts": 3,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
-      "slice_file": "slices/P02.md",
+      "slice_file": "slices/P02a.md",
       "read_anchors": [
         "crates/ferric-browser-application/src/credential_policy.rs",
         "crates/ferric-browser-application/src/credential_state.rs",
         "crates/ferric-browser-application/src/lib.rs",
         "crates/ferric-browser-application/src/credential_tests.rs"
-      ]
+      ],
+      "parent_id": "P02"
+    },
+    {
+      "id": "P02b",
+      "title": "Implement exactly-once credential ceremony terminal transitions",
+      "lane": "core",
+      "depends_on": [
+        "P02a"
+      ],
+      "contracts": [
+        "C04",
+        "C08"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-application/src/credential_policy.rs",
+        "crates/ferric-browser-application/src/credential_state.rs",
+        "crates/ferric-browser-application/src/lib.rs",
+        "crates/ferric-browser-application/src/credential_tests.rs"
+      ],
+      "steps": [
+        "Implement deterministic ceremony owner/token/deadline transitions: abort, timeout, navigation invalidation and helper result permutations emit one terminal effect for the original owner only.",
+        "Use existing closed ID/lease accessors; no page-supplied authority or current-active-tab rebinding. Fix deterministic clock mutability within the test seam.",
+        "Define bounded terminal-effect overflow semantics before accepting requests: reserve capacity or reject admission before ownership. Never silently drop a previously accepted ceremony terminal effect. Exercise saturation and drain recovery.",
+        "Add T053 executable order/race/stale result/deadline/saturation assertions and rerun T052. No Qt/device qualification or production credential delivery claim."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-policy",
+        "application-interface"
+      ],
+      "recipe": "application-rust",
+      "requirement_id": "EF-P02",
+      "test_ids": [
+        "T053"
+      ],
+      "max_changed_product_files": 4,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P02b.md",
+      "read_anchors": [
+        "crates/ferric-browser-application/src/credential_policy.rs",
+        "crates/ferric-browser-application/src/credential_state.rs",
+        "crates/ferric-browser-application/src/lib.rs",
+        "crates/ferric-browser-application/src/credential_tests.rs"
+      ],
+      "parent_id": "P02"
+    },
+    {
+      "id": "P02c",
+      "title": "Qualify credential admission and provider isolation",
+      "lane": "core",
+      "depends_on": [
+        "P02b"
+      ],
+      "contracts": [
+        "C04",
+        "C08"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-application/src/credential_policy.rs",
+        "crates/ferric-browser-application/src/credential_state.rs",
+        "crates/ferric-browser-application/src/lib.rs",
+        "crates/ferric-browser-application/src/credential_tests.rs"
+      ],
+      "steps": [
+        "Complete disabled/unqualified/background/busy admission rejection without replacing an existing ceremony/prompt owner. Preserve captured profile/privacy/document identity.",
+        "Keep requests outside the phone shim on the native path; no blanket WebAuthn cancellation or synthetic production qualification constructors.",
+        "Add T054 behavioral admission/privacy/native coexistence assertions and rerun T052/T053. Pure tests use explicit synthetic evidence and never qualify the Qt authority boundary or phones."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "credential-policy",
+        "application-interface"
+      ],
+      "recipe": "application-rust",
+      "requirement_id": "EF-P02",
+      "test_ids": [
+        "T054"
+      ],
+      "max_changed_product_files": 4,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/P02c.md",
+      "read_anchors": [
+        "crates/ferric-browser-application/src/credential_policy.rs",
+        "crates/ferric-browser-application/src/credential_state.rs",
+        "crates/ferric-browser-application/src/lib.rs",
+        "crates/ferric-browser-application/src/credential_tests.rs"
+      ],
+      "parent_id": "P02"
     },
     {
       "id": "P03",

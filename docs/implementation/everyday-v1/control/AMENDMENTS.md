@@ -186,3 +186,13 @@
 - **Paths/locks:** exactly the original three policy/module/test paths, hot-policy lock, serial workers. H00a must not import the whole failed test scope. Later children may qualify or repair preexisting scaffolding but require fresh exact-source tests and review.
 - **Verification:** preserve T025–T027 IDs/semantics. Deterministic actual-source unit wrappers may provide fast development evidence; registered engine Cargo tests and Clippy remain required before acceptance. No Qt/native/performance/physical requirement is waived; fixed 5s/two-retry limits unchanged.
 - **Metadata:** plan, initial ledger, inventory, source map and traceability updated. Live state migrates only after independent amendment acceptance; original H00 status remains failed until the aggregate is accepted.
+
+
+## A28 — Separate closed credential authority, terminal state and admission policy
+
+- **Status:** proposed; independent review required before live-state migration/dispatch.
+- **Trigger:** P02 final candidate failed compilation with private ID construction, direct lease field access, and immutable test clock assignment. No test ran. Read-only audit `evidence/P02-readiness-audit/AUDIT.json` (SHA256 e5c2c5652bf171c4e98b403b65f4a7e0d669a05f24246bad8353b59632b5463d) identifies distinct T052/T053/T054 boundaries and a silent terminal-queue overflow risk.
+- **History:** preserve P02 failed 3/3, original candidate/reviews/logs, and all dependency gates. No fourth P02 attempt or whole-candidate replay. No inherited test pass.
+- **Children:** P02a/T052 closed native-authority types/RP binding depends on F00/S00; P02b/T053 terminal state and bounded non-dropping effects depends on P02a; P02c/T054 admission/provider/profile isolation depends on P02b. Shared four original paths and credential-policy/application-interface locks are serial.
+- **Gate effect:** P02 becomes coordinator-only aggregate, only after all children pass independent review/exact-source tests. P03 keeps P00 and P02 prerequisites; helper policy dependents retain P02. No native fact is synthesized from pure tests. Defaults/security/phone qualification unchanged.
+- **Metadata:** initial ledger, test owners, source-map owner arrays, inventory and traceability updated. Live parent failure and counters unchanged until reviewed aggregation.

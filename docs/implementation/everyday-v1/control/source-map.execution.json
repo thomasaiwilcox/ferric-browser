@@ -248,7 +248,9 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "P02"
+          "P02a",
+          "P02b",
+          "P02c"
         ],
         "roles": [
           "allowed",
@@ -263,7 +265,9 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "P02"
+          "P02a",
+          "P02b",
+          "P02c"
         ],
         "roles": [
           "allowed",
@@ -278,7 +282,9 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "P02"
+          "P02a",
+          "P02b",
+          "P02c"
         ],
         "roles": [
           "allowed",
@@ -293,7 +299,9 @@
         "integration_head_blob": "d7acac3edc2d885c72672eff098f8d07f50f6a61",
         "working_tree_file_present": true,
         "slices": [
-          "P02",
+          "P02a",
+          "P02b",
+          "P02c",
           "W01a"
         ],
         "roles": [
@@ -3391,6 +3399,17 @@
         "crates/ferric-browser-engine-qt/src/tests/hot_page_policy.rs"
       ],
       "preserved_candidate": "3bc509666d1d17b4732bea76f0cf271739d63b5a"
+    },
+    {
+      "id": "A28",
+      "reason": "Separate closed authority T052, exactly-once terminal state T053 and admission/provider isolation T054 after read-only P02 audit.",
+      "paths_unchanged": [
+        "crates/ferric-browser-application/src/credential_policy.rs",
+        "crates/ferric-browser-application/src/credential_state.rs",
+        "crates/ferric-browser-application/src/lib.rs",
+        "crates/ferric-browser-application/src/credential_tests.rs"
+      ],
+      "parent_history_preserved": "P02 failed attempts3/3, candidate3b44e6ee5c015c02ad51761e409e36b62a8b16d0"
     }
   ]
 }

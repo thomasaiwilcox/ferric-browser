@@ -580,6 +580,30 @@
       "reviewer": null,
       "evidence": null,
       "blocker": null
+    },
+    "P02a": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P02b": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P02c": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
     }
   }
 }

@@ -1,6 +1,6 @@
 # Dependency-ordered work inventory
 
-72 execution-plan entries (67 work slices plus five coordinator aggregates) and 166 acceptance cases. Mutable execution status is recorded in the external run ledger.
+75 execution-plan entries (69 work slices plus six coordinator aggregates) and 166 acceptance cases. Mutable execution status is recorded in the external run ledger.
 
 | ID | Outcome | Depends on |
 |---|---|---|
@@ -33,7 +33,10 @@
 | P00b | Reject stale and cross-document credential completions | P00a |
 | P00c | Resolve the feasible public Qt API route and document limits | P00b |
 | P01 | Create separately pinned helper build and dependency inventory | S00 |
-| P02 | Implement pure credential admission and ceremony state | F00, S00 |
+| P02 | Aggregate credential policy outcomes | P02a, P02b, P02c |
+| P02a | Implement closed credential authority and RP admission types | F00, S00 |
+| P02b | Implement exactly-once credential ceremony terminal transitions | P02a |
+| P02c | Qualify credential admission and provider isolation | P02b |
 | P03 | Implement production document-bound native credential bridge | P00, P02, F03 |
 | P04 | Implement mediator and public-key request serialization | P03 |
 | P05 | Implement asynchronous helper supervision and bounded pipes | P02, P01 |

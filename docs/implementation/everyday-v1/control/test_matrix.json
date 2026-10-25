@@ -523,7 +523,7 @@
     },
     {
       "id": "T052",
-      "slice": "P02",
+      "slice": "P02a",
       "requirement": "EF-P02",
       "level": "unit",
       "name": "Closed authority types",
@@ -533,7 +533,7 @@
     },
     {
       "id": "T053",
-      "slice": "P02",
+      "slice": "P02b",
       "requirement": "EF-P02",
       "level": "unit",
       "name": "Exactly-once races",
@@ -543,7 +543,7 @@
     },
     {
       "id": "T054",
-      "slice": "P02",
+      "slice": "P02c",
       "requirement": "EF-P02",
       "level": "unit",
       "name": "Admission isolation",
