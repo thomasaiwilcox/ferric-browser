@@ -96,10 +96,9 @@ where
         "kind": "result",
         "body": body
     });
-    let encoded = serde_json::to_vec(&response).map_err(|_| OperationFailure::Serialization)?;
-    if encoded.len() > MAX_TERMINAL_RESPONSE_BYTES {
-        return Err(OperationFailure::ResponseTooLarge);
-    }
+    // Count through a bounded writer so an oversized response never creates
+    // an unbounded encoded copy before the protocol limit is applied.
+    let _encoded = encode_bounded(&response, MAX_TERMINAL_RESPONSE_BYTES)?;
     progress(OperationProgress::Completed)?;
     Ok(OperationResult { id, response })
 }
@@ -165,6 +164,15 @@ fn error_envelope(id: &str, code: &str) -> Value {
     json!({"v": 1, "id": id, "kind": "error", "body": {"code": code}})
 }
 
+fn encode_bounded(value: &Value, limit: usize) -> Result<Vec<u8>, OperationFailure> {
+    let mut encoded = LimitedBuffer::new(limit);
+    serde_json::to_writer(&mut encoded, value).map_err(|_| OperationFailure::ResponseTooLarge)?;
+    encoded
+        .write_all(b"\n")
+        .map_err(|_| OperationFailure::ResponseTooLarge)?;
+    Ok(encoded.finish())
+}
+
 struct BoundedOutput<F> {
     sink: F,
     planned_bytes: usize,
@@ -182,13 +190,7 @@ where
     }
 
     fn emit_value(&mut self, value: &Value, line_limit: usize) -> Result<(), OperationFailure> {
-        let mut encoded = LimitedBuffer::new(line_limit);
-        serde_json::to_writer(&mut encoded, value)
-            .map_err(|_| OperationFailure::ResponseTooLarge)?;
-        encoded
-            .write_all(b"\n")
-            .map_err(|_| OperationFailure::ResponseTooLarge)?;
-        let bytes = encoded.finish();
+        let bytes = encode_bounded(value, line_limit)?;
         let next_total = self
             .planned_bytes
             .checked_add(bytes.len())
@@ -296,7 +298,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_PROGRESS_LINE_BYTES, MAX_TERMINAL_RESPONSE_BYTES, OperationFailure, execute_to_pipe,
+        MAX_PROGRESS_LINE_BYTES, MAX_TERMINAL_RESPONSE_BYTES, OperationFailure, OperationProgress,
+        execute_prepared, execute_to_pipe,
     };
     use crate::admission::{PreparedCredentialRequest, prepare_test_request_with_psl};
     use crate::protocol::parse_envelope;
@@ -385,6 +388,18 @@ mod tests {
             emitted.get(),
             0,
             "oversized progress is never partially emitted"
+        );
+
+        let oversized_terminal =
+            serde_json::json!({"data": "z".repeat(MAX_TERMINAL_RESPONSE_BYTES)});
+        assert!(matches!(
+            output.emit_value(&oversized_terminal, MAX_TERMINAL_RESPONSE_BYTES),
+            Err(OperationFailure::ResponseTooLarge)
+        ));
+        assert_eq!(
+            emitted.get(),
+            0,
+            "oversized terminal is rejected before it reaches the sink"
         );
 
         let terminal = serde_json::json!({"data": "y".repeat(900_000)});
@@ -499,6 +514,88 @@ mod tests {
                     .any(|m| m["body"]["status"] == "submitted")
             );
 
+            channel.close().await;
+        });
+    }
+
+    #[test]
+    fn t067a_supported_virtual_channel_executes_shared_operations() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+        runtime.block_on(async {
+            let psl = DatFilePublicSuffixList::from_path(FIXTURE_PSL)
+                .expect("controlled official PSL fixture");
+            let create_qr = CableQrCodeDevice::new_transient(
+                QrCodeOperationHint::MakeCredential,
+                CableTransports::CloudAssistedOnly,
+            )
+            .expect("transient create QR");
+            let get_qr = CableQrCodeDevice::new_transient(
+                QrCodeOperationHint::GetAssertionRequest,
+                CableTransports::CloudAssistedOnly,
+            )
+            .expect("transient get QR");
+            assert_eq!(create_qr.to_string(), "CableQrCodeDevice");
+            assert_eq!(get_qr.to_string(), "CableQrCodeDevice");
+
+            let mut device = get_virtual_device();
+            let mut channel = device
+                .channel(ChannelSettings::default())
+                .await
+                .expect("supported in-process virtual HID channel");
+            let mut progress = Vec::new();
+            let created = execute_prepared(
+                prepare("create", registration_options(), &psl).await,
+                &mut channel,
+                |event| {
+                    progress.push(event);
+                    Ok(())
+                },
+            )
+            .await
+            .expect("real library make-credential operation");
+            assert_eq!(created.response["kind"], "result");
+            assert_eq!(created.response["body"]["type"], "public-key");
+            let credential_id = created.response["body"]["id"]
+                .as_str()
+                .expect("serialized dynamic credential id");
+            assert_eq!(created.id, "t067a-create");
+
+            let get_options = serde_json::json!({
+                "challenge": "EBESExQVFhcYGRobHB0eHw",
+                "rpId": "example.org",
+                "allowCredentials": [{"type": "public-key", "id": credential_id}],
+                "userVerification": "preferred"
+            });
+            let asserted = execute_prepared(
+                prepare("get", get_options, &psl).await,
+                &mut channel,
+                |event| {
+                    progress.push(event);
+                    Ok(())
+                },
+            )
+            .await
+            .expect("real library get-assertion operation");
+            assert_eq!(asserted.response["kind"], "result");
+            assert_eq!(
+                asserted.response["body"]["assertions"]
+                    .as_array()
+                    .map(Vec::len),
+                Some(1)
+            );
+            assert_eq!(asserted.id, "t067a-get");
+            assert_eq!(
+                progress,
+                [
+                    OperationProgress::Submitted,
+                    OperationProgress::Completed,
+                    OperationProgress::Submitted,
+                    OperationProgress::Completed
+                ]
+            );
             channel.close().await;
         });
     }
