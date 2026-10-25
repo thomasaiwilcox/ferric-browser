@@ -157,7 +157,7 @@ ApplicationWindow {
     property var pendingFileDialogView: null
     property string pendingFileDialogLeaseToken: ""
     property bool profileBootstrapComplete: false
-    property bool popupViewCreationReady: false
+    property bool popupRequestAdopted: false
     property bool runtimeReleased: false
     property bool bindingHelpVisible: false
     property bool bindingHelpCreated: false
@@ -1294,8 +1294,7 @@ function onContext_workspaceChanged() {
     }
     FerricTabViewController {
         id: secondaryTabController
-        ready: (secondaryWindow.profileBootstrapComplete
-                || secondaryWindow.popupViewCreationReady) && !secondaryWindow.runtimeReleased
+        ready: secondaryWindow.profileBootstrapComplete && !secondaryWindow.runtimeReleased
         browserUi: secondaryUi
         browserHost: secondaryWindow
         tabs: secondaryTabs
@@ -1781,6 +1780,10 @@ function onContext_workspaceChanged() {
 
     function rejectPopupAdmission() {
         profileBootstrapComplete=false
+        if (windowPopup) {
+            popupRequestAdopted=false
+            secondaryWindow.visible=false
+        }
         Qt.callLater(function() {
             if (secondaryWindow.runtimeReleased) return
             secondaryWindow.windowShutdownApproved=true
@@ -1830,18 +1833,19 @@ function onContext_workspaceChanged() {
         if (runtimeReleased || profileBootstrapComplete || !secondaryUi.profile_available()
                 || (!windowPopup && secondaryUi.profile_bootstrap_pending)) return
         rootWindow.profileResourceRegistry.activateWindow(secondaryWindow)
-        // Popup visibility is bound to profileBootstrapComplete. Keep the
-        // native window hidden until WebEngine has transferred its live
-        // NewWindowRequest into the newly created page below.
+        // Disable the inherited popup visibility binding before marking this
+        // host bootstrapped. The page and resource registry must be ready for
+        // request.openIn(), but the native window must stay hidden until that
+        // handoff finishes.
         if (windowPopup) {
             if (!windowPopupRequest) {
                 rejectPopupAdmission()
                 return
             }
-            popupViewCreationReady = true
-        } else {
-            profileBootstrapComplete = true
+            popupRequestAdopted=false
+            secondaryWindow.visible=false
         }
+        profileBootstrapComplete = true
         secondaryWindow.syncTabModel()
         if (!secondaryWindow.registerWindowOwner()) {
             if (windowPopup) rejectPopupAdmission()
@@ -1862,10 +1866,10 @@ function onContext_workspaceChanged() {
             view.contentInitialized = true
             request.openIn(view)
             windowPopupRequest=null
-            profileBootstrapComplete = true
+            popupRequestAdopted=true
+            secondaryWindow.visible=popupRequestAdopted && profileBootstrapComplete
             return
         }
-        profileBootstrapComplete = true
         if (secondaryWindow.windowTransferMode) {
             var bootstrapTabId = secondaryUi.tab_count === 1
                     ? secondaryUi.tab_id_for_index(0) : ""
