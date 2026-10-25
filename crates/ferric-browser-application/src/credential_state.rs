@@ -271,20 +271,13 @@ impl CredentialCeremonyState {
         owner: &crate::CredentialRequestOwner,
         now_ms: u64,
     ) -> TransitionOutcome {
-        if !self.active_matches(token, owner) {
-            return TransitionOutcome::StaleOrAlreadyTerminal;
-        }
-        if self.expire_if_due(now_ms) {
-            return TransitionOutcome::TerminalEmitted;
-        }
-        let Some(active) = self.active.as_mut() else {
-            return TransitionOutcome::StaleOrAlreadyTerminal;
-        };
-        if active.phase != CredentialCeremonyPhase::Received {
-            return TransitionOutcome::InvalidPhase;
-        }
-        active.phase = CredentialCeremonyPhase::Validating;
-        TransitionOutcome::PhaseAdvanced
+        self.advance_phase(
+            token,
+            owner,
+            CredentialCeremonyPhase::Received,
+            CredentialCeremonyPhase::Validating,
+            now_ms,
+        )
     }
 
     /// Synthetic phase transitions exercise C08 ordering without supplying
@@ -298,20 +291,7 @@ impl CredentialCeremonyState {
         next: CredentialCeremonyPhase,
         now_ms: u64,
     ) -> TransitionOutcome {
-        if !self.active_matches(token, owner) {
-            return TransitionOutcome::StaleOrAlreadyTerminal;
-        }
-        if self.expire_if_due(now_ms) {
-            return TransitionOutcome::TerminalEmitted;
-        }
-        let Some(active) = self.active.as_mut() else {
-            return TransitionOutcome::StaleOrAlreadyTerminal;
-        };
-        if active.phase != expected || !valid_phase_successor(expected, next) {
-            return TransitionOutcome::InvalidPhase;
-        }
-        active.phase = next;
-        TransitionOutcome::PhaseAdvanced
+        self.advance_phase(token, owner, expected, next, now_ms)
     }
 
     /// Focus changes never replace the captured host or end the phone actor.
@@ -507,6 +487,33 @@ impl CredentialCeremonyState {
             .is_some_and(|active| active.token == token && active.candidate.owner() == owner)
     }
 
+    /// Shared production-compiled guard and mutation for all actor phase edges.
+    /// Synthetic tests call this same implementation after supplying their
+    /// explicitly test-only phase evidence.
+    fn advance_phase(
+        &mut self,
+        token: CeremonyToken,
+        owner: &crate::CredentialRequestOwner,
+        expected: CredentialCeremonyPhase,
+        next: CredentialCeremonyPhase,
+        now_ms: u64,
+    ) -> TransitionOutcome {
+        if !self.active_matches(token, owner) {
+            return TransitionOutcome::StaleOrAlreadyTerminal;
+        }
+        if self.expire_if_due(now_ms) {
+            return TransitionOutcome::TerminalEmitted;
+        }
+        let Some(active) = self.active.as_mut() else {
+            return TransitionOutcome::StaleOrAlreadyTerminal;
+        };
+        if active.phase != expected || !valid_phase_successor(expected, next) {
+            return TransitionOutcome::InvalidPhase;
+        }
+        active.phase = next;
+        TransitionOutcome::PhaseAdvanced
+    }
+
     fn expire_if_due(&mut self, now_ms: u64) -> bool {
         if self
             .active
@@ -537,11 +544,13 @@ impl Default for CredentialCeremonyState {
     }
 }
 
-#[cfg(test)]
 fn valid_phase_successor(current: CredentialCeremonyPhase, next: CredentialCeremonyPhase) -> bool {
     matches!(
         (current, next),
         (
+            CredentialCeremonyPhase::Received,
+            CredentialCeremonyPhase::Validating
+        ) | (
             CredentialCeremonyPhase::Validating,
             CredentialCeremonyPhase::AwaitingProvider
         ) | (

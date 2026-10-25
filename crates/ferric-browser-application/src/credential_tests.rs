@@ -333,33 +333,15 @@ fn t054_full_actor_phase_order_focus_and_private_owner_are_preserved() {
         RpValidationStatus::Pending
     );
 
-    assert_eq!(
-        state.synthetic_advance_phase(
-            token,
-            &owner,
-            Phase::Validating,
-            Phase::AwaitingProvider,
-            21
-        ),
-        TransitionOutcome::InvalidPhase,
-        "provider cannot be reached before validation"
-    );
-    assert_eq!(
-        state.begin_validation(token, &foreign_same_id, 21),
-        TransitionOutcome::StaleOrAlreadyTerminal,
-        "same request ID from another document/profile is not the captured owner"
-    );
-    assert_eq!(state.active_owner(), Some(&owner));
-    assert_eq!(
-        state.helper_result(token, &owner, HelperCompletion::Success, 21),
-        TransitionOutcome::InvalidPhase,
-        "helper results are out of order before phone startup"
-    );
-    assert_eq!(state.phase(), Some(Phase::Received));
-
     synthetic_advance_to_phase(&mut state, token, &owner, Phase::Starting, 22);
+    assert_eq!(state.phase(), Some(Phase::Starting));
     assert_eq!(
-        state.focus_changed(token, &owner, false, 23),
+        state.begin_validation(token, &owner, 23),
+        TransitionOutcome::InvalidPhase,
+        "the production guard rejects repeating an earlier phase"
+    );
+    assert_eq!(
+        state.focus_changed(token, &owner, false, 24),
         TransitionOutcome::Unchanged,
         "focus loss does not cancel or retarget the captured owner"
     );
@@ -370,15 +352,15 @@ fn t054_full_actor_phase_order_focus_and_private_owner_are_preserved() {
         Some(RpValidationStatus::Pending)
     );
     assert_eq!(
-        state.synthetic_advance_phase(token, &owner, Phase::Starting, Phase::AwaitingPhone, 24),
+        state.synthetic_advance_phase(token, &owner, Phase::Starting, Phase::AwaitingPhone, 25),
         TransitionOutcome::PhaseAdvanced
     );
     assert_eq!(
-        state.focus_changed(token, &owner, true, 25),
+        state.focus_changed(token, &owner, true, 26),
         TransitionOutcome::Unchanged
     );
     assert_eq!(
-        state.helper_result(token, &foreign_same_id, HelperCompletion::Success, 26),
+        state.helper_result(token, &foreign_same_id, HelperCompletion::Success, 27),
         TransitionOutcome::StaleOrAlreadyTerminal
     );
     assert_eq!(state.phase(), Some(Phase::AwaitingPhone));
@@ -402,6 +384,59 @@ fn t054_full_actor_phase_order_focus_and_private_owner_are_preserved() {
     assert_eq!(terminal.owner().lease().profile(), owner.lease().profile());
     assert_eq!(terminal.owner().lease().privacy(), PrivacyKind::Private);
     assert_eq!(terminal.reason(), CredentialTerminalReason::HelperCompleted);
+}
+
+#[test]
+fn t054_invalid_phase_and_foreign_owner_events_do_not_advance_actor() {
+    use super::{
+        CredentialCeremonyPhase as Phase, CredentialCeremonyState, HelperCompletion,
+        TransitionOutcome,
+    };
+
+    let owner = synthetic_owner_in_context(
+        true,
+        105,
+        "documentid-105",
+        "phase-owner.example.com",
+        "profileid-7",
+        PrivacyKind::Private,
+    );
+    let foreign_same_id = synthetic_owner_in_context(
+        true,
+        105,
+        "documentid-106",
+        "foreign-owner.example.net",
+        "profileid-8",
+        PrivacyKind::Normal,
+    );
+    let mut state = CredentialCeremonyState::synthetic_with_capacity(2);
+    let token = state
+        .admit(candidate_for(owner.clone()), 20, 500)
+        .expect("synthetic actor admission");
+
+    assert_eq!(
+        state.synthetic_advance_phase(
+            token,
+            &owner,
+            Phase::Validating,
+            Phase::AwaitingProvider,
+            21
+        ),
+        TransitionOutcome::InvalidPhase,
+        "provider cannot be reached before validation"
+    );
+    assert_eq!(
+        state.begin_validation(token, &foreign_same_id, 21),
+        TransitionOutcome::StaleOrAlreadyTerminal,
+        "same request ID from another document/profile is not the captured owner"
+    );
+    assert_eq!(
+        state.helper_result(token, &owner, HelperCompletion::Success, 21),
+        TransitionOutcome::InvalidPhase,
+        "helper results are out of order before phone startup"
+    );
+    assert_eq!(state.active_owner(), Some(&owner));
+    assert_eq!(state.phase(), Some(Phase::Received));
 }
 
 #[test]
