@@ -613,7 +613,7 @@
     },
     {
       "id": "T061",
-      "slice": "P05b",
+      "slice": "P05b2",
       "requirement": "EF-P05",
       "level": "application",
       "name": "Process failure cases",
@@ -623,7 +623,7 @@
     },
     {
       "id": "T062",
-      "slice": "P05b",
+      "slice": "P05b2",
       "requirement": "EF-P05",
       "level": "application",
       "name": "Owned cancellation",
@@ -633,7 +633,7 @@
     },
     {
       "id": "T063",
-      "slice": "P05b",
+      "slice": "P05b2",
       "requirement": "EF-P05",
       "level": "application",
       "name": "Secret-free diagnostics",
@@ -1700,6 +1700,26 @@
       "expected": "Real pinned make/get and IDL paths execute through the same production core using supported virtual library device, dynamic responses and actual local transient QR factory without egress. No static credentials, source-only pass or physical caBLE claim.",
       "result": "not_run",
       "binding": "hybrid::tests::t067a_supported_virtual_channel_executes_shared_operations, plus same-package-ID/dev-license-MSRV/normal-feature build reports."
+    },
+    {
+      "id": "T061b",
+      "slice": "P05b1",
+      "requirement": "EF-P05",
+      "level": "unit",
+      "name": "Strict bounded helper protocol without admission",
+      "expected": "Actual production decoder/encoder accepts exact valid frames and rejects malformed/unknown/duplicate/deep/oversized/id-mismatched data with bounded allocation, budgets and redacted errors; no native authority or actor transition is granted.",
+      "result": "not_run",
+      "binding": "Rust credential_protocol::tests::strict_helper_protocol_frames in the production engine module; not a copied model."
+    },
+    {
+      "id": "T061c",
+      "slice": "P05b1",
+      "requirement": "EF-P05",
+      "level": "component",
+      "name": "Private native Rust callback and non-admission bridge",
+      "expected": "Actual compiled supervisor/CXX/Rust decoder/per-owner GUI queue passes owned subprocess, cancellation/reap/deadline/weak-owner/stale/error/redaction cases and proves production native admission remains refused; no synthetic qualified actor and no skipped/zero-test pass.",
+      "result": "not_run",
+      "binding": "CTest everyday_T061c_helper_native_rust_bridge; credential_process_bridge_tests QtTest nativeRustBridge. T061a regression required; no substitute for T061-T063 APP."
     }
   ],
   "note": "Specifications only. Nothing is marked passed at authoring."

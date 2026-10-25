@@ -652,6 +652,22 @@
       "reviewer": null,
       "evidence": null,
       "blocker": null
+    },
+    "P05b1": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P05b2": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
     }
   }
 }

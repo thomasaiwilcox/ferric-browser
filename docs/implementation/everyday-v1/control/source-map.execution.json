@@ -161,11 +161,11 @@
     }
   ],
   "planned_path_inventory": {
-    "unique_paths": 197,
+    "unique_paths": 198,
     "existing_product_paths": 74,
     "execution_pack_artifacts": 2,
     "planned_execution_outputs": 8,
-    "proposed_product_deliverables": 113,
+    "proposed_product_deliverables": 114,
     "paths": [
       {
         "path": ".github/workflows/ci.yml",
@@ -962,13 +962,18 @@
           "F03",
           "H01",
           "P03",
-          "P05b"
+          "P05b",
+          "P05b1",
+          "P05b2"
         ],
         "roles": [
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": true
+        "history_at_product_baseline": true,
+        "aggregate_read_only_slices": [
+          "P05b"
+        ]
       },
       {
         "path": "crates/ferric-browser-engine-qt/src/browser_ui_browsing_commands.rs",
@@ -1029,7 +1034,9 @@
           "P09",
           "P10",
           "P12",
-          "P05b"
+          "P05b",
+          "P05b1",
+          "P05b2"
         ],
         "roles": [
           "allowed",
@@ -1037,7 +1044,8 @@
         ],
         "history_at_product_baseline": false,
         "aggregate_read_only_slices": [
-          "P05"
+          "P05",
+          "P05b"
         ]
       },
       {
@@ -1221,7 +1229,9 @@
         "slices": [
           "P05",
           "P05a",
-          "P05b"
+          "P05b",
+          "P05b1",
+          "P05b2"
         ],
         "roles": [
           "allowed",
@@ -1229,7 +1239,8 @@
         ],
         "history_at_product_baseline": false,
         "aggregate_read_only_slices": [
-          "P05"
+          "P05",
+          "P05b"
         ]
       },
       {
@@ -1241,7 +1252,9 @@
         "slices": [
           "P05",
           "P05a",
-          "P05b"
+          "P05b",
+          "P05b1",
+          "P05b2"
         ],
         "roles": [
           "allowed",
@@ -1249,7 +1262,8 @@
         ],
         "history_at_product_baseline": false,
         "aggregate_read_only_slices": [
-          "P05"
+          "P05",
+          "P05b"
         ]
       },
       {
@@ -1261,7 +1275,9 @@
         "slices": [
           "P04",
           "P05",
-          "P05b"
+          "P05b",
+          "P05b1",
+          "P05b2"
         ],
         "roles": [
           "allowed",
@@ -1269,7 +1285,8 @@
         ],
         "history_at_product_baseline": false,
         "aggregate_read_only_slices": [
-          "P05"
+          "P05",
+          "P05b"
         ]
       },
       {
@@ -1423,13 +1440,18 @@
           "W04",
           "W06",
           "W08",
-          "P05b"
+          "P05b",
+          "P05b1",
+          "P05b2"
         ],
         "roles": [
           "allowed",
           "read_anchor"
         ],
-        "history_at_product_baseline": true
+        "history_at_product_baseline": true,
+        "aggregate_read_only_slices": [
+          "P05b"
+        ]
       },
       {
         "path": "crates/ferric-browser-engine-qt/src/network_policy.rs",
@@ -1743,7 +1765,9 @@
           "F02b2b",
           "F02d",
           "P05a",
-          "P05b"
+          "P05b",
+          "P05b1",
+          "P05b2"
         ],
         "roles": [
           "allowed",
@@ -1752,6 +1776,9 @@
         "history_at_product_baseline": false,
         "qualification_read_only_slices": [
           "F02b2a"
+        ],
+        "aggregate_read_only_slices": [
+          "P05b"
         ]
       },
       {
@@ -3362,7 +3389,26 @@
         "resolution": "proposed_product_deliverable",
         "working_tree_file_present": false,
         "slices": [
+          "P05b",
+          "P05b2"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
           "P05b"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process_bridge.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P05b1"
         ],
         "roles": [
           "allowed",
@@ -3668,6 +3714,18 @@
       "reason": "Actual std::function-native Events have no existing Rust CXX factory/callback adapter; existing compiled CPP/header plus six current Rust/application files fit global eight-path cap. D37 source audit and D38 corrected pure generator proof support the public API direction only.",
       "native_proof_required": "Actual native ABI/GUI-thread ownership/cancellation/reentrancy/stale result and original application T061-T063 plus T061a regressions; real deadline path additionally tested.",
       "unchanged": "Dependencies, locks, original expected cases and application levels, all guards/P00/P03/physical gates and counters unchanged; no implementation before P05a acceptance or plan review."
+    },
+    {
+      "id": "A36",
+      "parent": "P05b",
+      "reason": "D39 actual C08 actor cannot be admitted while native qualification remains unavailable and owner/candidate binding is private to application. No synthetic qualification, public constructor or visibility bypass permitted. Split genuinely executable non-admission decoder/CXX transport from original APP routing/qualification.",
+      "new_slices": {
+        "P05b1": "T061b unit +T061c component, no credential admission authority",
+        "P05b2": "original T061/T062/T063 APPLICATION unchanged; requires real P00/P03 and production BrowserUi route"
+      },
+      "scope": "Each child<=8 paths; P05b no-code aggregate; new explicit bridge test file, not an APP fixture relabeled as component.",
+      "live_attempts": "Original pre-edit P05b attempt1 preserved; P05b2 inherits1 so original APP attempt is not reset; P05b1 new distinct outcomes start0.",
+      "counts": "83 slices /172 cases; no security/default/physical or old-case waiver."
     }
   ]
 }
