@@ -2012,7 +2012,7 @@
         "Validate requirements/attachment, UV, algorithms, discoverable credentials, allow/exclude lists and supported extensions.",
         "Emit no QR/network work before admission succeeds; bound encoded and decoded fields consistently.",
         "Expose the actual helper protocol/admission implementation through a normal Rust library used by main and external integration tests; cfg(test)-only admission implementations or copied test models do not qualify. Keep PreparedCredentialRequest fields private and construct it only through the real pinned-library/PSL preparation path.",
-        "Helper manifest/lock edits are limited to a direct serde dependency at already locked1.0.228 (derive if required for strict envelope duplicate/unknown-field rejection). Preserve libwebauthn exact revision/default-features=false, Rust1.88 floor and isolated helper workspace; no root Cargo/dependency/transport/crypto changes. Any additional dependency or ninth path requires a new explicit amendment."
+        "Helper manifest/lock edits are limited to direct serde at already locked1.0.228 (derive if required for strict duplicate/unknown-field rejection) and tokio at already locked1.52.3 with rt/time only, so main/tests execute the pinned library async prepare API. Preserve libwebauthn exact revision/default-features=false, Rust1.88 floor and isolated helper workspace; no root Cargo/dependency/transport/crypto changes. Any additional dependency or ninth path requires a new explicit amendment."
       ],
       "kind": "implementation",
       "locks": [

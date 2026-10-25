@@ -3541,7 +3541,7 @@
     },
     {
       "id": "A31",
-      "reason": "P06 external integration tests need the same production-compiled library as the binary; strict typed envelope parsing needs direct already-locked serde dependency.",
+      "reason": "P06 external integration tests need the same production-compiled library as binary; strict typed envelopes need already-locked serde, and actual async pinned-library preparation needs already-locked tokio runtime.",
       "added_paths": [
         "helpers/ferric-phone-auth/src/lib.rs",
         "helpers/ferric-phone-auth/Cargo.toml",
