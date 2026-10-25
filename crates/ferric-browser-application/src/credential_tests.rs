@@ -109,3 +109,166 @@ fn t052_bounds_raw_rp_data_and_rejects_ineligible_owner_context() {
         Err(CredentialAdmissionError::UnsupportedContext)
     );
 }
+
+fn candidate_for(owner: CredentialRequestOwner) -> OriginBoundRpCandidate {
+    bind(Some("login.example.com"), owner).expect("pending RP candidate")
+}
+
+#[test]
+fn t053_abort_helper_and_stale_result_permutations_emit_once_for_captured_owner() {
+    use super::{
+        CredentialCeremonyState, CredentialTerminalReason, HelperCompletion, TransitionOutcome,
+    };
+
+    let owner = synthetic_owner(true);
+    let mut state = CredentialCeremonyState::synthetic_with_capacity(4);
+    let token = state
+        .admit(candidate_for(owner.clone()), 10, 50)
+        .expect("admission reserves a terminal slot");
+    assert_eq!(
+        state.admit(candidate_for(synthetic_owner(true)), 10, 50),
+        Err(super::CeremonyAdmissionError::Busy),
+        "a concurrent request cannot replace the active owner"
+    );
+    assert_eq!(state.abort(token, 11), TransitionOutcome::TerminalEmitted);
+    assert_eq!(
+        state.helper_result(token, HelperCompletion::Success, 12),
+        TransitionOutcome::StaleOrAlreadyTerminal
+    );
+    assert_eq!(
+        state.queued_terminal_count(),
+        1,
+        "late helper result cannot enqueue a second effect"
+    );
+    let terminal = state.drain_one().expect("accepted request terminal effect");
+    assert_eq!(terminal.owner(), &owner);
+    assert_eq!(terminal.reason(), CredentialTerminalReason::Aborted);
+
+    let second_owner = synthetic_owner(true);
+    let second = state
+        .admit(candidate_for(second_owner.clone()), 20, 50)
+        .expect("slot was released by drain");
+    assert_eq!(
+        state.helper_result(token, HelperCompletion::Success, 20),
+        TransitionOutcome::StaleOrAlreadyTerminal,
+        "a queued callback from the prior flow cannot complete its successor"
+    );
+    assert!(state.has_active_ceremony());
+    assert_eq!(
+        state.helper_result(second, HelperCompletion::Failure, 21),
+        TransitionOutcome::TerminalEmitted
+    );
+    assert_eq!(
+        state.abort(second, 22),
+        TransitionOutcome::StaleOrAlreadyTerminal
+    );
+    let terminal = state.drain_one().expect("helper terminal effect");
+    assert_eq!(terminal.owner(), &second_owner);
+    assert_eq!(terminal.reason(), CredentialTerminalReason::HelperFailed);
+}
+
+#[test]
+fn t053_navigation_and_deadline_transitions_preserve_original_owner() {
+    use super::credential_state::SyntheticCredentialClock;
+    use super::{
+        CredentialCeremonyState, CredentialTerminalReason, HelperCompletion, TransitionOutcome,
+    };
+
+    let owner = synthetic_owner(true);
+    let unrelated_owner = synthetic_owner(false);
+    let mut clock = SyntheticCredentialClock::default();
+    let mut state = CredentialCeremonyState::synthetic_with_capacity(3);
+    let token = state
+        .admit(candidate_for(owner.clone()), clock.now_ms(), 25)
+        .expect("admission");
+    clock.advance(5);
+    assert_eq!(
+        state.invalidate_document(token, &unrelated_owner, clock.now_ms()),
+        TransitionOutcome::StaleOrAlreadyTerminal
+    );
+    assert!(state.has_active_ceremony());
+    assert_eq!(
+        state.invalidate_document(token, &owner, clock.now_ms()),
+        TransitionOutcome::TerminalEmitted
+    );
+    assert_eq!(
+        state.helper_result(token, HelperCompletion::Success, clock.now_ms()),
+        TransitionOutcome::StaleOrAlreadyTerminal
+    );
+    let terminal = state.drain_one().expect("navigation terminal effect");
+    assert_eq!(terminal.owner(), &owner);
+    assert_eq!(
+        terminal.reason(),
+        CredentialTerminalReason::DocumentInvalidated
+    );
+
+    let deadline_owner = synthetic_owner(true);
+    let deadline_token = state
+        .admit(candidate_for(deadline_owner.clone()), clock.now_ms(), 10)
+        .expect("admission after drain");
+    assert_eq!(
+        state.expire(deadline_token, clock.now_ms()),
+        TransitionOutcome::DeadlineNotReached
+    );
+    clock.set(15);
+    assert_eq!(
+        state.expire(deadline_token, clock.now_ms()),
+        TransitionOutcome::TerminalEmitted
+    );
+    assert_eq!(
+        state.helper_result(deadline_token, HelperCompletion::Success, clock.now_ms()),
+        TransitionOutcome::StaleOrAlreadyTerminal
+    );
+    let terminal = state.drain_one().expect("deadline terminal effect");
+    assert_eq!(terminal.owner(), &deadline_owner);
+    assert_eq!(terminal.reason(), CredentialTerminalReason::DeadlineExpired);
+    assert_eq!(
+        state.expire(deadline_token, clock.now_ms()),
+        TransitionOutcome::StaleOrAlreadyTerminal
+    );
+}
+
+#[test]
+fn t053_terminal_outbox_reserves_capacity_before_admission_and_recovers_on_drain() {
+    use super::{
+        CeremonyAdmissionError, CredentialCeremonyState, CredentialTerminalReason,
+        TransitionOutcome,
+    };
+
+    let first_owner = synthetic_owner(true);
+    let second_owner = synthetic_owner(true);
+    let third_owner = synthetic_owner(true);
+    let mut state = CredentialCeremonyState::synthetic_with_capacity(2);
+
+    let first = state
+        .admit(candidate_for(first_owner.clone()), 0, 100)
+        .expect("first request reserves slot one");
+    assert_eq!(state.abort(first, 1), TransitionOutcome::TerminalEmitted);
+    let second = state
+        .admit(candidate_for(second_owner.clone()), 2, 100)
+        .expect("second request reserves remaining slot");
+    assert_eq!(state.abort(second, 3), TransitionOutcome::TerminalEmitted);
+    assert_eq!(state.queued_terminal_count(), 2);
+    assert_eq!(
+        state.admit(candidate_for(third_owner.clone()), 4, 100),
+        Err(CeremonyAdmissionError::TerminalOutboxFull),
+        "a full outbox rejects before capturing a new owner"
+    );
+    assert!(!state.has_active_ceremony());
+
+    let first_terminal = state.drain_one().expect("first accepted terminal retained");
+    assert_eq!(first_terminal.owner(), &first_owner);
+    assert_eq!(first_terminal.reason(), CredentialTerminalReason::Aborted);
+    let third = state
+        .admit(candidate_for(third_owner.clone()), 5, 100)
+        .expect("drain releases capacity");
+    assert_eq!(state.abort(third, 6), TransitionOutcome::TerminalEmitted);
+    let second_terminal = state
+        .drain_one()
+        .expect("second terminal retained in order");
+    assert_eq!(second_terminal.owner(), &second_owner);
+    let third_terminal = state
+        .drain_one()
+        .expect("third terminal retained after recovery");
+    assert_eq!(third_terminal.owner(), &third_owner);
+}

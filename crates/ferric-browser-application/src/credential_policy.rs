@@ -324,6 +324,10 @@ pub struct OriginBoundRpCandidate {
 }
 
 impl OriginBoundRpCandidate {
+    pub(crate) fn into_owner(self) -> CredentialRequestOwner {
+        self.owner
+    }
+
     #[must_use]
     pub fn owner(&self) -> &CredentialRequestOwner {
         &self.owner

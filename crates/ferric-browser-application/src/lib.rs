@@ -92,6 +92,11 @@ pub use credential_policy::{
     CredentialRequestOptions, CredentialRequestOwner, OriginBoundRpCandidate, RpValidationStatus,
     VerifiedOrigin,
 };
+mod credential_state;
+pub use credential_state::{
+    CeremonyAdmissionError, CeremonyToken, CredentialCeremonyState, CredentialTerminalEffect,
+    CredentialTerminalReason, HelperCompletion, TransitionOutcome,
+};
 
 /// The Qt-independent owner of runtime state, effective configuration, and
 /// optional durable metadata work.
