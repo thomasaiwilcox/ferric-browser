@@ -116,7 +116,8 @@ pub struct CredentialDocumentLease {
 
 impl CredentialDocumentLease {
     #[cfg(test)]
-    #[allow(clippy::too_many_arguments)]
+    // The fixture keeps each independent browser eligibility fact explicit.
+    #[allow(clippy::fn_params_excessive_bools, clippy::too_many_arguments)]
     pub(crate) fn synthetic(
         origin: VerifiedOrigin,
         profile: ProfileId,
