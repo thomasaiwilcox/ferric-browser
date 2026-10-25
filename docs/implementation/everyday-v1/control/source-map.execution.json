@@ -1305,7 +1305,9 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "H00",
+          "H00a",
+          "H00b",
+          "H00c",
           "H03",
           "H05"
         ],
@@ -1358,7 +1360,9 @@
         "slices": [
           "F01b",
           "F03",
-          "H00",
+          "H00a",
+          "H00b",
+          "H00c",
           "H01",
           "P03",
           "P04",
@@ -1516,7 +1520,9 @@
         "integration_head_blob": null,
         "working_tree_file_present": false,
         "slices": [
-          "H00"
+          "H00a",
+          "H00b",
+          "H00c"
         ],
         "roles": [
           "allowed",
@@ -3363,5 +3369,28 @@
     "No product code has been changed, built or tested.",
     "No native Qt/WebEngine, Hyprland grouping, physical phone, security-key, or hot-page performance qualification is claimed.",
     "S01 must obtain an actual generated CTest inventory; CMake source matches are not runtime evidence."
+  ],
+  "execution_amendments": [
+    {
+      "id": "A27",
+      "reason": "Split H00 distinct policy outcomes after reviewed H00-readiness-audit; no path changes.",
+      "children": {
+        "H00a": [
+          "T025"
+        ],
+        "H00b": [
+          "T026"
+        ],
+        "H00c": [
+          "T027"
+        ]
+      },
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/tests/hot_page_policy.rs"
+      ],
+      "preserved_candidate": "3bc509666d1d17b4732bea76f0cf271739d63b5a"
+    }
   ]
 }

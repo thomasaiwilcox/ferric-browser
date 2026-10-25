@@ -1,6 +1,6 @@
 # Dependency-ordered work inventory
 
-69 execution-plan entries (65 work slices plus four coordinator aggregates) and 166 acceptance cases. Mutable execution status is recorded in the external run ledger.
+72 execution-plan entries (67 work slices plus five coordinator aggregates) and 166 acceptance cases. Mutable execution status is recorded in the external run ledger.
 
 | ID | Outcome | Depends on |
 |---|---|---|
@@ -18,7 +18,10 @@
 | F03 | Introduce explicit view role and generation guards | F02 |
 | F04 | Qualify shared service and first-host lifetime | F02, S01 |
 | F05 | Verify current per-window interaction parity and fix only gaps | F02, S01 |
-| H00 | Implement single-spare policy and deterministic state tests | F00, S00 |
+| H00 | Aggregate bounded spare policy outcomes | H00a, H00b, H00c |
+| H00a | Implement bounded spare permit and deadline transitions | F00, S00 |
+| H00b | Qualify atomic exactly-once spare claim | H00a |
+| H00c | Qualify complete environment identity and exclusion | H00b |
 | H01 | Prepare an inert internal-mode view with bounded readiness | F03, H00, F01 |
 | H02 | Adopt a matching spare through normal open routing | H01 |
 | H03 | Eviction, resource pressure and teardown | H02, F04 |

@@ -556,6 +556,30 @@
       "reviewer": null,
       "evidence": null,
       "blocker": null
+    },
+    "H00a": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "H00b": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "H00c": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
     }
   }
 }

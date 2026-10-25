@@ -814,7 +814,48 @@
     },
     {
       "id": "H00",
-      "title": "Implement single-spare policy and deterministic state tests",
+      "title": "Aggregate bounded spare policy outcomes",
+      "lane": "core",
+      "depends_on": [
+        "H00a",
+        "H00b",
+        "H00c"
+      ],
+      "contracts": [
+        "C02",
+        "C03"
+      ],
+      "allowed_paths": [],
+      "steps": [
+        "Coordinator-only aggregate; no H00 fourth attempt. Preserve H00 attempts 1-3 and original failed evidence unchanged.",
+        "H00a owns permit/deadline T025, H00b owns exactly-once claim T026, H00c owns environment isolation T027. All children require independent review and exact-source executable gates; no inherited pass.",
+        "After all children accepted, independently review a no-code aggregate before H01. Native allocation, inert views and measured benefit remain downstream gates."
+      ],
+      "kind": "aggregate",
+      "locks": [],
+      "recipe": "review",
+      "requirement_id": "EF-H00",
+      "test_ids": [],
+      "max_changed_product_files": 0,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/H00.md",
+      "read_anchors": [],
+      "aggregate_of": [
+        "H00a",
+        "H00b",
+        "H00c"
+      ],
+      "aggregate_test_ids": [
+        "T025",
+        "T026",
+        "T027"
+      ]
+    },
+    {
+      "id": "H00a",
+      "title": "Implement bounded spare permit and deadline transitions",
       "lane": "core",
       "depends_on": [
         "F00",
@@ -830,10 +871,11 @@
         "crates/ferric-browser-engine-qt/src/tests/hot_page_policy.rs"
       ],
       "steps": [
-        "Implement one process-wide permit, exact environment key, bounded prepare/ready/claim/evict transitions and reason enums.",
-        "Never block allocation on a pending spare; represent ready hit and cold miss as separate effects.",
-        "Coalesce replenish requests; exclude private/ephemeral/protected recovery environments and transfer reserves.",
-        "Use deterministic clocks/tokens to test expiry and concurrent claims without real GUI."
+        "Implement the process-wide single-spare permit, token-matched preparation/ready/eviction state and coalesced request behavior. Prior H00 candidate is reference only; no prior pass is inherited.",
+        "Enforce five-second expiry on the readiness completion itself using deterministic time. A matching token arriving at or after its deadline without an intervening request must fail and consume the same bounded retry budget.",
+        "Bound initial preparation plus two retries per unchanged environment, including Ready renderer/graphics/contamination failure; stale callbacks cannot alter current ownership. Represent reasons and cold misses explicitly.",
+        "Retain only scaffolding needed for claim/environment APIs; T026 concurrent-claim and T027 complete isolation qualification belong to the following children. Do not claim them accepted.",
+        "Add deterministic T025 assertions for many requesters, returned tokens, exact deadline and late completion, stale callbacks, retry suppression and refill. Run actual engine-pure tests, formatting and Clippy, then independently review exact integrated source."
       ],
       "kind": "implementation",
       "locks": [
@@ -842,20 +884,103 @@
       "recipe": "rust-policy",
       "requirement_id": "EF-H00",
       "test_ids": [
-        "T025",
-        "T026",
-        "T027"
+        "T025"
       ],
-      "max_changed_product_files": 8,
+      "max_changed_product_files": 3,
       "max_attempts": 3,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
-      "slice_file": "slices/H00.md",
+      "slice_file": "slices/H00a.md",
       "read_anchors": [
         "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
         "crates/ferric-browser-engine-qt/src/lib.rs",
         "crates/ferric-browser-engine-qt/src/tests/hot_page_policy.rs"
-      ]
+      ],
+      "parent_id": "H00"
+    },
+    {
+      "id": "H00b",
+      "title": "Qualify atomic exactly-once spare claim",
+      "lane": "core",
+      "depends_on": [
+        "H00a"
+      ],
+      "contracts": [
+        "C02",
+        "C03"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/tests/hot_page_policy.rs"
+      ],
+      "steps": [
+        "Implement or repair atomic Ready to Claimed transition under the process-wide permit. Two racing opens yield exactly one ready hit and one independent immediate cold miss.",
+        "Preparing never delays an open. Token-matched claim completion permits refill exactly once; stale completion or post-claim preparation failure cannot steal an adopted page.",
+        "Add executable T026 concurrent claim and immediate miss assertions, run on exact integrated source and rerun T025 affected regression. No UI/native or performance claim."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "hot-policy"
+      ],
+      "recipe": "rust-policy",
+      "requirement_id": "EF-H00",
+      "test_ids": [
+        "T026"
+      ],
+      "max_changed_product_files": 3,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/H00b.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/tests/hot_page_policy.rs"
+      ],
+      "parent_id": "H00"
+    },
+    {
+      "id": "H00c",
+      "title": "Qualify complete environment identity and exclusion",
+      "lane": "core",
+      "depends_on": [
+        "H00b"
+      ],
+      "contracts": [
+        "C02",
+        "C03"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/tests/hot_page_policy.rs"
+      ],
+      "steps": [
+        "Complete native environment matching: actual profile identity/generation, partition, context isolation, settings generation, presentation and internal destination window.",
+        "Exclude private/ephemeral/protected recovery requests and transfer reserves. Ineligible or mismatched requests take a cold path and cannot claim or corrupt an existing eligible spare.",
+        "Add actual T027 equality-dimension and eligibility assertions, run exact-source tests and rerun T025/T026 regressions. Physical allocation and performance remain H01-H06."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "hot-policy"
+      ],
+      "recipe": "rust-policy",
+      "requirement_id": "EF-H00",
+      "test_ids": [
+        "T027"
+      ],
+      "max_changed_product_files": 3,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/H00c.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/tests/hot_page_policy.rs"
+      ],
+      "parent_id": "H00"
     },
     {
       "id": "H01",
@@ -1233,7 +1358,7 @@
         "Build a narrow public-API proof on qualified Qt 6.11.2 WebEngine/WebChannel that isolates a dedicated transport from ordinary page and script worlds.",
         "Prove that main-frame origin/context facts are obtained from native trusted frame/document facts rather than page claims, and bind each challenge/lease to the current document.",
         "Exercise hostile MainWorld/ApplicationWorld access and subframe probes. Use no real authenticator material and add no production WebChannel wiring, scheme or console fallback.",
-        "Resolve compile/setup issues only within this child’s five existing paths so the registered T046 application proof can run; preserve zero-skip evidence."
+        "Resolve compile/setup issues only within this child\u2019s five existing paths so the registered T046 application proof can run; preserve zero-skip evidence."
       ],
       "kind": "proof",
       "locks": [
@@ -1689,7 +1814,7 @@
         "helpers/ferric-phone-auth/tests/hybrid_contract.rs"
       ],
       "steps": [
-        "Use the pinned library’s actual QR-initiated hybrid API for both create and get; do not implement protocol crypto.",
+        "Use the pinned library\u2019s actual QR-initiated hybrid API for both create and get; do not implement protocol crypto.",
         "Report bounded QR and closed progress states; use library transient-device mode, not remembered-pairing persistence.",
         "Convert actual registration/assertion responses through library serialization and preserve supported extensions.",
         "Do not automatically replay an uncertain create. Document retry handling only for explicitly safe device responses.",
@@ -3172,7 +3297,7 @@
         "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
       ],
       "steps": [
-        "Cover mode × hot on/off × phone on/off with actual production owners and realistic asynchronous scheduling.",
+        "Cover mode \u00d7 hot on/off \u00d7 phone on/off with actual production owners and realistic asynchronous scheduling.",
         "Run credential request from a freshly adopted page, concurrent windows, renderer loss, config/profile changes and shutdown.",
         "Combine popup opening, background grouping and transfer-reserve allocation without confusing the three kinds of prepared resources.",
         "Keep privacy, history, native search, focus and accepted storage-work assertions visible across the matrix."
@@ -3424,7 +3549,7 @@
       "steps": [
         "Follow RESOURCE_POLICY dry run; retain source/commits/evidence and delete only inactive explicitly owned build products.",
         "Rebuild from accepted source/lockfiles with correct native dependencies and no stale static library.",
-        "Prove no dependence on another worktree build, user’s caches/profile or hidden fixture state.",
+        "Prove no dependence on another worktree build, user\u2019s caches/profile or hidden fixture state.",
         "Record storage/inode/Btrfs metadata observations where available; never run balance/delete snapshots automatically."
       ],
       "kind": "verification",

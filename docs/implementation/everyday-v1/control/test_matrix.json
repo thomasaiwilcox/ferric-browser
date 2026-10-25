@@ -253,7 +253,7 @@
     },
     {
       "id": "T025",
-      "slice": "H00",
+      "slice": "H00a",
       "requirement": "EF-H00",
       "level": "unit",
       "name": "Single-spare bound",
@@ -263,7 +263,7 @@
     },
     {
       "id": "T026",
-      "slice": "H00",
+      "slice": "H00b",
       "requirement": "EF-H00",
       "level": "unit",
       "name": "Exactly-once claim",
@@ -273,7 +273,7 @@
     },
     {
       "id": "T027",
-      "slice": "H00",
+      "slice": "H00c",
       "requirement": "EF-H00",
       "level": "unit",
       "name": "Environment isolation",
