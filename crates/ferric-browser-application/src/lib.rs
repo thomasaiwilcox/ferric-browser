@@ -86,6 +86,12 @@ pub use session_permissions::{
 use storage::StorageCoordinator;
 pub use storage::{StorageEffect, StorageTicket};
 
+mod credential_policy;
+pub use credential_policy::{
+    CredentialAdmissionError, CredentialDocumentLease, CredentialOperation, CredentialRequestId,
+    CredentialRequestOptions, CredentialRequestOwner, VerifiedOrigin,
+};
+
 /// The Qt-independent owner of runtime state, effective configuration, and
 /// optional durable metadata work.
 pub struct BrowserApplication {
@@ -825,6 +831,9 @@ impl BrowserApplication {
         self.storage.replace(Some(&path))
     }
 }
+
+#[cfg(test)]
+mod credential_tests;
 
 #[cfg(test)]
 mod tests {
