@@ -37,6 +37,22 @@ MAX_BODY_BYTES = 65_536
 FIXTURE_HTML = Path(__file__).parents[1] / "fixtures" / "phone-auth.html"
 
 
+def _origin_is_valid_for_rp(origin: str, rp_id: str) -> bool:
+    parsed = urlsplit(origin)
+    origin_host = (parsed.hostname or "").lower().rstrip(".")
+    rp_host = rp_id.lower().rstrip(".")
+    return bool(
+        parsed.scheme == "https"
+        and origin_host
+        and parsed.username is None
+        and parsed.password is None
+        and parsed.path in ("", "/")
+        and not parsed.query
+        and not parsed.fragment
+        and (origin_host == rp_host or origin_host.endswith("." + rp_host))
+    )
+
+
 def _json_value(value: Any) -> Any:
     """Adapt python-fido2's WebAuthnData mappings for browser JSON options."""
     if isinstance(value, Enum):
@@ -275,33 +291,24 @@ class VerifierFixture:
         certificate: Path | None = None,
         private_key: Path | None = None,
     ):
+        if bind not in ("127.0.0.1", "::1") and (
+            certificate is None or private_key is None or origin is None
+        ):
+            raise ValueError("non-loopback serving requires operator TLS files and explicit origin")
+        if (certificate is None) != (private_key is None):
+            raise ValueError("certificate and private key must be supplied together")
+        if origin is not None and not _origin_is_valid_for_rp(origin, rp_id):
+            raise ValueError("origin must be an HTTPS origin valid for the configured RP ID")
+
         self.temp = tempfile.TemporaryDirectory(prefix="p13-rp-", dir=temporary_root)
         self.temp_path = Path(self.temp.name)
         self.httpd = http.server.ThreadingHTTPServer((bind, port), _RequestHandler)
         self.httpd.daemon_threads = True
         local_host = "localhost" if bind in ("127.0.0.1", "::1") else bind
         self.origin = origin or f"https://{local_host}:{self.httpd.server_port}"
-        parsed_origin = urlsplit(self.origin)
-        origin_host = (parsed_origin.hostname or "").lower().rstrip(".")
-        rp_host = rp_id.lower().rstrip(".")
-        if (
-            parsed_origin.scheme != "https"
-            or not origin_host
-            or parsed_origin.username is not None
-            or parsed_origin.password is not None
-            or parsed_origin.path not in ("", "/")
-            or parsed_origin.query
-            or parsed_origin.fragment
-            or not (origin_host == rp_host or origin_host.endswith("." + rp_host))
-        ):
+        if not _origin_is_valid_for_rp(self.origin, rp_id):
             self.close()
             raise ValueError("origin must be an HTTPS origin valid for the configured RP ID")
-        if bind not in ("127.0.0.1", "::1") and (certificate is None or private_key is None or origin is None):
-            self.close()
-            raise ValueError("non-loopback serving requires operator TLS files and explicit origin")
-        if (certificate is None) != (private_key is None):
-            self.close()
-            raise ValueError("certificate and private key must be supplied together")
         if certificate is None:
             certificate, private_key = _make_loopback_certificate(self.temp_path)
         assert private_key is not None
