@@ -2,6 +2,8 @@ use super::{
     ClaimResult, EnvironmentKey, EvictionReason, HotPageCoordinator, PrepareDecision,
     PresentationKind, State,
 };
+use std::sync::{Arc, Barrier};
+
 fn key(host_window: u64) -> EnvironmentKey {
     EnvironmentKey {
         profile_identity: 1,
@@ -132,6 +134,88 @@ fn t025_claimed_permit_survives_evictions_until_matching_finish() {
         policy.request_prepare(env, true, 2),
         PrepareDecision::AlreadyPreparing,
         "matching finish releases exactly one preparation permit"
+    );
+}
+
+#[test]
+fn t026_preparing_open_is_immediate_cold_miss_without_state_change() {
+    let policy = HotPageCoordinator::default();
+    let env = key(6);
+    let token = started(policy.request_prepare(env.clone(), true, 0));
+
+    assert_eq!(policy.claim(&env, true), ClaimResult::ColdMiss);
+    assert!(matches!(
+        policy.0.lock().expect("hot-page policy mutex poisoned").state,
+        State::Preparing {
+            token: current,
+            started_ms: 0
+        } if current == token
+    ));
+    assert_eq!(
+        policy.request_prepare(env, true, 1),
+        PrepareDecision::AlreadyPreparing,
+        "a cold open neither waits for nor cancels preparation"
+    );
+}
+
+#[test]
+fn t026_racing_opens_have_exactly_one_ready_hit_and_one_cold_miss() {
+    let policy = Arc::new(HotPageCoordinator::default());
+    let env = key(6);
+    let token = started(policy.request_prepare(env.clone(), true, 0));
+    assert!(policy.mark_ready(token, 0));
+
+    let barrier = Arc::new(Barrier::new(3));
+    let workers: Vec<_> = (0..2)
+        .map(|_| {
+            let policy = Arc::clone(&policy);
+            let barrier = Arc::clone(&barrier);
+            let env = env.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                policy.claim(&env, true)
+            })
+        })
+        .collect();
+    barrier.wait();
+
+    let results: Vec<_> = workers
+        .into_iter()
+        .map(|worker| worker.join().expect("claim worker panicked"))
+        .collect();
+    let mut ready_hits = 0;
+    let mut cold_misses = 0;
+    for result in results {
+        match result {
+            ClaimResult::ReadyHit { token: claimed } => {
+                assert_eq!(claimed, token);
+                ready_hits += 1;
+            }
+            ClaimResult::ColdMiss => cold_misses += 1,
+        }
+    }
+    assert_eq!(ready_hits, 1);
+    assert_eq!(cold_misses, 1);
+    assert!(matches!(
+        policy.0.lock().expect("hot-page policy mutex poisoned").state,
+        State::Claimed { token: current } if current == token
+    ));
+
+    assert!(!policy.fail_preparation(token, EvictionReason::RendererFailure));
+    assert!(!policy.finish_claim(token.wrapping_add(1)));
+    assert_eq!(
+        policy.request_prepare(env.clone(), true, 1),
+        PrepareDecision::Suppressed,
+        "a stale finish cannot release the adopted page"
+    );
+    assert!(policy.finish_claim(token));
+
+    let refill = started(policy.request_prepare(env.clone(), true, 2));
+    assert_ne!(refill, token);
+    assert_eq!(
+        policy.request_prepare(env, true, 2),
+        PrepareDecision::AlreadyPreparing,
+        "matching completion permits exactly one refill"
     );
 }
 
