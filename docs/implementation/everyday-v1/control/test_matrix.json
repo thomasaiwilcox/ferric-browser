@@ -1717,7 +1717,7 @@
       "requirement": "EF-P05",
       "level": "component",
       "name": "Private native Rust callback and non-admission bridge",
-      "expected": "Actual compiled supervisor/CXX/Rust decoder/per-owner GUI queue passes owned subprocess, cancellation/reap/deadline/weak-owner/stale/error/redaction cases and proves production native admission remains refused; no synthetic qualified actor and no skipped/zero-test pass.",
+      "expected": "Actual compiled supervisor/CXX/Rust decoder/per-owner GUI queue passes owned subprocess, cancellation/reap/deadline/weak-owner/stale/error/redaction cases. This bridge creates or advances no C08 actor and grants no admitted launch/credential delivery; it does not test real C08/RP/origin admission or refusal. No synthetic qualified actor or skipped/zero-test pass.",
       "result": "not_run",
       "binding": "CTest everyday_T061c_helper_native_rust_bridge; credential_process_bridge_tests QtTest nativeRustBridge. T061a regression required; no substitute for T061-T063 APP."
     }
