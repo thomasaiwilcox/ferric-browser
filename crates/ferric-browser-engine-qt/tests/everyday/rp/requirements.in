@@ -1,0 +1,4 @@
+# Independent relying-party parser and cryptographic verifier.
+fido2==2.2.1
+# Test-only authenticator key and scoped ephemeral TLS certificate generation.
+cryptography==50.0.2

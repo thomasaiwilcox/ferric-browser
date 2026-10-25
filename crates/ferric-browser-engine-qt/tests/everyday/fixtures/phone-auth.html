@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Disposable WebAuthn RP fixture</title>
+  <style>
+    body { max-width: 48rem; margin: 3rem auto; padding: 0 1rem; font: 1rem/1.5 sans-serif; }
+    button { margin: .5rem .5rem .5rem 0; padding: .7rem 1rem; }
+    #status { min-height: 3rem; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Disposable WebAuthn RP fixture</h1>
+  <p>This page uses only the browser's WebAuthn API and the fixture RP at this
+     exact origin. It creates one temporary account, then verifies a sign-in.
+     It does not pair with Ferric or prove phone support.</p>
+  <p>For a future phone check, open this page on the phone only from an
+     operator-controlled HTTPS domain with a certificate already trusted by
+     that phone. Do not use a personal account.</p>
+  <button id="register">Create disposable credential</button>
+  <button id="assert" disabled>Verify assertion</button>
+  <button id="cleanup">Delete disposable account</button>
+  <p id="status" role="status" aria-live="polite"></p>
+<script>
+"use strict";
+const statusNode = document.getElementById("status");
+const encode = bytes => {
+  let binary = "";
+  for (const byte of new Uint8Array(bytes)) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+};
+const decode = text => {
+  const normalized = text.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, ch => ch.charCodeAt(0)).buffer;
+};
+async function post(path, payload = {}) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    cache: "no-store",
+    body: JSON.stringify(payload)
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "Request failed");
+  return result;
+}
+function prepareOptions(options) {
+  options.challenge = decode(options.challenge);
+  if (options.user) options.user.id = decode(options.user.id);
+  for (const listName of ["allowCredentials", "excludeCredentials"]) {
+    for (const descriptor of options[listName] || []) descriptor.id = decode(descriptor.id);
+  }
+  return options;
+}
+function credentialJSON(credential) {
+  const response = credential.response;
+  const encodedResponse = {clientDataJSON: encode(response.clientDataJSON)};
+  if (response.attestationObject) encodedResponse.attestationObject = encode(response.attestationObject);
+  if (response.authenticatorData) encodedResponse.authenticatorData = encode(response.authenticatorData);
+  if (response.signature) encodedResponse.signature = encode(response.signature);
+  if (response.userHandle !== undefined) encodedResponse.userHandle = response.userHandle === null ? null : encode(response.userHandle);
+  if (response.getTransports) encodedResponse.transports = response.getTransports();
+  return {
+    id: credential.id,
+    rawId: encode(credential.rawId),
+    type: credential.type,
+    response: encodedResponse,
+    authenticatorAttachment: credential.authenticatorAttachment,
+    clientExtensionResults: credential.getClientExtensionResults()
+  };
+}
+document.getElementById("register").addEventListener("click", async () => {
+  try {
+    const start = await post("/rp/register/begin");
+    const credential = await navigator.credentials.create({publicKey: prepareOptions(start.publicKey)});
+    if (!credential) throw new Error("Credential creation was cancelled");
+    await post("/rp/register/complete", {transaction: start.transaction, credential: credentialJSON(credential)});
+    document.getElementById("assert").disabled = false;
+    statusNode.textContent = "Disposable credential registered and independently verified.";
+  } catch (_) { statusNode.textContent = "Registration did not complete; no credential success is claimed."; }
+});
+document.getElementById("assert").addEventListener("click", async () => {
+  try {
+    const start = await post("/rp/assertion/begin");
+    const credential = await navigator.credentials.get({publicKey: prepareOptions(start.publicKey)});
+    if (!credential) throw new Error("Assertion was cancelled");
+    await post("/rp/assertion/complete", {transaction: start.transaction, credential: credentialJSON(credential)});
+    statusNode.textContent = "Assertion verified by the independent relying party.";
+  } catch (_) { statusNode.textContent = "Assertion did not verify; no sign-in success is claimed."; }
+});
+document.getElementById("cleanup").addEventListener("click", async () => {
+  try {
+    await post("/rp/cleanup");
+    document.getElementById("assert").disabled = true;
+    statusNode.textContent = "Disposable server-side account and outstanding challenges cleared.";
+  } catch (_) { statusNode.textContent = "Cleanup request failed; stop the disposable server to clear memory."; }
+});
+</script>
+</body>
+</html>
