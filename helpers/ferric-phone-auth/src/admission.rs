@@ -10,7 +10,7 @@ use crate::errors::AdmissionError;
 use crate::protocol::{Envelope, Operation};
 
 #[derive(Debug)]
-enum PreparedRequest {
+pub(crate) enum PreparedRequest {
     Create(MakeCredentialRequest),
     Get(GetAssertionRequest),
 }
@@ -24,18 +24,12 @@ pub(crate) struct PreparedCredentialRequest {
 }
 
 impl PreparedCredentialRequest {
-    pub(crate) fn into_transport_unavailable(self) -> (String, Operation) {
-        let operation = match self.request {
-            PreparedRequest::Create(request) => {
-                drop(request);
-                Operation::Create
-            }
-            PreparedRequest::Get(request) => {
-                drop(request);
-                Operation::Get
-            }
-        };
-        (self.id, operation)
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub(crate) fn into_parts(self) -> (String, PreparedRequest) {
+        (self.id, self.request)
     }
 }
 
@@ -58,6 +52,17 @@ where
         .build()
         .map_err(|_| AdmissionError::InvalidRequest)?
         .block_on(prepare_with_psl(envelope, &psl))
+}
+
+#[cfg(test)]
+pub(crate) async fn prepare_test_request_with_psl<P>(
+    envelope: Envelope,
+    psl: &P,
+) -> Result<PreparedCredentialRequest, AdmissionError>
+where
+    P: libwebauthn::ops::webauthn::PublicSuffixList,
+{
+    prepare_with_psl(envelope, psl).await
 }
 
 fn require_psl<T, E>(result: Result<T, E>) -> Result<T, AdmissionError> {

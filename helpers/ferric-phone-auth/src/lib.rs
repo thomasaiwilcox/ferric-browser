@@ -4,6 +4,10 @@
 
 mod admission;
 mod errors;
+// P07a stages the production-shared operation core; P08 alone may connect it
+// to the production caBLE channel. Keep the compiled core available meanwhile.
+#[allow(dead_code)]
+mod hybrid;
 mod protocol;
 
 use admission::prepare_request;
@@ -21,10 +25,7 @@ pub fn process_request(line: &[u8]) -> Value {
     };
     let id = envelope.id.clone();
     match prepare_request(envelope) {
-        Ok(prepared) => {
-            let (prepared_id, _operation) = prepared.into_transport_unavailable();
-            error_response(Some(&prepared_id), "transport_unavailable")
-        }
+        Ok(prepared) => error_response(Some(prepared.id()), "transport_unavailable"),
         Err(error) => error_response(Some(&id), error.code()),
     }
 }
