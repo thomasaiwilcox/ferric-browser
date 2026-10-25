@@ -53,6 +53,8 @@ public:
 
 private:
   struct Run;
+  qint64 activeProcessId() const;
+  bool requestSubmitted() const;
   quint64 startConfigured(const QByteArray &request, const QString &program,
                           const QStringList &arguments);
   void drainStdout(const std::shared_ptr<Run> &run);

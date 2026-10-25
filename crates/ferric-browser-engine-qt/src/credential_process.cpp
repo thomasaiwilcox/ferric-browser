@@ -47,6 +47,7 @@ struct CredentialProcess::Run {
   qsizetype outputBytes = 0;
   qsizetype stderrBytes = 0;
   Failure failure = Failure::None;
+  bool requestSubmitted = false;
   bool terminalAcknowledged = false;
   bool terminalDelivered = false;
   bool finishing = false;
@@ -122,17 +123,21 @@ quint64 CredentialProcess::startConfigured(const QByteArray &request,
     const auto current = weak.lock();
     if (!current || !isCurrent(current) || current->terminating)
       return;
-    if (current->process.write(request) != request.size()) {
-      fail(current, Failure::WriteFailure);
-      return;
-    }
-    current->process.closeWriteChannel();
     QPointer<CredentialProcess> guard(this);
     const auto callback = events_.started;
     if (callback)
       callback(current->token);
     if (!guard)
       return;
+    if (!guard->isCurrent(current) || current->terminating)
+      return;
+    const qint64 written = current->process.write(request);
+    current->requestSubmitted = written > 0;
+    if (written != request.size()) {
+      guard->fail(current, Failure::WriteFailure);
+      return;
+    }
+    current->process.closeWriteChannel();
   });
   connect(&run->process, &QProcess::readyReadStandardOutput, this,
           [this, weak] {
@@ -191,6 +196,14 @@ void CredentialProcess::acknowledgeTerminal(quint64 token) {
 
 quint64 CredentialProcess::activeToken() const {
   return active_ ? active_->token : 0;
+}
+
+qint64 CredentialProcess::activeProcessId() const {
+  return active_ ? active_->process.processId() : 0;
+}
+
+bool CredentialProcess::requestSubmitted() const {
+  return active_ && active_->requestSubmitted;
 }
 
 bool CredentialProcess::isCurrent(const std::shared_ptr<Run> &run) const {

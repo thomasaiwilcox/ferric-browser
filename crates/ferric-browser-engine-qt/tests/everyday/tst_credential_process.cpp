@@ -27,7 +27,11 @@ public:
   }
 
   static qint64 childPid(const CredentialProcess &process) {
-    return process.active_ ? process.active_->process.processId() : 0;
+    return process.activeProcessId();
+  }
+
+  static bool requestSubmitted(const CredentialProcess &process) {
+    return process.requestSubmitted();
   }
 };
 
@@ -242,6 +246,35 @@ private slots:
 
     int callbacks = 0;
     qint64 childPid = 0;
+    bool requestWasNotSubmitted = false;
+    bool cancelDone = false;
+    Failure cancelFailure = Failure::ProcessFailure;
+    CredentialProcess cancelSupervisor;
+    cancelSupervisor.setEvents(
+        {[&](quint64 callbackToken) {
+           ++callbacks;
+           childPid = CredentialProcessTestAccess::childPid(cancelSupervisor);
+           requestWasNotSubmitted =
+               !CredentialProcessTestAccess::requestSubmitted(cancelSupervisor);
+           cancelSupervisor.cancel(callbackToken);
+         },
+         [&](quint64, const QByteArray &) { ++callbacks; },
+         [&](quint64, Failure failure, int) {
+           ++callbacks;
+           cancelFailure = failure;
+           cancelDone = true;
+         }});
+    QVERIFY(CredentialProcessTestAccess::startMode(
+                cancelSupervisor, request, QStringLiteral("hang")) != 0);
+    QTRY_VERIFY_WITH_TIMEOUT(cancelDone, 10'000);
+    QVERIFY(requestWasNotSubmitted);
+    QCOMPARE(cancelFailure, Failure::Cancelled);
+    QVERIFY(childPid > 0);
+    QTRY_VERIFY_WITH_TIMEOUT(processIsGone(childPid), 5000);
+    QCOMPARE(callbacks, 2);
+
+    callbacks = 0;
+    childPid = 0;
     auto *startedOwner = new CredentialProcess;
     QPointer<CredentialProcess> startedGuard(startedOwner);
     startedOwner->setEvents({[&](quint64) {
