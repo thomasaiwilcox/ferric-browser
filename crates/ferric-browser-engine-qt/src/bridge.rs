@@ -1,10 +1,13 @@
 //! Generated Qt interface declarations, isolated from application implementation.
 #![allow(unsafe_code, clippy::too_many_arguments)]
 use crate::BrowserUiRust;
+pub(crate) use crate::browser_ui_credentials::CredentialEvents;
+pub(crate) use crate::browser_ui_credentials::create_credential_events;
 
 #[cxx_qt::bridge]
 pub(crate) mod qobject {
     unsafe extern "C++" {
+        include!("credential_process.h");
         include!("cxx-qt-lib/qstring.h");
         include!("cxx-qt-lib/core/qbytearray.h");
         include!("cxx-qt-lib/qstringlist.h");
@@ -21,6 +24,33 @@ pub(crate) mod qobject {
         type QUrl = cxx_qt_lib::QUrl;
         type QGuiApplication = cxx_qt_lib::QGuiApplication;
         type QVector_QByteArray = cxx_qt_lib::QVector<cxx_qt_lib::QByteArray>;
+
+        #[namespace = "ferric::credentials"]
+        type CredentialProcess;
+        #[namespace = "ferric::credentials"]
+        #[allow(
+            dead_code,
+            reason = "private process factory awaits the P05b2 admitted caller"
+        )]
+        fn new_credential_process() -> UniquePtr<CredentialProcess>;
+        #[namespace = "ferric::credentials"]
+        #[allow(
+            dead_code,
+            reason = "private event installation awaits the P05b2 admitted caller"
+        )]
+        fn install_rust_events(process: Pin<&mut CredentialProcess>, events: Box<CredentialEvents>);
+        #[namespace = "ferric::credentials"]
+        #[allow(
+            dead_code,
+            reason = "private process start awaits the P05b2 admitted caller"
+        )]
+        fn start_credential_process(process: Pin<&mut CredentialProcess>, request: &[u8]) -> u64;
+        #[namespace = "ferric::credentials"]
+        #[allow(
+            dead_code,
+            reason = "private process cancellation awaits the P05b2 admitted caller"
+        )]
+        fn cancel_credential_process(process: Pin<&mut CredentialProcess>, token: u64);
 
         fn ferric_browser_gui_application(
             arguments: &QVector_QByteArray,
@@ -41,6 +71,31 @@ pub(crate) mod qobject {
         fn ferric_browser_set_desktop_identity();
         fn ferric_browser_enable_software_rendering();
         fn ferric_browser_register_internal_scheme();
+    }
+
+    extern "Rust" {
+        #[namespace = "ferric::credentials"]
+        type CredentialEvents;
+        fn create_credential_events(
+            ui: &BrowserUi,
+            request_id: &str,
+            is_create: bool,
+            incarnation: u64,
+        ) -> Box<CredentialEvents>;
+        #[namespace = "ferric::credentials"]
+        fn process_started(self: &CredentialEvents, token: u64);
+        #[namespace = "ferric::credentials"]
+        fn process_frame(self: &CredentialEvents, token: u64, frame: &[u8]) -> i32;
+        #[namespace = "ferric::credentials"]
+        fn process_finished(self: &CredentialEvents, token: u64, outcome: i32);
+        #[namespace = "ferric::credentials"]
+        fn process_invalidated(self: &CredentialEvents, token: u64);
+        #[namespace = "ferric::credentials"]
+        fn process_snapshot(self: &CredentialEvents) -> u64;
+        #[namespace = "ferric::credentials"]
+        fn process_progress_snapshot(self: &CredentialEvents) -> u64;
+        #[namespace = "ferric::credentials"]
+        fn process_pending_bytes(self: &CredentialEvents) -> u64;
     }
 
     extern "RustQt" {

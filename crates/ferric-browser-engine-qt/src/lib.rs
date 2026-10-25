@@ -1309,5 +1309,7 @@ impl qobject::BrowserUi {
     }
 }
 
+mod browser_ui_credentials;
+mod credential_protocol;
 #[cfg(test)]
 mod tests;

@@ -80,3 +80,19 @@ add_test(NAME everyday_T015_document_owner_callbacks
     COMMAND $<TARGET_FILE:application_tests> productPolishLiveTitles)
 set_tests_properties(everyday_T015_document_owner_callbacks PROPERTIES
     TIMEOUT 600 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+set(FERRIC_ENGINE_CXX_INCLUDE_DIR "" CACHE PATH
+    "Exact CXX-Qt generated include directory for the selected engine build")
+if(NOT EXISTS "${FERRIC_ENGINE_CXX_INCLUDE_DIR}/ferric-browser-engine-qt/src/bridge.cxxqt.h")
+  message(FATAL_ERROR "FERRIC_ENGINE_CXX_INCLUDE_DIR must name the selected engine cxxqtbuild/include directory")
+endif()
+get_target_property(_ferric_application_test_links application_tests LINK_LIBRARIES)
+add_executable(credential_process_bridge_tests tst_credential_process_bridge.cpp)
+target_include_directories(credential_process_bridge_tests PRIVATE
+  "${FERRIC_ENGINE_CXX_INCLUDE_DIR}")
+target_link_libraries(credential_process_bridge_tests PRIVATE
+  "${FERRIC_ENGINE_LIBRARY}" ${_ferric_application_test_links})
+add_test(NAME everyday_T061c_helper_native_rust_bridge
+  COMMAND credential_process_bridge_tests nativeRustBridge)
+set_tests_properties(everyday_T061c_helper_native_rust_bridge PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
