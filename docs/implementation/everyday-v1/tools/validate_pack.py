@@ -10,6 +10,46 @@ STATUSES={"not_started","ready","in_progress","submitted","reviewing","accepted"
 LEVELS={"inspection","unit","component","application","native","physical","benchmark","build","fuzz"}
 RECIPES={"preflight","baseline","config","rust-policy","application-rust","storage","application","credential","helper","rp","fuzz","benchmark","native","physical","package","ci","docs","review","rebuild","release"}
 HEX=re.compile(r"^[0-9a-f]{40}$")
+A38_F02E1_PATHS=frozenset({
+    "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+    "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+    "crates/ferric-browser-engine-qt/src/public_profile_owner.h",
+    "crates/ferric-browser-engine-qt/src/public_profile_owner.cpp",
+    "crates/ferric-browser-engine-qt/build.rs",
+    "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+    "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_owner.cpp",
+    "crates/ferric-browser-engine-qt/src/request_interceptor.h",
+    "crates/ferric-browser-engine-qt/src/request_interceptor.cpp",
+})
+A38_ADDED_PATH="crates/ferric-browser-engine-qt/src/request_interceptor.cpp"
+
+def validate_edit_path_budget(task,pack=PACK):
+    """Enforce the 8-path default and the narrowly reviewed F02e1/A38 exception."""
+    errors=[];paths=task.get("allowed_paths",[]);cap=task.get("max_changed_product_files",8)
+    amendment=task.get("path_budget_amendment")
+    if amendment is None:
+        if len(paths)>8 or cap>8:
+            errors.append(f"{task.get('id')}: edit-path budget exceeded")
+        return errors
+    if task.get("id")!="F02e1" or amendment!="A38":
+        return [f"{task.get('id')}: unapproved edit-path budget amendment {amendment}"]
+    if len(paths)!=9 or set(paths)!=A38_F02E1_PATHS or cap!=9:
+        errors.append("F02e1: A38 permits only its exact nine-path owner list")
+    notice=task.get("new_paths_notice","")
+    if "A38" not in notice or A38_ADDED_PATH not in notice:
+        errors.append("F02e1: A38 path exception lacks its exact path notice")
+    try:
+        amendment_text=(pack/"control/AMENDMENTS.md").read_text()
+        source_map=load(pack/"control/source-map.execution.json")
+        record=next((x for x in source_map.get("execution_amendments",[]) if x.get("id")=="A38"),None)
+        if "### A38" not in amendment_text or A38_ADDED_PATH not in amendment_text:
+            errors.append("F02e1: A38 path exception is missing its amendment record")
+        if (record is None or record.get("added_paths")!=[A38_ADDED_PATH]
+                or record.get("path_owners",{}).get("F02e1")!=task.get("allowed_paths")):
+            errors.append("F02e1: A38 source-map owner record does not match its exact path list")
+    except (OSError,ValueError,TypeError) as exc:
+        errors.append(f"F02e1: cannot validate A38 path amendment metadata: {exc}")
+    return errors
 
 def validate_attempt_limits(plan,tasks):
     errors=[];default=plan.get("limits",{}).get("max_attempts")
@@ -166,7 +206,7 @@ def validate_structure(pack=PACK,plan=None):
             if t["recipe"] not in RECIPES:errors.append(f"Unknown recipe {t['recipe']}")
             for c in t["contracts"]:
                 if c not in contracts:errors.append(f"{t['id']}: unknown contract {c}")
-            if len(t["allowed_paths"])>8:errors.append(f"{t['id']}: edit-path budget exceeded")
+            errors+=validate_edit_path_budget(t,pack)
             for path in t["allowed_paths"]:safe_relative(pack,path)
             if not safe_relative(pack,t["slice_file"]).is_file():errors.append(f"{t['id']}: missing slice file")
             owned={x["id"] for x in tests if x["slice"]==t["id"]}

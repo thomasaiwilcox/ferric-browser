@@ -46,6 +46,19 @@ class StructureTests(unittest.TestCase):
         self.assertTrue(any('unknown dependency' in e for e in validate_pack.validate_structure(plan=p)))
     def test_path_escape_rejected(self):
         with self.assertRaises(ValueError):safe_relative(PACK,'../secrets')
+    def test_a38_exact_path_budget_exception(self):
+        plan=load(PACK/'control/plan.json');task=next(t for t in plan['slices'] if t['id']=='F02e1')
+        self.assertEqual(validate_pack.validate_edit_path_budget(task,PACK),[])
+        too_many=copy.deepcopy(task);too_many['allowed_paths'].append('crates/example/extra.cpp')
+        self.assertTrue(any('exact nine-path' in e for e in validate_pack.validate_edit_path_budget(too_many,PACK)))
+        wrong_path=copy.deepcopy(task);wrong_path['allowed_paths'][-1]='crates/example/other.cpp'
+        self.assertTrue(any('exact nine-path' in e for e in validate_pack.validate_edit_path_budget(wrong_path,PACK)))
+    def test_a38_exception_requires_marker_and_scope(self):
+        plan=load(PACK/'control/plan.json');task=next(t for t in plan['slices'] if t['id']=='F02e1')
+        unamended=copy.deepcopy(task);unamended.pop('path_budget_amendment')
+        self.assertTrue(any('edit-path budget exceeded' in e for e in validate_pack.validate_edit_path_budget(unamended,PACK)))
+        other_task=copy.deepcopy(task);other_task['id']='W04'
+        self.assertTrue(any('unapproved edit-path budget amendment' in e for e in validate_pack.validate_edit_path_budget(other_task,PACK)))
     def test_initial_not_complete(self):
         p=load(PACK/'control/plan.json');e=validate_pack.validate_state(p,PACK/'control/state.initial.json',True)
         self.assertTrue(any('not accepted' in x for x in e))

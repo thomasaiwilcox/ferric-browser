@@ -291,3 +291,15 @@
 ### A37r2 — Standalone prototype lock precision
 
 F02e0 edits only its own standalone harness, fixtures and new ADR. Replace inherited public-page-host/bridge/test-registration locks with public-host-prototype; no actual shared bridge/build/application registration path is allowed. This lets source preparation coexist with P00b/W00 while exact path overlap remains checked. One native build/test pipeline remains mandatory. No scope, test, dependency, retry or qualification changes. Independent targeted review precedes dispatch.
+
+
+### A38 — Preserve request interception for the public page owner
+
+**Status:** approved with conditions before F02e1 implementation edits.
+
+- **Base:** `7a57a560294774b659419c80283d2536b3c4c3b2`.
+- **Independent review:** `/root/h00_audit`, `evidence/A38-F02e1-amendment-review/REVIEW.json` (decision `approve_with_conditions`; source SHA bound to the base above).
+- **Exact change:** add only `crates/ferric-browser-engine-qt/src/request_interceptor.cpp` to F02e1's allowed paths/read anchors; raise its product-path cap from8 to9; update the slice and execution-map owner record. Existing F02e1 locks, dependencies, attempt cap and T014e1 evidence level remain unchanged.
+- **Reason:** the public `QWebEngineProfile` and `QQuickWebEngineProfile` are separate Qt classes. The existing interceptor attach/detach implementation only recognizes and tracks the Quick profile, so a public Widgets profile would remain unintercepted if only the header were edited.
+- **Required assertions/constraints:** preserve both profile call paths; track/detach each profile safely and idempotently; fail closed if attachment fails; prove an actual allow/block request through a disposable plain `QWebEngineProfile` and keep a `QQuickWebEngineProfile` regression. Do not change policy semantics, bypass interception, add a Qt private API/dependency, weaken T014e1 or permit a tenth path.
+- **Source map:** A38 supplements the historical A37 F02e1 owner list with its one approved path; A37 history remains intact.

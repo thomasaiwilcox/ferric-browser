@@ -4256,12 +4256,14 @@
         "crates/ferric-browser-engine-qt/build.rs",
         "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
         "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_owner.cpp",
-        "crates/ferric-browser-engine-qt/src/request_interceptor.h"
+        "crates/ferric-browser-engine-qt/src/request_interceptor.h",
+        "crates/ferric-browser-engine-qt/src/request_interceptor.cpp"
       ],
       "steps": [
         "Implement explicit QWebEngineProfile and QWebEnginePage owners using public APIs, separate from presentation widgets; profile lifetime covers every page and active request.",
         "Own page/document/host generations; close invalidates pending callbacks and destroys the browsing context exactly once. Never retain a live closed opener to satisfy a native anchor.",
-        "Test actual production owners: same-profile adoption, cross-profile rejection, delayed callbacks, true source close with surviving descendants and shutdown/drain. This replaces T014c lease-mechanism coverage, retaining ownership and resource invariants."
+        "Test actual production owners: same-profile adoption, cross-profile rejection, delayed callbacks, true source close with surviving descendants and shutdown/drain. This replaces T014c lease-mechanism coverage, retaining ownership and resource invariants.",
+        "Preserve profile request interception for the public QWebEngineProfile owner: adapt the existing interceptor attach/detach path, keep QQuickWebEngineProfile callers intact, fail closed on attach failure, and assert actual allow/block behavior on a disposable public profile while retaining the Quick-profile regression."
       ],
       "kind": "implementation",
       "locks": [
@@ -4274,10 +4276,11 @@
       "test_ids": [
         "T014e1"
       ],
-      "max_changed_product_files": 8,
+      "max_changed_product_files": 9,
+      "path_budget_amendment": "A38",
       "max_attempts": 3,
       "worker_may_delegate": false,
-      "new_paths_notice": "New public-host adapter/harness paths are proposed. Existing unrelated implementations stay intact; a ninth path requires a reviewed scope amendment.",
+      "new_paths_notice": "A38 approves exactly crates/ferric-browser-engine-qt/src/request_interceptor.cpp as F02e1 path9; no other path expansion is permitted.",
       "slice_file": "slices/F02e1.md",
       "read_anchors": [
         "crates/ferric-browser-engine-qt/src/public_page_owner.h",
@@ -4287,7 +4290,8 @@
         "crates/ferric-browser-engine-qt/build.rs",
         "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
         "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_owner.cpp",
-        "crates/ferric-browser-engine-qt/src/request_interceptor.h"
+        "crates/ferric-browser-engine-qt/src/request_interceptor.h",
+        "crates/ferric-browser-engine-qt/src/request_interceptor.cpp"
       ],
       "parent_id": "F02e"
     },

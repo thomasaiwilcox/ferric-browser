@@ -3893,6 +3893,33 @@
         "docs/architecture/ADR-popup-opener-lifetime.md": "existing"
       },
       "preserved": "Historical attempts/receipts, original behavior/security/device gates; numerical performance thresholds retained. No Qt fork or desktop customization."
+    },
+    {
+      "id": "A38",
+      "reason": "Public QWebEngineProfile owner must keep existing request policy; current interceptor only attaches to sibling QQuickWebEngineProfile.",
+      "source_sha": "7a57a560294774b659419c80283d2536b3c4c3b2",
+      "supersedes": "A37.path_owners.F02e1",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/src/request_interceptor.cpp"
+      ],
+      "path_owners": {
+        "F02e1": [
+          "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+          "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+          "crates/ferric-browser-engine-qt/src/public_profile_owner.h",
+          "crates/ferric-browser-engine-qt/src/public_profile_owner.cpp",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_owner.cpp",
+          "crates/ferric-browser-engine-qt/src/request_interceptor.h",
+          "crates/ferric-browser-engine-qt/src/request_interceptor.cpp"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/src/request_interceptor.cpp": "existing"
+      },
+      "required_test_impact": "Extend T014e1 with actual allowed/blocked request on disposable plain QWebEngineProfile and retain the QQuick profile regression.",
+      "preserved": "All original contracts, T014e1 level/cases, locks, dependencies, three attempt cap, security behavior, no private API/dependency; no more than9 product paths."
     }
   ]
 }
