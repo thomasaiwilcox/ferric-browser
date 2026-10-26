@@ -22,14 +22,53 @@ A38_F02E1_PATHS=frozenset({
     "crates/ferric-browser-engine-qt/src/request_interceptor.cpp",
 })
 A38_ADDED_PATH="crates/ferric-browser-engine-qt/src/request_interceptor.cpp"
+A42_F02E2_PATHS=frozenset({
+    "crates/ferric-browser-engine-qt/src/public_page_host.h",
+    "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+    "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+    "crates/ferric-browser-engine-qt/src/bridge.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+    "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+    "crates/ferric-browser-engine-qt/build.rs",
+    "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+    "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+})
+A42_ADDED_PATHS=[
+    "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+    "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+]
+A42_REMOVED_PATHS=["crates/ferric-browser-engine-qt/src/gui_application.cpp"]
 
 def validate_edit_path_budget(task,pack=PACK):
-    """Enforce the 8-path default and the narrowly reviewed F02e1/A38 exception."""
+    """Enforce the 8-path default and exact reviewed F02e1/A38 or F02e2/A42 exceptions."""
     errors=[];paths=task.get("allowed_paths",[]);cap=task.get("max_changed_product_files",8)
     amendment=task.get("path_budget_amendment")
     if amendment is None:
         if len(paths)>8 or cap>8:
             errors.append(f"{task.get('id')}: edit-path budget exceeded")
+        return errors
+    if task.get("id")=="F02e2" and amendment=="A42":
+        if len(paths)!=9 or set(paths)!=A42_F02E2_PATHS or cap!=9:
+            errors.append("F02e2: A42 permits only its exact nine-path owner list")
+        notice=task.get("new_paths_notice","")
+        if "A42" not in notice or "engine_requests.rs" not in notice or "ninth" not in notice:
+            errors.append("F02e2: A42 path exception lacks its exact nine-path notice")
+        try:
+            amendment_text=(pack/"control/AMENDMENTS.md").read_text()
+            section=amendment_text.split("## A42",1)[1].split("\n## ",1)[0]
+            source_map=load(pack/"control/source-map.execution.json")
+            record=next((x for x in source_map.get("execution_amendments",[]) if x.get("id")=="A42"),None)
+            if ("**Status:** independently reviewed and accepted" not in section
+                    or "engine_requests.rs" not in section):
+                errors.append("F02e2: A42 path exception is missing its accepted amendment record")
+            if (record is None or record.get("added_paths")!=A42_ADDED_PATHS
+                    or record.get("removed_paths")!=A42_REMOVED_PATHS
+                    or record.get("path_owners",{}).get("F02e2")!=paths
+                    or record.get("max_changed_product_files")!=9
+                    or record.get("previous_max_changed_product_files")!=8):
+                errors.append("F02e2: A42 source-map owner record does not match its exact nine-path scope")
+        except (IndexError,OSError,ValueError,TypeError) as exc:
+            errors.append(f"F02e2: cannot validate A42 path amendment metadata: {exc}")
         return errors
     if task.get("id")!="F02e1" or amendment!="A38":
         return [f"{task.get('id')}: unapproved edit-path budget amendment {amendment}"]

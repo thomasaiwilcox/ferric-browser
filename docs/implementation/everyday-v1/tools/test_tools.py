@@ -30,7 +30,13 @@ class StructureTests(unittest.TestCase):
             slices[task['id']]=current
         state['slices']=slices
         return state
-    def test_structure(self):self.assertEqual(validate_pack.validate_structure(),[])
+    def test_structure_matches_a42_review_state(self):
+        errors=validate_pack.validate_structure()
+        amendment=(PACK/'control/AMENDMENTS.md').read_text().split('## A42',1)[1].split('\n## ',1)[0]
+        if '**Status:** independently reviewed and accepted' in amendment:
+            self.assertEqual(errors,[])
+        else:
+            self.assertEqual(errors,['F02e2: A42 path exception is missing its accepted amendment record'])
     def test_all_packets_bounded(self):
         plan=load(PACK/'control/plan.json')
         ids=[t['id'] for t in plan['slices']]
@@ -59,6 +65,54 @@ class StructureTests(unittest.TestCase):
         self.assertTrue(any('edit-path budget exceeded' in e for e in validate_pack.validate_edit_path_budget(unamended,PACK)))
         other_task=copy.deepcopy(task);other_task['id']='W04'
         self.assertTrue(any('unapproved edit-path budget amendment' in e for e in validate_pack.validate_edit_path_budget(other_task,PACK)))
+    def test_a42_exact_path_budget_exception(self):
+        plan=load(PACK/'control/plan.json');task=next(t for t in plan['slices'] if t['id']=='F02e2')
+        live=validate_pack.validate_edit_path_budget(task,PACK)
+        amendment=(PACK/'control/AMENDMENTS.md').read_text().split('## A42',1)[1].split('\n## ',1)[0]
+        if '**Status:** independently reviewed and accepted' in amendment:
+            self.assertEqual(live,[])
+        else:
+            self.assertTrue(any('missing its accepted amendment record' in e for e in live))
+        too_many=copy.deepcopy(task);too_many['allowed_paths'].append('crates/example/extra.cpp')
+        self.assertTrue(any('exact nine-path' in e for e in validate_pack.validate_edit_path_budget(too_many,PACK)))
+        wrong_path=copy.deepcopy(task);wrong_path['allowed_paths'][-1]='crates/example/other.cpp'
+        self.assertTrue(any('exact nine-path' in e for e in validate_pack.validate_edit_path_budget(wrong_path,PACK)))
+        wrong_cap=copy.deepcopy(task);wrong_cap['max_changed_product_files']=8
+        self.assertTrue(any('exact nine-path' in e for e in validate_pack.validate_edit_path_budget(wrong_cap,PACK)))
+        wrong_task=copy.deepcopy(task);wrong_task['id']='W04'
+        self.assertTrue(any('unapproved edit-path budget amendment' in e for e in validate_pack.validate_edit_path_budget(wrong_task,PACK)))
+        wrong_amendment=copy.deepcopy(task);wrong_amendment['path_budget_amendment']='A99'
+        self.assertTrue(any('unapproved edit-path budget amendment' in e for e in validate_pack.validate_edit_path_budget(wrong_amendment,PACK)))
+        with tempfile.TemporaryDirectory() as tmp:
+            pack=Path(tmp);control=pack/'control';control.mkdir()
+            amendments=(PACK/'control/AMENDMENTS.md').read_text()
+            a42_lines=amendments.split('## A42',1)[1].split('\n## ',1)[0].splitlines()
+            status_line=next(line for line in a42_lines if line.startswith('- **Status:**'))
+            pending_status='- **Status:** draft for independent review; do not dispatch the next F02e2 attempt until the exact pack change is accepted.'
+            accepted_status='**Status:** independently reviewed and accepted by /root/d28_review; decision recorded at `evidence/F02e2-a1/PLAN_REVIEW-A42-final.json`.'
+            self.assertIn(status_line,amendments)
+            write_json(control/'source-map.execution.json',load(PACK/'control/source-map.execution.json'))
+            (control/'AMENDMENTS.md').write_text(amendments.replace(status_line,pending_status,1))
+            pending=validate_pack.validate_edit_path_budget(task,pack)
+            self.assertTrue(any('missing its accepted amendment record' in e for e in pending))
+            (control/'AMENDMENTS.md').write_text(amendments.replace(status_line,'- '+accepted_status,1))
+            self.assertEqual(validate_pack.validate_edit_path_budget(task,pack),[])
+    def test_a42_exception_requires_exact_amendment_metadata(self):
+        plan=load(PACK/'control/plan.json');task=next(t for t in plan['slices'] if t['id']=='F02e2')
+        unamended=copy.deepcopy(task);unamended.pop('path_budget_amendment')
+        self.assertTrue(any('edit-path budget exceeded' in e for e in validate_pack.validate_edit_path_budget(unamended,PACK)))
+        with tempfile.TemporaryDirectory() as tmp:
+            pack=Path(tmp);control=pack/'control';control.mkdir()
+            amendments=(PACK/'control/AMENDMENTS.md').read_text()
+            pending_status='**Status:** draft for independent review; do not dispatch the next F02e2 attempt until the exact pack change is accepted.'
+            accepted_status='**Status:** independently reviewed and accepted by /root/d28_review; decision recorded at `evidence/F02e2-a1/PLAN_REVIEW-A42-final.json`.'
+            (control/'AMENDMENTS.md').write_text(amendments.replace(pending_status,accepted_status,1))
+            source_map=load(PACK/'control/source-map.execution.json')
+            record=next(x for x in source_map['execution_amendments'] if x.get('id')=='A42')
+            record['added_paths']=['crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs']
+            write_json(control/'source-map.execution.json',source_map)
+            errors=validate_pack.validate_edit_path_budget(task,pack)
+            self.assertTrue(any('source-map owner record' in e for e in errors))
     def test_initial_not_complete(self):
         p=load(PACK/'control/plan.json');e=validate_pack.validate_state(p,PACK/'control/state.initial.json',True)
         self.assertTrue(any('not accepted' in x for x in e))

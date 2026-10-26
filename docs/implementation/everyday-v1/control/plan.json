@@ -4230,7 +4230,7 @@
       "max_changed_product_files": 5,
       "max_attempts": 3,
       "worker_may_delegate": false,
-      "new_paths_notice": "New public-host adapter/harness paths are proposed. Existing unrelated implementations stay intact; a ninth path requires a reviewed scope amendment.",
+      "new_paths_notice": "A42 grants this slice nine exact paths to route the existing ReparentView effect through the native request projector. Existing unrelated implementations stay intact; a tenth path requires another reviewed scope correction.",
       "slice_file": "slices/F02e0.md",
       "read_anchors": [
         "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
@@ -4318,16 +4318,17 @@
         "crates/ferric-browser-engine-qt/src/public_page_host.h",
         "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
         "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
-        "crates/ferric-browser-engine-qt/src/gui_application.cpp",
         "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs",
         "crates/ferric-browser-engine-qt/build.rs",
         "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
         "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
       ],
       "steps": [
-        "Keep QApplication and add WebEngineWidgets/QuickWidgets to the pinned SDK module graph. Embed reusable existing QML chrome in a Widgets host; preserve appearance, geometry and native dialog parent identity.",
+        "Keep the existing QApplication and add WebEngineWidgets/QuickWidgets to the pinned SDK module graph. Embed reusable existing QML chrome in a Widgets host; preserve appearance, geometry and native dialog parent identity.",
         "Attach/detach the same owned QWebEnginePage for tab/window presentation. Host transfer preserves document state and never recreates a URL or admits a foreign profile.",
-        "Expose narrow typed host/page operations through the existing bridge, emitting existing runtime inputs/effects. Keep lifecycle policy outside QML; exercise focus, scale and safe host replacement."
+        "Expose typed BrowserUi attach/detach operations through the bridge, keyed by opaque host/page-owner tokens and existing TabId plus page/document generation. Validate live owner, profile context and generations in Rust, then reuse existing EngineEffect::ReparentView through the native request lane. Extend that projection to carry captured page/document identity and host/page-owner tokens so stale requests are discarded before C++ resolves tokens and performs QWebEngineView attachment/lifetime work. Reject stale, retired and foreign-profile requests without effects. Do not introduce a new core event/effect or parallel string command channel; if ReparentView cannot safely represent the operation, stop for another reviewed scope correction. Keep lifecycle policy outside QML; exercise focus, scale and safe host replacement."
       ],
       "kind": "implementation",
       "locks": [
@@ -4340,17 +4341,19 @@
       "test_ids": [
         "T014e2"
       ],
-      "max_changed_product_files": 8,
+      "max_changed_product_files": 9,
+      "path_budget_amendment": "A42",
       "max_attempts": 3,
       "worker_may_delegate": false,
-      "new_paths_notice": "New public-host adapter/harness paths are proposed. Existing unrelated implementations stay intact; a ninth path requires a reviewed scope amendment.",
+      "new_paths_notice": "A42 approves exactly engine_requests.rs as F02e2 path9 (ninth product path); no tenth path without another reviewed correction.",
       "slice_file": "slices/F02e2.md",
       "read_anchors": [
         "crates/ferric-browser-engine-qt/src/public_page_host.h",
         "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
         "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
-        "crates/ferric-browser-engine-qt/src/gui_application.cpp",
         "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs",
         "crates/ferric-browser-engine-qt/build.rs",
         "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
         "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"

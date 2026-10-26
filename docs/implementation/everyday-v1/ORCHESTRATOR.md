@@ -22,7 +22,7 @@ Use one isolated git worktree per implementation worker or execute sequentially.
 
 Both named locks **and exact allowed-path overlap** exclude simultaneous writing. Shared `lib.rs`, `bridge.rs`, build.rs, Cargo manifests, CMakeLists, xtask, root shells, settings registries and generated references require serial ownership. `tools/ready.py` suggests non-overlapping candidates; it does not acquire locks or grant acceptance. The coordinator writes claims atomically before dispatch. A lock records slice, worker, branch, start and lease heartbeat. Expiry is not permission to steal a live worker's files: first verify its state and owned processes.
 
-Worker scope is one slice, up to eight changed product files, no recursive delegation, and only named contracts. Its packet is at most 24,000 UTF-8 bytes; source reading has 48,000 soft / 96,000 hard bytes per attempt. Read targeted symbols and callers before full files. If the packet/source/edit budget is insufficient, stop and split into real child slices. Do not truncate a safety contract to fit.
+Worker scope is one slice, up to that task's `max_changed_product_files` and exact allowed paths (eight product files by default; a higher task-specific cap requires an independently accepted plan amendment before dispatch), no recursive delegation, and only named contracts. Its packet is at most 24,000 UTF-8 bytes; source reading has 48,000 soft / 96,000 hard bytes per attempt. Read targeted symbols and callers before full files. If the packet/source/edit budget is insufficient, stop and split into real child slices. Do not truncate a safety contract to fit.
 
 ## Plan amendment and registration protocol
 

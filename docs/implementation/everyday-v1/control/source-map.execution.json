@@ -4061,6 +4061,47 @@
       "attempts_unchanged": true,
       "max_changed_product_files_unchanged": 8,
       "preserved": "All W04 contracts, acceptance IDs, security behavior, retry cap and downstream device/performance qualification."
+    },
+    {
+      "id": "A42",
+      "reason": "Independent F02e2 attempt-1 source review found that its C++ host adapter bypassed the required Rust/CXX-Qt typed host/page operation path; the existing QApplication implementation was already correct and required no edit.",
+      "source_sha": "1d9c254d13852b7aa3ea40f1f00529216fdc700f",
+      "source_tree": "ac19aa1df9fe0911d3a6b5ce5052cd3ab60c25ab",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs"
+      ],
+      "removed_paths": [
+        "crates/ferric-browser-engine-qt/src/gui_application.cpp"
+      ],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs": "existing_product_source",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs": "existing_product_source"
+      },
+      "required_change": "Add narrow typed BrowserUi attach/detach operations in bridge.rs with Rust validation in the existing browser_ui_tab_state.rs. Reuse the core's existing EngineEffect::ReparentView through the existing native request lane, extending engine_requests.rs to project that effect with captured page/document identity and opaque host/page-owner tokens. Validate current live owner, profile context and generations before emission; C++ resolves tokens and performs QWebEngineView lifetime/attachment work only. Do not pass a URL or raw QWebEnginePage pointer as operation authority, introduce a new core event/effect or add a parallel string command channel. If ReparentView cannot safely represent this operation, stop for another reviewed scope correction. Keep the slice component-level and do not claim shipped-root migration.",
+      "required_test_impact": "Extend T014e2 to request attach/detach through the registered Rust-backed BrowserUi, observe the existing ReparentView native-request projection, and prove the C++ adapter preserves the same owner/page/profile/document/URL/history across safe host replacement. Stale, retired and foreign-profile requests must emit no effect and cause no attachment. Preserve the existing focus, scale, appearance and native dialog parent checks.",
+      "locks_unchanged": [
+        "public-page-host",
+        "bridge",
+        "test-registration"
+      ],
+      "attempts_unchanged": true,
+      "max_changed_product_files": 9,
+      "previous_max_changed_product_files": 8,
+      "preserved": "T014e2, all A37 F02e dependencies and contracts, three-attempt cap, nine-file F02e2 cap, one native slot, Rust-owned lifecycle policy, no shipped-root migration claim, and all downstream qualification gates."
     }
   ]
 }
