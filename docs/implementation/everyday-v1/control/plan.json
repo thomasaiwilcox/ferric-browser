@@ -4207,7 +4207,7 @@
         "docs/architecture/ADR-public-page-host.md"
       ],
       "steps": [
-        "Use exact Qt6.11.2 QWebEnginePage/QWebEngineView and QQuickWidget in a standalone disposable fixture; no product factory replacement before this gate.",
+        "Use exact Qt6.11.2 QWebEnginePage/QWebEngineView and QQuickWidget in a standalone disposable fixture; no product factory replacement before this gate. Its allowlisted CMakeLists is a standalone project configured directly with cmake -S tests/public-page-host; include CTest and list actual tests before execution, without relying on undispatched parent registration.",
         "Prove real top/child/grandchild adoption without reload, JS/document/opener continuity, true parent close/opener.closed and zero unique loopback navigation requests from the closed opener.",
         "Prove pointer/keyboard/focus on surviving descendants, private profile isolation, close permutations, failed adoption and final page/profile drain. Include QML chrome/overlay focus and dialog parenting feasibility.",
         "Run component reproduction plus actual native window/input checks on this machine; record exact provenance and distinguish Qt-generated from compositor-delivered input. A failed public ownership route blocks migration; do not restore tombstones or infer a Qt-fork exception."
