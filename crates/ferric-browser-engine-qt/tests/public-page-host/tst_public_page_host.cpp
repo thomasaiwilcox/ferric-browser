@@ -26,6 +26,7 @@
 #include <QWidget>
 #include <QWindow>
 #include <QDir>
+#include <QDirIterator>
 #include <QTemporaryDir>
 #include <QElapsedTimer>
 #include <QHash>
@@ -179,8 +180,7 @@ public:
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         for (QWebEngineProfile *p : profiles) delete p;
         profiles.clear();
-        for (QTemporaryDir *dir : dirs) delete dir;
-        dirs.clear();
+        cleanupDirectories();
     }
     QWebEngineProfile *newProfile(bool offTheRecord, const QString &name) {
         auto *p = offTheRecord ? new QWebEngineProfile(this) : new QWebEngineProfile(name, this);
@@ -263,6 +263,29 @@ public:
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         return guard.isNull();
     }
+    bool cleanupDirectories() {
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        for (QTemporaryDir *dir : dirs) {
+            const QString path = dir->path();
+            QDirIterator it(path, QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot,
+                            QDirIterator::Subdirectories);
+            while (it.hasNext()) {
+                const QString item = it.next();
+                const QFileInfo info(item);
+                QFileDevice::Permissions permissions = QFileDevice::ReadOwner | QFileDevice::WriteOwner;
+                if (info.isDir()) permissions |= QFileDevice::ExeOwner;
+                QFile::setPermissions(item, permissions);
+            }
+            QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+            dir->setAutoRemove(false);
+            const bool removed = QDir(path).removeRecursively();
+            delete dir;
+            if (!removed && QFileInfo::exists(path)) return false;
+        }
+        dirs.clear();
+        return true;
+    }
     Fixture *fixture;
     QList<Host *> hosts;
     QList<QWebEngineProfile *> profiles;
@@ -314,11 +337,16 @@ private slots:
         const QVariantMap target = js(grand->page,
             "(()=>{const r=document.querySelector('#target').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()").toMap();
         QVERIFY(!target.isEmpty());
-        QTest::mouseClick(grand->view, Qt::LeftButton, Qt::NoModifier,
-                          QPoint(target.value("x").toInt(), target.value("y").toInt()));
+        QWidget *pointerTarget = grand->view->focusProxy();
+        QVERIFY(pointerTarget);
+        QCOMPARE(pointerTarget->window(), grand->shell.data());
+        const QPoint clickPoint = pointerTarget->mapFrom(grand->view->viewport(),
+            QPoint(target.value("x").toInt(), target.value("y").toInt()));
+        QTest::mouseClick(pointerTarget, Qt::LeftButton, Qt::NoModifier, clickPoint);
         QCOMPARE(js(grand->page, "pointerCount").toInt(), 1);
         js(grand->page, "document.querySelector('#target').focus()");
-        QTest::keyClick(grand->view, Qt::Key_A);
+        pointerTarget->setFocus(Qt::OtherFocusReason);
+        QTest::keyClick(pointerTarget, Qt::Key_A);
         QVERIFY(waitUntil([&] { return js(grand->page, "keyCount").toInt() > 0; }));
 
         child->page->triggerAction(QWebEnginePage::RequestClose);
@@ -327,6 +355,7 @@ private slots:
         grand->page->triggerAction(QWebEnginePage::RequestClose);
         QVERIFY(waitUntil([&] { return h.alivePages(profile) == 0; }));
         QVERIFY(h.drain(profile));
+        QVERIFY(h.cleanupDirectories());
     }
     void profiles() {
         Harness h(&fixture);
@@ -337,8 +366,10 @@ private slots:
         Host *a = h.makeHost(persistent);
         Host *b = h.makeHost(privateProfile);
         a->page->load(fixture.url("/popup.html?kind=cookie"));
+        QVERIFY(waitUntil([&] { return js(a->page, "document.body.dataset.kind").toString() == "cookie"; }));
         QVERIFY(waitUntil([&] { return js(a->page, "document.cookie.includes('partition_probe=present')").toBool(); }));
         b->page->load(fixture.url("/popup.html?kind=cookie-private"));
+        QVERIFY(waitUntil([&] { return js(b->page, "document.body.dataset.kind").toString() == "cookie-private"; }));
         QVERIFY(waitUntil([&] { return js(b->page, "document.cookie.includes('private_probe=present')").toBool(); }));
         QVERIFY(!js(b->page, "document.cookie.includes('partition_probe=present')").toBool());
         QVERIFY(!js(a->page, "document.cookie.includes('private_probe=present')").toBool());
@@ -354,6 +385,7 @@ private slots:
         QVERIFY(waitUntil([&] { return h.alivePages() == 0; }));
         QVERIFY(h.drain(persistent));
         QVERIFY(h.drain(privateProfile));
+        QVERIFY(h.cleanupDirectories());
     }
     void dialogs() {
         Harness h(&fixture);
@@ -389,6 +421,7 @@ private slots:
         h.closeHost(host);
         QVERIFY(waitUntil([&] { return h.alivePages() == 0; }));
         QVERIFY(h.drain(profile));
+        QVERIFY(h.cleanupDirectories());
     }
     void failureCleanup() {
         Harness h(&fixture);
@@ -422,6 +455,7 @@ private slots:
         h.closeHost(source);
         QVERIFY(waitUntil([&] { return h.alivePages(profile) == 0; }));
         QVERIFY(h.drain(profile));
+        QVERIFY(h.cleanupDirectories());
     }
     void nativeInput() {
         QCOMPARE(QGuiApplication::platformName(), QStringLiteral("wayland"));
@@ -452,12 +486,17 @@ private slots:
         const QVariantMap point = js(child->page,
             "(()=>{const r=document.querySelector('#target').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()").toMap();
         QVERIFY(!point.isEmpty());
-        QTest::mouseClick(child->view, Qt::LeftButton, Qt::NoModifier,
-                          QPoint(point.value("x").toInt(), point.value("y").toInt()));
+        QWidget *pointerTarget = child->view->focusProxy();
+        QVERIFY(pointerTarget);
+        QCOMPARE(pointerTarget->window(), child->shell.data());
+        const QPoint clickPoint = pointerTarget->mapFrom(child->view->viewport(),
+            QPoint(point.value("x").toInt(), point.value("y").toInt()));
+        QTest::mouseClick(pointerTarget, Qt::LeftButton, Qt::NoModifier, clickPoint);
         QCOMPARE(js(child->page, "pointerCount").toInt(), 1);
         // This is deliberately labelled QtTest synthetic input; compositor-delivered input
         // is reported separately in the run record and is never inferred from this event.
-        QTest::keyClick(child->view, Qt::Key_B);
+        pointerTarget->setFocus(Qt::OtherFocusReason);
+        QTest::keyClick(pointerTarget, Qt::Key_B);
         QVERIFY(waitUntil([&] { return js(child->page, "keyCount").toInt() > 0; }));
         const int beforeNative = js(child->page, "keyCount").toInt();
         QVERIFY(sendHyprlandShortcutToOwnedWindow(child->shell, marker, QStringLiteral("c")));
@@ -465,6 +504,7 @@ private slots:
         h.closeHost(child);
         QVERIFY(waitUntil([&] { return h.alivePages() == 0; }));
         QVERIFY(h.drain(profile));
+        QVERIFY(h.cleanupDirectories());
     }
 private:
     Fixture fixture;
