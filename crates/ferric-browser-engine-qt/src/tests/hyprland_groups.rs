@@ -266,8 +266,8 @@ fn observation_permission_split_is_enforced() {
 fn enabled_off_has_zero_socket_effects_even_with_live_endpoints() {
     use std::os::unix::net::UnixListener;
 
-    let request_path = owned_socket_path("disabled-request");
-    let event_path = owned_socket_path("disabled-events");
+    let request_path = owned_socket_path();
+    let event_path = owned_socket_path();
     let request_listener = UnixListener::bind(&request_path).expect("bind request fixture");
     let event_listener = UnixListener::bind(&event_path).expect("bind event fixture");
     request_listener
@@ -317,8 +317,8 @@ fn workspace_permission_off_keeps_observation_read_only() {
     use std::os::unix::net::UnixListener;
     use std::sync::mpsc;
 
-    let request_path = owned_socket_path("readonly-request");
-    let event_path = owned_socket_path("readonly-events");
+    let request_path = owned_socket_path();
+    let event_path = owned_socket_path();
     let request_listener = UnixListener::bind(&request_path).expect("bind request fixture");
     let event_listener = UnixListener::bind(&event_path).expect("bind event fixture");
     let request_probe = request_listener
@@ -404,10 +404,10 @@ fn workspace_permission_off_keeps_observation_read_only() {
     std::fs::remove_file(event_path).expect("remove owned event socket");
 }
 
-fn owned_socket_path(label: &str) -> std::path::PathBuf {
+fn owned_socket_path() -> std::path::PathBuf {
     static NEXT_SOCKET: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     std::env::temp_dir().join(format!(
-        "ferric-w04-{label}-{}-{}.sock",
+        "w4-{}-{}.sock",
         std::process::id(),
         NEXT_SOCKET.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ))
