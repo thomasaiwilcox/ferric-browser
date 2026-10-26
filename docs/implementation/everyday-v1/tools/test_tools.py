@@ -21,6 +21,15 @@ class TempRepo(unittest.TestCase):
         return run_gate.run(self.repo,self.root/out,'fixture',[sys.executable,'-c',code],kwargs.pop('timeout',3),**kwargs)
 
 class StructureTests(unittest.TestCase):
+    def initial_state_for_plan(self,plan):
+        state=copy.deepcopy(load(PACK/'control/state.initial.json'));prior=state['slices'];slices={}
+        for task in plan['slices']:
+            current=prior.get(task['id'],{'status':'not_started','attempts':0,'author':None,'reviewer':None,'evidence':None,'blocker':None})
+            if task.get('superseded_by'):
+                current={**current,'status':'superseded','supersession':{'amendment':task['amendment'],'superseded_by':task['superseded_by']}}
+            slices[task['id']]=current
+        state['slices']=slices
+        return state
     def test_structure(self):self.assertEqual(validate_pack.validate_structure(),[])
     def test_all_packets_bounded(self):
         plan=load(PACK/'control/plan.json')
@@ -52,6 +61,7 @@ class StructureTests(unittest.TestCase):
         self.assertEqual(ready.suggest(p,s)['suggestions'],[])
     def test_attempt_increase_without_exception_rejected(self):
         p=load(PACK/'control/plan.json')
+        p.get('attempt_exceptions',{}).pop('W01b',None)
         next(t for t in p['slices'] if t['id']=='W01b')['max_attempts']=4
         self.assertTrue(any('increase lacks explicit attempt exception' in e for e in validate_pack.validate_attempt_limits(p,{t['id']:t for t in p['slices']})))
     def test_exception_cannot_be_assigned_to_unapproved_task(self):
@@ -63,10 +73,10 @@ class StructureTests(unittest.TestCase):
         self.assertTrue(any('Global max_attempts must remain 3' in e for e in validate_pack.validate_attempt_limits(p,{t['id']:t for t in p['slices']})))
     def test_attempt3_to4_authorized_but5_rejected(self):
         p=load(PACK/'control/plan.json');t=next(t for t in p['slices'] if t['id']=='W01b');t['max_attempts']=4
-        p['attempt_exceptions']={'W01b':{'amendment':'A37','default_limit':3,'authorized_limit':4,'reason':'one bounded repair after independent review'}}
+        p.setdefault('attempt_exceptions',{})['W01b']={'amendment':'A37','default_limit':3,'authorized_limit':4,'reason':'one bounded repair after independent review'}
         self.assertEqual(validate_pack.validate_attempt_limits(p,{x['id']:x for x in p['slices']}),[])
         with tempfile.TemporaryDirectory() as tmp:
-            state=copy.deepcopy(load(PACK/'control/state.initial.json'));path=Path(tmp)/'control/state.json';path.parent.mkdir()
+            state=self.initial_state_for_plan(p);path=Path(tmp)/'control/state.json';path.parent.mkdir()
             for attempts,valid in ((3,True),(4,True),(5,False)):
                 state['slices']['W01b']['attempts']=attempts;write_json(path,state)
                 errors=validate_pack.validate_state(p,path,pack=PACK)
