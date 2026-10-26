@@ -99,12 +99,19 @@ References: [QWebEngineFrame](https://doc.qt.io/qt-6.11/qwebengineframe.html),
 **Decision:** continue on Qt's public Qt 6.11.2 `QWebEngineView` / its
 `QWebEnginePage`; do not fork Qt WebEngine. The production design is a
 page-bound, credential-only `QWebChannel` installed in one centrally reserved
-isolated script world, with a browser-owned mediator injected for the top-level
-document and a private native receiver owned by that page's host. Keep the
-channel object and its lifetime tied to that page. Qt documents one channel per
-page, and setting a channel in another world replaces the installed channel;
-the production integration therefore needs one deliberate page/world choice,
-not a second generic bridge. Publish only the narrow credential request API.
+isolated script world, with a browser-owned mediator
+injected for the top-level document and a private native receiver owned by that
+page's host. The channel carries only an untrusted, bounded notification that a
+request may be pending; its payload carries no authoritative origin, target,
+profile, tab, frame, or result destination. Native code must freshly challenge
+the current main-frame mediator and retrieve the private pending request from
+that mediator before admission. It then binds the request to the native page,
+profile, host, and document epoch, and revalidates those bindings at
+completion. Keep the channel object and its lifetime tied to that page. Qt
+documents one channel per page, and setting a channel in another world replaces
+the installed channel; the production integration therefore needs one
+deliberate page/world choice, not a second generic bridge. Publish only the
+narrow credential request API.
 
 The page's current `mainFrame()` and `QWebEngineFrame` validity, main-frame
 flag, URL, and frame-scoped `runJavaScript` provide useful routing and live
@@ -131,24 +138,30 @@ phone-provider chooser or evidence that the page request followed a physical
 user action. A message's `isTrusted` value is not such evidence either.
 
 Keep provider selection in an application-owned native UI and keep the phone
-provider disabled until a downstream production test proves a usable positive
-activation path end to end, plus rejection of programmatic and synthetic
-requests. That test must bind the request to the same live main-frame document,
-page/profile, and host through completion. If the implementation cannot obtain
-or preserve the required activation and document authority using public APIs,
-stop and leave phone unavailable; do not add private Qt hooks, infer authority
-from URL/channel delivery, or weaken the native-authentication path.
+provider disabled until a downstream production test proves the positive native
+provider-choice/consent path and its cancellation or skipped-choice rejection.
+The test must reject synthetic dispatched transport messages and other-frame
+submissions, while binding the private request to the same live main-frame
+document, page/profile, and host through completion. Ordinary programmatic
+requests from scripts in the page's own realm are not categorically rejected:
+same-origin scripts share that page authority under C04. Do not assume that
+transient page activation survives the asynchronous mediator/channel round
+trip, and do not infer a physical gesture from message `isTrusted`. The native
+provider-choice path must be exercised on the actual application UI. If the
+required document binding or native choice/consent path cannot be proved with
+public APIs, stop and leave phone unavailable; do not add private Qt hooks,
+infer authority from URL/channel delivery, or weaken the native-authentication
+path.
 
 Before production wiring, independently prove: one per-page channel and
 reserved world with no unintended page/profile or child-frame access; the
 mediator's own top-level-window message checks against forged, dispatched, and
 child-frame messages; native same-URL reload, navigation, BFCache, renderer,
 view, profile, and window invalidation; exact HTTPS/top-level origin and
-permissions-policy decisions; and a real native provider-choice positive and
-negative activation path. Replace the old blanket source guard only through
-reviewed production isolation tests. Until those results and the independent
-review pass, the prototype is feasibility evidence only and no real credential
-provider may be wired.
+permissions-policy decisions; and a real native provider-choice positive
+consent and negative cancel/skipped-choice path. Replace the old blanket source
+guard only through reviewed production isolation tests. Until those results and the independent review pass, the prototype is
+feasibility evidence only and no real credential provider may be wired.
 
 **Qt 6.11.2 public references:**
 [QWebEnginePage](https://doc.qt.io/qt-6.11/qwebenginepage.html) documents
