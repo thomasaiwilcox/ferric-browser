@@ -26,7 +26,6 @@
 #include <QWidget>
 #include <QWindow>
 #include <QDir>
-#include <QDirIterator>
 #include <QTemporaryDir>
 #include <QElapsedTimer>
 #include <QHash>
@@ -181,6 +180,11 @@ public:
         for (QWebEngineProfile *p : profiles) delete p;
         profiles.clear();
         cleanupDirectories();
+        for (QTemporaryDir *dir : dirs) {
+            dir->setAutoRemove(false);
+            delete dir;
+        }
+        dirs.clear();
     }
     QWebEngineProfile *newProfile(bool offTheRecord, const QString &name) {
         auto *p = offTheRecord ? new QWebEngineProfile(this) : new QWebEngineProfile(name, this);
@@ -266,25 +270,27 @@ public:
     bool cleanupDirectories() {
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        for (QTemporaryDir *dir : dirs) {
+        bool allRemoved = true;
+        for (int i = dirs.size() - 1; i >= 0; --i) {
+            QTemporaryDir *dir = dirs.at(i);
             const QString path = dir->path();
-            QDirIterator it(path, QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot,
-                            QDirIterator::Subdirectories);
-            while (it.hasNext()) {
-                const QString item = it.next();
-                const QFileInfo info(item);
-                QFileDevice::Permissions permissions = QFileDevice::ReadOwner | QFileDevice::WriteOwner;
-                if (info.isDir()) permissions |= QFileDevice::ExeOwner;
-                QFile::setPermissions(item, permissions);
-            }
-            QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
             dir->setAutoRemove(false);
-            const bool removed = QDir(path).removeRecursively();
-            delete dir;
-            if (!removed && QFileInfo::exists(path)) return false;
+            bool removed = !QFileInfo::exists(path);
+            for (int retry = 0; !removed && retry < 3; ++retry) {
+                removed = QDir(path).removeRecursively() || !QFileInfo::exists(path);
+                if (!removed) {
+                    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+                    QTest::qWait(50);
+                }
+            }
+            if (removed) {
+                dirs.removeAt(i);
+                delete dir;
+            } else {
+                allRemoved = false;
+            }
         }
-        dirs.clear();
-        return true;
+        return allRemoved;
     }
     Fixture *fixture;
     QList<Host *> hosts;
