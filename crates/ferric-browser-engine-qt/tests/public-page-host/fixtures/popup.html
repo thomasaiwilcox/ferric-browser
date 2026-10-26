@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>owned popup fixture</title>
+<body data-kind="">
+<button id="target">pointer target</button>
+<button id="open">open child</button>
+<script>
+(() => {
+  const p = new URLSearchParams(location.search);
+  const kind = p.get('kind') || 'top';
+  document.body.dataset.kind = kind;
+  window.fixtureNonce = `${kind}-${Math.random().toString(36).slice(2)}`;
+  window.pointerCount = 0;
+  window.keyCount = 0;
+  document.querySelector('#target').addEventListener('click', () => window.pointerCount++);
+  window.addEventListener('keydown', () => window.keyCount++);
+  document.querySelector('#open').addEventListener('click', () => {
+    if (kind === 'top') window.open('/popup.html?kind=child', '_blank');
+    if (kind === 'child') window.open('/popup.html?kind=grandchild', '_blank');
+  });
+  if (kind === 'cookie') document.cookie = 'partition_probe=present; SameSite=Lax; Path=/';
+  if (kind === 'popup-dialog') window.open('/dialog.html', '_blank', 'dialog=yes,width=300,height=180');
+})();
+</script>
+</body>
