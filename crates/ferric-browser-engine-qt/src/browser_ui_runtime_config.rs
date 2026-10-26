@@ -99,9 +99,7 @@ impl qobject::BrowserUi {
         };
         if let Some(result) = hyprland_result {
             match result {
-                HyprlandResponse::Observe(result) => {
-                    let _capability = result.capability;
-                }
+                HyprlandResponse::Observe(_) => {}
                 HyprlandResponse::RouteWorkspace(result) => match result {
                     Ok(()) => self
                         .as_mut()
