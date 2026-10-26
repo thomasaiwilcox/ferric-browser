@@ -82,6 +82,10 @@ impl qobject::BrowserUi {
         };
         if let Some(result) = hyprland_result {
             match result {
+                HyprlandResponse::Observe(_) => {
+                    // Observation is passive background state, not user-action feedback.
+                    // The worker retains its bounded session cache; do not report or route it here.
+                }
                 HyprlandResponse::RouteWorkspace(result) => match result {
                     Ok(()) => self
                         .as_mut()
