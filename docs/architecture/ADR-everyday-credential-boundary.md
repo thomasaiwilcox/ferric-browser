@@ -93,3 +93,70 @@ or CSP bypass is an acceptable fallback.
 References: [QWebEngineFrame](https://doc.qt.io/qt-6.11/qwebengineframe.html),
 [QWebEnginePage](https://doc.qt.io/qt-6.11/qwebenginepage.html),
 [QWebEngineScript](https://doc.qt.io/qt-6.11/qwebenginescript.html).
+
+## T048 — Selected public host route and remaining proof
+
+**Decision:** continue on Qt's public Qt 6.11.2 `QWebEngineView` / its
+`QWebEnginePage`; do not fork Qt WebEngine. The production design is a
+page-bound, credential-only `QWebChannel` installed in one centrally reserved
+isolated script world, with a browser-owned mediator injected for the top-level
+document and a private native receiver owned by that page's host. Keep the
+channel object and its lifetime tied to that page. Qt documents one channel per
+page, and setting a channel in another world replaces the installed channel;
+the production integration therefore needs one deliberate page/world choice,
+not a second generic bridge. Publish only the narrow credential request API.
+
+The page's current `mainFrame()` and `QWebEngineFrame` validity, main-frame
+flag, URL, and frame-scoped `runJavaScript` provide useful routing and live
+frame handles. They do not supply a native security origin or a stable
+cross-document identifier. Treat frame URL only as routing context. The
+mediator may report browser-computed origin, secure-context, and
+permissions-policy facts from its own isolated world, but those remain
+browser-side JavaScript facts: they must be challenged against the current
+main frame and corroborated by native page, profile, host, and document
+incarnation state at both admission and completion. A nonce is an equality
+check within the mediator protocol, not native document identity or a lease.
+The T046/T047 prototype proves only its isolated fixture behavior, including
+stale rejection after reload and BFCache restoration; it does not prove this
+production mediator, receiver, or lease.
+
+**Provider choice and activation remain unqualified.** The public page/channel
+route can carry a bounded request to a native host, but the Qt APIs reviewed
+here expose no documented native user-gesture token for that request and do
+not establish that transient page activation survives an asynchronous
+mediator/channel round trip. `webAuthUxRequested` and
+`QWebEngineWebAuthUxRequest` describe user-verification, resident-account, and
+failure UX for an authenticator that already needs interaction. They are not a
+phone-provider chooser or evidence that the page request followed a physical
+user action. A message's `isTrusted` value is not such evidence either.
+
+Keep provider selection in an application-owned native UI and keep the phone
+provider disabled until a downstream production test proves a usable positive
+activation path end to end, plus rejection of programmatic and synthetic
+requests. That test must bind the request to the same live main-frame document,
+page/profile, and host through completion. If the implementation cannot obtain
+or preserve the required activation and document authority using public APIs,
+stop and leave phone unavailable; do not add private Qt hooks, infer authority
+from URL/channel delivery, or weaken the native-authentication path.
+
+Before production wiring, independently prove: one per-page channel and
+reserved world with no unintended page/profile or child-frame access; the
+mediator's own top-level-window message checks against forged, dispatched, and
+child-frame messages; native same-URL reload, navigation, BFCache, renderer,
+view, profile, and window invalidation; exact HTTPS/top-level origin and
+permissions-policy decisions; and a real native provider-choice positive and
+negative activation path. Replace the old blanket source guard only through
+reviewed production isolation tests. Until those results and the independent
+review pass, the prototype is feasibility evidence only and no real credential
+provider may be wired.
+
+**Qt 6.11.2 public references:**
+[QWebEnginePage](https://doc.qt.io/qt-6.11/qwebenginepage.html) documents
+`mainFrame()`, per-world JavaScript and WebChannel installation, and
+`webAuthUxRequested`; [QWebEngineFrame](https://doc.qt.io/qt-6.11/qwebengineframe.html)
+documents frame validity, main-frame status, URL and frame-scoped JavaScript;
+[QWebEngineScript](https://doc.qt.io/qt-6.11/qwebenginescript.html) documents
+isolated worlds and script injection; [QWebChannel](https://doc.qt.io/qt-6.11/qwebchannel.html)
+documents that registered QObject properties and public methods are exposed to
+remote HTML clients; [QWebEngineWebAuthUxRequest](https://doc.qt.io/qt-6.11/qwebenginewebauthuxrequest.html)
+documents the narrower authenticator-interaction UX lifecycle.
