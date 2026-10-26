@@ -340,7 +340,7 @@ private slots:
         QWidget *pointerTarget = grand->view->focusProxy();
         QVERIFY(pointerTarget);
         QCOMPARE(pointerTarget->window(), grand->shell.data());
-        const QPoint clickPoint = pointerTarget->mapFrom(grand->view->viewport(),
+        const QPoint clickPoint = pointerTarget->mapFrom(grand->view,
             QPoint(target.value("x").toInt(), target.value("y").toInt()));
         QTest::mouseClick(pointerTarget, Qt::LeftButton, Qt::NoModifier, clickPoint);
         QCOMPARE(js(grand->page, "pointerCount").toInt(), 1);
@@ -489,7 +489,7 @@ private slots:
         QWidget *pointerTarget = child->view->focusProxy();
         QVERIFY(pointerTarget);
         QCOMPARE(pointerTarget->window(), child->shell.data());
-        const QPoint clickPoint = pointerTarget->mapFrom(child->view->viewport(),
+        const QPoint clickPoint = pointerTarget->mapFrom(child->view,
             QPoint(point.value("x").toInt(), point.value("y").toInt()));
         QTest::mouseClick(pointerTarget, Qt::LeftButton, Qt::NoModifier, clickPoint);
         QCOMPARE(js(child->page, "pointerCount").toInt(), 1);
