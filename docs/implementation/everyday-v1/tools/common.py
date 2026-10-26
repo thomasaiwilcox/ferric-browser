@@ -6,8 +6,8 @@ from datetime import datetime,timezone
 PACK=Path(__file__).resolve().parent.parent
 REPO="thomasaiwilcox/ferric-browser"
 CLONE=f"https://github.com/{REPO}.git"
-ATTEMPT_EXCEPTION_TASKS={"P00a","W01b"}
-ATTEMPT_EXCEPTION_AMENDMENT="A37"
+ATTEMPT_EXCEPTION_AMENDMENTS={"P00a":"A37","W01b":"A37","F02e2":"A43"}
+ATTEMPT_EXCEPTION_TASKS=set(ATTEMPT_EXCEPTION_AMENDMENTS)
 GLOBAL_MAX_ATTEMPTS=3
 def load(path:Path):
     with path.open(encoding="utf-8") as f:return json.load(f)
@@ -76,9 +76,10 @@ def effective_attempt_limit(plan,task):
     if not isinstance(default,int) or isinstance(default,bool) or default!=GLOBAL_MAX_ATTEMPTS:return 0
     if not isinstance(task_limit,int) or isinstance(task_limit,bool) or task_limit<1:return 0
     if entry is None:return min(default,task_limit)
-    if (task.get("id") in ATTEMPT_EXCEPTION_TASKS
+    expected_amendment=ATTEMPT_EXCEPTION_AMENDMENTS.get(task.get("id"))
+    if (expected_amendment is not None
         and isinstance(entry,dict)
-        and entry.get("amendment")==ATTEMPT_EXCEPTION_AMENDMENT
+        and entry.get("amendment")==expected_amendment
         and entry.get("default_limit")==default
         and entry.get("authorized_limit")==task_limit==default+1
         and isinstance(entry.get("reason"),str)

@@ -4343,7 +4343,7 @@
       ],
       "max_changed_product_files": 9,
       "path_budget_amendment": "A42",
-      "max_attempts": 3,
+      "max_attempts": 4,
       "worker_may_delegate": false,
       "new_paths_notice": "A42 approves exactly engine_requests.rs as F02e2 path9 (ninth product path); no tenth path without another reviewed correction.",
       "slice_file": "slices/F02e2.md",
@@ -4756,6 +4756,12 @@
       "default_limit": 3,
       "authorized_limit": 4,
       "reason": "User-authorized fourth attempt: reconstruct reviewed routing and fix E0716 while preserving accepted W01a/W01c; execute original T104."
+    },
+    "F02e2": {
+      "amendment": "A43",
+      "default_limit": 3,
+      "authorized_limit": 4,
+      "reason": "One-time compiler recovery after the source-reviewed A3 candidate failed the pinned Qt 6.11.2 build before CMake or T014e2; preserve all A3 findings and stop after this attempt."
     }
   }
 }

@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse,json,re,sys
 from pathlib import Path
 from common import (PACK,load,read_plan,packet,safe_relative,digest,
-                    ATTEMPT_EXCEPTION_TASKS,ATTEMPT_EXCEPTION_AMENDMENT,
+                    ATTEMPT_EXCEPTION_TASKS,ATTEMPT_EXCEPTION_AMENDMENTS,
                     GLOBAL_MAX_ATTEMPTS,effective_attempt_limit)
 STATUSES={"not_started","ready","in_progress","submitted","reviewing","accepted","superseded","blocked_environment","blocked_specification","implemented_unqualified","failed"}
 LEVELS={"inspection","unit","component","application","native","physical","benchmark","build","fuzz"}
@@ -38,6 +38,7 @@ A42_ADDED_PATHS=[
     "crates/ferric-browser-engine-qt/src/engine_requests.rs",
 ]
 A42_REMOVED_PATHS=["crates/ferric-browser-engine-qt/src/gui_application.cpp"]
+SUPERSESSION_AMENDMENT="A37"
 
 def validate_edit_path_budget(task,pack=PACK):
     """Enforce the 8-path default and exact reviewed F02e1/A38 or F02e2/A42 exceptions."""
@@ -111,8 +112,9 @@ def validate_attempt_limits(plan,tasks):
             errors.append(f"{sid}: attempt exception must be an object");continue
         if set(entry)!={"amendment","default_limit","authorized_limit","reason"}:
             errors.append(f"{sid}: attempt exception fields must be amendment/default_limit/authorized_limit/reason")
-        if entry.get("amendment")!=ATTEMPT_EXCEPTION_AMENDMENT:
-            errors.append(f"{sid}: attempt exception must cite {ATTEMPT_EXCEPTION_AMENDMENT}")
+        expected_amendment=ATTEMPT_EXCEPTION_AMENDMENTS.get(sid)
+        if expected_amendment is None or entry.get("amendment")!=expected_amendment:
+            errors.append(f"{sid}: attempt exception must cite {expected_amendment or 'an authorized amendment'}")
         if entry.get("default_limit")!=default:
             errors.append(f"{sid}: attempt exception default_limit differs from global limit")
         if entry.get("authorized_limit")!=limit or limit!=default+1:
@@ -133,8 +135,8 @@ def validate_supersession_structure(tasks,tests):
             or any(not isinstance(x,str) or not x for x in replacements)
             or len(set(replacements))!=len(replacements)):
             errors.append(f"{sid}: superseded_by must contain unique nonempty task IDs");continue
-        if t.get("amendment")!=ATTEMPT_EXCEPTION_AMENDMENT:
-            errors.append(f"{sid}: supersession must cite {ATTEMPT_EXCEPTION_AMENDMENT}")
+        if t.get("amendment")!=SUPERSESSION_AMENDMENT:
+            errors.append(f"{sid}: supersession must cite {SUPERSESSION_AMENDMENT}")
         for rid in replacements:
             if rid not in tasks:errors.append(f"{sid}: unknown superseding task {rid}")
             if rid==sid:errors.append(f"{sid}: task cannot supersede itself")

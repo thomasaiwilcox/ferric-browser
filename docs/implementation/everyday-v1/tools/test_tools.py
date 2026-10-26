@@ -148,6 +148,30 @@ class StructureTests(unittest.TestCase):
                 state['slices']['W01b']['attempts']=attempts;write_json(path,state)
                 errors=validate_pack.validate_state(p,path,pack=PACK)
                 self.assertEqual(not any('W01b: attempt limit' in e for e in errors),valid)
+    def test_f02e2_a43_attempt4_exact_exception_and_no_fifth(self):
+        p=load(PACK/'control/plan.json')
+        tasks={x['id']:x for x in p['slices']}
+        self.assertEqual(p['limits']['max_attempts'],3)
+        self.assertEqual(p['attempt_exceptions']['P00a']['amendment'],'A37')
+        self.assertEqual(p['attempt_exceptions']['W01b']['amendment'],'A37')
+        self.assertEqual(tasks['F02e2']['max_attempts'],4)
+        entry=p['attempt_exceptions']['F02e2']
+        self.assertEqual(set(entry),{'amendment','default_limit','authorized_limit','reason'})
+        self.assertEqual(entry['amendment'],'A43')
+        self.assertEqual(entry['default_limit'],3)
+        self.assertEqual(entry['authorized_limit'],4)
+        self.assertTrue(entry['reason'].strip())
+        self.assertEqual(validate_pack.validate_attempt_limits(p,tasks),[])
+        for wrong_amendment in ('A37','A42'):
+            wrong=json.loads(json.dumps(p))
+            wrong['attempt_exceptions']['F02e2']['amendment']=wrong_amendment
+            self.assertTrue(any('F02e2: attempt exception must cite A43' in e for e in validate_pack.validate_attempt_limits(wrong,{x['id']:x for x in wrong['slices']})))
+        with tempfile.TemporaryDirectory() as tmp:
+            state=self.initial_state_for_plan(p);path=Path(tmp)/'control/state.json';path.parent.mkdir()
+            for attempts,valid in ((3,True),(4,True),(5,False)):
+                state['slices']['F02e2']['attempts']=attempts;write_json(path,state)
+                errors=validate_pack.validate_state(p,path,pack=PACK)
+                self.assertEqual(not any('F02e2: attempt limit' in e for e in errors),valid)
     def test_attempt_limit_hides_only_exhausted_implementation_dispatch(self):
         task={'id':'W01b','kind':'implementation','allowed_paths':['route.rs'],'depends_on':[],'locks':[],'max_attempts':4}
         p={'limits':{'max_noncoordinator_agents':6,'max_attempts':3},'attempt_exceptions':{'W01b':{'amendment':'A37','default_limit':3,'authorized_limit':4,'reason':'bounded repair'}},'slices':[task]}
