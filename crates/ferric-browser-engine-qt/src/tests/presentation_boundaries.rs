@@ -2007,7 +2007,7 @@ fn media_keys_and_mpris_use_one_engine_toggle_path() {
     assert!(qml.contains("var url = view.url ? view.url.toString() : \"\""));
     assert!(qml.contains("browserUi.current_url"));
     assert!(qml.contains("function updateMprisForPrimaryView(view)"));
-    assert!(qml.contains("window.updateMprisForPrimaryView(webView)"));
+    assert!(qml.contains("factory.rootWindow.updateMprisForPrimaryView(webView)"));
     assert!(qml.contains("onRecentlyAudibleChanged"));
     assert!(qml.contains("onAudioMutedChanged"));
     assert!(mpris.contains("org.mpris.MediaPlayer2.Player"));
