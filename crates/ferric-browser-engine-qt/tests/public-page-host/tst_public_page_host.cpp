@@ -138,8 +138,11 @@ static bool sendHyprlandShortcutToOwnedWindow(QWidget *window, const QString &ma
         return false;
     if (!window || !window->isActiveWindow()) return false;
     const QString lua = QStringLiteral(
-        "hl.dispatch(hl.dsp.send_shortcut({window = '%1', mods = {}, key = '%2'}))")
-        .arg(address, key);
+        "local w = hl.get_window('address:%1'); local a = hl.get_active_window(); "
+        "if not w or not a or w.pid ~= %2 or w.title ~= '%3' or a.stable_id ~= w.stable_id then "
+        "error('owned-window-mismatch') end; "
+        "hl.dispatch(hl.dsp.send_shortcut({window = w, mods = {}, key = '%4'}))")
+        .arg(address, QString::number(ownPid), marker, key);
     QProcess dispatch;
     dispatch.start(QStringLiteral("hyprctl"), {QStringLiteral("eval"), lua});
     return dispatch.waitForStarted(1500) && dispatch.waitForFinished(2500) && dispatch.exitCode() == 0;
@@ -389,6 +392,7 @@ private slots:
         h.failAfterOpen = true;
         js(source->page, "window.open('/fail','_blank')");
         QVERIFY(waitUntil([&] { return h.postOpenFailures == 1; }));
+        QVERIFY(waitUntil([&] { return h.alivePages(profile) == 1; }));
         QCOMPARE(h.alivePages(profile), 1);
         QCOMPARE(h.adopted, 1);
 
