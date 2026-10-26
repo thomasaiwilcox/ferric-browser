@@ -4214,9 +4214,7 @@
       ],
       "kind": "proof",
       "locks": [
-        "public-page-host",
-        "bridge",
-        "test-registration"
+        "public-host-prototype"
       ],
       "recipe": "native",
       "requirement_id": "EF-F02",

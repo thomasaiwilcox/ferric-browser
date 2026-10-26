@@ -286,3 +286,8 @@
 - **Native environment:** attempt nesting under actual parent; if unavailable use only disposable test-owned live windows, no global compositor/user-window changes. Coordinate focus-sensitive runs; stop on interference. T100–T102 and W14 require actual identity/group/focus/disconnect behavior, not socket smoke.
 - **Performance:** explicit user-approved removal of the second-computer requirement from C03/H06/T045. Qualify this recorded machine only; preserve >=15% AND >=15ms p95 benefit, <=5% regressions, <=96MiB process-tree PSS, sampling and1000-cycle/resource bounds. No simulated constrained-laptop claim.
 - **Evidence/resumption:** migration retains a complete pre-A37 state snapshot and historical superseded records. Refresh affected final-host application/native receipts; unchanged pure Rust reuse requires reviewed dependency analysis. Goal status/completion is not changed by an amendment. Independent review, serial integration, build-slot/source/packet limits, no push/install and remaining physical-phone/security gates remain.
+
+
+### A37r2 — Standalone prototype lock precision
+
+F02e0 edits only its own standalone harness, fixtures and new ADR. Replace inherited public-page-host/bridge/test-registration locks with public-host-prototype; no actual shared bridge/build/application registration path is allowed. This lets source preparation coexist with P00b/W00 while exact path overlap remains checked. One native build/test pipeline remains mandatory. No scope, test, dependency, retry or qualification changes. Independent targeted review precedes dispatch.
