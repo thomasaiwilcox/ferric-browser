@@ -455,7 +455,9 @@ private slots:
     const auto identityScript = QStringLiteral(
         "JSON.stringify({nonce: window.__credentialDocumentNonce, "
         "origin: location.origin, secure: window.isSecureContext, "
-        "bfcache: window.__credentialBFCachePersisted})");
+        "bfcache: window.__credentialBFCachePersisted, "
+        "notRestored: ((performance.getEntriesByType('navigation')[0] || {})"
+        ".notRestoredReasons?.reasons || []).map(reason => reason.reason)})");
     const auto trustedFacts = QJsonDocument::fromJson(
         run(page.mainFrame(), identityScript, CredentialWorld).toString().toUtf8());
     QVERIFY(trustedFacts.isObject());
@@ -609,9 +611,11 @@ private slots:
     const auto restoreLoadSucceeded = restored.takeFirst().first().toBool();
     qInfo() << "BFCache back traversal loadFinished" << restoreLoadSucceeded
             << page.url();
-    QCOMPARE(page.url(), server.pageUrl());
     const auto restoredFacts = QJsonDocument::fromJson(
         run(page.mainFrame(), identityScript, CredentialWorld).toString().toUtf8());
+    qInfo() << "BFCache restored isolated-world facts"
+            << restoredFacts.toJson(QJsonDocument::Compact);
+    QCOMPARE(page.url(), server.pageUrl());
     QVERIFY(restoredFacts.isObject());
     QCOMPARE(restoredFacts.object().value("nonce").toString(), bfcacheNonce);
     QVERIFY(restoredFacts.object().value("bfcache").toBool());
