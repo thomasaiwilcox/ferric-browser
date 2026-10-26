@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Local tests use disposable fake repositories, never live browser data or network."""
 from __future__ import annotations
-import copy,json,os,subprocess,sys,tempfile,unittest
+import copy,importlib.util,json,os,subprocess,sys,tempfile,unittest
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from common import PACK,CLONE,git,load,write_json,digest,packet,validate_repo,safe_relative,repo_snapshot
-import bootstrap,run_gate,cleanup,ready,validate_pack,preflight
+import bootstrap,run_gate,cleanup,ready,validate_pack,preflight,qt_include_guard
 
 class TempRepo(unittest.TestCase):
     def setUp(self):
@@ -273,6 +273,29 @@ class StructureTests(unittest.TestCase):
         missing_task['slices']=[task for task in missing_task['slices'] if task.get('id')!='F02e2']
         errors=validate_pack.validate_native_gate_retries(missing_task,PACK)
         self.assertTrue(any("retain A44's 5/5" in e for e in errors))
+    def test_a46_final_native_retry_scope_is_bounded(self):
+        p=load(PACK/'control/plan.json');retry=p['native_gate_retry_extensions']['F02e2']
+        expected_paths=[
+            'docs/implementation/everyday-v1/tools/qt_include_guard.py',
+            'docs/implementation/everyday-v1/tools/run_gate.py',
+            'docs/implementation/everyday-v1/tools/test_tools.py',
+            'evidence/A46/watch_qt_includes.py',
+            'evidence/A46/run_native_retry.py'
+        ]
+        self.assertEqual(retry['amendment'],'A46')
+        self.assertEqual(retry['same_source_retry_number'],2)
+        self.assertEqual(retry['cumulative_max_same_source_retries'],2)
+        self.assertEqual(retry['source_attempt_count'],5)
+        self.assertEqual(retry['candidate_sha'],'58c047c04072bb7efa382e3cd7ca65a11da1b117')
+        self.assertEqual(retry['candidate_tree'],'f5cc15efd18496bb209d25866d060347157a00bd')
+        self.assertFalse(retry['source_changes_allowed']);self.assertFalse(retry['attempt_six_authorized'])
+        self.assertEqual(retry['tooling_paths'],expected_paths);self.assertEqual(retry['tooling_file_cap'],5)
+        self.assertEqual(retry['product_path_cap'],10);self.assertEqual(retry['product_paths_added_or_changed'],[])
+        self.assertEqual(retry['existing_product_locks_unchanged'],['public-page-host','bridge','test-registration','browser-ui-input'])
+        source_map=load(PACK/'control/source-map.execution.json')
+        a46=[x for x in source_map['execution_amendments'] if x.get('id')=='A46']
+        self.assertEqual(len(a46),1);self.assertEqual(a46[0]['tooling_paths'],expected_paths)
+        self.assertEqual(a46[0]['added_paths'],[]);self.assertEqual(a46[0]['added_locks'],[])
     def test_attempt_limit_hides_only_exhausted_implementation_dispatch(self):
         task={'id':'W01b','kind':'implementation','allowed_paths':['route.rs'],'depends_on':[],'locks':[],'max_attempts':4}
         p={'limits':{'max_noncoordinator_agents':6,'max_attempts':3},'attempt_exceptions':{'W01b':{'amendment':'A37','default_limit':3,'authorized_limit':4,'reason':'bounded repair'}},'slices':[task]}
@@ -411,6 +434,24 @@ class GateTests(TempRepo):
         r=self.command(f"print('running: c++ -I{alias}/include/QtCore -c x.cpp')",qt_include_prefix=prefix)
         self.assertEqual(r['result'],'failed')
         self.assertEqual(r['qt_include_guard'],'stopped')
+    def test_qt_include_guard_allows_generated_cxx_qt_wrapper_headers(self):
+        prefix=self.root/'sdk/qt/6.11.2/gcc_64'
+        wrapper=self.root/'builds/native-F02e2-a5-qt6112/cargo-target/release/build/cxx-qt-lib/out/cxxqtbuild/include'
+        r=self.command(f"print('running: c++ -I{prefix}/include/QtCore -I{wrapper} -c x.cpp')",qt_include_prefix=prefix)
+        self.assertEqual(r['result'],'passed')
+        self.assertEqual(r['qt_include_guard'],'clear')
+        self.assertIsNone(r['qt_include_violation'])
+    def test_shared_qt_classifier_covers_system_pinned_and_generated_paths(self):
+        prefix=self.root/'sdk/qt/6.11.2/gcc_64';prefix.mkdir(parents=True)
+        wrapper=self.root/'builds/native-F02e2-a5-qt6112/cargo-target/build/cxx-qt-lib/out/cxxqtbuild/include'
+        self.assertEqual(qt_include_guard.qt_include_escape(['c++','-I/usr/include/qt6','-c','x.cpp'],prefix),'/usr/include/qt6')
+        self.assertIsNone(qt_include_guard.qt_include_escape(['c++',f'-I{prefix}/include/QtCore','-c','x.cpp'],prefix))
+        self.assertIsNone(qt_include_guard.qt_include_escape(['c++',f'-I{wrapper}','-c','x.cpp'],prefix))
+    def test_live_process_monitor_uses_shared_qt_classifier(self):
+        watcher=PACK.parents[3]/'evidence/A46/watch_qt_includes.py'
+        spec=importlib.util.spec_from_file_location('a46_watch_qt_includes',watcher)
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        self.assertIs(module.qt_include_escape,qt_include_guard.qt_include_escape)
     def test_timeout_when_parent_exits_before_child(self):
         r=self.command("import subprocess,sys;subprocess.Popen([sys.executable,'-c','import time;time.sleep(20)'])",timeout=.3)
         self.assertTrue(r['timed_out']);self.assertEqual(r['result'],'failed')

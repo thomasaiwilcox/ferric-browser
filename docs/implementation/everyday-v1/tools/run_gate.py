@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Run one explicit command synchronously, bound its log and record real source/results."""
 from __future__ import annotations
-import argparse,json,os,re,selectors,shlex,signal,subprocess,time
+import argparse,json,os,re,selectors,signal,subprocess,time
 from pathlib import Path
 from common import repo_snapshot,write_json,digest,now
+from qt_include_guard import qt_include_escape
 
 def test_counts(text):
     passed=0;skipped=0
@@ -26,31 +27,6 @@ def terminate_owned(p):
         try:os.killpg(p.pid,signal.SIGKILL)
         except ProcessLookupError:pass
         p.wait(timeout=5)
-
-def qt_include_escape(text:str,prefix:Path):
-    """Return the first Qt include path outside the required SDK, if any."""
-    prefix=prefix.resolve()
-    try:tokens=shlex.split(text,posix=True)
-    except ValueError:tokens=text.split()
-    include_flags=("-I","-isystem","-iquote","-idirafter","-F")
-    for i,token in enumerate(tokens):
-        path=None
-        if token in include_flags and i+1<len(tokens):path=tokens[i+1]
-        else:
-            for flag in include_flags:
-                if token.startswith(flag) and len(token)>len(flag):
-                    path=token[len(flag):].lstrip("=")
-                    break
-        if not path:continue
-        candidate=Path(path)
-        if not candidate.is_absolute():continue
-        if not any("qt" in part.lower() for part in candidate.parts):continue
-        lexical=Path(os.path.abspath(candidate))
-        resolved=candidate.resolve()
-        if ((lexical!=prefix and prefix not in lexical.parents)
-                or (resolved!=prefix and prefix not in resolved.parents)):
-            return str(candidate)
-    return None
 
 def run(repo:Path,out:Path,label:str,cmd:list[str],timeout:float,require_tests=False,max_log_bytes=64*1024*1024,qt_include_prefix:Path|None=None):
     if not cmd:raise ValueError("An explicit command after -- is required")
