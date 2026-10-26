@@ -1,6 +1,6 @@
 # ADR: exact Hyprland identity for test-owned page windows
 
-**Status:** proposed proof design; native qualification pending
+**Status:** native proof qualified on the pinned stack; production grouping remains unqualified
 **Scope:** W00 candidate only. This does not authorize production grouping.
 
 ## Decision
@@ -49,3 +49,18 @@ membership, and background-focus checks. Address reuse is recorded only if
 the compositor actually reuses an address; a non-occurrence is not reported as
 an exercised reuse case. No production transport, user-window behavior,
 workspace policy, or cross-compositor support is claimed here.
+
+On 2026-10-26, T100–T102 passed on Qt 6.11.2, matching KWindowSystem
+6.28.0, and Hyprland 0.56.2 commit
+`efb50993780079460b0cbed1363e2166a2de1d9f`, using disposable live-session
+windows. Actual address reuse was observed. Background placement preserved
+both the active window and the group's current member, with zero focus events.
+Locked and missing sources were rejected without changing focus. The version
+admission gate also rejected an intentionally incompatible build requirement;
+this is not a test on a different compositor backend.
+
+The earlier session focus precondition failure ceased without desktop
+configuration changes; its exact cause remains unconfirmed. Subsequent test
+failures exposed the observer's unrelated-event timer reset and address-format
+mismatch, repaired as described above. Historical failed receipts are retained
+alongside the W00 attempt-3 qualification record in the external run workspace.
