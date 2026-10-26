@@ -17,6 +17,7 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QWebChannel>
+#include <QWebEngineCertificateError>
 #include <QWebEngineFrame>
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
@@ -165,7 +166,7 @@ private slots:
     profile.setHttpCacheType(QWebEngineProfile::NoCache);
     QWebEnginePage page(&profile);
     connect(&page, &QWebEnginePage::certificateError, &page,
-            [](const QWebEngineCertificateError &error) {
+            [](QWebEngineCertificateError error) {
               // Accept only this disposable, local self-signed test cert.
               error.acceptCertificate();
             });
@@ -377,7 +378,7 @@ private slots:
     QCOMPARE(probe.callCount(), 1);
     QCOMPARE(probe.documentNonce(), nonce);
     QSignalSpy reloaded(&page, &QWebEnginePage::loadFinished);
-    page.reload();
+    page.triggerAction(QWebEnginePage::Reload);
     QVERIFY(reloaded.wait(15000));
     QVERIFY(reloaded.takeFirst().first().toBool());
     const auto reloadedNonce =
