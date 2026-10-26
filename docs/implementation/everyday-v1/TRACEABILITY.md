@@ -35,3 +35,10 @@ A32: P05a/T061a adds component proof for actual QProcess supervision. P05b retai
 A33: P07a/T067a adds supported real library core/virtual-device unit evidence with mandatory source identity/dev graph audits. P07b retains T067/T068/T069 unit expectations unchanged through actual helper integration. P07 aggregates accepted children only. Production remains actual QR transient caBLE; virtual HID/shared-core proof is not caBLE/phone qualification, and P08/P17/final gates remain intact.
 
 A36: P05b1 adds T061b UNIT and T061c COMPONENT for strict non-admission decoder/CXX callback transport that creates or advances no b1 C08 actor and grants no admitted launch or credential delivery. T061c does not test real C08/RP/origin admission or refusal. P05b2 retains T061/T062/T063 APPLICATION cases and A35 deadline assertion unchanged, gated on real P00/P03 proof and production C08/BrowserUi route. P05b no-code aggregate never inherits APP proof from lower levels; original pre-edit attempt is retained/inherited, no synthetic authority or visibility shortcut.
+
+## A37 recovery mappings
+
+- EF-F02: F02e0 native feasibility → F02e1 component ownership → F02e2–F02e8 application migration/integration → F02e aggregate → original F02b2a/T014a qualification. T014c/F02c and T014d/F02d remain historical, replaced by T014e1/F02e1 and T014e8/F02e8.
+- EF-P00 and EF-W01 retain original cases; only P00a/W01b gain explicit attempt4.
+- EF-H06/T045: single-machine native qualification by user decision; numerical thresholds unchanged.
+- EF-P03: production bridge targets accepted public-page owner. Physical-phone, security review and full feature delivery remain required.

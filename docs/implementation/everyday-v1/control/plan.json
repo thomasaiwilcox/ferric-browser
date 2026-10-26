@@ -15,7 +15,7 @@
     "max_attempts": 3,
     "max_repair_rounds": 2
   },
-  "completion_rule": "all slices accepted with required actual evidence; missing physical/platform qualification cannot be waived",
+  "completion_rule": "All live slices accepted with required actual evidence; historical superseded slices require accepted explicit replacements. A37 permits single-machine performance qualification only; missing required native/physical proof cannot be waived.",
   "slices": [
     {
       "id": "S00",
@@ -539,9 +539,7 @@
       "id": "F02c",
       "title": "Implement SDK-qualified popup opener lifetime leases",
       "lane": "presentation",
-      "depends_on": [
-        "F02b1"
-      ],
+      "depends_on": [],
       "contracts": [
         "C00",
         "C01",
@@ -591,15 +589,20 @@
         "crates/ferric-browser-engine-qt/tests/profile-lifetime/CMakeLists.txt",
         "docs/architecture/ADR-popup-opener-lifetime.md"
       ],
-      "parent_id": "F02b2a"
+      "parent_id": "F02b2a",
+      "superseded_by": [
+        "F02e1"
+      ],
+      "amendment": "A37",
+      "historical_depends_on": [
+        "F02b1"
+      ]
     },
     {
       "id": "F02d",
       "title": "Wire popup adoption and retirement through native leases",
       "lane": "presentation",
-      "depends_on": [
-        "F02c"
-      ],
+      "depends_on": [],
       "contracts": [
         "C00",
         "C01",
@@ -649,7 +652,14 @@
         "crates/ferric-browser-engine-qt/tests/application/tst_application.h",
         "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
       ],
-      "parent_id": "F02b2a"
+      "parent_id": "F02b2a",
+      "superseded_by": [
+        "F02e8"
+      ],
+      "amendment": "A37",
+      "historical_depends_on": [
+        "F02c"
+      ]
     },
     {
       "id": "F02b2a",
@@ -657,7 +667,7 @@
       "lane": "presentation",
       "depends_on": [
         "F02b1",
-        "F02d"
+        "F02e"
       ],
       "contracts": [
         "C01",
@@ -1356,7 +1366,7 @@
     },
     {
       "id": "H06",
-      "title": "Run native performance and constrained-machine acceptance",
+      "title": "Run native performance qualification on this machine",
       "lane": "qualification",
       "depends_on": [
         "H03",
@@ -1371,7 +1381,7 @@
         "docs/implementation/everyday-v1/reports/HOT_QUALIFICATION.md"
       ],
       "steps": [
-        "Execute predetermined release benchmark on a constrained laptop and another machine with recorded Qt/GPU/compositor/display scale.",
+        "Execute predetermined native release A/B benchmark on this machine only; record hardware/Qt/GPU/compositor/display scale. Do not claim another machine class or simulated constrained hardware.",
         "Include individual opens, bursts, cold misses, internal/windows variants, long-run memory and idle measurements.",
         "Compare against retained thresholds without changing metrics or excluding slow/error samples after the fact.",
         "Publish measured supported modes and keep failing/unmeasured modes disabled. A no-benefit finding is not a claim of faster tab loading."
@@ -1474,7 +1484,7 @@
         "T046"
       ],
       "max_changed_product_files": 8,
-      "max_attempts": 3,
+      "max_attempts": 4,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
       "slice_file": "slices/P00a.md",
@@ -1832,7 +1842,7 @@
         "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
         "crates/ferric-browser-engine-qt/src/bridge.rs",
         "crates/ferric-browser-engine-qt/src/lib.rs",
-        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
         "crates/ferric-browser-engine-qt/build.rs",
         "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_bridge.cpp"
       ],
@@ -1841,7 +1851,8 @@
         "Expose only a closed credential request/cancel/completion surface in the centrally reserved isolated world.",
         "Bind handshake/admission/response to current native view/document/profile incarnation and runtime policy.",
         "Implement bounded parsing and safe data marshaling; reject all generic evaluation/command/path inputs.",
-        "Rerun boundary proof against the shipped production resource/bridge; a standalone spike result does not qualify this implementation."
+        "Rerun boundary proof against the shipped production resource/bridge; a standalone spike result does not qualify this implementation.",
+        "A37: bind production authority to the accepted public-page owner/mainFrame adapter; current document/renderer/profile generations and isolated world42 must be checked at admission and completion. Standalone P00 proof does not qualify production."
       ],
       "kind": "implementation",
       "locks": [
@@ -1868,7 +1879,7 @@
         "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
         "crates/ferric-browser-engine-qt/src/bridge.rs",
         "crates/ferric-browser-engine-qt/src/lib.rs",
-        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
         "crates/ferric-browser-engine-qt/build.rs",
         "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_bridge.cpp"
       ]
@@ -3077,7 +3088,7 @@
       "kind": "implementation",
       "recipe": "application-rust",
       "requirement_id": "EF-W01",
-      "max_attempts": 3,
+      "max_attempts": 4,
       "worker_may_delegate": false,
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
       "parent_id": "W01",
@@ -4173,6 +4184,567 @@
       "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
       "slice_file": "slices/X06.md",
       "read_anchors": []
+    },
+    {
+      "id": "F02e0",
+      "title": "Prove public Widgets page ownership and chrome feasibility",
+      "lane": "presentation",
+      "depends_on": [
+        "S01",
+        "S00"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C02",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/chrome.qml",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/fixtures/popup.html",
+        "docs/architecture/ADR-public-page-host.md"
+      ],
+      "steps": [
+        "Use exact Qt6.11.2 QWebEnginePage/QWebEngineView and QQuickWidget in a standalone disposable fixture; no product factory replacement before this gate.",
+        "Prove real top/child/grandchild adoption without reload, JS/document/opener continuity, true parent close/opener.closed and zero unique loopback navigation requests from the closed opener.",
+        "Prove pointer/keyboard/focus on surviving descendants, private profile isolation, close permutations, failed adoption and final page/profile drain. Include QML chrome/overlay focus and dialog parenting feasibility.",
+        "Run component reproduction plus actual native window/input checks on this machine; record exact provenance and distinguish Qt-generated from compositor-delivered input. A failed public ownership route blocks migration; do not restore tombstones or infer a Qt-fork exception."
+      ],
+      "kind": "proof",
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration"
+      ],
+      "recipe": "native",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014e0"
+      ],
+      "max_changed_product_files": 5,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "New public-host adapter/harness paths are proposed. Existing unrelated implementations stay intact; a ninth path requires a reviewed scope amendment.",
+      "slice_file": "slices/F02e0.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/chrome.qml",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/fixtures/popup.html",
+        "docs/architecture/ADR-public-page-host.md"
+      ],
+      "parent_id": "F02e"
+    },
+    {
+      "id": "F02e1",
+      "title": "Implement public profile and page ownership",
+      "lane": "presentation",
+      "depends_on": [
+        "F02e0"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C02",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+        "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+        "crates/ferric-browser-engine-qt/src/public_profile_owner.h",
+        "crates/ferric-browser-engine-qt/src/public_profile_owner.cpp",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_owner.cpp",
+        "crates/ferric-browser-engine-qt/src/request_interceptor.h"
+      ],
+      "steps": [
+        "Implement explicit QWebEngineProfile and QWebEnginePage owners using public APIs, separate from presentation widgets; profile lifetime covers every page and active request.",
+        "Own page/document/host generations; close invalidates pending callbacks and destroys the browsing context exactly once. Never retain a live closed opener to satisfy a native anchor.",
+        "Test actual production owners: same-profile adoption, cross-profile rejection, delayed callbacks, true source close with surviving descendants and shutdown/drain. This replaces T014c lease-mechanism coverage, retaining ownership and resource invariants."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014e1"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "New public-host adapter/harness paths are proposed. Existing unrelated implementations stay intact; a ninth path requires a reviewed scope amendment.",
+      "slice_file": "slices/F02e1.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+        "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+        "crates/ferric-browser-engine-qt/src/public_profile_owner.h",
+        "crates/ferric-browser-engine-qt/src/public_profile_owner.cpp",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_owner.cpp",
+        "crates/ferric-browser-engine-qt/src/request_interceptor.h"
+      ],
+      "parent_id": "F02e"
+    },
+    {
+      "id": "F02e2",
+      "title": "Implement Widgets host with embedded QML chrome",
+      "lane": "presentation",
+      "depends_on": [
+        "F02e1"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C02",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/public_page_host.h",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+        "crates/ferric-browser-engine-qt/src/gui_application.cpp",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+      ],
+      "steps": [
+        "Keep QApplication and add WebEngineWidgets/QuickWidgets to the pinned SDK module graph. Embed reusable existing QML chrome in a Widgets host; preserve appearance, geometry and native dialog parent identity.",
+        "Attach/detach the same owned QWebEnginePage for tab/window presentation. Host transfer preserves document state and never recreates a URL or admits a foreign profile.",
+        "Expose narrow typed host/page operations through the existing bridge, emitting existing runtime inputs/effects. Keep lifecycle policy outside QML; exercise focus, scale and safe host replacement."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014e2"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "New public-host adapter/harness paths are proposed. Existing unrelated implementations stay intact; a ninth path requires a reviewed scope amendment.",
+      "slice_file": "slices/F02e2.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/public_page_host.h",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+        "crates/ferric-browser-engine-qt/src/gui_application.cpp",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+      ],
+      "parent_id": "F02e"
+    },
+    {
+      "id": "F02e3",
+      "title": "Adapt navigation and isolated scripts to public pages",
+      "lane": "presentation",
+      "depends_on": [
+        "F02e2"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C02",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+        "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+        "crates/ferric-browser-engine-qt/src/script_runner.h",
+        "crates/ferric-browser-engine-qt/src/script_runner.cpp",
+        "crates/ferric-browser-engine-qt/src/hint_frame_broker.h",
+        "crates/ferric-browser-engine-qt/src/hint_frame_broker.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+      ],
+      "steps": [
+        "Route navigation, reload/history/search and existing isolated script execution through actual QWebEnginePage/mainFrame APIs with explicit document and owner guards.",
+        "Preserve reserved script-world ownership, hint/script lifecycle and stale-callback rejection; never infer origin authority from URL or console messages.",
+        "Test navigation failures/reload/history, same-document and cross-document callbacks, renderer death and script-world separation using real pages."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014e3"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "New public-host adapter/harness paths are proposed. Existing unrelated implementations stay intact; a ninth path requires a reviewed scope amendment.",
+      "slice_file": "slices/F02e3.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+        "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+        "crates/ferric-browser-engine-qt/src/script_runner.h",
+        "crates/ferric-browser-engine-qt/src/script_runner.cpp",
+        "crates/ferric-browser-engine-qt/src/hint_frame_broker.h",
+        "crates/ferric-browser-engine-qt/src/hint_frame_broker.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+      ],
+      "parent_id": "F02e"
+    },
+    {
+      "id": "F02e4",
+      "title": "Adapt profile services and page-owned prompts",
+      "lane": "presentation",
+      "depends_on": [
+        "F02e3"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C02",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+        "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+        "crates/ferric-browser-engine-qt/src/download_source.h",
+        "crates/ferric-browser-engine-qt/src/download_source.cpp",
+        "crates/ferric-browser-engine-qt/src/request_interceptor.h",
+        "crates/ferric-browser-engine-qt/src/request_interceptor.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+      ],
+      "steps": [
+        "Connect existing request interception, permissions, certificate/authentication, download attribution and prompt events to the public profile/page adapter and existing typed runtime service paths.",
+        "Preserve native WebAuthn, captured owner/profile/privacy and default-deny behavior; no arbitrary page-supplied target or executable.",
+        "Test primary/private service isolation, stale prompt completion, download source attribution and absence of unintended network or credential side effects."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014e4"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "New public-host adapter/harness paths are proposed. Existing unrelated implementations stay intact; a ninth path requires a reviewed scope amendment.",
+      "slice_file": "slices/F02e4.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+        "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+        "crates/ferric-browser-engine-qt/src/download_source.h",
+        "crates/ferric-browser-engine-qt/src/download_source.cpp",
+        "crates/ferric-browser-engine-qt/src/request_interceptor.h",
+        "crates/ferric-browser-engine-qt/src/request_interceptor.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+      ],
+      "parent_id": "F02e"
+    },
+    {
+      "id": "F02e5",
+      "title": "Adapt native input and auxiliary page UI",
+      "lane": "presentation",
+      "depends_on": [
+        "F02e4"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C02",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/browser_key_router.h",
+        "crates/ferric-browser-engine-qt/src/browser_key_router.cpp",
+        "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.h",
+        "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.cpp",
+        "crates/ferric-browser-engine-qt/src/public_page_host.h",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+      ],
+      "steps": [
+        "Route existing keyboard, pointer, hints and focus behavior to Widgets hosts without swallowing native page input. Preserve input modes, IME, accessibility, dialogs and DevTools ownership.",
+        "Use supported native window parenting for auxiliary UI; no hidden substitute focus window or main-thread IPC.",
+        "Run focus traversal, keyboard command/page typing, overlays, pointer, dialog return-focus and DevTools attach/detach on real hosts; separate synthetic component assertions from native input qualification."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014e5"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "New public-host adapter/harness paths are proposed. Existing unrelated implementations stay intact; a ninth path requires a reviewed scope amendment.",
+      "slice_file": "slices/F02e5.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/browser_key_router.h",
+        "crates/ferric-browser-engine-qt/src/browser_key_router.cpp",
+        "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.h",
+        "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.cpp",
+        "crates/ferric-browser-engine-qt/src/public_page_host.h",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+      ],
+      "parent_id": "F02e"
+    },
+    {
+      "id": "F02e6",
+      "title": "Connect primary composition and profile factories",
+      "lane": "presentation",
+      "depends_on": [
+        "F02e5"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C02",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/Main.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+      ],
+      "steps": [
+        "Migrate primary composition, page/profile factory and resource registry to the public owner/host adapter while preserving typed core rows, session metadata and privacy boundaries.",
+        "Keep the backend non-default until secondary/popup composition and final integration pass; never mix Quick-owned and Widgets-owned pages inside a live opener chain.",
+        "Test primary navigation, page creation/closure, transfer rollback, profile shutdown and existing normal-browser behaviors with shipped resources."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014e6"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "New public-host adapter/harness paths are proposed. Existing unrelated implementations stay intact; a ninth path requires a reviewed scope amendment.",
+      "slice_file": "slices/F02e6.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/Main.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+      ],
+      "parent_id": "F02e"
+    },
+    {
+      "id": "F02e7",
+      "title": "Connect secondary windows and real popup adoption",
+      "lane": "presentation",
+      "depends_on": [
+        "F02e6"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C02",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPopupWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricDevToolsWorkspace.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricDevToolsWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowRegistryController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+      ],
+      "steps": [
+        "Migrate secondary, popup and auxiliary composition to the same public ownership model; capture source/page/profile/window at creation and preserve real popup WebContents adoption.",
+        "Route close/transfer through once-only owner retirement; remove dependencies on retained source views and private Quick delegate metadata.",
+        "Test foreground/background opens, nested popups, primary/secondary source closure, profile isolation, replacement hosts and child-before-parent/parent-before-child shutdown."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014e7"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "New public-host adapter/harness paths are proposed. Existing unrelated implementations stay intact; a ninth path requires a reviewed scope amendment.",
+      "slice_file": "slices/F02e7.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPopupWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricDevToolsWorkspace.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricDevToolsWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowRegistryController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+      ],
+      "parent_id": "F02e"
+    },
+    {
+      "id": "F02e8",
+      "title": "Qualify production public-host replacement and retire leases",
+      "lane": "presentation",
+      "depends_on": [
+        "F02e7"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C02",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.h",
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.cpp",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.h",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/profile-lifetime/tst_lifetime.cpp",
+        "crates/ferric-browser-engine-qt/tests/profile-lifetime/CMakeLists.txt",
+        "docs/architecture/ADR-popup-opener-lifetime.md"
+      ],
+      "steps": [
+        "Retire obsolete Quick opener lease machinery after production public-host lifecycle tests pass; preserve generic profile drain functionality still used by production.",
+        "Replace implementation-specific T014d harness with composed public-host assertions: no reload, true closed opener/no navigation, surviving native pointer/keyboard, profile/privacy, renderer replacement and resource drain.",
+        "Rerun original T013/T014a/T015 behaviors and S01 baseline on the exact integrated production host; no unchanged old-source receipt substitutes for new-host qualification.",
+        "Document actual public API ownership and rollout; default switch occurs only with all replacement components and full affected regression gates passing. No security, physical-device or numeric threshold waiver."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014e8"
+      ],
+      "max_changed_product_files": 8,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "New public-host adapter/harness paths are proposed. Existing unrelated implementations stay intact; a ninth path requires a reviewed scope amendment.",
+      "slice_file": "slices/F02e8.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.h",
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.cpp",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.h",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/profile-lifetime/tst_lifetime.cpp",
+        "crates/ferric-browser-engine-qt/tests/profile-lifetime/CMakeLists.txt",
+        "docs/architecture/ADR-popup-opener-lifetime.md"
+      ],
+      "parent_id": "F02e"
+    },
+    {
+      "id": "F02e",
+      "title": "Aggregate public page-host migration and qualification",
+      "lane": "presentation",
+      "depends_on": [
+        "F02e0",
+        "F02e1",
+        "F02e2",
+        "F02e3",
+        "F02e4",
+        "F02e5",
+        "F02e6",
+        "F02e7",
+        "F02e8"
+      ],
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "allowed_paths": [],
+      "steps": [
+        "Accept only after all public-host children pass and original popup behaviors are requalified; no second invented pass."
+      ],
+      "kind": "aggregate",
+      "locks": [],
+      "recipe": "review",
+      "requirement_id": "EF-F02",
+      "test_ids": [],
+      "max_changed_product_files": 0,
+      "max_attempts": 3,
+      "worker_may_delegate": false,
+      "new_paths_notice": "An allowlisted path may be a proposed new file. Resolve against source-map.execution.json before editing; never recreate a retired path.",
+      "slice_file": "slices/F02e.md",
+      "read_anchors": [],
+      "aggregate_test_ids": [
+        "T013",
+        "T014a",
+        "T014b",
+        "T015"
+      ],
+      "aggregate_of": [
+        "F02a",
+        "F02b"
+      ],
+      "parent_id": "F02b2a"
     }
-  ]
+  ],
+  "attempt_exceptions": {
+    "P00a": {
+      "amendment": "A37",
+      "default_limit": 3,
+      "authorized_limit": 4,
+      "reason": "User-authorized fourth attempt: repair pinned-Qt certificate handle and Reload API compile failures, then execute original T046."
+    },
+    "W01b": {
+      "amendment": "A37",
+      "default_limit": 3,
+      "authorized_limit": 4,
+      "reason": "User-authorized fourth attempt: reconstruct reviewed routing and fix E0716 while preserving accepted W01a/W01c; execute original T104."
+    }
+  }
 }

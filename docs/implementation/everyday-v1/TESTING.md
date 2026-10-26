@@ -124,3 +124,7 @@ Performance: measure internal and window spare variants independently; a failure
 Use templates/EVIDENCE.json for one slice: every case maps to a concrete assertion and a hashed artifact. Command receipts are created by run_gate.py; review records use REVIEW.json. Native/physical/benchmark observations also need QUALIFICATION_RECORD.json with actual environment and observation details. All source hashes must refer to the code exercised, not the pack author's source.
 
 validate_pack.py checks structure, references, hash consistency, independence and declared evidence levels. It cannot prove an operator actually scanned a QR or a test is correctly designed. Independent review remains mandatory. Initial files intentionally contain no success evidence; strict validation must fail on an unstarted run.
+
+## A37 replacement evidence
+
+Historical T014c/T014d map to T014e1/T014e8 at the same component/application evidence levels and EF-F02 requirement. The new native T014e0 is a feasibility gate; old receipts do not qualify it. T014a/T013/T015 behavior remains mandatory on the final production host. T045 now requires native measurement on this machine only, retaining all C03 thresholds and raw-sample requirements. No physical/authentication gate is waived.

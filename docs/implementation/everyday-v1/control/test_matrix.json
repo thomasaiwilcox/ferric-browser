@@ -457,7 +457,7 @@
       "requirement": "EF-H06",
       "level": "native",
       "name": "Real-machine qualification",
-      "expected": "Native results for both machine classes are recorded; offscreen data alone leaves the gate unqualified.",
+      "expected": "Native performance results on this machine with actual hardware/Qt/GPU/compositor recorded; no claim of two-machine coverage or constrained laptop unless actually measured. Offscreen data cannot qualify native performance.",
       "result": "not_run",
       "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
     },
@@ -1669,7 +1669,11 @@
       "name": "Implement SDK-qualified popup opener lifetime leases",
       "expected": "All scoped lease/retirement identity, boundedness, positive and negative lifecycle cases pass using actual production source with zero skips.",
       "result": "not_run",
-      "binding": "Existing profile-lifetime real-WebEngine component CTest everyday_T014c_popup_delegate_lifetime; QtTest slot popupDelegateLifetime. Actual production C++ and real native objects; not composed Ferric or physical."
+      "binding": "Existing profile-lifetime real-WebEngine component CTest everyday_T014c_popup_delegate_lifetime; QtTest slot popupDelegateLifetime. Actual production C++ and real native objects; not composed Ferric or physical.",
+      "superseded_by": [
+        "T014e1"
+      ],
+      "amendment": "A37"
     },
     {
       "id": "T014d",
@@ -1679,7 +1683,11 @@
       "name": "Wire popup adoption and retirement through native leases",
       "expected": "All scoped lease/retirement identity, boundedness, positive and negative lifecycle cases pass using actual production source with zero skips.",
       "result": "not_run",
-      "binding": "Existing production application CTest everyday_T014d_popup_retirement_leases plus unchanged T014a/T013/T015 affected regressions."
+      "binding": "Existing production application CTest everyday_T014d_popup_retirement_leases plus unchanged T014a/T013/T015 affected regressions.",
+      "superseded_by": [
+        "T014e8"
+      ],
+      "amendment": "A37"
     },
     {
       "id": "T061a",
@@ -1720,6 +1728,96 @@
       "expected": "Actual compiled supervisor/CXX/Rust decoder/per-owner GUI queue passes owned subprocess, cancellation/reap/deadline/weak-owner/stale/error/redaction cases. This bridge creates or advances no C08 actor and grants no admitted launch/credential delivery; it does not test real C08/RP/origin admission or refusal. No synthetic qualified actor or skipped/zero-test pass.",
       "result": "not_run",
       "binding": "CTest everyday_T061c_helper_native_rust_bridge; credential_process_bridge_tests QtTest nativeRustBridge. T061a regression required; no substitute for T061-T063 APP."
+    },
+    {
+      "id": "T014e0",
+      "slice": "F02e0",
+      "requirement": "EF-F02",
+      "level": "native",
+      "name": "Prove public Widgets page ownership and chrome feasibility",
+      "expected": "Use exact Qt6.11.2 QWebEnginePage/QWebEngineView and QQuickWidget in a standalone disposable fixture; no product factory replacement before this gate. Prove real top/child/grandchild adoption without reload, JS/document/opener continuity, true parent close/opener.closed and zero unique loopback navigation requests from the closed opener. Prove pointer/keyboard/focus on surviving descendants, private profile isolation, close permutations, failed adoption and final page/profile drain. Include QML chrome/overlay focus and dialog parenting feasibility. Run component reproduction plus actual native window/input checks on this machine; record exact provenance and distinguish Qt-generated from compositor-delivered input. A failed public ownership route blocks migration; do not restore tombstones or infer a Qt-fork exception.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e1",
+      "slice": "F02e1",
+      "requirement": "EF-F02",
+      "level": "component",
+      "name": "Implement public profile and page ownership",
+      "expected": "Implement explicit QWebEngineProfile and QWebEnginePage owners using public APIs, separate from presentation widgets; profile lifetime covers every page and active request. Own page/document/host generations; close invalidates pending callbacks and destroys the browsing context exactly once. Never retain a live closed opener to satisfy a native anchor. Test actual production owners: same-profile adoption, cross-profile rejection, delayed callbacks, true source close with surviving descendants and shutdown/drain. This replaces T014c lease-mechanism coverage, retaining ownership and resource invariants.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e2",
+      "slice": "F02e2",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Implement Widgets host with embedded QML chrome",
+      "expected": "Keep QApplication and add WebEngineWidgets/QuickWidgets to the pinned SDK module graph. Embed reusable existing QML chrome in a Widgets host; preserve appearance, geometry and native dialog parent identity. Attach/detach the same owned QWebEnginePage for tab/window presentation. Host transfer preserves document state and never recreates a URL or admits a foreign profile. Expose narrow typed host/page operations through the existing bridge, emitting existing runtime inputs/effects. Keep lifecycle policy outside QML; exercise focus, scale and safe host replacement.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e3",
+      "slice": "F02e3",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Adapt navigation and isolated scripts to public pages",
+      "expected": "Route navigation, reload/history/search and existing isolated script execution through actual QWebEnginePage/mainFrame APIs with explicit document and owner guards. Preserve reserved script-world ownership, hint/script lifecycle and stale-callback rejection; never infer origin authority from URL or console messages. Test navigation failures/reload/history, same-document and cross-document callbacks, renderer death and script-world separation using real pages.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e4",
+      "slice": "F02e4",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Adapt profile services and page-owned prompts",
+      "expected": "Connect existing request interception, permissions, certificate/authentication, download attribution and prompt events to the public profile/page adapter and existing typed runtime service paths. Preserve native WebAuthn, captured owner/profile/privacy and default-deny behavior; no arbitrary page-supplied target or executable. Test primary/private service isolation, stale prompt completion, download source attribution and absence of unintended network or credential side effects.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e5",
+      "slice": "F02e5",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Adapt native input and auxiliary page UI",
+      "expected": "Route existing keyboard, pointer, hints and focus behavior to Widgets hosts without swallowing native page input. Preserve input modes, IME, accessibility, dialogs and DevTools ownership. Use supported native window parenting for auxiliary UI; no hidden substitute focus window or main-thread IPC. Run focus traversal, keyboard command/page typing, overlays, pointer, dialog return-focus and DevTools attach/detach on real hosts; separate synthetic component assertions from native input qualification.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e6",
+      "slice": "F02e6",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Connect primary composition and profile factories",
+      "expected": "Migrate primary composition, page/profile factory and resource registry to the public owner/host adapter while preserving typed core rows, session metadata and privacy boundaries. Keep the backend non-default until secondary/popup composition and final integration pass; never mix Quick-owned and Widgets-owned pages inside a live opener chain. Test primary navigation, page creation/closure, transfer rollback, profile shutdown and existing normal-browser behaviors with shipped resources.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e7",
+      "slice": "F02e7",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Connect secondary windows and real popup adoption",
+      "expected": "Migrate secondary, popup and auxiliary composition to the same public ownership model; capture source/page/profile/window at creation and preserve real popup WebContents adoption. Route close/transfer through once-only owner retirement; remove dependencies on retained source views and private Quick delegate metadata. Test foreground/background opens, nested popups, primary/secondary source closure, profile isolation, replacement hosts and child-before-parent/parent-before-child shutdown.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e8",
+      "slice": "F02e8",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Qualify production public-host replacement and retire leases",
+      "expected": "Retire obsolete Quick opener lease machinery after production public-host lifecycle tests pass; preserve generic profile drain functionality still used by production. Replace implementation-specific T014d harness with composed public-host assertions: no reload, true closed opener/no navigation, surviving native pointer/keyboard, profile/privacy, renderer replacement and resource drain. Rerun original T013/T014a/T015 behaviors and S01 baseline on the exact integrated production host; no unchanged old-source receipt substitutes for new-host qualification. Document actual public API ownership and rollout; default switch occurs only with all replacement components and full affected regression gates passing. No security, physical-device or numeric threshold waiver.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
     }
   ],
   "note": "Specifications only. Nothing is marked passed at authoring."

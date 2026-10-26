@@ -43,13 +43,14 @@
     },
     {
       "id": "EF-F02",
-      "description": "Extract/adapt the existing page factory without behaviour changes",
+      "description": "Page factory, callback/focus and popup continuity through public QWebEnginePage/QWebEngineView ownership; true close and surviving descendants, replacing unsafe Quick leases.",
       "owner": "F02",
       "contracts": [
         "C01",
         "C02"
       ],
-      "source": "updated proposal mapped to current baseline"
+      "source": "updated proposal mapped to current baseline",
+      "amendment": "A37"
     },
     {
       "id": "EF-F03",
@@ -148,13 +149,14 @@
     },
     {
       "id": "EF-H06",
-      "description": "Run native performance and constrained-machine acceptance",
+      "description": "Native performance qualification on this machine only, with unchanged numerical acceptance thresholds and disclosed hardware limits.",
       "owner": "H06",
       "contracts": [
         "C00",
         "C03"
       ],
-      "source": "updated proposal mapped to current baseline"
+      "source": "updated proposal mapped to current baseline",
+      "amendment": "A37"
     },
     {
       "id": "EF-P00",

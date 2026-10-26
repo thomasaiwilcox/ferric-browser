@@ -3726,6 +3726,173 @@
       "scope": "Each child<=8 paths; P05b no-code aggregate; new explicit bridge test file, not an APP fixture relabeled as component.",
       "live_attempts": "Original pre-edit P05b attempt1 preserved; P05b2 inherits1 so original APP attempt is not reset; P05b1 new distinct outcomes start0.",
       "counts": "83 slices /172 cases; no security/default/physical or old-case waiver."
+    },
+    {
+      "id": "A37",
+      "reason": "User-approved public page-host redesign, explicit P00a/W01b fourth attempts and same-machine native/performance qualification.",
+      "source_sha": "a20d451506ebc5f92a80d37128f1539665f7d82f",
+      "new_slices": [
+        "F02e0",
+        "F02e1",
+        "F02e2",
+        "F02e3",
+        "F02e4",
+        "F02e5",
+        "F02e6",
+        "F02e7",
+        "F02e8",
+        "F02e"
+      ],
+      "supersession": {
+        "F02c": [
+          "F02e1"
+        ],
+        "F02d": [
+          "F02e8"
+        ]
+      },
+      "path_owners": {
+        "F02e0": [
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/chrome.qml",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/fixtures/popup.html",
+          "docs/architecture/ADR-public-page-host.md"
+        ],
+        "F02e1": [
+          "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+          "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+          "crates/ferric-browser-engine-qt/src/public_profile_owner.h",
+          "crates/ferric-browser-engine-qt/src/public_profile_owner.cpp",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_owner.cpp",
+          "crates/ferric-browser-engine-qt/src/request_interceptor.h"
+        ],
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/gui_application.cpp",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+        ],
+        "F02e3": [
+          "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+          "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+          "crates/ferric-browser-engine-qt/src/script_runner.h",
+          "crates/ferric-browser-engine-qt/src/script_runner.cpp",
+          "crates/ferric-browser-engine-qt/src/hint_frame_broker.h",
+          "crates/ferric-browser-engine-qt/src/hint_frame_broker.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+        ],
+        "F02e4": [
+          "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+          "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+          "crates/ferric-browser-engine-qt/src/download_source.h",
+          "crates/ferric-browser-engine-qt/src/download_source.cpp",
+          "crates/ferric-browser-engine-qt/src/request_interceptor.h",
+          "crates/ferric-browser-engine-qt/src/request_interceptor.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+        ],
+        "F02e5": [
+          "crates/ferric-browser-engine-qt/src/browser_key_router.h",
+          "crates/ferric-browser-engine-qt/src/browser_key_router.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.h",
+          "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.cpp",
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+        ],
+        "F02e6": [
+          "crates/ferric-browser-engine-qt/qml/Main.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+        ],
+        "F02e7": [
+          "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricPopupWindow.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricDevToolsWorkspace.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricDevToolsWindow.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWindowRegistryController.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+        ],
+        "F02e8": [
+          "crates/ferric-browser-engine-qt/src/profile_lifetime.h",
+          "crates/ferric-browser-engine-qt/src/profile_lifetime.cpp",
+          "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+          "crates/ferric-browser-engine-qt/tests/application/tst_application.h",
+          "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/profile-lifetime/tst_lifetime.cpp",
+          "crates/ferric-browser-engine-qt/tests/profile-lifetime/CMakeLists.txt",
+          "docs/architecture/ADR-popup-opener-lifetime.md"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt": "proposed",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host.cpp": "proposed",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/chrome.qml": "proposed",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/fixtures/popup.html": "proposed",
+        "docs/architecture/ADR-public-page-host.md": "proposed",
+        "crates/ferric-browser-engine-qt/src/public_page_owner.h": "proposed",
+        "crates/ferric-browser-engine-qt/src/public_page_owner.cpp": "proposed",
+        "crates/ferric-browser-engine-qt/src/public_profile_owner.h": "proposed",
+        "crates/ferric-browser-engine-qt/src/public_profile_owner.cpp": "proposed",
+        "crates/ferric-browser-engine-qt/build.rs": "existing",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_owner.cpp": "proposed",
+        "crates/ferric-browser-engine-qt/src/request_interceptor.h": "existing",
+        "crates/ferric-browser-engine-qt/src/public_page_host.h": "proposed",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp": "proposed",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml": "proposed",
+        "crates/ferric-browser-engine-qt/src/gui_application.cpp": "existing",
+        "crates/ferric-browser-engine-qt/src/bridge.rs": "existing",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp": "proposed",
+        "crates/ferric-browser-engine-qt/src/script_runner.h": "existing",
+        "crates/ferric-browser-engine-qt/src/script_runner.cpp": "existing",
+        "crates/ferric-browser-engine-qt/src/hint_frame_broker.h": "existing",
+        "crates/ferric-browser-engine-qt/src/hint_frame_broker.cpp": "existing",
+        "crates/ferric-browser-engine-qt/src/download_source.h": "existing",
+        "crates/ferric-browser-engine-qt/src/download_source.cpp": "existing",
+        "crates/ferric-browser-engine-qt/src/request_interceptor.cpp": "existing",
+        "crates/ferric-browser-engine-qt/src/browser_key_router.h": "existing",
+        "crates/ferric-browser-engine-qt/src/browser_key_router.cpp": "existing",
+        "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.h": "existing",
+        "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.cpp": "existing",
+        "crates/ferric-browser-engine-qt/qml/Main.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPopupWindow.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricDevToolsWorkspace.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricDevToolsWindow.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowRegistryController.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml": "existing",
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.h": "existing",
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.cpp": "existing",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp": "existing",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.h": "existing",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt": "existing",
+        "crates/ferric-browser-engine-qt/tests/profile-lifetime/tst_lifetime.cpp": "existing",
+        "crates/ferric-browser-engine-qt/tests/profile-lifetime/CMakeLists.txt": "existing",
+        "docs/architecture/ADR-popup-opener-lifetime.md": "existing"
+      },
+      "preserved": "Historical attempts/receipts, original behavior/security/device gates; numerical performance thresholds retained. No Qt fork or desktop customization."
     }
   ]
 }

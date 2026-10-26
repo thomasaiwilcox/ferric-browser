@@ -42,7 +42,7 @@ Workers who need a shared registration edit submit the exact diff and test regis
 
 ## Status and repair limits
 
-Allowed execution states: `not_started`, `ready`, `in_progress`, `submitted`, `reviewing`, `accepted`, `blocked_environment`, `blocked_specification`, `implemented_unqualified`, `failed`. Initial state is not implementation evidence. `accepted` requires independent review and all slice cases evidenced. Maximum three attempts total (initial plus two repair rounds). If repeated repairs fail, preserve work/logs, record the exact failure and split or block it; do not weaken tests, expand scope indefinitely or ask another agent to rubber-stamp it.
+Allowed execution states: `not_started`, `ready`, `in_progress`, `submitted`, `reviewing`, `accepted`, `blocked_environment`, `blocked_specification`, `implemented_unqualified`, `failed`, `superseded`. Initial state is not implementation evidence. `accepted` requires independent review and all slice cases evidenced. Maximum three attempts total (initial plus two repair rounds), except the explicit reviewed A37 per-slice attempt-four exceptions for P00a and W01b. No other increase or counter reset is authorized. If repeated repairs fail, preserve work/logs, record the exact failure and split or block it; do not weaken tests, expand scope indefinitely or ask another agent to rubber-stamp it.
 
 An implementation can be present while native evidence is missing. Store that as `implemented_unqualified`; dependent code that truly needs only the implementation may be split from a separate qualification gate through an explicit plan amendment. Do not change a declared dependency merely to turn a dashboard green. Keep working on unrelated helper, policy, fixture and generic-window tasks.
 
@@ -55,3 +55,9 @@ A failed public-API proof is not successful delivery of phone support/grouping. 
 After each integration or blocker, update external `control/CHECKPOINT.md`: integration SHA, completed/current tasks, locks, branches, build ownership, resource state, last commands, blockers and next actions. Before resuming, inspect Git status and task records, confirm processes actually running, invalidate stale source evidence, then continue. Never start a second compiler simply because the previous chat stopped responding.
 
 Only S00, X04–X06 and scheduled milestone checks read the whole plan. Normal workers read their own task. The work ends with a truthful local handover: implementation status, qualification status, tests run, measured performance, current source and remaining blockers. No remote push/PR/merge, release publication, privileged installation, user-profile migration or compositor configuration edits are included in the user's request.
+
+## A37 recovery and supersession
+
+F02c/F02d are historical superseded tasks, not replacement evidence. Preserve their full prior state and receipts; the task/state supersession map must agree and each replacement must be accepted before strict completion. Live dependencies must name replacement outcomes directly. Superseded tests retain their original identity/result specification with explicit same-level requirement-preserving replacement mappings. Do not dispatch superseded task instructions.
+
+The public-host prototype precedes production migration; source budgets and max8 paths apply to each distinct outcome. After migration refresh affected native/application evidence on final production source; unchanged pure Rust evidence requires reviewed dependency analysis. The A37 user-authorized local testing and single-machine performance scope in ENVIRONMENT/C03 overrides earlier pack wording, without changing physical-device or numeric gates.
