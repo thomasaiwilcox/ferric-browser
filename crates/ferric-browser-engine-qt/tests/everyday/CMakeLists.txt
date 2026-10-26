@@ -5,7 +5,7 @@ if(NOT TARGET application_tests)
 endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-find_package(Qt6 REQUIRED COMPONENTS Core Test WebChannel)
+find_package(Qt6 REQUIRED COMPONENTS Core DBus Test WebChannel)
 find_program(FERRIC_TEST_OPENSSL openssl REQUIRED)
 
 add_executable(everyday_T061a_helper_supervisor_component tst_credential_process.cpp)
@@ -17,7 +17,7 @@ set_tests_properties(everyday_T061a_helper_supervisor_component PROPERTIES TIMEO
 
 add_executable(credential_boundary_tests tst_credential_boundary.cpp)
 target_link_libraries(credential_boundary_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}"
-    Qt6::Quick Qt6::WebEngineQuick Qt6::Network Qt6::WebChannel Qt6::Test)
+    Qt6::DBus Qt6::Quick Qt6::WebEngineQuick Qt6::Network Qt6::WebChannel Qt6::Test)
 target_compile_definitions(credential_boundary_tests PRIVATE
     FERRIC_CREDENTIAL_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
     FERRIC_TEST_OPENSSL="${FERRIC_TEST_OPENSSL}")
