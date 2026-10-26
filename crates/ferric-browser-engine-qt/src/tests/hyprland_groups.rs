@@ -321,18 +321,12 @@ fn workspace_permission_off_keeps_observation_read_only() {
     let event_path = owned_socket_path();
     let request_listener = UnixListener::bind(&request_path).expect("bind request fixture");
     let event_listener = UnixListener::bind(&event_path).expect("bind event fixture");
-    let request_probe = request_listener
+    let request_server_listener = request_listener
         .try_clone()
-        .expect("clone request socket for side-effect assertion");
-    request_probe
-        .set_nonblocking(true)
-        .expect("nonblocking request probe");
-    let event_probe = event_listener
+        .expect("clone request socket for server");
+    let event_server_listener = event_listener
         .try_clone()
-        .expect("clone event socket for side-effect assertion");
-    event_probe
-        .set_nonblocking(true)
-        .expect("nonblocking event probe");
+        .expect("clone event socket for server");
     let (command_tx, command_rx) = mpsc::channel();
     let request_server = std::thread::spawn(move || {
         for (expected, response) in [
@@ -342,7 +336,9 @@ fn workspace_permission_off_keeps_observation_read_only() {
             ),
             ("j/clients", b"[]".as_slice()),
         ] {
-            let (mut stream, _) = request_listener.accept().expect("accept read-only request");
+            let (mut stream, _) = request_server_listener
+                .accept()
+                .expect("accept read-only request");
             let mut command = [0_u8; 64];
             let count = stream.read(&mut command).expect("read request command");
             let command = String::from_utf8_lossy(&command[..count]).into_owned();
@@ -356,7 +352,9 @@ fn workspace_permission_off_keeps_observation_read_only() {
         }
     });
     let event_server = std::thread::spawn(move || {
-        let (_stream, _) = event_listener.accept().expect("accept event subscription");
+        let (_stream, _) = event_server_listener
+            .accept()
+            .expect("accept event subscription");
         std::thread::sleep(std::time::Duration::from_millis(120));
     });
 
@@ -382,6 +380,12 @@ fn workspace_permission_off_keeps_observation_read_only() {
         .join()
         .expect("read-only request server exits");
     event_server.join().expect("event server exits");
+    request_listener
+        .set_nonblocking(true)
+        .expect("nonblocking request side-effect probe");
+    event_listener
+        .set_nonblocking(true)
+        .expect("nonblocking event side-effect probe");
     let commands = command_rx.try_iter().collect::<Vec<_>>();
     assert_eq!(commands, vec!["j/version", "j/clients"]);
     assert!(commands.iter().all(|command| {
@@ -390,12 +394,12 @@ fn workspace_permission_off_keeps_observation_read_only() {
             && !command.contains("workspace")
     }));
     assert_eq!(
-        request_probe.accept().unwrap_err().kind(),
+        request_listener.accept().unwrap_err().kind(),
         std::io::ErrorKind::WouldBlock,
         "disabled route/move requests must not connect to the request socket"
     );
     assert_eq!(
-        event_probe.accept().unwrap_err().kind(),
+        event_listener.accept().unwrap_err().kind(),
         std::io::ErrorKind::WouldBlock,
         "disabled route/move requests must not connect to the event socket"
     );
