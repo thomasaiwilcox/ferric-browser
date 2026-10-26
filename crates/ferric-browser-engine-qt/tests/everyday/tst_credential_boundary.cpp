@@ -493,7 +493,7 @@ private slots:
         state->finished = true;
         return state;
       }
-      const auto currentMainFrame = pageGuard->mainFrame();
+      auto currentMainFrame = pageGuard->mainFrame();
       if (!currentMainFrame.isValid() || !currentMainFrame.isMainFrame()) {
         state->finished = true;
         return state;
