@@ -6,7 +6,8 @@ from datetime import datetime,timezone
 PACK=Path(__file__).resolve().parent.parent
 REPO="thomasaiwilcox/ferric-browser"
 CLONE=f"https://github.com/{REPO}.git"
-ATTEMPT_EXCEPTION_AMENDMENTS={"P00a":"A37","W01b":"A37","F02e2":"A43"}
+ATTEMPT_EXCEPTION_AMENDMENTS={"P00a":"A37","W01b":"A37","F02e2":"A44"}
+ATTEMPT_EXCEPTION_LIMITS={"P00a":4,"W01b":4,"F02e2":5}
 ATTEMPT_EXCEPTION_TASKS=set(ATTEMPT_EXCEPTION_AMENDMENTS)
 GLOBAL_MAX_ATTEMPTS=3
 def load(path:Path):
@@ -76,12 +77,15 @@ def effective_attempt_limit(plan,task):
     if not isinstance(default,int) or isinstance(default,bool) or default!=GLOBAL_MAX_ATTEMPTS:return 0
     if not isinstance(task_limit,int) or isinstance(task_limit,bool) or task_limit<1:return 0
     if entry is None:return min(default,task_limit)
-    expected_amendment=ATTEMPT_EXCEPTION_AMENDMENTS.get(task.get("id"))
+    sid=task.get("id")
+    expected_amendment=ATTEMPT_EXCEPTION_AMENDMENTS.get(sid)
+    expected_limit=ATTEMPT_EXCEPTION_LIMITS.get(sid)
     if (expected_amendment is not None
+        and expected_limit is not None
         and isinstance(entry,dict)
         and entry.get("amendment")==expected_amendment
         and entry.get("default_limit")==default
-        and entry.get("authorized_limit")==task_limit==default+1
+        and entry.get("authorized_limit")==task_limit==expected_limit
         and isinstance(entry.get("reason"),str)
         and bool(entry["reason"].strip())):
         return task_limit

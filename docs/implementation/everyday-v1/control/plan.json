@@ -4323,7 +4323,8 @@
         "crates/ferric-browser-engine-qt/src/engine_requests.rs",
         "crates/ferric-browser-engine-qt/build.rs",
         "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
-        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
       ],
       "steps": [
         "Keep the existing QApplication and add WebEngineWidgets/QuickWidgets to the pinned SDK module graph. Embed reusable existing QML chrome in a Widgets host; preserve appearance, geometry and native dialog parent identity.",
@@ -4334,18 +4335,19 @@
       "locks": [
         "public-page-host",
         "bridge",
-        "test-registration"
+        "test-registration",
+        "browser-ui-input"
       ],
       "recipe": "application",
       "requirement_id": "EF-F02",
       "test_ids": [
         "T014e2"
       ],
-      "max_changed_product_files": 9,
-      "path_budget_amendment": "A42",
-      "max_attempts": 4,
+      "max_changed_product_files": 10,
+      "path_budget_amendment": "A44",
+      "max_attempts": 5,
       "worker_may_delegate": false,
-      "new_paths_notice": "A42 approves exactly engine_requests.rs as F02e2 path9 (ninth product path); no tenth path without another reviewed correction.",
+      "new_paths_notice": "A42 retains the original nine paths including engine_requests.rs as path 9. A44 approves exactly browser_ui_input.rs as path 10 and the browser-ui-input lock; no eleventh path or attempt 6 is authorized.",
       "slice_file": "slices/F02e2.md",
       "read_anchors": [
         "crates/ferric-browser-engine-qt/src/public_page_host.h",
@@ -4356,7 +4358,8 @@
         "crates/ferric-browser-engine-qt/src/engine_requests.rs",
         "crates/ferric-browser-engine-qt/build.rs",
         "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
-        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
       ],
       "parent_id": "F02e"
     },
@@ -4758,10 +4761,10 @@
       "reason": "User-authorized fourth attempt: reconstruct reviewed routing and fix E0716 while preserving accepted W01a/W01c; execute original T104."
     },
     "F02e2": {
-      "amendment": "A43",
+      "amendment": "A44",
       "default_limit": 3,
-      "authorized_limit": 4,
-      "reason": "One-time compiler recovery after the source-reviewed A3 candidate failed the pinned Qt 6.11.2 build before CMake or T014e2; preserve all A3 findings and stop after this attempt."
+      "authorized_limit": 5,
+      "reason": "One final source candidate after A4 passed source review but the pinned build exposed three Rust compile errors, including a ReparentView match in A44 path 10; preserve attempts 1-4 and stop after attempt 5."
     }
   }
 }

@@ -5,7 +5,7 @@ import argparse,json,re,sys
 from pathlib import Path
 from common import (PACK,load,read_plan,packet,safe_relative,digest,
                     ATTEMPT_EXCEPTION_TASKS,ATTEMPT_EXCEPTION_AMENDMENTS,
-                    GLOBAL_MAX_ATTEMPTS,effective_attempt_limit)
+                    ATTEMPT_EXCEPTION_LIMITS,GLOBAL_MAX_ATTEMPTS,effective_attempt_limit)
 STATUSES={"not_started","ready","in_progress","submitted","reviewing","accepted","superseded","blocked_environment","blocked_specification","implemented_unqualified","failed"}
 LEVELS={"inspection","unit","component","application","native","physical","benchmark","build","fuzz"}
 RECIPES={"preflight","baseline","config","rust-policy","application-rust","storage","application","credential","helper","rp","fuzz","benchmark","native","physical","package","ci","docs","review","rebuild","release"}
@@ -38,15 +38,51 @@ A42_ADDED_PATHS=[
     "crates/ferric-browser-engine-qt/src/engine_requests.rs",
 ]
 A42_REMOVED_PATHS=["crates/ferric-browser-engine-qt/src/gui_application.cpp"]
+A44_ADDED_PATH="crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+A44_F02E2_PATHS=A42_F02E2_PATHS|{A44_ADDED_PATH}
+A44_LOCKS=["public-page-host","bridge","test-registration","browser-ui-input"]
 SUPERSESSION_AMENDMENT="A37"
 
 def validate_edit_path_budget(task,pack=PACK):
-    """Enforce the 8-path default and exact reviewed F02e1/A38 or F02e2/A42 exceptions."""
+    """Enforce the 8-path default and exact reviewed F02e1/A38 or F02e2/A42/A44 exceptions."""
     errors=[];paths=task.get("allowed_paths",[]);cap=task.get("max_changed_product_files",8)
     amendment=task.get("path_budget_amendment")
     if amendment is None:
         if len(paths)>8 or cap>8:
             errors.append(f"{task.get('id')}: edit-path budget exceeded")
+        return errors
+    if task.get("id")=="F02e2" and amendment=="A44":
+        if len(paths)!=10 or set(paths)!=A44_F02E2_PATHS or cap!=10:
+            errors.append("F02e2: A44 permits only its exact ten-path owner list")
+        notice=task.get("new_paths_notice","")
+        if ("A44" not in notice or "browser_ui_input.rs" not in notice
+                or "tenth" not in notice or "A42" not in notice):
+            errors.append("F02e2: A44 path exception lacks its exact tenth-path notice")
+        if task.get("locks")!=A44_LOCKS:
+            errors.append("F02e2: A44 requires the three retained locks plus browser-ui-input")
+        try:
+            amendment_text=(pack/"control/AMENDMENTS.md").read_text()
+            section=amendment_text.split("## A44",1)[1].split("\n## ",1)[0]
+            source_map=load(pack/"control/source-map.execution.json")
+            records={x.get("id"):x for x in source_map.get("execution_amendments",[])}
+            a42=records.get("A42");a44=records.get("A44")
+            a42_owner=a42.get("path_owners",{}).get("F02e2") if a42 else None
+            a44_owner=a44.get("path_owners",{}).get("F02e2") if a44 else None
+            if ("**Status:** independently reviewed and accepted" not in section
+                    or "browser_ui_input.rs" not in section):
+                errors.append("F02e2: A44 path exception is missing its accepted amendment record")
+            if (not isinstance(a42_owner,list) or len(a42_owner)!=9
+                    or set(a42_owner)!=A42_F02E2_PATHS):
+                errors.append("F02e2: A44 must preserve A42's exact historical nine-path owner record")
+            if (a44 is None or a44.get("added_paths")!=[A44_ADDED_PATH]
+                    or a44.get("removed_paths")!=[] or a44_owner!=paths
+                    or a44.get("added_locks")!=["browser-ui-input"]
+                    or a44.get("locks")!=A44_LOCKS
+                    or a44.get("max_changed_product_files")!=10
+                    or a44.get("previous_max_changed_product_files")!=9):
+                errors.append("F02e2: A44 source-map owner record does not match its exact tenth-path scope")
+        except (IndexError,OSError,ValueError,TypeError) as exc:
+            errors.append(f"F02e2: cannot validate A44 path amendment metadata: {exc}")
         return errors
     if task.get("id")=="F02e2" and amendment=="A42":
         if len(paths)!=9 or set(paths)!=A42_F02E2_PATHS or cap!=9:
@@ -117,8 +153,9 @@ def validate_attempt_limits(plan,tasks):
             errors.append(f"{sid}: attempt exception must cite {expected_amendment or 'an authorized amendment'}")
         if entry.get("default_limit")!=default:
             errors.append(f"{sid}: attempt exception default_limit differs from global limit")
-        if entry.get("authorized_limit")!=limit or limit!=default+1:
-            errors.append(f"{sid}: attempt exception must authorize exactly one extra attempt matching max_attempts")
+        expected_limit=ATTEMPT_EXCEPTION_LIMITS.get(sid)
+        if entry.get("authorized_limit")!=limit or limit!=expected_limit:
+            errors.append(f"{sid}: attempt exception must authorize exactly {expected_limit or 'the reviewed'} limit matching max_attempts")
         if not isinstance(entry.get("reason"),str) or not entry["reason"].strip():
             errors.append(f"{sid}: attempt exception requires a nonempty reason")
     return errors

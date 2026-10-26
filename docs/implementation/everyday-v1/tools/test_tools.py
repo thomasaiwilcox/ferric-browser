@@ -30,13 +30,22 @@ class StructureTests(unittest.TestCase):
             slices[task['id']]=current
         state['slices']=slices
         return state
-    def test_structure_matches_a42_review_state(self):
+    def f02e2_a42_historical_task(self):
+        task=copy.deepcopy(next(t for t in load(PACK/'control/plan.json')['slices'] if t['id']=='F02e2'))
+        task['allowed_paths']=[p for p in task['allowed_paths'] if p!='crates/ferric-browser-engine-qt/src/browser_ui_input.rs']
+        task['read_anchors']=[p for p in task['read_anchors'] if p!='crates/ferric-browser-engine-qt/src/browser_ui_input.rs']
+        task['locks']=['public-page-host','bridge','test-registration']
+        task['max_changed_product_files']=9
+        task['path_budget_amendment']='A42'
+        task['new_paths_notice']='A42 approves engine_requests.rs as path 9 (ninth product path).'
+        return task
+    def test_structure_matches_a44_review_state(self):
         errors=validate_pack.validate_structure()
-        amendment=(PACK/'control/AMENDMENTS.md').read_text().split('## A42',1)[1].split('\n## ',1)[0]
+        amendment=(PACK/'control/AMENDMENTS.md').read_text().split('## A44',1)[1].split('\n## ',1)[0]
         if '**Status:** independently reviewed and accepted' in amendment:
             self.assertEqual(errors,[])
         else:
-            self.assertEqual(errors,['F02e2: A42 path exception is missing its accepted amendment record'])
+            self.assertEqual(errors,['F02e2: A44 path exception is missing its accepted amendment record'])
     def test_all_packets_bounded(self):
         plan=load(PACK/'control/plan.json')
         ids=[t['id'] for t in plan['slices']]
@@ -66,7 +75,7 @@ class StructureTests(unittest.TestCase):
         other_task=copy.deepcopy(task);other_task['id']='W04'
         self.assertTrue(any('unapproved edit-path budget amendment' in e for e in validate_pack.validate_edit_path_budget(other_task,PACK)))
     def test_a42_exact_path_budget_exception(self):
-        plan=load(PACK/'control/plan.json');task=next(t for t in plan['slices'] if t['id']=='F02e2')
+        task=self.f02e2_a42_historical_task()
         live=validate_pack.validate_edit_path_budget(task,PACK)
         amendment=(PACK/'control/AMENDMENTS.md').read_text().split('## A42',1)[1].split('\n## ',1)[0]
         if '**Status:** independently reviewed and accepted' in amendment:
@@ -98,7 +107,7 @@ class StructureTests(unittest.TestCase):
             (control/'AMENDMENTS.md').write_text(amendments.replace(status_line,'- '+accepted_status,1))
             self.assertEqual(validate_pack.validate_edit_path_budget(task,pack),[])
     def test_a42_exception_requires_exact_amendment_metadata(self):
-        plan=load(PACK/'control/plan.json');task=next(t for t in plan['slices'] if t['id']=='F02e2')
+        task=self.f02e2_a42_historical_task()
         unamended=copy.deepcopy(task);unamended.pop('path_budget_amendment')
         self.assertTrue(any('edit-path budget exceeded' in e for e in validate_pack.validate_edit_path_budget(unamended,PACK)))
         with tempfile.TemporaryDirectory() as tmp:
@@ -113,6 +122,36 @@ class StructureTests(unittest.TestCase):
             write_json(control/'source-map.execution.json',source_map)
             errors=validate_pack.validate_edit_path_budget(task,pack)
             self.assertTrue(any('source-map owner record' in e for e in errors))
+    def test_a44_exact_ten_path_scope_and_lock(self):
+        task=next(t for t in load(PACK/'control/plan.json')['slices'] if t['id']=='F02e2')
+        self.assertEqual(validate_pack.validate_edit_path_budget(task,PACK),[])
+        self.assertEqual(len(task['allowed_paths']),10)
+        self.assertIn('crates/ferric-browser-engine-qt/src/browser_ui_input.rs',task['allowed_paths'])
+        self.assertEqual(task['locks'],['public-page-host','bridge','test-registration','browser-ui-input'])
+        too_many=copy.deepcopy(task);too_many['allowed_paths'].append('crates/example/extra.cpp')
+        self.assertTrue(any('exact ten-path' in e for e in validate_pack.validate_edit_path_budget(too_many,PACK)))
+        wrong_path=copy.deepcopy(task);wrong_path['allowed_paths'][-1]='crates/example/other.cpp'
+        self.assertTrue(any('exact ten-path' in e for e in validate_pack.validate_edit_path_budget(wrong_path,PACK)))
+        wrong_lock=copy.deepcopy(task);wrong_lock['locks'].remove('browser-ui-input')
+        self.assertTrue(any('browser-ui-input' in e for e in validate_pack.validate_edit_path_budget(wrong_lock,PACK)))
+        wrong_cap=copy.deepcopy(task);wrong_cap['max_changed_product_files']=9
+        self.assertTrue(any('exact ten-path' in e for e in validate_pack.validate_edit_path_budget(wrong_cap,PACK)))
+        wrong_task=copy.deepcopy(task);wrong_task['id']='W04'
+        self.assertTrue(any('unapproved edit-path budget amendment' in e for e in validate_pack.validate_edit_path_budget(wrong_task,PACK)))
+        with tempfile.TemporaryDirectory() as tmp:
+            pack=Path(tmp);control=pack/'control';control.mkdir()
+            amendments=(PACK/'control/AMENDMENTS.md').read_text()
+            a44_lines=amendments.split('## A44',1)[1].split('\n## ',1)[0].splitlines()
+            status_line=next(line for line in a44_lines if line.startswith('- **Status:**'))
+            write_json(control/'source-map.execution.json',load(PACK/'control/source-map.execution.json'))
+            (control/'AMENDMENTS.md').write_text(amendments.replace(status_line,'- **Status:** staged for independent review.',1))
+            self.assertTrue(any('missing its accepted amendment record' in e for e in validate_pack.validate_edit_path_budget(task,pack)))
+            (control/'AMENDMENTS.md').write_text(amendments)
+            source_map=load(PACK/'control/source-map.execution.json')
+            record=next(x for x in source_map['execution_amendments'] if x.get('id')=='A44')
+            record['added_paths']=[]
+            write_json(control/'source-map.execution.json',source_map)
+            self.assertTrue(any('source-map owner record' in e for e in validate_pack.validate_edit_path_budget(task,pack)))
     def test_initial_not_complete(self):
         p=load(PACK/'control/plan.json');e=validate_pack.validate_state(p,PACK/'control/state.initial.json',True)
         self.assertTrue(any('not accepted' in x for x in e))
@@ -148,27 +187,32 @@ class StructureTests(unittest.TestCase):
                 state['slices']['W01b']['attempts']=attempts;write_json(path,state)
                 errors=validate_pack.validate_state(p,path,pack=PACK)
                 self.assertEqual(not any('W01b: attempt limit' in e for e in errors),valid)
-    def test_f02e2_a43_attempt4_exact_exception_and_no_fifth(self):
+    def test_f02e2_a44_attempt5_exact_exception_and_no_sixth(self):
         p=load(PACK/'control/plan.json')
         tasks={x['id']:x for x in p['slices']}
         self.assertEqual(p['limits']['max_attempts'],3)
         self.assertEqual(p['attempt_exceptions']['P00a']['amendment'],'A37')
         self.assertEqual(p['attempt_exceptions']['W01b']['amendment'],'A37')
-        self.assertEqual(tasks['F02e2']['max_attempts'],4)
+        self.assertEqual(tasks['F02e2']['max_attempts'],5)
         entry=p['attempt_exceptions']['F02e2']
         self.assertEqual(set(entry),{'amendment','default_limit','authorized_limit','reason'})
-        self.assertEqual(entry['amendment'],'A43')
+        self.assertEqual(entry['amendment'],'A44')
         self.assertEqual(entry['default_limit'],3)
-        self.assertEqual(entry['authorized_limit'],4)
+        self.assertEqual(entry['authorized_limit'],5)
         self.assertTrue(entry['reason'].strip())
         self.assertEqual(validate_pack.validate_attempt_limits(p,tasks),[])
-        for wrong_amendment in ('A37','A42'):
+        for wrong_amendment in ('A37','A42','A43'):
             wrong=json.loads(json.dumps(p))
             wrong['attempt_exceptions']['F02e2']['amendment']=wrong_amendment
-            self.assertTrue(any('F02e2: attempt exception must cite A43' in e for e in validate_pack.validate_attempt_limits(wrong,{x['id']:x for x in wrong['slices']})))
+            self.assertTrue(any('F02e2: attempt exception must cite A44' in e for e in validate_pack.validate_attempt_limits(wrong,{x['id']:x for x in wrong['slices']})))
+        amendment=(PACK/'control/AMENDMENTS.md').read_text()
+        a43=amendment.split('## A43',1)[1].split('\n## ',1)[0]
+        a44=amendment.split('## A44',1)[1].split('\n## ',1)[0]
+        self.assertIn('no fifth attempt',a43)
+        self.assertIn('attempt 4/4 is exhausted',a44)
         with tempfile.TemporaryDirectory() as tmp:
             state=self.initial_state_for_plan(p);path=Path(tmp)/'control/state.json';path.parent.mkdir()
-            for attempts,valid in ((3,True),(4,True),(5,False)):
+            for attempts,valid in ((3,True),(4,True),(5,True),(6,False)):
                 state['slices']['F02e2']['attempts']=attempts;write_json(path,state)
                 errors=validate_pack.validate_state(p,path,pack=PACK)
                 self.assertEqual(not any('F02e2: attempt limit' in e for e in errors),valid)

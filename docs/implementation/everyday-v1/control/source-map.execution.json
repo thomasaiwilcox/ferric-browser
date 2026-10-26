@@ -4102,6 +4102,47 @@
       "max_changed_product_files": 9,
       "previous_max_changed_product_files": 8,
       "preserved": "T014e2, all A37 F02e dependencies and contracts, three-attempt cap, nine-file F02e2 cap, one native slot, Rust-owned lifecycle policy, no shipped-root migration claim, and all downstream qualification gates."
+    },
+    {
+      "id": "A44",
+      "reason": "The accepted A4 candidate passed the duplicate-header compile stage but exposed three Rust errors; the missing ReparentView arm is in browser_ui_input.rs outside the exact A42 path budget.",
+      "source_sha": "58ddf64574cea7cf14f96ca6ded497f0d4a1168a",
+      "source_tree": "8783dc6a4a580cfc57d9671ddf5cea4ca5e8157e",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+      ],
+      "removed_paths": [],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs": "existing_product_source"
+      },
+      "added_locks": [
+        "browser-ui-input"
+      ],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "max_changed_product_files": 10,
+      "previous_max_changed_product_files": 9,
+      "required_change": "Fix only E0308 and E0716 in browser_ui_tab_state.rs and explicitly handle NativeRequest::ReparentView in the existing typed request queue in browser_ui_input.rs. Preserve queue ordering, existing typed dispatch, A3/A4 page-owner/profile/tab-incarnation lifecycle and native apply freshness checks. Do not silently drop the request or add a new channel.",
+      "required_test_impact": "T014e2 remains the exact application gate. It must exercise typed attach/detach and the ReparentView projection; no new test ID or assertion weakening.",
+      "preserved": "A37 and A43 history, global attempt limit 3, A42 exact historical nine-path owner list, one native slot, no new dependency/event/effect/string command, and downstream device/security/performance qualification."
     }
   ]
 }
