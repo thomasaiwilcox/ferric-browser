@@ -27,6 +27,10 @@ add_test(NAME everyday_T046_credential_isolated_world
     COMMAND $<TARGET_FILE:credential_boundary_tests> isolatedTransportAndMainFrameFacts)
 set_tests_properties(everyday_T046_credential_isolated_world PROPERTIES
     TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+add_test(NAME everyday_T047_stale_credential_completion
+    COMMAND $<TARGET_FILE:credential_boundary_tests> staleCredentialCompletionAdmission)
+set_tests_properties(everyday_T047_stale_credential_completion PROPERTIES
+    TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 
 add_executable(everyday_fixture_tests tst_everyday.cpp tst_everyday.h)
 target_link_libraries(everyday_fixture_tests PRIVATE Qt6::Test)

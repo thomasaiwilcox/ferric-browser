@@ -56,12 +56,29 @@ T046 exercises a positive main-frame channel call and asserts that hostile
 MainWorld/ApplicationWorld attempts do not alter or reach the native probe.
 The child world-42 transport read remains diagnostic; WebChannel does not
 provide caller-frame identity, so this test does not claim that an isolated
-child caller can be distinguished from the main frame. Until the exact Qt
-6.11.2 runtime result is reviewed, the prototype is unqualified. Even a
-passing transport test does not establish a native security-origin API or a
-production document-ownership lease; those gaps must remain explicit in any
-later production design. No MainWorld native object, console bridge, custom
-scheme, or CSP bypass is an acceptable fallback.
+child caller can be distinguished from the main frame.
+
+T047 uses a separate disposable page and a test-only pending completion. It
+captures a native frame handle, a reserved-world document nonce and a native
+generation advanced by actual page load-start events. Completion runs through
+Qt's asynchronous frame-scoped JavaScript callback against the current main
+frame; admission requires the captured source to be main-frame, the generation
+and nonce to match, and the current browser-computed origin/security context to
+match the test's trusted fixture. The current-document control must pass;
+same-URL reload and child-frame completions must fail. The test enables Qt
+6.11.2's BackForwardCache setting on its disposable page and requires
+`pageshow.persisted` on history restoration. It also requires the restored
+document to retain its nonce while the native generation advances, so the
+queued pre-navigation completion is rejected by generation rather than by
+nonce inequality or a reload-shaped substitute.
+
+T047's source frame is held by native test instrumentation. It does not claim
+that WebChannel identifies a caller frame, that the nonce is a Qt-native
+document ID, or that the test's generation gate is production ownership code.
+Even passing T046 and T047 does not establish a native security-origin API or
+a production document-ownership lease; those gaps remain explicit for later
+production design. No MainWorld native object, console bridge, custom scheme,
+or CSP bypass is an acceptable fallback.
 
 References: [QWebEngineFrame](https://doc.qt.io/qt-6.11/qwebengineframe.html),
 [QWebEnginePage](https://doc.qt.io/qt-6.11/qwebenginepage.html),

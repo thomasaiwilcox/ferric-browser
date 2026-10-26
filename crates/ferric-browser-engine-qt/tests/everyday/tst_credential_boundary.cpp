@@ -4,6 +4,7 @@
 #include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QLibraryInfo>
 #include <QProcess>
 #include <QQuickWindow>
@@ -398,6 +399,192 @@ private slots:
     QVERIFY(reloadedNonce != nonce);
     QTRY_COMPARE_WITH_TIMEOUT(probe.callCount(), 2, 5000);
     QCOMPARE(probe.documentNonce(), reloadedNonce);
+  }
+
+  void staleCredentialCompletionAdmission() {
+    auto pageHtml = readFixture(QStringLiteral("credential-hostile.html"));
+    auto frameHtml = readFixture(QStringLiteral("credential-frame.html"));
+    QVERIFY(!pageHtml.isEmpty());
+    QVERIFY(!frameHtml.isEmpty());
+    FixtureServer server;
+    QVERIFY(server.start());
+    const auto frameUrl = QStringLiteral("https://localhost:%1/frame")
+                              .arg(server.pageUrl().port());
+    pageHtml.replace("__SAME_ORIGIN_FRAME_URL__", frameUrl.toUtf8());
+    pageHtml.replace("__RELAXED_ORIGIN_FRAME_URL__", frameUrl.toUtf8());
+    server.setDocuments(pageHtml, frameHtml);
+
+    QWebEngineProfile profile;
+    profile.setHttpCacheType(QWebEngineProfile::NoCache);
+    QWebEnginePage page(&profile);
+    page.settings()->setAttribute(QWebEngineSettings::BackForwardCacheEnabled,
+                                  true);
+    QVERIFY(page.settings()->testAttribute(
+        QWebEngineSettings::BackForwardCacheEnabled));
+    connect(&page, &QWebEnginePage::certificateError, &page,
+            [](QWebEngineCertificateError error) {
+              // Accept only this disposable, local self-signed test cert.
+              error.acceptCertificate();
+            });
+
+    QWebEngineScript identity;
+    identity.setName(QStringLiteral("credential-test-world42-document-identity"));
+    identity.setInjectionPoint(QWebEngineScript::DocumentCreation);
+    identity.setWorldId(CredentialWorld);
+    identity.setRunsOnSubFrames(true);
+    identity.setSourceCode(
+        QStringLiteral(
+            "window.__credentialDocumentNonce = crypto.randomUUID();"
+            "window.__credentialBFCachePersisted = false;"
+            "window.addEventListener('pageshow', function(event) {"
+            "window.__credentialBFCachePersisted = event.persisted;"
+            "});"));
+    page.scripts().insert(identity);
+
+    quint64 nativeDocumentGeneration = 0;
+    connect(&page, &QWebEnginePage::loadStarted, &page,
+            [&nativeDocumentGeneration] { ++nativeDocumentGeneration; });
+    QSignalSpy loaded(&page, &QWebEnginePage::loadFinished);
+    page.load(server.pageUrl());
+    QVERIFY(loaded.wait(15000));
+    QVERIFY(loaded.takeFirst().first().toBool());
+    QTRY_COMPARE_WITH_TIMEOUT(page.mainFrame().children().size(), 2, 10000);
+
+    const auto identityScript = QStringLiteral(
+        "JSON.stringify({nonce: window.__credentialDocumentNonce, "
+        "origin: location.origin, secure: window.isSecureContext, "
+        "bfcache: window.__credentialBFCachePersisted})");
+    const auto trustedFacts = QJsonDocument::fromJson(
+        run(page.mainFrame(), identityScript, CredentialWorld).toString().toUtf8());
+    QVERIFY(trustedFacts.isObject());
+    const auto trustedOrigin = trustedFacts.object().value("origin").toString();
+    QVERIFY(trustedOrigin.startsWith(QStringLiteral("https://localhost:")));
+    QVERIFY(trustedFacts.object().value("secure").toBool());
+
+    struct PendingCompletion {
+      QWebEngineFrame sourceFrame;
+      QString documentNonce;
+      quint64 nativeGeneration = 0;
+    };
+    const auto capturePending = [&](QWebEngineFrame sourceFrame) {
+      return PendingCompletion{
+          sourceFrame,
+          run(sourceFrame,
+              QStringLiteral("window.__credentialDocumentNonce"),
+              CredentialWorld)
+              .toString(),
+          nativeDocumentGeneration};
+    };
+    const auto deliverPending = [&](const PendingCompletion &pending,
+                                    bool &finished, bool &admitted) {
+      finished = false;
+      admitted = false;
+      const auto currentMainFrame = page.mainFrame();
+      if (!currentMainFrame.isValid() || !currentMainFrame.isMainFrame()) {
+        finished = true;
+        return;
+      }
+      currentMainFrame.runJavaScript(
+          identityScript, CredentialWorld,
+          [&, pending](const QVariant &value) {
+            const auto facts = QJsonDocument::fromJson(value.toString().toUtf8());
+            if (facts.isObject()) {
+              const auto object = facts.object();
+              admitted = pending.sourceFrame.isValid() &&
+                         pending.sourceFrame.isMainFrame() &&
+                         pending.nativeGeneration == nativeDocumentGeneration &&
+                         !pending.documentNonce.isEmpty() &&
+                         object.value("nonce").toString() ==
+                             pending.documentNonce &&
+                         object.value("origin").toString() == trustedOrigin &&
+                         object.value("secure").toBool();
+            }
+            finished = true;
+          });
+    };
+    const auto awaitCompletion = [&](const PendingCompletion &pending,
+                                     bool &admitted) {
+      bool finished = false;
+      deliverPending(pending, finished, admitted);
+      QTRY_VERIFY_WITH_TIMEOUT(finished, 5000);
+    };
+
+    const auto firstMainFrame = page.mainFrame();
+    const auto firstNonce = run(firstMainFrame,
+                                QStringLiteral("window.__credentialDocumentNonce"),
+                                CredentialWorld)
+                                .toString();
+    QVERIFY(!firstNonce.isEmpty());
+    const auto firstGeneration = nativeDocumentGeneration;
+
+    // A real asynchronous main-frame challenge admits a reply while its
+    // captured document and native generation are still current.
+    bool admitted = false;
+    awaitCompletion(capturePending(firstMainFrame), admitted);
+    QVERIFY(admitted);
+
+    // Reload the exact same URL, then deliver the older pending completion
+    // against the replacement main document.
+    const auto sameUrlPending = capturePending(page.mainFrame());
+    const auto sameUrl = page.url();
+    QSignalSpy reloaded(&page, &QWebEnginePage::loadFinished);
+    page.triggerAction(QWebEnginePage::Reload);
+    QVERIFY(reloaded.wait(15000));
+    QVERIFY(reloaded.takeFirst().first().toBool());
+    QCOMPARE(page.url(), sameUrl);
+    QTRY_COMPARE_WITH_TIMEOUT(page.mainFrame().children().size(), 2, 10000);
+    const auto replacementNonce =
+        run(page.mainFrame(), QStringLiteral("window.__credentialDocumentNonce"),
+            CredentialWorld)
+            .toString();
+    QVERIFY(replacementNonce != sameUrlPending.documentNonce);
+    QVERIFY(nativeDocumentGeneration > sameUrlPending.nativeGeneration);
+    awaitCompletion(sameUrlPending, admitted);
+    QVERIFY(!admitted);
+
+    // A child-frame source handle is always rejected even while the top
+    // document and generation have not changed.
+    const auto childFrame = page.mainFrame().children().first();
+    QVERIFY(childFrame.isValid());
+    QVERIFY(!childFrame.isMainFrame());
+    const auto childPending = capturePending(childFrame);
+    QVERIFY(!childPending.documentNonce.isEmpty());
+    awaitCompletion(childPending, admitted);
+    QVERIFY(!admitted);
+
+    // Enable real history traversal and require pageshow.persisted, which
+    // distinguishes an actual BFCache restore from an ordinary reload.
+    const auto bfcachePending = capturePending(page.mainFrame());
+    const auto bfcacheGeneration = nativeDocumentGeneration;
+    const auto bfcacheNonce = bfcachePending.documentNonce;
+    auto awayUrl = server.pageUrl();
+    awayUrl.setPath(QStringLiteral("/away"));
+    QSignalSpy left(&page, &QWebEnginePage::loadFinished);
+    page.load(awayUrl);
+    QVERIFY(left.wait(15000));
+    QVERIFY(left.takeFirst().first().toBool());
+    QSignalSpy restored(&page, &QWebEnginePage::loadFinished);
+    page.triggerAction(QWebEnginePage::Back);
+    QVERIFY(restored.wait(15000));
+    QVERIFY(restored.takeFirst().first().toBool());
+    const auto restoredFacts = QJsonDocument::fromJson(
+        run(page.mainFrame(), identityScript, CredentialWorld).toString().toUtf8());
+    QVERIFY(restoredFacts.isObject());
+    QCOMPARE(restoredFacts.object().value("nonce").toString(), bfcacheNonce);
+    QVERIFY(restoredFacts.object().value("bfcache").toBool());
+    QVERIFY(nativeDocumentGeneration > bfcacheGeneration);
+    awaitCompletion(bfcachePending, admitted);
+    QVERIFY(!admitted);
+
+    // A fresh completion after restoration is still admitted. This also
+    // confirms BFCache rejection depends on native generation, not nonce alone.
+    QCOMPARE(run(page.mainFrame(), QStringLiteral("window.__credentialDocumentNonce"),
+                 CredentialWorld)
+                 .toString(),
+             bfcacheNonce);
+    QVERIFY(nativeDocumentGeneration > firstGeneration);
+    awaitCompletion(capturePending(page.mainFrame()), admitted);
+    QVERIFY(admitted);
   }
 };
 
