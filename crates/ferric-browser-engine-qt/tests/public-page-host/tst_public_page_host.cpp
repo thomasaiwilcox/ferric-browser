@@ -349,9 +349,12 @@ private slots:
         Harness h(&fixture);
         auto *profile = h.newProfile(true, "dialogs");
         Host *host = h.makeHost(profile);
+        QTemporaryDir dialogDirectory;
+        QVERIFY(dialogDirectory.isValid());
         host->shell->resize(500, 400);
         host->shell->show();
-        auto *dialog = new QFileDialog(host->shell, "fixture dialog");
+        auto *dialog = new QFileDialog(host->shell, "fixture dialog", dialogDirectory.path());
+        dialog->setOption(QFileDialog::DontUseNativeDialog, true);
         QCOMPARE(dialog->parentWidget(), host->shell.data());
         dialog->setModal(false);
         dialog->show();
@@ -362,6 +365,8 @@ private slots:
         dialog->close();
         delete dialog;
 
+        QCOMPARE(host->chrome->status(), QQuickWidget::Ready);
+        QVERIFY(host->chrome->rootObject());
         const auto inputs = host->chrome->rootObject()->findChild<QObject *>("chromeInput");
         QVERIFY(inputs);
         auto *input = qobject_cast<QQuickItem *>(inputs);
