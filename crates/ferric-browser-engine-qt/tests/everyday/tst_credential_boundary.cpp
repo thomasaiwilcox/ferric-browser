@@ -82,9 +82,9 @@ public:
     config.setPrivateKey(QSslKey(key.readAll(), QSsl::Rsa));
     config.setPeerVerifyMode(QSslSocket::VerifyNone);
     server_.setSslConfiguration(config);
-    connect(&server_, &QTcpServer::newConnection, this, [this] {
+    connect(&server_, &QTcpServer::pendingConnectionAvailable, this, [this] {
       while (auto *socket = server_.nextPendingConnection()) {
-        connect(socket, &QTcpSocket::readyRead, socket, [this, socket] {
+        const auto serveRequest = [this, socket] {
           auto bytes =
               socket->property("request").toByteArray() + socket->readAll();
           socket->setProperty("request", bytes);
@@ -97,7 +97,10 @@ public:
               "charset=utf-8\r\nConnection: close\r\nContent-Length: " +
               QByteArray::number(body.size()) + "\r\n\r\n" + body);
           socket->disconnectFromHost();
-        });
+        };
+        connect(socket, &QTcpSocket::readyRead, socket, serveRequest);
+        if (socket->bytesAvailable() > 0)
+          serveRequest();
       }
     });
     return server_.listen(QHostAddress::LocalHost);
@@ -123,9 +126,11 @@ QVariant run(QWebEngineFrame frame, const QString &source, quint32 world) {
   QEventLoop loop;
   QTimer timer;
   timer.setSingleShot(true);
-  frame.runJavaScript(source, world, [&result, &done](const QVariant &value) {
+  frame.runJavaScript(source, world,
+                      [&result, &done, &loop](const QVariant &value) {
     result = value;
     done = true;
+    loop.quit();
   });
   QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
   QObject::connect(qApp, &QCoreApplication::aboutToQuit, &loop,
