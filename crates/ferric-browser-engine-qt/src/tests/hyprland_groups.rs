@@ -178,9 +178,7 @@ fn socket_disconnect_and_reconnect_clear_stale_window_identity() {
         .cache
         .observe("instance-a", version(), &one_client("Ferric"), &[])
         .expect("initial cache");
-    let pending_handle = session
-        .cache
-        .handle_for(&first, "0xabc")
+    let pending_handle = super::ObservationCache::handle_for(&first, "0xabc")
         .expect("bind read-only pending observation handle");
     assert!(session.cache.is_current(&pending_handle));
     assert!(session.read_events(Some(&socket_path)).is_err());
@@ -426,8 +424,7 @@ fn duplicate_or_decreasing_event_sequence_clears_cached_authorization_state() {
         let initial = cache
             .observe("instance-a", version(), &one_client("Ferric"), &[])
             .expect("initial snapshot");
-        let handle = cache
-            .handle_for(&initial, "0xabc")
+        let handle = ObservationCache::handle_for(&initial, "0xabc")
             .expect("bind read-only observation handle");
         let accepted = [SequencedEvent {
             sequence: first_sequence,

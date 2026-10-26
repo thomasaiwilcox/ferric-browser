@@ -2,13 +2,13 @@ use super::browser_ui_state::PendingSelectorAction;
 use super::selector_validation::selector_validation_items;
 use super::{
     Config, ConfigReadOperation, ConfigReloadWorker, ConfigWriteWorker, ConfigurationLayers,
-    CxxQtType, Duration, FeedbackLane, FeedbackState, HyprlandResponse, HyprlandWorker, Instant,
-    NetworkPolicyWorker, ParseInput, ParsedCommand, PathBuf, Pin, PortalProbeWorker, PrintWorker,
-    ProfileDeleteWorker, ProfileListWorker, ProfileMutationResult, ProfilePreviewWorker, QString,
-    ReducedMotionProbeWorker, RuntimeOverrides, SiteExperiment, SystemFontScaleProbeWorker,
-    UserscriptManagerResult, Value, cleanup_print_artifact, configured_bindings, desktop_portals,
-    desktop_preferences, parse_chain, parse_ipc_mode, profile_from_list_values, qobject,
-    safe_ipc_url,
+    CxxQtType, Duration, FeedbackLane, FeedbackState, HyprlandConfig, HyprlandResponse,
+    HyprlandWorker, Instant, NetworkPolicyWorker, ParseInput, ParsedCommand, PathBuf, Pin,
+    PortalProbeWorker, PrintWorker, ProfileDeleteWorker, ProfileListWorker, ProfileMutationResult,
+    ProfilePreviewWorker, QString, ReducedMotionProbeWorker, RuntimeOverrides, SiteExperiment,
+    SystemFontScaleProbeWorker, UserscriptManagerResult, Value, cleanup_print_artifact,
+    configured_bindings, desktop_portals, desktop_preferences, parse_chain, parse_ipc_mode,
+    profile_from_list_values, qobject, safe_ipc_url,
 };
 
 impl qobject::BrowserUi {
@@ -74,17 +74,34 @@ impl qobject::BrowserUi {
         }
         let hyprland_result = {
             let mut rust = self.as_mut().rust_mut();
-            rust.as_mut()
-                .get_mut()
-                .hyprland_worker
-                .as_mut()
-                .and_then(HyprlandWorker::poll)
+            let this = rust.as_mut().get_mut();
+            let hyprland_config = this
+                .config
+                .get("hyprland")
+                .cloned()
+                .and_then(|value| serde_json::from_value::<HyprlandConfig>(value).ok())
+                .unwrap_or_else(|| HyprlandConfig {
+                    enabled: ferric_browser_config::TriState::Off,
+                    ..HyprlandConfig::default()
+                });
+            if this.hyprland_worker.is_none()
+                && hyprland_config.enabled != ferric_browser_config::TriState::Off
+            {
+                this.hyprland_worker = HyprlandWorker::spawn().ok();
+            }
+            let response = if let Some(worker) = this.hyprland_worker.as_mut() {
+                let response = worker.poll();
+                worker.request_observation_if_due(hyprland_config);
+                response
+            } else {
+                None
+            };
+            response
         };
         if let Some(result) = hyprland_result {
             match result {
-                HyprlandResponse::Observe(_) => {
-                    // Observation is passive background state, not user-action feedback.
-                    // The worker retains its bounded session cache; do not report or route it here.
+                HyprlandResponse::Observe(result) => {
+                    let _capability = result.capability;
                 }
                 HyprlandResponse::RouteWorkspace(result) => match result {
                     Ok(()) => self

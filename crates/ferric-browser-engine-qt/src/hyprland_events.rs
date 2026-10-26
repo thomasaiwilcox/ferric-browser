@@ -273,7 +273,7 @@ impl ObservationCache {
         self.sequence
     }
 
-    pub fn handle_for(&self, state: &ObservedState, address: &str) -> Option<ObservationHandle> {
+    pub fn handle_for(state: &ObservedState, address: &str) -> Option<ObservationHandle> {
         let client = state
             .clients
             .iter()

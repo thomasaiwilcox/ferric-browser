@@ -436,10 +436,27 @@ impl HyprlandAdapter {
             .cache
             .observe(&signature, version, &snapshot, &events)
         {
-            Ok(state) => ObservationResult {
-                capability: Capability::Available,
-                state: Some(state),
-            },
+            Ok(state) => {
+                let active_handle = state.active_address.as_deref().and_then(|address| {
+                    super::hyprland_events::ObservationCache::handle_for(&state, address)
+                });
+                let active_identity_is_current = state.active_address.is_none()
+                    || active_handle
+                        .as_ref()
+                        .is_some_and(|handle| session.cache.is_current(handle));
+                if active_identity_is_current {
+                    ObservationResult {
+                        capability: Capability::Available,
+                        state: Some(state),
+                    }
+                } else {
+                    session.cache.invalidate();
+                    ObservationResult {
+                        capability: Capability::InvalidData,
+                        state: None,
+                    }
+                }
+            }
             Err(_) => {
                 session.cache.invalidate();
                 ObservationResult {
