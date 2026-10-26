@@ -7,6 +7,7 @@ endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_package(Qt6 REQUIRED COMPONENTS Core DBus Test WebChannel)
 find_program(FERRIC_TEST_OPENSSL openssl REQUIRED)
+get_target_property(_ferric_application_test_links application_tests LINK_LIBRARIES)
 
 add_executable(everyday_T061a_helper_supervisor_component tst_credential_process.cpp)
 target_link_libraries(everyday_T061a_helper_supervisor_component PRIVATE
@@ -17,7 +18,8 @@ set_tests_properties(everyday_T061a_helper_supervisor_component PROPERTIES TIMEO
 
 add_executable(credential_boundary_tests tst_credential_boundary.cpp)
 target_link_libraries(credential_boundary_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}"
-    Qt6::DBus Qt6::Quick Qt6::WebEngineQuick Qt6::Network Qt6::WebChannel Qt6::Test)
+    ${_ferric_application_test_links} Qt6::DBus Qt6::Quick Qt6::WebEngineQuick
+    Qt6::Network Qt6::WebChannel Qt6::Test)
 target_compile_definitions(credential_boundary_tests PRIVATE
     FERRIC_CREDENTIAL_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
     FERRIC_TEST_OPENSSL="${FERRIC_TEST_OPENSSL}")
@@ -86,7 +88,6 @@ set(FERRIC_ENGINE_CXX_INCLUDE_DIR "" CACHE PATH
 if(NOT EXISTS "${FERRIC_ENGINE_CXX_INCLUDE_DIR}/ferric-browser-engine-qt/src/bridge.cxxqt.h")
   message(FATAL_ERROR "FERRIC_ENGINE_CXX_INCLUDE_DIR must name the selected engine cxxqtbuild/include directory")
 endif()
-get_target_property(_ferric_application_test_links application_tests LINK_LIBRARIES)
 add_executable(credential_process_bridge_tests tst_credential_process_bridge.cpp)
 target_include_directories(credential_process_bridge_tests PRIVATE
   "${CMAKE_CURRENT_LIST_DIR}/../../src"
