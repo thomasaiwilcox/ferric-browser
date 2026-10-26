@@ -2,7 +2,7 @@
 """Suggest ready nonoverlapping slices. Does not claim locks or accept work."""
 import argparse,json
 from pathlib import Path
-from common import read_plan,load
+from common import read_plan,load,effective_attempt_limit,attempt_limited
 ACTIVE={"in_progress","submitted","reviewing"}
 def suggest(plan,state):
     tasks={t["id"]:t for t in plan["slices"]};states=state["slices"]
@@ -15,6 +15,8 @@ def suggest(plan,state):
         return {"suggestions":[],"conflicts":[],"active":len(active),"note":"Agent capacity exhausted"}
     for t in plan["slices"]:
         if states[t["id"]]["status"] not in {"not_started","ready"}:continue
+        if "superseded_by" in t:continue
+        if attempt_limited(t) and states[t["id"]].get("attempts",0)>=effective_attempt_limit(plan,t):continue
         if any(states[d]["status"]!="accepted" for d in t["depends_on"]):continue
         collision=sorted((set(t["locks"])&locks)|(set(t["allowed_paths"])&paths))
         if collision:conflicts.append({"id":t["id"],"conflicts":collision});continue

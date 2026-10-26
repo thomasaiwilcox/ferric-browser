@@ -6,6 +6,9 @@ from datetime import datetime,timezone
 PACK=Path(__file__).resolve().parent.parent
 REPO="thomasaiwilcox/ferric-browser"
 CLONE=f"https://github.com/{REPO}.git"
+ATTEMPT_EXCEPTION_TASKS={"P00a","W01b"}
+ATTEMPT_EXCEPTION_AMENDMENT="A37"
+GLOBAL_MAX_ATTEMPTS=3
 def load(path:Path):
     with path.open(encoding="utf-8") as f:return json.load(f)
 def write_json(path:Path,value):
@@ -62,6 +65,31 @@ def safe_relative(root:Path,value:str):
     return q
 
 def read_plan(path:Path|None=None):return load(path or PACK/"control/plan.json")
+
+def effective_attempt_limit(plan,task):
+    """Return only a schema-authorized per-task override; malformed overrides fail closed."""
+    default=plan.get("limits",{}).get("max_attempts",3)
+    task_limit=task.get("max_attempts",default)
+    exceptions=plan.get("attempt_exceptions",{})
+    if not isinstance(exceptions,dict):return 0
+    entry=exceptions.get(task.get("id"))
+    if not isinstance(default,int) or isinstance(default,bool) or default!=GLOBAL_MAX_ATTEMPTS:return 0
+    if not isinstance(task_limit,int) or isinstance(task_limit,bool) or task_limit<1:return 0
+    if entry is None:return min(default,task_limit)
+    if (task.get("id") in ATTEMPT_EXCEPTION_TASKS
+        and isinstance(entry,dict)
+        and entry.get("amendment")==ATTEMPT_EXCEPTION_AMENDMENT
+        and entry.get("default_limit")==default
+        and entry.get("authorized_limit")==task_limit==default+1
+        and isinstance(entry.get("reason"),str)
+        and bool(entry["reason"].strip())):
+        return task_limit
+    return default
+
+def attempt_limited(task):
+    """Attempt counts constrain dispatchable implementation/proof work, not aggregates."""
+    return bool(task.get("allowed_paths")) and task.get("kind")!="aggregate"
+
 def packet(task,pack=PACK):
     index=load(pack/"control/contracts.json")
     if isinstance(index,list):index={x["id"]:x for x in index}

@@ -24,7 +24,9 @@ class StructureTests(unittest.TestCase):
     def test_structure(self):self.assertEqual(validate_pack.validate_structure(),[])
     def test_all_packets_bounded(self):
         plan=load(PACK/'control/plan.json')
-        self.assertEqual(len(plan['slices']),83)
+        ids=[t['id'] for t in plan['slices']]
+        self.assertTrue(ids)
+        self.assertEqual(len(ids),len(set(ids)))
         for t in plan['slices']:self.assertLessEqual(len(packet(t).encode()),24000,t['id'])
     def test_goal_limit(self):self.assertLess(len((PACK/'GOAL_PROMPT.txt').read_bytes()),1000)
     def test_cycle_rejected(self):
@@ -48,6 +50,88 @@ class StructureTests(unittest.TestCase):
         p={'limits':{'max_noncoordinator_agents':1},'slices':[{'id':x,'depends_on':[],'locks':[],'allowed_paths':[x]} for x in ('A','B')]}
         s={'slices':{'A':{'status':'in_progress'},'B':{'status':'ready'}}}
         self.assertEqual(ready.suggest(p,s)['suggestions'],[])
+    def test_attempt_increase_without_exception_rejected(self):
+        p=load(PACK/'control/plan.json')
+        next(t for t in p['slices'] if t['id']=='W01b')['max_attempts']=4
+        self.assertTrue(any('increase lacks explicit attempt exception' in e for e in validate_pack.validate_attempt_limits(p,{t['id']:t for t in p['slices']})))
+    def test_exception_cannot_be_assigned_to_unapproved_task(self):
+        p=load(PACK/'control/plan.json');t=next(t for t in p['slices'] if t['id']=='F02c');t['max_attempts']=4
+        p['attempt_exceptions']={'F02c':{'amendment':'A37','default_limit':3,'authorized_limit':4,'reason':'fabricated fixture exception'}}
+        self.assertTrue(any('not authorized for F02c' in e for e in validate_pack.validate_attempt_limits(p,{x['id']:x for x in p['slices']})))
+    def test_global_attempt_limit_cannot_be_raised(self):
+        p=load(PACK/'control/plan.json');p['limits']['max_attempts']=4
+        self.assertTrue(any('Global max_attempts must remain 3' in e for e in validate_pack.validate_attempt_limits(p,{t['id']:t for t in p['slices']})))
+    def test_attempt3_to4_authorized_but5_rejected(self):
+        p=load(PACK/'control/plan.json');t=next(t for t in p['slices'] if t['id']=='W01b');t['max_attempts']=4
+        p['attempt_exceptions']={'W01b':{'amendment':'A37','default_limit':3,'authorized_limit':4,'reason':'one bounded repair after independent review'}}
+        self.assertEqual(validate_pack.validate_attempt_limits(p,{x['id']:x for x in p['slices']}),[])
+        with tempfile.TemporaryDirectory() as tmp:
+            state=copy.deepcopy(load(PACK/'control/state.initial.json'));path=Path(tmp)/'control/state.json';path.parent.mkdir()
+            for attempts,valid in ((3,True),(4,True),(5,False)):
+                state['slices']['W01b']['attempts']=attempts;write_json(path,state)
+                errors=validate_pack.validate_state(p,path,pack=PACK)
+                self.assertEqual(not any('W01b: attempt limit' in e for e in errors),valid)
+    def test_attempt_limit_hides_only_exhausted_implementation_dispatch(self):
+        task={'id':'W01b','kind':'implementation','allowed_paths':['route.rs'],'depends_on':[],'locks':[],'max_attempts':4}
+        p={'limits':{'max_noncoordinator_agents':6,'max_attempts':3},'attempt_exceptions':{'W01b':{'amendment':'A37','default_limit':3,'authorized_limit':4,'reason':'bounded repair'}},'slices':[task]}
+        s={'active_locks':{},'slices':{'W01b':{'status':'ready','attempts':3}}}
+        self.assertEqual(ready.suggest(p,s)['suggestions'],['W01b'])
+        s['slices']['W01b']['attempts']=4
+        self.assertEqual(ready.suggest(p,s)['suggestions'],[])
+        p['slices']=[{'id':'AGG','kind':'aggregate','allowed_paths':['aggregate.md'],'depends_on':[],'locks':[],'max_attempts':3}]
+        s={'active_locks':{},'slices':{'AGG':{'status':'ready','attempts':3}}}
+        self.assertEqual(ready.suggest(p,s)['suggestions'],['AGG'])
+        p['slices']=[{'id':'LOW','kind':'implementation','allowed_paths':['low.rs'],'depends_on':[],'locks':[],'max_attempts':2}]
+        s={'active_locks':{},'slices':{'LOW':{'status':'ready','attempts':2}}}
+        self.assertEqual(ready.suggest(p,s)['suggestions'],[])
+
+class SupersessionTests(unittest.TestCase):
+    def fixture(self):
+        tasks={'OLD':{'id':'OLD','amendment':'A37','superseded_by':['NEW'],'depends_on':[],'test_ids':['T-OLD']},
+               'NEW':{'id':'NEW','depends_on':[],'test_ids':['T-NEW']}}
+        tests=[{'id':'T-OLD','slice':'OLD','requirement':'REQ','level':'unit','result':'not_run','superseded_by':['T-NEW']},
+               {'id':'T-NEW','slice':'NEW','requirement':'REQ','level':'unit','result':'not_run'}]
+        return tasks,tests
+    def test_supersession_mapping_missing_id_rejected(self):
+        tasks,tests=self.fixture();tasks['OLD']['superseded_by']=['MISSING']
+        self.assertTrue(any('unknown superseding task' in e for e in validate_pack.validate_supersession_structure(tasks,tests)))
+        tasks,tests=self.fixture();tests[0]['superseded_by']=['MISSING']
+        self.assertTrue(any('unknown replacement test' in e for e in validate_pack.validate_supersession_structure(tasks,tests)))
+    def test_supersession_mapping_cycle_rejected(self):
+        tasks,tests=self.fixture();tasks['NEW'].update(amendment='A37',superseded_by=['OLD'])
+        tests[1]['superseded_by']=['T-OLD']
+        errors=validate_pack.validate_supersession_structure(tasks,tests)
+        self.assertTrue(any('supersession cycle' in e for e in errors))
+    def test_dependency_must_be_rewired_from_superseded_task(self):
+        tasks,tests=self.fixture();tasks['DOWNSTREAM']={'id':'DOWNSTREAM','depends_on':['OLD'],'test_ids':[]}
+        self.assertTrue(any('rewire to its replacement' in e for e in validate_pack.validate_supersession_structure(tasks,tests)))
+    def test_historical_dependency_requires_explicit_replacement_edge(self):
+        tasks,tests=self.fixture();tasks['DOWNSTREAM']={'id':'DOWNSTREAM','depends_on':[],'historical_depends_on':['OLD'],'test_ids':[]}
+        self.assertTrue(any('not explicitly rewired' in e for e in validate_pack.validate_supersession_structure(tasks,tests)))
+        tasks['DOWNSTREAM']['depends_on']=['NEW']
+        self.assertFalse(any('not explicitly rewired' in e for e in validate_pack.validate_supersession_structure(tasks,tests)))
+    def test_superseded_state_requires_accepted_surviving_replacement(self):
+        tasks,tests=self.fixture();plan={'slices':list(tasks.values())}
+        state={'slices':{'OLD':{'status':'superseded','supersession':{'amendment':'A37','superseded_by':['NEW']}},
+                         'NEW':{'status':'ready'}}}
+        self.assertTrue(any('replacement dependency NEW is not accepted' in e for e in validate_pack.validate_supersession_state(plan,state,strict=True)))
+        state['slices']['NEW']['status']='accepted'
+        self.assertEqual(validate_pack.validate_supersession_state(plan,state,strict=True),[])
+    def test_superseded_task_cannot_be_unlocked_by_fake_accepted_replacement(self):
+        tasks,tests=self.fixture();plan={'limits':{'max_attempts':3},'slices':list(tasks.values())}
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);pack=root/'pack';(pack/'control').mkdir(parents=True)
+            write_json(pack/'control/test_matrix.json',{'tests':tests})
+            state={'slices':{'OLD':{'status':'superseded','attempts':0,'author':'historical-author','reviewer':'historical-reviewer','evidence':'evidence/retained-old.json','supersession':{'amendment':'A37','superseded_by':['NEW']}},
+                             'NEW':{'status':'accepted','attempts':0,'author':'a','reviewer':'r','evidence':None}}}
+            path=root/'control/state.json';path.parent.mkdir(exist_ok=True);write_json(path,state)
+            errors=validate_pack.validate_state(plan,path,pack=pack)
+            self.assertTrue(any(e.startswith('NEW:') and 'missing evidence' in e for e in errors))
+            self.assertFalse(any(e.startswith('OLD:') and 'not accepted' in e for e in errors))
+            state['slices']['OLD']['status']='accepted';write_json(path,state)
+            errors=validate_pack.validate_state(plan,path,pack=pack)
+            self.assertTrue(any(e.startswith('OLD:') and 'must retain state status superseded' in e for e in errors))
+            self.assertFalse(any(e.startswith('OLD:') and 'evidence' in e for e in errors))
 
 class SetupTests(TempRepo):
     def test_dirty_checkout_refused_untouched(self):
