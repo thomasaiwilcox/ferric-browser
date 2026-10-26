@@ -476,25 +476,25 @@ void FerricBrowserRequestInterceptor::clearSiteEvidence(const QString &site)
 
 bool FerricBrowserRequestInterceptor::attach(QObject *profile)
 {
-    auto *quickProfile = qobject_cast<QQuickWebEngineProfile *>(profile);
-    if (quickProfile == nullptr) {
+    auto *webProfile = qobject_cast<QWebEngineProfile *>(profile);
+    if (webProfile == nullptr) {
         return false;
     }
-    if (!profiles_.contains(quickProfile)) {
-        profiles_.append(QPointer<QQuickWebEngineProfile>(quickProfile));
+    if (!profiles_.contains(webProfile)) {
+        profiles_.append(QPointer<QWebEngineProfile>(webProfile));
     }
-    quickProfile->setUrlRequestInterceptor(this);
+    webProfile->setUrlRequestInterceptor(this);
     return true;
 }
 
 bool FerricBrowserRequestInterceptor::detach(QObject *profile)
 {
-    auto *quickProfile = qobject_cast<QQuickWebEngineProfile *>(profile);
-    if (quickProfile == nullptr) {
+    auto *webProfile = qobject_cast<QWebEngineProfile *>(profile);
+    if (webProfile == nullptr) {
         return false;
     }
-    quickProfile->setUrlRequestInterceptor(nullptr);
-    profiles_.removeAll(QPointer<QQuickWebEngineProfile>(quickProfile));
+    webProfile->setUrlRequestInterceptor(nullptr);
+    profiles_.removeAll(QPointer<QWebEngineProfile>(webProfile));
     return true;
 }
 

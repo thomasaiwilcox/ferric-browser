@@ -12,6 +12,7 @@
 #include <QtCore/QVariantList>
 #include <QtQml/qqmlregistration.h>
 #include <QtWebEngineCore/QWebEngineUrlRequestInterceptor>
+#include <QtWebEngineCore/QWebEngineProfile>
 #include <QtWebEngineQuick/QQuickWebEngineProfile>
 
 #include <memory>
@@ -169,7 +170,9 @@ private:
     QHash<QString, QVariantMap> blockedRequestExplanations_;
     QHash<QString, QList<QVariantMap>> requestDecisionLog_;
     std::atomic_bool evidenceSignalPending_{false};
-    QList<QPointer<QQuickWebEngineProfile>> profiles_;
+    // QQuickWebEngineProfile derives from QWebEngineProfile. Keeping the base
+    // type lets public page owners use the same policy on non-QML profiles.
+    QList<QPointer<QWebEngineProfile>> profiles_;
 };
 
 #endif
