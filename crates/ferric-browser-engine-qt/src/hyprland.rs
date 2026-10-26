@@ -53,6 +53,8 @@ pub struct HyprlandAdapter {
     workspace_routing: bool,
     request_socket: Option<PathBuf>,
     event_socket: Option<PathBuf>,
+    #[cfg(test)]
+    test_instance_signature: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -130,6 +132,8 @@ impl HyprlandAdapter {
             workspace_routing: config.workspace_routing,
             request_socket,
             event_socket,
+            #[cfg(test)]
+            test_instance_signature: None,
         }
     }
 
@@ -139,12 +143,14 @@ impl HyprlandAdapter {
         workspace_routing: bool,
         request_socket: Option<std::path::PathBuf>,
         event_socket: Option<std::path::PathBuf>,
+        test_instance_signature: Option<&str>,
     ) -> Self {
         Self {
             enabled: if enabled { TriState::On } else { TriState::Off },
             workspace_routing,
             request_socket,
             event_socket,
+            test_instance_signature: test_instance_signature.map(str::to_owned),
         }
     }
 
@@ -160,6 +166,7 @@ impl HyprlandAdapter {
             workspace_routing,
             request_socket: Some(request_socket),
             event_socket: Some(event_socket),
+            test_instance_signature: None,
         }
     }
 
@@ -356,6 +363,12 @@ impl HyprlandAdapter {
                 state: None,
             };
         };
+        #[cfg(test)]
+        let signature = self
+            .test_instance_signature
+            .clone()
+            .unwrap_or_else(|| std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default());
+        #[cfg(not(test))]
         let signature = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default();
         let events = match session.read_events(Some(event_path)) {
             Ok(events) => events,
@@ -490,6 +503,7 @@ mod observation_permission_tests {
             workspace_routing: false,
             request_socket: None,
             event_socket: None,
+            test_instance_signature: None,
         };
         let mut session = ObservationSession::default();
         let result = adapter.observe_events(&mut session);
@@ -504,6 +518,7 @@ mod observation_permission_tests {
             workspace_routing: false,
             request_socket: None,
             event_socket: None,
+            test_instance_signature: None,
         };
         let mut session = ObservationSession::default();
         let result = adapter.observe_events(&mut session);

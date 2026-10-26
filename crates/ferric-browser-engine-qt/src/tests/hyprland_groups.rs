@@ -249,14 +249,14 @@ fn observation_permission_split_is_enforced() {
     use super::ObservationCapability;
 
     let disabled =
-        crate::hyprland::HyprlandAdapter::observation_test_adapter(false, false, None, None);
+        crate::hyprland::HyprlandAdapter::observation_test_adapter(false, false, None, None, None);
     let mut session = super::ObservationSession::default();
     let result = disabled.observe_events(&mut session);
     assert_eq!(result.capability, ObservationCapability::Disabled);
     assert!(result.state.is_none());
 
     let observe_only =
-        crate::hyprland::HyprlandAdapter::observation_test_adapter(true, false, None, None);
+        crate::hyprland::HyprlandAdapter::observation_test_adapter(true, false, None, None, None);
     let result = observe_only.observe_events(&mut session);
     assert_eq!(result.capability, ObservationCapability::Unavailable);
     assert!(result.state.is_none());
@@ -282,6 +282,7 @@ fn enabled_off_has_zero_socket_effects_even_with_live_endpoints() {
         false,
         Some(request_path.clone()),
         Some(event_path.clone()),
+        None,
     );
     let mut session = super::ObservationSession::default();
     let result = adapter.observe_events(&mut session);
@@ -363,6 +364,7 @@ fn workspace_permission_off_keeps_observation_read_only() {
         false,
         Some(request_path.clone()),
         Some(event_path.clone()),
+        Some("w04-test-instance"),
     );
     let mut session = super::ObservationSession::default();
     let result = adapter.observe_events(&mut session);
