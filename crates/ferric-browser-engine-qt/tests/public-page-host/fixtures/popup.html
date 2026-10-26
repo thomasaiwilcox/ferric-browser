@@ -19,6 +19,7 @@
     if (kind === 'child') window.open('/popup.html?kind=grandchild', '_blank');
   });
   if (kind === 'cookie') document.cookie = 'partition_probe=present; SameSite=Lax; Path=/';
+  if (kind === 'cookie-private') document.cookie = 'private_probe=present; SameSite=Lax; Path=/';
   if (kind === 'popup-dialog') window.open('/dialog.html', '_blank', 'dialog=yes,width=300,height=180');
 })();
 </script>

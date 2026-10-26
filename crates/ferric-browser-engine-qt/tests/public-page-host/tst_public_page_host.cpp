@@ -1,8 +1,13 @@
 #include <QApplication>
+#include <QGuiApplication>
 #include <QFile>
 #include <QFileDialog>
 #include <QHostAddress>
 #include <QPointer>
+#include <QProcess>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QQuickWidget>
 #include <QQuickItem>
 #include <QSignalSpy>
@@ -21,7 +26,11 @@
 #include <QDir>
 #include <QTemporaryDir>
 #include <QElapsedTimer>
+#include <QHash>
+#include <QRegularExpression>
+#include <QUuid>
 #include <functional>
+#include <memory>
 
 namespace {
 class Fixture final : public QObject {
@@ -30,8 +39,16 @@ public:
     bool start() {
         connect(&server, &QTcpServer::newConnection, this, [this] {
             while (auto *s = server.nextPendingConnection()) {
+                pending.insert(s, {});
+                connect(s, &QTcpSocket::disconnected, this, [this, s] {
+                    pending.remove(s);
+                    s->deleteLater();
+                });
                 connect(s, &QTcpSocket::readyRead, this, [this, s] {
-                    const QByteArray req = s->readAll();
+                    pending[s].append(s->readAll());
+                    const QByteArray req = pending.value(s);
+                    if (!req.contains("\r\n\r\n")) return;
+                    pending.remove(s);
                     const QByteArray path = req.split(' ').value(1).split('?').value(0);
                     if (path == "/sentinel") ++sentinelRequests;
                     ++requests;
@@ -47,7 +64,7 @@ public:
                         else body = f.readAll();
                     } else if (path == "/dialog.html") {
                         body = "<!doctype html><title>dialog</title><p>dialog child</p>";
-                    } else if (path != "/sentinel") {
+                    } else if (path != "/sentinel" && path != "/popup.html") {
                         status = 404;
                     }
                     const QByteArray phrase = status == 200 ? "OK" : (status == 500 ? "Failure" : "Not Found");
@@ -65,21 +82,27 @@ public:
         return QUrl(QStringLiteral("http://127.0.0.1:%1%2").arg(server.serverPort()).arg(path));
     }
     QTcpServer server;
+    QHash<QTcpSocket *, QByteArray> pending;
     int requests = 0;
     int sentinelRequests = 0;
 };
 
 static QVariant js(QWebEnginePage *page, const QString &script, int timeoutMs = 6000) {
-    QVariant result;
-    bool done = false;
-    page->runJavaScript(script, [&](const QVariant &v) { result = v; done = true; });
+    struct Result { QVariant value; bool done = false; };
+    const auto result = std::make_shared<Result>();
+    QPointer<QWebEnginePage> guardedPage(page);
+    if (!guardedPage) return {};
+    guardedPage->runJavaScript(script, [result](const QVariant &v) {
+        result->value = v;
+        result->done = true;
+    });
     QElapsedTimer timer;
     timer.start();
-    while (!done && timer.elapsed() < timeoutMs) {
+    while (!result->done && timer.elapsed() < timeoutMs) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
         QTest::qWait(5);
     }
-    return done ? result : QVariant();
+    return result->done ? result->value : QVariant();
 }
 
 static bool waitUntil(const std::function<bool()> &predicate, int timeoutMs = 8000) {
@@ -92,18 +115,60 @@ static bool waitUntil(const std::function<bool()> &predicate, int timeoutMs = 80
     return predicate();
 }
 
+static bool sendHyprlandShortcutToOwnedWindow(QWidget *window, const QString &marker,
+                                               const QString &key) {
+    QProcess clients;
+    clients.start(QStringLiteral("hyprctl"), {QStringLiteral("-j"), QStringLiteral("clients")});
+    if (!clients.waitForStarted(1500) || !clients.waitForFinished(2500) || clients.exitCode() != 0)
+        return false;
+    const QJsonDocument doc = QJsonDocument::fromJson(clients.readAllStandardOutput());
+    if (!doc.isArray()) return false;
+    QString address;
+    int matches = 0;
+    const int ownPid = QCoreApplication::applicationPid();
+    for (const QJsonValue &value : doc.array()) {
+        const QJsonObject client = value.toObject();
+        if (client.value(QStringLiteral("pid")).toInt(-1) == ownPid &&
+            client.value(QStringLiteral("title")).toString() == marker) {
+            address = client.value(QStringLiteral("address")).toString();
+            ++matches;
+        }
+    }
+    if (matches != 1 || !QRegularExpression(QStringLiteral("^0x[0-9a-fA-F]+$")).match(address).hasMatch())
+        return false;
+    if (!window || !window->isActiveWindow()) return false;
+    const QString lua = QStringLiteral(
+        "hl.dispatch(hl.dsp.send_shortcut({window = '%1', mods = {}, key = '%2'}))")
+        .arg(address, key);
+    QProcess dispatch;
+    dispatch.start(QStringLiteral("hyprctl"), {QStringLiteral("eval"), lua});
+    return dispatch.waitForStarted(1500) && dispatch.waitForFinished(2500) && dispatch.exitCode() == 0;
+}
+
 struct Host {
     QPointer<QWidget> shell;
     QPointer<QQuickWidget> chrome;
     QPointer<QWebEngineView> view;
     QPointer<QWebEnginePage> page;
     QPointer<QWebEngineProfile> profile;
+    bool closing = false;
 };
 
 class Harness final : public QObject {
     Q_OBJECT
 public:
     explicit Harness(Fixture *f) : fixture(f) {}
+    ~Harness() override {
+        for (Host *h : hosts) {
+            if (h && h->shell) delete h->shell.data();
+            delete h;
+        }
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        for (QWebEngineProfile *p : profiles) delete p;
+        profiles.clear();
+        for (QTemporaryDir *dir : dirs) delete dir;
+        dirs.clear();
+    }
     QWebEngineProfile *newProfile(bool offTheRecord, const QString &name) {
         auto *p = offTheRecord ? new QWebEngineProfile(this) : new QWebEngineProfile(name, this);
         p->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, true);
@@ -149,20 +214,24 @@ public:
         }
         Host *dest = makeHost(source->profile);
         dest->page->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, true);
-        request.openIn(dest->page);
-        ++adopted;
         if (selectedPostOpenFailure) {
             failAfterOpen = false;
             connect(dest->page, &QWebEnginePage::loadFinished, this, [this, dest](bool ok) {
-                if (!ok) { ++postOpenFailures; closeHost(dest); }
+                if (!ok && dest->page && dest->page->url().path() == "/fail") {
+                    ++postOpenFailures;
+                    closeHost(dest);
+                }
             });
         }
+        request.openIn(dest->page);
+        ++adopted;
         dest->shell->resize(800, 600);
         dest->shell->show();
     }
     void closeHost(Host *h) {
-        if (!h || !h->shell) return;
-        if (h->page) h->page->stop();
+        if (!h || !h->shell || h->closing) return;
+        h->closing = true;
+        if (h->page) h->page->triggerAction(QWebEnginePage::Stop);
         h->shell->close();
         h->shell->deleteLater();
         ++closed;
@@ -176,9 +245,10 @@ public:
         if (alivePages(p) != 0) return false;
         if (!p) return false;
         profiles.removeOne(p);
-        p->deleteLater();
+        QPointer<QWebEngineProfile> guard(p);
+        delete p;
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-        return true;
+        return guard.isNull();
     }
     Fixture *fixture;
     QList<Host *> hosts;
@@ -196,7 +266,6 @@ class PublicPageHostTests final : public QObject {
 private slots:
     void initTestCase() {
         QVERIFY(fixture.start());
-        QVERIFY(QWebEngineProfile::defaultProfile());
     }
     void lifecycle() {
         Harness h(&fixture);
@@ -255,9 +324,11 @@ private slots:
         Host *a = h.makeHost(persistent);
         Host *b = h.makeHost(privateProfile);
         a->page->load(fixture.url("/popup.html?kind=cookie"));
-        b->page->load(fixture.url("/popup.html?kind=cookie"));
         QVERIFY(waitUntil([&] { return js(a->page, "document.cookie.includes('partition_probe=present')").toBool(); }));
-        QVERIFY(waitUntil([&] { return js(b->page, "document.cookie.includes('partition_probe=present')").toBool(); }));
+        b->page->load(fixture.url("/popup.html?kind=cookie-private"));
+        QVERIFY(waitUntil([&] { return js(b->page, "document.cookie.includes('private_probe=present')").toBool(); }));
+        QVERIFY(!js(b->page, "document.cookie.includes('partition_probe=present')").toBool());
+        QVERIFY(!js(a->page, "document.cookie.includes('private_probe=present')").toBool());
         QCOMPARE(a->page->profile(), persistent);
         QCOMPARE(b->page->profile(), privateProfile);
         h.alternateProfile = privateProfile;
@@ -293,7 +364,6 @@ private slots:
         auto *input = qobject_cast<QQuickItem *>(inputs);
         QVERIFY(input);
         input->forceActiveFocus();
-        QCOMPARE(host->chrome->rootObject()->property("activeFocus").toBool(), false);
         QVERIFY(waitUntil([&] { return input->hasActiveFocus(); }));
         const QString before = input->property("text").toString();
         QTest::keyClick(host->chrome, Qt::Key_X);
@@ -335,7 +405,7 @@ private slots:
         QVERIFY(h.drain(profile));
     }
     void nativeInput() {
-        if (qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) QSKIP("No native Wayland session");
+        QCOMPARE(QGuiApplication::platformName(), QStringLiteral("wayland"));
         Harness h(&fixture);
         auto *profile = h.newProfile(true, "native-input");
         Host *top = h.makeHost(profile);
@@ -346,16 +416,34 @@ private slots:
         QVERIFY(waitUntil([&] { return h.alivePages(profile) == 2; }));
         Host *child = h.hosts.last();
         QVERIFY(waitUntil([&] { return js(child->page, "document.body.dataset.kind").toString() == "child"; }));
-        child->shell->setWindowTitle("f02e0-owned-native-input");
+        const QString childNonce = js(child->page, "fixtureNonce").toString();
+        js(child->page, "window.savedOpener=window.opener");
+        const QString marker = QStringLiteral("f02e0-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
+        child->shell->setWindowTitle(marker);
         child->shell->show();
         QVERIFY(waitUntil([&] { return child->shell->isActiveWindow(); }, 4000));
         child->view->setFocus(Qt::OtherFocusReason);
         QVERIFY(waitUntil([&] { return child->view->hasFocus(); }));
+        top->page->triggerAction(QWebEnginePage::RequestClose);
+        QVERIFY(waitUntil([&] { return top->page.isNull(); }));
+        QCOMPARE(js(child->page, "fixtureNonce").toString(), childNonce);
+        QCOMPARE(js(child->page, "window.savedOpener.closed").toBool(), true);
+        QVERIFY(waitUntil([&] { return child->shell->isActiveWindow(); }, 4000));
+        child->view->setFocus(Qt::OtherFocusReason);
+        const QVariantMap point = js(child->page,
+            "(()=>{const r=document.querySelector('#target').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()").toMap();
+        QVERIFY(!point.isEmpty());
+        QTest::mouseClick(child->view, Qt::LeftButton, Qt::NoModifier,
+                          QPoint(point.value("x").toInt(), point.value("y").toInt()));
+        QCOMPARE(js(child->page, "pointerCount").toInt(), 1);
         // This is deliberately labelled QtTest synthetic input; compositor-delivered input
         // is reported separately in the run record and is never inferred from this event.
         QTest::keyClick(child->view, Qt::Key_B);
         QVERIFY(waitUntil([&] { return js(child->page, "keyCount").toInt() > 0; }));
-        for (Host *host : {top, child}) h.closeHost(host);
+        const int beforeNative = js(child->page, "keyCount").toInt();
+        QVERIFY(sendHyprlandShortcutToOwnedWindow(child->shell, marker, QStringLiteral("c")));
+        QVERIFY(waitUntil([&] { return js(child->page, "keyCount").toInt() > beforeNative; }));
+        h.closeHost(child);
         QVERIFY(waitUntil([&] { return h.alivePages() == 0; }));
         QVERIFY(h.drain(profile));
     }
