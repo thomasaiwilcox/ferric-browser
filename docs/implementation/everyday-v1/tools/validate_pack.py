@@ -195,6 +195,8 @@ def validate_native_gate_retries(plan,pack=PACK):
         "pkg_config_path":f"{A45_QT_PREFIX}/lib/pkgconfig",
         "pkg_config_libdir":f"{A45_QT_PREFIX}/lib/pkgconfig",
         "cmake_prefix_path":A45_QT_PREFIX,"qt6_dir":f"{A45_QT_PREFIX}/lib/cmake/Qt6",
+        "strict_qt_guard_tool":"tools/run_gate.py --qt-include-prefix",
+        "emit_cxx_commands_env":"CC_ENABLE_DEBUG_OUTPUT=1",
         "stop_if_qt_include_outside_prefix":True,"only_test_id":"T014e2"
     }
     if not isinstance(entry,dict) or set(entry)!=set(expected):
@@ -247,6 +249,8 @@ def validate_native_gate_retries(plan,pack=PACK):
                 or a45.get("pkg_config_libdir")!=expected["pkg_config_libdir"]
                 or a45.get("cmake_prefix_path")!=expected["cmake_prefix_path"]
                 or a45.get("qt6_dir")!=expected["qt6_dir"]
+                or a45.get("strict_qt_guard_tool")!=expected["strict_qt_guard_tool"]
+                or a45.get("emit_cxx_commands_env")!=expected["emit_cxx_commands_env"]
                 or a45.get("stop_if_qt_include_outside_prefix") is not True
                 or a45.get("only_test_id")!="T014e2"
                 or not isinstance(owner,list) or len(owner)!=10

@@ -233,11 +233,14 @@ class StructureTests(unittest.TestCase):
         self.assertEqual(retry['pkg_config_path'],retry['pkg_config_libdir'])
         self.assertEqual(retry['cmake_prefix_path'],'/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64')
         self.assertTrue(retry['qt6_dir'].endswith('/lib/cmake/Qt6'))
+        self.assertEqual(retry['strict_qt_guard_tool'],'tools/run_gate.py --qt-include-prefix')
+        self.assertEqual(retry['emit_cxx_commands_env'],'CC_ENABLE_DEBUG_OUTPUT=1')
         self.assertEqual(retry['only_test_id'],'T014e2')
         for key,value in (('max_same_source_retries',2),('candidate_sha','f'*40),
                           ('source_changes_allowed',True),('attempt_six_authorized',True),
                           ('qmake','/usr/bin/qmake6'),('pkg_config_libdir','/usr/lib/pkgconfig'),
-                          ('qt6_dir','/usr/lib/cmake/Qt6')):
+                          ('qt6_dir','/usr/lib/cmake/Qt6'),
+                          ('strict_qt_guard_tool','none')):
             wrong=copy.deepcopy(p);wrong['native_gate_retries']['F02e2'][key]=value
             self.assertTrue(validate_pack.validate_native_gate_retries(wrong,PACK))
         wrong=copy.deepcopy(p);wrong['native_gate_retries']['W04']=wrong['native_gate_retries'].pop('F02e2')
@@ -389,6 +392,25 @@ class GateTests(TempRepo):
     def test_timeout_rejected(self):
         r=self.command('import time;time.sleep(20)',timeout=.2)
         self.assertTrue(r['timed_out']);self.assertEqual(r['result'],'failed')
+    def test_qt_include_guard_stops_owned_process_immediately(self):
+        prefix=self.root/'qt/6.11.2/gcc_64'
+        r=self.command("import time;print('running: c++ -I/usr/include/qt6 -c x.cpp',flush=True);time.sleep(20)",qt_include_prefix=prefix)
+        self.assertEqual(r['result'],'failed')
+        self.assertEqual(r['qt_include_guard'],'stopped')
+        self.assertEqual(r['qt_include_violation'],'/usr/include/qt6')
+        self.assertLess(r['elapsed_seconds'],3)
+    def test_qt_include_guard_accepts_paths_inside_pinned_prefix(self):
+        prefix=self.root/'sdk/qt/6.11.2/gcc_64'
+        r=self.command(f"print('running: c++ -I{prefix}/include/QtCore -c x.cpp')",qt_include_prefix=prefix)
+        self.assertEqual(r['result'],'passed')
+        self.assertEqual(r['qt_include_guard'],'clear')
+        self.assertIsNone(r['qt_include_violation'])
+    def test_qt_include_guard_rejects_external_symlink_alias(self):
+        prefix=self.root/'sdk/qt/6.11.2/gcc_64';prefix.mkdir(parents=True)
+        alias=self.root/'system-qt';alias.symlink_to(prefix,target_is_directory=True)
+        r=self.command(f"print('running: c++ -I{alias}/include/QtCore -c x.cpp')",qt_include_prefix=prefix)
+        self.assertEqual(r['result'],'failed')
+        self.assertEqual(r['qt_include_guard'],'stopped')
     def test_timeout_when_parent_exits_before_child(self):
         r=self.command("import subprocess,sys;subprocess.Popen([sys.executable,'-c','import time;time.sleep(20)'])",timeout=.3)
         self.assertTrue(r['timed_out']);self.assertEqual(r['result'],'failed')

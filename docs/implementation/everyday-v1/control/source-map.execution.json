@@ -4192,7 +4192,9 @@
       "cmake_dir": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake/cmake",
       "pkg_config_libdir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig",
       "cmake_prefix_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
-      "qt6_dir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/cmake/Qt6"
+      "qt6_dir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/cmake/Qt6",
+      "strict_qt_guard_tool": "tools/run_gate.py --qt-include-prefix",
+      "emit_cxx_commands_env": "CC_ENABLE_DEBUG_OUTPUT=1"
     }
   ]
 }
