@@ -89,14 +89,13 @@ impl qobject::BrowserUi {
             {
                 this.hyprland_worker = HyprlandWorker::spawn().ok();
             }
-            let response = if let Some(worker) = this.hyprland_worker.as_mut() {
+            if let Some(worker) = this.hyprland_worker.as_mut() {
                 let response = worker.poll();
                 worker.request_observation_if_due(hyprland_config);
                 response
             } else {
                 None
-            };
-            response
+            }
         };
         if let Some(result) = hyprland_result {
             match result {
