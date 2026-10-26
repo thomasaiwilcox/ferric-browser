@@ -123,6 +123,10 @@ public:
     void blockedSiteCountsChanged();
 
 private:
+    struct ProfileAttachment {
+        QPointer<QWebEngineProfile> webProfile;
+        QPointer<QQuickWebEngineProfile> quickProfile;
+    };
     struct DownloadController {
         QUrl expected;
         QString proposed;
@@ -170,9 +174,9 @@ private:
     QHash<QString, QVariantMap> blockedRequestExplanations_;
     QHash<QString, QList<QVariantMap>> requestDecisionLog_;
     std::atomic_bool evidenceSignalPending_{false};
-    // QQuickWebEngineProfile derives from QWebEngineProfile. Keeping the base
-    // type lets public page owners use the same policy on non-QML profiles.
-    QList<QPointer<QWebEngineProfile>> profiles_;
+    // Qt Quick and core profiles are distinct QObject APIs; retain each weakly
+    // so destruction detaches through the exact public owner type.
+    QList<ProfileAttachment> profiles_;
 };
 
 #endif

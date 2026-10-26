@@ -6,6 +6,7 @@
 #include <QHostAddress>
 #include <QNetworkProxy>
 #include <QPointer>
+#include <QtTest/QSignalSpy>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>

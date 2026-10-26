@@ -476,12 +476,31 @@ void FerricBrowserRequestInterceptor::clearSiteEvidence(const QString &site)
 
 bool FerricBrowserRequestInterceptor::attach(QObject *profile)
 {
+    auto *quickProfile = qobject_cast<QQuickWebEngineProfile *>(profile);
+    if (quickProfile != nullptr) {
+        const auto alreadyAttached = std::any_of(
+            profiles_.cbegin(), profiles_.cend(),
+            [quickProfile](const ProfileAttachment &entry) {
+                return entry.quickProfile == quickProfile;
+            });
+        if (!alreadyAttached) {
+            profiles_.append({{}, quickProfile});
+        }
+        quickProfile->setUrlRequestInterceptor(this);
+        return true;
+    }
+
     auto *webProfile = qobject_cast<QWebEngineProfile *>(profile);
     if (webProfile == nullptr) {
         return false;
     }
-    if (!profiles_.contains(webProfile)) {
-        profiles_.append(QPointer<QWebEngineProfile>(webProfile));
+    const auto alreadyAttached = std::any_of(
+        profiles_.cbegin(), profiles_.cend(),
+        [webProfile](const ProfileAttachment &entry) {
+            return entry.webProfile == webProfile;
+        });
+    if (!alreadyAttached) {
+        profiles_.append({webProfile, {}});
     }
     webProfile->setUrlRequestInterceptor(this);
     return true;
@@ -489,12 +508,27 @@ bool FerricBrowserRequestInterceptor::attach(QObject *profile)
 
 bool FerricBrowserRequestInterceptor::detach(QObject *profile)
 {
+    auto *quickProfile = qobject_cast<QQuickWebEngineProfile *>(profile);
+    if (quickProfile != nullptr) {
+        quickProfile->setUrlRequestInterceptor(nullptr);
+        profiles_.erase(std::remove_if(profiles_.begin(), profiles_.end(),
+                                       [quickProfile](const ProfileAttachment &entry) {
+                                           return entry.quickProfile == quickProfile;
+                                       }),
+                         profiles_.end());
+        return true;
+    }
+
     auto *webProfile = qobject_cast<QWebEngineProfile *>(profile);
     if (webProfile == nullptr) {
         return false;
     }
     webProfile->setUrlRequestInterceptor(nullptr);
-    profiles_.removeAll(QPointer<QWebEngineProfile>(webProfile));
+    profiles_.erase(std::remove_if(profiles_.begin(), profiles_.end(),
+                                   [webProfile](const ProfileAttachment &entry) {
+                                       return entry.webProfile == webProfile;
+                                   }),
+                     profiles_.end());
     return true;
 }
 
@@ -836,9 +870,12 @@ QStringList FerricBrowserRequestInterceptor::validatedHosts(const QStringList &h
 
 void FerricBrowserRequestInterceptor::detachProfiles()
 {
-    for (const auto &profile : std::as_const(profiles_)) {
-        if (profile != nullptr) {
-            profile->setUrlRequestInterceptor(nullptr);
+    for (const auto &attachment : std::as_const(profiles_)) {
+        if (attachment.quickProfile != nullptr) {
+            attachment.quickProfile->setUrlRequestInterceptor(nullptr);
+        }
+        if (attachment.webProfile != nullptr) {
+            attachment.webProfile->setUrlRequestInterceptor(nullptr);
         }
     }
     profiles_.clear();
