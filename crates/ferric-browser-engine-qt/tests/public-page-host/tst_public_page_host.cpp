@@ -156,7 +156,7 @@ static bool sendHyprlandShortcutToOwnedWindow(QWidget *window, const QString &ma
         "local w = hl.get_window('address:%1'); local a = hl.get_active_window(); "
         "if not w or not a or w.pid ~= %2 or w.title ~= '%3' or a.stable_id ~= w.stable_id then "
         "error('owned-window-mismatch') end; "
-        "hl.dispatch(hl.dsp.send_shortcut({window = w, mods = {}, key = '%4'}))")
+        "hl.dispatch(hl.dsp.send_shortcut({window = w, mods = '', key = '%4'}))")
         .arg(address, QString::number(ownPid), marker, key);
     QProcess dispatch;
     dispatch.setProcessEnvironment(hyprEnv);
