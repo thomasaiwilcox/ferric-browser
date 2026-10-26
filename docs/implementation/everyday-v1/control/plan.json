@@ -3300,7 +3300,8 @@
         "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
         "crates/ferric-browser-engine-qt/src/background_workers.rs",
         "crates/ferric-browser-engine-qt/src/lib.rs",
-        "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs"
+        "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs"
       ],
       "steps": [
         "Extend existing transport with event/snapshot observations and typed capability outcomes.",
@@ -3330,7 +3331,8 @@
         "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
         "crates/ferric-browser-engine-qt/src/background_workers.rs",
         "crates/ferric-browser-engine-qt/src/lib.rs",
-        "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs"
+        "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs"
       ]
     },
     {

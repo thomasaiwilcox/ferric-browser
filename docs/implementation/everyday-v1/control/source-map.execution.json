@@ -161,8 +161,8 @@
     }
   ],
   "planned_path_inventory": {
-    "unique_paths": 198,
-    "existing_product_paths": 74,
+    "unique_paths": 199,
+    "existing_product_paths": 75,
     "execution_pack_artifacts": 2,
     "planned_execution_outputs": 8,
     "proposed_product_deliverables": 114,
@@ -3415,6 +3415,21 @@
           "read_anchor"
         ],
         "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "677c261fa54f354872364c6c1e6a1d0a3de677f7",
+        "integration_head_blob": "677c261fa54f354872364c6c1e6a1d0a3de677f7",
+        "working_tree_file_present": true,
+        "slices": [
+          "W04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
       }
     ]
   },
@@ -3920,6 +3935,37 @@
       },
       "required_test_impact": "Extend T014e1 with actual allowed/blocked request on disposable plain QWebEngineProfile and retain the QQuick profile regression.",
       "preserved": "All original contracts, T014e1 level/cases, locks, dependencies, three attempt cap, security behavior, no private API/dependency; no more than9 product paths."
+    },
+    {
+      "id": "A39",
+      "reason": "Exact-source W04 r4 compile gate reported E0004 at the existing worker-response dispatcher: the new passive Observe response variant is missing from an exhaustive match.",
+      "source_sha": "59b7269e37a4eaa4380294ba290a682b14604866",
+      "source_tree": "ac05b2b32ce26b53fea39159e1a5b970464be29d",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs"
+      ],
+      "path_owners": {
+        "W04": [
+          "crates/ferric-browser-engine-qt/src/hyprland.rs",
+          "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
+          "crates/ferric-browser-engine-qt/src/background_workers.rs",
+          "crates/ferric-browser-engine-qt/src/lib.rs",
+          "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs": "existing_product_source"
+      },
+      "required_change": "Add the smallest explicit HyprlandResponse::Observe arm to the existing passive-response dispatch. Keep observation read-only and non-user-visible; do not change focus, grouping, workspace routing, permission bits or action status behavior.",
+      "required_test_impact": "No new acceptance IDs. Preserve T112-T114 and run the original focused, crate-library, Clippy and workspace gates against the exact amended candidate.",
+      "locks_unchanged": [
+        "compositor-protocol",
+        "background-workers"
+      ],
+      "attempts_unchanged": true,
+      "max_changed_product_files_unchanged": 8,
+      "preserved": "All W04 contracts, test IDs and downstream physical/device qualification. This amendment authorizes exactly one extra existing product path."
     }
   ]
 }
