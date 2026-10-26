@@ -96,6 +96,7 @@ fn main() {
         .qrc(&qrc_path)
         .qt_module("Gui")
         .qt_module("Quick")
+        .qt_module("QuickControls2")
         .qt_module("Widgets")
         .qt_module("WebEngineCore")
         .qt_module("WebEngineQuick")
