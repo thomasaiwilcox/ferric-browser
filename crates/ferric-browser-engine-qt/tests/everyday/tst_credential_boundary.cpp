@@ -606,7 +606,10 @@ private slots:
     QSignalSpy restored(&page, &QWebEnginePage::loadFinished);
     page.triggerAction(QWebEnginePage::Back);
     QVERIFY(restored.wait(15000));
-    QVERIFY(restored.takeFirst().first().toBool());
+    const auto restoreLoadSucceeded = restored.takeFirst().first().toBool();
+    qInfo() << "BFCache back traversal loadFinished" << restoreLoadSucceeded
+            << page.url();
+    QCOMPARE(page.url(), server.pageUrl());
     const auto restoredFacts = QJsonDocument::fromJson(
         run(page.mainFrame(), identityScript, CredentialWorld).toString().toUtf8());
     QVERIFY(restoredFacts.isObject());
