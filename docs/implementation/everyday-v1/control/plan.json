@@ -4347,7 +4347,7 @@
       "path_budget_amendment": "A44",
       "max_attempts": 5,
       "worker_may_delegate": false,
-      "new_paths_notice": "A42 retains the original nine paths including engine_requests.rs as path 9. A44 approves exactly browser_ui_input.rs as path 10 and the browser-ui-input lock; no eleventh path or attempt 6 is authorized.",
+      "new_paths_notice": "A42 retains the original nine paths including engine_requests.rs as path 9. A44 approves exactly browser_ui_input.rs as the tenth product path (path 10) and the browser-ui-input lock; no eleventh path or attempt 6 is authorized.",
       "slice_file": "slices/F02e2.md",
       "read_anchors": [
         "crates/ferric-browser-engine-qt/src/public_page_host.h",
