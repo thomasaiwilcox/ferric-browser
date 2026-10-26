@@ -606,20 +606,32 @@
       "blocker": null
     },
     "F02c": {
-      "status": "not_started",
+      "status": "superseded",
       "attempts": 0,
       "author": null,
       "reviewer": null,
       "evidence": null,
-      "blocker": null
+      "blocker": null,
+      "supersession": {
+        "amendment": "A37",
+        "superseded_by": [
+          "F02e1"
+        ]
+      }
     },
     "F02d": {
-      "status": "not_started",
+      "status": "superseded",
       "attempts": 0,
       "author": null,
       "reviewer": null,
       "evidence": null,
-      "blocker": null
+      "blocker": null,
+      "supersession": {
+        "amendment": "A37",
+        "superseded_by": [
+          "F02e8"
+        ]
+      }
     },
     "P05a": {
       "status": "not_started",
@@ -662,6 +674,86 @@
       "blocker": null
     },
     "P05b2": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e0": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e1": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e2": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e3": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e4": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e5": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e6": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e7": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e8": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e": {
       "status": "not_started",
       "attempts": 0,
       "author": null,
