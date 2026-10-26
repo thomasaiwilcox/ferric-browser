@@ -191,6 +191,11 @@ public:
         p->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, true);
         if (!offTheRecord) {
             auto *dir = new QTemporaryDir;
+            if (!dir->isValid() || dir->path().isEmpty()) {
+                delete dir;
+                delete p;
+                return nullptr;
+            }
             dirs.push_back(dir);
             p->setPersistentStoragePath(dir->path() + "/storage");
             p->setCachePath(dir->path() + "/cache");
@@ -273,7 +278,16 @@ public:
         bool allRemoved = true;
         for (int i = dirs.size() - 1; i >= 0; --i) {
             QTemporaryDir *dir = dirs.at(i);
+            if (!dir || !dir->isValid() || dir->path().isEmpty()) {
+                allRemoved = false;
+                continue;
+            }
             const QString path = dir->path();
+            const QFileInfo rootInfo(path);
+            if (rootInfo.isSymLink() || !rootInfo.isDir()) {
+                allRemoved = false;
+                continue;
+            }
             dir->setAutoRemove(false);
             bool removed = !QFileInfo::exists(path);
             for (int retry = 0; !removed && retry < 3; ++retry) {
@@ -312,6 +326,7 @@ private slots:
     void lifecycle() {
         Harness h(&fixture);
         auto *profile = h.newProfile(false, "lifecycle");
+        QVERIFY(profile);
         Host *top = h.makeHost(profile);
         top->page->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, true);
         top->page->load(fixture.url("/popup.html?kind=top"));
@@ -367,6 +382,8 @@ private slots:
         Harness h(&fixture);
         auto *persistent = h.newProfile(false, "persistent");
         auto *privateProfile = h.newProfile(true, "private");
+        QVERIFY(persistent);
+        QVERIFY(privateProfile);
         QVERIFY(!persistent->isOffTheRecord());
         QVERIFY(privateProfile->isOffTheRecord());
         Host *a = h.makeHost(persistent);
@@ -396,6 +413,7 @@ private slots:
     void dialogs() {
         Harness h(&fixture);
         auto *profile = h.newProfile(true, "dialogs");
+        QVERIFY(profile);
         Host *host = h.makeHost(profile);
         QTemporaryDir dialogDirectory;
         QVERIFY(dialogDirectory.isValid());
@@ -432,6 +450,7 @@ private slots:
     void failureCleanup() {
         Harness h(&fixture);
         auto *profile = h.newProfile(true, "failures");
+        QVERIFY(profile);
         Host *source = h.makeHost(profile);
         source->page->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, true);
         source->page->load(fixture.url("/popup.html?kind=top"));
@@ -467,6 +486,7 @@ private slots:
         QCOMPARE(QGuiApplication::platformName(), QStringLiteral("wayland"));
         Harness h(&fixture);
         auto *profile = h.newProfile(true, "native-input");
+        QVERIFY(profile);
         Host *top = h.makeHost(profile);
         top->page->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, true);
         top->page->load(fixture.url("/popup.html?kind=top"));
