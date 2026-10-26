@@ -12,8 +12,12 @@
   window.fixtureNonce = `${kind}-${Math.random().toString(36).slice(2)}`;
   window.pointerCount = 0;
   window.keyCount = 0;
+  window.lastKey = '';
   document.querySelector('#target').addEventListener('click', () => window.pointerCount++);
-  window.addEventListener('keydown', () => window.keyCount++);
+  window.addEventListener('keydown', event => {
+    window.keyCount++;
+    window.lastKey = event.key;
+  });
   document.querySelector('#open').addEventListener('click', () => {
     if (kind === 'top') window.open('/popup.html?kind=child', '_blank');
     if (kind === 'child') window.open('/popup.html?kind=grandchild', '_blank');

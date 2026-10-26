@@ -538,7 +538,11 @@ private slots:
         QVERIFY2(sendHyprlandShortcutToOwnedWindow(child->shell, marker, QStringLiteral("c"),
                                                    &nativeDispatchFailure),
                  qPrintable(nativeDispatchFailure));
-        QVERIFY(waitUntil([&] { return js(child->page, "keyCount").toInt() > beforeNative; }));
+        QVERIFY(waitUntil([&] {
+            return js(child->page, "keyCount").toInt() > beforeNative &&
+                   js(child->page, "lastKey").toString().compare(QStringLiteral("c"),
+                                                                  Qt::CaseInsensitive) == 0;
+        }));
         h.closeHost(child);
         QVERIFY(waitUntil([&] { return h.alivePages() == 0; }));
         QVERIFY(h.drain(profile));
