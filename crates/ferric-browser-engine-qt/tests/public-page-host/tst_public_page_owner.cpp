@@ -108,7 +108,9 @@ private slots:
 
     QPointer<QWebEngineProfile> profile(owner.profile());
     QSignalSpy firstLoad(pageOwner->page(), &QWebEnginePage::loadFinished);
-    pageOwner->page()->load(server.url());
+    QUrl allowedUrl = server.url();
+    allowedUrl.setPath(QStringLiteral("/allowed"));
+    pageOwner->page()->load(allowedUrl);
     QVERIFY(firstLoad.wait(15000));
     QVERIFY(firstLoad.takeFirst().at(0).toBool());
     QVERIFY(waitUntil([&] { return server.requests() == 1; }));
@@ -116,7 +118,9 @@ private slots:
     interceptor.setSecurityDenyHosts({QStringLiteral("127.0.0.1")});
     const auto beforeBlocked = interceptor.blockedCount();
     QSignalSpy blockedLoad(pageOwner->page(), &QWebEnginePage::loadFinished);
-    pageOwner->page()->load(server.url());
+    QUrl deniedUrl = server.url();
+    deniedUrl.setPath(QStringLiteral("/denied"));
+    pageOwner->page()->load(deniedUrl);
     QVERIFY(waitUntil([&] {
       return interceptor.blockedCount() > beforeBlocked ||
              !blockedLoad.isEmpty();
@@ -126,7 +130,9 @@ private slots:
 
     interceptor.setSecurityDenyHosts({});
     QSignalSpy restoredLoad(pageOwner->page(), &QWebEnginePage::loadFinished);
-    pageOwner->page()->load(server.url());
+    QUrl restoredUrl = server.url();
+    restoredUrl.setPath(QStringLiteral("/restored"));
+    pageOwner->page()->load(restoredUrl);
     QVERIFY(restoredLoad.wait(15000));
     QVERIFY(restoredLoad.takeFirst().at(0).toBool());
     QVERIFY(waitUntil([&] { return server.requests() == 2; }));
@@ -174,8 +180,10 @@ private slots:
     QVERIFY(waitUntil([&] { return childAccepted; }));
 
     QVariant openerPresent;
-    QVERIFY(evaluate(child, QStringLiteral("window.opener !== null"),
-                     &openerPresent));
+    QVERIFY(waitUntil([&] {
+      return evaluate(child, QStringLiteral("window.opener !== null"),
+                      &openerPresent) && openerPresent.toBool();
+    }, 5000));
     QVERIFY(openerPresent.toBool());
 
     bool grandchildAccepted = false;
@@ -260,8 +268,11 @@ private slots:
     QVERIFY(pageOwner);
     const auto original = pageOwner->captureOperation();
 
+    QSignalSpy firstLoad(pageOwner->page(), &QWebEnginePage::loadFinished);
     pageOwner->page()->setHtml(QStringLiteral("<p>first</p>"));
-    QVERIFY(waitUntil([&] { return pageOwner->documentGeneration() > 0; }));
+    QVERIFY(firstLoad.wait(15000));
+    QVERIFY(firstLoad.takeFirst().at(0).toBool());
+    QVERIFY(pageOwner->documentGeneration() > 0);
     QVERIFY(!pageOwner->isCurrent(original));
 
     QVariant title;
