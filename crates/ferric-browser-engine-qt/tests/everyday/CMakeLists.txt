@@ -5,7 +5,7 @@ if(NOT TARGET application_tests)
 endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-find_package(Qt6 REQUIRED COMPONENTS Core DBus Test WebChannel)
+find_package(Qt6 REQUIRED COMPONENTS Core DBus Gui Test WebChannel)
 find_program(FERRIC_TEST_OPENSSL openssl REQUIRED)
 get_target_property(_ferric_application_test_links application_tests LINK_LIBRARIES)
 
@@ -106,3 +106,19 @@ set_tests_properties(everyday_T061c_helper_native_rust_bridge PROPERTIES
 target_include_directories(everyday_T061a_helper_supervisor_component PRIVATE "${FERRIC_ENGINE_CXX_INCLUDE_DIR}")
 
 target_link_libraries(everyday_T061a_helper_supervisor_component PRIVATE ${_ferric_application_test_links})
+
+# This standalone native proof owns its test windows and interacts only with
+# the exact Hyprland instance inherited by CTest. It does not link the browser
+# engine or modify compositor configuration.
+add_executable(everyday_compositor_identity_fixture tst_compositor_identity.cpp)
+target_link_libraries(everyday_compositor_identity_fixture PRIVATE
+    KF6::WindowSystem Qt6::Core Qt6::Gui)
+
+foreach(_case IN ITEMS T100 T101 T102)
+    add_test(NAME everyday_${_case}_hyprland_identity_grouping
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/hyprland_proof.py"
+            --fixture $<TARGET_FILE:everyday_compositor_identity_fixture> --case ${_case})
+    set_tests_properties(everyday_${_case}_hyprland_identity_grouping PROPERTIES
+        TIMEOUT 180 LABELS "native;compositor" RUN_SERIAL TRUE
+        RESOURCE_LOCK "hyprland_live_windows")
+endforeach()
