@@ -462,13 +462,14 @@ private slots:
     QVERIFY(trustedFacts.object().value("secure").toBool());
 
     struct PendingCompletion {
-      QWebEngineFrame sourceFrame;
+      bool sourceWasMainFrame = false;
       QString documentNonce;
       quint64 nativeGeneration = 0;
     };
     const auto capturePending = [&](QWebEngineFrame sourceFrame) {
+      Q_ASSERT(sourceFrame.isValid());
       return PendingCompletion{
-          sourceFrame,
+          sourceFrame.isMainFrame(),
           run(sourceFrame,
               QStringLiteral("window.__credentialDocumentNonce"),
               CredentialWorld)
@@ -490,8 +491,7 @@ private slots:
             const auto facts = QJsonDocument::fromJson(value.toString().toUtf8());
             if (facts.isObject()) {
               const auto object = facts.object();
-              admitted = pending.sourceFrame.isValid() &&
-                         pending.sourceFrame.isMainFrame() &&
+              admitted = pending.sourceWasMainFrame &&
                          pending.nativeGeneration == nativeDocumentGeneration &&
                          !pending.documentNonce.isEmpty() &&
                          object.value("nonce").toString() ==
