@@ -161,8 +161,8 @@
     }
   ],
   "planned_path_inventory": {
-    "unique_paths": 199,
-    "existing_product_paths": 75,
+    "unique_paths": 200,
+    "existing_product_paths": 76,
     "execution_pack_artifacts": 2,
     "planned_execution_outputs": 8,
     "proposed_product_deliverables": 114,
@@ -1654,6 +1654,21 @@
           "read_anchor"
         ],
         "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/tests.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "e860d5a20b6e67223cc9c9a30fd9d66d30c7f679",
+        "integration_head_blob": "e860d5a20b6e67223cc9c9a30fd9d66d30c7f679",
+        "working_tree_file_present": true,
+        "slices": [
+          "W04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
       },
       {
         "path": "crates/ferric-browser-engine-qt/src/view_lifecycle.rs",
@@ -3966,6 +3981,38 @@
       "attempts_unchanged": true,
       "max_changed_product_files_unchanged": 8,
       "preserved": "All W04 contracts, test IDs and downstream physical/device qualification. This amendment authorizes exactly one extra existing product path."
+    },
+    {
+      "id": "A40",
+      "reason": "Exact-source W04 r8 crate-library gate ran 541 tests: 524 passed, 16 failed, 1 ignored. Twelve failures were existing static QML assertions whose required FerricPageView.qml component was absent from the tests.rs QML_SOURCE aggregation; four socket failures are addressed separately by a short private TMPDIR alias.",
+      "source_sha": "9fc210b30e29f08fdee76047321e3037f10bdd42",
+      "source_tree": "ff4b4c7e842e2622688d05510ea04858bf16007c",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/src/tests.rs"
+      ],
+      "path_owners": {
+        "W04": [
+          "crates/ferric-browser-engine-qt/src/hyprland.rs",
+          "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
+          "crates/ferric-browser-engine-qt/src/background_workers.rs",
+          "crates/ferric-browser-engine-qt/src/lib.rs",
+          "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs",
+          "crates/ferric-browser-engine-qt/src/tests.rs"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/src/tests.rs": "existing_product_source"
+      },
+      "required_change": "Include the existing FerricPageView.qml component in the test-only QML_SOURCE aggregation. Do not change product QML or runtime behavior.",
+      "required_test_impact": "Keep all original T112-T114 and existing QML assertions. Rerun focused tests, crate library tests, Clippy and workspace tests on the exact candidate.",
+      "locks_unchanged": [
+        "compositor-protocol",
+        "background-workers"
+      ],
+      "attempts_unchanged": true,
+      "max_changed_product_files_unchanged": 8,
+      "preserved": "All W04 contracts, test IDs, locks, retry cap and downstream device/performance qualification."
     }
   ]
 }

@@ -303,3 +303,18 @@ F02e0 edits only its own standalone harness, fixtures and new ADR. Replace inher
 - **Reason:** the public `QWebEngineProfile` and `QQuickWebEngineProfile` are separate Qt classes. The existing interceptor attach/detach implementation only recognizes and tracks the Quick profile, so a public Widgets profile would remain unintercepted if only the header were edited.
 - **Required assertions/constraints:** preserve both profile call paths; track/detach each profile safely and idempotently; fail closed if attachment fails; prove an actual allow/block request through a disposable plain `QWebEngineProfile` and keep a `QQuickWebEngineProfile` regression. Do not change policy semantics, bypass interception, add a Qt private API/dependency, weaken T014e1 or permit a tenth path.
 - **Source map:** A38 supplements the historical A37 F02e1 owner list with its one approved path; A37 history remains intact.
+
+
+## A39 — W04 passive observation dispatch
+
+- **Trigger:** W04 attempt 2 exact-source r4 compilation failed with E0004 because `HyprlandResponse::Observe(_)` was not handled in `browser_ui_runtime_config.rs`; no T112–T114 tests ran.
+- **Scope:** add the existing `crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs` path to W04's allowlist and read anchors. Permit only an explicit passive match arm.
+- **Preserved:** no status update, focus change, group operation, workspace route, permission change, or authority exposure. Locks, acceptance IDs, attempt count, and eight-file cap remain unchanged. See `evidence/W04-a1/SCOPE_AMENDMENT-r1.json`.
+
+
+## A40 — W04 test source aggregation and socket fixture environment
+
+- **Trigger:** exact-source r8 crate-library gate ran 541 tests: 524 passed, 16 failed, and 1 was ignored. Twelve static QML assertions expected strings in the existing `FerricPageView.qml`, omitted from `tests.rs`'s `QML_SOURCE`; four socket tests failed before behavior assertions because isolated `TMPDIR` made Unix socket paths exceed `SUN_LEN`.
+- **Scope:** add only existing `crates/ferric-browser-engine-qt/src/tests.rs` to W04's allowlist/read anchors so the test-only aggregate can include `FerricPageView.qml`. No production QML/runtime behavior change. Keep W04's eight-file cap and existing T112–T114 IDs.
+- **Environment correction:** the next runner uses a short private alias pointing into its isolated build-root temporary directory, keeping socket fixtures short while preserving isolation.
+- **Required gates:** exact-source focused T112–T114, crate library tests, workspace Clippy, and workspace tests. See `evidence/W04-a2/SCOPE_AMENDMENT-A40.json`.
