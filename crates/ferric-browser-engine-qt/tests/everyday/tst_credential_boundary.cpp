@@ -471,6 +471,7 @@ private slots:
     struct CompletionState {
       bool finished = false;
       bool admitted = false;
+      quint64 nativeGenerationAtCompletion = 0;
       QPointer<QEventLoop> waiter;
     };
     const auto capturePending = [&](QWebEngineFrame sourceFrame) {
@@ -501,6 +502,7 @@ private slots:
           identityScript, CredentialWorld,
           [state, pending, trustedOrigin, nativeDocumentGeneration,
            pageGuard](const QVariant &value) {
+            state->nativeGenerationAtCompletion = *nativeDocumentGeneration;
             const auto facts = QJsonDocument::fromJson(value.toString().toUtf8());
             if (pageGuard && facts.isObject()) {
               const auto object = facts.object();
@@ -567,7 +569,17 @@ private slots:
     QVERIFY(replacementNonce != sameUrlPending.documentNonce);
     QVERIFY(*nativeDocumentGeneration > sameUrlPending.nativeGeneration);
     QVERIFY(awaitCompletion(replacementRace));
-    QVERIFY(!replacementRace->admitted);
+    QVERIFY(replacementRace->nativeGenerationAtCompletion >=
+            sameUrlPending.nativeGeneration);
+    if (replacementRace->nativeGenerationAtCompletion ==
+        sameUrlPending.nativeGeneration) {
+      QVERIFY(replacementRace->admitted);
+    } else {
+      QVERIFY(!replacementRace->admitted);
+    }
+    const auto staleAfterReplacement = deliverPending(sameUrlPending);
+    QVERIFY(awaitCompletion(staleAfterReplacement));
+    QVERIFY(!staleAfterReplacement->admitted);
 
     // A child-frame source handle is always rejected even while the top
     // document and generation have not changed.
