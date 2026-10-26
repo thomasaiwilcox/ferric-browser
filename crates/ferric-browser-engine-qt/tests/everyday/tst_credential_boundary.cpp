@@ -175,8 +175,13 @@ private slots:
     channel.registerObject(QStringLiteral("probe"), &probe);
     page.setWebChannel(&channel, CredentialWorld);
 
-    QFile webChannelJs(QLibraryInfo::path(QLibraryInfo::DataPath) +
-                       QStringLiteral("/webchannel/qwebchannel.js"));
+    auto webChannelPath = QLibraryInfo::path(QLibraryInfo::DataPath) +
+                          QStringLiteral("/webchannel/qwebchannel.js");
+    if (!QFile::exists(webChannelPath)) {
+      webChannelPath = QLibraryInfo::path(QLibraryInfo::PrefixPath) +
+                       QStringLiteral("/share/qt6/webchannel/qwebchannel.js");
+    }
+    QFile webChannelJs(webChannelPath);
     QVERIFY2(webChannelJs.open(QIODevice::ReadOnly),
              qPrintable(webChannelJs.fileName()));
     const auto webChannelSource = QString::fromUtf8(webChannelJs.readAll());
@@ -394,8 +399,8 @@ private slots:
 extern "C" bool cxx_qt_init_crate_ferric_browser_engine_qt();
 
 int main(int argc, char **argv) {
-  QGuiApplication app(argc, argv);
   QtWebEngineQuick::initialize();
+  QGuiApplication app(argc, argv);
   cxx_qt_init_crate_ferric_browser_engine_qt();
   CredentialBoundaryTests tests;
   return QTest::qExec(&tests, argc, argv);
