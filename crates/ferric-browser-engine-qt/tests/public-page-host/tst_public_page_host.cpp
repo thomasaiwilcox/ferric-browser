@@ -118,20 +118,26 @@ static bool waitUntil(const std::function<bool()> &predicate, int timeoutMs = 80
 }
 
 static bool sendHyprlandShortcutToOwnedWindow(QWidget *window, const QString &marker,
-                                               const QString &key) {
+                                               const QString &key, QString *failureStage) {
+    const auto fail = [failureStage](const char *stage) {
+        if (failureStage) *failureStage = QString::fromLatin1(stage);
+        return false;
+    };
+    if (failureStage) *failureStage = QStringLiteral("passed");
     const QString hostRuntime = qEnvironmentVariable("FERRIC_TEST_HYPRLAND_RUNTIME_DIR");
     if (hostRuntime.isEmpty() || !QFileInfo(hostRuntime).isDir() ||
         qEnvironmentVariableIsEmpty("HYPRLAND_INSTANCE_SIGNATURE"))
-        return false;
+        return fail("host-runtime");
     QProcessEnvironment hyprEnv = QProcessEnvironment::systemEnvironment();
     hyprEnv.insert(QStringLiteral("XDG_RUNTIME_DIR"), hostRuntime);
     QProcess clients;
     clients.setProcessEnvironment(hyprEnv);
     clients.start(QStringLiteral("hyprctl"), {QStringLiteral("-j"), QStringLiteral("clients")});
-    if (!clients.waitForStarted(1500) || !clients.waitForFinished(2500) || clients.exitCode() != 0)
-        return false;
+    if (!clients.waitForStarted(1500)) return fail("clients-start");
+    if (!clients.waitForFinished(2500) || clients.exitCode() != 0)
+        return fail("clients-exit");
     const QJsonDocument doc = QJsonDocument::fromJson(clients.readAllStandardOutput());
-    if (!doc.isArray()) return false;
+    if (!doc.isArray()) return fail("clients-json");
     QString address;
     int matches = 0;
     const int ownPid = QCoreApplication::applicationPid();
@@ -144,8 +150,8 @@ static bool sendHyprlandShortcutToOwnedWindow(QWidget *window, const QString &ma
         }
     }
     if (matches != 1 || !QRegularExpression(QStringLiteral("^0x[0-9a-fA-F]+$")).match(address).hasMatch())
-        return false;
-    if (!window || !window->isActiveWindow()) return false;
+        return fail("owned-client-match");
+    if (!window || !window->isActiveWindow()) return fail("qt-active-window");
     const QString lua = QStringLiteral(
         "local w = hl.get_window('address:%1'); local a = hl.get_active_window(); "
         "if not w or not a or w.pid ~= %2 or w.title ~= '%3' or a.stable_id ~= w.stable_id then "
@@ -155,7 +161,10 @@ static bool sendHyprlandShortcutToOwnedWindow(QWidget *window, const QString &ma
     QProcess dispatch;
     dispatch.setProcessEnvironment(hyprEnv);
     dispatch.start(QStringLiteral("hyprctl"), {QStringLiteral("eval"), lua});
-    return dispatch.waitForStarted(1500) && dispatch.waitForFinished(2500) && dispatch.exitCode() == 0;
+    if (!dispatch.waitForStarted(1500)) return fail("dispatch-start");
+    if (!dispatch.waitForFinished(2500) || dispatch.exitCode() != 0)
+        return fail("dispatch-exit");
+    return true;
 }
 
 struct Host {
@@ -525,7 +534,10 @@ private slots:
         QTest::keyClick(pointerTarget, Qt::Key_B);
         QVERIFY(waitUntil([&] { return js(child->page, "keyCount").toInt() > 0; }));
         const int beforeNative = js(child->page, "keyCount").toInt();
-        QVERIFY(sendHyprlandShortcutToOwnedWindow(child->shell, marker, QStringLiteral("c")));
+        QString nativeDispatchFailure;
+        QVERIFY2(sendHyprlandShortcutToOwnedWindow(child->shell, marker, QStringLiteral("c"),
+                                                   &nativeDispatchFailure),
+                 qPrintable(nativeDispatchFailure));
         QVERIFY(waitUntil([&] { return js(child->page, "keyCount").toInt() > beforeNative; }));
         h.closeHost(child);
         QVERIFY(waitUntil([&] { return h.alivePages() == 0; }));
