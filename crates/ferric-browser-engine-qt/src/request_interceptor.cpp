@@ -484,7 +484,8 @@ bool FerricBrowserRequestInterceptor::attach(QObject *profile)
                 return entry.quickProfile == quickProfile;
             });
         if (!alreadyAttached) {
-            profiles_.append({{}, quickProfile});
+            profiles_.append(ProfileAttachment{QPointer<QWebEngineProfile>(),
+                                               QPointer<QQuickWebEngineProfile>(quickProfile)});
         }
         quickProfile->setUrlRequestInterceptor(this);
         return true;
@@ -500,7 +501,8 @@ bool FerricBrowserRequestInterceptor::attach(QObject *profile)
             return entry.webProfile == webProfile;
         });
     if (!alreadyAttached) {
-        profiles_.append({webProfile, {}});
+        profiles_.append(ProfileAttachment{QPointer<QWebEngineProfile>(webProfile),
+                                               QPointer<QQuickWebEngineProfile>()});
     }
     webProfile->setUrlRequestInterceptor(this);
     return true;
