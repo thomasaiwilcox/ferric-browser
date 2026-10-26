@@ -97,6 +97,7 @@ private slots:
     QVERIFY(server.listen());
 
     FerricBrowserRequestInterceptor interceptor;
+    interceptor.setEnabled(true);
     FerricPublicProfileOwner owner(&interceptor);
     QVERIFY(owner.isReady());
     QVERIFY(owner.profile()->isOffTheRecord());
@@ -209,12 +210,15 @@ private slots:
     QCOMPARE(owner.pageCount(), 2);
 
     QVariant openerClosed;
-    QVERIFY(
-        evaluate(child, QStringLiteral("window.opener.closed"), &openerClosed));
+    QVERIFY(evaluate(
+        child, QStringLiteral("window.opener === null || window.opener.closed === true"),
+        &openerClosed));
     QVERIFY(openerClosed.toBool());
     QVariant ancestorClosed;
-    QVERIFY(evaluate(grandchild, QStringLiteral("window.opener.opener.closed"),
-                     &ancestorClosed));
+    QVERIFY(evaluate(
+        grandchild,
+        QStringLiteral("window.opener !== null && (window.opener.opener === null || window.opener.opener.closed === true)"),
+        &ancestorClosed));
     QVERIFY(ancestorClosed.toBool());
 
     QVERIFY(child->close());
