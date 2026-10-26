@@ -5,6 +5,8 @@
 #include <QHostAddress>
 #include <QPointer>
 #include <QProcess>
+#include <QProcessEnvironment>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -117,7 +119,14 @@ static bool waitUntil(const std::function<bool()> &predicate, int timeoutMs = 80
 
 static bool sendHyprlandShortcutToOwnedWindow(QWidget *window, const QString &marker,
                                                const QString &key) {
+    const QString hostRuntime = qEnvironmentVariable("FERRIC_TEST_HYPRLAND_RUNTIME_DIR");
+    if (hostRuntime.isEmpty() || !QFileInfo(hostRuntime).isDir() ||
+        qEnvironmentVariableIsEmpty("HYPRLAND_INSTANCE_SIGNATURE"))
+        return false;
+    QProcessEnvironment hyprEnv = QProcessEnvironment::systemEnvironment();
+    hyprEnv.insert(QStringLiteral("XDG_RUNTIME_DIR"), hostRuntime);
     QProcess clients;
+    clients.setProcessEnvironment(hyprEnv);
     clients.start(QStringLiteral("hyprctl"), {QStringLiteral("-j"), QStringLiteral("clients")});
     if (!clients.waitForStarted(1500) || !clients.waitForFinished(2500) || clients.exitCode() != 0)
         return false;
@@ -144,6 +153,7 @@ static bool sendHyprlandShortcutToOwnedWindow(QWidget *window, const QString &ma
         "hl.dispatch(hl.dsp.send_shortcut({window = w, mods = {}, key = '%4'}))")
         .arg(address, QString::number(ownPid), marker, key);
     QProcess dispatch;
+    dispatch.setProcessEnvironment(hyprEnv);
     dispatch.start(QStringLiteral("hyprctl"), {QStringLiteral("eval"), lua});
     return dispatch.waitForStarted(1500) && dispatch.waitForFinished(2500) && dispatch.exitCode() == 0;
 }
