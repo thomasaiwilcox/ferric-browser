@@ -41,6 +41,10 @@ A42_REMOVED_PATHS=["crates/ferric-browser-engine-qt/src/gui_application.cpp"]
 A44_ADDED_PATH="crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
 A44_F02E2_PATHS=A42_F02E2_PATHS|{A44_ADDED_PATH}
 A44_LOCKS=["public-page-host","bridge","test-registration","browser-ui-input"]
+A45_CANDIDATE_SHA="58c047c04072bb7efa382e3cd7ca65a11da1b117"
+A45_CANDIDATE_TREE="f5cc15efd18496bb209d25866d060347157a00bd"
+A45_QT_PREFIX="/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64"
+A45_FRESH_TARGET="/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake"
 SUPERSESSION_AMENDMENT="A37"
 
 def validate_edit_path_budget(task,pack=PACK):
@@ -160,6 +164,98 @@ def validate_attempt_limits(plan,tasks):
             errors.append(f"{sid}: attempt exception requires a nonempty reason")
     return errors
 
+def validate_native_gate_retries(plan,pack=PACK):
+    """Allow only the accepted A45 same-source Qt selection retry; never a sixth source attempt."""
+    errors=[]
+    if not isinstance(plan,dict):return ["plan must be an object"]
+    entries=plan.get("native_gate_retries",{})
+    if not isinstance(entries,dict):return ["native_gate_retries must be an object"]
+    accepted_a45=False
+    try:
+        amendments=(pack/"control/AMENDMENTS.md").read_text()
+        section=amendments.split("## A45",1)[1].split("\n## ",1)[0]
+        accepted_a45=("**Status:** independently reviewed and accepted" in section)
+    except (IndexError,OSError):
+        section=""
+    if accepted_a45 and "F02e2" not in entries:
+        errors.append("F02e2: accepted A45 amendment lacks its exact native-gate retry entry")
+    for sid in entries:
+        if sid!="F02e2":errors.append(f"native gate retry is not authorized for {sid}")
+    entry=entries.get("F02e2")
+    if entry is None:return errors
+    expected={
+        "amendment":"A45","source_attempt":5,"max_same_source_retries":1,
+        "candidate_sha":A45_CANDIDATE_SHA,"candidate_tree":A45_CANDIDATE_TREE,
+        "trigger":"A5 native gate stopped after Qt C++ flags selected /usr/include/qt6 instead of the pinned 6.11.2 SDK.",
+        "same_source_only":True,"source_changes_allowed":False,"attempt_six_authorized":False,
+        "fresh_target":A45_FRESH_TARGET,
+        "cargo_target_dir":f"{A45_FRESH_TARGET}/cargo-target",
+        "cmake_dir":f"{A45_FRESH_TARGET}/cmake",
+        "qmake":f"{A45_QT_PREFIX}/bin/qmake","prepend_path":f"{A45_QT_PREFIX}/bin",
+        "pkg_config_path":f"{A45_QT_PREFIX}/lib/pkgconfig",
+        "pkg_config_libdir":f"{A45_QT_PREFIX}/lib/pkgconfig",
+        "cmake_prefix_path":A45_QT_PREFIX,"qt6_dir":f"{A45_QT_PREFIX}/lib/cmake/Qt6",
+        "stop_if_qt_include_outside_prefix":True,"only_test_id":"T014e2"
+    }
+    if not isinstance(entry,dict) or set(entry)!=set(expected):
+        errors.append("F02e2: A45 native retry must have exactly the reviewed fields")
+        return errors
+    for key,value in expected.items():
+        if entry.get(key)!=value:errors.append(f"F02e2: A45 native retry has invalid {key}")
+    task=next((t for t in plan.get("slices",[]) if t.get("id")=="F02e2"),None)
+    if (task is None or task.get("max_attempts")!=5 or task.get("path_budget_amendment")!="A44"
+            or len(task.get("allowed_paths",[]))!=10 or task.get("locks")!=A44_LOCKS):
+        errors.append("F02e2: A45 must retain A44's 5/5 source limit, exact ten paths and four locks")
+    if task is None:return errors
+    if ("**Status:** independently reviewed and accepted" not in section
+            or "QMAKE" not in section or "attempt 6" not in section):
+        errors.append("F02e2: A45 native retry lacks its accepted amendment record")
+    try:
+        source_map=load(pack/"control/source-map.execution.json")
+        if not isinstance(source_map,dict):
+            errors.append("F02e2: source-map execution metadata must be an object")
+            return errors
+        amendment_records=source_map.get("execution_amendments",[])
+        if not isinstance(amendment_records,list):
+            errors.append("F02e2: source-map execution_amendments must be a list")
+            return errors
+        a44_records=[x for x in amendment_records if isinstance(x,dict) and x.get("id")=="A44"]
+        a45_records=[x for x in amendment_records if isinstance(x,dict) and x.get("id")=="A45"]
+        if len(a44_records)!=1 or len(a45_records)!=1:
+            errors.append("F02e2: source-map must contain exactly one A44 record and one A45 retry record")
+            return errors
+        a44=a44_records[0];a45=a45_records[0]
+        owner=a45.get("path_owners",{}).get("F02e2") if a45 else None
+        if (a45 is None or a45.get("added_paths")!=[] or a45.get("removed_paths")!=[]
+                or a45.get("added_locks")!=[] or a45.get("locks")!=A44_LOCKS
+                or a45.get("path_owners",{}).get("F02e2")!=task.get("allowed_paths")
+                or a45.get("max_changed_product_files")!=10
+                or a45.get("previous_max_changed_product_files")!=10
+                or a45.get("source_attempt_count")!=5
+                or a45.get("max_same_source_retries")!=1
+                or a45.get("same_source_only") is not True
+                or a45.get("source_changes_allowed") is not False
+                or a45.get("attempt_six_authorized") is not False
+                or a45.get("candidate_sha")!=A45_CANDIDATE_SHA
+                or a45.get("candidate_tree")!=A45_CANDIDATE_TREE
+                or a45.get("fresh_target")!=expected["fresh_target"]
+                or a45.get("cargo_target_dir")!=expected["cargo_target_dir"]
+                or a45.get("cmake_dir")!=expected["cmake_dir"]
+                or a45.get("qmake")!=expected["qmake"]
+                or a45.get("prepend_path")!=expected["prepend_path"]
+                or a45.get("pkg_config_path")!=expected["pkg_config_path"]
+                or a45.get("pkg_config_libdir")!=expected["pkg_config_libdir"]
+                or a45.get("cmake_prefix_path")!=expected["cmake_prefix_path"]
+                or a45.get("qt6_dir")!=expected["qt6_dir"]
+                or a45.get("stop_if_qt_include_outside_prefix") is not True
+                or a45.get("only_test_id")!="T014e2"
+                or not isinstance(owner,list) or len(owner)!=10
+                or a44 is None or a44.get("path_owners",{}).get("F02e2")!=owner):
+            errors.append("F02e2: A45 source-map retry record must preserve A44 scope and exact same-source environment exception")
+    except (OSError,ValueError,TypeError,AttributeError) as exc:
+        errors.append(f"F02e2: cannot validate A45 native retry metadata: {exc}")
+    return errors
+
 def validate_supersession_structure(tasks,tests):
     errors=[];task_edges={};test_edges={};test_by_id={x["id"]:x for x in tests}
     for sid,t in tasks.items():
@@ -272,6 +368,7 @@ def validate_structure(pack=PACK,plan=None):
         testids=[t["id"] for t in tests]
         if len(set(testids))!=len(testids):errors.append("Duplicate test IDs")
         errors+=validate_attempt_limits(plan,tasks)
+        errors+=validate_native_gate_retries(plan,pack)
         errors+=validate_supersession_structure(tasks,tests)
         reqids=[r["id"] for r in reqs]
         if len(set(reqids))!=len(reqids):errors.append("Duplicate requirement IDs")

@@ -4766,5 +4766,29 @@
       "authorized_limit": 5,
       "reason": "One final source candidate after A4 passed source review but the pinned build exposed three Rust compile errors, including a ReparentView match in A44 path 10; preserve attempts 1-4 and stop after attempt 5."
     }
+  },
+  "native_gate_retries": {
+    "F02e2": {
+      "amendment": "A45",
+      "source_attempt": 5,
+      "max_same_source_retries": 1,
+      "candidate_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "candidate_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "trigger": "A5 native gate stopped after Qt C++ flags selected /usr/include/qt6 instead of the pinned 6.11.2 SDK.",
+      "same_source_only": true,
+      "source_changes_allowed": false,
+      "attempt_six_authorized": false,
+      "fresh_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake",
+      "cargo_target_dir": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake/cargo-target",
+      "cmake_dir": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake/cmake",
+      "qmake": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/bin/qmake",
+      "prepend_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/bin",
+      "pkg_config_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig",
+      "pkg_config_libdir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig",
+      "cmake_prefix_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
+      "qt6_dir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/cmake/Qt6",
+      "stop_if_qt_include_outside_prefix": true,
+      "only_test_id": "T014e2"
+    }
   }
 }

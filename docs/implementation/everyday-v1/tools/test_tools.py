@@ -216,6 +216,60 @@ class StructureTests(unittest.TestCase):
                 state['slices']['F02e2']['attempts']=attempts;write_json(path,state)
                 errors=validate_pack.validate_state(p,path,pack=PACK)
                 self.assertEqual(not any('F02e2: attempt limit' in e for e in errors),valid)
+    def test_a45_native_retry_is_exact_same_source_and_not_attempt6(self):
+        p=load(PACK/'control/plan.json')
+        self.assertEqual(validate_pack.validate_native_gate_retries(p,PACK),[])
+        retry=p['native_gate_retries']['F02e2']
+        self.assertEqual(retry['source_attempt'],5)
+        self.assertEqual(retry['max_same_source_retries'],1)
+        self.assertEqual(retry['candidate_sha'],'58c047c04072bb7efa382e3cd7ca65a11da1b117')
+        self.assertEqual(retry['candidate_tree'],'f5cc15efd18496bb209d25866d060347157a00bd')
+        self.assertTrue(retry['same_source_only'])
+        self.assertFalse(retry['source_changes_allowed'])
+        self.assertFalse(retry['attempt_six_authorized'])
+        self.assertTrue(retry['fresh_target'].endswith('native-F02e2-a5-qt6112-qmake'))
+        self.assertEqual(retry['cargo_target_dir'],retry['fresh_target']+'/cargo-target')
+        self.assertEqual(retry['cmake_dir'],retry['fresh_target']+'/cmake')
+        self.assertEqual(retry['pkg_config_path'],retry['pkg_config_libdir'])
+        self.assertEqual(retry['cmake_prefix_path'],'/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64')
+        self.assertTrue(retry['qt6_dir'].endswith('/lib/cmake/Qt6'))
+        self.assertEqual(retry['only_test_id'],'T014e2')
+        for key,value in (('max_same_source_retries',2),('candidate_sha','f'*40),
+                          ('source_changes_allowed',True),('attempt_six_authorized',True),
+                          ('qmake','/usr/bin/qmake6'),('pkg_config_libdir','/usr/lib/pkgconfig'),
+                          ('qt6_dir','/usr/lib/cmake/Qt6')):
+            wrong=copy.deepcopy(p);wrong['native_gate_retries']['F02e2'][key]=value
+            self.assertTrue(validate_pack.validate_native_gate_retries(wrong,PACK))
+        wrong=copy.deepcopy(p);wrong['native_gate_retries']['W04']=wrong['native_gate_retries'].pop('F02e2')
+        self.assertTrue(any('not authorized' in e for e in validate_pack.validate_native_gate_retries(wrong,PACK)))
+        missing=copy.deepcopy(p);missing.pop('native_gate_retries')
+        self.assertTrue(any('lacks its exact native-gate retry entry' in e for e in validate_pack.validate_native_gate_retries(missing,PACK)))
+        with tempfile.TemporaryDirectory() as tmp:
+            pack=Path(tmp);control=pack/'control';control.mkdir()
+            amendments=(PACK/'control/AMENDMENTS.md').read_text()
+            a45=amendments.split('## A45',1)[1].split('\n## ',1)[0]
+            status=next(line for line in a45.splitlines() if line.startswith('- **Status:**'))
+            (control/'AMENDMENTS.md').write_text(amendments.replace(status,'- **Status:** staged for independent review.',1))
+            write_json(control/'source-map.execution.json',load(PACK/'control/source-map.execution.json'))
+            errors=validate_pack.validate_native_gate_retries(p,pack)
+            self.assertTrue(any('lacks its accepted amendment record' in e for e in errors))
+            (control/'AMENDMENTS.md').write_text(amendments)
+            source_map=load(PACK/'control/source-map.execution.json')
+            record=next(x for x in source_map['execution_amendments'] if x.get('id')=='A45')
+            record['added_paths']=['crates/example/unapproved.rs']
+            write_json(control/'source-map.execution.json',source_map)
+            errors=validate_pack.validate_native_gate_retries(p,pack)
+            self.assertTrue(any('source-map retry record' in e for e in errors))
+            source_map=load(PACK/'control/source-map.execution.json')
+            source_map['execution_amendments'].append(copy.deepcopy(next(
+                x for x in source_map['execution_amendments'] if x.get('id')=='A45')))
+            write_json(control/'source-map.execution.json',source_map)
+            errors=validate_pack.validate_native_gate_retries(p,pack)
+            self.assertTrue(any('exactly one A44 record and one A45 retry record' in e for e in errors))
+        missing_task=copy.deepcopy(p)
+        missing_task['slices']=[task for task in missing_task['slices'] if task.get('id')!='F02e2']
+        errors=validate_pack.validate_native_gate_retries(missing_task,PACK)
+        self.assertTrue(any("retain A44's 5/5" in e for e in errors))
     def test_attempt_limit_hides_only_exhausted_implementation_dispatch(self):
         task={'id':'W01b','kind':'implementation','allowed_paths':['route.rs'],'depends_on':[],'locks':[],'max_attempts':4}
         p={'limits':{'max_noncoordinator_agents':6,'max_attempts':3},'attempt_exceptions':{'W01b':{'amendment':'A37','default_limit':3,'authorized_limit':4,'reason':'bounded repair'}},'slices':[task]}
