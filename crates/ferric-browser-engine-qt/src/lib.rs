@@ -154,6 +154,7 @@ mod hint_policy;
 #[allow(dead_code)]
 mod hot_page_policy;
 mod hyprland;
+mod hyprland_events;
 mod input_validation;
 mod ipc_command_decoder;
 mod ipc_contract;

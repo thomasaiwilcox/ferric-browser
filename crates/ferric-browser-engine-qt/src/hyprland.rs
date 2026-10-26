@@ -134,6 +134,21 @@ impl HyprlandAdapter {
     }
 
     #[cfg(test)]
+    pub(super) fn observation_test_adapter(
+        enabled: bool,
+        workspace_routing: bool,
+        request_socket: Option<std::path::PathBuf>,
+        event_socket: Option<std::path::PathBuf>,
+    ) -> Self {
+        Self {
+            enabled: if enabled { TriState::On } else { TriState::Off },
+            workspace_routing,
+            request_socket,
+            event_socket,
+        }
+    }
+
+    #[cfg(test)]
     fn with_paths(
         enabled: TriState,
         workspace_routing: bool,
@@ -312,6 +327,188 @@ impl HyprlandAdapter {
         String::from_utf8(response).map_err(|error| {
             HyprlandError::Protocol(format!("Hyprland IPC response was not UTF-8: {error}"))
         })
+    }
+}
+
+impl HyprlandAdapter {
+    /// Read-only snapshot/event observation. This deliberately does not use
+    /// the workspace-routing permission bit: it never dispatches a command.
+    pub(super) fn observe_events(
+        &self,
+        session: &mut super::hyprland_events::ObservationSession,
+    ) -> super::hyprland_events::ObservationResult {
+        use super::hyprland_events::{
+            MAX_SNAPSHOT_BYTES, ObservationCapability as Capability, ObservationResult,
+        };
+
+        if self.enabled == TriState::Off {
+            return ObservationResult {
+                capability: Capability::Disabled,
+                state: None,
+            };
+        }
+        let (Some(request_path), Some(event_path)) =
+            (self.request_socket.as_ref(), self.event_socket.as_ref())
+        else {
+            session.cache.invalidate();
+            return ObservationResult {
+                capability: Capability::Unavailable,
+                state: None,
+            };
+        };
+        let signature = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default();
+        let events = match session.read_events(Some(event_path)) {
+            Ok(events) => events,
+            Err(_) => {
+                session.cache.invalidate();
+                return ObservationResult {
+                    capability: Capability::Unavailable,
+                    state: None,
+                };
+            }
+        };
+        let version_bytes = match bounded_hyprland_request(request_path, b"j/version", 4096) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                session.cache.invalidate();
+                return ObservationResult {
+                    capability: Capability::Unavailable,
+                    state: None,
+                };
+            }
+        };
+        let version_value: serde_json::Value = match serde_json::from_slice(&version_bytes) {
+            Ok(value) => value,
+            Err(_) => {
+                session.cache.invalidate();
+                return ObservationResult {
+                    capability: Capability::InvalidData,
+                    state: None,
+                };
+            }
+        };
+        let version = HyprlandVersion {
+            branch: version_value
+                .get("branch")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned),
+            tag: version_value
+                .get("tag")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned),
+            commit: version_value
+                .get("commit")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned),
+        };
+        if version.branch.is_none() && version.tag.is_none() && version.commit.is_none() {
+            session.cache.invalidate();
+            return ObservationResult {
+                capability: Capability::UnsupportedVersion,
+                state: None,
+            };
+        }
+        let snapshot =
+            match bounded_hyprland_request(request_path, b"j/clients", MAX_SNAPSHOT_BYTES) {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    session.cache.invalidate();
+                    return ObservationResult {
+                        capability: Capability::Unavailable,
+                        state: None,
+                    };
+                }
+            };
+        match session
+            .cache
+            .observe(&signature, version, &snapshot, &events)
+        {
+            Ok(state) => ObservationResult {
+                capability: Capability::Available,
+                state: Some(state),
+            },
+            Err(_) => {
+                session.cache.invalidate();
+                ObservationResult {
+                    capability: Capability::InvalidData,
+                    state: None,
+                }
+            }
+        }
+    }
+}
+
+fn bounded_hyprland_request(
+    path: &std::path::Path,
+    command: &[u8],
+    maximum: usize,
+) -> Result<Vec<u8>, std::io::Error> {
+    use std::io::{Read, Write};
+    use std::os::unix::net::UnixStream;
+    use std::time::Duration;
+
+    let mut stream = UnixStream::connect(path)?;
+    stream.set_read_timeout(Some(Duration::from_millis(250)))?;
+    stream.write_all(command)?;
+    let mut output = Vec::new();
+    let mut chunk = [0_u8; 8192];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(count) => {
+                if output.len().saturating_add(count) > maximum {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Hyprland response exceeded its bound",
+                    ));
+                }
+                output.extend_from_slice(&chunk[..count]);
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                break;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(output)
+}
+
+#[cfg(test)]
+mod observation_permission_tests {
+    use super::{HyprlandAdapter, TriState};
+    use crate::hyprland_events::{ObservationCapability, ObservationSession};
+
+    #[test]
+    fn disabled_observation_returns_before_socket_access() {
+        let adapter = HyprlandAdapter {
+            enabled: TriState::Off,
+            workspace_routing: false,
+            request_socket: None,
+            event_socket: None,
+        };
+        let mut session = ObservationSession::default();
+        let result = adapter.observe_events(&mut session);
+        assert_eq!(result.capability, ObservationCapability::Disabled);
+        assert!(result.state.is_none());
+    }
+
+    #[test]
+    fn read_only_observation_is_not_gated_by_workspace_routing() {
+        let adapter = HyprlandAdapter {
+            enabled: TriState::On,
+            workspace_routing: false,
+            request_socket: None,
+            event_socket: None,
+        };
+        let mut session = ObservationSession::default();
+        let result = adapter.observe_events(&mut session);
+        assert_eq!(result.capability, ObservationCapability::Unavailable);
+        assert!(result.state.is_none());
     }
 }
 

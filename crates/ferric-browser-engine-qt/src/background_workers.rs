@@ -23,6 +23,9 @@ pub(super) struct NetworkPolicyWorker {
 }
 
 pub(super) enum HyprlandRequest {
+    Observe {
+        config: HyprlandConfig,
+    },
     RouteWorkspace {
         config: HyprlandConfig,
         workspace: String,
@@ -37,6 +40,7 @@ pub(super) enum HyprlandRequest {
 }
 
 pub(super) enum HyprlandResponse {
+    Observe(super::hyprland_events::ObservationResult),
     RouteWorkspace(Result<(), String>),
     MoveActiveWindow(Result<(), String>),
     BrowserClients(Result<Vec<hyprland::BrowserClient>, String>),
@@ -48,31 +52,54 @@ pub(super) struct HyprlandWorker {
 
 impl HyprlandWorker {
     pub(super) fn spawn() -> Result<Self, String> {
+        let observation = std::sync::Arc::new(std::sync::Mutex::new(
+            super::hyprland_events::ObservationSession::default(),
+        ));
+        let worker_observation = observation.clone();
         let inner =
-            SingleFlightWorker::spawn("ferric-browser-hyprland-ipc", |request| match request {
-                HyprlandRequest::RouteWorkspace { config, workspace } => {
-                    let adapter = hyprland::HyprlandAdapter::from_config(&config);
-                    HyprlandResponse::RouteWorkspace(
-                        adapter
-                            .route_workspace(&workspace)
-                            .map_err(|error| error.to_string()),
-                    )
-                }
-                HyprlandRequest::MoveActiveWindow { config, workspace } => {
-                    let adapter = hyprland::HyprlandAdapter::from_config(&config);
-                    HyprlandResponse::MoveActiveWindow(
-                        adapter
-                            .move_active_window_to_workspace(&workspace)
-                            .map_err(|error| error.to_string()),
-                    )
-                }
-                HyprlandRequest::BrowserClients { config } => {
-                    let adapter = hyprland::HyprlandAdapter::from_config(&config);
-                    HyprlandResponse::BrowserClients(
-                        adapter.browser_clients().map_err(|error| error.to_string()),
-                    )
-                }
-            })
+            SingleFlightWorker::spawn(
+                "ferric-browser-hyprland-ipc",
+                move |request| match request {
+                    HyprlandRequest::Observe { config } => {
+                        let adapter = hyprland::HyprlandAdapter::from_config(&config);
+                        let mut session = match worker_observation.lock() {
+                            Ok(session) => session,
+                            Err(_) => {
+                                return HyprlandResponse::Observe(
+                                super::hyprland_events::ObservationResult {
+                                    capability:
+                                        super::hyprland_events::ObservationCapability::Unavailable,
+                                    state: None,
+                                },
+                            );
+                            }
+                        };
+                        HyprlandResponse::Observe(adapter.observe_events(&mut session))
+                    }
+                    HyprlandRequest::RouteWorkspace { config, workspace } => {
+                        let adapter = hyprland::HyprlandAdapter::from_config(&config);
+                        HyprlandResponse::RouteWorkspace(
+                            adapter
+                                .route_workspace(&workspace)
+                                .map_err(|error| error.to_string()),
+                        )
+                    }
+                    HyprlandRequest::MoveActiveWindow { config, workspace } => {
+                        let adapter = hyprland::HyprlandAdapter::from_config(&config);
+                        HyprlandResponse::MoveActiveWindow(
+                            adapter
+                                .move_active_window_to_workspace(&workspace)
+                                .map_err(|error| error.to_string()),
+                        )
+                    }
+                    HyprlandRequest::BrowserClients { config } => {
+                        let adapter = hyprland::HyprlandAdapter::from_config(&config);
+                        HyprlandResponse::BrowserClients(
+                            adapter.browser_clients().map_err(|error| error.to_string()),
+                        )
+                    }
+                },
+            )
             .map_err(|error| error.to_string())?;
         Ok(Self { inner })
     }
