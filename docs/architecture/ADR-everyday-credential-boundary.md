@@ -75,6 +75,16 @@ nonce inequality or a reload-shaped substitute.
 T047's source frame is held by native test instrumentation. It does not claim
 that WebChannel identifies a caller frame, that the nonce is a Qt-native
 document ID, or that the test's generation gate is production ownership code.
+On the exact Qt 6.11.2 run, T046 and T047 both passed with zero skips. The
+Back traversal reported `loadFinished(false)` while the page URL returned to
+the original document; the isolated-world probe independently observed
+`pageshow.persisted == true`, the preserved document nonce, an advanced native
+load-start generation, and an empty `notRestoredReasons` list. T047 then
+rejected the pre-navigation completion and admitted a fresh post-restore
+completion. The `pageshow.persisted` and nonce/generation assertions establish
+the BFCache outcome; `loadFinished(false)` is recorded as observed Qt signal
+behavior rather than treated as the BFCache proof.
+
 Even passing T046 and T047 does not establish a native security-origin API or
 a production document-ownership lease; those gaps remain explicit for later
 production design. No MainWorld native object, console bridge, custom scheme,
