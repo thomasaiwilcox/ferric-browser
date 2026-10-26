@@ -543,7 +543,7 @@ impl qobject::BrowserUi {
         }
     }
 
-    pub(super) fn navigate_url(mut self: Pin<&mut Self>, url: &ValidatedUrl) -> Result<(), String> {
+    pub(super) fn navigate_url(self: Pin<&mut Self>, url: &ValidatedUrl) -> Result<(), String> {
         let target = current_target(
             self.as_ref().rust().state.as_ref(),
             self.as_ref().rust().tab,
