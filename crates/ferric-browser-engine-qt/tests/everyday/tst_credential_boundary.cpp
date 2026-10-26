@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QLibraryInfo>
 #include <QProcess>
+#include <QPointer>
 #include <QQuickWindow>
 #include <QSignalSpy>
 #include <QSslCertificate>
@@ -27,6 +28,7 @@
 #include <QWebEngineSettings>
 #include <QtTest>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
+#include <memory>
 
 namespace {
 constexpr quint32 CredentialWorld = 42;
@@ -441,9 +443,9 @@ private slots:
             "});"));
     page.scripts().insert(identity);
 
-    quint64 nativeDocumentGeneration = 0;
+    auto nativeDocumentGeneration = std::make_shared<quint64>(0);
     connect(&page, &QWebEnginePage::loadStarted, &page,
-            [&nativeDocumentGeneration] { ++nativeDocumentGeneration; });
+            [nativeDocumentGeneration] { ++*nativeDocumentGeneration; });
     QSignalSpy loaded(&page, &QWebEnginePage::loadFinished);
     page.load(server.pageUrl());
     QVERIFY(loaded.wait(15000));
@@ -466,6 +468,11 @@ private slots:
       QString documentNonce;
       quint64 nativeGeneration = 0;
     };
+    struct CompletionState {
+      bool finished = false;
+      bool admitted = false;
+      QPointer<QEventLoop> waiter;
+    };
     const auto capturePending = [&](QWebEngineFrame sourceFrame) {
       Q_ASSERT(sourceFrame.isValid());
       return PendingCompletion{
@@ -474,39 +481,58 @@ private slots:
               QStringLiteral("window.__credentialDocumentNonce"),
               CredentialWorld)
               .toString(),
-          nativeDocumentGeneration};
+          *nativeDocumentGeneration};
     };
-    const auto deliverPending = [&](const PendingCompletion &pending,
-                                    bool &finished, bool &admitted) {
-      finished = false;
-      admitted = false;
-      const auto currentMainFrame = page.mainFrame();
+    QPointer<QWebEnginePage> pageGuard(&page);
+    const auto deliverPending =
+        [pageGuard, identityScript, trustedOrigin,
+         nativeDocumentGeneration](const PendingCompletion &pending) {
+      auto state = std::make_shared<CompletionState>();
+      if (!pageGuard) {
+        state->finished = true;
+        return state;
+      }
+      const auto currentMainFrame = pageGuard->mainFrame();
       if (!currentMainFrame.isValid() || !currentMainFrame.isMainFrame()) {
-        finished = true;
-        return;
+        state->finished = true;
+        return state;
       }
       currentMainFrame.runJavaScript(
           identityScript, CredentialWorld,
-          [&, pending](const QVariant &value) {
+          [state, pending, trustedOrigin, nativeDocumentGeneration,
+           pageGuard](const QVariant &value) {
             const auto facts = QJsonDocument::fromJson(value.toString().toUtf8());
-            if (facts.isObject()) {
+            if (pageGuard && facts.isObject()) {
               const auto object = facts.object();
-              admitted = pending.sourceWasMainFrame &&
-                         pending.nativeGeneration == nativeDocumentGeneration &&
+              state->admitted = pending.sourceWasMainFrame &&
+                         pending.nativeGeneration == *nativeDocumentGeneration &&
                          !pending.documentNonce.isEmpty() &&
                          object.value("nonce").toString() ==
                              pending.documentNonce &&
                          object.value("origin").toString() == trustedOrigin &&
                          object.value("secure").toBool();
             }
-            finished = true;
+            state->finished = true;
+            if (state->waiter)
+              state->waiter->quit();
           });
+      return state;
     };
-    const auto awaitCompletion = [&](const PendingCompletion &pending,
-                                     bool &admitted) {
-      bool finished = false;
-      deliverPending(pending, finished, admitted);
-      QTRY_VERIFY_WITH_TIMEOUT(finished, 5000);
+    const auto awaitCompletion = [](const std::shared_ptr<CompletionState> &state) {
+      if (!state)
+        return false;
+      if (state->finished)
+        return true;
+      QEventLoop loop;
+      QTimer timeout;
+      timeout.setSingleShot(true);
+      QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+      state->waiter = &loop;
+      timeout.start(5000);
+      if (!state->finished)
+        loop.exec();
+      state->waiter.clear();
+      return state->finished;
     };
 
     const auto firstMainFrame = page.mainFrame();
@@ -515,18 +541,19 @@ private slots:
                                 CredentialWorld)
                                 .toString();
     QVERIFY(!firstNonce.isEmpty());
-    const auto firstGeneration = nativeDocumentGeneration;
+    const auto firstGeneration = *nativeDocumentGeneration;
 
     // A real asynchronous main-frame challenge admits a reply while its
     // captured document and native generation are still current.
-    bool admitted = false;
-    awaitCompletion(capturePending(firstMainFrame), admitted);
-    QVERIFY(admitted);
+    const auto currentState = deliverPending(capturePending(firstMainFrame));
+    QVERIFY(awaitCompletion(currentState));
+    QVERIFY(currentState->admitted);
 
     // Reload the exact same URL, then deliver the older pending completion
     // against the replacement main document.
     const auto sameUrlPending = capturePending(page.mainFrame());
     const auto sameUrl = page.url();
+    const auto replacementRace = deliverPending(sameUrlPending);
     QSignalSpy reloaded(&page, &QWebEnginePage::loadFinished);
     page.triggerAction(QWebEnginePage::Reload);
     QVERIFY(reloaded.wait(15000));
@@ -538,9 +565,9 @@ private slots:
             CredentialWorld)
             .toString();
     QVERIFY(replacementNonce != sameUrlPending.documentNonce);
-    QVERIFY(nativeDocumentGeneration > sameUrlPending.nativeGeneration);
-    awaitCompletion(sameUrlPending, admitted);
-    QVERIFY(!admitted);
+    QVERIFY(*nativeDocumentGeneration > sameUrlPending.nativeGeneration);
+    QVERIFY(awaitCompletion(replacementRace));
+    QVERIFY(!replacementRace->admitted);
 
     // A child-frame source handle is always rejected even while the top
     // document and generation have not changed.
@@ -549,13 +576,14 @@ private slots:
     QVERIFY(!childFrame.isMainFrame());
     const auto childPending = capturePending(childFrame);
     QVERIFY(!childPending.documentNonce.isEmpty());
-    awaitCompletion(childPending, admitted);
-    QVERIFY(!admitted);
+    const auto childState = deliverPending(childPending);
+    QVERIFY(awaitCompletion(childState));
+    QVERIFY(!childState->admitted);
 
     // Enable real history traversal and require pageshow.persisted, which
     // distinguishes an actual BFCache restore from an ordinary reload.
     const auto bfcachePending = capturePending(page.mainFrame());
-    const auto bfcacheGeneration = nativeDocumentGeneration;
+    const auto bfcacheGeneration = *nativeDocumentGeneration;
     const auto bfcacheNonce = bfcachePending.documentNonce;
     auto awayUrl = server.pageUrl();
     awayUrl.setPath(QStringLiteral("/away"));
@@ -572,9 +600,10 @@ private slots:
     QVERIFY(restoredFacts.isObject());
     QCOMPARE(restoredFacts.object().value("nonce").toString(), bfcacheNonce);
     QVERIFY(restoredFacts.object().value("bfcache").toBool());
-    QVERIFY(nativeDocumentGeneration > bfcacheGeneration);
-    awaitCompletion(bfcachePending, admitted);
-    QVERIFY(!admitted);
+    QVERIFY(*nativeDocumentGeneration > bfcacheGeneration);
+    const auto bfcacheState = deliverPending(bfcachePending);
+    QVERIFY(awaitCompletion(bfcacheState));
+    QVERIFY(!bfcacheState->admitted);
 
     // A fresh completion after restoration is still admitted. This also
     // confirms BFCache rejection depends on native generation, not nonce alone.
@@ -582,9 +611,10 @@ private slots:
                  CredentialWorld)
                  .toString(),
              bfcacheNonce);
-    QVERIFY(nativeDocumentGeneration > firstGeneration);
-    awaitCompletion(capturePending(page.mainFrame()), admitted);
-    QVERIFY(admitted);
+    QVERIFY(*nativeDocumentGeneration > firstGeneration);
+    const auto restoredState = deliverPending(capturePending(page.mainFrame()));
+    QVERIFY(awaitCompletion(restoredState));
+    QVERIFY(restoredState->admitted);
   }
 };
 
