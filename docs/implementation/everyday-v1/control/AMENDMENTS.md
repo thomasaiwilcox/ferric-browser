@@ -314,7 +314,15 @@ F02e0 edits only its own standalone harness, fixtures and new ADR. Replace inher
 
 ## A40 — W04 test source aggregation and socket fixture environment
 
-- **Trigger:** exact-source r8 crate-library gate ran 541 tests: 524 passed, 16 failed, and 1 was ignored. Twelve static QML assertions expected strings in the existing `FerricPageView.qml`, omitted from `tests.rs`'s `QML_SOURCE`; four socket tests failed before behavior assertions because isolated `TMPDIR` made Unix socket paths exceed `SUN_LEN`.
+- **Trigger:** exact-source r8 crate-library gate ran 541 tests: 524 passed, 16 failed, and 1 was ignored. Twelve static QML assertions could not see the existing `FerricPageView.qml`, omitted from `tests.rs`'s `QML_SOURCE`; four socket tests failed before behavior assertions because isolated `TMPDIR` made Unix socket paths exceed `SUN_LEN`. On r9, aggregation fixed eleven QML assertions; one remaining assertion used an obsolete call spelling, and one IPC fixture path remained at the `SUN_LEN` boundary. See the A40 erratum and A41 evidence.
 - **Scope:** add only existing `crates/ferric-browser-engine-qt/src/tests.rs` to W04's allowlist/read anchors so the test-only aggregate can include `FerricPageView.qml`. No production QML/runtime behavior change. Keep W04's eight-file cap and existing T112–T114 IDs.
 - **Environment correction:** the next runner uses a short private alias pointing into its isolated build-root temporary directory, keeping socket fixtures short while preserving isolation.
 - **Required gates:** exact-source focused T112–T114, crate library tests, workspace Clippy, and workspace tests. See `evidence/W04-a2/SCOPE_AMENDMENT-A40.json`.
+
+
+## A41 — W04 current QML assertion and shorter socket path
+
+- **Trigger:** exact-source r9 crate-library gate passed 538 tests, with 2 failures and 1 ignored. `media_keys_and_mpris_use_one_engine_toggle_path` expected `window.updateMprisForPrimaryView(webView)` while the existing component calls `factory.rootWindow.updateMprisForPrimaryView(webView)`. One IPC fixture still produced a 108-byte Unix socket path with the first short alias.
+- **Scope:** add only existing `crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs` to W04's allowlist/read anchors and change the static assertion to the current component call. Product QML/runtime remains unchanged. W04 uses all eight permitted product paths.
+- **Environment correction:** use private `/tmp/w4r10/t` as a symlink to the isolated r10 build-root temporary directory, shortening the observed socket path by eight bytes.
+- **Preserved:** T112-T114, all security/behavior gates, locks, retry cap and attempt count. Run all four exact-source native gates. See `evidence/W04-a2/SCOPE_AMENDMENT-A41.json` and `SCOPE_ERRATUM-A40-r1.json`.

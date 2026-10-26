@@ -161,8 +161,8 @@
     }
   ],
   "planned_path_inventory": {
-    "unique_paths": 200,
-    "existing_product_paths": 76,
+    "unique_paths": 201,
+    "existing_product_paths": 77,
     "execution_pack_artifacts": 2,
     "planned_execution_outputs": 8,
     "proposed_product_deliverables": 114,
@@ -1660,6 +1660,21 @@
         "resolution": "existing_product_source",
         "product_baseline_blob": "e860d5a20b6e67223cc9c9a30fd9d66d30c7f679",
         "integration_head_blob": "e860d5a20b6e67223cc9c9a30fd9d66d30c7f679",
+        "working_tree_file_present": true,
+        "slices": [
+          "W04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "1dea5a371af8000cf070dcfdad5ea06807d0b2f6",
+        "integration_head_blob": "1dea5a371af8000cf070dcfdad5ea06807d0b2f6",
         "working_tree_file_present": true,
         "slices": [
           "W04"
@@ -4013,6 +4028,39 @@
       "attempts_unchanged": true,
       "max_changed_product_files_unchanged": 8,
       "preserved": "All W04 contracts, test IDs, locks, retry cap and downstream device/performance qualification."
+    },
+    {
+      "id": "A41",
+      "reason": "Exact-source W04 r9 crate-library gate passed 538 tests but failed two: the existing media/MPRIS static assertion expects the obsolete window.updateMprisForPrimaryView spelling while FerricPageView.qml calls factory.rootWindow.updateMprisForPrimaryView; the IPC socket fixture still produces a 108-byte path under /tmp/ferric-w4r9/tmp, reaching the SUN_LEN limit.",
+      "source_sha": "75ac227287271e623b197f1ba0fee3dc2e5496d3",
+      "source_tree": "d27c23174550bfcfad4f85199ffaf2cc0f25d4ec",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs"
+      ],
+      "path_owners": {
+        "W04": [
+          "crates/ferric-browser-engine-qt/src/hyprland.rs",
+          "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
+          "crates/ferric-browser-engine-qt/src/background_workers.rs",
+          "crates/ferric-browser-engine-qt/src/lib.rs",
+          "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs",
+          "crates/ferric-browser-engine-qt/src/tests.rs",
+          "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs": "existing_product_source"
+      },
+      "required_change": "Update only the static QML assertion to match the live factory.rootWindow.updateMprisForPrimaryView(webView) call in FerricPageView.qml. No production QML/runtime change. Use a shorter private TMPDIR alias at /tmp/w4r10/t pointing to the isolated build-root tmp directory.",
+      "required_test_impact": "Preserve T112-T114 and existing QML assertions; rerun exact-source focused T112-T114, crate library tests, workspace Clippy and workspace tests.",
+      "locks_unchanged": [
+        "compositor-protocol",
+        "background-workers"
+      ],
+      "attempts_unchanged": true,
+      "max_changed_product_files_unchanged": 8,
+      "preserved": "All W04 contracts, acceptance IDs, security behavior, retry cap and downstream device/performance qualification."
     }
   ]
 }
