@@ -796,7 +796,21 @@ class ProfileIdentityA53Tests(unittest.TestCase):
             self.assertTrue(validate_pack.validate_profile_identity_state_A53(self.plan,state,self.root))
 
     def acceptance_fixture(self):
-        source='a'*40;tree='b'*40;target=str(self.root/'builds'/'identity-target')
+        repository=self.root/'worktrees'/'identity'
+        source_file=repository/self.contract['task']['allowed_paths'][1]
+        if not repository.exists():
+            repository.mkdir(parents=True)
+            git(repository,'init','--initial-branch=main')
+            git(repository,'config','user.name','Pack Fixture');git(repository,'config','user.email','fixture@example.invalid')
+            source_file.parent.mkdir(parents=True);source_file.write_text('fixture baseline\n')
+            git(repository,'add','.');git(repository,'commit','-m','fixture baseline')
+            self.identity_fixture_contract=copy.deepcopy(self.contract)
+            self.identity_fixture_contract['metadata'].update(source_base_sha=git(repository,'rev-parse','HEAD'),
+                                                              source_base_tree=git(repository,'rev-parse','HEAD^{tree}'))
+        source_file.write_text(source_file.read_text()+'fixture child change\n')
+        git(repository,'add','.');git(repository,'commit','-m','fixture child')
+        source=git(repository,'rev-parse','HEAD');tree=git(repository,'rev-parse','HEAD^{tree}')
+        target=str(self.root/'builds'/'identity-target')
         case_map={case:'profile_session::tests::profile_instance_identity_'+case for case in self.contract['identity_cases']}
         log_text='\n'.join('test '+name+' ... ok' for name in case_map.values())+'\ntest result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n'
         gates={}
@@ -807,7 +821,7 @@ class ProfileIdentityA53Tests(unittest.TestCase):
             if name=='focused':cmd+=['profile_instance_identity']
             cmd+=['--','--nocapture']
             snapshot={'sha':source,'tree':tree,'dirty':False}
-            receipt={'result':'passed','exit_code':0,'timed_out':False,'output_limit_exceeded':False,
+            receipt={'cwd':str(repository),'result':'passed','exit_code':0,'timed_out':False,'output_limit_exceeded':False,
                      'require_tests':True,'observed_test_summary_count':8,'observed_skips':0,'observed_failed':0,
                      'source_before':snapshot,'source_after':snapshot,'command':cmd,
                      'execution_binding':{'cargo_target_dir':target,'environment':{'CARGO_TARGET_DIR':target}},
@@ -816,7 +830,7 @@ class ProfileIdentityA53Tests(unittest.TestCase):
         review={'decision':'accept','reviewer':'independent-reviewer',
                 'candidate':{'slice':'F02e2i','commit':source,'tree':tree,'attempt':1},
                 'identity_case_tests':case_map,'unit_gates':gates}
-        evidence={'source_sha':source,'source_tree':tree,'reviewer':review['reviewer'],
+        evidence={'source_repository':str(repository),'source_sha':source,'source_tree':tree,'reviewer':review['reviewer'],
                   'identity_case_tests':case_map,'unit_gates':gates,
                   'identity_evidence_review':'evidence/review.json'}
         record={'status':'accepted','attempts':1,'author':'worker','reviewer':review['reviewer'],
@@ -829,7 +843,32 @@ class ProfileIdentityA53Tests(unittest.TestCase):
         write_json(self.root/'evidence/EVIDENCE.json',evidence)
 
     def check_acceptance(self,record):
-        return validate_pack.validate_identity_acceptance_A53(self.contract['task'],record,self.root)
+        with patch.object(validate_pack,'profile_identity_contract',return_value=self.identity_fixture_contract):
+            return validate_pack.validate_identity_acceptance_A53(self.contract['task'],record,self.root)
+
+    def test_unrelated_commit_and_extra_product_path_rejected(self):
+        for mutation in ['unrelated','extra_path','wrong_cwd']:
+            with self.subTest(mutation=mutation):
+                record,evidence,review=self.acceptance_fixture();repository=Path(evidence['source_repository'])
+                if mutation=='unrelated':
+                    source=git(repository,'commit-tree',evidence['source_tree'],'-m','unrelated fixture commit')
+                elif mutation=='extra_path':
+                    (repository/'extra.rs').write_text('outside scope\n')
+                    git(repository,'add','.');git(repository,'commit','-m','out of scope fixture')
+                    source=git(repository,'rev-parse','HEAD')
+                else:source=evidence['source_sha']
+                tree=git(repository,'rev-parse',f'{source}^{{tree}}')
+                record.update(source_sha=source,source_tree=tree);evidence.update(source_sha=source,source_tree=tree)
+                review['candidate'].update(commit=source,tree=tree)
+                for ref in evidence['unit_gates'].values():
+                    path=self.root/ref['receipt'];receipt=load(path)
+                    for key in ['source_before','source_after']:receipt[key].update(sha=source,tree=tree)
+                    if mutation=='wrong_cwd':receipt['cwd']=str(self.root)
+                    write_json(path,receipt);ref['sha256']=digest(path)
+                self.save_acceptance(evidence,review)
+                self.assertTrue(self.check_acceptance(record))
+                if mutation=='extra_path':
+                    (repository/'extra.rs').unlink();git(repository,'add','.');git(repository,'commit','-m','restore fixture scope')
 
     def test_exact_independently_reviewed_two_gate_identity_evidence(self):
         record,evidence,review=self.acceptance_fixture();self.save_acceptance(evidence,review)

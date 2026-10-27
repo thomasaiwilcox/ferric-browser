@@ -3,7 +3,7 @@
 from __future__ import annotations
 import argparse,json,re,shlex,sys
 from pathlib import Path
-from common import (PACK,load,read_plan,packet,safe_relative,digest,
+from common import (PACK,load,read_plan,packet,safe_relative,digest,git,
                     ATTEMPT_EXCEPTION_TASKS,ATTEMPT_EXCEPTION_AMENDMENTS,
                     ATTEMPT_EXCEPTION_LIMITS,GLOBAL_MAX_ATTEMPTS,effective_attempt_limit,
                     TASK_SUPERSESSION_AMENDMENTS)
@@ -1564,6 +1564,18 @@ def validate_identity_acceptance_A53(task,record,root,pack=PACK):
         source=e["source_sha"];tree=e["source_tree"]
         if not HEX.fullmatch(source) or not HEX.fullmatch(tree):raise ValueError("invalid exact identity source")
         if record.get("source_sha")!=source or record.get("source_tree")!=tree:raise ValueError("accepted prerequisite does not bind exact integrated SHA/tree")
+        repository=Path(e["source_repository"]).resolve()
+        if not repository.is_relative_to((root/"worktrees").resolve()) or not repository.is_dir():
+            raise ValueError("identity source must name its owned retained worktree")
+        base=c["metadata"]["source_base_sha"]
+        if (git(repository,"rev-parse",f"{base}^{{tree}}")!=c["metadata"]["source_base_tree"]
+                or git(repository,"rev-parse",f"{source}^{{tree}}")!=tree
+                or git(repository,"merge-base","--is-ancestor",base,source,check=False).returncode!=0):
+            raise ValueError("identity source does not descend from the accepted exact product baseline")
+        changed=git(repository,"diff","--name-only",base,source).splitlines()
+        product=[p for p in changed if not p.startswith("docs/implementation/everyday-v1/")]
+        if not product or not set(product)<=set(c["task"]["allowed_paths"]):
+            raise ValueError("identity integration changes product paths outside the two-file prerequisite")
         review_path=safe_relative(root,e["identity_evidence_review"])
         if digest(review_path)!=e["identity_evidence_review_sha256"]:raise ValueError("identity evidence-review digest mismatch")
         review=load(review_path);candidate=review.get("candidate",{})
@@ -1585,6 +1597,7 @@ def validate_identity_acceptance_A53(task,record,root,pack=PACK):
             seen.add(str(receipt_path))
             if digest(receipt_path)!=gate["sha256"]:raise ValueError(f"{name} receipt digest mismatch")
             receipt=load(receipt_path)
+            if Path(receipt.get("cwd", "")).resolve()!=repository:raise ValueError(f"{name} receipt ran outside the bound source worktree")
             if (receipt.get("result")!="passed" or receipt.get("exit_code")!=0 or receipt.get("timed_out")
                     or receipt.get("output_limit_exceeded") or receipt.get("require_tests") is not True
                     or receipt.get("observed_test_summary_count",0)<=0 or receipt.get("observed_skips")!=0
@@ -1607,7 +1620,7 @@ def validate_identity_acceptance_A53(task,record,root,pack=PACK):
                 for case,test in case_map.items():
                     if not re.search(r"^test\s+"+re.escape(test)+r"\s+\.\.\.\s+ok\s*$",text,re.M):
                         raise ValueError(f"identity case {case} lacks its actual executed passing test")
-    except (OSError,KeyError,ValueError,TypeError,AttributeError) as exc:errors.append(f"F02e2i: {exc}")
+    except (OSError,KeyError,ValueError,TypeError,AttributeError,RuntimeError) as exc:errors.append(f"F02e2i: {exc}")
     return errors
 
 
