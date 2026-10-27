@@ -254,6 +254,54 @@ def parent_attempt_failure_artifacts_A55(root,contract):
         if failed:failures[name]={"path":value,"sha256":digest(path)}
     return failures
 
+def parent_source_artifacts_A55(root,contract):
+    """Retain even malformed source inputs and unreferenced owned payloads."""
+    meta=contract["metadata"];paths=[safe_relative(root,meta[key]) for key in ("worker_result","source_budget","source_read_log","source_freeze")]
+    folder=safe_relative(root,meta["source_read_log"]).parent/"source-payloads"
+    if folder.is_dir():paths.extend(folder.iterdir())
+    return {str(path.relative_to(root)):{"path":str(path.relative_to(root)),"sha256":digest(path)}
+            for path in paths if path.is_file() and not path.is_symlink()}
+
+def parent_worker_inputs_A55(root, parent, c):
+    m = c["metadata"]
+    reports = {}
+    for key in ("worker_result", "source_budget", "source_read_log"):
+        path = safe_relative(root, m[key])
+        if parent.get(key) != m[key] or digest(path) != parent.get(key + "_sha256"):
+            raise ValueError("A55 fixed worker evidence missing or changed")
+        reports[key] = load(path)
+    result = reports["worker_result"]
+    budget = reports["source_budget"]
+    ledger = reports["source_read_log"]
+    amount = ledger.get("source_bytes_emitted")
+    if (result.get("result") != m["worker_success_result"] or result.get("worker") != parent["author"]
+            or result.get("source_sha") != parent.get("implementation_sha") or result.get("source_tree") != parent.get("implementation_tree")
+            or type(amount) is not int or not 0 <= amount <= 96000 or type(budget.get("source_bytes_emitted")) is not int or budget.get("source_bytes_emitted") != amount
+            or any(type(report.get(key)) is not int for report in (budget, ledger) for key in ("hard_limit", "soft_limit"))
+            or budget.get("hard_limit") != 96000 or budget.get("soft_limit") != 48000
+            or ledger.get("hard_limit") != 96000 or ledger.get("soft_limit") != 48000
+            or ledger.get("assignment_sha256") != parent.get("assignment_sha256")):
+        raise ValueError("A55 actual worker/source/budget/assignment evidence differs")
+    total = 0
+    payload_root = (root / m["source_read_log"]).parent / "source-payloads"
+    expected_names = {f"{index:03d}.bin" for index in range(1, len(ledger["reads"]) + 1)}
+    actual = list(payload_root.iterdir()) if payload_root.exists() else []
+    if {path.name for path in actual} != expected_names or any(path.is_symlink() or not path.is_file() for path in actual):
+        raise ValueError("A55 retained payload inventory differs from the source ledger")
+    for index, read in enumerate(ledger["reads"], 1):
+        path = Path(read["payload"])
+        if not path.is_absolute():
+            path = root / path
+        if (path.resolve().parent != payload_root.resolve() or path.name != f"{index:03d}.bin"
+                or type(read.get("bytes")) is not int or read["bytes"] < 0
+                or path.stat().st_size != read["bytes"] or digest(path) != read.get("sha256")):
+            raise ValueError("A55 exact retained source payload missing or changed")
+        total += read["bytes"]
+    if total != amount:
+        raise ValueError("A55 source counter reset or omitted emitted bytes")
+
+    return {key:{"path":m[key],"sha256":parent[key+"_sha256"]} for key in reports}
+
 def parent_attempt_lifecycle_A55(root,parent,contract):
     meta=contract["metadata"];assignment=load(safe_relative(root,meta["source4_assignment"]))
     path=safe_relative(root,meta["lifecycle"]);raw=path.read_bytes();binding=parent.get("lifecycle_A55",{})
@@ -279,6 +327,11 @@ def parent_attempt_lifecycle_A55(root,parent,contract):
             artifact=event.get("artifact",{})
             if artifact.get("path")!=expected or digest(safe_relative(root,expected))!=artifact.get("sha256"):
                 raise ValueError("A55 fixed artifact deleted, replaced, moved or on an alternate path")
+            if event["phase"]=="source_review_started":
+                frozen=load(safe_relative(root,expected)).get("worker_evidence",{})
+                actual={key:{"path":meta[key],"sha256":digest(safe_relative(root,meta[key]))}
+                        for key in ("worker_result","source_budget","source_read_log")}
+                if frozen!=actual:raise ValueError("A55 frozen worker artifacts deleted, replaced or rolled back")
         elif "artifact" in event:raise ValueError("A55 unexpected phase artifact")
         if event["phase"]=="terminal_failed":
             history=parent.get("attempt_history",{}).get("4")
@@ -354,11 +407,17 @@ def append_parent_attempt_event_A55(root,parent,contract,phase,artifact=None):
         elif phase in {"source_review_started","integrated_review_started","runner_review_started","gate_0_started"}:
             if report.get("source_sha")!=source or report.get("source_tree")!=tree:
                 raise ValueError("A55 phase freeze does not bind the actual source/tree")
+            if phase=="source_review_started":
+                expected=parent_worker_inputs_A55(root,parent,contract)
+                if report.get("worker_evidence")!=expected:
+                    raise ValueError("A55 source freeze must bind exact worker/budget/ledger artifacts")
     if phase=="terminal_failed":
         history=parent.get("attempt_history",{}).get("4",{})
         if (history.get("attempt")!=4 or history.get("result")!="failed_terminal"
                 or history.get("assignment_sha256")!=parent.get("assignment_sha256") or history.get("terminal")!=event.get("artifact")):
             raise ValueError("A55 terminal requires retained failed4 history")
+        if report.get("source_artifacts")!=parent_source_artifacts_A55(root,contract):
+            raise ValueError("A55 terminal must retain actual source inputs and every owned payload")
         event["history_record_sha256"]=identity_attempt_event_hash_A54(history)
     identity_attempt_audit_A54(root,parent,contract,events,create_event=event)
     with path.open(mode) as output:

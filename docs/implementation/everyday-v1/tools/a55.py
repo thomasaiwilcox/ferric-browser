@@ -6,7 +6,7 @@ from pathlib import Path
 from common import (PACK, load, digest, safe_relative, git, packet,
                     ATTEMPT_EXCEPTION_AMENDMENTS, ATTEMPT_EXCEPTION_LIMITS, GLOBAL_MAX_ATTEMPTS,
                     parent_attempt_lifecycle_A55, parent_attempt_phases_A55,
-                    parent_attempt_failure_artifacts_A55, identity_review_decision_A54)
+                    parent_attempt_failure_artifacts_A55, parent_source_artifacts_A55, parent_worker_inputs_A55, identity_review_decision_A54)
 
 CONTRACT_SHA256 = "1dc6bdf60fc9ad9a9994ff23dc87a3234256e9d80e14d5252b56b02d4ceaa585"
 
@@ -178,38 +178,10 @@ def validate_pack_authority_A55(root, parent, c):
 
 
 def validate_worker_evidence_A55(root, parent, c):
-    m = c["metadata"]
-    reports = {}
-    for key in ("worker_result", "source_budget", "source_read_log"):
-        path = safe_relative(root, m[key])
-        if parent.get(key) != m[key] or digest(path) != parent.get(key + "_sha256"):
-            raise ValueError("A55 fixed worker evidence missing or changed")
-        reports[key] = load(path)
-    result = reports["worker_result"]
-    budget = reports["source_budget"]
-    ledger = reports["source_read_log"]
-    amount = ledger.get("source_bytes_emitted")
-    if (result.get("result") != m["worker_success_result"] or result.get("worker") != parent["author"]
-            or result.get("source_sha") != parent.get("implementation_sha") or result.get("source_tree") != parent.get("implementation_tree")
-            or type(amount) is not int or not 0 <= amount <= 96000 or type(budget.get("source_bytes_emitted")) is not int or budget.get("source_bytes_emitted") != amount
-            or any(type(report.get(key)) is not int for report in (budget, ledger) for key in ("hard_limit", "soft_limit"))
-            or budget.get("hard_limit") != 96000 or budget.get("soft_limit") != 48000
-            or ledger.get("hard_limit") != 96000 or ledger.get("soft_limit") != 48000
-            or ledger.get("assignment_sha256") != parent.get("assignment_sha256")):
-        raise ValueError("A55 actual worker/source/budget/assignment evidence differs")
-    total = 0
-    payload_root = (root / m["source_read_log"]).parent / "source-payloads"
-    for index, read in enumerate(ledger["reads"], 1):
-        path = Path(read["payload"])
-        if not path.is_absolute():
-            path = root / path
-        if (path.resolve().parent != payload_root.resolve() or path.name != f"{index:03d}.bin"
-                or type(read.get("bytes")) is not int or read["bytes"] < 0
-                or path.stat().st_size != read["bytes"] or digest(path) != read.get("sha256")):
-            raise ValueError("A55 exact retained source payload missing or changed")
-        total += read["bytes"]
-    if total != amount:
-        raise ValueError("A55 source counter reset or omitted emitted bytes")
+    expected = parent_worker_inputs_A55(root, parent, c)
+    frozen = load(safe_relative(root, c["metadata"]["source_freeze"])).get("worker_evidence", {})
+    if frozen != expected:
+        raise ValueError("A55 worker evidence changed after immutable source freeze")
 
 
 def validate_native_binding_A55(root, parent, c, events, authority):
@@ -343,6 +315,12 @@ def validate_state_A55(plan, state, root, initial=False, pack=PACK):
             for reference in retained.values():
                 if digest(safe_relative(root, reference["path"])) != reference["sha256"]:
                     raise ValueError("A55 terminal artifact deleted or changed")
+            source_artifacts = terminal.get("source_artifacts", {})
+            if any(source_artifacts.get(key) != value for key, value in parent_source_artifacts_A55(root, c).items()):
+                raise ValueError("A55 terminal source inventory changed")
+            for reference in source_artifacts.values():
+                if digest(safe_relative(root, reference["path"])) != reference["sha256"]:
+                    raise ValueError("A55 terminal source input/payload was deleted or changed")
         elif phase == "terminal_failed" or parent.get("status") == "failed":
             raise ValueError("A55 failed4 requires permanent terminal marker/history")
         if (parent.get("status") == "accepted") != (phase == "accepted"):

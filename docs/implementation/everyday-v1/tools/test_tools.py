@@ -1440,6 +1440,9 @@ class ParentRepairA55Tests(TempRepo):
     def report(self,phase):
         worker=phase in {'source_review_started','source_review_passed'};source='a'*40 if worker else 'c'*40;tree='b'*40 if worker else 'd'*40
         report={'source_sha':source,'source_tree':tree,'synthetic':True}
+        if phase=='source_review_started':
+            report['worker_evidence']={key:{'path':self.m[key],'sha256':digest(self.root/self.m[key])}
+                                       for key in ('worker_result','source_budget','source_read_log') if (self.root/self.m[key]).is_file()}
         if phase.endswith('review_passed') or phase=='accepted':
             report.update(decision='accept',reviewer='fixture-peer',candidate={'slice':'F02e2s','amendment':'A55','attempt':4,'commit':source,'tree':tree})
         elif phase.startswith('gate_') and phase.endswith('_passed'):
@@ -1458,7 +1461,8 @@ class ParentRepairA55Tests(TempRepo):
 
     def terminal(self):
         path=self.root/self.m['terminal_marker']
-        write_json(path,{'slice':'F02e2s','attempt':4,'result':'failed','no_retry':True,'failed_artifacts':common.parent_attempt_failure_artifacts_A55(self.root,self.c)})
+        write_json(path,{'slice':'F02e2s','attempt':4,'result':'failed','no_retry':True,'failed_artifacts':common.parent_attempt_failure_artifacts_A55(self.root,self.c),
+                         'source_artifacts':common.parent_source_artifacts_A55(self.root,self.c)})
         self.p['attempt_history']['4']={'attempt':4,'result':'failed_terminal','assignment_sha256':self.p['assignment_sha256'],'terminal':{'path':self.m['terminal_marker'],'sha256':digest(path)}}
         common.append_parent_attempt_event_A55(self.root,self.p,self.c,'terminal_failed',self.m['terminal_marker'])
         self.p.update(status='failed',source_changes_authorized=False,compile_test_authorized=False,native_work_authorized=False)
@@ -1655,10 +1659,32 @@ class ParentRepairA55Tests(TempRepo):
         ledger.update(source_bytes_emitted=2,reads=[{'payload':str(payload),'bytes':2,'sha256':digest(payload)}]);write_json(self.root/m['source_read_log'],ledger)
         write_json(self.root/m['source_budget'],{'source_bytes_emitted':2,'hard_limit':96000,'soft_limit':48000})
         for key in ('source_read_log','source_budget'):self.p[key+'_sha256']=digest(self.root/m[key])
+        self.advance('source_review_started')
         a55.validate_worker_evidence_A55(self.root,self.p,self.c)
         ledger['source_bytes_emitted']=0;write_json(self.root/m['source_read_log'],ledger);write_json(self.root/m['source_budget'],{'source_bytes_emitted':0,'hard_limit':96000,'soft_limit':48000})
         for key in ('source_read_log','source_budget'):self.p[key+'_sha256']=digest(self.root/m[key])
         with self.assertRaises(ValueError):a55.validate_worker_evidence_A55(self.root,self.p,self.c)
+
+    def test_frozen_worker_budget_and_ledger_cannot_roll_back_together(self):
+        self.begin();m=self.m;payload=(self.root/m['source_read_log']).parent/'source-payloads/001.bin';payload.parent.mkdir();payload.write_bytes(b'ab')
+        ledger=load(self.root/m['source_read_log']);ledger.update(source_bytes_emitted=2,reads=[{'payload':str(payload),'bytes':2,'sha256':digest(payload)}])
+        write_json(self.root/m['source_read_log'],ledger);write_json(self.root/m['source_budget'],{'source_bytes_emitted':2,'hard_limit':96000,'soft_limit':48000})
+        for key in ('source_read_log','source_budget'):self.p[key+'_sha256']=digest(self.root/m[key])
+        self.advance('source_review_started');a55.validate_worker_evidence_A55(self.root,self.p,self.c)
+        ledger.update(source_bytes_emitted=0,reads=[]);write_json(self.root/m['source_read_log'],ledger);write_json(self.root/m['source_budget'],{'source_bytes_emitted':0,'hard_limit':96000,'soft_limit':48000})
+        for key in ('source_read_log','source_budget'):self.p[key+'_sha256']=digest(self.root/m[key])
+        with self.assertRaises(ValueError):a55.validate_worker_evidence_A55(self.root,self.p,self.c)
+        with self.assertRaisesRegex(ValueError,'frozen worker artifacts'):common.parent_attempt_lifecycle_A55(self.root,self.p,self.c)
+        payload.unlink()
+        with self.assertRaisesRegex(ValueError,'immutable source freeze'):a55.validate_worker_evidence_A55(self.root,self.p,self.c)
+        frozen=load(self.root/m['source_freeze']);frozen['worker_evidence']=self.report('source_review_started')['worker_evidence'];write_json(self.root/m['source_freeze'],frozen)
+        with self.assertRaises(ValueError):common.parent_attempt_lifecycle_A55(self.root,self.p,self.c)
+
+    def test_unreferenced_payload_rejects_zero_ledger_before_freeze(self):
+        self.begin();payload=(self.root/self.m['source_read_log']).parent/'source-payloads/001.bin';payload.parent.mkdir();payload.write_bytes(b'ab')
+        before=(self.root/self.m['lifecycle']).read_bytes()
+        with self.assertRaisesRegex(ValueError,'payload inventory'):self.advance('source_review_started')
+        self.assertEqual((self.root/self.m['lifecycle']).read_bytes(),before)
 
     def test_actual_git_content_scope_and_failed_candidate_base(self):
         repository=self.root/'worktrees/F02e2s-a4';git(self.repo,'worktree','add','--detach',str(repository),'HEAD')
