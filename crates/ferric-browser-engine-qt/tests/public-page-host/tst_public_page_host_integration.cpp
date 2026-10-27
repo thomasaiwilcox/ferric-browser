@@ -310,6 +310,8 @@ private:
         QCOMPARE(first->pageOwner(), owner);
         QVERIFY(!first->pageOwnerToken().isEmpty());
         QVERIFY(!first->hostToken().isEmpty());
+        QCOMPARE(first->chromeView()->rootObject()->property("browserUi").value<QObject *>(),
+                 browserUi.get());
         QCOMPARE(first->chromeView()->rootObject()->property("statusText").toString(),
                  browserUi->property("status_text").toString());
         const int statusIndex = browserUi->metaObject()->indexOfProperty("status_text");
@@ -355,6 +357,38 @@ private:
         const int originalTabCount = browserUi->property("tab_count").toInt();
         const int originalActiveIndex = browserUi->property("active_tab_index").toInt();
         const QString ownerToken = first->pageOwnerToken();
+
+        // Direct transfer must capture current page focus even without a prior detach.
+        second->setGeometry(first->geometry());
+        second->show();
+        second->activateWindow();
+        second->chromeView()->setFocus(Qt::OtherFocusReason);
+        QTRY_VERIFY_WITH_TIMEOUT(pageViewHasFocus(second->chromeView()), 3000);
+        first->activateWindow();
+        originalView->setFocus(Qt::OtherFocusReason);
+        QTRY_VERIFY_WITH_TIMEOUT(pageViewHasFocus(originalView), 3000);
+        QVERIFY(requestHostOperation(
+            browserUi.get(), "attach_page_host", tab, profileId,
+            second->hostToken(), ownerToken));
+        const QVariant directAttach = takeReparentRequest(browserUi.get());
+        QVERIFY(directAttach.isValid());
+        QVERIFY(second->applyNativeRequest(directAttach));
+        QCOMPARE(first->pageView(), nullptr);
+        QCOMPARE(second->pageView(), originalView);
+        QCOMPARE(originalView->page(), originalPage);
+        second->activateWindow();
+        QTRY_VERIFY_WITH_TIMEOUT(pageViewHasFocus(originalView), 3000);
+        QVERIFY(requestHostOperation(
+            browserUi.get(), "attach_page_host", tab, profileId,
+            first->hostToken(), ownerToken));
+        const QVariant directReturn = takeReparentRequest(browserUi.get());
+        QVERIFY(directReturn.isValid());
+        QVERIFY(first->applyNativeRequest(directReturn));
+        QCOMPARE(second->pageView(), nullptr);
+        QCOMPARE(first->pageView(), originalView);
+        QCOMPARE(originalView->page(), originalPage);
+        first->activateWindow();
+        QTRY_VERIFY_WITH_TIMEOUT(pageViewHasFocus(originalView), 3000);
 
         QVERIFY(requestHostOperation(
             browserUi.get(),

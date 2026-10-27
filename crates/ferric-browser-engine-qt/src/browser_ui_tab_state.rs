@@ -882,7 +882,7 @@ impl qobject::BrowserUi {
                 .state
                 .as_ref()
                 .and_then(|state| state.profile_instance_id())
-                .map(ToString::to_string)
+                .map(|profile| profile.to_string())
             else {
                 return false;
             };

@@ -160,7 +160,8 @@ FerricPublicPageHost::FerricPublicPageHost(
     m_chromeView->setObjectName(QStringLiteral("ferricWidgetChrome"));
     m_chromeView->setResizeMode(QQuickWidget::SizeRootObjectToView);
     m_chromeView->setFocusPolicy(Qt::StrongFocus);
-    m_chromeView->rootContext()->setContextProperty(QStringLiteral("browserUi"), browserUi);
+    m_chromeView->setInitialProperties(
+        {{QStringLiteral("browserUi"), QVariant::fromValue(browserUi)}});
     m_chromeView->setSource(
         QUrl(QStringLiteral(
             "qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricWidgetChrome.qml")));
@@ -381,8 +382,8 @@ bool FerricPublicPageHost::applyNativeRequest(const QVariant &request)
     bool restoreFocus = false;
     FerricPublicPageHost *source = registry.owner_hosts.value(pageOwnerToken).data();
     if (source && source != this) {
-        restoreFocus = source->m_pageViewHadFocus;
         view = source->takePageViewForTransfer(owner);
+        restoreFocus = source->m_pageViewHadFocus;
     } else if (source == this && m_pageOwner == owner && m_pageView) {
         if (!m_detached) {
             return true;
