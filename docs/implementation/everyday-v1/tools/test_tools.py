@@ -225,6 +225,24 @@ class StructureTests(unittest.TestCase):
                 state['slices']['F02e2']['attempts']=attempts;write_json(path,state)
                 errors=validate_pack.validate_state(p,path,pack=PACK)
                 self.assertEqual(not any('F02e2: attempt limit' in e for e in errors),valid)
+    def test_a49_static_qml_prerequisite_is_separate_and_matrix_failure_is_exact(self):
+        p=load(PACK/'control/plan.json')
+        self.assertEqual(validate_pack.validate_harness_prerequisite_split_A49(p,PACK),[])
+        tasks={x['id']:x for x in p['slices']}
+        self.assertEqual(tasks['F02e2']['test_ids'],['T014e2'])
+        self.assertEqual(tasks['F02e2q']['test_ids'],['T014e2q'])
+        self.assertNotIn('max_attempts',tasks['F02e2q'])
+        widened=copy.deepcopy(p)
+        next(x for x in widened['slices'] if x['id']=='F02e2q')['test_ids']=['T014e2']
+        self.assertTrue(any('F02e2q:' in e for e in validate_pack.validate_harness_prerequisite_split_A49(widened,PACK)))
+        tests=load(PACK/'control/test_matrix.json')['tests']
+        self.assertEqual(validate_pack.validate_matrix_execution_status(tests),[])
+        changed=copy.deepcopy(tests)
+        next(x for x in changed if x['id']=='T014e2')['binding']=next(x for x in changed if x['id']=='T014e2')['binding'].replace('2e35b498','0e35b498')
+        self.assertTrue(any('T014e2: A48 historical failure' in e for e in validate_pack.validate_matrix_execution_status(changed)))
+        changed=copy.deepcopy(tests)
+        next(x for x in changed if x['id']=='T014e2q')['result']='passed'
+        self.assertTrue(any('only the exact A48 T014e2 failure' in e for e in validate_pack.validate_matrix_execution_status(changed)))
     def test_a45_native_retry_is_exact_same_source_and_not_attempt6(self):
         p=load(PACK/'control/plan.json')
         self.assertEqual(validate_pack.validate_native_gate_retries(p,PACK),[])

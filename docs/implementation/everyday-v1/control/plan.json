@@ -4367,6 +4367,50 @@
       "parent_id": "F02e"
     },
     {
+      "id": "F02e2q",
+      "title": "Qualify static CXX-Qt QML registration in a standalone public-page-host harness",
+      "lane": "presentation",
+      "depends_on": [
+        "F02e1"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_static_qml_registration.cpp"
+      ],
+      "steps": [
+        "Add only a dedicated static-link test target and its CTest registration T014e2q to the existing public-page-host CMake harness; build target name must be static_qml_registration_tests and link the exact Cargo-built ferric_browser_engine_qt static archive plus required pinned Qt targets.",
+        "In the new test file, call cxx_qt_init_crate_ferric_browser_engine_qt() before the first QML module use, import io.github.ferricbrowser 1.0, construct BrowserUi, and assert component readiness and a non-null object. Include QQmlComponent.errors() in failure output.",
+        "Do not edit or execute T014e2, the F02e2 page-reparent integration test, any production runtime path, or any parent test registration. This task proves only the standalone static QML initializer and BrowserUi construction; it cannot accept F02e2 or unblock F02e3."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "public-page-host",
+        "test-registration"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014e2q"
+      ],
+      "max_changed_product_files": 2,
+      "worker_may_delegate": false,
+      "new_paths_notice": "A49 creates a separate prerequisite task with default max_attempts 3. The only shared file is the public-page-host CMakeLists: F02e2q owns only the new static_qml_registration_tests target and T014e2q registration; F02e2 retains the existing T014e2 target, test source and acceptance contract. No parent retry, counter reset, T014e2 rerun or downstream unblock is authorized.",
+      "slice_file": "slices/F02e2q.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_static_qml_registration.cpp",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "crates/ferric-browser-engine-qt/tests/portal/tst_browser_file_choosers.cpp",
+        "crates/ferric-browser-engine-qt/src/lib.rs"
+      ],
+      "parent_id": "F02e"
+    },
+    {
       "id": "F02e3",
       "title": "Adapt navigation and isolated scripts to public pages",
       "lane": "presentation",
@@ -4917,6 +4961,75 @@
       "tooling_file_cap": 3,
       "source_review_before_native": true,
       "stop_after_any_failure": true
+    }
+  },
+  "harness_prerequisite_splits_A49": {
+    "amendment": "A49",
+    "review_path": "evidence/A49/PLAN_REVIEW-r2_d28.json",
+    "review_sha256": "60d234b4f02f27604d19ebdf893179de015cd13cbb7963991d5d908e25684926",
+    "review_budget_path": "evidence/A49/PLAN_REVIEW_BUDGET-r2_d28.json",
+    "review_budget_sha256": "6bb486e64b76685667a20bfbe74992b4287d78e4176e9b39bcfef8e297a515fb",
+    "parent_slice": "F02e2",
+    "parent_status": "failed",
+    "parent_attempts": 6,
+    "parent_attempt_limit": 6,
+    "parent_test_id": "T014e2",
+    "parent_test_owner": "F02e2",
+    "parent_test_result": "failed",
+    "parent_run_sha256": "e6b0695df918b20713c8c86d008e99c1ac3f7a68a8852fea40d37d2fd3ae9eb1",
+    "parent_receipt_sha256": "2e35b498a9a5db8802bac48bf3f28fbfed17ace1ac70810170bcc6bc38d9f32a",
+    "child_slice": "F02e2q",
+    "child_test_id": "T014e2q",
+    "child_test_owner": "F02e2q",
+    "child_test_result": "not_run",
+    "child_allowed_paths": [
+      "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/tst_static_qml_registration.cpp"
+    ],
+    "child_locks": [
+      "public-page-host",
+      "test-registration"
+    ],
+    "child_dependencies": [
+      "F02e1"
+    ],
+    "child_default_attempt_limit": 3,
+    "child_target_name": "static_qml_registration_tests",
+    "child_ctest_name": "T014e2q",
+    "fresh_native_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2q-a1-qt6112-qmake",
+    "cargo_target_dir": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2q-a1-qt6112-qmake/cargo-target",
+    "cmake_dir": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2q-a1-qt6112-qmake/cmake",
+    "sdk": {
+      "prefix": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
+      "expected_version": "6.11.2",
+      "qmake": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/bin/qmake",
+      "prepend_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/bin",
+      "pkg_config_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig",
+      "pkg_config_libdir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig",
+      "cmake_prefix_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
+      "qt6_dir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/cmake/Qt6",
+      "minimum_kf6_window_system": "6.28",
+      "last_verified_kf6_window_system": "6.31.0",
+      "reverify_before_lease": true
+    },
+    "compile_gate_controls": {
+      "cc_enable_debug_output": "1",
+      "include_guard": "docs/implementation/everyday-v1/tools/run_gate.py",
+      "qt_include_prefix": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
+      "live_compiler_process_monitor": true,
+      "stop_and_close_lease_on_failure": true
+    },
+    "prohibitions": {
+      "attempt_seven_authorized": false,
+      "parent_test_rerun_authorized": false,
+      "same_source_parent_retry_authorized": false,
+      "child_may_accept_parent": false,
+      "child_unblocks_F02e3": false
+    },
+    "matrix_exception": {
+      "only_row": "T014e2",
+      "permitted_result": "failed",
+      "binding": "A48 run and receipt paths and SHA-256 values exactly as recorded in control/test_matrix.json; all other historical row statuses remain not_run unless separately amended."
     }
   }
 }

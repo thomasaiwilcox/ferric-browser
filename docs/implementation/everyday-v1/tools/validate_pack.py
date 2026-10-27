@@ -54,7 +54,136 @@ A48_TOOLING_PATHS=[
     "docs/implementation/everyday-v1/tools/validate_pack.py",
     "docs/implementation/everyday-v1/tools/test_tools.py",
 ]
+A48_T014E2_FAILURE_BINDING=(
+    "A48 failed: run evidence/F02e2-a6/native/NATIVE_RUN-A48.json "
+    "(SHA-256 e6b0695df918b20713c8c86d008e99c1ac3f7a68a8852fea40d37d2fd3ae9eb1); "
+    "receipt evidence/F02e2-a6/native/T014e2-A48/receipt.json "
+    "(SHA-256 2e35b498a9a5db8802bac48bf3f28fbfed17ace1ac70810170bcc6bc38d9f32a); "
+    "CTest exit 8; QtTest 2 passed, 1 failed, 0 skipped; BrowserUi QML registration failed before page-reparent assertions."
+)
+A49_CHILD_PATHS=[
+    "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+    "crates/ferric-browser-engine-qt/tests/public-page-host/tst_static_qml_registration.cpp",
+]
+A49_CHILD_LOCKS=["public-page-host","test-registration"]
 SUPERSESSION_AMENDMENT="A37"
+
+def validate_matrix_execution_status(tests):
+    """Allow only the exact, receipt-bound A48 T014e2 historical failure."""
+    errors=[]
+    rows={x.get("id"):x for x in tests if isinstance(x,dict)}
+    parent=rows.get("T014e2")
+    if (parent is None or parent.get("slice")!="F02e2"
+            or parent.get("result")!="failed"
+            or parent.get("binding")!=A48_T014E2_FAILURE_BINDING):
+        errors.append("T014e2: A48 historical failure must retain its exact failed result and receipt/run binding")
+    for x in tests:
+        if x.get("id")!="T014e2" and x.get("result")!="not_run":
+            errors.append(f"{x.get('id')}: only the exact A48 T014e2 failure may have an execution result in the plan matrix")
+    return errors
+
+def validate_harness_prerequisite_split_A49(plan,pack=PACK):
+    """Enforce A49's separate harness-only task without reopening F02e2."""
+    errors=[]
+    expected={
+        "amendment":"A49",
+        "review_path":"evidence/A49/PLAN_REVIEW-r2_d28.json",
+        "review_sha256":"60d234b4f02f27604d19ebdf893179de015cd13cbb7963991d5d908e25684926",
+        "review_budget_path":"evidence/A49/PLAN_REVIEW_BUDGET-r2_d28.json",
+        "review_budget_sha256":"6bb486e64b76685667a20bfbe74992b4287d78e4176e9b39bcfef8e297a515fb",
+        "parent_slice":"F02e2","parent_status":"failed","parent_attempts":6,
+        "parent_attempt_limit":6,"parent_test_id":"T014e2","parent_test_owner":"F02e2",
+        "parent_test_result":"failed",
+        "parent_run_sha256":"e6b0695df918b20713c8c86d008e99c1ac3f7a68a8852fea40d37d2fd3ae9eb1",
+        "parent_receipt_sha256":"2e35b498a9a5db8802bac48bf3f28fbfed17ace1ac70810170bcc6bc38d9f32a",
+        "child_slice":"F02e2q","child_test_id":"T014e2q","child_test_owner":"F02e2q",
+        "child_test_result":"not_run","child_allowed_paths":A49_CHILD_PATHS,
+        "child_locks":A49_CHILD_LOCKS,"child_dependencies":["F02e1"],
+        "child_default_attempt_limit":3,"child_target_name":"static_qml_registration_tests",
+        "child_ctest_name":"T014e2q",
+        "fresh_native_target":"/home/tom/Projects/ferric-everyday-work/builds/native-F02e2q-a1-qt6112-qmake",
+        "cargo_target_dir":"/home/tom/Projects/ferric-everyday-work/builds/native-F02e2q-a1-qt6112-qmake/cargo-target",
+        "cmake_dir":"/home/tom/Projects/ferric-everyday-work/builds/native-F02e2q-a1-qt6112-qmake/cmake",
+        "sdk":{
+            "prefix":"/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
+            "expected_version":"6.11.2",
+            "qmake":"/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/bin/qmake",
+            "prepend_path":"/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/bin",
+            "pkg_config_path":"/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig",
+            "pkg_config_libdir":"/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig",
+            "cmake_prefix_path":"/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
+            "qt6_dir":"/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/cmake/Qt6",
+            "minimum_kf6_window_system":"6.28","last_verified_kf6_window_system":"6.31.0",
+            "reverify_before_lease":True,
+        },
+        "compile_gate_controls":{
+            "cc_enable_debug_output":"1",
+            "include_guard":"docs/implementation/everyday-v1/tools/run_gate.py",
+            "qt_include_prefix":"/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
+            "live_compiler_process_monitor":True,"stop_and_close_lease_on_failure":True,
+        },
+        "prohibitions":{
+            "attempt_seven_authorized":False,"parent_test_rerun_authorized":False,
+            "same_source_parent_retry_authorized":False,"child_may_accept_parent":False,
+            "child_unblocks_F02e3":False,
+        },
+        "matrix_exception":{
+            "only_row":"T014e2","permitted_result":"failed",
+            "binding":"A48 run and receipt paths and SHA-256 values exactly as recorded in control/test_matrix.json; all other historical row statuses remain not_run unless separately amended.",
+        },
+    }
+    if plan.get("harness_prerequisite_splits_A49")!=expected:
+        errors.append("A49: harness prerequisite split record differs from the independently accepted scope")
+    tasks={t.get("id"):t for t in plan.get("slices",[]) if isinstance(t,dict)}
+    parent=tasks.get("F02e2");child=tasks.get("F02e2q");downstream=tasks.get("F02e3")
+    if (parent is None or parent.get("max_attempts")!=6
+            or parent.get("test_ids")!=["T014e2"]
+            or parent.get("locks")!=["public-page-host","bridge","test-registration","browser-ui-input"]):
+        errors.append("A49: preserve F02e2's terminal six-attempt limit, T014e2 ownership and original locks")
+    if (child is None or child.get("allowed_paths")!=A49_CHILD_PATHS
+            or child.get("locks")!=A49_CHILD_LOCKS
+            or child.get("depends_on")!=["F02e1"]
+            or child.get("test_ids")!=["T014e2q"]
+            or child.get("max_changed_product_files")!=2
+            or child.get("max_attempts") is not None
+            or child.get("recipe")!="application"
+            or child.get("parent_id")!="F02e"):
+        errors.append("F02e2q: child task differs from its independently reviewed harness-only scope")
+    if downstream is None or "F02e2" not in downstream.get("depends_on",[]) or "F02e2q" in downstream.get("depends_on",[]):
+        errors.append("F02e3: retain the failed F02e2 dependency; F02e2q cannot unblock the feature chain")
+    tests=load(pack/"control/test_matrix.json")["tests"]
+    errors+=validate_matrix_execution_status(tests)
+    by_id={x.get("id"):x for x in tests}
+    if by_id.get("T014e2q",{}).get("slice")!="F02e2q" or by_id.get("T014e2q",{}).get("result")!="not_run":
+        errors.append("T014e2q: child must own a separate not_run application test row")
+    try:
+        source_map=load(pack/"control/source-map.execution.json")
+        records=[x for x in source_map.get("execution_amendments",[]) if isinstance(x,dict) and x.get("id")=="A49"]
+        if len(records)!=1:
+            errors.append("A49: source map must contain exactly one accepted child ownership record")
+        else:
+            record=records[0]
+            if (record.get("parent_test_owner")!="F02e2" or record.get("parent_test")!="T014e2"
+                    or record.get("child_test_owner")!="F02e2q" or record.get("child_test")!="T014e2q"
+                    or record.get("fresh_native_target")!=expected["fresh_native_target"]
+                    or record.get("child_target_name")!="static_qml_registration_tests"
+                    or record.get("parent_test_rerun_authorized") is not False
+                    or record.get("child_unblocks_F02e3") is not False):
+                errors.append("A49: source map changes test ownership, target or terminal boundaries")
+            owners=record.get("path_owners",{})
+            if (not any("T014e2 registration" in x for x in owners.get("F02e2",[]))
+                    or not any("T014e2q registration" in x for x in owners.get("F02e2q",[]))):
+                errors.append("A49: source map must assign CMake registrations to their separate task owners")
+    except (OSError,ValueError,TypeError,AttributeError) as exc:
+        errors.append(f"A49: cannot validate source-map ownership: {exc}")
+    amendment_path=pack/"control/AMENDMENTS.md"
+    if amendment_path.is_file():
+        section=amendment_path.read_text().split("## A49",1)
+        if len(section)<2 or any(x not in section[1].split("\n## ",1)[0] for x in ("F02e2q","T014e2q","6/6","T014e2")):
+            errors.append("A49: accepted amendment record must document the child and preserved terminal parent")
+    else:
+        errors.append("A49: missing accepted amendment record")
+    return errors
 
 def validate_edit_path_budget(task,pack=PACK):
     """Enforce the 8-path default and exact reviewed F02e1/A38 or F02e2/A42/A44 exceptions."""
@@ -461,6 +590,7 @@ def validate_structure(pack=PACK,plan=None):
         errors+=validate_attempt_limits(plan,tasks)
         errors+=validate_native_gate_retries(plan,pack)
         errors+=validate_source_attempt_extension_A48(plan,pack)
+        errors+=validate_harness_prerequisite_split_A49(plan,pack)
         errors+=validate_supersession_structure(tasks,tests)
         reqids=[r["id"] for r in reqs]
         if len(set(reqids))!=len(reqids):errors.append("Duplicate requirement IDs")
@@ -483,7 +613,6 @@ def validate_structure(pack=PACK,plan=None):
         for x in tests:
             if x["slice"] not in tasks:errors.append(f"{x['id']}: unknown owner")
             if x["level"] not in LEVELS:errors.append(f"{x['id']}: unknown evidence level")
-            if x["result"]!="not_run":errors.append(f"Authoring matrix must not claim execution: {x['id']}")
         for r in reqs:
             if r["owner"] not in tasks:errors.append(f"{r['id']}: unknown owner")
         visiting=set();seen=set()
@@ -569,7 +698,14 @@ def validate_state(plan,state_path,strict=False,pack=PACK):
         if set(state["slices"])!=set(tasks):raise ValueError("State task inventory differs from plan")
         errors+=validate_attempt_limits(plan,tasks)
         errors+=validate_source_attempt_extension_A48(plan,pack)
+        errors+=validate_harness_prerequisite_split_A49(plan,pack)
         errors+=validate_supersession_state(plan,state,strict)
+        if state.get("run_id") is not None:
+            parent_state=state["slices"].get("F02e2",{})
+            if parent_state.get("status")!="failed" or parent_state.get("attempts")!=6:
+                errors.append("F02e2: A49 requires the parent to remain failed at attempts 6/6")
+            if state["slices"].get("F02e3",{}).get("status")=="accepted":
+                errors.append("F02e3: cannot be accepted while terminal parent F02e2 is failed")
         for sid,t in tasks.items():
             s=state["slices"][sid]
             if s["status"] not in STATUSES:errors.append(f"{sid}: invalid status")

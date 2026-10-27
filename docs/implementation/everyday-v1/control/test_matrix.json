@@ -1756,8 +1756,18 @@
       "level": "application",
       "name": "Implement Widgets host with embedded QML chrome",
       "expected": "Keep the existing QApplication and add WebEngineWidgets/QuickWidgets to the pinned SDK module graph. Embed reusable existing QML chrome in a Widgets host; preserve appearance, geometry and native dialog parent identity. Attach/detach the same owned QWebEnginePage for tab/window presentation. Host transfer preserves document state and never recreates a URL or admits a foreign profile. Request attach/detach through typed BrowserUi bridge operations keyed by opaque host/page-owner tokens and existing TabId plus page/document generation. Verify Rust validates live owner/profile/generation and reuses EngineEffect::ReparentView through the existing typed native-request projection; the projection carries captured document identity and tokens for stale rejection before host attachment. Stale, retired and foreign-profile requests produce no effect or attachment. Do not introduce a new core event/effect or parallel string command channel; if ReparentView cannot safely represent the operation, stop for another reviewed scope correction. Keep lifecycle policy outside QML; exercise focus, scale and safe host replacement.",
+      "result": "failed",
+      "binding": "A48 failed: run evidence/F02e2-a6/native/NATIVE_RUN-A48.json (SHA-256 e6b0695df918b20713c8c86d008e99c1ac3f7a68a8852fea40d37d2fd3ae9eb1); receipt evidence/F02e2-a6/native/T014e2-A48/receipt.json (SHA-256 2e35b498a9a5db8802bac48bf3f28fbfed17ace1ac70810170bcc6bc38d9f32a); CTest exit 8; QtTest 2 passed, 1 failed, 0 skipped; BrowserUi QML registration failed before page-reparent assertions."
+    },
+    {
+      "id": "T014e2q",
+      "slice": "F02e2q",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Prove static CXX-Qt QML initialization constructs BrowserUi",
+      "expected": "Call the generated cxx_qt_init_crate_ferric_browser_engine_qt() initializer before QML use in a dedicated static-link test executable. Import io.github.ferricbrowser 1.0; assert QQmlComponent readiness and a non-null BrowserUi. Report component errors on failure. Do not run T014e2 or claim page-reparent behavior.",
       "result": "not_run",
-      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+      "binding": "Register exact static_qml_registration_tests executable and T014e2q CTest; run only this child test with nonzero discovery and zero skips on exact integrated source."
     },
     {
       "id": "T014e3",
@@ -1820,5 +1830,5 @@
       "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
     }
   ],
-  "note": "Specifications only. Nothing is marked passed at authoring."
+  "note": "Specifications with one receipt-bound historical failure recorded. No case is marked passed at authoring."
 }
