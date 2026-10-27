@@ -412,8 +412,10 @@ QWebEngineView *FerricPublicPageHost::takePageViewForTransfer(FerricPublicPageOw
     }
     QWebEngineView *view = m_pageView;
     QWidget *focusWidget = QApplication::focusWidget();
-    m_pageViewHadFocus = m_pageViewHadFocus || view->hasFocus()
-        || (focusWidget && view->isAncestorOf(focusWidget));
+    if (!m_detached) {
+        m_pageViewHadFocus = view->hasFocus()
+            || (focusWidget && view->isAncestorOf(focusWidget));
+    }
     m_layout->removeWidget(view);
     view->hide();
     view->setParent(nullptr);

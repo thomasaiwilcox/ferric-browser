@@ -390,6 +390,32 @@ private:
         first->activateWindow();
         QTRY_VERIFY_WITH_TIMEOUT(pageViewHasFocus(originalView), 3000);
 
+        // A previous focused transfer must not override a later choice of chrome focus.
+        second->chromeView()->setFocus(Qt::OtherFocusReason);
+        first->chromeView()->setFocus(Qt::OtherFocusReason);
+        QTRY_VERIFY_WITH_TIMEOUT(pageViewHasFocus(first->chromeView()), 3000);
+        QVERIFY(requestHostOperation(
+            browserUi.get(), "attach_page_host", tab, profileId,
+            second->hostToken(), ownerToken));
+        const QVariant chromeFocusedAttach = takeReparentRequest(browserUi.get());
+        QVERIFY(chromeFocusedAttach.isValid());
+        QVERIFY(second->applyNativeRequest(chromeFocusedAttach));
+        QCOMPARE(second->pageView(), originalView);
+        second->activateWindow();
+        QTRY_VERIFY_WITH_TIMEOUT(pageViewHasFocus(second->chromeView()), 3000);
+        QVERIFY(!pageViewHasFocus(originalView));
+        QVERIFY(requestHostOperation(
+            browserUi.get(), "attach_page_host", tab, profileId,
+            first->hostToken(), ownerToken));
+        const QVariant chromeFocusedReturn = takeReparentRequest(browserUi.get());
+        QVERIFY(chromeFocusedReturn.isValid());
+        QVERIFY(first->applyNativeRequest(chromeFocusedReturn));
+        QCOMPARE(first->pageView(), originalView);
+        QCOMPARE(originalView->page(), originalPage);
+        first->activateWindow();
+        originalView->setFocus(Qt::OtherFocusReason);
+        QTRY_VERIFY_WITH_TIMEOUT(pageViewHasFocus(originalView), 3000);
+
         QVERIFY(requestHostOperation(
             browserUi.get(),
             "detach_page_host",
