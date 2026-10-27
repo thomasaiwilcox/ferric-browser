@@ -594,6 +594,15 @@ private:
         QVERIFY(!takeReparentRequest(browserUi.get()).isValid());
         QCOMPARE(second->pageView(), originalView);
 
+        bool selected = false;
+        QVERIFY(QMetaObject::invokeMethod(
+            browserUi.get(), "select_tab", Qt::DirectConnection,
+            Q_RETURN_ARG(bool, selected), Q_ARG(int, 0)));
+        QVERIFY(selected);
+        QCOMPARE(browserUi->property("active_tab_index").toInt(), 0);
+        QCOMPARE(browserUiTabAt(browserUi.get(), 0), tab);
+        QVERIFY(!takeReparentRequest(browserUi.get()).isValid());
+
         QVERIFY(requestHostOperation(
             browserUi.get(),
             "attach_page_host",
@@ -612,8 +621,28 @@ private:
             browserUi.get(), tab, staleGeneration, staleDocument));
         QWebEngineView *const viewBeforeStaleApply = second->pageView();
         QWebEnginePage *const pageBeforeStaleApply = originalPage;
+        // A native load-start notification preserves the current target. Drive
+        // the public navigation command that creates the replacement target.
+        const QString nextUrl = QStringLiteral("https://example.test/next");
+        QVERIFY(QMetaObject::invokeMethod(
+            browserUi.get(), "navigate", Qt::DirectConnection,
+            Q_ARG(QString, nextUrl)));
+        const QVariant navigationRequest = takeReparentRequest(browserUi.get());
+        QVERIFY(navigationRequest.isValid());
+        const QVariantMap navigation = navigationRequest.toMap();
+        QCOMPARE(navigation.value(QStringLiteral("kind")).toString(), QStringLiteral("navigate"));
+        QCOMPARE(navigation.value(QStringLiteral("tabId")).toString(), tab);
+        QCOMPARE(navigation.value(QStringLiteral("url")).toString(), nextUrl);
+        const QString nextGeneration = navigation.value(QStringLiteral("generation")).toString();
+        const QString nextDocument = navigation.value(QStringLiteral("documentId")).toString();
+        QVERIFY(!nextGeneration.isEmpty());
+        QVERIFY(!nextDocument.isEmpty());
+        QVERIFY(nextGeneration != staleGeneration);
+        QVERIFY(nextDocument != staleDocument);
+        QVERIFY(browserUiTargetCurrent(browserUi.get(), tab, nextGeneration, nextDocument));
         QVERIFY(notifyNavigationStarted(
-            browserUi.get(), 0, QStringLiteral("data:text/html,%3Ctitle%3Enext%3C/title%3E")));
+            browserUi.get(), 0, nextUrl));
+        QVERIFY(browserUiTargetCurrent(browserUi.get(), tab, nextGeneration, nextDocument));
         QVERIFY(!browserUiTargetCurrent(browserUi.get(), tab, staleGeneration, staleDocument));
         QVERIFY(!second->applyNativeRequest(staleApplyRequest));
         QCOMPARE(second->pageView(), viewBeforeStaleApply);
@@ -622,23 +651,39 @@ private:
         QVERIFY(!takeReparentRequest(browserUi.get()).isValid());
         QCOMPARE(browserUiTabAt(browserUi.get(), 0), tab);
 
+        // Keep owner retirement independent of the navigation-invalidated
+        // binding above, so rejection cannot pass merely on a stale target.
+        QObject retiringPageLifetime;
+        FerricPublicPageOwner *retiringOwner = profileOwner.createPage(&retiringPageLifetime);
+        QVERIFY(retiringOwner);
+        QVERIFY(!retiringOwner->isClosed());
+        auto retiringHost = std::make_unique<FerricPublicPageHost>(
+            browserUi.get(), profileOwner.profile(), retiringOwner, nullptr, secondTab);
+        QVERIFY(retiringHost->isReady());
+        QCOMPARE(retiringHost->pageOwner(), retiringOwner);
         QVERIFY(requestHostOperation(
             browserUi.get(),
             "detach_page_host",
-            tab,
+            secondTab,
             profileId,
-            second->hostToken(),
-            ownerToken));
+            retiringHost->hostToken(),
+            retiringHost->pageOwnerToken()));
         const QVariant staleNativeRequest = takeReparentRequest(browserUi.get());
         QVERIFY(staleNativeRequest.isValid());
-        QCOMPARE(staleNativeRequest.toMap().value(QStringLiteral("kind")).toString(),
+        const QVariantMap retiringRequest = staleNativeRequest.toMap();
+        QCOMPARE(retiringRequest.value(QStringLiteral("kind")).toString(),
                  QStringLiteral("reparent-view"));
-        QWebEngineView *const viewBeforeRetirement = second->pageView();
-        owner->close();
-        QVERIFY(owner->isClosed());
-        QVERIFY(!second->applyNativeRequest(staleNativeRequest));
-        QCOMPARE(second->pageView(), viewBeforeRetirement);
-        QCOMPARE(second->pageOwner(), owner);
+        const QString retiringGeneration = retiringRequest.value(QStringLiteral("generation")).toString();
+        const QString retiringDocument = retiringRequest.value(QStringLiteral("documentId")).toString();
+        QVERIFY(browserUiTargetCurrent(browserUi.get(), secondTab, retiringGeneration, retiringDocument));
+        QWebEngineView *const viewBeforeRetirement = retiringHost->pageView();
+        retiringOwner->close();
+        QVERIFY(retiringOwner->isClosed());
+        QVERIFY(browserUiTargetCurrent(browserUi.get(), secondTab, retiringGeneration, retiringDocument));
+        QVERIFY(!retiringHost->applyNativeRequest(staleNativeRequest));
+        QCOMPARE(retiringHost->pageView(), viewBeforeRetirement);
+        QCOMPARE(retiringHost->pageOwner(), retiringOwner);
+        QVERIFY(!takeReparentRequest(browserUi.get()).isValid());
     }
 
 private slots:
