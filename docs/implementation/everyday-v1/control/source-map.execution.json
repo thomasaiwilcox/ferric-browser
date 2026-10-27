@@ -4737,7 +4737,12 @@
           "budget_uncertain": false
         }
       },
-      "review_sha256": "d5b073a7b1ea44b8913766da2ae5b9414ddb44d200235a6d5985f26db60f0bb9"
+      "review_sha256": "d5b073a7b1ea44b8913766da2ae5b9414ddb44d200235a6d5985f26db60f0bb9",
+      "lifecycle": "evidence/F02e2i-a4/ATTEMPT_LIFECYCLE.jsonl",
+      "fixed_source_review": "evidence/F02e2i-a4/SOURCE_REVIEW.json",
+      "fixed_integrated_review": "evidence/F02e2i-a4/INTEGRATED_SOURCE_REVIEW.json",
+      "fixed_gate_review": "evidence/F02e2i-a4/GATE_EVIDENCE_REVIEW.json",
+      "failure_history_retained": true
     }
   ]
 }

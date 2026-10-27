@@ -5664,6 +5664,8 @@
     },
     "cargo_target_relative": "builds/application-F02e2i-a4/cargo-target",
     "source_review": "evidence/F02e2i-a4/SOURCE_REVIEW.json",
-    "integrated_source_review": "evidence/F02e2i-a4/INTEGRATED_SOURCE_REVIEW.json"
+    "integrated_source_review": "evidence/F02e2i-a4/INTEGRATED_SOURCE_REVIEW.json",
+    "lifecycle": "evidence/F02e2i-a4/ATTEMPT_LIFECYCLE.jsonl",
+    "gate_evidence_review": "evidence/F02e2i-a4/GATE_EVIDENCE_REVIEW.json"
   }
 }

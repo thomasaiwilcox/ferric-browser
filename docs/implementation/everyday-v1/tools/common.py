@@ -11,6 +11,134 @@ ATTEMPT_EXCEPTION_LIMITS={"P00a":4,"W01b":4,"F02e2":6,"F02e2i":4}
 ATTEMPT_EXCEPTION_TASKS=set(ATTEMPT_EXCEPTION_AMENDMENTS)
 TASK_SUPERSESSION_AMENDMENTS={"F02e2":"A52","F02e2r":"A52"}
 GLOBAL_MAX_ATTEMPTS=3
+A54_IDENTITY_PHASE_NEXT={
+    "assigned":{"source_review_started","terminal_failed"},
+    "source_review_started":{"source_review_passed","terminal_failed"},
+    "source_review_passed":{"integration_started","terminal_failed"},
+    "integration_started":{"integrated_review_passed","terminal_failed"},
+    "integrated_review_passed":{"focused_started","terminal_failed"},
+    "focused_started":{"focused_passed","terminal_failed"},
+    "focused_passed":{"regression_started","terminal_failed"},
+    "regression_started":{"regression_passed","terminal_failed"},
+    "regression_passed":{"accepted","terminal_failed"},
+    "accepted":set(),"terminal_failed":set(),
+}
+
+def identity_attempt_seed_A54(nonce):
+    if not isinstance(nonce,str) or len(nonce)!=32 or any(x not in "0123456789abcdef" for x in nonce):
+        raise ValueError("A54 assignment requires a unique32-hex run nonce")
+    return {"slice":"F02e2i","attempt":4,"run_nonce":nonce,"sequence":0,
+            "previous_sha256":None,"phase":"assigned"}
+
+def identity_attempt_event_hash_A54(event):
+    return hashlib.sha256(json.dumps(event,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+
+def identity_review_decision_A54(review):
+    values=[review.get("decision"),review.get("recommendation")]
+    if any(value in {"request_changes","repair","block","reject"} for value in values):return "reject"
+    return values[0] or values[1]
+
+def identity_attempt_artifact_A54(meta,phase):
+    return {"source_review_passed":meta["source_review"],"integrated_review_passed":meta["integrated_source_review"],
+            "focused_passed":meta["unit_gate_receipts"]["focused"],"regression_passed":meta["unit_gate_receipts"]["application_regression"],
+            "accepted":meta["gate_evidence_review"],"terminal_failed":meta["terminal_marker"]}.get(phase)
+
+def identity_failed_artifacts_A54(root,meta):
+    failures={}
+    paths={**meta["unit_gate_receipts"],**{key:meta[key] for key in ("source_review","integrated_source_review","gate_evidence_review")}}
+    for name,value in paths.items():
+        path=safe_relative(root,value)
+        if not path.exists():continue
+        try:
+            report=load(path)
+            if not isinstance(report,dict):raise ValueError("report must be an object")
+            if name in meta["unit_gate_receipts"]:
+                failed=(report.get("result")!="passed" or report.get("exit_code")!=0 or report.get("require_tests") is not True
+                        or report.get("observed_test_summary_count",0)<=0 or report.get("observed_skips")!=0
+                        or report.get("observed_failed",0)!=0 or report.get("timed_out") or report.get("output_limit_exceeded"))
+            else:failed=identity_review_decision_A54(report) not in {"accept","accept_source","accept_source_only"}
+        except (ValueError,TypeError):failed=True
+        if failed:failures[name]={"path":value,"sha256":digest(path)}
+    return failures
+
+def identity_attempt_lifecycle_A54(root,child,contract):
+    """Validate the retained append-only coordinator journal, not process liveness."""
+    meta=contract["metadata"];assignment=load(safe_relative(root,meta["source4_assignment"]))
+    path=safe_relative(root,meta["lifecycle"]);raw=path.read_bytes()
+    binding=child.get("lifecycle_A54",{})
+    if binding.get("path")!=meta["lifecycle"] or binding.get("sha256")!=hashlib.sha256(raw).hexdigest():
+        raise ValueError("A54 lifecycle is missing, deleted, truncated or differs from its state binding")
+    lines=raw.splitlines();events=[];previous=None
+    for index,line in enumerate(lines):
+        event=json.loads(line)
+        if line!=json.dumps(event,sort_keys=True,separators=(",",":")).encode():raise ValueError("A54 lifecycle encoding changed")
+        if type(event.get("sequence")) is not int:raise ValueError("A54 lifecycle sequence must be an integer")
+        if index==0:
+            if event!=identity_attempt_seed_A54(assignment.get("run_nonce")) or identity_attempt_event_hash_A54(event)!=assignment.get("lifecycle_seed_sha256"):
+                raise ValueError("A54 lifecycle seed is not bound to the sole assignment")
+        elif (event.get("slice")!="F02e2i" or event.get("attempt")!=4 or event.get("run_nonce")!=assignment["run_nonce"]
+                or event.get("sequence")!=index or event.get("previous_sha256")!=previous
+                or event.get("phase") not in A54_IDENTITY_PHASE_NEXT[events[-1]["phase"]]):
+            raise ValueError("A54 lifecycle was reordered, reset, retried or continued after terminal state")
+        expected_artifact=identity_attempt_artifact_A54(meta,event["phase"])
+        if expected_artifact is not None:
+            ref=event.get("artifact",{})
+            if ref.get("path")!=expected_artifact or digest(safe_relative(root,ref["path"]))!=ref.get("sha256"):
+                raise ValueError("A54 lifecycle artifact was deleted, replaced or moved")
+        elif "artifact" in event:raise ValueError("A54 lifecycle cannot reference an alternate review/gate")
+        if event["phase"]=="terminal_failed":
+            history=child.get("attempt_history",{}).get("4")
+            if (not isinstance(history,dict) or history.get("result")!="failed_terminal"
+                    or history.get("attempt")!=4 or history.get("assignment_sha256")!=child.get("assignment_sha256")
+                    or history.get("terminal")!=event.get("artifact")
+                    or identity_attempt_event_hash_A54(history)!=event.get("history_record_sha256")):
+                raise ValueError("A54 retained terminal source4 history was deleted or changed")
+        previous=identity_attempt_event_hash_A54(event);events.append(event)
+    if not events or binding.get("events")!=len(events) or binding.get("phase")!=events[-1]["phase"]:
+        raise ValueError("A54 lifecycle head/length is missing or changed")
+    return events
+
+def append_identity_attempt_event_A54(root,child,contract,phase,artifact=None):
+    """Coordinator-only append; never erase/replace a source4 event or restart it."""
+    meta=contract["metadata"];assignment=load(safe_relative(root,meta["source4_assignment"]))
+    path=safe_relative(root,meta["lifecycle"])
+    if path.exists():
+        events=identity_attempt_lifecycle_A54(root,child,contract)
+        if phase not in A54_IDENTITY_PHASE_NEXT[events[-1]["phase"]]:raise ValueError("A54 lifecycle forbids this retry/transition")
+        event={"slice":"F02e2i","attempt":4,"run_nonce":assignment["run_nonce"],"sequence":len(events),
+               "previous_sha256":identity_attempt_event_hash_A54(events[-1]),"phase":phase}
+        mode="ab"
+    else:
+        if (phase!="assigned" or child.get("lifecycle_A54") or child.get("attempts")!=3 or child.get("status")!="ready"
+                or "4" in child.get("attempt_history",{})):
+            raise ValueError("A54 lifecycle seed is created only during the one ready3-to-assigned4 transition; never recreated")
+        event=identity_attempt_seed_A54(assignment["run_nonce"]);mode="xb"
+        if identity_attempt_event_hash_A54(event)!=assignment.get("lifecycle_seed_sha256"):raise ValueError("A54 assignment seed digest mismatch")
+    expected_artifact=identity_attempt_artifact_A54(meta,phase)
+    if artifact!=expected_artifact:raise ValueError("A54 event must bind only its exact required artifact")
+    if artifact is not None:
+        file=safe_relative(root,artifact);event["artifact"]={"path":artifact,"sha256":digest(file)}
+        report=load(file)
+        if phase in {"source_review_passed","integrated_review_passed","accepted"}:
+            if identity_review_decision_A54(report) not in {"accept","accept_source","accept_source_only"}:
+                raise ValueError("A54 cannot append a failed review as passed")
+        elif phase in {"focused_passed","regression_passed"}:
+            if (report.get("result")!="passed" or report.get("exit_code")!=0
+                    or report.get("require_tests") is not True
+                    or report.get("observed_test_summary_count",0)<=0 or report.get("observed_skips")!=0
+                    or report.get("observed_failed",0)!=0 or report.get("timed_out") or report.get("output_limit_exceeded")):
+                raise ValueError("A54 cannot append a failed/zero/skip command as passed")
+    if phase=="terminal_failed":
+        history=child.get("attempt_history",{}).get("4")
+        if (not isinstance(history,dict) or history.get("result")!="failed_terminal" or history.get("attempt")!=4
+                or history.get("assignment_sha256")!=child.get("assignment_sha256") or history.get("terminal")!=event.get("artifact")):
+            raise ValueError("A54 terminal event requires retained assignment/terminal source4 failure history")
+        event["history_record_sha256"]=identity_attempt_event_hash_A54(history)
+    encoded=(json.dumps(event,sort_keys=True,separators=(",",":"))+"\n").encode()
+    with path.open(mode) as output:output.write(encoded);output.flush();os.fsync(output.fileno())
+    child["lifecycle_A54"]={"path":meta["lifecycle"],"sha256":digest(path),"events":event["sequence"]+1,"phase":phase}
+    identity_attempt_lifecycle_A54(root,child,contract)
+    return event
 def load(path:Path):
     with path.open(encoding="utf-8") as f:return json.load(f)
 def write_json(path:Path,value):

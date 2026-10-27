@@ -88,3 +88,5 @@ Validate the typed-identity prerequisite, actual-source unit/full-regression rec
 ## A54 exact test-only repair
 
 A54 validates only the named F02e2i cap4 exception and exact three cfg-test replacements, preserves all A53 source/identity/parent/native checks, binds failed1/2/3 history and unique fourth assignment, and rejects reset/source5/retry/additional product delta. A failed or missing receipt is never acceptance.
+
+A54 pack-review correction: retain linked append-only source4 lifecycle/terminal history; bind mandatory fixed worker/integrated/gate reviews, actual source SHA/tree and artifact digests before compilation or acceptance. Refuse alternate reviews and deletion/truncation-based replay; retain failed/malformed evidence. No source4 authority until independently accepted amended pack.

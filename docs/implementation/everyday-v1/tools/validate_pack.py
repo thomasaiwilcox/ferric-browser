@@ -6,7 +6,8 @@ from pathlib import Path
 from common import (PACK,load,read_plan,packet,safe_relative,digest,git,
                     ATTEMPT_EXCEPTION_TASKS,ATTEMPT_EXCEPTION_AMENDMENTS,
                     ATTEMPT_EXCEPTION_LIMITS,GLOBAL_MAX_ATTEMPTS,effective_attempt_limit,
-                    TASK_SUPERSESSION_AMENDMENTS)
+                    TASK_SUPERSESSION_AMENDMENTS,identity_attempt_seed_A54,identity_attempt_event_hash_A54,
+                    identity_attempt_lifecycle_A54,append_identity_attempt_event_A54,identity_review_decision_A54,identity_failed_artifacts_A54)
 STATUSES={"not_started","ready","in_progress","submitted","reviewing","accepted","superseded","blocked_environment","blocked_specification","implemented_unqualified","failed"}
 LEVELS={"inspection","unit","component","application","native","physical","benchmark","build","fuzz"}
 RECIPES={"preflight","baseline","config","rust-policy","application-rust","storage","application","credential","helper","rp","fuzz","benchmark","native","physical","package","ci","docs","review","rebuild","release"}
@@ -1629,7 +1630,7 @@ def validate_identity_acceptance_A53(task,record,root,pack=PACK):
     return errors
 
 
-A54_CONTRACT_SHA256="830986d107c49558385a8d23198f16b16c4c255c9b52307f6c8fe899e15dde78"
+A54_CONTRACT_SHA256="40cdbb66ca83bd28ec79fc26967d52f66834842b4adaa5743237dc420b429153"
 
 def identity_repair_contract_A54(pack=PACK):
     path=pack/"control/profile-identity-repair.A54.json"
@@ -1672,6 +1673,19 @@ def validate_identity_product_A54(repository,source,c):
         if raw.returncode or hashlib.sha256(raw.stdout).hexdigest()!=wanted:
             raise ValueError(f"A54: {path} differs from the exact test-only repair/source preservation")
 
+def validate_identity_review_A54(root,ref,expected_path,source,tree,author):
+    if ref.get("path")!=expected_path:raise ValueError("A54 source/integrated review path is not the fixed one-time review")
+    path=safe_relative(root,expected_path)
+    if digest(path)!=ref.get("sha256"):raise ValueError("A54 source/integrated review digest changed")
+    review=load(path);candidate=review.get("candidate",{})
+    actual_source=review.get("source_commit",review.get("candidate_sha",review.get("source_sha",candidate.get("commit"))))
+    actual_tree=review.get("source_tree",review.get("candidate_tree",candidate.get("tree")))
+    if (identity_review_decision_A54(review) not in {"accept","accept_source","accept_source_only"}
+            or not review.get("reviewer") or review.get("reviewer")==author
+            or not HEX.fullmatch(source or "") or not HEX.fullmatch(tree or "")
+            or actual_source!=source or actual_tree!=tree):
+        raise ValueError("A54 fixed independent source review does not accept this exact source/tree")
+
 def validate_identity_repair_state_A54(plan,state,root,initial=False,pack=PACK):
     if plan.get("identity_test_repair_A54") is None:return []
     errors=[]
@@ -1693,20 +1707,7 @@ def validate_identity_repair_state_A54(plan,state,root,initial=False,pack=PACK):
         if digest(patch)!=meta["repair_patch"]["sha256"]:raise ValueError("exact cfg-test patch digest changed")
         assignment_path=safe_relative(root,meta["source4_assignment"])
         terminal_path=safe_relative(root,meta["terminal_marker"])
-        failed_artifacts=[]
-        for name,path in meta["unit_gate_receipts"].items():
-            receipt_path=safe_relative(root,path)
-            if receipt_path.exists():
-                receipt=load(receipt_path)
-                if (receipt.get("result")!="passed" or receipt.get("exit_code")!=0
-                        or receipt.get("timed_out") or receipt.get("output_limit_exceeded")
-                        or receipt.get("observed_failed",0)>0 or receipt.get("observed_skips",0)>0):
-                    failed_artifacts.append(name)
-        for name in ("source_review","integrated_source_review"):
-            review_path=safe_relative(root,meta[name])
-            if review_path.exists():
-                review=load(review_path)
-                if review.get("recommendation",review.get("decision")) in {"request_changes","repair","block","reject"}:failed_artifacts.append(name)
+        failed_artifacts=identity_failed_artifacts_A54(root,meta)
         if failed_artifacts and (attempt!=4 or status!="failed" or not terminal_path.exists()):
             raise ValueError("source4 failed review/gate is terminal; no alternate-path retry: "+", ".join(failed_artifacts))
         if attempt==3:
@@ -1718,6 +1719,12 @@ def validate_identity_repair_state_A54(plan,state,root,initial=False,pack=PACK):
             if (terminal.get("slice")!="F02e2i" or terminal.get("attempt")!=4 or terminal.get("result")!="failed"
                     or terminal.get("no_retry") is not True or attempt!=4 or status!="failed"):
                 raise ValueError("source4 terminal failure cannot be retried, reset or accepted")
+            archived=terminal.get("failed_artifacts",{})
+            if any(archived.get(name)!=ref for name,ref in failed_artifacts.items()):raise ValueError("terminal source4 must retain every failed or malformed fixed artifact")
+            for ref in archived.values():
+                path=safe_relative(root,ref["path"])
+                if not path.is_relative_to((root/meta["source4_evidence_directory"]).resolve()) or digest(path)!=ref.get("sha256"):
+                    raise ValueError("terminal source4 failure artifact was deleted, replaced or moved")
         if attempt==4 and status=="failed" and not terminal_path.exists():raise ValueError("source4 failure requires an immutable terminal marker")
         needs_authority=status=="ready" or attempt==4
         if needs_authority:
@@ -1741,7 +1748,20 @@ def validate_identity_repair_state_A54(plan,state,root,initial=False,pack=PACK):
                       "pack_commit":authority["pack_commit"],"pack_tree":authority["pack_tree"]}
             if any(assignment.get(k)!=v for k,v in required.items()) or assignment.get("worker")!=child.get("author"):
                 raise ValueError("source4 assignment changes exact base/patch/content/authority/owner")
-            if status in {"submitted","reviewing","implemented_unqualified","accepted"}:
+            events=identity_attempt_lifecycle_A54(root,child,c);phase=events[-1]["phase"]
+            if phase=="terminal_failed" and status!="failed":raise ValueError("A54 journal permanently records failed4; no resumption/retry")
+            if status=="failed" and phase!="terminal_failed":raise ValueError("A54 failed4 requires retained terminal lifecycle/history")
+            if status=="accepted" and phase!="accepted":raise ValueError("A54 acceptance requires the full ordered review/gate lifecycle")
+            for name in ("source_review","integrated_source_review","gate_evidence_review"):
+                if child.get(name) is not None and child[name]!=meta[name]:raise ValueError("A54 alternate referenced source/gate review is forbidden")
+            if child.get("source_changes_authorized") is True and phase!="assigned":raise ValueError("A54 source changes are frozen when source review starts")
+            needs_reviews=child.get("compile_test_authorized") is True or status=="accepted"
+            if needs_reviews:
+                if phase not in {"integrated_review_passed","focused_started","focused_passed","regression_started","regression_passed","accepted"}:
+                    raise ValueError("A54 compilation/gates require ordered accepted source and integrated reviews")
+                for key,sha_key,tree_key in (("source_review","implementation_sha","implementation_tree"),("integrated_source_review","source_sha","source_tree")):
+                    validate_identity_review_A54(root,{"path":child.get(key),"sha256":child.get(key+"_sha256")},meta[key],child.get(sha_key),child.get(tree_key),child.get("author"))
+            if status in {"submitted","reviewing","implemented_unqualified","accepted"} or child.get("compile_test_authorized") is True:
                 validate_identity_product_A54(Path(child["worktree"]),child.get("source_sha"),c)
         if status=="failed":
             if child.get("source_changes_authorized") is True or child.get("compile_test_authorized") is True:
@@ -1759,6 +1779,12 @@ def validate_identity_repair_acceptance_A54(plan,task,record,root,pack=PACK):
         if record.get("attempts")!=4:raise ValueError("A54 acceptance must be the one authorized source4")
         evidence=load(safe_relative(root,record["evidence"]))
         validate_identity_product_A54(Path(evidence["source_repository"]),evidence["source_sha"],c)
+        validate_identity_product_A54(Path(evidence["source_repository"]),evidence.get("implementation_sha"),c)
+        for key,sha_key,tree_key in (("worker_source_review","implementation_sha","implementation_tree"),("integrated_source_review","source_sha","source_tree")):
+            path_key="source_review" if key=="worker_source_review" else key
+            validate_identity_review_A54(root,evidence.get(key,{}),c["metadata"][path_key],evidence.get(sha_key),evidence.get(tree_key),record.get("author"))
+        if evidence.get("identity_evidence_review")!=c["metadata"]["gate_evidence_review"] or evidence.get("review_path")!=c["metadata"]["gate_evidence_review"]:
+            raise ValueError("A54 acceptance requires the single fixed independent gate-evidence review")
         for name,path in c["metadata"]["unit_gate_receipts"].items():
             gate=evidence.get("unit_gates",{}).get(name,{})
             if gate.get("receipt")!=path:raise ValueError("A54 accepts only each fixed one-time focused/full receipt; no retry directory")
