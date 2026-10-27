@@ -16,6 +16,7 @@ pub(crate) mod qobject {
         include!("cxx-qt-lib/qguiapplication.h");
         include!("cxx-qt-lib/core/qvector/qvector_QByteArray.h");
         include!("gui_application.h");
+        include!("public_page_host.h");
         include!("url_display.h");
         type QString = cxx_qt_lib::QString;
         type QByteArray = cxx_qt_lib::QByteArray;
@@ -24,6 +25,13 @@ pub(crate) mod qobject {
         type QUrl = cxx_qt_lib::QUrl;
         type QGuiApplication = cxx_qt_lib::QGuiApplication;
         type QVector_QByteArray = cxx_qt_lib::QVector<cxx_qt_lib::QByteArray>;
+
+        fn ferric_public_page_host_tokens_live(
+            host_token: &QString,
+            page_owner_token: &QString,
+            profile_id: &QString,
+            attach: bool,
+        ) -> bool;
 
         #[namespace = "ferric::credentials"]
         type CredentialProcess;
@@ -1634,6 +1642,52 @@ pub(crate) mod qobject {
 
         #[qinvokable]
         fn take_engine_request(self: Pin<&mut BrowserUi>) -> QVariant;
+
+        #[qinvokable]
+        fn page_host_profile_id(self: &BrowserUi) -> QString;
+
+        #[qinvokable]
+        fn register_page_host_owner(
+            self: &BrowserUi,
+            tab: &QString,
+            profile_id: &QString,
+            host_token: &QString,
+            page_owner_token: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn release_page_host_owner(
+            self: &BrowserUi,
+            profile_id: &QString,
+            page_owner_token: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn page_host_owner_matches_target(
+            self: &BrowserUi,
+            page_owner_token: &QString,
+            profile_id: &QString,
+            tab: &QString,
+            generation: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn attach_page_host(
+            self: Pin<&mut BrowserUi>,
+            tab: &QString,
+            profile_id: &QString,
+            host_token: &QString,
+            page_owner_token: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn detach_page_host(
+            self: Pin<&mut BrowserUi>,
+            tab: &QString,
+            profile_id: &QString,
+            host_token: &QString,
+            page_owner_token: &QString,
+        ) -> bool;
 
         #[qinvokable]
         fn request_target_current(

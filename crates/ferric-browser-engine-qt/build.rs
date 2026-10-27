@@ -62,6 +62,8 @@ fn main() {
             "src/public_profile_owner.cpp",
             "src/public_page_owner.h",
             "src/public_page_owner.cpp",
+            "src/public_page_host.h",
+            "src/public_page_host.cpp",
             "src/download_source.h",
             "src/download_source.cpp",
             "src/popup_owner_bridge.h",
@@ -100,6 +102,8 @@ fn main() {
         .qt_module("Widgets")
         .qt_module("WebEngineCore")
         .qt_module("WebEngineQuick")
+        .qt_module("WebEngineWidgets")
+        .qt_module("QuickWidgets")
         .qt_module("Network")
         .qt_module("DBus")
         .build()

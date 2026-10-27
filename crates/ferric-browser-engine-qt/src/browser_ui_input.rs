@@ -495,7 +495,8 @@ impl qobject::BrowserUi {
                 }
                 Some(
                     super::engine_requests::NativeRequest::Engine(_)
-                    | super::engine_requests::NativeRequest::View(_),
+                    | super::engine_requests::NativeRequest::View(_)
+                    | super::engine_requests::NativeRequest::ReparentView { .. },
                 ) => None,
                 None => this.pending_engine_action.take(),
             };

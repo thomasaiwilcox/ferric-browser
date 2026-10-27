@@ -1,12 +1,50 @@
 use super::engine_requests::NativeRequest;
 use super::{
-    CompletionCandidate, CompletionCategory, CxxQtType, DEFAULT_COMPLETION_LIMIT, Effect,
-    EngineEffect, Event, ExistenceState, JourneyEdgeKind, JourneyNodeId, LoadingState,
+    BrowserUiRust, CompletionCandidate, CompletionCategory, CxxQtType, DEFAULT_COMPLETION_LIMIT,
+    Effect, EngineEffect, Event, ExistenceState, JourneyEdgeKind, JourneyNodeId, LoadingState,
     MAX_JOURNEY_REDIRECT_HOPS, Mode, Pin, QString, SearchCase, TabId, TabTransfer, Target,
     ValidatedUrl, Value, complete, current_target, qobject, recordable_same_document_change,
     safe_ipc_url, sanitize_untrusted_title, scalar_cursor_to_utf16, setting_metadata_all,
     strip_url_fragment, utf16_cursor_to_scalar,
 };
+
+const MAX_PAGE_HOST_OWNER_BINDINGS: usize = 1_024;
+
+#[derive(Clone)]
+struct PageHostOwnerBinding {
+    ui: String,
+    profile: String,
+    owner: String,
+    tab: TabId,
+    generation: String,
+}
+
+std::thread_local! {
+    static PAGE_HOST_OWNER_BINDINGS: std::cell::RefCell<Vec<PageHostOwnerBinding>> = const {
+        std::cell::RefCell::new(Vec::new())
+    };
+}
+
+fn page_host_owner_binding_matches(ui: &str, profile: &str, owner: &str, target: &Target) -> bool {
+    PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+        bindings.borrow().iter().any(|binding| {
+            binding.ui == ui
+                && binding.profile == profile
+                && binding.owner == owner
+                && binding.tab == target.tab
+                && binding.generation == target.generation.to_string()
+        })
+    })
+}
+
+impl Drop for BrowserUiRust {
+    fn drop(&mut self) {
+        let ui = self.window_token.to_string();
+        PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+            bindings.borrow_mut().retain(|binding| binding.ui != ui);
+        });
+    }
+}
 
 impl qobject::BrowserUi {
     #[allow(clippy::unused_self)]
@@ -659,6 +697,257 @@ impl qobject::BrowserUi {
             })
     }
 
+    pub(super) fn page_host_profile_id(&self) -> QString {
+        self.rust()
+            .state
+            .as_ref()
+            .and_then(|state| state.profile_instance_id())
+            .map_or_else(QString::default, |profile| {
+                QString::from(profile.to_string())
+            })
+    }
+
+    pub(super) fn register_page_host_owner(
+        &self,
+        tab: &QString,
+        profile_id: &QString,
+        host_token: &QString,
+        page_owner_token: &QString,
+    ) -> bool {
+        let rust = self.rust();
+        let ui = rust.window_token.to_string();
+        let profile = profile_id.to_string();
+        let owner = page_owner_token.to_string();
+        let host = host_token.to_string();
+        if ui.is_empty()
+            || profile.is_empty()
+            || owner.is_empty()
+            || owner.len() > 128
+            || owner.chars().any(char::is_control)
+            || host.is_empty()
+            || host.len() > 128
+            || host.chars().any(char::is_control)
+            || rust
+                .state
+                .as_ref()
+                .and_then(|state| state.profile_instance_id())
+                .is_none_or(|current| current.to_string() != profile)
+        {
+            return false;
+        }
+        let Some(tab_id) = TabId::from_display(&tab.to_string())
+            .filter(|candidate| rust.tab_ids.contains(candidate))
+        else {
+            return false;
+        };
+        let Some(target) = rust
+            .state
+            .as_ref()
+            .and_then(|state| state.capture_target(tab_id))
+        else {
+            return false;
+        };
+        if !qobject::ferric_public_page_host_tokens_live(
+            host_token,
+            page_owner_token,
+            profile_id,
+            true,
+        ) {
+            return false;
+        }
+        let already_registered = PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+            bindings
+                .borrow()
+                .iter()
+                .any(|binding| binding.owner == owner)
+        });
+        if already_registered {
+            return false;
+        }
+        PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+            let mut bindings = bindings.borrow_mut();
+            if bindings.len() >= MAX_PAGE_HOST_OWNER_BINDINGS {
+                return false;
+            }
+            bindings.push(PageHostOwnerBinding {
+                ui,
+                profile,
+                owner,
+                tab: target.tab,
+                generation: target.generation.to_string(),
+            });
+            true
+        })
+    }
+
+    pub(super) fn release_page_host_owner(
+        &self,
+        profile_id: &QString,
+        page_owner_token: &QString,
+    ) -> bool {
+        let ui = self.rust().window_token.to_string();
+        let profile = profile_id.to_string();
+        let owner = page_owner_token.to_string();
+        if ui.is_empty() || profile.is_empty() || owner.is_empty() || owner.len() > 128 {
+            return false;
+        }
+        PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+            let mut bindings = bindings.borrow_mut();
+            let original_len = bindings.len();
+            bindings.retain(|binding| {
+                binding.ui != ui || binding.profile != profile || binding.owner != owner
+            });
+            bindings.len() != original_len
+        })
+    }
+
+    pub(super) fn page_host_owner_matches_target(
+        &self,
+        page_owner_token: &QString,
+        profile_id: &QString,
+        tab: &QString,
+        generation: &QString,
+    ) -> bool {
+        let rust = self.rust();
+        let ui = rust.window_token.to_string();
+        let profile = profile_id.to_string();
+        let owner = page_owner_token.to_string();
+        let Some(tab) = TabId::from_display(&tab.to_string()) else {
+            return false;
+        };
+        rust.state
+            .as_ref()
+            .and_then(|state| state.profile_instance_id())
+            .is_some_and(|current| current.to_string() == profile)
+            && PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+                bindings.borrow().iter().any(|binding| {
+                    binding.ui == ui
+                        && binding.profile == profile
+                        && binding.owner == owner
+                        && binding.tab == tab
+                        && binding.generation == generation.to_string()
+                })
+            })
+    }
+
+    pub(super) fn attach_page_host(
+        mut self: Pin<&mut Self>,
+        tab: &QString,
+        profile_id: &QString,
+        host_token: &QString,
+        page_owner_token: &QString,
+    ) -> bool {
+        self.as_mut().queue_page_host_reparent(
+            tab,
+            profile_id,
+            host_token,
+            page_owner_token,
+            super::engine_requests::PageHostOperation::Attach,
+        )
+    }
+
+    pub(super) fn detach_page_host(
+        mut self: Pin<&mut Self>,
+        tab: &QString,
+        profile_id: &QString,
+        host_token: &QString,
+        page_owner_token: &QString,
+    ) -> bool {
+        self.as_mut().queue_page_host_reparent(
+            tab,
+            profile_id,
+            host_token,
+            page_owner_token,
+            super::engine_requests::PageHostOperation::Detach,
+        )
+    }
+
+    fn queue_page_host_reparent(
+        mut self: Pin<&mut Self>,
+        tab: &QString,
+        requested_profile_id: &QString,
+        host_token: &QString,
+        page_owner_token: &QString,
+        operation: super::engine_requests::PageHostOperation,
+    ) -> bool {
+        let this = self.as_ref();
+        let (target, profile_id, window) = {
+            let rust = this.rust();
+            let Some(tab) =
+                TabId::from_display(&tab.to_string()).filter(|tab| rust.tab_ids.contains(tab))
+            else {
+                return false;
+            };
+            let Some(profile_id) = rust
+                .state
+                .as_ref()
+                .and_then(|state| state.profile_instance_id())
+                .map(ToString::to_string)
+            else {
+                return false;
+            };
+            if requested_profile_id.to_string() != profile_id {
+                return false;
+            }
+            let Some(window) = rust.window.as_ref().copied() else {
+                return false;
+            };
+            let Some(target) = rust
+                .state
+                .as_ref()
+                .and_then(|state| state.capture_target(tab))
+            else {
+                return false;
+            };
+            (target, profile_id, window)
+        };
+
+        let host = host_token.to_string();
+        let page_owner = page_owner_token.to_string();
+        if host.is_empty()
+            || host.len() > 128
+            || host.chars().any(char::is_control)
+            || page_owner.is_empty()
+            || page_owner.len() > 128
+            || page_owner.chars().any(char::is_control)
+        {
+            return false;
+        }
+        let ui = self.as_ref().rust().window_token.to_string();
+        if !page_host_owner_binding_matches(&ui, &profile_id, &page_owner, &target) {
+            return false;
+        }
+        let profile = QString::from(profile_id.as_str());
+        if !qobject::ferric_public_page_host_tokens_live(
+            host_token,
+            page_owner_token,
+            &profile,
+            operation.attaches(),
+        ) {
+            return false;
+        }
+
+        let effect = EngineEffect::ReparentView {
+            tab: target.tab,
+            generation: target.generation,
+            window,
+        };
+        self.as_mut().queue_pending_engine_action();
+        self.as_mut()
+            .rust_mut()
+            .pending_engine_actions
+            .push_back(NativeRequest::ReparentView {
+                effect,
+                target,
+                profile_id,
+                host_token: host,
+                page_owner_token: page_owner,
+                operation,
+            });
+        self.as_mut().runtime_work_available();
+        true
+    }
+
     pub(super) fn take_engine_request(mut self: Pin<&mut Self>) -> super::QVariant {
         loop {
             let request = {
@@ -676,9 +965,49 @@ impl qobject::BrowserUi {
                     .pop_front()
                     .expect("a typed request is queued")
             };
-            if request.captured_target().is_some_and(|target| {
+            let target_is_current = request.captured_target().is_some_and(|target| {
                 super::captured_target_is_current(self.as_ref().rust().state.as_ref(), target)
-            }) {
+            });
+            let native_owner_is_current = request.page_host_tokens().is_none_or(
+                |(profile_id, host_token, page_owner_token, attach)| {
+                    qobject::ferric_public_page_host_tokens_live(
+                        &QString::from(host_token),
+                        &QString::from(page_owner_token),
+                        &QString::from(profile_id),
+                        attach,
+                    )
+                },
+            );
+            let runtime_profile_is_current =
+                request
+                    .page_host_tokens()
+                    .is_none_or(|(profile_id, _, _, _)| {
+                        self.as_ref()
+                            .rust()
+                            .state
+                            .as_ref()
+                            .and_then(|state| state.profile_instance_id())
+                            .is_some_and(|current| current.to_string() == profile_id)
+                    });
+            let ui = self.as_ref().rust().window_token.to_string();
+            let rust_owner_binding_is_current =
+                request
+                    .page_host_tokens()
+                    .is_none_or(|(profile_id, _, page_owner_token, _)| {
+                        request.captured_target().is_some_and(|target| {
+                            page_host_owner_binding_matches(
+                                &ui,
+                                profile_id,
+                                page_owner_token,
+                                &target,
+                            )
+                        })
+                    });
+            if target_is_current
+                && native_owner_is_current
+                && runtime_profile_is_current
+                && rust_owner_binding_is_current
+            {
                 if !self.as_ref().rust().pending_engine_actions.is_empty() {
                     self.as_mut().runtime_work_available();
                 }

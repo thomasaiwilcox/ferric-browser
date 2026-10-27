@@ -61,6 +61,25 @@ if(BUILD_TESTING)
     set_tests_properties(T014e2q PROPERTIES
         TIMEOUT 90 LABELS "component;qml")
 
+    add_executable(public_page_host_integration_tests
+        tst_public_page_host_integration.cpp)
+    get_target_property(_public_page_owner_links public_page_owner_tests LINK_LIBRARIES)
+    target_link_libraries(public_page_host_integration_tests PRIVATE
+        ${_public_page_owner_links}
+        KF6::WindowSystem
+        Qt6::QuickWidgets
+        Qt6::WebEngineWidgets)
+    target_include_directories(public_page_host_integration_tests PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/../../src")
+    add_test(NAME T014e2 COMMAND public_page_host_integration_tests
+        rustBrowserUiRequestReparentsSamePageAcrossHosts)
+    add_test(NAME T014e2r COMMAND public_page_host_integration_tests
+        rustBrowserUiRequestReparentsSamePageAcrossHostsWithInitializer)
+    add_test(NAME T014e2s COMMAND public_page_host_integration_tests
+        rustBrowserUiRequestReparentsSamePageAcrossHostsWithProfileBootstrap)
+    set_tests_properties(T014e2 T014e2r T014e2s PROPERTIES
+        TIMEOUT 180 LABELS "application;webengine;qml")
+
     set_tests_properties(public_page_host_native_input PROPERTIES
         LABELS "native;wayland"
         TIMEOUT 45)
