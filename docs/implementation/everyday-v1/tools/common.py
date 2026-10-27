@@ -9,6 +9,7 @@ CLONE=f"https://github.com/{REPO}.git"
 ATTEMPT_EXCEPTION_AMENDMENTS={"P00a":"A37","W01b":"A37","F02e2":"A48"}
 ATTEMPT_EXCEPTION_LIMITS={"P00a":4,"W01b":4,"F02e2":6}
 ATTEMPT_EXCEPTION_TASKS=set(ATTEMPT_EXCEPTION_AMENDMENTS)
+TASK_SUPERSESSION_AMENDMENTS={"F02e2":"A50"}
 GLOBAL_MAX_ATTEMPTS=3
 def load(path:Path):
     with path.open(encoding="utf-8") as f:return json.load(f)

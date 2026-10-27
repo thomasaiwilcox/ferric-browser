@@ -26,7 +26,13 @@ class StructureTests(unittest.TestCase):
         for task in plan['slices']:
             current=prior.get(task['id'],{'status':'not_started','attempts':0,'author':None,'reviewer':None,'evidence':None,'blocker':None})
             if task.get('superseded_by'):
-                current={**current,'status':'superseded','supersession':{'amendment':task['amendment'],'superseded_by':task['superseded_by']}}
+                if task['id']=='F02e2' and task.get('amendment')=='A50':
+                    current={**current,'status':'failed','attempts':6,
+                             'terminal_failure':validate_pack.A50_TERMINAL_FAILURE.copy(),
+                             'supersession':{'amendment':'A50','superseded_by':['F02e2r'],
+                                             'transition':'pending_successor_acceptance'}}
+                else:
+                    current={**current,'status':'superseded','supersession':{'amendment':task['amendment'],'superseded_by':task['superseded_by']}}
             slices[task['id']]=current
         state['slices']=slices
         return state
@@ -243,6 +249,62 @@ class StructureTests(unittest.TestCase):
         changed=copy.deepcopy(tests)
         next(x for x in changed if x['id']=='T014e2q')['result']='passed'
         self.assertTrue(any('only the exact A48 T014e2 failure' in e for e in validate_pack.validate_matrix_execution_status(changed)))
+    def test_a50_successor_keeps_terminal_parent_closed_until_new_task_accepts(self):
+        p=load(PACK/'control/plan.json')
+        self.assertEqual(validate_pack.validate_successor_recovery_A50(p,PACK),[])
+        tasks={t['id']:t for t in p['slices']}
+        self.assertEqual(tasks['F02e2']['max_attempts'],6)
+        self.assertEqual(tasks['F02e2']['superseded_by'],['F02e2r'])
+        self.assertEqual(tasks['F02e2r']['test_ids'],['T014e2r'])
+        self.assertEqual(tasks['F02e2r']['allowed_paths'],validate_pack.A50_F02E2_PATHS_ORDERED)
+        self.assertEqual(tasks['F02e2r']['locks'],validate_pack.A44_LOCKS)
+        self.assertEqual(tasks['F02e3']['depends_on'],['F02e2r'])
+        self.assertEqual(tasks['F02e3']['historical_depends_on'],['F02e2'])
+
+        wrong=copy.deepcopy(p)
+        next(t for t in wrong['slices'] if t['id']=='F02e2r')['test_ids']=['T014e2']
+        self.assertTrue(any('F02e2r:' in e for e in validate_pack.validate_successor_recovery_A50(wrong,PACK)))
+        wrong=copy.deepcopy(p)
+        next(t for t in wrong['slices'] if t['id']=='F02e2r')['locks'].append('integration')
+        self.assertTrue(any('F02e2r:' in e for e in validate_pack.validate_successor_recovery_A50(wrong,PACK)))
+        wrong=copy.deepcopy(p)
+        next(t for t in wrong['slices'] if t['id']=='F02e3')['depends_on']=['F02e2']
+        self.assertTrue(any('F02e3:' in e for e in validate_pack.validate_successor_recovery_A50(wrong,PACK)))
+        tests=load(PACK/'control/test_matrix.json')['tests']
+        changed=copy.deepcopy(tests)
+        next(t for t in changed if t['id']=='T014e2r')['slice']='F02e2'
+        with tempfile.TemporaryDirectory() as tmp:
+            pack=Path(tmp);control=pack/'control';control.mkdir()
+            (control/'AMENDMENTS.md').write_text((PACK/'control/AMENDMENTS.md').read_text())
+            write_json(control/'source-map.execution.json',load(PACK/'control/source-map.execution.json'))
+            write_json(control/'test_matrix.json',{'tests':changed})
+            self.assertTrue(any('T014e2r:' in e for e in validate_pack.validate_successor_recovery_A50(p,pack)))
+
+        plan={'slices':[
+            {'id':'F02e2','amendment':'A50','superseded_by':['F02e2r']},
+            {'id':'F02e2r','depends_on':[]},
+        ]}
+        state={'slices':{
+            'F02e2':{'status':'failed','attempts':6,'terminal_failure':validate_pack.A50_TERMINAL_FAILURE.copy(),
+                     'supersession':{'amendment':'A50','superseded_by':['F02e2r'],'transition':'pending_successor_acceptance'}},
+            'F02e2r':{'status':'ready'},
+        }}
+        self.assertEqual(validate_pack.validate_supersession_state(plan,state),[])
+        premature=copy.deepcopy(state)
+        premature['slices']['F02e2']['status']='superseded'
+        premature['slices']['F02e2']['supersession']['transition']='successor_accepted'
+        self.assertTrue(any('status must remain failed' in e for e in validate_pack.validate_supersession_state(plan,premature)))
+        accepted=copy.deepcopy(state)
+        accepted['slices']['F02e2r']['status']='accepted'
+        accepted['slices']['F02e2']['status']='superseded'
+        accepted['slices']['F02e2']['supersession']['transition']='successor_accepted'
+        self.assertEqual(validate_pack.validate_supersession_state(plan,accepted,strict=True),[])
+        exhausted=copy.deepcopy(state)
+        exhausted['slices']['F02e2']['attempts']=7
+        self.assertTrue(any('exhausted 6/6' in e for e in validate_pack.validate_supersession_state(plan,exhausted)))
+        mutated=copy.deepcopy(state)
+        mutated['slices']['F02e2']['terminal_failure']['receipt_sha256']='0'*64
+        self.assertTrue(any('exact immutable A48' in e for e in validate_pack.validate_supersession_state(plan,mutated)))
     def test_a45_native_retry_is_exact_same_source_and_not_attempt6(self):
         p=load(PACK/'control/plan.json')
         self.assertEqual(validate_pack.validate_native_gate_retries(p,PACK),[])

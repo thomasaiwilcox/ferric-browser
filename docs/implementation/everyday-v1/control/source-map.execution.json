@@ -4431,6 +4431,72 @@
       "parent_test_rerun_authorized": false,
       "child_accepts_parent": false,
       "child_unblocks_F02e3": false
+    },
+    {
+      "id": "A50",
+      "reason": "New F02e2r successor reuses A44 source scope to qualify page reparenting after the terminal A48 T014e2 failure; no parent retry or T014e2 execution.",
+      "added_paths": [],
+      "removed_paths": [],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ],
+        "F02e2q": [
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_static_qml_registration.cpp"
+        ],
+        "F02e2r": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "added_locks": [],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "max_changed_product_files": 10,
+      "previous_max_changed_product_files": 10,
+      "source_reference_sha": "8e5b41f51ea698db3e5173a4b9ef344752af7bca",
+      "source_reference_tree": "5cba3470e4cb5977c92854985cb9b04120f3fde7",
+      "parent_test_owner": "F02e2",
+      "parent_test": "T014e2",
+      "successor_test_owner": "F02e2r",
+      "successor_test": "T014e2r",
+      "successor_new_slot": "rustBrowserUiRequestReparentsSamePageAcrossHostsWithInitializer",
+      "prerequisite_child": "F02e2q",
+      "prerequisite_test": "T014e2q",
+      "fresh_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2r-a1-qt6112-qmake",
+      "attempt_seven_authorized": false,
+      "parent_test_execution_authorized": false,
+      "parent_remains_failed_until_successor_acceptance": true,
+      "downstream_slice": "F02e3",
+      "downstream_dependency": "F02e2r",
+      "child_alone_unblocks_downstream": false,
+      "tooling_paths": [
+        "tools/common.py",
+        "tools/validate_pack.py",
+        "tools/test_tools.py"
+      ]
     }
   ]
 }

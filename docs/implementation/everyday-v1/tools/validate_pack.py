@@ -5,7 +5,8 @@ import argparse,json,re,sys
 from pathlib import Path
 from common import (PACK,load,read_plan,packet,safe_relative,digest,
                     ATTEMPT_EXCEPTION_TASKS,ATTEMPT_EXCEPTION_AMENDMENTS,
-                    ATTEMPT_EXCEPTION_LIMITS,GLOBAL_MAX_ATTEMPTS,effective_attempt_limit)
+                    ATTEMPT_EXCEPTION_LIMITS,GLOBAL_MAX_ATTEMPTS,effective_attempt_limit,
+                    TASK_SUPERSESSION_AMENDMENTS)
 STATUSES={"not_started","ready","in_progress","submitted","reviewing","accepted","superseded","blocked_environment","blocked_specification","implemented_unqualified","failed"}
 LEVELS={"inspection","unit","component","application","native","physical","benchmark","build","fuzz"}
 RECIPES={"preflight","baseline","config","rust-policy","application-rust","storage","application","credential","helper","rp","fuzz","benchmark","native","physical","package","ci","docs","review","rebuild","release"}
@@ -66,6 +67,27 @@ A49_CHILD_PATHS=[
     "crates/ferric-browser-engine-qt/tests/public-page-host/tst_static_qml_registration.cpp",
 ]
 A49_CHILD_LOCKS=["public-page-host","test-registration"]
+A50_F02E2_PATHS_ORDERED=[
+    "crates/ferric-browser-engine-qt/src/public_page_host.h",
+    "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+    "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+    "crates/ferric-browser-engine-qt/src/bridge.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+    "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+    "crates/ferric-browser-engine-qt/build.rs",
+    "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+    "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+    "crates/ferric-browser-engine-qt/src/browser_ui_input.rs",
+]
+A50_F02E2R_TARGET="/home/tom/Projects/ferric-everyday-work/builds/native-F02e2r-a1-qt6112-qmake"
+A50_NEW_SLOT="rustBrowserUiRequestReparentsSamePageAcrossHostsWithInitializer"
+A50_TERMINAL_FAILURE={
+    "result":"failed","attempts":6,"test_id":"T014e2",
+    "run_path":"evidence/F02e2-a6/native/NATIVE_RUN-A48.json",
+    "run_sha256":"e6b0695df918b20713c8c86d008e99c1ac3f7a68a8852fea40d37d2fd3ae9eb1",
+    "receipt_path":"evidence/F02e2-a6/native/T014e2-A48/receipt.json",
+    "receipt_sha256":"2e35b498a9a5db8802bac48bf3f28fbfed17ace1ac70810170bcc6bc38d9f32a",
+}
 SUPERSESSION_AMENDMENT="A37"
 
 def validate_matrix_execution_status(tests):
@@ -149,8 +171,11 @@ def validate_harness_prerequisite_split_A49(plan,pack=PACK):
             or child.get("recipe")!="application"
             or child.get("parent_id")!="F02e"):
         errors.append("F02e2q: child task differs from its independently reviewed harness-only scope")
-    if downstream is None or "F02e2" not in downstream.get("depends_on",[]) or "F02e2q" in downstream.get("depends_on",[]):
-        errors.append("F02e3: retain the failed F02e2 dependency; F02e2q cannot unblock the feature chain")
+    if (downstream is None or "F02e2r" not in downstream.get("depends_on",[])
+            or "F02e2" in downstream.get("depends_on",[])
+            or "F02e2q" in downstream.get("depends_on",[])
+            or "F02e2" not in downstream.get("historical_depends_on",[])):
+        errors.append("F02e3: require successor F02e2r and retain F02e2 only as a historical dependency; F02e2q alone cannot unblock the feature chain")
     tests=load(pack/"control/test_matrix.json")["tests"]
     errors+=validate_matrix_execution_status(tests)
     by_id={x.get("id"):x for x in tests}
@@ -185,13 +210,124 @@ def validate_harness_prerequisite_split_A49(plan,pack=PACK):
         errors.append("A49: missing accepted amendment record")
     return errors
 
+def validate_successor_recovery_A50(plan,pack=PACK):
+    """Validate the distinct F02e2r successor and its pending/accepted supersession boundary."""
+    errors=[]
+    try:
+        amendments=(pack/"control/AMENDMENTS.md").read_text()
+        section=amendments.split("## A50",1)[1].split("\n## ",1)[0]
+        accepted="**Status:** revision 2 independently accepted" in section
+    except (IndexError,OSError):
+        section="";accepted=False
+    record=plan.get("successor_recovery_A50")
+    if not accepted:
+        if record is not None:
+            errors.append("A50: successor metadata requires its independently accepted amendment record")
+        return errors
+    expected={
+        "amendment":"A50",
+        "review_path":"evidence/A50/PLAN_REVIEW-r2_d28.json",
+        "review_sha256":"f348dfe81f41bda61759f849287b1a5f02aa14d8cdd3797818248629c1f9b932",
+        "review_budget_path":"evidence/A50/PLAN_REVIEW_BUDGET-r2_d28.json",
+        "review_budget_sha256":"60adf2b5f7daf47b0215ee7f6dc78bf89b6227b8850b21cc5a91a6c9fbb319b6",
+        "prior_request_changes_sha256":"3e2dd020eccc06e736d261d61d583e386423fdf5cc722f6379c1b2b8e13cc0ed",
+        "terminal_parent":{
+            "slice":"F02e2","status":"failed","attempts":6,"attempt_limit":6,"test_id":"T014e2",
+            "run_path":A50_TERMINAL_FAILURE["run_path"],"run_sha256":A50_TERMINAL_FAILURE["run_sha256"],
+            "receipt_path":A50_TERMINAL_FAILURE["receipt_path"],"receipt_sha256":A50_TERMINAL_FAILURE["receipt_sha256"],
+            "attempt_seven_authorized":False,"old_test_execution_authorized":False,
+        },
+        "accepted_prerequisite":{
+            "slice":"F02e2q","test_id":"T014e2q","source_sha":"eb6ff74ad7134ff6fb5a2e934e08fd3f22a777a9",
+            "source_tree":"42b809fee461d7a555b79f953fe1c56d6c1a0845",
+            "evidence_sha256":"d7527467846770e3b85a54c6cd4d59ed990466f5aa63237450b5f576015724f8",
+        },
+        "successor":{
+            "slice":"F02e2r","test_id":"T014e2r","dependencies":["F02e1","F02e2q"],"attempt_limit":3,
+            "allowed_paths":A50_F02E2_PATHS_ORDERED,"locks":A44_LOCKS,"max_changed_product_files":10,
+            "target":A50_F02E2R_TARGET,
+            "new_slot":"rustBrowserUiRequestReparentsSamePageAcrossHostsWithInitializer",
+            "old_slot":"rustBrowserUiRequestReparentsSamePageAcrossHosts","old_slot_execution_authorized":False,
+        },
+        "supersession":{
+            "old_slice":"F02e2","new_slice":"F02e2r","old_test":"T014e2","new_test":"T014e2r",
+            "transition":"Keep F02e2 failed while F02e2r is pending/in progress; after F02e2r accepted, set F02e2 workflow status superseded and retain immutable terminal_failure.",
+        },
+        "plan_tooling_paths":["tools/common.py","tools/validate_pack.py","tools/test_tools.py"],
+    }
+    if record!=expected:
+        errors.append("A50: successor recovery metadata differs from the independently accepted scope")
+    tasks={t.get("id"):t for t in plan.get("slices",[]) if isinstance(t,dict)}
+    parent=tasks.get("F02e2");successor=tasks.get("F02e2r");downstream=tasks.get("F02e3");aggregate=tasks.get("F02e")
+    if (parent is None or parent.get("max_attempts")!=6 or parent.get("test_ids")!=["T014e2"]
+            or parent.get("superseded_by")!=["F02e2r"] or parent.get("amendment")!="A50"):
+        errors.append("F02e2: retain the six-attempt terminal parent and map it only to F02e2r")
+    if (successor is None or successor.get("depends_on")!=["F02e1","F02e2q"]
+            or successor.get("test_ids")!=["T014e2r"] or successor.get("allowed_paths")!=A50_F02E2_PATHS_ORDERED
+            or successor.get("locks")!=A44_LOCKS or successor.get("max_changed_product_files")!=10
+            or successor.get("path_budget_amendment")!="A50" or successor.get("max_attempts") is not None
+            or successor.get("worker_may_delegate") is not False):
+        errors.append("F02e2r: successor dependencies, budget, ownership, or default attempt policy changed")
+    if (downstream is None or downstream.get("depends_on")!=["F02e2r"]
+            or downstream.get("historical_depends_on")!=["F02e2"]):
+        errors.append("F02e3: dependency must move to F02e2r while retaining F02e2 historically")
+    if (aggregate is None or "F02e2r" not in aggregate.get("depends_on",[])
+            or "F02e2" in aggregate.get("depends_on",[])):
+        errors.append("F02e: aggregate must depend on F02e2r, not the terminal F02e2 task")
+    tests=load(pack/"control/test_matrix.json")["tests"]
+    by_id={x.get("id"):x for x in tests}
+    old=by_id.get("T014e2",{});new=by_id.get("T014e2r",{});child=by_id.get("T014e2q",{})
+    if (old.get("slice")!="F02e2" or old.get("result")!="failed"
+            or old.get("binding")!=A48_T014E2_FAILURE_BINDING or old.get("superseded_by")!=["T014e2r"]):
+        errors.append("T014e2: preserve the exact A48 failure and map it only to T014e2r")
+    if (new.get("slice")!="F02e2r" or new.get("result")!="not_run"
+            or new.get("requirement")!=old.get("requirement") or new.get("level")!=old.get("level")):
+        errors.append("T014e2r: successor test must be a new not_run row with matching requirement/evidence level")
+    if child.get("slice")!="F02e2q" or child.get("result")!="not_run":
+        errors.append("T014e2q: retain the separate authored A49 matrix row")
+    if "distinct QtTest slot" not in section or "F02e2 remains visibly failed" not in section:
+        errors.append("A50: accepted amendment record lacks the distinct slot or deferred supersession boundary")
+    try:
+        source=load(pack/"control/source-map.execution.json")
+        records=[x for x in source.get("execution_amendments",[]) if isinstance(x,dict) and x.get("id")=="A50"]
+        if len(records)!=1:
+            errors.append("A50: source map must contain exactly one successor ownership record")
+        else:
+            rec=records[0]
+            owners=rec.get("path_owners",{})
+            if (rec.get("parent_test")!="T014e2" or rec.get("successor_test")!="T014e2r"
+                    or rec.get("attempt_seven_authorized") is not False
+                    or rec.get("parent_test_execution_authorized") is not False
+                    or rec.get("parent_remains_failed_until_successor_acceptance") is not True
+                    or rec.get("fresh_target")!=A50_F02E2R_TARGET
+                    or owners.get("F02e2r")!=A50_F02E2_PATHS_ORDERED):
+                errors.append("A50: source-map ownership weakens the terminal parent or successor boundary")
+    except (OSError,ValueError,TypeError,AttributeError) as exc:
+        errors.append(f"A50: cannot validate successor source-map record: {exc}")
+    return errors
+
 def validate_edit_path_budget(task,pack=PACK):
-    """Enforce the 8-path default and exact reviewed F02e1/A38 or F02e2/A42/A44 exceptions."""
+    """Enforce the eight-path default and reviewed F02e1/F02e2 lineage exceptions."""
     errors=[];paths=task.get("allowed_paths",[]);cap=task.get("max_changed_product_files",8)
     amendment=task.get("path_budget_amendment")
     if amendment is None:
         if len(paths)>8 or cap>8:
             errors.append(f"{task.get('id')}: edit-path budget exceeded")
+        return errors
+    if task.get("id")=="F02e2r" and amendment=="A50":
+        if len(paths)!=10 or set(paths)!=A44_F02E2_PATHS or cap!=10:
+            errors.append("F02e2r: A50 may reuse only the exact A44 ten-path F02e2 scope")
+        if task.get("locks")!=A44_LOCKS:
+            errors.append("F02e2r: A50 requires the exact A44 four-lock set")
+        if task.get("max_attempts") is not None:
+            errors.append("F02e2r: use the global default three-attempt limit")
+        try:
+            text=(pack/"control/AMENDMENTS.md").read_text()
+            section=text.split("## A50",1)[1].split("\n## ",1)[0]
+            if "**Status:** revision 2 independently accepted" not in section:
+                errors.append("F02e2r: A50 path reuse requires its accepted amendment record")
+        except (IndexError,OSError):
+            errors.append("F02e2r: A50 accepted amendment record is missing")
         return errors
     if task.get("id")=="F02e2" and amendment=="A44":
         if len(paths)!=10 or set(paths)!=A44_F02E2_PATHS or cap!=10:
@@ -488,8 +624,9 @@ def validate_supersession_structure(tasks,tests):
             or any(not isinstance(x,str) or not x for x in replacements)
             or len(set(replacements))!=len(replacements)):
             errors.append(f"{sid}: superseded_by must contain unique nonempty task IDs");continue
-        if t.get("amendment")!=SUPERSESSION_AMENDMENT:
-            errors.append(f"{sid}: supersession must cite {SUPERSESSION_AMENDMENT}")
+        expected_amendment=TASK_SUPERSESSION_AMENDMENTS.get(sid,SUPERSESSION_AMENDMENT)
+        if t.get("amendment")!=expected_amendment:
+            errors.append(f"{sid}: supersession must cite {expected_amendment}")
         for rid in replacements:
             if rid not in tasks:errors.append(f"{sid}: unknown superseding task {rid}")
             if rid==sid:errors.append(f"{sid}: task cannot supersede itself")
@@ -555,6 +692,21 @@ def validate_supersession_state(plan,state,strict=False):
             if s.get("supersession"):errors.append(f"{sid}: state supersession record has no plan mapping")
             continue
         expected={"amendment":t.get("amendment"),"superseded_by":t["superseded_by"]}
+        if sid=="F02e2" and t.get("amendment")=="A50":
+            successor=states.get("F02e2r",{})
+            accepted=successor.get("status")=="accepted"
+            terminal=s.get("terminal_failure")
+            if terminal!=A50_TERMINAL_FAILURE:
+                errors.append("F02e2: A50 must retain the exact immutable A48 terminal-failure record")
+            if s.get("attempts")!=6:
+                errors.append("F02e2: A50 must preserve the exhausted 6/6 attempt count")
+            expected_state={**expected,"transition":"successor_accepted" if accepted else "pending_successor_acceptance"}
+            required_status="superseded" if accepted else "failed"
+            if s.get("status")!=required_status:
+                errors.append(f"F02e2: status must remain {required_status} at the A50 successor transition")
+            if s.get("supersession")!=expected_state:
+                errors.append("F02e2: state supersession record differs from the A50 pending/accepted transition")
+            continue
         if s.get("status")!="superseded":errors.append(f"{sid}: plan-superseded task must retain state status superseded")
         if s.get("supersession")!=expected:errors.append(f"{sid}: state supersession record differs from plan or is empty")
     if strict:
@@ -591,6 +743,7 @@ def validate_structure(pack=PACK,plan=None):
         errors+=validate_native_gate_retries(plan,pack)
         errors+=validate_source_attempt_extension_A48(plan,pack)
         errors+=validate_harness_prerequisite_split_A49(plan,pack)
+        errors+=validate_successor_recovery_A50(plan,pack)
         errors+=validate_supersession_structure(tasks,tests)
         reqids=[r["id"] for r in reqs]
         if len(set(reqids))!=len(reqids):errors.append("Duplicate requirement IDs")
@@ -699,13 +852,19 @@ def validate_state(plan,state_path,strict=False,pack=PACK):
         errors+=validate_attempt_limits(plan,tasks)
         errors+=validate_source_attempt_extension_A48(plan,pack)
         errors+=validate_harness_prerequisite_split_A49(plan,pack)
+        errors+=validate_successor_recovery_A50(plan,pack)
         errors+=validate_supersession_state(plan,state,strict)
         if state.get("run_id") is not None:
             parent_state=state["slices"].get("F02e2",{})
-            if parent_state.get("status")!="failed" or parent_state.get("attempts")!=6:
-                errors.append("F02e2: A49 requires the parent to remain failed at attempts 6/6")
-            if state["slices"].get("F02e3",{}).get("status")=="accepted":
-                errors.append("F02e3: cannot be accepted while terminal parent F02e2 is failed")
+            successor_state=state["slices"].get("F02e2r",{})
+            if parent_state.get("status") not in {"failed","superseded"} or parent_state.get("attempts")!=6:
+                errors.append("F02e2: A49/A50 require the parent failure and 6/6 history to remain visible")
+            if parent_state.get("status")=="failed" and successor_state.get("status")=="accepted":
+                errors.append("F02e2: transition to workflow-superseded after F02e2r acceptance")
+            if parent_state.get("status")=="superseded" and successor_state.get("status")!="accepted":
+                errors.append("F02e2: cannot supersede the failed parent before F02e2r acceptance")
+            if state["slices"].get("F02e3",{}).get("status")=="accepted" and successor_state.get("status")!="accepted":
+                errors.append("F02e3: cannot be accepted before successor F02e2r")
         for sid,t in tasks.items():
             s=state["slices"][sid]
             if s["status"] not in STATUSES:errors.append(f"{sid}: invalid status")

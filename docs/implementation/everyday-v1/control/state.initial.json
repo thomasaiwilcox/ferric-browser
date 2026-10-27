@@ -698,12 +698,28 @@
       "blocker": null
     },
     "F02e2": {
-      "status": "not_started",
-      "attempts": 0,
-      "author": null,
-      "reviewer": null,
-      "evidence": null,
-      "blocker": null
+      "status": "failed",
+      "attempts": 6,
+      "author": "/root/f02e2_a6_worker",
+      "reviewer": "/root/d28_review",
+      "evidence": "evidence/F02e2-a6/native/NATIVE_RUN-A48.json",
+      "blocker": "A48 T014e2 failed before page-reparent assertions. Preserve this terminal 6/6 result; A50 permits only the distinct F02e2r/T014e2r successor.",
+      "terminal_failure": {
+        "result": "failed",
+        "attempts": 6,
+        "test_id": "T014e2",
+        "run_path": "evidence/F02e2-a6/native/NATIVE_RUN-A48.json",
+        "run_sha256": "e6b0695df918b20713c8c86d008e99c1ac3f7a68a8852fea40d37d2fd3ae9eb1",
+        "receipt_path": "evidence/F02e2-a6/native/T014e2-A48/receipt.json",
+        "receipt_sha256": "2e35b498a9a5db8802bac48bf3f28fbfed17ace1ac70884c7f034034f9d32a"
+      },
+      "supersession": {
+        "amendment": "A50",
+        "superseded_by": [
+          "F02e2r"
+        ],
+        "transition": "pending_successor_acceptance"
+      }
     },
     "F02e2q": {
       "status": "not_started",
@@ -762,6 +778,14 @@
       "blocker": null
     },
     "F02e": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e2r": {
       "status": "not_started",
       "attempts": 0,
       "author": null,
