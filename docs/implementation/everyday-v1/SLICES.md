@@ -1,6 +1,6 @@
 # Dependency-ordered work inventory
 
-95 execution-plan entries (84 work slices plus 11 coordinator aggregates) and 183 acceptance cases. Mutable execution status is recorded in the external run ledger. A49 adds F02e2q as a separate static QML-registration prerequisite. A50 adds F02e2r as a separately reviewed successor for full page reparenting; F02e2 remains failed at 6/6 until F02e2r is accepted.
+95 execution-plan entries (84 work slices plus 11 coordinator aggregates) and 183 acceptance cases. Mutable execution status is recorded in the external run ledger. A49 adds F02e2q as a separate static QML-registration prerequisite. A50 adds F02e2r as a separately reviewed successor for full page reparenting; A51 permits only a supplemental continuation of A3’s unrun T014e2r gates. F02e2 remains failed at 6/6 until F02e2r is accepted.
 
 | ID | Outcome | Depends on |
 |---|---|---|

@@ -305,6 +305,46 @@ class StructureTests(unittest.TestCase):
         mutated=copy.deepcopy(state)
         mutated['slices']['F02e2']['terminal_failure']['receipt_sha256']='0'*64
         self.assertTrue(any('exact immutable A48' in e for e in validate_pack.validate_supersession_state(plan,mutated)))
+    def test_a51_continuation_is_bound_to_the_exact_failed_a3_artifacts(self):
+        p=load(PACK/'control/plan.json')
+        self.assertEqual(validate_pack.validate_continuation_A51(p,PACK),[])
+        self.assertEqual(p['native_continuation_A51']['attempt_identity'],{
+            'slice':'F02e2r','source_amendment':'A50','attempt':3,'attempt_limit':3,'counter_increment':False})
+
+        changed=copy.deepcopy(p)
+        changed['native_continuation_A51']['candidate']['source_sha']='0'*40
+        self.assertTrue(any('A51: continuation metadata' in e for e in validate_pack.validate_continuation_A51(changed,PACK)))
+        changed=copy.deepcopy(p)
+        changed['native_continuation_A51']['artifacts']['integration_executable_sha256']='0'*64
+        self.assertTrue(any('A51: continuation metadata' in e for e in validate_pack.validate_continuation_A51(changed,PACK)))
+        changed=copy.deepcopy(p)
+        changed['native_continuation_A51']['allowed_gates'].append('engine rebuild')
+        self.assertTrue(any('A51: continuation metadata' in e for e in validate_pack.validate_continuation_A51(changed,PACK)))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pack=Path(tmp);control=pack/'control';control.mkdir()
+            for name in ('AMENDMENTS.md','state.initial.json','source-map.execution.json','test_matrix.json'):
+                (control/name).write_bytes((PACK/'control'/name).read_bytes())
+            source=load(control/'source-map.execution.json')
+            next(x for x in source['execution_amendments'] if x['id']=='A51')['continuation']['artifact_hashes']['link_command_sha256']='0'*64
+            write_json(control/'source-map.execution.json',source)
+            self.assertTrue(any('A51: source-map continuation record' in e for e in validate_pack.validate_continuation_A51(p,pack)))
+
+    def test_a51_successor_acceptance_requires_passed_continuation_and_independent_review(self):
+        incomplete={'slices':{'F02e2r':{'status':'accepted','attempts':3}}}
+        self.assertTrue(any('separately reviewed continuation record' in e
+                            for e in validate_pack.validate_continuation_state_A51(incomplete,Path('/tmp'))))
+        altered={'slices':{'F02e2r':{'status':'accepted','attempts':4,'A51_continuation':{
+            'amendment':'A51','source_amendment':'A50','attempt':4,'attempt_limit':3,
+            'attempt_count_after':4,'candidate':validate_pack.A51_CANDIDATE.copy(),
+            'artifacts':validate_pack.A51_ARTIFACTS.copy(),'preserved_A50_run':validate_pack.A51_A50_RUN.copy(),
+            'preserved_A50_lease_closure':validate_pack.A51_A50_CLOSURE.copy(),'result':'passed',
+            'product_tests_run':['T014e2r','T014e2'],'old_T014e2_ran':True,
+            'source_changed':False,'build_or_configure_ran':False}}}}
+        errors=validate_pack.validate_continuation_state_A51(altered,Path('/tmp'))
+        self.assertTrue(any('attempt 3/3' in e for e in errors))
+        self.assertTrue(any('continuation field attempt' in e for e in errors))
+        self.assertTrue(any('product_tests_run' in e for e in errors))
     def test_a45_native_retry_is_exact_same_source_and_not_attempt6(self):
         p=load(PACK/'control/plan.json')
         self.assertEqual(validate_pack.validate_native_gate_retries(p,PACK),[])

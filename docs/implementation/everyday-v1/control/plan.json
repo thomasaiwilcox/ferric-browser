@@ -676,7 +676,7 @@
       "allowed_paths": [],
       "steps": [
         "Coordinator-only no-code qualification; do not dispatch another F02b2a implementation attempt. Preserve original implemented_unqualified3/3 status, candidates, failed receipts and root-cause evidence until new dependency repair is accepted.",
-        "A37: F02e0–F02e8 own the public page-host prototype, ownership, production migration and fresh replacement qualification. Historical F02c/F02d receipts cannot satisfy these outcomes.",
+        "A37: F02e0\u2013F02e8 own the public page-host prototype, ownership, production migration and fresh replacement qualification. Historical F02c/F02d receipts cannot satisfy these outcomes.",
         "After the F02e replacement aggregate is independently accepted, run original exact CTest everyday_T014a_popup_commands_opener_identity on current production source, adapting only implementation-specific harness details and preserving behavior assertions. Do not increment/reset the exhausted implementation counter.",
         "Independently review source-dependency equivalence and the exact zero-skip T014a runtime receipt; only that new qualification can accept this original behavior. F02b2b remains gated until it passes."
       ],
@@ -1471,7 +1471,7 @@
         "Build a narrow public-API proof on qualified Qt 6.11.2 WebEngine/WebChannel that isolates a dedicated transport from ordinary page and script worlds.",
         "Prove that main-frame origin/context facts are obtained from native trusted frame/document facts rather than page claims, and bind each challenge/lease to the current document.",
         "Exercise hostile MainWorld/ApplicationWorld access and subframe probes. Use no real authenticator material and add no production WebChannel wiring, scheme or console fallback.",
-        "Resolve compile/setup issues only within this child’s five existing paths so the registered T046 application proof can run; preserve zero-skip evidence."
+        "Resolve compile/setup issues only within this child\u2019s five existing paths so the registered T046 application proof can run; preserve zero-skip evidence."
       ],
       "kind": "proof",
       "locks": [
@@ -3872,7 +3872,7 @@
         "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
       ],
       "steps": [
-        "Cover mode × hot on/off × phone on/off with actual production owners and realistic asynchronous scheduling.",
+        "Cover mode \u00d7 hot on/off \u00d7 phone on/off with actual production owners and realistic asynchronous scheduling.",
         "Run credential request from a freshly adopted page, concurrent windows, renderer loss, config/profile changes and shutdown.",
         "Combine popup opening, background grouping and transfer-reserve allocation without confusing the three kinds of prepared resources.",
         "Keep privacy, history, native search, focus and accepted storage-work assertions visible across the matrix."
@@ -4124,7 +4124,7 @@
       "steps": [
         "Follow RESOURCE_POLICY dry run; retain source/commits/evidence and delete only inactive explicitly owned build products.",
         "Rebuild from accepted source/lockfiles with correct native dependencies and no stale static library.",
-        "Prove no dependence on another worktree build, user’s caches/profile or hidden fixture state.",
+        "Prove no dependence on another worktree build, user\u2019s caches/profile or hidden fixture state.",
         "Record storage/inode/Btrfs metadata observations where available; never run balance/delete snapshots automatically."
       ],
       "kind": "verification",
@@ -4445,7 +4445,8 @@
         "In tst_public_page_host_integration.cpp, initialize the generated CXX-Qt crate after QApplication construction and before QTest::qExec or any QML use. Stop clearly if initialization fails; report QQmlComponent errors on BrowserUi creation failure. Keep the complete page-reparent assertion body unchanged, extract it into a shared helper, retain the old T014e2 slot, and add rustBrowserUiRequestReparentsSamePageAcrossHostsWithInitializer calling the same helper.",
         "Register T014e2r as a distinct CTest case invoking only the new QtTest slot. Preserve the T014e2 CTest registration and A48 failed row, but never execute the T014e2 CTest entry or old QtTest slot. This successor does not reset F02e2 attempt history and is not attempt 7.",
         "Obtain independent source review before native work. Use a fresh candidate and fresh target with pinned Qt 6.11.2 and matching Ferric runtime KF6WindowSystem; run exact-source engine release build, public-page-host configure/build, nonzero discovery containing T014e2r, then only T014e2r serially with zero skips. Preserve include guard, live compiler monitor, disposable profile and exclusive native-build lease; stop and close on failure.",
-        "After a complete pass, obtain independent gate-evidence review and integrate serially. Keep F02e2 failed while F02e2r is pending or running. Only after F02e2r acceptance may F02e2 transition to workflow-superseded with its terminal failure record preserved; F02e3 remains blocked until F02e2r is accepted."
+        "After a complete pass, obtain independent gate-evidence review and integrate serially. Keep F02e2 failed while F02e2r is pending or running. Only after F02e2r acceptance may F02e2 transition to workflow-superseded with its terminal failure record preserved; F02e3 remains blocked until F02e2r is accepted.",
+        "A51 permits only read-only verification of the exact preserved A50 attempt-3 source/artifacts, nonzero discovery of T014e2r, and one serial T014e2r run with zero skips under a fresh test-only lease. This is not attempt 4: do not edit source, rebuild, reconfigure, substitute artifacts, run T014e2, or run any other product test. Preserve the A50 failed run unchanged; require independent A51 gate-evidence review before F02e2r acceptance."
       ],
       "kind": "implementation",
       "locks": [
@@ -5177,5 +5178,88 @@
       "tools/validate_pack.py",
       "tools/test_tools.py"
     ]
+  },
+  "native_continuation_A51": {
+    "amendment": "A51",
+    "status": "accepted_plan_only",
+    "review_path": "evidence/A51/PLAN_REVIEW-r2_d28.json",
+    "review_sha256": "e27fb49ba67a27955f5c57576bd38e434b780f2113b1cdf42fa22318db132b1d",
+    "review_budget_path": "evidence/A51/PLAN_REVIEW_BUDGET-r2_d28.json",
+    "review_budget_sha256": "b20f3d565b95150b22ba4d41f9b862d7228d467a8f80ef4624fa6a35854e32f6",
+    "proposal_path": "evidence/A51/PROPOSAL.json",
+    "proposal_sha256": "f050004b1df76f4038bd46fb2f9c59ab61abfcfc5a9bcf3146c39719611f8ddf",
+    "packet_path": "packets/F02e2-A51-a3-link-check-continuation.md",
+    "packet_sha256": "4f37f646b2caaa55949ed0e6cfe5766596536481ecd5efd6064092415aa71e9e",
+    "prior_request_changes_review": {
+      "path": "evidence/A51/PLAN_REVIEW_d28.json",
+      "sha256": "21dff25c21c3ca78a981127e9c6caa13420dc976f6451b54e3af3941172da4cd"
+    },
+    "postmortem": {
+      "path": "evidence/F02e2r-a3/GATE_POSTMORTEM_REVIEW_d28.json",
+      "sha256": "2babd0ab2103da96508f101e971555c80a01fa0d967ac3dbb42ea5474572d223",
+      "decision": "stop_request_new_reviewed_amendment_before_continuation"
+    },
+    "attempt_identity": {
+      "slice": "F02e2r",
+      "source_amendment": "A50",
+      "attempt": 3,
+      "attempt_limit": 3,
+      "counter_increment": false
+    },
+    "candidate": {
+      "source_sha": "c6e29480e08f5e7a1ba54319ec2f2fe932d1f366",
+      "source_tree": "f5b7696b1c08d115ba435a521fc2a47fa128f538"
+    },
+    "preserved_A50_run": {
+      "path": "evidence/F02e2r-a3/native/NATIVE_RUN-A50-a3.json",
+      "sha256": "69c220a114afb4a05da8dfcf5458292db6d954305cf6900ac4cc8f07111c0906",
+      "result": "failed"
+    },
+    "preserved_A50_lease_closure": {
+      "path": "evidence/F02e2r-a3/native/NATIVE_LEASE_CLOSED-A50-a3.json",
+      "sha256": "c6e059a05d0ba4271400c1dbaf4723818f05b7abf0c3901cfc0605954ce48739"
+    },
+    "underlying_integration_target_build": {
+      "path": "evidence/F02e2r-a3/native/integration-target-build-a3/receipt.json",
+      "sha256": "92b8518b423c71b34f15a6203f9996e5f0dcb5cbdccf27c398cffd2ce16f2014",
+      "result": "passed",
+      "exit_code": 0
+    },
+    "artifacts": {
+      "target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2r-a3-qt6112-qmake",
+      "integration_executable_sha256": "da48cdbb935bb128d017c699d91b82dcc802d42e810f90014571f47ecf0b69f5",
+      "ctest_file_sha256": "306e7c47fd6d018083285d5e049d55ffe942b8c14e35a218485dc2cdcfbfacb1",
+      "link_command_sha256": "efb4315b0c4db1c233254d8d6fcde88498e738ae0c3bc377f245e69dd8344821"
+    },
+    "allowed_gates": [
+      "read-only exact-source/artifact/hash verification",
+      "nonzero CTest discovery requiring T014e2r",
+      "one serial T014e2r run with zero skips",
+      "independent A51 gate-evidence review"
+    ],
+    "prohibited": [
+      "source changes",
+      "engine or harness rebuild",
+      "CMake reconfigure",
+      "artifact substitution",
+      "attempt 4",
+      "T014e2",
+      "any additional product test"
+    ],
+    "continuation_lease": "fresh exclusive test-only lease on the preserved A3 target; close on all outcomes",
+    "acceptance": "Only after the remaining gates pass and independent A51 gate-evidence review accepts the supplemental record; preserve A50 failed run unchanged.",
+    "failure": "Any continuation gate failure leaves F02e2r failed at 3/3; any further work needs another independently reviewed amendment.",
+    "parent_and_downstream": {
+      "F02e2_remains_failed_at_6_of_6_until_F02e2r_acceptance": true,
+      "F02e3_blocked_until_F02e2r_acceptance": true
+    },
+    "auth": {
+      "no_attempt_increment": true,
+      "source_changes_authorized": false,
+      "build_or_configure_authorized": false,
+      "artifact_substitution_authorized": false,
+      "T014e2_authorized": false,
+      "T014e2r_authorized_after_pack_validation": true
+    }
   }
 }

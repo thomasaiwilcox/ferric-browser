@@ -88,6 +88,64 @@ A50_TERMINAL_FAILURE={
     "receipt_path":"evidence/F02e2-a6/native/T014e2-A48/receipt.json",
     "receipt_sha256":"2e35b498a9a5db8802bac48bf3f28fbfed17ace1ac70810170bcc6bc38d9f32a",
 }
+A51_CANDIDATE={"source_sha":"c6e29480e08f5e7a1ba54319ec2f2fe932d1f366","source_tree":"f5b7696b1c08d115ba435a521fc2a47fa128f538"}
+A51_TARGET="/home/tom/Projects/ferric-everyday-work/builds/native-F02e2r-a3-qt6112-qmake"
+A51_ARTIFACTS={
+    "target":A51_TARGET,
+    "integration_executable_sha256":"da48cdbb935bb128d017c699d91b82dcc802d42e810f90014571f47ecf0b69f5",
+    "ctest_file_sha256":"306e7c47fd6d018083285d5e049d55ffe942b8c14e35a218485dc2cdcfbfacb1",
+    "link_command_sha256":"efb4315b0c4db1c233254d8d6fcde88498e738ae0c3bc377f245e69dd8344821",
+}
+A51_A50_RUN={
+    "path":"evidence/F02e2r-a3/native/NATIVE_RUN-A50-a3.json",
+    "sha256":"69c220a114afb4a05da8dfcf5458292db6d954305cf6900ac4cc8f07111c0906",
+    "result":"failed",
+}
+A51_A50_CLOSURE={
+    "path":"evidence/F02e2r-a3/native/NATIVE_LEASE_CLOSED-A50-a3.json",
+    "sha256":"c6e059a05d0ba4271400c1dbaf4723818f05b7abf0c3901cfc0605954ce48739",
+}
+A51_ALLOWED_GATES=[
+    "read-only exact-source/artifact/hash verification",
+    "nonzero CTest discovery requiring T014e2r",
+    "one serial T014e2r run with zero skips",
+    "independent A51 gate-evidence review",
+]
+A51_PROHIBITED=[
+    "source changes","engine or harness rebuild","CMake reconfigure",
+    "artifact substitution","attempt 4","T014e2","any additional product test",
+]
+A51_PLAN_RECORD={
+    "amendment":"A51","status":"accepted_plan_only",
+    "review_path":"evidence/A51/PLAN_REVIEW-r2_d28.json",
+    "review_sha256":"e27fb49ba67a27955f5c57576bd38e434b780f2113b1cdf42fa22318db132b1d",
+    "review_budget_path":"evidence/A51/PLAN_REVIEW_BUDGET-r2_d28.json",
+    "review_budget_sha256":"b20f3d565b95150b22ba4d41f9b862d7228d467a8f80ef4624fa6a35854e32f6",
+    "proposal_path":"evidence/A51/PROPOSAL.json",
+    "proposal_sha256":"f050004b1df76f4038bd46fb2f9c59ab61abfcfc5a9bcf3146c39719611f8ddf",
+    "packet_path":"packets/F02e2-A51-a3-link-check-continuation.md",
+    "packet_sha256":"4f37f646b2caaa55949ed0e6cfe5766596536481ecd5efd6064092415aa71e9e",
+    "prior_request_changes_review":{"path":"evidence/A51/PLAN_REVIEW_d28.json","sha256":"21dff25c21c3ca78a981127e9c6caa13420dc976f6451b54e3af3941172da4cd"},
+    "postmortem":{"path":"evidence/F02e2r-a3/GATE_POSTMORTEM_REVIEW_d28.json","sha256":"2babd0ab2103da96508f101e971555c80a01fa0d967ac3dbb42ea5474572d223","decision":"stop_request_new_reviewed_amendment_before_continuation"},
+    "attempt_identity":{"slice":"F02e2r","source_amendment":"A50","attempt":3,"attempt_limit":3,"counter_increment":False},
+    "candidate":A51_CANDIDATE,"preserved_A50_run":A51_A50_RUN,
+    "preserved_A50_lease_closure":A51_A50_CLOSURE,
+    "underlying_integration_target_build":{"path":"evidence/F02e2r-a3/native/integration-target-build-a3/receipt.json","sha256":"92b8518b423c71b34f15a6203f9996e5f0dcb5cbdccf27c398cffd2ce16f2014","result":"passed","exit_code":0},
+    "artifacts":A51_ARTIFACTS,"allowed_gates":A51_ALLOWED_GATES,"prohibited":A51_PROHIBITED,
+    "continuation_lease":"fresh exclusive test-only lease on the preserved A3 target; close on all outcomes",
+    "acceptance":"Only after the remaining gates pass and independent A51 gate-evidence review accepts the supplemental record; preserve A50 failed run unchanged.",
+    "failure":"Any continuation gate failure leaves F02e2r failed at 3/3; any further work needs another independently reviewed amendment.",
+    "parent_and_downstream":{"F02e2_remains_failed_at_6_of_6_until_F02e2r_acceptance":True,"F02e3_blocked_until_F02e2r_acceptance":True},
+    "auth":{"no_attempt_increment":True,"source_changes_authorized":False,"build_or_configure_authorized":False,"artifact_substitution_authorized":False,"T014e2_authorized":False,"T014e2r_authorized_after_pack_validation":True},
+}
+A51_STATE_POLICY={
+    "amendment":"A51","continuation_of_amendment":"A50","continuation_of_attempt":3,
+    "attempt_limit":3,"attempt_increment":False,"candidate":A51_CANDIDATE,
+    "artifacts":A51_ARTIFACTS,"preserved_A50_run":A51_A50_RUN,
+    "preserved_A50_lease_closure":A51_A50_CLOSURE,"allowed_tests":["T014e2r"],
+    "allowed_gates":A51_ALLOWED_GATES,"prohibited":A51_PROHIBITED,
+    "activation":"Only after the independently accepted A51 amendment is integrated and pack validation passes.",
+}
 SUPERSESSION_AMENDMENT="A37"
 
 def validate_matrix_execution_status(tests):
@@ -304,6 +362,175 @@ def validate_successor_recovery_A50(plan,pack=PACK):
                 errors.append("A50: source-map ownership weakens the terminal parent or successor boundary")
     except (OSError,ValueError,TypeError,AttributeError) as exc:
         errors.append(f"A50: cannot validate successor source-map record: {exc}")
+    return errors
+
+def validate_continuation_A51(plan,pack=PACK):
+    """Bind A51 to the exact unrun gates and immutable A50 attempt-3 artifacts."""
+    errors=[]
+    try:
+        text=(pack/"control/AMENDMENTS.md").read_text()
+        section=text.split("## A51",1)[1].split("\n## ",1)[0]
+        accepted="**Status:** revision 2 independently accepted" in section
+    except (IndexError,OSError):
+        section="";accepted=False
+    record=plan.get("native_continuation_A51")
+    if not accepted:
+        if record is not None:errors.append("A51: continuation metadata requires its independently accepted amendment record")
+        return errors
+    if record!=A51_PLAN_RECORD:
+        errors.append("A51: continuation metadata differs from the reviewed exact candidate/artifact/gate scope")
+    tasks={t.get("id"):t for t in plan.get("slices",[]) if isinstance(t,dict)}
+    successor=tasks.get("F02e2r")
+    if successor is None or not any("A51 permits only read-only verification" in x for x in successor.get("steps",[])):
+        errors.append("F02e2r: A51 continuation step is missing")
+    tests=load(pack/"control/test_matrix.json")["tests"]
+    by_id={x.get("id"):x for x in tests}
+    if by_id.get("T014e2r",{}).get("result")!="not_run":
+        errors.append("T014e2r: keep the authored matrix row not_run; bind continuation only in supplemental evidence")
+    if by_id.get("T014e2",{}).get("result")!="failed":
+        errors.append("T014e2: A51 must not alter or execute the historical failed test")
+    try:
+        initial=load(pack/"control/state.initial.json")
+        f02e2r=initial["slices"]["F02e2r"]
+        if (f02e2r.get("status")!="not_started" or f02e2r.get("attempts")!=0
+                or f02e2r.get("continuation_policy")!=A51_STATE_POLICY):
+            errors.append("state.initial F02e2r: preserve the zero-attempt template and exact A51 continuation policy")
+    except (OSError,KeyError,TypeError,ValueError) as exc:
+        errors.append(f"A51: cannot validate initial-state continuation policy: {exc}")
+    try:
+        source=load(pack/"control/source-map.execution.json")
+        records=[x for x in source.get("execution_amendments",[]) if isinstance(x,dict) and x.get("id")=="A51"]
+        expected={
+            "id":"A51",
+            "reason":"Narrow postmortem-bound continuation of only the unrun A50 attempt-3 T014e2r gates after the independent review confirmed the link checker false negative; no attempt increment or source/build work.",
+            "added_paths":[],"removed_paths":[],"added_locks":[],
+            "continuation":{"slice":"F02e2r","source_amendment":"A50","attempt":3,"attempt_limit":3,"attempt_increment":False,"test_id":"T014e2r","candidate":A51_CANDIDATE,"target":A51_TARGET,"artifact_hashes":A51_ARTIFACTS,"preserved_run":A51_A50_RUN,"preserved_lease_closure":A51_A50_CLOSURE,"postmortem":{"path":"evidence/F02e2r-a3/GATE_POSTMORTEM_REVIEW_d28.json","sha256":"2babd0ab2103da96508f101e971555c80a01fa0d967ac3dbb42ea5474572d223","decision":"stop_request_new_reviewed_amendment_before_continuation"},"allowed_gates":A51_ALLOWED_GATES,"prohibited":A51_PROHIBITED},
+            "test_matrix_row_remains":"not_run","independent_gate_evidence_review_required":True,
+            "F02e2_remains_failed_until_F02e2r_acceptance":True,"F02e3_remains_blocked_until_F02e2r_acceptance":True,
+        }
+        if len(records)!=1 or records[0]!=expected:
+            errors.append("A51: source-map continuation record differs from the reviewed exact gate boundary")
+    except (OSError,ValueError,TypeError,AttributeError) as exc:
+        errors.append(f"A51: cannot validate continuation source map: {exc}")
+    if ("NATIVE_RUN-A50-a3.json" not in section or "T014e2r" not in section
+            or "attempt 4" not in section or "F02e2 remains failed at 6/6" not in section):
+        errors.append("A51: accepted amendment record omits the immutable failed attempt, test boundary, or parent status")
+    return errors
+
+def validate_continuation_state_A51(state,root):
+    """Require separately reviewed supplemental evidence before A51 acceptance."""
+    errors=[]
+    record=state.get("slices",{}).get("F02e2r",{})
+    continuation=record.get("A51_continuation")
+    if continuation is None:
+        if record.get("status")=="accepted":
+            errors.append("F02e2r: A51 acceptance requires a separately reviewed continuation record")
+        return errors
+    if record.get("attempts")!=3:
+        errors.append("F02e2r: A51 continuation must preserve attempt 3/3 without increment")
+    expected={
+        "amendment":"A51","source_amendment":"A50","attempt":3,"attempt_limit":3,
+        "attempt_count_after":3,"candidate":A51_CANDIDATE,"artifacts":A51_ARTIFACTS,
+        "preserved_A50_run":A51_A50_RUN,"preserved_A50_lease_closure":A51_A50_CLOSURE,
+        "product_tests_run":["T014e2r"],"old_T014e2_ran":False,
+        "source_changed":False,"build_or_configure_ran":False,
+    }
+    for key,value in expected.items():
+        if continuation.get(key)!=value:
+            errors.append(f"F02e2r: A51 continuation field {key} differs from the reviewed exact scope")
+    outcome=continuation.get("result")
+    if outcome=="failed":
+        if record.get("status")!="failed":errors.append("F02e2r: failed A51 continuation must leave the successor failed")
+        path=continuation.get("run_path")
+        if not path or not continuation.get("run_sha256"):
+            errors.append("F02e2r: missing failed A51 continuation run binding")
+            return errors
+        try:
+            run_path=safe_relative(root,path)
+            if digest(run_path)!=continuation["run_sha256"]:raise ValueError("failed continuation run digest mismatch")
+            run=load(run_path)
+            if (run.get("amendment")!="A51" or run.get("result")!="failed"
+                    or run.get("source_sha")!=A51_CANDIDATE["source_sha"]
+                    or run.get("source_tree")!=A51_CANDIDATE["source_tree"]
+                    or run.get("attempt")!=3 or run.get("attempt_incremented") is not False
+                    or run.get("source_changed") is not False
+                    or run.get("build_or_configure_ran") is not False
+                    or run.get("artifacts")!=A51_ARTIFACTS
+                    or run.get("preserved_A50_run")!=A51_A50_RUN
+                    or run.get("preserved_A50_lease_closure")!=A51_A50_CLOSURE):
+                raise ValueError("failed continuation run does not preserve the exact A3 boundary")
+            if any(t not in {"T014e2r"} for t in run.get("product_tests_run",[])):
+                raise ValueError("failed continuation ran a prohibited test")
+            if not run.get("gates") or run["gates"][-1].get("result")!="failed":
+                raise ValueError("failed continuation lacks a failed terminal gate")
+            if any(g.get("name") not in {"read-only-exact-artifact-verification","nonzero-ctest-discovery","T014e2r-serial"} for g in run["gates"]):
+                raise ValueError("failed continuation contains a prohibited gate")
+            closure=safe_relative(root,continuation["lease_closure_path"])
+            if digest(closure)!=continuation["lease_closure_sha256"]:raise ValueError("A51 lease closure digest mismatch")
+            closed=load(closure)
+            if closed.get("active_lock_released") is not True or closed.get("active_build_processes_remaining")!=[]:
+                raise ValueError("A51 continuation lease is not fully closed")
+            for preserved in (A51_A50_RUN,A51_A50_CLOSURE):
+                evidence_path=safe_relative(root,preserved["path"])
+                if digest(evidence_path)!=preserved["sha256"]:raise ValueError("immutable A50 run or lease closure changed")
+        except (OSError,KeyError,TypeError,ValueError) as exc:
+            errors.append(f"F02e2r: {exc}")
+        return errors
+    if outcome!="passed":errors.append("F02e2r: A51 continuation outcome must be passed or failed")
+    if record.get("status")!="accepted":
+        errors.append("F02e2r: a passing A51 continuation may qualify only after independent evidence review")
+    path=continuation.get("run_path")
+    if not path or not continuation.get("run_sha256"):
+        errors.append("F02e2r: missing supplemental A51 continuation run binding")
+        return errors
+    try:
+        run_path=safe_relative(root,path)
+        if digest(run_path)!=continuation["run_sha256"]:raise ValueError("continuation run digest mismatch")
+        run=load(run_path)
+        if (run.get("amendment")!="A51" or run.get("result")!=outcome
+                or run.get("source_sha")!=A51_CANDIDATE["source_sha"]
+                or run.get("source_tree")!=A51_CANDIDATE["source_tree"]
+                or run.get("attempt")!=3 or run.get("attempt_incremented") is not False
+                or run.get("product_tests_run")!=["T014e2r"]
+                or run.get("source_changed") is not False
+                or run.get("build_or_configure_ran") is not False
+                or run.get("artifacts")!=A51_ARTIFACTS
+                or run.get("preserved_A50_run")!=A51_A50_RUN
+                or run.get("preserved_A50_lease_closure")!=A51_A50_CLOSURE):
+            raise ValueError("continuation run does not preserve the exact A3 boundary")
+        gates=run.get("gates",[])
+        names=[g.get("name") for g in gates]
+        if names!=["read-only-exact-artifact-verification","nonzero-ctest-discovery","T014e2r-serial"]:
+            raise ValueError("continuation run contains missing, reordered, or extra gates")
+        discovery=gates[1]
+        test=gates[2]
+        if (discovery.get("result")!="passed" or not discovery.get("T014e2r_registered")
+                or discovery.get("registered_tests",0)<=0):
+            raise ValueError("T014e2r discovery was not proven")
+        if (test.get("result")!="passed" or test.get("test_id")!="T014e2r"
+                or test.get("failed",0)!=0 or test.get("skipped",0)!=0):
+            raise ValueError("T014e2r did not pass exactly once with zero skips")
+        for obj in (discovery,test):
+            receipt=safe_relative(root,obj["receipt"])
+            if digest(receipt)!=obj["receipt_sha256"]:raise ValueError("continuation gate receipt digest mismatch")
+        review_path=safe_relative(root,continuation["review_path"])
+        if digest(review_path)!=continuation["review_sha256"]:raise ValueError("A51 gate review digest mismatch")
+        review=load(review_path)
+        if (review.get("decision")!="accept" or review.get("continuation_run_sha256")!=continuation["run_sha256"]
+                or review.get("amendment")!="A51"):
+            raise ValueError("independent A51 gate-evidence review does not accept this continuation")
+        closure=safe_relative(root,continuation["lease_closure_path"])
+        if digest(closure)!=continuation["lease_closure_sha256"]:raise ValueError("A51 lease closure digest mismatch")
+        closed=load(closure)
+        if (closed.get("active_lock_released") is not True
+                or closed.get("active_build_processes_remaining")!=[]):
+            raise ValueError("A51 continuation lease is not fully closed")
+        for preserved in (A51_A50_RUN,A51_A50_CLOSURE):
+            evidence_path=safe_relative(root,preserved["path"])
+            if digest(evidence_path)!=preserved["sha256"]:
+                raise ValueError("immutable A50 run or lease closure changed")
+    except (OSError,KeyError,TypeError,ValueError) as exc:
+        errors.append(f"F02e2r: {exc}")
     return errors
 
 def validate_edit_path_budget(task,pack=PACK):
@@ -744,6 +971,7 @@ def validate_structure(pack=PACK,plan=None):
         errors+=validate_source_attempt_extension_A48(plan,pack)
         errors+=validate_harness_prerequisite_split_A49(plan,pack)
         errors+=validate_successor_recovery_A50(plan,pack)
+        errors+=validate_continuation_A51(plan,pack)
         errors+=validate_supersession_structure(tasks,tests)
         reqids=[r["id"] for r in reqs]
         if len(set(reqids))!=len(reqids):errors.append("Duplicate requirement IDs")
@@ -853,6 +1081,8 @@ def validate_state(plan,state_path,strict=False,pack=PACK):
         errors+=validate_source_attempt_extension_A48(plan,pack)
         errors+=validate_harness_prerequisite_split_A49(plan,pack)
         errors+=validate_successor_recovery_A50(plan,pack)
+        errors+=validate_continuation_A51(plan,pack)
+        errors+=validate_continuation_state_A51(state,root)
         errors+=validate_supersession_state(plan,state,strict)
         if state.get("run_id") is not None:
             parent_state=state["slices"].get("F02e2",{})

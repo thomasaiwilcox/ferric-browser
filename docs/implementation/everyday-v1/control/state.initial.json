@@ -791,7 +791,52 @@
       "author": null,
       "reviewer": null,
       "evidence": null,
-      "blocker": null
+      "blocker": null,
+      "continuation_policy": {
+        "amendment": "A51",
+        "continuation_of_amendment": "A50",
+        "continuation_of_attempt": 3,
+        "attempt_limit": 3,
+        "attempt_increment": false,
+        "candidate": {
+          "source_sha": "c6e29480e08f5e7a1ba54319ec2f2fe932d1f366",
+          "source_tree": "f5b7696b1c08d115ba435a521fc2a47fa128f538"
+        },
+        "artifacts": {
+          "target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2r-a3-qt6112-qmake",
+          "integration_executable_sha256": "da48cdbb935bb128d017c699d91b82dcc802d42e810f90014571f47ecf0b69f5",
+          "ctest_file_sha256": "306e7c47fd6d018083285d5e049d55ffe942b8c14e35a218485dc2cdcfbfacb1",
+          "link_command_sha256": "efb4315b0c4db1c233254d8d6fcde88498e738ae0c3bc377f245e69dd8344821"
+        },
+        "preserved_A50_run": {
+          "path": "evidence/F02e2r-a3/native/NATIVE_RUN-A50-a3.json",
+          "sha256": "69c220a114afb4a05da8dfcf5458292db6d954305cf6900ac4cc8f07111c0906",
+          "result": "failed"
+        },
+        "preserved_A50_lease_closure": {
+          "path": "evidence/F02e2r-a3/native/NATIVE_LEASE_CLOSED-A50-a3.json",
+          "sha256": "c6e059a05d0ba4271400c1dbaf4723818f05b7abf0c3901cfc0605954ce48739"
+        },
+        "allowed_tests": [
+          "T014e2r"
+        ],
+        "allowed_gates": [
+          "read-only exact-source/artifact/hash verification",
+          "nonzero CTest discovery requiring T014e2r",
+          "one serial T014e2r run with zero skips",
+          "independent A51 gate-evidence review"
+        ],
+        "prohibited": [
+          "source changes",
+          "engine or harness rebuild",
+          "CMake reconfigure",
+          "artifact substitution",
+          "attempt 4",
+          "T014e2",
+          "any additional product test"
+        ],
+        "activation": "Only after the independently accepted A51 amendment is integrated and pack validation passes."
+      }
     }
   }
 }
