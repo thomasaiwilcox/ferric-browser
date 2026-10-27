@@ -4745,6 +4745,59 @@
       "failure_history_retained": true,
       "audit_repository": "control/A54-lifecycle-audit.git",
       "audit_ref_prefix": "refs/ferric/f02e2i-a4/"
+    },
+    {
+      "id": "A55",
+      "slice": "F02e2s",
+      "status": "independent plan accepted; pack implementation pending",
+      "plan_review": {
+        "path": "evidence/A55/PLAN_REVIEW.json",
+        "sha256": "abffbaf695d2671c95b47663e9ffd11ded8a6b24712e74d77af31f1847e8c07b"
+      },
+      "proposal": {
+        "path": "evidence/A55/PROPOSAL.json",
+        "sha256": "22236bf76f4e056e15aa494fd4ed3435ec4f1e07c6cf8bab20a754ed919562d9"
+      },
+      "exact_test_patch": {
+        "path": "evidence/A55/TEST_HELPER_LIFETIME_REPAIR.diff",
+        "sha256": "b22e3d7a316578a32510a632672ec3db9d65a76865badc23b932d32551b52277",
+        "bytes": 3285
+      },
+      "new_source_attempt": 4,
+      "previous_source_attempts_preserved": [
+        1,
+        2,
+        3
+      ],
+      "attempt_reset": false,
+      "attempt5_authorized": false,
+      "added_paths": [],
+      "removed_paths": [],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "path_owners": {
+        "F02e2s": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "only_new_edit": "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+      "accepted_base_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+      "failed3_reapply_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
+      "production_changes_relative_to_failed3_authorized": false,
+      "original_tests_and_native_gates_unchanged": true
     }
   ]
 }
