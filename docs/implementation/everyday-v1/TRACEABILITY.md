@@ -42,3 +42,7 @@ A36: P05b1 adds T061b UNIT and T061c COMPONENT for strict non-admission decoder/
 - EF-P00 and EF-W01 retain original cases; only P00a/W01b gain explicit attempt4.
 - EF-H06/T045: single-machine native qualification by user decision; numerical thresholds unchanged.
 - EF-P03: production bridge targets accepted public-page owner. Physical-phone, security review and full feature delivery remain required.
+
+## A53 identity prerequisite trace
+
+EF-F02/C01 → F02e2i/T014e2i → opaque actual live profile-session identity and pure Rust lifetime/privacy regressions. F02e2s attempt3 consumes the accepted API for all page-host profile checks; its T014e2s/owner/document/focus/geometry/dialog/lifecycle requirements are unchanged. F02e3 and aggregate F02e require the accepted native successor, not merely the new API.

@@ -1863,6 +1863,16 @@
         "nonzero-ctest-discovery",
         "T014e2s-serial"
       ]
+    },
+    {
+      "id": "T014e2i",
+      "slice": "F02e2i",
+      "requirement": "EF-F02",
+      "level": "unit",
+      "name": "Typed actual profile-session identity across all privacy modes",
+      "expected": "An opaque live ProfileInstanceId is distinct from optional durable ProfileId. Repeated reads and Arc clones/shared same-id+roots durable owners are stable; independent Ephemeral/Private sessions and different durable roots/ids differ; after all actual owners drop a new session has a new identity. Copied IDs cannot retain sessions/grants. BrowserApplication projection is None before activation and Some for Normal/Private/Ephemeral; optional durable IDs, storage roots, permission/download scope and privacy are unchanged.",
+      "result": "not_run",
+      "binding": "Bind every identity/lifetime/privacy case to real profile_instance_identity Rust unit functions and exact-source focused plus full ferric-browser-application --lib receipts. Nonzero execution, zero failures/skips, independent source/evidence review and serial integrated-source gates before acceptance; no Qt/native/physical qualification."
     }
   ],
   "note": "Specifications with one receipt-bound historical failure recorded. No case is marked passed at authoring."

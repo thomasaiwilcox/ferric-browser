@@ -1,6 +1,6 @@
 # Dependency-ordered work inventory
 
-96 execution-plan entries (85 work slices plus 11 coordinator aggregates) and 184 acceptance cases. Mutable execution status is recorded in the external run ledger. A49 adds F02e2q as a separate static QML-registration prerequisite. A50/A51 retain F02e2r and its failed continuation as immutable history; A52 adds F02e2s as the reviewed recovery with production-driven profile bootstrap. F02e2 and F02e2r remain failed until F02e2s passes T014e2s and receives independent evidence review.
+97 execution-plan entries (86 work slices plus 11 coordinator aggregates) and 185 acceptance cases. Mutable execution status is recorded in the external run ledger. A49 adds F02e2q as a separate static QML-registration prerequisite. A50/A51 retain F02e2r and its failed continuation as immutable history; A52 adds F02e2s as the reviewed recovery with production-driven profile bootstrap. F02e2 and F02e2r remain failed until F02e2s passes T014e2s and receives independent evidence review.
 
 | ID | Outcome | Depends on |
 |---|---|---|
@@ -92,11 +92,14 @@
 | F02e2 | Implement Widgets host with embedded QML chrome | F02e1 |
 | F02e2q | Qualify static CXX-Qt QML registration in a standalone public-page-host harness | F02e1 |
 | F02e2r | Historical A50/A51 full page reparenting successor (failed) | F02e1, F02e2q |
-| F02e2s | Qualify page reparenting with production-driven profile bootstrap | F02e1, F02e2q |
+| F02e2i | Expose typed live profile-session identity | F02e1, F02e2q |
+| F02e2s | Qualify page reparenting with production-driven profile bootstrap | F02e1, F02e2q, F02e2i |
 | F02e3 | Adapt navigation and isolated scripts to public pages | F02e2s |
 | F02e4 | Adapt profile services and page-owned prompts | F02e3 |
 | F02e5 | Adapt native input and auxiliary page UI | F02e4 |
 | F02e6 | Connect primary composition and profile factories | F02e5 |
 | F02e7 | Connect secondary windows and real popup adoption | F02e6 |
 | F02e8 | Qualify production public-host replacement and retire leases | F02e7 |
-| F02e | Aggregate public page-host migration and qualification | F02e0, F02e1, F02e2s, F02e3, F02e4, F02e5, F02e6, F02e7, F02e8 |
+| F02e | Aggregate public page-host migration and qualification | F02e0, F02e1, F02e2i, F02e2s, F02e3, F02e4, F02e5, F02e6, F02e7, F02e8 |
+
+A53 preserves F02e2s failed attempts1/2 and the reserved scope-blocked source attempt3. F02e2i is a separate typed-identity prerequisite; it does not reset or replace F02e2s.

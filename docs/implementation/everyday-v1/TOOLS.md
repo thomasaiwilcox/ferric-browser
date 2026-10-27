@@ -79,3 +79,7 @@ python3 tools/cleanup.py --workspace /absolute/run --apply --artifact native-int
 ```
 
 Default is preview. Apply requires explicit eligible names. The tool rejects mismatched ownership, active builds, symlink-controlled targets and path escapes. It uses fd-safe tree deletion and does not follow symlink targets within a registered build tree. Retain logs/evidence before cleanup. Missing ownership or ambiguous process lifetime means leave data alone.
+
+## A53 validation boundary
+
+Validate the typed-identity prerequisite, actual-source unit/full-regression receipts, reserved parent attempt3, accepted-prerequisite source base and immutable A52 failed history. The A52 native receipt/source/target/link/test/monitor/closure checks remain active. Coordinator private-D-Bus cleanup and operational build-supervisor changes require exact script/manifest review; a helper cleanup is never a product-test pass.

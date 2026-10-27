@@ -852,6 +852,39 @@
       }
     },
     "F02e2s": {
+      "status": "blocked_specification",
+      "attempts": 3,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": "A53 typed-identity prerequisite pending; source attempt3 is reserved, no repair edits/native work and no attempt4 authorized.",
+      "continuation_A53": {
+        "prerequisite": "F02e2i",
+        "reserved_attempt": 3,
+        "phase": "scope_blocked",
+        "attempt_reset": false,
+        "attempt4_authorized": false
+      },
+      "preserved_failures_A53": {
+        "attempt1": {
+          "run": "evidence/F02e2s-a1/native/NATIVE_RUN-A52-a1.json",
+          "run_sha256": "b41bbe860a0d5c845d952bf5447aaee47ab1e56da7b7c0c59a35e39d7dff06b4",
+          "closure": "evidence/F02e2s-a1/native/NATIVE_LEASE_CLOSED-A52-a1.json",
+          "closure_sha256": "331bbf0b036c239ecacbd2728cc6e8a1d56aef6072a608b40a30c1dbab7ff613"
+        },
+        "attempt2": {
+          "run": "evidence/F02e2s-a2/native/NATIVE_RUN-A52-a2.json",
+          "run_sha256": "c95650d7caf8967b352a6dbc09d810df3a1596a215bc19cdcdcf13e525f2d6a9",
+          "closure": "evidence/F02e2s-a2/native/NATIVE_LEASE_CLOSED-A52-a2.json",
+          "closure_sha256": "fab15750237db01424cfc05aad311f8d1ae2771dd929329b4519d00c0bdebb82"
+        }
+      },
+      "scope_request_A53": {
+        "path": "evidence/F02e2s-a3/SCOPE_AMENDMENT_REQUEST.json",
+        "sha256": "32b97deb0c2a59e74f4dd65097a60d4c65bd8133b28cae814ed75807d7dad378"
+      }
+    },
+    "F02e2i": {
       "status": "not_started",
       "attempts": 0,
       "author": null,

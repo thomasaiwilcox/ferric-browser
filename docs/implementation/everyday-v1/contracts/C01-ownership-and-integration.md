@@ -19,3 +19,8 @@ Maintain separate notions of selected page, keyboard focus, mapping, visible/occ
 ## Integration constraints
 
 Preserve native popup `acceptAsNewWindow`/request handoff, opener communication, form-reload decisions, native chooser ownership, close/undo semantics, clipboard, start-page drafts and current search direction/selection behaviour. Existing private Qt download guard remains qualified; do not modify it to ease a new build. New private API use requires a separate explicit architecture decision, not a worker workaround.
+
+
+## A53 live session identity
+
+Use opaque `ProfileInstanceId`, not durable ProfileId or labels. Shared live sessions agree; independent sessions differ. Copies retain no session/grants and grant no authority. Preserve Normal/Private/Ephemeral privacy and all native/runtime/tab/document/lifecycle guards.

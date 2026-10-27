@@ -128,3 +128,7 @@ validate_pack.py checks structure, references, hash consistency, independence an
 ## A37 replacement evidence
 
 Historical T014c/T014d map to T014e1/T014e8 at the same component/application evidence levels and EF-F02 requirement. The new native T014e0 is a feasibility gate; old receipts do not qualify it. T014a/T013/T015 behavior remains mandatory on the final production host. T045 now requires native measurement on this machine only, retaining all C03 thresholds and raw-sample requirements. No physical/authentication gate is waived.
+
+## A53 typed live session identity
+
+T014e2i uses focused `profile_instance_identity` Rust unit functions and full ferric-browser-application --lib regressions, exact clean source, explicit owned target, nonzero execution and zero failures/skips. Independent review maps real test names to stable/shared identity, independent transient/durable-root identity, weak lifetime/renewal, application activation for Normal/Private/Ephemeral and unchanged persistence/privacy/grants. Pure API acceptance does not qualify native pages. The same reserved F02e2s attempt3 then runs its unchanged seven-gate/T014e2s contract against the accepted API; previous failed tests are never replayed or relabelled.

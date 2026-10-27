@@ -721,6 +721,159 @@ class StructureTests(unittest.TestCase):
         s={'active_locks':{},'slices':{'LOW':{'status':'ready','attempts':2}}}
         self.assertEqual(ready.suggest(p,s)['suggestions'],[])
 
+class ProfileIdentityA53Tests(unittest.TestCase):
+    def setUp(self):
+        self.plan=load(PACK/'control/plan.json')
+        self.contract=validate_pack.profile_identity_contract(PACK)
+        self.tmp=tempfile.TemporaryDirectory(prefix='ferric-a53-test-')
+        self.root=Path(self.tmp.name)
+        self.addCleanup(self.tmp.cleanup)
+
+    def state(self):
+        return {'slices':{'F02e2s':copy.deepcopy(self.contract['initial_parent']),
+                          'F02e2i':copy.deepcopy(self.contract['initial_child'])}}
+
+    def test_approved_scope_dependency_and_case_contract(self):
+        self.assertEqual(validate_pack.validate_profile_identity_A53(self.plan,PACK),[])
+        mutations=[('F02e2i','allowed_paths',[]),('F02e2i','max_attempts',4),
+                   ('F02e2i','locks',[]),('F02e2s','depends_on',['F02e1','F02e2q'])]
+        for sid,key,value in mutations:
+            with self.subTest(sid=sid,key=key):
+                p=copy.deepcopy(self.plan)
+                next(t for t in p['slices'] if t['id']==sid)[key]=value
+                self.assertTrue(validate_pack.validate_profile_identity_A53(p,PACK))
+        with self.subTest('missing amendment'):
+            p=copy.deepcopy(self.plan);p.pop('profile_instance_prerequisite_A53')
+            self.assertTrue(validate_pack.validate_profile_identity_A53(p,PACK))
+
+    def test_contract_file_and_initial_history_cannot_be_rewritten(self):
+        from shutil import copytree
+        pack=self.root/'pack';copytree(PACK/'control',pack/'control')
+        for name,mutate in [
+            ('profile-identity.A53.json',lambda d:d['identity_cases'].pop()),
+            ('state.initial.json',lambda d:d['slices']['F02e2s'].update(attempts=0)),
+            ('test_matrix.json',lambda d:d['tests'].__setitem__(slice(None),[x for x in d['tests'] if x['id']!='T014e2i']))]:
+            path=pack/'control'/name;original=path.read_bytes();data=load(path);mutate(data);write_json(path,data)
+            with self.subTest(name=name):self.assertTrue(validate_pack.validate_profile_identity_A53(self.plan,pack))
+            path.write_bytes(original)
+
+    def test_parent_stays_reserved_and_waits_without_locks(self):
+        self.assertEqual(validate_pack.validate_profile_identity_state_A53(self.plan,self.state(),self.root,True),[])
+        for changes in [{'attempts':0},{'attempts':4},{'status':'in_progress'},
+                        {'native_work_authorized':True},{'source_changes_authorized':True},{'preserved_failures_A53':{}}]:
+            state=self.state();state['slices']['F02e2s'].update(changes)
+            with self.subTest(changes=changes):
+                self.assertTrue(validate_pack.validate_profile_identity_state_A53(self.plan,state,self.root,True))
+        state=self.state();state['active_locks']={'bridge':{'slice':'F02e2s'}}
+        self.assertTrue(validate_pack.validate_profile_identity_state_A53(self.plan,state,self.root,True))
+
+    def test_continued_parent_uses_exact_accepted_child_base(self):
+        state=self.state();child=state['slices']['F02e2i'];parent=state['slices']['F02e2s']
+        child.update(status='accepted',source_sha='a'*40,source_tree='b'*40)
+        parent.update(status='in_progress',base_sha='a'*40,base_tree='b'*40)
+        # This helper's non-initial path also verifies immutable failed evidence.
+        # Isolate that boundary with disposable copies and matching hashes.
+        c=copy.deepcopy(self.contract)
+        for name,refs in c['metadata']['preserved_failures'].items():
+            run=self.root/refs['run'];closure=self.root/refs['closure']
+            write_json(run,{'result':'failed','lease_released':True,'active_build_processes_remaining':[],
+                            'product_tests_run':['T014e2s'] if name=='attempt2' else []})
+            write_json(closure,{'active_lock_released':True,'active_build_processes_remaining':[]})
+            refs.update(run_sha256=digest(run),closure_sha256=digest(closure))
+        request=self.root/c['metadata']['scope_request']['path'];write_json(request,{'fixture':'scope stop'})
+        c['metadata']['scope_request']['sha256']=digest(request)
+        parent['preserved_failures_A53']=copy.deepcopy(c['metadata']['preserved_failures'])
+        parent['scope_request_A53']=copy.deepcopy(c['metadata']['scope_request'])
+        with patch.object(validate_pack,'profile_identity_contract',return_value=c):
+            self.assertEqual(validate_pack.validate_profile_identity_state_A53(self.plan,state,self.root),[])
+            parent['base_tree']='c'*40
+            self.assertTrue(validate_pack.validate_profile_identity_state_A53(self.plan,state,self.root))
+            parent['base_tree']='b'*40
+            request.write_text('changed scope evidence')
+            self.assertTrue(validate_pack.validate_profile_identity_state_A53(self.plan,state,self.root))
+            write_json(request,{'fixture':'scope stop'})
+            run.write_text('changed failed run')
+            self.assertTrue(validate_pack.validate_profile_identity_state_A53(self.plan,state,self.root))
+
+    def acceptance_fixture(self):
+        source='a'*40;tree='b'*40;target=str(self.root/'builds'/'identity-target')
+        case_map={case:'profile_session::tests::profile_instance_identity_'+case for case in self.contract['identity_cases']}
+        log_text='\n'.join('test '+name+' ... ok' for name in case_map.values())+'\ntest result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n'
+        gates={}
+        for name in ['focused','application_regression']:
+            path=self.root/'evidence'/name/'receipt.json';path.parent.mkdir(parents=True,exist_ok=True)
+            log=path.parent/'output.log';log.write_text(log_text)
+            cmd=['cargo','+stable','test','--package','ferric-browser-application','--lib','--locked','--offline','--jobs','2','--target-dir',target]
+            if name=='focused':cmd+=['profile_instance_identity']
+            cmd+=['--','--nocapture']
+            snapshot={'sha':source,'tree':tree,'dirty':False}
+            receipt={'result':'passed','exit_code':0,'timed_out':False,'output_limit_exceeded':False,
+                     'require_tests':True,'observed_test_summary_count':8,'observed_skips':0,'observed_failed':0,
+                     'source_before':snapshot,'source_after':snapshot,'command':cmd,
+                     'execution_binding':{'cargo_target_dir':target,'environment':{'CARGO_TARGET_DIR':target}},
+                     'log':'output.log','log_sha256':digest(log)}
+            write_json(path,receipt);gates[name]={'receipt':str(path.relative_to(self.root)),'sha256':digest(path)}
+        review={'decision':'accept','reviewer':'independent-reviewer',
+                'candidate':{'slice':'F02e2i','commit':source,'tree':tree,'attempt':1},
+                'identity_case_tests':case_map,'unit_gates':gates}
+        evidence={'source_sha':source,'source_tree':tree,'reviewer':review['reviewer'],
+                  'identity_case_tests':case_map,'unit_gates':gates,
+                  'identity_evidence_review':'evidence/review.json'}
+        record={'status':'accepted','attempts':1,'author':'worker','reviewer':review['reviewer'],
+                'source_sha':source,'source_tree':tree,'evidence':'evidence/EVIDENCE.json'}
+        return record,evidence,review
+
+    def save_acceptance(self,evidence,review):
+        write_json(self.root/'evidence/review.json',review)
+        evidence['identity_evidence_review_sha256']=digest(self.root/'evidence/review.json')
+        write_json(self.root/'evidence/EVIDENCE.json',evidence)
+
+    def check_acceptance(self,record):
+        return validate_pack.validate_identity_acceptance_A53(self.contract['task'],record,self.root)
+
+    def test_exact_independently_reviewed_two_gate_identity_evidence(self):
+        record,evidence,review=self.acceptance_fixture();self.save_acceptance(evidence,review)
+        self.assertEqual(self.check_acceptance(record),[])
+        record['author']=review['reviewer'];self.assertTrue(self.check_acceptance(record))
+
+    def test_missing_case_wrong_review_source_and_changed_receipt_rejected(self):
+        for mutation in ['case','source','receipt','review_digest','record_tree']:
+            with self.subTest(mutation=mutation):
+                record,evidence,review=self.acceptance_fixture()
+                if mutation=='case':
+                    evidence['identity_case_tests'].pop('weak_lifetime_and_renewal')
+                if mutation=='source':review['candidate']['commit']='c'*40
+                if mutation=='record_tree':record['source_tree']='c'*40
+                self.save_acceptance(evidence,review)
+                if mutation=='receipt':
+                    (self.root/evidence['unit_gates']['focused']['receipt']).write_text('{}')
+                if mutation=='review_digest':(self.root/'evidence/review.json').write_text('{}')
+                self.assertTrue(self.check_acceptance(record))
+
+    def test_rehashed_bad_gate_and_missing_executed_case_rejected(self):
+        for mutation in ['failed','empty','skipped','dirty','source','narrow_full','target','log','unexecuted_case']:
+            with self.subTest(mutation=mutation):
+                record,evidence,review=self.acceptance_fixture()
+                name='application_regression' if mutation=='narrow_full' else 'focused'
+                ref=evidence['unit_gates'][name];path=self.root/ref['receipt'];receipt=load(path)
+                if mutation=='failed':receipt['exit_code']=1
+                if mutation=='empty':receipt['observed_test_summary_count']=0
+                if mutation=='skipped':receipt['observed_skips']=1
+                if mutation=='dirty':receipt['source_after']['dirty']=True
+                if mutation=='source':receipt['source_before']['tree']='c'*40
+                if mutation=='narrow_full':receipt['command'].insert(-2,'profile_instance_identity')
+                if mutation=='target':receipt['execution_binding']['environment']['CARGO_TARGET_DIR']='/tmp/foreign'
+                if mutation in ['log','unexecuted_case']:
+                    log=path.parent/'output.log'
+                    if mutation=='log':log.write_text('tampered log')
+                    else:
+                        log.write_text('\n'.join(log.read_text().splitlines()[1:])+'\n')
+                        receipt['log_sha256']=digest(log)
+                write_json(path,receipt);ref['sha256']=digest(path)
+                self.save_acceptance(evidence,review)
+                self.assertTrue(self.check_acceptance(record))
+
+
 class SupersessionTests(unittest.TestCase):
     def fixture(self):
         tasks={'OLD':{'id':'OLD','amendment':'A37','superseded_by':['NEW'],'depends_on':[],'test_ids':['T-OLD']},

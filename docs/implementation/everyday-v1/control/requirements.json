@@ -43,14 +43,18 @@
     },
     {
       "id": "EF-F02",
-      "description": "Page factory, callback/focus and popup continuity through public QWebEnginePage/QWebEngineView ownership; true close and surviving descendants, replacing unsafe Quick leases.",
+      "description": "Page factory, callback/focus and popup continuity through public QWebEnginePage/QWebEngineView ownership; true close and surviving descendants, replacing unsafe Quick leases. Live native-page bindings use actual profile-session instance identity, separate from optional durable profile IDs, across all privacy modes.",
       "owner": "F02",
       "contracts": [
         "C01",
         "C02"
       ],
       "source": "updated proposal mapped to current baseline",
-      "amendment": "A37"
+      "amendment": "A37",
+      "amendments": [
+        "A37",
+        "A53"
+      ]
     },
     {
       "id": "EF-F03",

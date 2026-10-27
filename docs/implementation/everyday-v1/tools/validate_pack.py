@@ -460,7 +460,9 @@ def validate_successor_recovery_A52(plan,pack=PACK):
             or old.get("superseded_by")!=["F02e2s"] or old.get("amendment")!="A52"
             or old.get("allowed_paths")!=paths or old.get("locks")!=A44_LOCKS or old.get("max_attempts") is not None):
         errors.append("F02e2r: A52 must retain the exact exhausted A50/A51 owner and map it only to F02e2s")
-    if (successor is None or successor.get("depends_on")!=["F02e1","F02e2q"]
+    identity_prerequisite=plan.get("profile_instance_prerequisite_A53") is not None
+    successor_dependencies=["F02e1","F02e2q"]+(["F02e2i"] if identity_prerequisite else [])
+    if (successor is None or successor.get("depends_on")!=successor_dependencies
             or successor.get("test_ids")!=["T014e2s"] or successor.get("allowed_paths")!=paths
             or successor.get("locks")!=A44_LOCKS or successor.get("max_changed_product_files")!=10
             or successor.get("path_budget_amendment")!="A52" or successor.get("max_attempts") is not None
@@ -471,6 +473,7 @@ def validate_successor_recovery_A52(plan,pack=PACK):
             or downstream.get("historical_depends_on")!=["F02e2","F02e2r"]):
         errors.append("F02e3: downstream must wait for F02e2s and retain both failed task IDs as history")
     expected_aggregate=["F02e0","F02e1","F02e2s","F02e3","F02e4","F02e5","F02e6","F02e7","F02e8"]
+    if identity_prerequisite:expected_aggregate.insert(2,"F02e2i")
     if (aggregate is None or aggregate.get("depends_on")!=expected_aggregate
             or aggregate.get("historical_depends_on")!=["F02e2","F02e2r"]):
         errors.append("F02e: aggregate must wait for F02e2s and retain both failed task IDs as history")
@@ -513,7 +516,9 @@ def validate_successor_recovery_A52(plan,pack=PACK):
     except (OSError,ValueError,TypeError,AttributeError) as exc:errors.append(f"A52: cannot validate source map: {exc}")
     try:
         initial=load(pack/"control/state.initial.json"); states=initial["slices"]
-        if (states.get("F02e2s",{}).get("status")!="not_started" or states.get("F02e2s",{}).get("attempts")!=0
+        initial_successor_status="blocked_specification" if identity_prerequisite else "not_started"
+        initial_successor_attempts=3 if identity_prerequisite else 0
+        if (states.get("F02e2s",{}).get("status")!=initial_successor_status or states.get("F02e2s",{}).get("attempts")!=initial_successor_attempts
                 or states.get("F02e2",{}).get("terminal_failure")!=A50_TERMINAL_FAILURE
                 or states.get("F02e2",{}).get("supersession")!={"amendment":"A52","superseded_by":["F02e2s"],"transition":"pending_successor_acceptance"}
                 or states.get("F02e2r",{}).get("continuation_policy")!=A51_STATE_POLICY
@@ -1168,6 +1173,7 @@ def validate_structure(pack=PACK,plan=None):
         errors+=validate_harness_prerequisite_split_A49(plan,pack)
         errors+=validate_successor_recovery_A50(plan,pack)
         errors+=validate_successor_recovery_A52(plan,pack)
+        errors+=validate_profile_identity_A53(plan,pack)
         errors+=validate_continuation_A51(plan,pack)
         errors+=validate_supersession_structure(tasks,tests)
         reqids=[r["id"] for r in reqs]
@@ -1480,6 +1486,131 @@ def validate_acceptance_A52(task,record,root):
         errors.append(f"F02e2s: {exc}")
     return errors
 
+A53_CONTRACT_SHA256="146c7a691de8029a27fa98d11bf403fb2297acfe4626bebac79c8f2422f48741"
+
+def profile_identity_contract(pack=PACK):
+    path=pack/"control/profile-identity.A53.json"
+    if digest(path)!=A53_CONTRACT_SHA256:raise ValueError("A53 approved identity contract digest mismatch")
+    return load(path)
+
+def validate_profile_identity_A53(plan,pack=PACK):
+    """Version only A52's prerequisite/base/initial-state rules, preserving its native proof."""
+    tasks={t.get("id"):t for t in plan.get("slices",[])}
+    active=plan.get("profile_instance_prerequisite_A53") is not None
+    amendment_path=pack/"control/AMENDMENTS.md"
+    amendments=amendment_path.read_text() if amendment_path.exists() else ""
+    if not active and "F02e2i" not in tasks and "## A53" not in amendments:return []
+    errors=[]
+    try:
+        c=profile_identity_contract(pack);meta=c["metadata"]
+        if plan.get("profile_instance_prerequisite_A53")!=meta:errors.append("A53: identity prerequisite metadata differs from accepted plan")
+        for sid,key in (("F02e2i","task"),("F02e2s","parent_task")):
+            if tasks.get(sid)!=c[key]:errors.append(f"{sid}: A53 exact scope, dependency, cases or reserved-attempt continuation changed")
+        if tasks.get("F02e",{}).get("depends_on")!=c["aggregate_dependencies"]:errors.append("A53: aggregate omits live identity prerequisite")
+        tests=load(pack/"control/test_matrix.json")["tests"]
+        if [x for x in tests if x.get("id")=="T014e2i"]!=[c["test"]]:errors.append("A53: typed-identity unit case was weakened or removed")
+        initial=load(pack/"control/state.initial.json")["slices"]
+        if initial.get("F02e2s")!=c["initial_parent"]:errors.append("A53: initial ledger must retain failed history and reserved scope-blocked attempt3")
+        if initial.get("F02e2i")!=c["initial_child"]:errors.append("A53: only the new identity prerequisite starts at zero")
+        mapping=load(pack/"control/source-map.execution.json").get("execution_amendments",[])
+        if [x for x in mapping if x.get("id")=="A53"]!=[c["source_map"]]:errors.append("A53: source map lost identity scope, base or history bindings")
+        section=amendments.split("## A53",1)[1].split("\n## ",1)[0]
+        if any(meta[key] not in section for key in ("review_sha256","review_budget_sha256","proposal_sha256")):
+            errors.append("A53: amendment omits accepted review/proposal bindings")
+    except (OSError,ValueError,KeyError,TypeError,IndexError) as exc:errors.append(f"A53: {exc}")
+    return errors
+
+def validate_profile_identity_state_A53(plan,state,root,initial=False,pack=PACK):
+    if plan.get("profile_instance_prerequisite_A53") is None:return []
+    errors=[]
+    try:
+        c=profile_identity_contract(pack);meta=c["metadata"];states=state["slices"]
+        parent=states["F02e2s"];child=states["F02e2i"];continuation=parent.get("continuation_A53",{})
+        if parent.get("attempts")!=3:errors.append("A53: preserve the same reserved parent attempt3; no reset or attempt4")
+        if any(continuation.get(k)!=v for k,v in {"prerequisite":"F02e2i","reserved_attempt":3,"attempt_reset":False,"attempt4_authorized":False}.items()):
+            errors.append("A53: parent continuation authorization differs from the reserved attempt")
+        if parent.get("preserved_failures_A53")!=meta["preserved_failures"] or parent.get("scope_request_A53")!=meta["scope_request"]:
+            errors.append("A53: parent failed attempts or original scope-stop evidence were replaced")
+        if child.get("status")!="accepted":
+            if (parent.get("status")!="blocked_specification" or continuation.get("phase")!="scope_blocked"
+                    or parent.get("native_work_authorized") is True or parent.get("source_changes_authorized") is True):
+                errors.append("A53: parent source/native work must wait for accepted identity prerequisite")
+            if any(x.get("slice")=="F02e2s" for x in state.get("active_locks",{}).values()):errors.append("A53: scope-blocked parent must release its source locks")
+        elif parent.get("status")!="blocked_specification":
+            if (parent.get("base_sha")!=child.get("source_sha") or parent.get("base_tree")!=child.get("source_tree")
+                    or not HEX.fullmatch(child.get("source_sha", "")) or not HEX.fullmatch(child.get("source_tree", ""))):
+                errors.append("A53: resumed attempt3 must use exact accepted identity integration as its base")
+        if initial:
+            if parent!=c["initial_parent"] or child!=c["initial_child"]:errors.append("A53: initial snapshot cannot authorize resumed work or reset history")
+        else:
+            for name,record in meta["preserved_failures"].items():
+                rp=safe_relative(root,record["run"]);cp=safe_relative(root,record["closure"])
+                if digest(rp)!=record["run_sha256"] or digest(cp)!=record["closure_sha256"]:raise ValueError(f"{name} terminal evidence digest mismatch")
+                run=load(rp);closure=load(cp)
+                if (run.get("result")!="failed" or run.get("lease_released") is not True
+                        or run.get("active_build_processes_remaining")!=[] or closure.get("active_lock_released") is not True
+                        or closure.get("active_build_processes_remaining")!=[]):raise ValueError(f"{name} terminal failure/closure was changed")
+                if name=="attempt2" and run.get("product_tests_run")!=["T014e2s"]:raise ValueError("A53: preserve the actual failed T014e2s run")
+            request=safe_relative(root,meta["scope_request"]["path"])
+            if digest(request)!=meta["scope_request"]["sha256"]:raise ValueError("A53 scope-stop request digest mismatch")
+    except (OSError,ValueError,KeyError,TypeError,AttributeError) as exc:errors.append(f"A53 state: {exc}")
+    return errors
+
+def validate_identity_acceptance_A53(task,record,root,pack=PACK):
+    if task.get("id")!="F02e2i" or record.get("status")!="accepted":return []
+    errors=[]
+    try:
+        c=profile_identity_contract(pack);e=load(safe_relative(root,record["evidence"]))
+        source=e["source_sha"];tree=e["source_tree"]
+        if not HEX.fullmatch(source) or not HEX.fullmatch(tree):raise ValueError("invalid exact identity source")
+        if record.get("source_sha")!=source or record.get("source_tree")!=tree:raise ValueError("accepted prerequisite does not bind exact integrated SHA/tree")
+        review_path=safe_relative(root,e["identity_evidence_review"])
+        if digest(review_path)!=e["identity_evidence_review_sha256"]:raise ValueError("identity evidence-review digest mismatch")
+        review=load(review_path);candidate=review.get("candidate",{})
+        if (review.get("decision")!="accept" or not review.get("reviewer") or review.get("reviewer")==record.get("author")
+                or review.get("reviewer")!=e.get("reviewer") or candidate.get("slice")!="F02e2i"
+                or candidate.get("commit")!=source or candidate.get("tree")!=tree
+                or candidate.get("attempt")!=record.get("attempts")):
+            raise ValueError("independent identity review does not accept exact candidate/attempt")
+        case_map=e.get("identity_case_tests",{})
+        if (set(case_map)!=set(c["identity_cases"]) or any(not isinstance(x,str) or not x for x in case_map.values())
+                or review.get("identity_case_tests")!=case_map):raise ValueError("identity/lifetime/privacy cases are missing from independent test mapping")
+        gates=e.get("unit_gates",{})
+        if set(gates)!={"focused","application_regression"} or review.get("unit_gates")!=gates:
+            raise ValueError("identity review must bind focused and full-regression receipts")
+        seen=set()
+        for name,gate in gates.items():
+            receipt_path=safe_relative(root,gate["receipt"])
+            if str(receipt_path) in seen:raise ValueError("identity qualification receipts must be distinct")
+            seen.add(str(receipt_path))
+            if digest(receipt_path)!=gate["sha256"]:raise ValueError(f"{name} receipt digest mismatch")
+            receipt=load(receipt_path)
+            if (receipt.get("result")!="passed" or receipt.get("exit_code")!=0 or receipt.get("timed_out")
+                    or receipt.get("output_limit_exceeded") or receipt.get("require_tests") is not True
+                    or receipt.get("observed_test_summary_count",0)<=0 or receipt.get("observed_skips")!=0
+                    or receipt.get("observed_failed",0)!=0):raise ValueError(f"{name} is not a nonzero zero-skip passing command")
+            for key in ("source_before","source_after"):
+                snapshot=receipt.get(key,{})
+                if snapshot.get("sha")!=source or snapshot.get("tree")!=tree or snapshot.get("dirty") is not False:
+                    raise ValueError(f"{name} does not bind exact clean integrated source")
+            binding=receipt.get("execution_binding",{});target=binding.get("cargo_target_dir","")
+            if (not target or not Path(target).resolve().is_relative_to((root/"builds").resolve())
+                    or binding.get("environment",{}).get("CARGO_TARGET_DIR")!=target):raise ValueError(f"{name} lacks an owned explicit Cargo target binding")
+            prefix=["cargo","+stable","test","--package","ferric-browser-application","--lib","--locked","--offline","--jobs","2","--target-dir",target]
+            expected=prefix+(["profile_instance_identity"] if name=="focused" else [])+["--","--nocapture"]
+            if receipt.get("command")!=expected:raise ValueError(f"{name} does not execute the required focused/full application suite")
+            log=safe_relative(receipt_path.parent,receipt["log"])
+            if digest(log)!=receipt["log_sha256"]:raise ValueError(f"{name} log digest mismatch")
+            text=log.read_text(errors="replace")
+            if not re.search(r"test result: ok\.\s+[1-9][0-9]* passed;\s+0 failed;\s+0 ignored",text):raise ValueError(f"{name} output lacks a real zero-skip Rust test result")
+            if name=="focused":
+                for case,test in case_map.items():
+                    if not re.search(r"^test\s+"+re.escape(test)+r"\s+\.\.\.\s+ok\s*$",text,re.M):
+                        raise ValueError(f"identity case {case} lacks its actual executed passing test")
+    except (OSError,KeyError,ValueError,TypeError,AttributeError) as exc:errors.append(f"F02e2i: {exc}")
+    return errors
+
+
 def validate_state(plan,state_path,strict=False,pack=PACK):
     errors=[]
     try:
@@ -1492,9 +1623,11 @@ def validate_state(plan,state_path,strict=False,pack=PACK):
         errors+=validate_harness_prerequisite_split_A49(plan,pack)
         errors+=validate_successor_recovery_A50(plan,pack)
         errors+=validate_successor_recovery_A52(plan,pack)
+        errors+=validate_profile_identity_A53(plan,pack)
         errors+=validate_continuation_A51(plan,pack)
         errors+=validate_continuation_state_A51(state,root)
         errors+=validate_supersession_state(plan,state,strict,state_path.name=="state.initial.json")
+        errors+=validate_profile_identity_state_A53(plan,state,root,state_path.name=="state.initial.json",pack)
         if state.get("run_id") is not None:
             parent_state=state["slices"].get("F02e2",{})
             successor_state=state["slices"].get("F02e2r",{})
@@ -1528,6 +1661,7 @@ def validate_state(plan,state_path,strict=False,pack=PACK):
                 if any(state["slices"][d]["status"]!="accepted" for d in t["depends_on"]):errors.append(f"{sid}: unaccepted dependency")
                 errors+=validate_acceptance(t,s,root,tests)
                 errors+=validate_acceptance_A52(t,s,root)
+                errors+=validate_identity_acceptance_A53(t,s,root,pack)
             elif s["status"]=="superseded":
                 continue
             elif strict:errors.append(f"{sid}: not accepted ({s['status']})")

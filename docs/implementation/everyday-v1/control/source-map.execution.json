@@ -4632,6 +4632,67 @@
         "nonzero-ctest-discovery",
         "T014e2s-serial"
       ]
+    },
+    {
+      "id": "A53",
+      "reason": "A52 attempt2 proved bootstrap ready but exposed an empty optional durable profile ID for Ephemeral fixtures; a real session identity projection is outside adapter scope.",
+      "added_paths": [
+        "crates/ferric-browser-application/src/profile_session.rs",
+        "crates/ferric-browser-application/src/lib.rs"
+      ],
+      "path_owners": {
+        "F02e2i": [
+          "crates/ferric-browser-application/src/profile_session.rs",
+          "crates/ferric-browser-application/src/lib.rs"
+        ]
+      },
+      "locks": [
+        "application-interface",
+        "profile-session-identity"
+      ],
+      "max_changed_product_files": 2,
+      "prerequisite": "F02e2i",
+      "test_id": "T014e2i",
+      "parent": "F02e2s",
+      "reserved_parent_attempt": 3,
+      "parent_adapter_scope_unchanged": true,
+      "parent_source_base_rule": "accepted_F02e2i_integration_descended_from_eb6ff74",
+      "supersedes_A52_base_only_for_reserved_attempt3": true,
+      "parent_depends_on": [
+        "F02e1",
+        "F02e2q",
+        "F02e2i"
+      ],
+      "aggregate_depends_on": [
+        "F02e0",
+        "F02e1",
+        "F02e2i",
+        "F02e2s",
+        "F02e3",
+        "F02e4",
+        "F02e5",
+        "F02e6",
+        "F02e7",
+        "F02e8"
+      ],
+      "preserved_failures": {
+        "attempt1": {
+          "run": "evidence/F02e2s-a1/native/NATIVE_RUN-A52-a1.json",
+          "run_sha256": "b41bbe860a0d5c845d952bf5447aaee47ab1e56da7b7c0c59a35e39d7dff06b4",
+          "closure": "evidence/F02e2s-a1/native/NATIVE_LEASE_CLOSED-A52-a1.json",
+          "closure_sha256": "331bbf0b036c239ecacbd2728cc6e8a1d56aef6072a608b40a30c1dbab7ff613"
+        },
+        "attempt2": {
+          "run": "evidence/F02e2s-a2/native/NATIVE_RUN-A52-a2.json",
+          "run_sha256": "c95650d7caf8967b352a6dbc09d810df3a1596a215bc19cdcdcf13e525f2d6a9",
+          "closure": "evidence/F02e2s-a2/native/NATIVE_LEASE_CLOSED-A52-a2.json",
+          "closure_sha256": "fab15750237db01424cfc05aad311f8d1ae2771dd929329b4519d00c0bdebb82"
+        }
+      },
+      "review_sha256": "1dd499ddc3314a4797d66737d145ff3474ceaf8b838cb62f951f6bb93d4b4ede",
+      "proposal_sha256": "0229d82ffbff22f1986f5a623e0b53624c586ea2dee671bfeee0ca2d7c118f89",
+      "native_gate_sequence_unchanged": true,
+      "old_tests_execution_authorized": false
     }
   ]
 }

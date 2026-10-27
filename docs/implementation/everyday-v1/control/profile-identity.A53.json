@@ -1,0 +1,331 @@
+{
+  "metadata": {
+    "amendment": "A53",
+    "status": "independently accepted plan",
+    "review_path": "evidence/A53/PLAN_REVIEW.json",
+    "review_sha256": "1dd499ddc3314a4797d66737d145ff3474ceaf8b838cb62f951f6bb93d4b4ede",
+    "review_budget_path": "evidence/A53/PLAN_REVIEW_BUDGET.json",
+    "review_budget_sha256": "d3ab099825d0f9309f2e8b899c04c6d2ef96d7ffb64b3b54d5be22520da71e71",
+    "proposal_path": "evidence/A53/PROPOSAL.json",
+    "proposal_sha256": "0229d82ffbff22f1986f5a623e0b53624c586ea2dee671bfeee0ca2d7c118f89",
+    "packet_path": "packets/A53-profile-session-identity-proposal.md",
+    "packet_sha256": "bd3d1e44fcad0badc26b4948401fca3fb3623f7a923b00199afa0c2f61e57c5b",
+    "prerequisite": "F02e2i",
+    "test_id": "T014e2i",
+    "paths": [
+      "crates/ferric-browser-application/src/profile_session.rs",
+      "crates/ferric-browser-application/src/lib.rs"
+    ],
+    "locks": [
+      "application-interface",
+      "profile-session-identity"
+    ],
+    "source_base_sha": "eb6ff74ad7134ff6fb5a2e934e08fd3f22a777a9",
+    "source_base_tree": "42b809fee461d7a555b79f953fe1c56d6c1a0845",
+    "parent": "F02e2s",
+    "reserved_parent_attempt": 3,
+    "parent_attempt_limit": 3,
+    "attempt_reset": false,
+    "attempt4_authorized": false,
+    "parent_source_base_rule": "accepted_F02e2i_integration_descended_from_eb6ff74",
+    "parent_adapter_paths_unchanged": true,
+    "parent_native_gates_unchanged": true,
+    "parent_test_id": "T014e2s",
+    "identity_contract": [
+      "opaque_value_no_public_constructor_parser_or_serde",
+      "actual_live_session_not_durable_profile_id",
+      "stable_for_shared_arc_clones",
+      "distinct_for_independent_memory_or_different_roots",
+      "renewed_after_all_session_owners_drop",
+      "copied_id_does_not_extend_session_or_grant_lifetime",
+      "normal_private_ephemeral_supported",
+      "durable_id_storage_permission_download_privacy_unchanged"
+    ],
+    "preserved_failures": {
+      "attempt1": {
+        "run": "evidence/F02e2s-a1/native/NATIVE_RUN-A52-a1.json",
+        "run_sha256": "b41bbe860a0d5c845d952bf5447aaee47ab1e56da7b7c0c59a35e39d7dff06b4",
+        "closure": "evidence/F02e2s-a1/native/NATIVE_LEASE_CLOSED-A52-a1.json",
+        "closure_sha256": "331bbf0b036c239ecacbd2728cc6e8a1d56aef6072a608b40a30c1dbab7ff613"
+      },
+      "attempt2": {
+        "run": "evidence/F02e2s-a2/native/NATIVE_RUN-A52-a2.json",
+        "run_sha256": "c95650d7caf8967b352a6dbc09d810df3a1596a215bc19cdcdcf13e525f2d6a9",
+        "closure": "evidence/F02e2s-a2/native/NATIVE_LEASE_CLOSED-A52-a2.json",
+        "closure_sha256": "fab15750237db01424cfc05aad311f8d1ae2771dd929329b4519d00c0bdebb82"
+      }
+    },
+    "scope_request": {
+      "path": "evidence/F02e2s-a3/SCOPE_AMENDMENT_REQUEST.json",
+      "sha256": "32b97deb0c2a59e74f4dd65097a60d4c65bd8133b28cae814ed75807d7dad378"
+    },
+    "operational_controls": {
+      "engine_supervisor_seconds": 5400,
+      "measured_previous_engine_seconds": 2302.075,
+      "build_jobs": 2,
+      "readiness_seconds": 30,
+      "ctest_test_seconds": 180,
+      "private_bus_cleanup_required": true,
+      "verbose_single_test_output_required": true,
+      "product_thresholds_changed": false
+    }
+  },
+  "task": {
+    "id": "F02e2i",
+    "title": "Expose typed live profile-session identity",
+    "lane": "presentation",
+    "depends_on": [
+      "F02e1",
+      "F02e2q"
+    ],
+    "contracts": [
+      "C00",
+      "C01",
+      "C14"
+    ],
+    "allowed_paths": [
+      "crates/ferric-browser-application/src/profile_session.rs",
+      "crates/ferric-browser-application/src/lib.rs"
+    ],
+    "steps": [
+      "Introduce an opaque ProfileInstanceId for one actual Arc<Session>, distinct from optional durable ProfileId and storage scope. Keep construction private and expose only comparison/hash/display value semantics.",
+      "Expose BrowserApplication::profile_instance_id() -> Option<ProfileInstanceId>, None before activation and a real live identity for Normal, Private and Ephemeral profiles. Preserve all storage, permission/download and privacy behavior.",
+      "Prove stable clones/shared live durable sessions, distinct independent memory/different-root sessions, renewal after all actual owners drop, and no lifetime extension by copied IDs.",
+      "Run focused nonzero profile_instance_identity unit tests and full application --lib regressions on exact integrated source, then obtain independent source/evidence review. No Qt/native/physical claim."
+    ],
+    "kind": "implementation",
+    "locks": [
+      "application-interface",
+      "profile-session-identity"
+    ],
+    "recipe": "application-rust",
+    "requirement_id": "EF-F02",
+    "test_ids": [
+      "T014e2i"
+    ],
+    "max_changed_product_files": 2,
+    "max_attempts": 3,
+    "worker_may_delegate": false,
+    "slice_file": "slices/F02e2i.md",
+    "read_anchors": [
+      "crates/ferric-browser-application/src/profile_session.rs",
+      "crates/ferric-browser-application/src/lib.rs",
+      "crates/ferric-browser-application/src/profile.rs",
+      "crates/ferric-browser-application/src/profile_open.rs"
+    ],
+    "parent_id": "F02e",
+    "new_paths_notice": "A53 genuine application identity prerequisite; exactly two existing product paths, inline tests only, no dependency/schema/persistence changes. It does not reset F02e2s attempt3.",
+    "prerequisite_amendment": "A53"
+  },
+  "parent_task": {
+    "id": "F02e2s",
+    "title": "Qualify page reparenting with production-driven profile bootstrap",
+    "lane": "presentation",
+    "depends_on": [
+      "F02e1",
+      "F02e2q",
+      "F02e2i"
+    ],
+    "contracts": [
+      "C00",
+      "C01",
+      "C02",
+      "C14"
+    ],
+    "allowed_paths": [
+      "crates/ferric-browser-engine-qt/src/public_page_host.h",
+      "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+      "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+      "crates/ferric-browser-engine-qt/src/bridge.rs",
+      "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+      "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+      "crates/ferric-browser-engine-qt/build.rs",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+      "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+    ],
+    "steps": [
+      "A53 reserved attempt3 starts from accepted F02e2i integration descended from original product base eb6ff74ad7134ff6fb5a2e934e08fd3f22a777a9, then reapplies the reviewed A50/A52 adapter implementation. Never use a failed candidate as the source base.",
+      "Add a distinct T014e2s slot and CTest registration. Keep the original T014e2 and successor T014e2r registrations and their historical results intact except for direct superseded_by mappings to T014e2s. Never run either old CTest ID or QtTest slot.",
+      "Drive asynchronous profile bootstrap for both BrowserUi instances created by the retained integration body, including the later-created foreign-profile UI. Give each UI a scoped bounded QTimer/event-loop pump invoking existing BrowserUi::poll_config(); stop and disconnect each pump before its corresponding BrowserUi is destroyed.",
+      "Do not set readiness properties, forge profile IDs, insert tabs, or bypass privacy/profile/owner validation. On timeout, report each UI\u2019s poll invocation result, profile ID, tab_count, profile_bootstrap_pending, profile_startup_notice and status_text.",
+      "Preserve every same-page attach/detach, document identity, stale and foreign-owner rejection, focus, geometry, native dialog parent and lifecycle assertion. Do not delete, weaken, or replace the original page-host assertions.",
+      "If root-cause repair requires a product path outside this exact ten-path list, stop and request another independently reviewed amendment before editing.",
+      "A53: resume the same reserved source attempt3 only after F02e2i is accepted; use its actual typed session identity for every page-host current-profile check. Preserve Ephemeral fixtures, durable profile_id semantics and all native assertions; no attempt reset or attempt4."
+    ],
+    "kind": "implementation",
+    "locks": [
+      "public-page-host",
+      "bridge",
+      "test-registration",
+      "browser-ui-input"
+    ],
+    "recipe": "application",
+    "requirement_id": "EF-F02",
+    "test_ids": [
+      "T014e2s"
+    ],
+    "max_changed_product_files": 10,
+    "path_budget_amendment": "A52",
+    "worker_may_delegate": false,
+    "new_paths_notice": "A52 creates a fresh three-attempt successor after F02e2r exhausted at 3/3. It reuses exactly A44/A50\u2019s ten product paths and four locks; no eleventh path or new lock is allowed. F02e2 (6/6) and F02e2r (3/3) remain failed with A48/A50/A51 evidence immutable until independently reviewed T014e2s acceptance. The old T014e2 and T014e2r entries remain historical and are never executed.",
+    "slice_file": "slices/F02e2s.md",
+    "read_anchors": [
+      "crates/ferric-browser-engine-qt/src/public_page_host.h",
+      "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+      "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+      "crates/ferric-browser-engine-qt/src/bridge.rs",
+      "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+      "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+      "crates/ferric-browser-engine-qt/build.rs",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+      "crates/ferric-browser-engine-qt/src/browser_ui_input.rs",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/tst_static_qml_registration.cpp",
+      "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+      "crates/ferric-browser-engine-qt/tests/portal/tst_browser_file_choosers.cpp",
+      "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+      "crates/ferric-browser-engine-qt/qml/components/FerricRuntimeController.qml",
+      "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+      "crates/ferric-browser-engine-qt/src/browser_ui_profile_setup.rs",
+      "crates/ferric-browser-application/src/profile_session.rs",
+      "crates/ferric-browser-application/src/lib.rs"
+    ],
+    "parent_id": "F02e",
+    "identity_prerequisite_amendment": "A53"
+  },
+  "aggregate_dependencies": [
+    "F02e0",
+    "F02e1",
+    "F02e2i",
+    "F02e2s",
+    "F02e3",
+    "F02e4",
+    "F02e5",
+    "F02e6",
+    "F02e7",
+    "F02e8"
+  ],
+  "test": {
+    "id": "T014e2i",
+    "slice": "F02e2i",
+    "requirement": "EF-F02",
+    "level": "unit",
+    "name": "Typed actual profile-session identity across all privacy modes",
+    "expected": "An opaque live ProfileInstanceId is distinct from optional durable ProfileId. Repeated reads and Arc clones/shared same-id+roots durable owners are stable; independent Ephemeral/Private sessions and different durable roots/ids differ; after all actual owners drop a new session has a new identity. Copied IDs cannot retain sessions/grants. BrowserApplication projection is None before activation and Some for Normal/Private/Ephemeral; optional durable IDs, storage roots, permission/download scope and privacy are unchanged.",
+    "result": "not_run",
+    "binding": "Bind every identity/lifetime/privacy case to real profile_instance_identity Rust unit functions and exact-source focused plus full ferric-browser-application --lib receipts. Nonzero execution, zero failures/skips, independent source/evidence review and serial integrated-source gates before acceptance; no Qt/native/physical qualification."
+  },
+  "initial_parent": {
+    "status": "blocked_specification",
+    "attempts": 3,
+    "author": null,
+    "reviewer": null,
+    "evidence": null,
+    "blocker": "A53 typed-identity prerequisite pending; source attempt3 is reserved, no repair edits/native work and no attempt4 authorized.",
+    "continuation_A53": {
+      "prerequisite": "F02e2i",
+      "reserved_attempt": 3,
+      "phase": "scope_blocked",
+      "attempt_reset": false,
+      "attempt4_authorized": false
+    },
+    "preserved_failures_A53": {
+      "attempt1": {
+        "run": "evidence/F02e2s-a1/native/NATIVE_RUN-A52-a1.json",
+        "run_sha256": "b41bbe860a0d5c845d952bf5447aaee47ab1e56da7b7c0c59a35e39d7dff06b4",
+        "closure": "evidence/F02e2s-a1/native/NATIVE_LEASE_CLOSED-A52-a1.json",
+        "closure_sha256": "331bbf0b036c239ecacbd2728cc6e8a1d56aef6072a608b40a30c1dbab7ff613"
+      },
+      "attempt2": {
+        "run": "evidence/F02e2s-a2/native/NATIVE_RUN-A52-a2.json",
+        "run_sha256": "c95650d7caf8967b352a6dbc09d810df3a1596a215bc19cdcdcf13e525f2d6a9",
+        "closure": "evidence/F02e2s-a2/native/NATIVE_LEASE_CLOSED-A52-a2.json",
+        "closure_sha256": "fab15750237db01424cfc05aad311f8d1ae2771dd929329b4519d00c0bdebb82"
+      }
+    },
+    "scope_request_A53": {
+      "path": "evidence/F02e2s-a3/SCOPE_AMENDMENT_REQUEST.json",
+      "sha256": "32b97deb0c2a59e74f4dd65097a60d4c65bd8133b28cae814ed75807d7dad378"
+    }
+  },
+  "initial_child": {
+    "status": "not_started",
+    "attempts": 0,
+    "author": null,
+    "reviewer": null,
+    "evidence": null,
+    "blocker": null
+  },
+  "source_map": {
+    "id": "A53",
+    "reason": "A52 attempt2 proved bootstrap ready but exposed an empty optional durable profile ID for Ephemeral fixtures; a real session identity projection is outside adapter scope.",
+    "added_paths": [
+      "crates/ferric-browser-application/src/profile_session.rs",
+      "crates/ferric-browser-application/src/lib.rs"
+    ],
+    "path_owners": {
+      "F02e2i": [
+        "crates/ferric-browser-application/src/profile_session.rs",
+        "crates/ferric-browser-application/src/lib.rs"
+      ]
+    },
+    "locks": [
+      "application-interface",
+      "profile-session-identity"
+    ],
+    "max_changed_product_files": 2,
+    "prerequisite": "F02e2i",
+    "test_id": "T014e2i",
+    "parent": "F02e2s",
+    "reserved_parent_attempt": 3,
+    "parent_adapter_scope_unchanged": true,
+    "parent_source_base_rule": "accepted_F02e2i_integration_descended_from_eb6ff74",
+    "supersedes_A52_base_only_for_reserved_attempt3": true,
+    "parent_depends_on": [
+      "F02e1",
+      "F02e2q",
+      "F02e2i"
+    ],
+    "aggregate_depends_on": [
+      "F02e0",
+      "F02e1",
+      "F02e2i",
+      "F02e2s",
+      "F02e3",
+      "F02e4",
+      "F02e5",
+      "F02e6",
+      "F02e7",
+      "F02e8"
+    ],
+    "preserved_failures": {
+      "attempt1": {
+        "run": "evidence/F02e2s-a1/native/NATIVE_RUN-A52-a1.json",
+        "run_sha256": "b41bbe860a0d5c845d952bf5447aaee47ab1e56da7b7c0c59a35e39d7dff06b4",
+        "closure": "evidence/F02e2s-a1/native/NATIVE_LEASE_CLOSED-A52-a1.json",
+        "closure_sha256": "331bbf0b036c239ecacbd2728cc6e8a1d56aef6072a608b40a30c1dbab7ff613"
+      },
+      "attempt2": {
+        "run": "evidence/F02e2s-a2/native/NATIVE_RUN-A52-a2.json",
+        "run_sha256": "c95650d7caf8967b352a6dbc09d810df3a1596a215bc19cdcdcf13e525f2d6a9",
+        "closure": "evidence/F02e2s-a2/native/NATIVE_LEASE_CLOSED-A52-a2.json",
+        "closure_sha256": "fab15750237db01424cfc05aad311f8d1ae2771dd929329b4519d00c0bdebb82"
+      }
+    },
+    "review_sha256": "1dd499ddc3314a4797d66737d145ff3474ceaf8b838cb62f951f6bb93d4b4ede",
+    "proposal_sha256": "0229d82ffbff22f1986f5a623e0b53624c586ea2dee671bfeee0ca2d7c118f89",
+    "native_gate_sequence_unchanged": true,
+    "old_tests_execution_authorized": false
+  },
+  "identity_cases": [
+    "shared_live_identity",
+    "independent_memory_identity",
+    "privacy_mode_identity",
+    "durable_shared_identity",
+    "different_storage_roots",
+    "weak_lifetime_and_renewal",
+    "application_projection",
+    "persistence_privacy_unchanged"
+  ]
+}

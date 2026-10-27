@@ -4,279 +4,391 @@
   "packets": [
     {
       "slice": "S00",
-      "utf8_bytes": 11893
+      "utf8_bytes": 12703
     },
     {
       "slice": "S01",
-      "utf8_bytes": 12085
+      "utf8_bytes": 12589
     },
     {
       "slice": "F00",
-      "utf8_bytes": 11284
+      "utf8_bytes": 11788
     },
     {
       "slice": "F01",
-      "utf8_bytes": 9542
+      "utf8_bytes": 10352
     },
     {
       "slice": "F01b",
-      "utf8_bytes": 9302
+      "utf8_bytes": 10112
     },
     {
       "slice": "F01c",
-      "utf8_bytes": 9183
+      "utf8_bytes": 9993
     },
     {
       "slice": "F02",
-      "utf8_bytes": 9032
+      "utf8_bytes": 11165
     },
     {
       "slice": "F02a",
-      "utf8_bytes": 11277
+      "utf8_bytes": 13410
     },
     {
       "slice": "F02b",
-      "utf8_bytes": 9067
+      "utf8_bytes": 11200
     },
     {
       "slice": "F02b1",
-      "utf8_bytes": 9795
+      "utf8_bytes": 11928
     },
     {
       "slice": "F02b2",
-      "utf8_bytes": 9277
+      "utf8_bytes": 11410
+    },
+    {
+      "slice": "F02c",
+      "utf8_bytes": 19179
+    },
+    {
+      "slice": "F02d",
+      "utf8_bytes": 18534
     },
     {
       "slice": "F02b2a",
-      "utf8_bytes": 9803
+      "utf8_bytes": 10718
     },
     {
       "slice": "F02b2b",
-      "utf8_bytes": 10932
+      "utf8_bytes": 13065
     },
     {
       "slice": "F03",
-      "utf8_bytes": 11666
+      "utf8_bytes": 13799
     },
     {
       "slice": "F04",
-      "utf8_bytes": 11491
+      "utf8_bytes": 12301
     },
     {
       "slice": "F05",
-      "utf8_bytes": 14548
+      "utf8_bytes": 15358
     },
     {
       "slice": "H00",
-      "utf8_bytes": 11420
+      "utf8_bytes": 10488
+    },
+    {
+      "slice": "H00a",
+      "utf8_bytes": 12125
+    },
+    {
+      "slice": "H00b",
+      "utf8_bytes": 11532
+    },
+    {
+      "slice": "H00c",
+      "utf8_bytes": 11555
     },
     {
       "slice": "H01",
-      "utf8_bytes": 11894
+      "utf8_bytes": 13773
     },
     {
       "slice": "H02",
-      "utf8_bytes": 14794
+      "utf8_bytes": 16979
     },
     {
       "slice": "H03",
-      "utf8_bytes": 14388
+      "utf8_bytes": 15250
     },
     {
       "slice": "H04",
-      "utf8_bytes": 14696
+      "utf8_bytes": 15252
     },
     {
       "slice": "H05",
-      "utf8_bytes": 14443
+      "utf8_bytes": 16322
     },
     {
       "slice": "H06",
-      "utf8_bytes": 11524
+      "utf8_bytes": 12146
     },
     {
       "slice": "P00",
-      "utf8_bytes": 9321
+      "utf8_bytes": 9825
     },
     {
       "slice": "P00a",
-      "utf8_bytes": 9671
+      "utf8_bytes": 10612
     },
     {
       "slice": "P00b",
-      "utf8_bytes": 9389
+      "utf8_bytes": 9893
     },
     {
       "slice": "P00c",
-      "utf8_bytes": 9255
+      "utf8_bytes": 9759
     },
     {
       "slice": "P01",
-      "utf8_bytes": 11885
+      "utf8_bytes": 12389
     },
     {
       "slice": "P02",
-      "utf8_bytes": 11542
+      "utf8_bytes": 8977
+    },
+    {
+      "slice": "P02a",
+      "utf8_bytes": 14062
+    },
+    {
+      "slice": "P02b",
+      "utf8_bytes": 13527
+    },
+    {
+      "slice": "P02c",
+      "utf8_bytes": 10188
     },
     {
       "slice": "P03",
-      "utf8_bytes": 12493
+      "utf8_bytes": 13501
     },
     {
       "slice": "P04",
-      "utf8_bytes": 15486
+      "utf8_bytes": 15990
+    },
+    {
+      "slice": "P05a",
+      "utf8_bytes": 17131
+    },
+    {
+      "slice": "P05b",
+      "utf8_bytes": 17983
+    },
+    {
+      "slice": "P05b1",
+      "utf8_bytes": 20854
+    },
+    {
+      "slice": "P05b2",
+      "utf8_bytes": 22232
     },
     {
       "slice": "P05",
-      "utf8_bytes": 11613
+      "utf8_bytes": 9041
     },
     {
       "slice": "P06",
-      "utf8_bytes": 14530
+      "utf8_bytes": 16508
+    },
+    {
+      "slice": "P07a",
+      "utf8_bytes": 21223
+    },
+    {
+      "slice": "P07b",
+      "utf8_bytes": 21938
     },
     {
       "slice": "P07",
-      "utf8_bytes": 14672
+      "utf8_bytes": 12391
     },
     {
       "slice": "P08",
-      "utf8_bytes": 11825
+      "utf8_bytes": 12329
     },
     {
       "slice": "P09",
-      "utf8_bytes": 11573
+      "utf8_bytes": 12077
     },
     {
       "slice": "P10",
-      "utf8_bytes": 11510
+      "utf8_bytes": 12014
     },
     {
       "slice": "P11",
-      "utf8_bytes": 11699
+      "utf8_bytes": 12203
     },
     {
       "slice": "P12",
-      "utf8_bytes": 14356
+      "utf8_bytes": 14860
     },
     {
       "slice": "P13",
-      "utf8_bytes": 11733
+      "utf8_bytes": 12237
     },
     {
       "slice": "P14",
-      "utf8_bytes": 15034
+      "utf8_bytes": 15538
     },
     {
       "slice": "P15",
-      "utf8_bytes": 14625
+      "utf8_bytes": 15129
     },
     {
       "slice": "P16",
-      "utf8_bytes": 14727
+      "utf8_bytes": 15231
     },
     {
       "slice": "P17",
-      "utf8_bytes": 14076
+      "utf8_bytes": 14580
     },
     {
       "slice": "W00",
-      "utf8_bytes": 11093
+      "utf8_bytes": 12034
     },
     {
       "slice": "W01",
-      "utf8_bytes": 11195
+      "utf8_bytes": 12005
     },
     {
       "slice": "W01a",
-      "utf8_bytes": 12489
+      "utf8_bytes": 13299
     },
     {
       "slice": "W01b",
-      "utf8_bytes": 12558
+      "utf8_bytes": 13822
     },
     {
       "slice": "W01c",
-      "utf8_bytes": 12056
+      "utf8_bytes": 12866
     },
     {
       "slice": "W02",
-      "utf8_bytes": 11644
+      "utf8_bytes": 12454
     },
     {
       "slice": "W03",
-      "utf8_bytes": 11034
+      "utf8_bytes": 11538
     },
     {
       "slice": "W04",
-      "utf8_bytes": 10828
+      "utf8_bytes": 16491
     },
     {
       "slice": "W05",
-      "utf8_bytes": 10949
+      "utf8_bytes": 11453
     },
     {
       "slice": "W06",
-      "utf8_bytes": 13751
+      "utf8_bytes": 14255
     },
     {
       "slice": "W07",
-      "utf8_bytes": 13759
+      "utf8_bytes": 14263
     },
     {
       "slice": "W08",
-      "utf8_bytes": 11020
+      "utf8_bytes": 11524
     },
     {
       "slice": "W09",
-      "utf8_bytes": 10878
+      "utf8_bytes": 11382
     },
     {
       "slice": "W10",
-      "utf8_bytes": 11017
+      "utf8_bytes": 11521
     },
     {
       "slice": "W11",
-      "utf8_bytes": 13904
+      "utf8_bytes": 14714
     },
     {
       "slice": "W12",
-      "utf8_bytes": 11138
+      "utf8_bytes": 11948
     },
     {
       "slice": "W13",
-      "utf8_bytes": 13416
+      "utf8_bytes": 13920
     },
     {
       "slice": "W14",
-      "utf8_bytes": 14087
+      "utf8_bytes": 14591
     },
     {
       "slice": "X00",
-      "utf8_bytes": 14012
+      "utf8_bytes": 14822
     },
     {
       "slice": "X01",
-      "utf8_bytes": 14166
+      "utf8_bytes": 14670
     },
     {
       "slice": "X02",
-      "utf8_bytes": 11485
+      "utf8_bytes": 11989
     },
     {
       "slice": "X03",
-      "utf8_bytes": 13435
+      "utf8_bytes": 13939
     },
     {
       "slice": "X04",
-      "utf8_bytes": 14346
+      "utf8_bytes": 15156
     },
     {
       "slice": "X05",
-      "utf8_bytes": 11286
+      "utf8_bytes": 11790
     },
     {
       "slice": "X06",
-      "utf8_bytes": 14068
+      "utf8_bytes": 14572
+    },
+    {
+      "slice": "F02e0",
+      "utf8_bytes": 18245
+    },
+    {
+      "slice": "F02e1",
+      "utf8_bytes": 17817
+    },
+    {
+      "slice": "F02e2",
+      "utf8_bytes": 23962
+    },
+    {
+      "slice": "F02e2q",
+      "utf8_bytes": 16519
+    },
+    {
+      "slice": "F02e2r",
+      "utf8_bytes": 21062
+    },
+    {
+      "slice": "F02e2i",
+      "utf8_bytes": 15648
+    },
+    {
+      "slice": "F02e2s",
+      "utf8_bytes": 23231
+    },
+    {
+      "slice": "F02e3",
+      "utf8_bytes": 17815
+    },
+    {
+      "slice": "F02e4",
+      "utf8_bytes": 17459
+    },
+    {
+      "slice": "F02e5",
+      "utf8_bytes": 17495
+    },
+    {
+      "slice": "F02e6",
+      "utf8_bytes": 17541
+    },
+    {
+      "slice": "F02e7",
+      "utf8_bytes": 17569
+    },
+    {
+      "slice": "F02e8",
+      "utf8_bytes": 17761
+    },
+    {
+      "slice": "F02e",
+      "utf8_bytes": 10613
     }
   ]
 }
