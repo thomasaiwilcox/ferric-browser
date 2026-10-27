@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from common import PACK,CLONE,git,load,write_json,digest,packet,validate_repo,safe_relative,repo_snapshot,workspace_root
-import bootstrap,run_gate,cleanup,ready,validate_pack,preflight,qt_include_guard,common,a55
+import bootstrap,run_gate,cleanup,ready,validate_pack,preflight,qt_include_guard,common,a55,a56
 
 class TempRepo(unittest.TestCase):
     def setUp(self):
@@ -725,6 +725,11 @@ class StructureTests(unittest.TestCase):
 
 class ProfileIdentityA53Tests(unittest.TestCase):
     def setUp(self):
+        # Exercise historical fixtures against their retained exact plan while
+        # importing the current shared implementation. No runtime policy switch.
+        if (PACK/'control/test-helper-repair.A56.json').exists():
+            historical=PACK.parents[4]/'worktrees/A55-proposal/docs/implementation/everyday-v1'
+            self.enterContext(patch.object(sys.modules[__name__],'PACK',historical))
         self.plan=load(PACK/'control/plan.json')
         self.contract=validate_pack.profile_identity_contract(PACK)
         self.tmp=tempfile.TemporaryDirectory(prefix='ferric-a53-test-')
@@ -1399,6 +1404,11 @@ class EvidenceTests(TempRepo):
 class ParentRepairA55Tests(TempRepo):
     """Synthetic control/source fixtures; no product or native qualification."""
     def setUp(self):
+        # Exercise historical fixtures against their retained exact plan while
+        # importing the current shared implementation. No runtime policy switch.
+        if (PACK/'control/test-helper-repair.A56.json').exists():
+            historical=PACK.parents[4]/'worktrees/A55-proposal/docs/implementation/everyday-v1'
+            self.enterContext(patch.object(sys.modules[__name__],'PACK',historical))
         super().setUp();self.plan=load(PACK/'control/plan.json');self.c=copy.deepcopy(a55.contract_A55(PACK));self.m=self.c['metadata']
         self.p=copy.deepcopy(self.c['initial_parent']);self.child={'status':'accepted','source_sha':'a'*40,'source_tree':'b'*40}
         self.m['accepted_child']['state_record_sha256']=a55.object_sha(self.child)
@@ -1698,5 +1708,235 @@ class ParentRepairA55Tests(TempRepo):
         with self.assertRaisesRegex(ValueError,'sole parent'):a55.validate_product_A55(repository,git(repository,'rev-parse','HEAD'),self.c)
         file=repository/self.m['test_path'];file.write_bytes(file.read_bytes().replace(b'\n',b'\r\n'));git(repository,'add','.');git(repository,'commit','-m','synthetic changed raw bytes')
         with self.assertRaisesRegex(ValueError,'pinned product content'):a55.validate_product_A55(repository,git(repository,'rev-parse','HEAD'),self.c)
+
+class ParentRepairA56Tests(TempRepo):
+    """Real delivery and audit fixtures; never product/native qualification."""
+    def setUp(self):
+        super().setUp()
+        self.pack=PACK;self.workspace=PACK.parents[4]
+        self.plan=load(PACK/'control/plan.json');self.c=copy.deepcopy(a56.contract_A56(PACK));self.m=self.c['metadata']
+
+    def fixture(self):
+        self.p=copy.deepcopy(self.c['initial_parent']);self.child={'status':'accepted','source_sha':'a'*40,'source_tree':'b'*40}
+        self.m['accepted_child']['state_record_sha256']=a55.object_sha(self.child)
+        self.c['accepted_states_sha256']={'F02e2i':a55.object_sha(self.child)};self.c['retained_external_artifacts']={}
+        for record in self.c['history'].values():record['files']={}
+        for key in ('review','review_budget','review_clarification','proposal','repair_patch'):
+            path=self.root/f'evidence/fixture-{key}.json';write_json(path,{'synthetic':True})
+            self.m[key]={'path':str(path.relative_to(self.root)),'sha256':digest(path)}
+        self.s={'slices':{'F02e2s':self.p,'F02e2i':self.child},'active':[],'active_locks':{},'active_builds':[]}
+        repository=self.root/'worktrees/authority';git(self.repo,'worktree','add','--detach',str(repository),'HEAD')
+        self.m['source_base_sha']=git(repository,'rev-parse','HEAD')
+        self.m['source_base_tree']=git(repository,'rev-parse','HEAD^{tree}')
+        canonical=repository/'docs/implementation/everyday-v1/control/test-helper-repair.A56.json'
+        canonical.parent.mkdir(parents=True);canonical.write_bytes((self.pack/'control/test-helper-repair.A56.json').read_bytes())
+        git(repository,'add','.');git(repository,'commit','-m','synthetic A56 authority')
+        commit=git(repository,'rev-parse','HEAD');tree=git(repository,'rev-parse','HEAD^{tree}');snapshot={'sha':commit,'tree':tree,'dirty':False}
+        tools=repository/'docs/implementation/everyday-v1/tools';checks={}
+        commands={'tool_tests':['python3',str(tools/'test_tools.py')],
+                  'pack_validation':['python3',str(tools/'validate_pack.py'),'--state',str(self.root/'control/state-A56-preview.json')],
+                  'checksums':['sha256sum','--check',str(repository/'docs/implementation/everyday-v1/CHECKSUMS.sha256')]}
+        for name,command in commands.items():
+            directory=self.root/'evidence/A56'/name;directory.mkdir(parents=True);log=directory/'output.log';log.write_text('synthetic control proof\n')
+            receipt={'command':command,'result':'passed','exit_code':0,'timed_out':False,'output_limit_exceeded':False,'observed_failed':0,'observed_skips':0,
+                     'require_tests':name=='tool_tests','observed_test_summary_count':115 if name=='tool_tests'else 0,
+                     'source_before':snapshot,'source_after':snapshot,'log':'output.log','log_sha256':digest(log),'synthetic':True}
+            path=directory/'receipt.json';write_json(path,receipt);checks[name]={'path':str(path.relative_to(self.root)),'sha256':digest(path)}
+        for key in ('delivery_wrapper','delivery_reader'):
+            reference=self.m[key];path=self.root/reference['path'];path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes((self.workspace/reference['path']).read_bytes())
+        packet_path=self.root/self.m['dispatch_packet'];packet_path.parent.mkdir(parents=True);packet_path.write_text('complete synthetic assigned packet\n')
+        spec=importlib.util.spec_from_file_location('delivery_fixture_builder',self.workspace/'evidence/recovery-input-delivery-r1/test_delivery.py')
+        module=importlib.util.module_from_spec(spec)
+        with patch.object(sys,'path',[str(self.workspace/'evidence/recovery-input-delivery-r1'),*sys.path]):spec.loader.exec_module(module)
+        prefix=(self.root/self.m['delivery_manifest']).parent.parent;prefix.mkdir(parents=True)
+        bundle,_,manifest=module.make_bundle(prefix,[packet_path.read_text(),'queued source\n'*200])
+        manifest['reader']['path']=str(self.root/self.m['delivery_reader']['path'])
+        manifest['views'][0]['name']='approved_dispatch_packet'
+        manifest.update(scope='A56_F02e2s_source5',outer_output_tokens=4096,nested_output_tokens=4096)
+        write_json(bundle/'manifest.json',manifest)
+        self.delivery={'manifest':{'path':self.m['delivery_manifest'],'sha256':digest(bundle/'manifest.json')},
+                       'packet':{'path':self.m['dispatch_packet'],'sha256':digest(packet_path)},
+                       'wrapper':self.m['delivery_wrapper'],'reader':self.m['delivery_reader']}
+        report={'decision':'accept','reviewer':'fixture-peer','candidate':{'commit':commit,'tree':tree},'pack_checks':checks,'input_delivery':self.delivery,'synthetic':True}
+        path=self.root/self.m['pack_implementation_review'];write_json(path,report)
+        self.p['source_repair_A56_authority']={'review':self.m['pack_implementation_review'],'review_sha256':digest(path),'pack_commit':commit,'pack_tree':tree,'pack_worktree':str(repository),'pack_checks':checks,'input_delivery':self.delivery}
+        return manifest
+
+    def begin(self):
+        self.fixture()
+        self.p.update(status='ready',attempts=4,author='fixture-worker5',implementation_sha='a'*40,implementation_tree='b'*40,source_sha='c'*40,source_tree='d'*40)
+        authority=self.p['source_repair_A56_authority'];m=self.m
+        assignment={'slice':'F02e2s','amendment':'A56','attempt':5,'attempt_limit':5,'worker':self.p['author'],
+                    'base_sha':m['source_base_sha'],'base_tree':m['source_base_tree'],'reapply_source_sha':m['reapply_source_sha'],'reapply_source_tree':m['reapply_source_tree'],
+                    'repair_patch_sha256':m['repair_patch']['sha256'],'test_after_sha256':m['test_after_sha256'],'pack_commit':authority['pack_commit'],'pack_tree':authority['pack_tree'],
+                    'worktree':str(self.root/m['source_worktree_relative']),'target':str(self.root/m['target_relative']),
+                    'source_soft_limit':48000,'source_hard_limit':96000,'allowed_paths':self.c['task']['allowed_paths'],
+                    'packet':m['dispatch_packet'],'packet_sha256':self.delivery['packet']['sha256'],'input_delivery':self.delivery,
+                    'run_nonce':'5'*32,'lifecycle_seed_sha256':common.identity_attempt_event_hash_A54(common.parent_attempt_seed_A55('5'*32,5))}
+        path=self.root/m['source_assignment'];write_json(path,assignment);self.p.update(assignment=m['source_assignment'],assignment_sha256=digest(path))
+        common.append_parent_attempt_event_A55(self.root,self.p,self.c,'assigned')
+        self.p.update(attempts=5,status='in_progress',source_changes_authorized=True)
+        for key in ('source_review','integrated_source_review','native_runner_review','gate_evidence_review'):self.p[key]=None
+        write_json(self.root/m['source_read_log'],{'source_bytes_emitted':0,'soft_limit':48000,'hard_limit':96000,'reads':[],'assignment_sha256':self.p['assignment_sha256'],'bundle_manifest_sha256':self.delivery['manifest']['sha256']})
+
+    def inputs(self,complete=True):
+        manifest=load(self.root/self.m['delivery_manifest']);limit=len(manifest['chunks'])if complete else 1
+        wrapper=self.root/self.m['delivery_wrapper']['path']
+        for index in range(1,limit+1):
+            result=subprocess.run([sys.executable,str(wrapper),'--bundle',str((self.root/self.m['delivery_manifest']).parent),'--manifest-sha256',self.delivery['manifest']['sha256'],
+                                   '--ledger',str(self.root/self.m['source_read_log']),'--assignment-sha256',self.p['assignment_sha256'],'--chunk',str(index)],capture_output=True)
+            self.assertEqual(result.returncode,0,result.stderr.decode());self.assertLessEqual(len(result.stdout),2048)
+        ledger=load(self.root/self.m['source_read_log'])
+        reports={'worker_result':{'result':'source_complete','worker':self.p['author'],'source_sha':self.p['implementation_sha'],'source_tree':self.p['implementation_tree'],'synthetic':True},
+                 'source_budget':{'source_bytes_emitted':ledger['source_bytes_emitted'],'soft_limit':48000,'hard_limit':96000,'synthetic':True}}
+        for key,report in reports.items():write_json(self.root/self.m[key],report)
+        for key in ('worker_result','source_budget','source_read_log'):self.p[key]=self.m[key];self.p[key+'_sha256']=digest(self.root/self.m[key])
+        return ledger
+
+    def freeze(self):
+        references={key:{'path':self.m[key],'sha256':digest(self.root/self.m[key])}for key in ('worker_result','source_budget','source_read_log')}
+        write_json(self.root/self.m['source_freeze'],{'source_sha':self.p['implementation_sha'],'source_tree':self.p['implementation_tree'],'worker_evidence':references,'input_delivery':self.delivery})
+        common.append_parent_attempt_event_A55(self.root,self.p,self.c,'source_review_started',self.m['source_freeze'])
+
+    def test_exact_plan_and_sixth_or_boolean_or_global_policy_rejected(self):
+        self.assertEqual(a56.validate_plan_A56(self.plan,self.pack),[])
+        for mutation in ('missing','six','bool','global','other_task','old_policy'):
+            plan=copy.deepcopy(self.plan);parent=next(t for t in plan['slices']if t['id']=='F02e2s')
+            if mutation=='missing':plan.pop('input_delivery_recovery_A56')
+            if mutation=='six':parent['max_attempts']=6
+            if mutation=='bool':parent['max_attempts']=True
+            if mutation=='global':plan['limits']['max_attempts']=5
+            if mutation=='other_task':plan['slices'][0]['title']='unrelated change'
+            if mutation=='old_policy':plan['attempt_exceptions']['F02e2s']['amendment']='A55'
+            with self.subTest(mutation=mutation):self.assertTrue(a56.validate_plan_A56(plan,self.pack))
+
+    def test_real_historical_full_validation_and_shared_strict_default(self):
+        a56.validate_historical_state_A56(self.workspace,self.c)
+        oldpack=self.workspace/self.m['historical_pack_worktree_relative']/'docs/implementation/everyday-v1'
+        plan=load(oldpack/'control/plan.json');state=load(self.workspace/self.m['historical_state']['path']);old=a55.contract_A55(oldpack)
+        self.assertEqual(a55.validate_state_A55(plan,state,self.workspace,pack=oldpack,contract=old),[])
+        for mutation in ('history','attempt','terminal_status'):
+            changed=copy.deepcopy(state);parent=changed['slices']['F02e2s']
+            if mutation=='history':parent['attempt_history']['4']['verified_source_read_bytes']=0
+            if mutation=='attempt':parent['attempts']=5
+            if mutation=='terminal_status':parent['status']='accepted'
+            with self.subTest(mutation=mutation):self.assertTrue(a55.validate_state_A55(plan,changed,self.workspace,pack=oldpack,contract=old))
+
+    def test_actual_failed4_preserved_and_no_ready_from_user_approval_alone(self):
+        state=load(self.workspace/self.m['historical_state']['path'])
+        self.assertEqual(a56.validate_state_A56(self.plan,state,self.workspace,pack=self.pack),[])
+        state['slices']['F02e2s']['status']='ready'
+        self.assertTrue(a56.validate_state_A56(self.plan,state,self.workspace,pack=self.pack))
+        state=load(self.workspace/self.m['historical_state']['path']);state['slices']['F02e2s']['attempt_history']['4']['verified_source_read_bytes']=0
+        self.assertTrue(a56.validate_state_A56(self.plan,state,self.workspace,pack=self.pack))
+
+    def test_policy_pairs_are_explicit_and_seed_has_no_sixth_attempt(self):
+        self.assertEqual(common.parent_attempt_version_A55(self.c),('A56',5))
+        for amendment,attempt in [('A55',5),('A56',4),('A57',5),('A56',True),({},5)]:
+            c=copy.deepcopy(self.c);c['metadata'].update(amendment=amendment,attempt=attempt)
+            with self.assertRaises(ValueError):common.parent_attempt_version_A55(c)
+        with self.assertRaises(ValueError):common.parent_attempt_seed_A55('5'*32,6)
+
+    def test_complete_fixed_delivery_required_by_pack_authority(self):
+        self.fixture();a56.validate_pack_authority_A56(self.root,self.p,self.c)
+        manifest=self.root/self.m['delivery_manifest'];raw=manifest.read_bytes();manifest.write_bytes(raw+b' ')
+        with self.assertRaises(ValueError):a56.validate_pack_authority_A56(self.root,self.p,self.c)
+        manifest.write_bytes(raw);packet_path=self.root/self.m['dispatch_packet'];packet_path.write_text('changed packet')
+        with self.assertRaises(ValueError):a56.validate_pack_authority_A56(self.root,self.p,self.c)
+
+    def test_unique_assigned5_and_malformed_assignment_rejected(self):
+        self.begin();self.assertEqual(a55.validate_state_A55(self.plan,self.s,self.root,pack=self.pack,contract=self.c),[])
+        path=self.root/self.m['source_assignment'];raw=path.read_bytes();original=self.p['assignment_sha256']
+        for key,value in [('attempt',6),('attempt_limit',True),('amendment','A55'),('worker','different'),('target','/tmp/other')]:
+            data=json.loads(raw);data[key]=value;write_json(path,data);self.p['assignment_sha256']=digest(path)
+            with self.subTest(key=key):self.assertTrue(a55.validate_state_A55(self.plan,self.s,self.root,pack=self.pack,contract=self.c))
+            path.write_bytes(raw);self.p['assignment_sha256']=original
+        before=(self.root/self.m['lifecycle']).read_bytes()
+        with self.assertRaises(ValueError):common.append_parent_attempt_event_A55(self.root,self.p,self.c,'assigned')
+        self.assertEqual(before,(self.root/self.m['lifecycle']).read_bytes())
+
+    def test_partial_delivery_cannot_freeze_or_hide_charged_chunks(self):
+        self.begin();self.inputs(complete=False);before=(self.root/self.m['lifecycle']).read_bytes()
+        with self.assertRaisesRegex(ValueError,'incomplete'):self.freeze()
+        self.assertEqual(before,(self.root/self.m['lifecycle']).read_bytes())
+
+    def test_actual_full_delivery_freezes_and_rejects_counter_rollback(self):
+        self.begin();ledger=self.inputs();a56.validate_worker_delivery_A56(self.root,self.p,self.c,True);self.freeze()
+        self.assertEqual(common.parent_attempt_lifecycle_A55(self.root,self.p,self.c)[-1]['attempt'],5)
+        ledger.update(source_bytes_emitted=0,reads=[]);write_json(self.root/self.m['source_read_log'],ledger)
+        write_json(self.root/self.m['source_budget'],{'source_bytes_emitted':0,'soft_limit':48000,'hard_limit':96000})
+        for key in ('source_read_log','source_budget'):self.p[key+'_sha256']=digest(self.root/self.m[key])
+        with self.assertRaises(ValueError):common.parent_worker_inputs_A55(self.root,self.p,self.c)
+        with self.assertRaises(ValueError):common.parent_attempt_lifecycle_A55(self.root,self.p,self.c)
+
+    def test_witness_rejects_combined_journal_state_rollback(self):
+        self.begin();old=(self.root/self.m['lifecycle']).read_bytes();binding=copy.deepcopy(self.p['lifecycle_A56']);self.inputs();self.freeze()
+        (self.root/self.m['lifecycle']).write_bytes(old);self.p['lifecycle_A56']=binding
+        with self.assertRaisesRegex(ValueError,'independent audit witness'):common.parent_attempt_lifecycle_A55(self.root,self.p,self.c)
+
+    def test_exact_source5_review_and_strict_default4_reject_relabelling(self):
+        self.fixture();path=self.root/self.m['source_review']
+        report={'decision':'accept','reviewer':'fixture-independent','candidate':{'slice':'F02e2s','amendment':'A56','attempt':5,'commit':'a'*40,'tree':'b'*40}}
+        write_json(path,report)
+        a55.validate_review_A55(self.root,self.m['source_review'],digest(path),'a'*40,'b'*40,'fixture-worker',self.c)
+        with self.assertRaises(ValueError):a55.validate_review_A55(self.root,self.m['source_review'],digest(path),'a'*40,'b'*40,'fixture-worker')
+        for mutation in ('six','self','wrong_tree'):
+            changed=copy.deepcopy(report)
+            if mutation=='six':changed['candidate']['attempt']=6
+            if mutation=='self':changed['reviewer']='fixture-worker'
+            if mutation=='wrong_tree':changed['candidate']['tree']='f'*40
+            write_json(path,changed)
+            with self.assertRaises(ValueError):a55.validate_review_A55(self.root,self.m['source_review'],digest(path),'a'*40,'b'*40,'fixture-worker',self.c)
+
+    def test_exact_native5_policy_keeps_seriality_jobs_and_receipt_binding(self):
+        self.fixture();manifest,authority=ParentRepairA55Tests.native_binding(self)
+        manifest.update(amendment='A56',attempt=5,attempt_limit=5)
+        manifest['command_policy_sha256']=a55.object_sha({k:manifest[k] for k in a55.NATIVE_POLICY_KEYS})
+        path=self.root/self.m['native_command_manifest'];write_json(path,manifest);self.p['native_command_manifest_sha256']=digest(path)
+        write_json(self.root/self.m['manifest_binding'],{'manifest':{'path':self.m['native_command_manifest'],'sha256':digest(path)}})
+        proof={key:manifest[key] for key in ('command_policy_sha256','coordinator_sha256','discovery_script_sha256','private_bus_helper_sha256')}
+        write_json(self.root/self.m['native_policy_freeze'],proof);write_json(self.root/self.m['native_runner_review'],proof)
+        a55.validate_native_binding_A55(self.root,self.p,self.c,[],authority)
+        for mutation in ('repeat','jobs','four','six','target'):
+            changed=copy.deepcopy(manifest)
+            if mutation=='repeat':changed['gates'][6]['command']+=['--repeat','until-pass:2']
+            if mutation=='jobs':changed['gates'][1]['command'][changed['gates'][1]['command'].index('--jobs')+1]='3'
+            if mutation=='four':changed.update(amendment='A55',attempt=4,attempt_limit=4)
+            if mutation=='six':changed.update(attempt=6,attempt_limit=6)
+            if mutation=='target':changed['target']+='/other'
+            changed['command_policy_sha256']=a55.object_sha({k:changed[k] for k in a55.NATIVE_POLICY_KEYS})
+            write_json(path,changed);self.p['native_command_manifest_sha256']=digest(path)
+            write_json(self.root/self.m['manifest_binding'],{'manifest':{'path':self.m['native_command_manifest'],'sha256':digest(path)}})
+            changed_proof={key:changed[key] for key in proof};write_json(self.root/self.m['native_policy_freeze'],changed_proof);write_json(self.root/self.m['native_runner_review'],changed_proof)
+            with self.subTest(mutation=mutation):
+                with self.assertRaises(ValueError):a55.validate_native_binding_A55(self.root,self.p,self.c,[],authority)
+
+    def test_legacy_native_admission_versions_only_exact_fifth_attempt(self):
+        self.fixture();self.p.update(status='accepted',attempts=5,author='fixture-worker5')
+        source='c'*40;tree='d'*40;review_path=self.root/self.m['gate_evidence_review']
+        review={'decision':'accept','reviewer':'fixture-gate-peer','candidate':{'slice':'F02e2s','amendment':'A56','attempt':5,'commit':source,'tree':tree}}
+        write_json(review_path,review)
+        run_path=self.root/self.m['native_run'];write_json(run_path,{'result':'failed','synthetic':True})
+        evidence={'source_sha':source,'source_tree':tree,'reviewer':review['reviewer'],'gate_evidence_review':self.m['gate_evidence_review'],
+                  'gate_evidence_review_sha256':digest(review_path),'native_run':self.m['native_run'],'native_run_sha256':digest(run_path)}
+        path=self.root/'evidence/acceptance.json';write_json(path,evidence);self.p['evidence']='evidence/acceptance.json'
+        with patch.object(validate_pack,'contract_A56',return_value=self.c):
+            errors=validate_pack.validate_acceptance_A52(self.c['task'],self.p,self.root,pack=self.pack)
+            self.assertTrue(any('native run is not the exact passing' in error for error in errors),errors)
+            for attempt in (4,6,True):
+                self.p['attempts']=attempt
+                errors=validate_pack.validate_acceptance_A52(self.c['task'],self.p,self.root,pack=self.pack)
+                self.assertTrue(any('exact user-authorized source5 task' in error for error in errors),errors)
+
+    def test_terminal5_retains_inputs_and_forbids_retry_or_six(self):
+        self.begin();self.inputs(complete=False)
+        path=self.root/self.m['terminal_marker'];write_json(path,{'slice':'F02e2s','attempt':5,'result':'failed','no_retry':True,'failed_artifacts':common.parent_attempt_failure_artifacts_A55(self.root,self.c),'source_artifacts':common.parent_source_artifacts_A55(self.root,self.c)})
+        self.p['attempt_history']['5']={'attempt':5,'result':'failed_terminal','assignment_sha256':self.p['assignment_sha256'],'terminal':{'path':self.m['terminal_marker'],'sha256':digest(path)}}
+        common.append_parent_attempt_event_A55(self.root,self.p,self.c,'terminal_failed',self.m['terminal_marker'])
+        self.p.update(status='failed',source_changes_authorized=False,compile_test_authorized=False,native_work_authorized=False)
+        self.assertEqual(a55.validate_state_A55(self.plan,self.s,self.root,pack=self.pack,contract=self.c),[])
+        with self.assertRaises(ValueError):common.append_parent_attempt_event_A55(self.root,self.p,self.c,'assigned')
+        self.p['attempts']=6;self.assertTrue(a55.validate_state_A55(self.plan,self.s,self.root,pack=self.pack,contract=self.c))
+
 
 if __name__=='__main__':unittest.main(verbosity=2)

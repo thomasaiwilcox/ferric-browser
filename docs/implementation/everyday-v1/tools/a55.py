@@ -1,11 +1,12 @@
 """Exact A55 parent repair overlay. No execution or implicit state mutation."""
+import copy
 import hashlib
 import json
 import subprocess
 from pathlib import Path
 from common import (PACK, load, digest, safe_relative, git, packet,
                     ATTEMPT_EXCEPTION_AMENDMENTS, ATTEMPT_EXCEPTION_LIMITS, GLOBAL_MAX_ATTEMPTS,
-                    parent_attempt_lifecycle_A55, parent_attempt_phases_A55,
+                    parent_attempt_lifecycle_A55, parent_attempt_phases_A55, parent_attempt_version_A55, parent_repair_metadata_A55,
                     parent_attempt_failure_artifacts_A55, parent_source_artifacts_A55, parent_worker_inputs_A55, identity_review_decision_A54)
 
 CONTRACT_SHA256 = "1dc6bdf60fc9ad9a9994ff23dc87a3234256e9d80e14d5252b56b02d4ceaa585"
@@ -35,27 +36,36 @@ def validate_plan_A55(plan, pack=PACK):
     try:
         c = contract_A55(pack)
         m = c["metadata"]
+        overlay = None
+        if plan.get("input_delivery_recovery_A56") is not None:
+            from a56 import contract_A56
+            overlay = contract_A56(pack)
         if plan.get("test_helper_repair_A55") != m:
             raise ValueError("exact A55 policy/review/patch metadata differs")
         if plan.get("limits") != c["prior_limits"] or any(type(plan["limits"][key]) is not type(value) for key, value in c["prior_limits"].items()):
             raise ValueError("global/prior resource and packet limits changed")
         tasks = {t["id"]: t for t in plan["slices"]}
-        if tasks.get("F02e2s") != c["task"]:
+        if tasks.get("F02e2s") != (overlay["task"] if overlay else c["task"]):
             raise ValueError("parent scope/continuation/cap differs from A55")
         if object_sha([t for t in plan["slices"] if t["id"] != "F02e2s"]) != c["prior_other_tasks_sha256"]:
             raise ValueError("unrelated task changed")
         expected = dict(c["prior_attempt_exceptions"], F02e2s={
             "amendment": "A55", "default_limit": 3, "authorized_limit": 4,
             "reason": "One exact test-only lifetime repair after preserved failed3; no reset/retry/source5, unchanged native qualification."})
+        if overlay:expected["F02e2s"] = overlay["attempt_exception"]
         if plan.get("attempt_exceptions") != expected:
             raise ValueError("only the named A55 exception may be added")
-        if (GLOBAL_MAX_ATTEMPTS != 3 or ATTEMPT_EXCEPTION_AMENDMENTS != dict(c["prior_policy_amendments"], F02e2s="A55")
-                or ATTEMPT_EXCEPTION_LIMITS != dict(c["prior_policy_limits"], F02e2s=4)):
+        # Registered compatibility is explicit; actual A56 plan admission below
+        # additionally requires the latest exact A56:5 policy.
+        current = (ATTEMPT_EXCEPTION_AMENDMENTS.get("F02e2s"), ATTEMPT_EXCEPTION_LIMITS.get("F02e2s"))
+        if (GLOBAL_MAX_ATTEMPTS != 3 or current not in {("A55", 4), ("A56", 5)}
+                or {k:v for k,v in ATTEMPT_EXCEPTION_AMENDMENTS.items() if k != "F02e2s"} != c["prior_policy_amendments"]
+                or {k:v for k,v in ATTEMPT_EXCEPTION_LIMITS.items() if k != "F02e2s"} != c["prior_policy_limits"]):
             raise ValueError("global/prior named attempt limits changed")
         if digest(pack / "control/test_matrix.json") != c["prior_test_matrix_sha256"]:
             raise ValueError("test inventory/cases/thresholds changed")
         initial = load(pack / "control/state.initial.json")
-        if initial["slices"].get("F02e2s") != c["initial_parent"]:
+        if initial["slices"].get("F02e2s") != (overlay["initial_parent"] if overlay else c["initial_parent"]):
             raise ValueError("initial parent must retain exact failed3")
         remainder = dict(initial, slices={k: v for k, v in initial["slices"].items() if k != "F02e2s"})
         if object_sha(remainder) != c["prior_initial_remainder_sha256"]:
@@ -69,6 +79,7 @@ def validate_plan_A55(plan, pack=PACK):
             if hashlib.sha256(section.encode()).hexdigest() != expected_hash:
                 raise ValueError("A53/A54 amendment section changed")
         source = load(pack / "control/source-map.execution.json")
+        if overlay:source["execution_amendments"] = [x for x in source["execution_amendments"] if x.get("id") != "A56"]
         if [x for x in source["execution_amendments"] if x.get("id") == "A55"] != [c["source_map"]]:
             raise ValueError("exact A55 source map differs")
         source["execution_amendments"] = [x for x in source["execution_amendments"] if x.get("id") != "A55"]
@@ -84,7 +95,8 @@ def validate_plan_A55(plan, pack=PACK):
     return []
 
 
-def validate_review_A55(root, path, expected_sha, source, tree, author):
+def validate_review_A55(root, path, expected_sha, source, tree, author, contract=None):
+    amendment, attempt = parent_attempt_version_A55(contract) if contract else ("A55", 4)
     report_path = safe_relative(root, path)
     if digest(report_path) != expected_sha:
         raise ValueError("fixed A55 review digest changed")
@@ -94,8 +106,8 @@ def validate_review_A55(root, path, expected_sha, source, tree, author):
     actual_tree = review.get("source_tree", candidate.get("tree"))
     if (identity_review_decision_A54(review) != "accept" or not review.get("reviewer")
             or review["reviewer"] in {author, "/root"} or actual != source or actual_tree != tree
-            or candidate.get("slice") != "F02e2s" or candidate.get("amendment") != "A55"
-            or type(candidate.get("attempt")) is not int or candidate["attempt"] != 4):
+            or candidate.get("slice") != "F02e2s" or candidate.get("amendment") != amendment
+            or type(candidate.get("attempt")) is not int or candidate["attempt"] != attempt):
         raise ValueError("A55 review does not independently accept the exact source4")
     return review
 
@@ -127,8 +139,12 @@ def validate_product_A55(repository, source, c, integrated=False, authority=None
 
 
 def validate_pack_authority_A55(root, parent, c):
-    m = c["metadata"]
-    authority = parent.get("source_repair_A55_authority", {})
+    amendment, attempt = parent_attempt_version_A55(c)
+    m = parent_repair_metadata_A55(c)
+    contract_sha = CONTRACT_SHA256
+    if amendment == "A56":
+        from a56 import CONTRACT_SHA256 as contract_sha
+    authority = parent.get("source_repair_" + amendment + "_authority", {})
     if authority.get("review") != m["pack_implementation_review"]:
         raise ValueError("A55 readiness requires its fixed final independent pack review")
     path = safe_relative(root, authority["review"])
@@ -144,8 +160,8 @@ def validate_pack_authority_A55(root, parent, c):
             or git(repository, "rev-parse", "HEAD^{tree}") != authority["pack_tree"]
             or git(repository, "status", "--porcelain")):
         raise ValueError("A55 accepted pack is not the actual clean retained source")
-    raw = subprocess.run(["git", "-C", str(repository), "show", authority["pack_commit"] + ":docs/implementation/everyday-v1/control/test-helper-repair.A55.json"], capture_output=True)
-    if raw.returncode or hashlib.sha256(raw.stdout).hexdigest() != CONTRACT_SHA256:
+    raw = subprocess.run(["git", "-C", str(repository), "show", authority["pack_commit"] + ":docs/implementation/everyday-v1/control/test-helper-repair." + amendment + ".json"], capture_output=True)
+    if raw.returncode or hashlib.sha256(raw.stdout).hexdigest() != contract_sha:
         raise ValueError("A55 pack authority does not contain the exact reviewed repair contract")
     if git(repository, "merge-base", "--is-ancestor", m["source_base_sha"], authority["pack_commit"], check=False).returncode:
         raise ValueError("A55 accepted pack must descend from the qualified child base")
@@ -154,12 +170,12 @@ def validate_pack_authority_A55(root, parent, c):
         raise ValueError("A55 pack readiness lacks independently bound actual checks")
     for name, reference in checks.items():
         receipt_path = safe_relative(root, reference["path"])
-        if not receipt_path.is_relative_to((root / "evidence/A55").resolve()) or digest(receipt_path) != reference["sha256"]:
+        if not receipt_path.is_relative_to((root / ("evidence/" + amendment)).resolve()) or digest(receipt_path) != reference["sha256"]:
             raise ValueError("A55 pack-check receipt missing or replaced")
         receipt = load(receipt_path)
         tools = repository / "docs/implementation/everyday-v1/tools"
         commands = {"tool_tests": ["python3", str(tools / "test_tools.py")],
-                    "pack_validation": ["python3", str(tools / "validate_pack.py"), "--state", str(root / "control/state-A55-preview.json")],
+                    "pack_validation": ["python3", str(tools / "validate_pack.py"), "--state", str(root / ("control/state-" + amendment + "-preview.json"))],
                     "checksums": ["sha256sum", "--check", str(repository / "docs/implementation/everyday-v1/CHECKSUMS.sha256")]}
         if receipt.get("command") != commands[name]:
             raise ValueError("A55 pack check did not run the complete required command")
@@ -185,7 +201,8 @@ def validate_worker_evidence_A55(root, parent, c):
 
 
 def validate_native_binding_A55(root, parent, c, events, authority):
-    m = c["metadata"]
+    amendment, attempt = parent_attempt_version_A55(c)
+    m = parent_repair_metadata_A55(c)
     binding = load(safe_relative(root, m["manifest_binding"]))
     manifest_path = safe_relative(root, m["native_command_manifest"])
     reference = {"path": m["native_command_manifest"], "sha256": digest(manifest_path)}
@@ -193,7 +210,7 @@ def validate_native_binding_A55(root, parent, c, events, authority):
         raise ValueError("A55 final native manifest changed after its one-time freeze")
     manifest = load(manifest_path)
     target = str(root / m["target_relative"])
-    expected = {"slice": "F02e2s", "amendment": "A55", "attempt": 4, "attempt_limit": 4,
+    expected = {"slice": "F02e2s", "amendment": amendment, "attempt": attempt, "attempt_limit": attempt,
                 "source_sha": parent["source_sha"], "source_tree": parent["source_tree"], "worktree": parent["worktree"],
                 "base_sha": m["source_base_sha"], "base_tree": m["source_base_tree"],
                 "pack_commit": authority["pack_commit"], "pack_tree": authority["pack_tree"], "pack_worktree": authority["pack_worktree"],
@@ -236,12 +253,18 @@ def validate_native_binding_A55(root, parent, c, events, authority):
                 raise ValueError("A55 executed command differs from reviewed one-time manifest")
 
 
-def validate_state_A55(plan, state, root, initial=False, pack=PACK):
+def validate_state_A55(plan, state, root, initial=False, pack=PACK, contract=None):
     if plan.get("test_helper_repair_A55") is None:
         return []
     try:
-        c = contract_A55(pack)
-        m = c["metadata"]
+        c = contract if contract is not None else contract_A55(pack)
+        if contract is None and plan.get("input_delivery_recovery_A56") is not None:
+            from a56 import contract_A56
+            historical = contract_A56(pack)
+            state = copy.deepcopy(state)
+            state["slices"]["F02e2s"] = copy.deepcopy(c["initial_parent"] if initial else historical["prior_parent"])
+        amendment, attempt = parent_attempt_version_A55(c)
+        m = parent_repair_metadata_A55(c)
         parent = state["slices"]["F02e2s"]
         if initial:
             if parent != c["initial_parent"]:
@@ -262,14 +285,14 @@ def validate_state_A55(plan, state, root, initial=False, pack=PACK):
             if digest(safe_relative(root, reference["path"])) != reference["sha256"]:
                 raise ValueError("A55 approval/failure/budget/patch artifact changed")
         attempts = parent.get("attempts")
-        if type(attempts) is not int or attempts not in (3, 4):
+        if type(attempts) is not int or attempts not in (attempt - 1, attempt):
             raise ValueError("A55 retains failed3 then records exactly4; no reset or5")
         assignment_path = safe_relative(root, m["source4_assignment"])
         terminal_path = safe_relative(root, m["terminal_marker"])
         failures = parent_attempt_failure_artifacts_A55(root, c)
-        if failures and (attempts != 4 or parent.get("status") != "failed" or not terminal_path.exists()):
+        if failures and (attempts != attempt or parent.get("status") != "failed" or not terminal_path.exists()):
             raise ValueError("A55 any failed/incomplete fixed source/review/gate is permanently terminal4")
-        if attempts == 3:
+        if attempts == attempt - 1:
             if type(parent.get("verified_source_read_bytes")) is not int or parent["verified_source_read_bytes"] != m["worker_source3_budget"]:
                 raise ValueError("A55 failed3 source budget cannot reset")
             if (parent.get("status") not in {"failed", "ready"} or assignment_path.exists() or terminal_path.exists()
@@ -288,7 +311,7 @@ def validate_state_A55(plan, state, root, initial=False, pack=PACK):
         assignment = load(assignment_path)
         if any(type(assignment.get(key)) is not int for key in ("attempt", "attempt_limit", "source_soft_limit", "source_hard_limit")):
             raise ValueError("A55 assignment counters/limits must be exact integers")
-        required = {"slice": "F02e2s", "amendment": "A55", "attempt": 4, "attempt_limit": 4,
+        required = {"slice": "F02e2s", "amendment": amendment, "attempt": attempt, "attempt_limit": attempt,
                     "base_sha": m["source_base_sha"], "base_tree": m["source_base_tree"],
                     "reapply_source_sha": m["reapply_source_sha"], "reapply_source_tree": m["reapply_source_tree"],
                     "repair_patch_sha256": m["repair_patch"]["sha256"], "test_after_sha256": m["test_after_sha256"],
@@ -306,7 +329,7 @@ def validate_state_A55(plan, state, root, initial=False, pack=PACK):
         phase = events[-1]["phase"]
         if terminal_path.exists():
             terminal = load(terminal_path)
-            if (terminal.get("slice") != "F02e2s" or terminal.get("attempt") != 4 or terminal.get("result") != "failed"
+            if (terminal.get("slice") != "F02e2s" or terminal.get("attempt") != attempt or terminal.get("result") != "failed"
                     or terminal.get("no_retry") is not True or parent.get("status") != "failed" or phase != "terminal_failed"):
                 raise ValueError("A55 terminal outcome cannot restart/relabel/accept")
             retained = terminal.get("failed_artifacts", {})
@@ -338,7 +361,7 @@ def validate_state_A55(plan, state, root, initial=False, pack=PACK):
             if git(Path(assignment["worktree"]), "rev-parse", "HEAD^{tree}") != parent.get("implementation_tree"):
                 raise ValueError("A55 worker tree differs from frozen source")
         if index >= phases.index("source_review_passed"):
-            validate_review_A55(root, m["source_review"], parent.get("source_review_sha256"), parent.get("implementation_sha"), parent.get("implementation_tree"), parent["author"])
+            validate_review_A55(root, m["source_review"], parent.get("source_review_sha256"), parent.get("implementation_sha"), parent.get("implementation_tree"), parent["author"], c)
         if index >= phases.index("integrated_review_started"):
             if Path(parent["worktree"]) != root / m["integrated_worktree_relative"]:
                 raise ValueError("A55 integrated worktree must be fixed")
@@ -346,9 +369,9 @@ def validate_state_A55(plan, state, root, initial=False, pack=PACK):
             if git(Path(parent["worktree"]), "rev-parse", "HEAD^{tree}") != parent.get("source_tree"):
                 raise ValueError("A55 integrated tree differs from source")
         if index >= phases.index("integrated_review_passed"):
-            validate_review_A55(root, m["integrated_source_review"], parent.get("integrated_source_review_sha256"), parent["source_sha"], parent["source_tree"], parent["author"])
+            validate_review_A55(root, m["integrated_source_review"], parent.get("integrated_source_review_sha256"), parent["source_sha"], parent["source_tree"], parent["author"], c)
         if index >= phases.index("runner_review_passed"):
-            validate_review_A55(root, m["native_runner_review"], parent.get("native_runner_review_sha256"), parent["source_sha"], parent["source_tree"], parent["author"])
+            validate_review_A55(root, m["native_runner_review"], parent.get("native_runner_review_sha256"), parent["source_sha"], parent["source_tree"], parent["author"], c)
         if index >= phases.index("gate_0_started"):
             validate_native_binding_A55(root, parent, c, events, authority)
         if parent.get("native_work_authorized") is True or parent.get("compile_test_authorized") is True:
@@ -364,14 +387,19 @@ def validate_state_A55(plan, state, root, initial=False, pack=PACK):
     return []
 
 
-def validate_acceptance_A55(plan, task, record, root, pack=PACK):
+def validate_acceptance_A55(plan, task, record, root, pack=PACK, contract=None):
     if plan.get("test_helper_repair_A55") is None or task.get("id") != "F02e2s" or record.get("status") != "accepted":
         return []
     try:
-        c = contract_A55(pack)
-        m = c["metadata"]
+        if contract is None and plan.get("input_delivery_recovery_A56") is not None:
+            from a56 import contract_A56
+            record = contract_A56(pack)["prior_parent"]
+            if record.get("status") != "accepted":return []
+        c = contract if contract is not None else contract_A55(pack)
+        amendment, attempt = parent_attempt_version_A55(c)
+        m = parent_repair_metadata_A55(c)
         evidence = load(safe_relative(root, record["evidence"]))
-        if record.get("attempts") != 4 or evidence.get("gate_evidence_review") != m["gate_evidence_review"] or evidence.get("review_path") != m["gate_evidence_review"]:
+        if record.get("attempts") != attempt or evidence.get("gate_evidence_review") != m["gate_evidence_review"] or evidence.get("review_path") != m["gate_evidence_review"]:
             raise ValueError("A55 accepts only its exact source4 and fixed gate review")
         if evidence.get("native_run") != m["native_run"] or evidence.get("lease_closure") != m["native_closure"]:
             raise ValueError("A55 fixed native run/closure required")
@@ -399,7 +427,7 @@ def validate_acceptance_A55(plan, task, record, root, pack=PACK):
                 or cleanup.get("cancelled_signal") is not None or cleanup.get("launch_error") or cleanup.get("output_error")
                 or cleanup.get("cleanup", {}).get("passed") is not True):
             raise ValueError("A55 private helper cleanup did not pass")
-        review = validate_review_A55(root, m["gate_evidence_review"], evidence["gate_evidence_review_sha256"], record["source_sha"], record["source_tree"], record["author"])
+        review = validate_review_A55(root, m["gate_evidence_review"], evidence["gate_evidence_review_sha256"], record["source_sha"], record["source_tree"], record["author"], c)
         if review.get("helper_regression_assertions_passed") is not True or review.get("original_native_assertions_preserved_and_passed") is not True:
             raise ValueError("A55 requires independent actual helper and original-assertion mapping")
         mapping = review.get("helper_regression_mapping", {})

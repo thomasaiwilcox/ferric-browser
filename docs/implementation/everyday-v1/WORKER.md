@@ -12,4 +12,4 @@ Commit only your scoped product changes using configured identity when instructe
 
 ## A37 exceptions
 
-P00a/W01b have A37 attempt4; F02e2 has A48 attempt6; F02e2i has only A54 test-only attempt4; F02e2s has only A55 test-helper attempt4. Preserve histories; all other caps stay3. Never dispatch superseded tasks. Public-page-host migration requires its qualified native prototype and exact scope; an extra path requires reviewed amendment.
+P00a/W01b: A37 attempt4; F02e2: A48 attempt6; F02e2i: A54 test-only4; F02e2s: user-approved A56 attempt5 after terminal4. Other caps3; preserve histories; never dispatch superseded tasks. Public-page-host migration needs its qualified native prototype and exact scope; extra paths need reviewed amendment.

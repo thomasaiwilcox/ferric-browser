@@ -4798,6 +4798,32 @@
       "failed3_reapply_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
       "production_changes_relative_to_failed3_authorized": false,
       "original_tests_and_native_gates_unchanged": true
+    },
+    {
+      "id": "A56",
+      "scope": "One explicitly user-authorized F02e2s source5 using bounded indexed inputs and the same pinned repair; terminal4 remains immutable.",
+      "slice": "F02e2s",
+      "attempt_limit": 5,
+      "proposal": {
+        "path": "evidence/A56/PROPOSAL.json",
+        "sha256": "71847ba5f481e1dc77969332b89338d377243e6ed70d304c6a8205614b02cae0"
+      },
+      "review": {
+        "path": "evidence/A56/PLAN_REVIEW.json",
+        "sha256": "37030bdf58663a142b3d3e0376576bb8922ef3dc657206afb5f5ac0fe73ef921"
+      },
+      "user_approval": {
+        "path": "evidence/A56/USER_APPROVAL.json",
+        "sha256": "4c0fb404c9666833e4015d180906d1f9d2701d386cd75c06ad852b3322eff5e5"
+      },
+      "repair_patch": {
+        "path": "evidence/A55/TEST_HELPER_LIFETIME_REPAIR.diff",
+        "sha256": "b22e3d7a316578a32510a632672ec3db9d65a76865badc23b932d32551b52277",
+        "bytes": 3285
+      },
+      "source_base_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+      "reapply_source_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
+      "attempt6_authorized": false
     }
   ]
 }

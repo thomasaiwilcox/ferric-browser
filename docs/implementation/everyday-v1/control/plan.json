@@ -4561,13 +4561,13 @@
         "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
       ],
       "steps": [
-        "A55 sole source4 starts from exact accepted F02e2i integration a2b39ea649a9664572081eaead771c3db7a0b943, reapplies complete pinned failed3 delta62c22658 as a patch, then applies only the pinned one-file test-helper lifetime/regression repair. Never use a failed candidate as the source base.",
+        "A56 sole user-authorized source5 starts at accepted F02e2i integration a2b39ea649a9664572081eaead771c3db7a0b943, reapplies the complete pinned failed3 delta, then applies only the same pinned test-helper repair. Consume the complete independently reviewed input bundle through indexed2048-byte delivery before edits; no whole-document or unmetered source reads.",
         "Add a distinct T014e2s slot and CTest registration. Keep the original T014e2 and successor T014e2r registrations and their historical results intact except for direct superseded_by mappings to T014e2s. Never run either old CTest ID or QtTest slot.",
         "Drive asynchronous profile bootstrap for both BrowserUi instances created by the retained integration body, including the later-created foreign-profile UI. Give each UI a scoped bounded QTimer/event-loop pump invoking existing BrowserUi::poll_config(); stop and disconnect each pump before its corresponding BrowserUi is destroyed.",
         "Do not set readiness properties, forge profile IDs, insert tabs, or bypass privacy/profile/owner validation. On timeout, report each UI\u2019s poll invocation result, profile ID, tab_count, profile_bootstrap_pending, profile_startup_notice and status_text.",
         "Preserve every same-page attach/detach, document identity, stale and foreign-owner rejection, focus, geometry, native dialog parent and lifecycle assertion. Do not delete, weaken, or replace the original page-host assertions.",
         "If root-cause repair requires a product path outside this exact ten-path list, stop and request another independently reviewed amendment before editing.",
-        "A55 preserves all production typed live-session identity checks, Ephemeral fixtures, durable ids and original native assertions byte-for-byte. The only new edit is the exact pinned test helper/regression patch. No reset, same-attempt restart, correction/retry or source5; native work waits for complete independent source/integration/exact runner reviews."
+        "A56 preserves all typed live-session identity, Ephemeral/durable semantics and original native assertions. Preserve terminal4 and all old budgets/audits. No correction/retry/reset/source6. Source5/native work requires accepted exact pack, unique assignment, complete independent source/integration/exact runner reviews and all original seven gates."
       ],
       "kind": "implementation",
       "locks": [
@@ -4609,8 +4609,8 @@
       ],
       "parent_id": "F02e",
       "identity_prerequisite_amendment": "A53",
-      "max_attempts": 4,
-      "test_helper_repair_amendment": "A55"
+      "max_attempts": 5,
+      "test_helper_repair_amendment": "A56"
     },
     {
       "id": "F02e3",
@@ -5031,10 +5031,10 @@
       "reason": "A54 permits only one final source attempt4 for the pinned three cfg(test) replacements after three preserved source-review failures; no source5 or retry, production delta, test reduction or parent4."
     },
     "F02e2s": {
-      "amendment": "A55",
+      "amendment": "A56",
       "default_limit": 3,
-      "authorized_limit": 4,
-      "reason": "One exact test-only lifetime repair after preserved failed3; no reset/retry/source5, unchanged native qualification."
+      "authorized_limit": 5,
+      "reason": "User explicitly approved one additional exact helper-repair attempt after terminal4; bounded indexed delivery, immutable history, unchanged native qualification; no reset/retry/source6."
     }
   },
   "native_gate_retries": {
@@ -5792,5 +5792,146 @@
     "pack_implementation_review": "evidence/A55/PACK_IMPLEMENTATION_REVIEW_FINAL.json",
     "native_coordinator": "evidence/F02e2s-a4/native_a55.py",
     "discovery_script": "evidence/F02e2s-a4/discover_a55.py"
+  },
+  "input_delivery_recovery_A56": {
+    "amendment": "A56",
+    "slice": "F02e2s",
+    "attempt": 5,
+    "previous_limit": 4,
+    "global_limit": 3,
+    "attempt_reset": false,
+    "review": {
+      "path": "evidence/A56/PLAN_REVIEW.json",
+      "sha256": "37030bdf58663a142b3d3e0376576bb8922ef3dc657206afb5f5ac0fe73ef921"
+    },
+    "review_budget": {
+      "path": "evidence/A56/PLAN_REVIEW_BUDGET.json",
+      "sha256": "1ffb46d46aae8e9602a1e7a019edf650a79d3644d6043b88a53d67072c59b464"
+    },
+    "review_clarification": {
+      "path": "evidence/A56/PLAN_REVIEW.json",
+      "sha256": "37030bdf58663a142b3d3e0376576bb8922ef3dc657206afb5f5ac0fe73ef921"
+    },
+    "proposal": {
+      "path": "evidence/A56/PROPOSAL.json",
+      "sha256": "71847ba5f481e1dc77969332b89338d377243e6ed70d304c6a8205614b02cae0"
+    },
+    "repair_patch": {
+      "path": "evidence/A55/TEST_HELPER_LIFETIME_REPAIR.diff",
+      "sha256": "b22e3d7a316578a32510a632672ec3db9d65a76865badc23b932d32551b52277",
+      "bytes": 3285
+    },
+    "source_base_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+    "source_base_tree": "6c46cb7fc9847fbeb2704c95a5e87b52973d5da6",
+    "reapply_source_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
+    "reapply_source_tree": "d2ad031ccd9ed37dc9dc370c081e9c684111ab01",
+    "test_path": "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+    "test_before_sha256": "cfa21e477c0164b81d5228232612c23a2ba4a462f75c01b95595ddd676ea1e9e",
+    "test_after_sha256": "b19b92eaca2addac6281aa534f35465420b79034ba0cfd1059c3dc469088fa9b",
+    "unchanged_product_sha256": {
+      "crates/ferric-browser-engine-qt/src/public_page_host.h": "3f55a0d175c05b6c7731d53d82b59c42aa29af0bc15f3d9210e67226b15798e5",
+      "crates/ferric-browser-engine-qt/src/public_page_host.cpp": "3e4e57feba5a3c9a911c581319e7ef24abbcc548f1b8c424f1b0a14f64f95262",
+      "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml": "67cab9a0b18465b9bc016f3010b6a36869e3b56f96b9b9583f3171db4d08449e",
+      "crates/ferric-browser-engine-qt/src/bridge.rs": "ba1b4a495087e8f85f872ca12b47e4134382fad89491ba258465f850557a4e9c",
+      "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs": "e0a2ce25740bd4ad66dc9b74a927f638a53fcc21f8acf6e95507c31c09dba127",
+      "crates/ferric-browser-engine-qt/src/engine_requests.rs": "6530239164f533527b5c96f40e104bc6e7e6eb65de9d05407789066b847e3ddf",
+      "crates/ferric-browser-engine-qt/build.rs": "a5a018c9d94b63ffe4c1a6773612a881ea41fff58c0cef92c40305945db1f79f",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt": "c67720932a0078408ec716105d51346e9377e354ac7a79e5d99465beabc11118",
+      "crates/ferric-browser-engine-qt/src/browser_ui_input.rs": "526c21cd179185518162d945b13664518d1c1b991d1a03785bec1c3c88174740"
+    },
+    "lifecycle": "evidence/F02e2s-a5/ATTEMPT_LIFECYCLE.jsonl",
+    "audit_repository": "control/A56-parent-lifecycle-audit.git",
+    "audit_ref_prefix": "refs/ferric/f02e2s-a5/",
+    "audit_owner_kind": "F02e2s-A56-lifecycle",
+    "terminal_marker": "evidence/F02e2s-a5/TERMINAL.json",
+    "source_freeze": "evidence/F02e2s-a5/SOURCE_FREEZE.json",
+    "source_review": "evidence/F02e2s-a5/SOURCE_REVIEW.json",
+    "integrated_freeze": "evidence/F02e2s-a5/INTEGRATED_FREEZE.json",
+    "integrated_source_review": "evidence/F02e2s-a5/INTEGRATED_SOURCE_REVIEW.json",
+    "native_policy_freeze": "evidence/F02e2s-a5/NATIVE_POLICY_FREEZE.json",
+    "native_runner_review": "evidence/F02e2s-a5/NATIVE_RUNNER_REVIEW.json",
+    "native_command_manifest": "evidence/F02e2s-a5/NATIVE_COMMANDS-A56-a5.json",
+    "manifest_binding": "evidence/F02e2s-a5/FINAL_MANIFEST_BINDING.json",
+    "gate_evidence_review": "evidence/F02e2s-a5/GATE_EVIDENCE_REVIEW.json",
+    "native_run": "evidence/F02e2s-a5/native/NATIVE_RUN-A56-a5.json",
+    "native_closure": "evidence/F02e2s-a5/native/NATIVE_LEASE_CLOSED-A56-a5.json",
+    "target_relative": "builds/native-F02e2s-a5-qt6112-qmake",
+    "private_bus_helper": {
+      "path": "evidence/A53/private_bus-r5.py",
+      "sha256": "2c6c963ba71eb9515ec386aa15b1acc37c2a06fdc29e76f47e8d4c21eacc5fc5"
+    },
+    "private_bus_cleanup": "evidence/F02e2s-a5/native/private-bus-cleanup.json",
+    "engine_supervisor_seconds": 5400,
+    "readiness_seconds": 30,
+    "ctest_test_seconds": 180,
+    "native_gate_sequence": [
+      "read-only-sdk-selection-preflight",
+      "exact-source-release-engine-build",
+      "public-page-host-harness-configure",
+      "integration-target-build",
+      "robust-executable-link-order-verification",
+      "nonzero-ctest-discovery",
+      "T014e2s-serial"
+    ],
+    "accepted_child": {
+      "state_record_sha256": "e8e1042519185284ec38bb84f852d61e02e53c3031bbaa9cbf4412cb8e8f1b45",
+      "source_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+      "source_tree": "6c46cb7fc9847fbeb2704c95a5e87b52973d5da6",
+      "evidence": {
+        "path": "evidence/F02e2i-a4/EVIDENCE.json",
+        "sha256": "765a0155f51d046b6f3ae282854423c8ebbae35db2f9f5f8768ec8a6221d9e7a"
+      },
+      "attempts": 4,
+      "source5_authorized": false
+    },
+    "worker_source3_budget": 95242,
+    "reviewer_source3_budget": 95767,
+    "native_gate_receipts": [
+      "evidence/F02e2s-a5/native/sdk-preflight.json",
+      "evidence/F02e2s-a5/native/exact-source-release-engine-build/receipt.json",
+      "evidence/F02e2s-a5/native/public-page-host-harness-configure/receipt.json",
+      "evidence/F02e2s-a5/native/integration-target-build/receipt.json",
+      "evidence/F02e2s-a5/native/link-order-verification.json",
+      "evidence/F02e2s-a5/native/nonzero-ctest-discovery/receipt.json",
+      "evidence/F02e2s-a5/native/T014e2s-serial/receipt.json"
+    ],
+    "worker_result": "evidence/F02e2s-a5/WORKER_RESULT.json",
+    "source_budget": "evidence/F02e2s-a5/SOURCE_BUDGET.json",
+    "source_read_log": "evidence/F02e2s-a5/worker/SOURCE_READ_LOG.json",
+    "worker_success_result": "source_complete",
+    "integrated_worktree_relative": "worktrees/F02e2s-a5-integrated",
+    "pack_implementation_review": "evidence/A56/PACK_IMPLEMENTATION_REVIEW_FINAL.json",
+    "native_coordinator": "evidence/F02e2s-a5/native_a56.py",
+    "discovery_script": "evidence/F02e2s-a5/discover_a56.py",
+    "attempt6_authorized": false,
+    "user_approval": {
+      "path": "evidence/A56/USER_APPROVAL.json",
+      "sha256": "4c0fb404c9666833e4015d180906d1f9d2701d386cd75c06ad852b3322eff5e5"
+    },
+    "delivery_review": {
+      "path": "evidence/recovery-input-delivery-r1/INDEPENDENT_REVIEW.json",
+      "sha256": "b00c774142a38e682a34062311c57af40d53af1acc92391457fecb3e50ff1ec9"
+    },
+    "delivery_wrapper": {
+      "path": "evidence/recovery-input-delivery-r1/deliver.py",
+      "sha256": "b80a2f834e912b98a837bb71a5d8fe8c92d493fcbe44adc7d64be0b09f2c9ef3"
+    },
+    "delivery_reader": {
+      "path": "evidence/A53/bounded_source_read.py",
+      "sha256": "c33e7b7bb6b55c10740b1ff2585edb25fd8356bcba539e63c3958dbb59d92ffc"
+    },
+    "delivery_manifest": "evidence/A56/source-inputs/bundle/manifest.json",
+    "dispatch_packet": "packets/F02e2s-a5-A56.md",
+    "previous_source_budget": 33270,
+    "historical_pack_worktree_relative": "worktrees/A55-proposal",
+    "historical_pack_commit": "372c248fbf800bf8179c9a6f3f0d2740de5db69d",
+    "historical_pack_tree": "92e90b035d6f4d0b4d1af41ff0fcd07744b873f0",
+    "historical_state": {
+      "path": "control/state-A56-historical-A55.json",
+      "sha256": "59f33aab44bf7e9e216bb499761f1f8c011a3de0800aee6914d6ce042c4fa916"
+    },
+    "source_assignment": "evidence/F02e2s-a5/ASSIGNMENT.json",
+    "source_worktree_relative": "worktrees/F02e2s-a5",
+    "accepted_slices_before_source5": 37
   }
 }

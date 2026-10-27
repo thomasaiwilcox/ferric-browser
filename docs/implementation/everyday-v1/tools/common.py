@@ -6,8 +6,8 @@ from datetime import datetime,timezone
 PACK=Path(__file__).resolve().parent.parent
 REPO="thomasaiwilcox/ferric-browser"
 CLONE=f"https://github.com/{REPO}.git"
-ATTEMPT_EXCEPTION_AMENDMENTS={"P00a":"A37","W01b":"A37","F02e2":"A48","F02e2i":"A54","F02e2s":"A55"}
-ATTEMPT_EXCEPTION_LIMITS={"P00a":4,"W01b":4,"F02e2":6,"F02e2i":4,"F02e2s":4}
+ATTEMPT_EXCEPTION_AMENDMENTS={"P00a":"A37","W01b":"A37","F02e2":"A48","F02e2i":"A54","F02e2s":"A56"}
+ATTEMPT_EXCEPTION_LIMITS={"P00a":4,"W01b":4,"F02e2":6,"F02e2i":4,"F02e2s":5}
 ATTEMPT_EXCEPTION_TASKS=set(ATTEMPT_EXCEPTION_AMENDMENTS)
 TASK_SUPERSESSION_AMENDMENTS={"F02e2":"A52","F02e2r":"A52"}
 GLOBAL_MAX_ATTEMPTS=3
@@ -84,7 +84,8 @@ def identity_audit_git_A54(root,contract,assignment_path,create=False):
     return command,meta["audit_ref_prefix"]+assignment["run_nonce"]
 
 def identity_attempt_audit_A54(root,child,contract,events,create_event=None):
-    assignment_path=safe_relative(root,contract["metadata"]["source4_assignment"])
+    meta=contract["metadata"]
+    assignment_path=safe_relative(root,meta.get("source_assignment",meta.get("source4_assignment")))
     command,prefix=identity_audit_git_A54(root,contract,assignment_path,create=create_event is not None and not events)
     refs={}
     for line in command(["for-each-ref","--format=%(refname) %(objectname)",prefix+"/events/"]).decode().splitlines():
@@ -204,16 +205,33 @@ def digest(path:Path):
     return h.hexdigest()
 def now():return datetime.now(timezone.utc).isoformat()
 
+def parent_attempt_version_A55(contract):
+    """Only these two pinned parent policies may share the lifecycle protocol."""
+    meta=contract["metadata"];amendment=meta.get("amendment","A55");attempt=meta.get("attempt",4)
+    if not isinstance(amendment,str) or type(attempt) is not int or (amendment,attempt) not in {("A55",4),("A56",5)}:
+        raise ValueError("Unknown or mismatched parent repair policy")
+    return amendment,attempt
+
+def parent_repair_metadata_A55(contract):
+    meta=contract["metadata"]
+    if parent_attempt_version_A55(contract)==("A55",4):return meta
+    # Preserve legacy private field names for the shared protocol only. Actual
+    # A56 assignments/events/paths retain attempt5 and their own namespace.
+    return dict(meta,source4_assignment=meta["source_assignment"],
+                source4_worktree_relative=meta["source_worktree_relative"],
+                worker_source3_budget=meta["previous_source_budget"])
+
 def parent_attempt_phases_A55():
     phases=["assigned","source_review_started","source_review_passed","integration_started",
             "integrated_review_started","integrated_review_passed","runner_review_started","runner_review_passed"]
     for index in range(7):phases.extend((f"gate_{index}_started",f"gate_{index}_passed"))
     return phases+["gate_evidence_review_started","accepted"]
 
-def parent_attempt_seed_A55(nonce):
+def parent_attempt_seed_A55(nonce,attempt=4):
+    if type(attempt) is not int or attempt not in (4,5):raise ValueError("Unknown parent repair attempt")
     if not isinstance(nonce,str) or re.fullmatch(r"[0-9a-f]{32}",nonce) is None:
         raise ValueError("A55 requires one unique32-hex assignment nonce")
-    return {"slice":"F02e2s","attempt":4,"run_nonce":nonce,"sequence":0,"previous_sha256":None,"phase":"assigned"}
+    return {"slice":"F02e2s","attempt":attempt,"run_nonce":nonce,"sequence":0,"previous_sha256":None,"phase":"assigned"}
 
 def parent_attempt_artifact_A55(meta,phase):
     fixed={"source_review_started":"source_freeze","source_review_passed":"source_review",
@@ -226,7 +244,7 @@ def parent_attempt_artifact_A55(meta,phase):
     return None
 
 def parent_attempt_failure_artifacts_A55(root,contract):
-    meta=contract["metadata"];failures={}
+    meta=parent_repair_metadata_A55(contract);failures={}
     paths={key:meta[key] for key in ("source_review","integrated_source_review","native_runner_review","gate_evidence_review","native_run")}
     paths.update({f"gate_{i}":path for i,path in enumerate(meta["native_gate_receipts"])})
     paths["worker_result"]=meta["worker_result"];paths["source_budget"]=meta["source_budget"]
@@ -256,14 +274,14 @@ def parent_attempt_failure_artifacts_A55(root,contract):
 
 def parent_source_artifacts_A55(root,contract):
     """Retain even malformed source inputs and unreferenced owned payloads."""
-    meta=contract["metadata"];paths=[safe_relative(root,meta[key]) for key in ("worker_result","source_budget","source_read_log","source_freeze")]
+    meta=parent_repair_metadata_A55(contract);paths=[safe_relative(root,meta[key]) for key in ("worker_result","source_budget","source_read_log","source_freeze")]
     folder=safe_relative(root,meta["source_read_log"]).parent/"source-payloads"
     if folder.is_dir():paths.extend(folder.iterdir())
     return {str(path.relative_to(root)):{"path":str(path.relative_to(root)),"sha256":digest(path)}
             for path in paths if path.is_file() and not path.is_symlink()}
 
 def parent_worker_inputs_A55(root, parent, c):
-    m = c["metadata"]
+    m = parent_repair_metadata_A55(c)
     reports = {}
     for key in ("worker_result", "source_budget", "source_read_log"):
         path = safe_relative(root, m[key])
@@ -299,12 +317,15 @@ def parent_worker_inputs_A55(root, parent, c):
         total += read["bytes"]
     if total != amount:
         raise ValueError("A55 source counter reset or omitted emitted bytes")
+    if parent_attempt_version_A55(c)==("A56",5):
+        from a56 import validate_worker_delivery_A56
+        validate_worker_delivery_A56(root,parent,c,require_complete=True)
 
     return {key:{"path":m[key],"sha256":parent[key+"_sha256"]} for key in reports}
 
 def parent_attempt_lifecycle_A55(root,parent,contract):
-    meta=contract["metadata"];assignment=load(safe_relative(root,meta["source4_assignment"]))
-    path=safe_relative(root,meta["lifecycle"]);raw=path.read_bytes();binding=parent.get("lifecycle_A55",{})
+    meta=parent_repair_metadata_A55(contract);amendment,attempt=parent_attempt_version_A55(contract);assignment=load(safe_relative(root,meta["source4_assignment"]))
+    path=safe_relative(root,meta["lifecycle"]);raw=path.read_bytes();binding=parent.get("lifecycle_"+amendment,{})
     if binding.get("path")!=meta["lifecycle"] or binding.get("sha256")!=hashlib.sha256(raw).hexdigest():
         raise ValueError("A55 journal missing, replaced or rolled back")
     phases=parent_attempt_phases_A55();events=[]
@@ -312,13 +333,13 @@ def parent_attempt_lifecycle_A55(root,parent,contract):
         event=json.loads(line)
         if line!=json.dumps(event,sort_keys=True,separators=(",",":")).encode():raise ValueError("A55 journal encoding changed")
         if index==0:
-            if event!=parent_attempt_seed_A55(assignment.get("run_nonce")) or identity_attempt_event_hash_A54(event)!=assignment.get("lifecycle_seed_sha256"):
+            if event!=parent_attempt_seed_A55(assignment.get("run_nonce"),attempt) or identity_attempt_event_hash_A54(event)!=assignment.get("lifecycle_seed_sha256"):
                 raise ValueError("A55 journal seed differs from the sole assignment")
         else:
             previous=events[-1];phase=event.get("phase");old=previous["phase"]
             next_phase=phases[phases.index(old)+1] if old in phases[:-1] else None
             if (old in {"accepted","terminal_failed"} or phase not in {next_phase,"terminal_failed"}
-                    or event.get("slice")!="F02e2s" or event.get("attempt")!=4
+                    or event.get("slice")!="F02e2s" or event.get("attempt")!=attempt
                     or event.get("run_nonce")!=assignment["run_nonce"] or type(event.get("sequence")) is not int
                     or event["sequence"]!=index or event.get("previous_sha256")!=identity_attempt_event_hash_A54(previous)):
                 raise ValueError("A55 journal reordered, restarted or continued after terminal outcome")
@@ -334,8 +355,8 @@ def parent_attempt_lifecycle_A55(root,parent,contract):
                 if frozen!=actual:raise ValueError("A55 frozen worker artifacts deleted, replaced or rolled back")
         elif "artifact" in event:raise ValueError("A55 unexpected phase artifact")
         if event["phase"]=="terminal_failed":
-            history=parent.get("attempt_history",{}).get("4")
-            if (not isinstance(history,dict) or history.get("attempt")!=4 or history.get("result")!="failed_terminal"
+            history=parent.get("attempt_history",{}).get(str(attempt))
+            if (not isinstance(history,dict) or history.get("attempt")!=attempt or history.get("result")!="failed_terminal"
                     or history.get("assignment_sha256")!=parent.get("assignment_sha256") or history.get("terminal")!=event.get("artifact")
                     or identity_attempt_event_hash_A54(history)!=event.get("history_record_sha256")):
                 raise ValueError("A55 terminal failure history changed")
@@ -348,7 +369,7 @@ def parent_attempt_lifecycle_A55(root,parent,contract):
     return events
 
 def append_parent_attempt_event_A55(root,parent,contract,phase,artifact=None):
-    meta=contract["metadata"];assignment=load(safe_relative(root,meta["source4_assignment"]))
+    meta=parent_repair_metadata_A55(contract);amendment,attempt=parent_attempt_version_A55(contract);assignment=load(safe_relative(root,meta["source4_assignment"]))
     path=safe_relative(root,meta["lifecycle"]);phases=parent_attempt_phases_A55()
     if phase!="terminal_failed" and safe_relative(root,meta["terminal_marker"]).exists():
         raise ValueError("A55 terminal marker forbids all subsequent activity")
@@ -356,13 +377,13 @@ def append_parent_attempt_event_A55(root,parent,contract,phase,artifact=None):
         events=parent_attempt_lifecycle_A55(root,parent,contract);old=events[-1]["phase"]
         if old not in phases[:-1] or phase not in {phases[phases.index(old)+1],"terminal_failed"}:
             raise ValueError("A55 cannot repeat, resume or restart a phase")
-        event={"slice":"F02e2s","attempt":4,"run_nonce":assignment["run_nonce"],"sequence":len(events),
+        event={"slice":"F02e2s","attempt":attempt,"run_nonce":assignment["run_nonce"],"sequence":len(events),
                "previous_sha256":identity_attempt_event_hash_A54(events[-1]),"phase":phase};mode="ab"
     else:
-        if (phase!="assigned" or parent.get("lifecycle_A55") or parent.get("attempts")!=3 or parent.get("status")!="ready"
-                or "4" in parent.get("attempt_history",{})):
+        if (phase!="assigned" or parent.get("lifecycle_"+amendment) or parent.get("attempts")!=attempt-1 or parent.get("status")!="ready"
+                or str(attempt) in parent.get("attempt_history",{})):
             raise ValueError("A55 seed only at the one ready3-to-assigned4 transition; never recreate an assigned store")
-        event=parent_attempt_seed_A55(assignment["run_nonce"]);events=[];mode="xb"
+        event=parent_attempt_seed_A55(assignment["run_nonce"],attempt);events=[];mode="xb"
         if identity_attempt_event_hash_A54(event)!=assignment.get("lifecycle_seed_sha256"):raise ValueError("A55 seed digest mismatch")
     if artifact!=parent_attempt_artifact_A55(meta,phase):raise ValueError("A55 phase requires its fixed artifact")
     if phase!="terminal_failed" and parent_attempt_failure_artifacts_A55(root,contract):
@@ -384,8 +405,8 @@ def append_parent_attempt_event_A55(root,parent,contract,phase,artifact=None):
             actual_tree=report.get("source_tree",candidate.get("tree"))
             if (actual!=source or actual_tree!=tree or not report.get("reviewer")
                     or report["reviewer"] in {parent.get("author"),"/root"}
-                    or candidate.get("slice")!="F02e2s" or candidate.get("amendment")!="A55"
-                    or type(candidate.get("attempt")) is not int or candidate.get("attempt")!=4):
+                    or candidate.get("slice")!="F02e2s" or candidate.get("amendment")!=amendment
+                    or type(candidate.get("attempt")) is not int or candidate.get("attempt")!=attempt):
                 raise ValueError("A55 review does not independently bind this exact source4")
         elif phase.endswith("_passed") or phase=="gate_evidence_review_started":
             if report.get("result")!="passed":raise ValueError("A55 gate did not pass")
@@ -411,9 +432,11 @@ def append_parent_attempt_event_A55(root,parent,contract,phase,artifact=None):
                 expected=parent_worker_inputs_A55(root,parent,contract)
                 if report.get("worker_evidence")!=expected:
                     raise ValueError("A55 source freeze must bind exact worker/budget/ledger artifacts")
+                if attempt==5 and report.get("input_delivery")!=assignment.get("input_delivery"):
+                    raise ValueError("A56 source freeze must bind the assigned delivery references")
     if phase=="terminal_failed":
-        history=parent.get("attempt_history",{}).get("4",{})
-        if (history.get("attempt")!=4 or history.get("result")!="failed_terminal"
+        history=parent.get("attempt_history",{}).get(str(attempt),{})
+        if (history.get("attempt")!=attempt or history.get("result")!="failed_terminal"
                 or history.get("assignment_sha256")!=parent.get("assignment_sha256") or history.get("terminal")!=event.get("artifact")):
             raise ValueError("A55 terminal requires retained failed4 history")
         if report.get("source_artifacts")!=parent_source_artifacts_A55(root,contract):
@@ -422,7 +445,7 @@ def append_parent_attempt_event_A55(root,parent,contract,phase,artifact=None):
     identity_attempt_audit_A54(root,parent,contract,events,create_event=event)
     with path.open(mode) as output:
         output.write((json.dumps(event,sort_keys=True,separators=(",",":"))+"\n").encode());output.flush();os.fsync(output.fileno())
-    parent["lifecycle_A55"]={"path":meta["lifecycle"],"sha256":digest(path),"events":event["sequence"]+1,"phase":phase}
+    parent["lifecycle_"+amendment]={"path":meta["lifecycle"],"sha256":digest(path),"events":event["sequence"]+1,"phase":phase}
     parent_attempt_lifecycle_A55(root,parent,contract)
     return event
 def git(repo:Path|None,*args:str,check=True):
