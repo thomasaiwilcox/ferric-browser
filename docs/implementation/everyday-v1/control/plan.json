@@ -4330,7 +4330,8 @@
         "Keep the existing QApplication and add WebEngineWidgets/QuickWidgets to the pinned SDK module graph. Embed reusable existing QML chrome in a Widgets host; preserve appearance, geometry and native dialog parent identity.",
         "Attach/detach the same owned QWebEnginePage for tab/window presentation. Host transfer preserves document state and never recreates a URL or admits a foreign profile.",
         "Expose typed BrowserUi attach/detach operations through the bridge, keyed by opaque host/page-owner tokens and existing TabId plus page/document generation. Validate live owner, profile context and generations in Rust, then reuse existing EngineEffect::ReparentView through the native request lane. Extend that projection to carry captured page/document identity and host/page-owner tokens so stale requests are discarded before C++ resolves tokens and performs QWebEngineView attachment/lifetime work. Reject stale, retired and foreign-profile requests without effects. Do not introduce a new core event/effect or parallel string command channel; if ReparentView cannot safely represent the operation, stop for another reviewed scope correction. Keep lifecycle policy outside QML; exercise focus, scale and safe host replacement.",
-        "A46 authorizes one final same-source native retry (retry 2) of the exact accepted A5 SHA/tree after the A45 coordinator false positive; no source changes or attempt 6. Use fresh target native-F02e2-a5-qt6112-qmake-r2, shared tools/qt_include_guard.py in run_gate.py and the A46 process monitor, and exact reviewed tooling scope/cap. Pack/state validation and pinned Qt preflight precede the exclusive native-build lease. Run the exact engine build, existing harness configure/build, nonzero discovery including T014e2, then only T014e2 serially with no skips; any failure closes the lease and ends F02e2 native work."
+        "A46 authorizes one final same-source native retry (retry 2) of the exact accepted A5 SHA/tree after the A45 coordinator false positive; no source changes or attempt 6. Use fresh target native-F02e2-a5-qt6112-qmake-r2, shared tools/qt_include_guard.py in run_gate.py and the A46 process monitor, and exact reviewed tooling scope/cap. Pack/state validation and pinned Qt preflight precede the exclusive native-build lease. Run the exact engine build, existing harness configure/build, nonzero discovery including T014e2, then only T014e2 serially with no skips; any failure closes the lease and ends F02e2 native work.",
+        "A47 authorizes only final same-source retry 3 of the exact A5 SHA/tree after a read-only combined pkg-config diagnostic proves pinned Qt 6.11.2 modules plus KF6WindowSystem >=6.28 resolve correctly. Keep PKG_CONFIG_PATH pinned to Qt and set PKG_CONFIG_LIBDIR to pinned Qt then /usr/lib/pkgconfig:/usr/share/pkgconfig. Use fresh r3 target, existing shared Qt classifier, the exact three-file coordinator/test scope, pack/state validation, and exclusive native-build lease. Run the exact engine build, existing harness configure/build, nonzero T014e2 discovery, then only T014e2 serially with zero skips; any failure closes the lease and ends F02e2 native work, with no retry 4 or attempt 6."
       ],
       "kind": "implementation",
       "locks": [
@@ -4821,6 +4822,53 @@
         "docs/implementation/everyday-v1/tools/test_tools.py",
         "evidence/A46/watch_qt_includes.py",
         "evidence/A46/run_native_retry.py"
+      ],
+      "product_path_cap": 10,
+      "product_paths_added_or_changed": [],
+      "existing_product_locks_unchanged": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "exclusive_native_lock": "control/build-active.lock",
+      "only_test_id": "T014e2",
+      "stop_after_any_failure": true
+    }
+  },
+  "native_gate_retry_extensions_A47": {
+    "F02e2": {
+      "amendment": "A47",
+      "extends_amendment": "A46",
+      "A45_same_source_retry_count_used": 1,
+      "A46_same_source_retry_count_used": 2,
+      "same_source_retry_number": 3,
+      "cumulative_max_same_source_retries": 3,
+      "source_attempt_count": 5,
+      "source_attempt_limit": 5,
+      "candidate_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "candidate_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "same_source_only": true,
+      "source_changes_allowed": false,
+      "attempt_six_authorized": false,
+      "retry_four_authorized": false,
+      "supersedes_A46_stop": "Only for A47 retry number 3 after A47 acceptance.",
+      "fresh_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake-r3",
+      "qmake": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/bin/qmake",
+      "prepend_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/bin",
+      "pkg_config_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig",
+      "pkg_config_libdir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig",
+      "cmake_prefix_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
+      "qt6_dir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/cmake/Qt6",
+      "shared_classifier": "docs/implementation/everyday-v1/tools/qt_include_guard.py",
+      "live_process_monitor": "evidence/A47/watch_qt_includes.py",
+      "coordinator": "evidence/A47/run_native_retry.py",
+      "regression_suite": "docs/implementation/everyday-v1/tools/test_tools.py",
+      "tooling_file_cap": 3,
+      "tooling_paths": [
+        "docs/implementation/everyday-v1/tools/test_tools.py",
+        "evidence/A47/watch_qt_includes.py",
+        "evidence/A47/run_native_retry.py"
       ],
       "product_path_cap": 10,
       "product_paths_added_or_changed": [],

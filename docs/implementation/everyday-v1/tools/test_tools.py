@@ -296,6 +296,54 @@ class StructureTests(unittest.TestCase):
         a46=[x for x in source_map['execution_amendments'] if x.get('id')=='A46']
         self.assertEqual(len(a46),1);self.assertEqual(a46[0]['tooling_paths'],expected_paths)
         self.assertEqual(a46[0]['added_paths'],[]);self.assertEqual(a46[0]['added_locks'],[])
+    def test_a47_pkg_config_retry_scope_is_bounded(self):
+        p=load(PACK/'control/plan.json')
+        retry=p['native_gate_retry_extensions_A47']['F02e2']
+        self.assertEqual(retry['same_source_retry_number'],3)
+        self.assertEqual(retry['cumulative_max_same_source_retries'],3)
+        self.assertEqual(retry['A45_same_source_retry_count_used'],1)
+        self.assertEqual(retry['A46_same_source_retry_count_used'],2)
+        self.assertEqual(retry['candidate_sha'],'58c047c04072bb7efa382e3cd7ca65a11da1b117')
+        self.assertEqual(retry['candidate_tree'],'f5cc15efd18496bb209d25866d060347157a00bd')
+        self.assertFalse(retry['source_changes_allowed']);self.assertFalse(retry['attempt_six_authorized'])
+        self.assertFalse(retry['retry_four_authorized'])
+        qt_pc='/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig'
+        self.assertEqual(retry['pkg_config_path'],qt_pc)
+        self.assertEqual(retry['pkg_config_libdir'],qt_pc+':/usr/lib/pkgconfig:/usr/share/pkgconfig')
+        self.assertEqual(retry['tooling_file_cap'],3)
+        self.assertEqual(retry['tooling_paths'],[
+            'docs/implementation/everyday-v1/tools/test_tools.py',
+            'evidence/A47/watch_qt_includes.py',
+            'evidence/A47/run_native_retry.py'])
+        self.assertEqual(retry['product_paths_added_or_changed'],[])
+        self.assertEqual(retry['existing_product_locks_unchanged'],['public-page-host','bridge','test-registration','browser-ui-input'])
+        a46=p['native_gate_retry_extensions']['F02e2']
+        self.assertEqual(a46['same_source_retry_number'],2)
+        manifest_path=PACK.parents[3]/'evidence/A47/NATIVE_COMMANDS-A47-r1.json'
+        manifest=load(manifest_path)
+        self.assertEqual(manifest['amendment'],'A47');self.assertEqual(manifest['retry_number'],3)
+        self.assertEqual(manifest['sdk']['pkg_config_path'],qt_pc)
+        self.assertEqual(manifest['sdk']['pkg_config_libdir'],retry['pkg_config_libdir'])
+        for gate in manifest['gates']:
+            env=gate.get('environment',{})
+            self.assertEqual(env.get('PKG_CONFIG_PATH'),qt_pc)
+            self.assertEqual(env.get('PKG_CONFIG_LIBDIR'),retry['pkg_config_libdir'])
+        versions_receipt=load(PACK.parents[3]/'evidence/A47/pkgconfig-modversions-r1/receipt.json')
+        versions=(PACK.parents[3]/'evidence/A47/pkgconfig-modversions-r1/output.log').read_text().split()
+        self.assertEqual(versions_receipt['result'],'passed')
+        self.assertEqual(versions,['6.11.2']*4+['6.31.0'])
+        cflags_receipt=load(PACK.parents[3]/'evidence/A47/pkgconfig-cflags-r1/receipt.json')
+        cflags=(PACK.parents[3]/'evidence/A47/pkgconfig-cflags-r1/output.log').read_text().split()
+        self.assertEqual(cflags_receipt['result'],'passed')
+        self.assertTrue(any(x.startswith('-I/usr/include/KF6/KWindowSystem') for x in cflags))
+        self.assertTrue(all(not x.startswith('-I') or '/Qt' not in x and '/qt' not in x or x[2:].startswith('/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/') for x in cflags))
+        source_map=load(PACK/'control/source-map.execution.json')
+        records=[x for x in source_map['execution_amendments'] if x.get('id')=='A47']
+        self.assertEqual(len(records),1);self.assertEqual(records[0]['pkg_config_libdir'],retry['pkg_config_libdir'])
+        watcher=PACK.parents[3]/'evidence/A47/watch_qt_includes.py'
+        spec=importlib.util.spec_from_file_location('a47_watch_qt_includes',watcher)
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        self.assertIs(module.qt_include_escape,qt_include_guard.qt_include_escape)
     def test_attempt_limit_hides_only_exhausted_implementation_dispatch(self):
         task={'id':'W01b','kind':'implementation','allowed_paths':['route.rs'],'depends_on':[],'locks':[],'max_attempts':4}
         p={'limits':{'max_noncoordinator_agents':6,'max_attempts':3},'attempt_exceptions':{'W01b':{'amendment':'A37','default_limit':3,'authorized_limit':4,'reason':'bounded repair'}},'slices':[task]}

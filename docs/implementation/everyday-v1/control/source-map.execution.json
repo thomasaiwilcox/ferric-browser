@@ -4248,6 +4248,61 @@
       "strict_qt_guard_tool": "tools/run_gate.py --qt-include-prefix",
       "only_test_id": "T014e2",
       "preserved": "A45 retry 1 evidence, unchanged A5 candidate/source count 5/5, ten product paths/four locks, global attempt default 3, no attempt 6."
+    },
+    {
+      "id": "A47",
+      "reason": "A46 retry 2 exposed PKG_CONFIG_LIBDIR omission hiding system KF6WindowSystem; A47 uses a read-only verified combined search path and authorizes only same-source retry 3.",
+      "source_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "source_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "added_paths": [],
+      "removed_paths": [],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "added_locks": [],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "max_changed_product_files": 10,
+      "previous_max_changed_product_files": 10,
+      "source_attempt_count": 5,
+      "A45_same_source_retry_count_used": 1,
+      "A46_same_source_retry_count_used": 2,
+      "max_same_source_retries": 3,
+      "same_source_retry_number": 3,
+      "same_source_only": true,
+      "source_changes_allowed": false,
+      "attempt_six_authorized": false,
+      "retry_four_authorized": false,
+      "candidate_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "candidate_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "fresh_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake-r3",
+      "pkg_config_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig",
+      "pkg_config_libdir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig",
+      "shared_classifier": "docs/implementation/everyday-v1/tools/qt_include_guard.py",
+      "tooling_paths": [
+        "docs/implementation/everyday-v1/tools/test_tools.py",
+        "evidence/A47/watch_qt_includes.py",
+        "evidence/A47/run_native_retry.py"
+      ],
+      "tooling_file_cap": 3,
+      "required_test_suite": "docs/implementation/everyday-v1/tools/test_tools.py",
+      "only_test_id": "T014e2",
+      "preserved": "A45/A46 outcomes and evidence, exact A5 candidate, source count 5/5, ten product paths/four locks, global attempt default 3, no retry 4/attempt 6."
     }
   ]
 }
