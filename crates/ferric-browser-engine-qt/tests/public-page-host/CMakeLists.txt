@@ -10,6 +10,7 @@ set(CMAKE_AUTOUIC ON)
 find_package(Qt6 6.11.2 EXACT REQUIRED COMPONENTS
     Core Gui Widgets Quick QuickControls2 QuickWidgets Network DBus WebEngineCore WebEngineQuick WebEngineWidgets Test)
 find_package(SQLite3 REQUIRED)
+find_package(KF6WindowSystem 6.28 REQUIRED)
 
 set(FERRIC_ENGINE_LIBRARY "" CACHE FILEPATH "Exact Cargo-built Ferric Qt engine archive")
 
@@ -52,6 +53,7 @@ if(BUILD_TESTING)
     target_link_libraries(static_qml_registration_tests PRIVATE
         "${FERRIC_ENGINE_LIBRARY}"
         SQLite::SQLite3
+        KF6::WindowSystem
         Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickControls2
         Qt6::QuickWidgets Qt6::Network Qt6::DBus
         Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::WebEngineWidgets Qt6::Test)
