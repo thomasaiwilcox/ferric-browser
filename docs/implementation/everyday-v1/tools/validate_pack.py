@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate pack/ledger consistency. This does not establish real browser correctness."""
 from __future__ import annotations
-import argparse,json,re,sys
+import argparse,json,re,shlex,sys
 from pathlib import Path
 from common import (PACK,load,read_plan,packet,safe_relative,digest,
                     ATTEMPT_EXCEPTION_TASKS,ATTEMPT_EXCEPTION_AMENDMENTS,
@@ -42,6 +42,15 @@ A42_REMOVED_PATHS=["crates/ferric-browser-engine-qt/src/gui_application.cpp"]
 A44_ADDED_PATH="crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
 A44_F02E2_PATHS=A42_F02E2_PATHS|{A44_ADDED_PATH}
 A44_LOCKS=["public-page-host","bridge","test-registration","browser-ui-input"]
+A52_NATIVE_GATE_SEQUENCE=[
+    "read-only-sdk-selection-preflight",
+    "exact-source-release-engine-build",
+    "public-page-host-harness-configure",
+    "integration-target-build",
+    "robust-executable-link-order-verification",
+    "nonzero-ctest-discovery",
+    "T014e2s-serial",
+]
 A45_CANDIDATE_SHA="58c047c04072bb7efa382e3cd7ca65a11da1b117"
 A45_CANDIDATE_TREE="f5cc15efd18496bb209d25866d060347157a00bd"
 A45_QT_PREFIX="/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64"
@@ -229,11 +238,12 @@ def validate_harness_prerequisite_split_A49(plan,pack=PACK):
             or child.get("recipe")!="application"
             or child.get("parent_id")!="F02e"):
         errors.append("F02e2q: child task differs from its independently reviewed harness-only scope")
-    if (downstream is None or "F02e2r" not in downstream.get("depends_on",[])
-            or "F02e2" in downstream.get("depends_on",[])
+    current_successor="F02e2s" if plan.get("successor_recovery_A52") is not None else "F02e2r"
+    expected_history=["F02e2","F02e2r"] if current_successor=="F02e2s" else ["F02e2"]
+    if (downstream is None or downstream.get("depends_on")!=[current_successor]
             or "F02e2q" in downstream.get("depends_on",[])
-            or "F02e2" not in downstream.get("historical_depends_on",[])):
-        errors.append("F02e3: require successor F02e2r and retain F02e2 only as a historical dependency; F02e2q alone cannot unblock the feature chain")
+            or downstream.get("historical_depends_on")!=expected_history):
+        errors.append(f"F02e3: require successor {current_successor} and retain exhausted tasks only as history; F02e2q alone cannot unblock the feature chain")
     tests=load(pack/"control/test_matrix.json")["tests"]
     errors+=validate_matrix_execution_status(tests)
     by_id={x.get("id"):x for x in tests}
@@ -316,30 +326,37 @@ def validate_successor_recovery_A50(plan,pack=PACK):
     if record!=expected:
         errors.append("A50: successor recovery metadata differs from the independently accepted scope")
     tasks={t.get("id"):t for t in plan.get("slices",[]) if isinstance(t,dict)}
+    a52_active=plan.get("successor_recovery_A52") is not None
+    current_successor="F02e2s" if a52_active else "F02e2r"
     parent=tasks.get("F02e2");successor=tasks.get("F02e2r");downstream=tasks.get("F02e3");aggregate=tasks.get("F02e")
     if (parent is None or parent.get("max_attempts")!=6 or parent.get("test_ids")!=["T014e2"]
-            or parent.get("superseded_by")!=["F02e2r"] or parent.get("amendment")!="A50"):
-        errors.append("F02e2: retain the six-attempt terminal parent and map it only to F02e2r")
+            or parent.get("superseded_by")!=[current_successor]
+            or parent.get("amendment")!= ("A52" if a52_active else "A50")):
+        errors.append(f"F02e2: retain the six-attempt terminal parent and map it only to {current_successor}")
     if (successor is None or successor.get("depends_on")!=["F02e1","F02e2q"]
             or successor.get("test_ids")!=["T014e2r"] or successor.get("allowed_paths")!=A50_F02E2_PATHS_ORDERED
             or successor.get("locks")!=A44_LOCKS or successor.get("max_changed_product_files")!=10
             or successor.get("path_budget_amendment")!="A50" or successor.get("max_attempts") is not None
-            or successor.get("worker_may_delegate") is not False):
+            or successor.get("worker_may_delegate") is not False
+            or (a52_active and (successor.get("superseded_by")!=["F02e2s"] or successor.get("amendment")!="A52"))):
         errors.append("F02e2r: successor dependencies, budget, ownership, or default attempt policy changed")
-    if (downstream is None or downstream.get("depends_on")!=["F02e2r"]
-            or downstream.get("historical_depends_on")!=["F02e2"]):
-        errors.append("F02e3: dependency must move to F02e2r while retaining F02e2 historically")
-    if (aggregate is None or "F02e2r" not in aggregate.get("depends_on",[])
-            or "F02e2" in aggregate.get("depends_on",[])):
-        errors.append("F02e: aggregate must depend on F02e2r, not the terminal F02e2 task")
+    expected_historical=["F02e2","F02e2r"] if a52_active else ["F02e2"]
+    if (downstream is None or downstream.get("depends_on")!=[current_successor]
+            or downstream.get("historical_depends_on")!=expected_historical):
+        errors.append(f"F02e3: dependency must move to {current_successor} while retaining historical F02e2 lineage")
+    if (aggregate is None or current_successor not in aggregate.get("depends_on",[])
+            or any(x in aggregate.get("depends_on",[]) for x in ("F02e2","F02e2r") if x!=current_successor)
+            or (a52_active and aggregate.get("historical_depends_on")!=["F02e2","F02e2r"])):
+        errors.append(f"F02e: aggregate must depend on {current_successor} and retain old tasks only as history")
     tests=load(pack/"control/test_matrix.json")["tests"]
     by_id={x.get("id"):x for x in tests}
     old=by_id.get("T014e2",{});new=by_id.get("T014e2r",{});child=by_id.get("T014e2q",{})
     if (old.get("slice")!="F02e2" or old.get("result")!="failed"
-            or old.get("binding")!=A48_T014E2_FAILURE_BINDING or old.get("superseded_by")!=["T014e2r"]):
-        errors.append("T014e2: preserve the exact A48 failure and map it only to T014e2r")
+            or old.get("binding")!=A48_T014E2_FAILURE_BINDING or old.get("superseded_by")!=(["T014e2s"] if a52_active else ["T014e2r"])):
+        errors.append(f"T014e2: preserve the exact A48 failure and map it only to {current_successor}")
     if (new.get("slice")!="F02e2r" or new.get("result")!="not_run"
-            or new.get("requirement")!=old.get("requirement") or new.get("level")!=old.get("level")):
+            or new.get("requirement")!=old.get("requirement") or new.get("level")!=old.get("level")
+            or (a52_active and new.get("superseded_by")!=["T014e2s"])):
         errors.append("T014e2r: successor test must be a new not_run row with matching requirement/evidence level")
     if child.get("slice")!="F02e2q" or child.get("result")!="not_run":
         errors.append("T014e2q: retain the separate authored A49 matrix row")
@@ -362,6 +379,147 @@ def validate_successor_recovery_A50(plan,pack=PACK):
                 errors.append("A50: source-map ownership weakens the terminal parent or successor boundary")
     except (OSError,ValueError,TypeError,AttributeError) as exc:
         errors.append(f"A50: cannot validate successor source-map record: {exc}")
+    return errors
+
+def validate_successor_recovery_A52(plan,pack=PACK):
+    """Bind A52's new bootstrap-pump successor and its two-history supersession gate."""
+    errors=[]
+    try:
+        amendments=(pack/"control/AMENDMENTS.md").read_text()
+        section=amendments.split("## A52",1)[1].split("\n## ",1)[0]
+        accepted="**Status:** revision 2 independently accepted" in section
+    except (IndexError,OSError):
+        section="";accepted=False
+    record=plan.get("successor_recovery_A52")
+    if not accepted:
+        if record is not None:errors.append("A52: successor metadata requires its independently accepted amendment record")
+        return errors
+    paths=A50_F02E2_PATHS_ORDERED
+    expected={
+        "amendment":"A52","status":"revision 2 independently accepted",
+        "review_path":"evidence/A52/PLAN_REVIEW-r2_d28.json",
+        "review_sha256":"3bb0e7fb9b4469571b5933c7b69839f5201768d872e0cfad223f1089eb02f6bf",
+        "review_budget_path":"evidence/A52/PLAN_REVIEW_BUDGET-r2_d28.json",
+        "review_budget_sha256":"37018a443696596ac9d38acee51c0045102893c1767c9bc54d87594ae22a9070",
+        "proposal_path":"evidence/A52/PROPOSAL.json",
+        "proposal_sha256":"2bfa722adc314c7a1493cb580f0c09d5437dfa77a97d0d114ed2f5ca0791138d",
+        "packet_path":"packets/F02e2s-A52-profile-bootstrap-pump.md",
+        "packet_sha256":"2cc5e7f6bcbf20bab667a8712b309da00a498d98ba6d4738cd33dcb082a9faee",
+        "prior_request_changes_review":{"path":"evidence/A52/PLAN_REVIEW_d28.json","sha256":"8b94ae66c55fed56a59d5df43c0477ca174c1a0c9f38a5d50a4b4b8b981c8280"},
+        "failed_A51_trigger":{
+            "slice":"F02e2r","attempt":3,"attempt_limit":3,"attempt_increment":False,"test_id":"T014e2r","result":"failed",
+            "candidate":{"source_sha":"c6e29480e08f5e7a1ba54319ec2f2fe932d1f366","source_tree":"f5b7696b1c08d115ba435a521fc2a47fa128f538"},
+            "continuation_path":"evidence/A51/native/NATIVE_CONTINUATION-A51.json","continuation_sha256":"063b5a7d7983fa416bf9ce199469d580ba4188500e4ad09c5928d8704a6ef3d3",
+            "test_receipt_path":"evidence/A51/native/T014e2r/receipt.json","test_receipt_sha256":"da9b7b3f9592cd88278ecbad6c193ac28ec3aed9c730b245274ca006c1c4a142",
+            "output_log_path":"evidence/A51/native/T014e2r/output.log","output_log_sha256":"e6963912f20a9ac31a892aaa9bff99e05aaa5483909c5bc26e82d6127c122d07",
+            "lease_closure_path":"evidence/A51/native/NATIVE_LEASE_CLOSED-A51.json","lease_closure_sha256":"aee55ef7d9f6fdb2251034e9d5cdb0348194c96005eec61a238ac54b388a5b41",
+            "failed_condition":"Combined readiness check false; preserved output does not isolate profile ID, tab_count, or profile_bootstrap_pending."
+        },
+        "root_cause":{
+            "classification":"source-inspection hypothesis only",
+            "hypothesis":"The standalone integration test may omit the production poll_config() work needed to finish asynchronous profile bootstrap.",
+            "required_diagnostic":"Capture readiness values and startup/status diagnostics separately for both primary and foreign BrowserUi objects."
+        },
+        "terminal_history":{
+            "F02e2":{"status":"failed","attempts":6,"attempt_limit":6,"test_id":"T014e2","attempt_seven_authorized":False,"old_test_execution_authorized":False,"terminal_failure_sha256":"e6b0695df918b20713c8c86d008e99c1ac3f7a68a8852fea40d37d2fd3ae9eb1"},
+            "F02e2r":{"status":"failed","attempts":3,"attempt_limit":3,"test_id":"T014e2r","attempt_four_authorized":False,"A50_run_sha256":"69c220a114afb4a05da8dfcf5458292db6d954305cf6900ac4cc8f07111c0906","A50_closure_sha256":"c6e059a05d0ba4271400c1dbaf4723818f05b7abf0c3901cfc0605954ce48739","A51_continuation_sha256":"063b5a7d7983fa416bf9ce199469d580ba4188500e4ad09c5928d8704a6ef3d3","A51_closure_sha256":"aee55ef7d9f6fdb2251034e9d5cdb0348194c96005eec61a238ac54b388a5b41"}
+        },
+        "successor":{
+            "slice":"F02e2s","test_id":"T014e2s","dependencies":["F02e1","F02e2q"],"attempt_limit":3,
+            "base_sha":"eb6ff74ad7134ff6fb5a2e934e08fd3f22a777a9","base_tree":"42b809fee461d7a555b79f953fe1c56d6c1a0845",
+            "allowed_paths":paths,"locks":A44_LOCKS,"max_changed_product_files":10,
+            "fresh_target_pattern":"/home/tom/Projects/ferric-everyday-work/builds/native-F02e2s-aN-qt6112-qmake",
+            "native_gate_sequence":A52_NATIVE_GATE_SEQUENCE,
+            "pump_contract":{"both_UIs_required":True,"operation":"BrowserUi::poll_config()","bounded_timer":True,"stop_and_disconnect_before_each_UI_destroyed":True,"readiness_faked":False},
+            "old_test_execution_authorized":False
+        },
+        "supersession":{
+            "old_slices":["F02e2","F02e2r"],"new_slice":"F02e2s","old_tests":["T014e2","T014e2r"],"new_test":"T014e2s",
+            "while_pending":"Keep F02e2 failed at 6/6 and F02e2r failed at 3/3 with all A48/A50/A51 evidence unchanged.",
+            "transition":"Only after F02e2s is accepted with an independent review of the exact passing T014e2s run may F02e2 and F02e2r transition to workflow-superseded; keep their terminal failure histories unchanged.",
+            "downstream":"F02e3 and aggregate F02e depend on F02e2s and remain blocked until it is accepted."
+        },
+        "validator_requirements":[
+            "Bind exact F02e2s paths, locks, base, test identity, attempt limit and current downstream dependencies.",
+            "Preserve A48 F02e2 6/6 failure, A50 F02e2r 3/3 failed run/closure, and A51 failed continuation/receipt/closure with exact hashes.",
+            "Reject any attempt counter change, premature old-task supersession, missing historical record, T014e2/T014e2r execution authority, wrong mapping or downstream acceptance.",
+            "Permit accepted F02e2s only with passing exact-source T014e2s evidence and independent gate-evidence review; only then permit both old task statuses to become superseded.",
+            "Keep A51 validation of its failed continuation active even after F02e2r is superseded under A52."
+        ],
+        "plan_tooling_paths":["tools/common.py","tools/validate_pack.py","tools/test_tools.py"]
+    }
+    if record!=expected:errors.append("A52: successor recovery metadata differs from the independently accepted review and failure boundary")
+    if any(text not in section for text in (expected["review_sha256"],expected["review_budget_sha256"],expected["proposal_sha256"],expected["packet_sha256"],"T014e2s","F02e2r failed at 3/3")):
+        errors.append("A52: accepted amendment text omits its bound plan review, proposal, packet or preserved failure")
+    tasks={t.get("id"):t for t in plan.get("slices",[]) if isinstance(t,dict)}
+    parent=tasks.get("F02e2");old=tasks.get("F02e2r");successor=tasks.get("F02e2s");downstream=tasks.get("F02e3");aggregate=tasks.get("F02e")
+    if (parent is None or parent.get("max_attempts")!=6 or parent.get("test_ids")!=["T014e2"]
+            or parent.get("superseded_by")!=["F02e2s"] or parent.get("amendment")!="A52"):
+        errors.append("F02e2: A52 must preserve the six-attempt parent and map it only to F02e2s")
+    if (old is None or old.get("depends_on")!=["F02e1","F02e2q"] or old.get("test_ids")!=["T014e2r"]
+            or old.get("superseded_by")!=["F02e2s"] or old.get("amendment")!="A52"
+            or old.get("allowed_paths")!=paths or old.get("locks")!=A44_LOCKS or old.get("max_attempts") is not None):
+        errors.append("F02e2r: A52 must retain the exact exhausted A50/A51 owner and map it only to F02e2s")
+    if (successor is None or successor.get("depends_on")!=["F02e1","F02e2q"]
+            or successor.get("test_ids")!=["T014e2s"] or successor.get("allowed_paths")!=paths
+            or successor.get("locks")!=A44_LOCKS or successor.get("max_changed_product_files")!=10
+            or successor.get("path_budget_amendment")!="A52" or successor.get("max_attempts") is not None
+            or successor.get("worker_may_delegate") is not False or "both" not in " ".join(successor.get("steps",[])).lower()
+            or not any("poll_config" in x and "disconnect" in x.lower() for x in successor.get("steps",[]))):
+        errors.append("F02e2s: successor dependencies, bootstrap pump, test ownership, paths, locks or attempt policy changed")
+    if (downstream is None or downstream.get("depends_on")!=["F02e2s"]
+            or downstream.get("historical_depends_on")!=["F02e2","F02e2r"]):
+        errors.append("F02e3: downstream must wait for F02e2s and retain both failed task IDs as history")
+    expected_aggregate=["F02e0","F02e1","F02e2s","F02e3","F02e4","F02e5","F02e6","F02e7","F02e8"]
+    if (aggregate is None or aggregate.get("depends_on")!=expected_aggregate
+            or aggregate.get("historical_depends_on")!=["F02e2","F02e2r"]):
+        errors.append("F02e: aggregate must wait for F02e2s and retain both failed task IDs as history")
+    tests=load(pack/"control/test_matrix.json")["tests"];by_id={x.get("id"):x for x in tests}
+    parent_test=by_id.get("T014e2",{});old_test=by_id.get("T014e2r",{});new_test=by_id.get("T014e2s",{});child=by_id.get("T014e2q",{})
+    if (parent_test.get("result")!="failed" or parent_test.get("binding")!=A48_T014E2_FAILURE_BINDING
+            or parent_test.get("superseded_by")!=["T014e2s"]):
+        errors.append("T014e2: retain the exact A48 failure and map it only to T014e2s")
+    if (old_test.get("slice")!="F02e2r" or old_test.get("result")!="not_run"
+            or old_test.get("requirement")!=parent_test.get("requirement") or old_test.get("level")!=parent_test.get("level")
+            or old_test.get("superseded_by")!=["T014e2s"]):
+        errors.append("T014e2r: retain the not_run A51 history and map it only to T014e2s")
+    if (new_test.get("slice")!="F02e2s" or new_test.get("result")!="not_run"
+            or new_test.get("requirement")!=parent_test.get("requirement") or new_test.get("level")!=parent_test.get("level")
+            or "both" not in new_test.get("expected","").lower() or "poll_config" not in new_test.get("expected","")
+            or "T014e2r" not in new_test.get("binding","") or "zero skips" not in new_test.get("binding","")
+            or "independent gate-evidence review" not in new_test.get("binding","")
+            or new_test.get("native_gate_sequence")!=A52_NATIVE_GATE_SEQUENCE
+            or new_test.get("superseded_by") is not None):
+        errors.append("T014e2s: require the distinct not_run bootstrap-pump test with its exact gate boundary")
+    if child.get("slice")!="F02e2q" or child.get("result")!="not_run":
+        errors.append("T014e2q: preserve the separate A49 registration test")
+    try:
+        source=load(pack/"control/source-map.execution.json")
+        records=[x for x in source.get("execution_amendments",[]) if isinstance(x,dict) and x.get("id")=="A52"]
+        expected_map={
+            "id":"A52",
+            "reason":"A51 T014e2r failed its combined profile-readiness condition. A fresh successor drives the poll_config() work used by production and preserves both exhausted histories.",
+            "added_paths":[],"removed_paths":[],"added_locks":[],"locks":A44_LOCKS,
+            "path_owners":{"F02e2s":paths},"max_changed_product_files":10,"previous_max_changed_product_files":10,
+            "base_sha":"eb6ff74ad7134ff6fb5a2e934e08fd3f22a777a9","base_tree":"42b809fee461d7a555b79f953fe1c56d6c1a0845","attempt_limit":3,
+            "successor_test":"T014e2s","old_tests_execution_authorized":False,
+            "pump_contract":{"both_BrowserUi_instances":True,"operation":"BrowserUi::poll_config()","bounded":True,"stops_before_destruction":True},
+            "preserved_failures":{"F02e2":"A48 failed 6/6","F02e2r":"A50 attempt 3/3 and A51 continuation failed"},
+            "supersession":{"F02e2":"F02e2s","F02e2r":"F02e2s","T014e2":"T014e2s","T014e2r":"T014e2s","only_after_independent_T014e2s_gate_review":True},
+            "downstream_dependencies":{"F02e3":["F02e2s"],"F02e":["F02e0","F02e1","F02e2s","F02e3","F02e4","F02e5","F02e6","F02e7","F02e8"]},
+            "native_gate_sequence":A52_NATIVE_GATE_SEQUENCE
+        }
+        if len(records)!=1 or records[0]!=expected_map:errors.append("A52: source map differs from the reviewed path, pump, history or dependency boundary")
+    except (OSError,ValueError,TypeError,AttributeError) as exc:errors.append(f"A52: cannot validate source map: {exc}")
+    try:
+        initial=load(pack/"control/state.initial.json"); states=initial["slices"]
+        if (states.get("F02e2s",{}).get("status")!="not_started" or states.get("F02e2s",{}).get("attempts")!=0
+                or states.get("F02e2",{}).get("terminal_failure")!=A50_TERMINAL_FAILURE
+                or states.get("F02e2",{}).get("supersession")!={"amendment":"A52","superseded_by":["F02e2s"],"transition":"pending_successor_acceptance"}
+                or states.get("F02e2r",{}).get("continuation_policy")!=A51_STATE_POLICY
+                or states.get("F02e2r",{}).get("supersession")!={"amendment":"A52","superseded_by":["F02e2s"],"transition":"pending_successor_acceptance"}):
+            errors.append("state.initial: add F02e2s and preserve both A48/A51 histories under pending A52 supersession")
+    except (OSError,KeyError,TypeError,ValueError) as exc:errors.append(f"A52: cannot validate initial state: {exc}")
     return errors
 
 def validate_continuation_A51(plan,pack=PACK):
@@ -439,8 +597,12 @@ def validate_continuation_state_A51(state,root):
         if continuation.get(key)!=value:
             errors.append(f"F02e2r: A51 continuation field {key} differs from the reviewed exact scope")
     outcome=continuation.get("result")
+    successor_accepted=state.get("slices",{}).get("F02e2s",{}).get("status")=="accepted"
+    superseded_after_A52=(record.get("status")=="superseded" and successor_accepted
+        and record.get("supersession")=={"amendment":"A52","superseded_by":["F02e2s"],"transition":"successor_accepted"})
     if outcome=="failed":
-        if record.get("status")!="failed":errors.append("F02e2r: failed A51 continuation must leave the successor failed")
+        if record.get("status")!="failed" and not superseded_after_A52:
+            errors.append("F02e2r: failed A51 continuation must remain failed until F02e2s acceptance")
         path=continuation.get("run_path")
         if not path or not continuation.get("run_sha256"):
             errors.append("F02e2r: missing failed A51 continuation run binding")
@@ -477,7 +639,7 @@ def validate_continuation_state_A51(state,root):
             errors.append(f"F02e2r: {exc}")
         return errors
     if outcome!="passed":errors.append("F02e2r: A51 continuation outcome must be passed or failed")
-    if record.get("status")!="accepted":
+    if record.get("status")!="accepted" and not superseded_after_A52:
         errors.append("F02e2r: a passing A51 continuation may qualify only after independent evidence review")
     path=continuation.get("run_path")
     if not path or not continuation.get("run_sha256"):
@@ -555,6 +717,21 @@ def validate_edit_path_budget(task,pack=PACK):
                 errors.append("F02e2r: A50 path reuse requires its accepted amendment record")
         except (IndexError,OSError):
             errors.append("F02e2r: A50 accepted amendment record is missing")
+        return errors
+    if task.get("id")=="F02e2s" and amendment=="A52":
+        if len(paths)!=10 or set(paths)!=A44_F02E2_PATHS or cap!=10:
+            errors.append("F02e2s: A52 may reuse only the exact A44/A50 ten-path F02e2 scope")
+        if task.get("locks")!=A44_LOCKS:
+            errors.append("F02e2s: A52 requires the exact A44/A50 four-lock set")
+        if task.get("max_attempts") is not None:
+            errors.append("F02e2s: use the global default three-attempt limit")
+        try:
+            text=(pack/"control/AMENDMENTS.md").read_text()
+            section=text.split("## A52",1)[1].split("\n## ",1)[0]
+            if "**Status:** revision 2 independently accepted" not in section:
+                errors.append("F02e2s: A52 path reuse requires its accepted amendment record")
+        except (IndexError,OSError):
+            errors.append("F02e2s: A52 accepted amendment record is missing")
         return errors
     if task.get("id")=="F02e2" and amendment=="A44":
         if len(paths)!=10 or set(paths)!=A44_F02E2_PATHS or cap!=10:
@@ -910,7 +1087,7 @@ def validate_supersession_structure(tasks,tests):
     cycles(task_edges,"Task");cycles(test_edges,"Test")
     return errors
 
-def validate_supersession_state(plan,state,strict=False):
+def validate_supersession_state(plan,state,strict=False,allow_template_pending=False):
     errors=[];tasks={t["id"]:t for t in plan["slices"]};states=state["slices"]
     for sid,t in tasks.items():
         s=states[sid];marked=bool(t.get("superseded_by"))
@@ -919,6 +1096,25 @@ def validate_supersession_state(plan,state,strict=False):
             if s.get("supersession"):errors.append(f"{sid}: state supersession record has no plan mapping")
             continue
         expected={"amendment":t.get("amendment"),"superseded_by":t["superseded_by"]}
+        if plan.get("successor_recovery_A52") is not None and sid in {"F02e2","F02e2r"}:
+            successor=states.get("F02e2s",{})
+            accepted=successor.get("status")=="accepted"
+            expected_state={**expected,"transition":"successor_accepted" if accepted else "pending_successor_acceptance"}
+            required_status="superseded" if accepted else "failed"
+            expected_attempts=6 if sid=="F02e2" else 3
+            if allow_template_pending and sid=="F02e2r" and not accepted and s.get("status")=="not_started" and s.get("attempts")==0:
+                if s.get("supersession")!=expected_state:
+                    errors.append(f"{sid}: initial A52 supersession record differs from the pending transition")
+                continue
+            if s.get("attempts")!=expected_attempts:
+                errors.append(f"{sid}: A52 must preserve exhausted attempt count {expected_attempts}/{expected_attempts}")
+            if sid=="F02e2" and s.get("terminal_failure")!=A50_TERMINAL_FAILURE:
+                errors.append("F02e2: A52 must retain the exact immutable A48 terminal-failure record")
+            if s.get("status")!=required_status:
+                errors.append(f"{sid}: status must remain {required_status} until F02e2s is accepted")
+            if s.get("supersession")!=expected_state:
+                errors.append(f"{sid}: A52 supersession record differs from the pending/accepted transition")
+            continue
         if sid=="F02e2" and t.get("amendment")=="A50":
             successor=states.get("F02e2r",{})
             accepted=successor.get("status")=="accepted"
@@ -971,6 +1167,7 @@ def validate_structure(pack=PACK,plan=None):
         errors+=validate_source_attempt_extension_A48(plan,pack)
         errors+=validate_harness_prerequisite_split_A49(plan,pack)
         errors+=validate_successor_recovery_A50(plan,pack)
+        errors+=validate_successor_recovery_A52(plan,pack)
         errors+=validate_continuation_A51(plan,pack)
         errors+=validate_supersession_structure(tasks,tests)
         reqids=[r["id"] for r in reqs]
@@ -1070,6 +1267,219 @@ def validate_acceptance(task,record,root,tests):
     except (OSError,KeyError,TypeError,ValueError) as e:errors.append(f"{sid}: {e}")
     return errors
 
+def validate_acceptance_A52(task,record,root):
+    """Require ordered, receipt-bound native gates and an independent review for F02e2s."""
+    if task.get("id")!="F02e2s" or record.get("status")!="accepted":return []
+    errors=[]
+    try:
+        evidence_path=safe_relative(root,record["evidence"]);evidence=load(evidence_path)
+        source_sha=evidence["source_sha"];source_tree=evidence["source_tree"]
+        if not HEX.fullmatch(source_sha) or not HEX.fullmatch(source_tree):
+            raise ValueError("evidence source SHA/tree is invalid")
+        attempt=record.get("attempts")
+        if not isinstance(attempt,int) or isinstance(attempt,bool) or not 1<=attempt<=3:
+            raise ValueError("accepted F02e2s attempt is outside the three-attempt limit")
+        review_rel=evidence["gate_evidence_review"];review_sha=evidence["gate_evidence_review_sha256"]
+        review_path=safe_relative(root,review_rel)
+        if digest(review_path)!=review_sha:raise ValueError("gate-evidence review digest mismatch")
+        review=load(review_path);candidate=review.get("candidate",{})
+        if (review.get("decision")!="accept" or not review.get("reviewer")
+                or review.get("reviewer")==record.get("author")
+                or review.get("reviewer")!=evidence.get("reviewer")
+                or candidate.get("slice")!="F02e2s" or candidate.get("amendment")!="A52"
+                or candidate.get("commit")!=source_sha or candidate.get("tree")!=source_tree
+                or candidate.get("attempt")!=attempt):
+            raise ValueError("gate-evidence review does not independently accept the exact F02e2s candidate")
+        run_path=safe_relative(root,evidence["native_run"])
+        if digest(run_path)!=evidence["native_run_sha256"]:raise ValueError("native-run digest mismatch")
+        run=load(run_path)
+        target_dir=(root/"builds"/f"native-F02e2s-a{attempt}-qt6112-qmake").resolve()
+        target=str(target_dir)
+        if (run.get("result")!="passed" or run.get("slice")!="F02e2s" or run.get("amendment")!="A52"
+                or run.get("attempt")!=attempt or run.get("attempt_limit")!=3
+                or run.get("source_sha")!=source_sha or run.get("source_tree")!=source_tree
+                or run.get("product_tests_run")!=["T014e2s"] or run.get("target")!=target
+                or run.get("lease_released") is not True or run.get("active_build_processes_remaining")!=[]):
+            raise ValueError("native run is not the exact passing A52 T014e2s run")
+        run_gates=run.get("gates")
+        if not isinstance(run_gates,list) or [g.get("name") for g in run_gates]!=A52_NATIVE_GATE_SEQUENCE:
+            raise ValueError("native run does not contain the exact ordered A52 gate sequence")
+        review_gates=review.get("gates")
+        if not isinstance(review_gates,list) or [g.get("name") for g in review_gates]!=A52_NATIVE_GATE_SEQUENCE:
+            raise ValueError("independent gate review does not cover the exact ordered A52 gate sequence")
+        seen_receipts=set();preflight_kf6_library=None
+        for index,(gate,review_gate,gate_name) in enumerate(zip(run_gates,review_gates,A52_NATIVE_GATE_SEQUENCE)):
+            if (gate.get("result")!="passed" or gate.get("target")!=target
+                    or not isinstance(gate.get("receipt"),str) or not isinstance(gate.get("receipt_sha256"),str)):
+                raise ValueError(f"{gate_name}: native run is missing its passing receipt or exact target binding")
+            receipt_rel=gate["receipt"]
+            if receipt_rel in seen_receipts:raise ValueError(f"{gate_name}: gate receipts must be distinct")
+            seen_receipts.add(receipt_rel)
+            receipt_path=safe_relative(root,receipt_rel)
+            receipt_sha=gate["receipt_sha256"]
+            if digest(receipt_path)!=receipt_sha:raise ValueError(f"{gate_name}: receipt digest mismatch")
+            if (review_gate.get("decision")!="pass" or review_gate.get("target")!=target
+                    or review_gate.get("receipt")!=receipt_rel or review_gate.get("receipt_sha256")!=receipt_sha):
+                raise ValueError(f"{gate_name}: independent review does not accept the exact run receipt")
+            receipt=load(receipt_path)
+            if gate_name=="read-only-sdk-selection-preflight":
+                if (receipt.get("result")!="passed" or receipt.get("exit_code")!=0
+                        or receipt.get("no_compilation") is not True or receipt.get("target")!=target
+                        or receipt.get("attempt")!=attempt):
+                    raise ValueError("SDK preflight did not pass read-only against the exact fresh target")
+                before=receipt.get("source_before",{});after=receipt.get("source_after",{})
+                before=before.get("candidate",before);after=after.get("candidate",after)
+                if any(snapshot.get("sha")!=source_sha or snapshot.get("tree")!=source_tree or snapshot.get("dirty") is not False
+                       for snapshot in (before,after)):
+                    raise ValueError("SDK preflight is not bound to the exact clean candidate before and after")
+                sdk=receipt.get("sdk",{})
+                qt_version=sdk.get("qt_version",receipt.get("pinned_qt_version"))
+                kf_version=sdk.get("version",receipt.get("selected_cmake",{}).get("KF6WindowSystem_version"))
+                kf_abi=sdk.get("abi",receipt.get("selected_cmake",{}).get("KF6_qt_abi"))
+                preflight_kf6_library=sdk.get("library",receipt.get("selected_cmake",{}).get("KF6WindowSystem_library"))
+                try:kf_version_tuple=tuple(int(part) for part in str(kf_version).split(".")[:3])
+                except ValueError:kf_version_tuple=()
+                kf_version_tuple=(kf_version_tuple+(0,0,0))[:3]
+                if (qt_version!="6.11.2" or kf_version_tuple<(6,28,0) or kf_abi!="Qt_6.11"
+                        or not isinstance(preflight_kf6_library,str) or not preflight_kf6_library):
+                    raise ValueError("SDK preflight does not prove pinned Qt 6.11.2 and matching KF6WindowSystem")
+            elif gate_name=="robust-executable-link-order-verification":
+                if (receipt.get("result")!="passed" or receipt.get("source_sha")!=source_sha
+                        or receipt.get("source_tree")!=source_tree or receipt.get("target")!=target):
+                    raise ValueError("link-order report is not bound to the exact source and fresh target")
+                checks=receipt.get("checks",{})
+                if (checks.get("engine_archive_before_kf6windowsystem") is not True
+                        or checks.get("matching_kf6_runtime") is not True
+                        or checks.get("qt_version")!="6.11.2"
+                        or checks.get("kf6_window_system_qt_abi")!="Qt_6.11"
+                        or checks.get("kf6_window_system_library")!=preflight_kf6_library):
+                    raise ValueError("link-order report does not prove archive ordering and matching Qt 6.11 runtime")
+                artifacts=receipt.get("artifacts",{})
+                artifact_paths={}
+                for artifact_name in ("executable","link_command"):
+                    artifact=artifacts.get(artifact_name,{})
+                    artifact_path=safe_relative(root,artifact.get("path",""))
+                    if not artifact_path.is_relative_to(target_dir) or digest(artifact_path)!=artifact.get("sha256"):
+                        raise ValueError(f"link-order report {artifact_name} artifact is missing, outside target, or has wrong digest")
+                    artifact_paths[artifact_name]=artifact_path
+                if not (artifact_paths["executable"].stat().st_mode&0o111):
+                    raise ValueError("link-order report executable artifact is not executable")
+                link_tokens=shlex.split(artifact_paths["link_command"].read_text(errors="replace"))
+                engine_positions=[i for i,token in enumerate(link_tokens) if "libferric_browser_engine_qt.a" in token]
+                kf6_positions=[i for i,token in enumerate(link_tokens) if token==preflight_kf6_library]
+                if (len(engine_positions)!=1 or len(kf6_positions)!=1
+                        or engine_positions[0]>=kf6_positions[0]):
+                    raise ValueError("actual target link command does not place the engine archive before the matching KF6WindowSystem library")
+            else:
+                if (receipt.get("result")!="passed" or receipt.get("exit_code")!=0
+                        or receipt.get("timed_out") or receipt.get("output_limit_exceeded")
+                        or receipt.get("observed_failed",0)>0):
+                    raise ValueError(f"{gate_name}: command receipt did not pass cleanly")
+                binding=receipt.get("execution_binding",{})
+                if (receipt.get("native_target")!=target or binding.get("native_target")!=target):
+                    raise ValueError(f"{gate_name}: underlying command receipt does not bind the fresh native target")
+                for key in ("source_before","source_after"):
+                    snapshot=receipt.get(key,{})
+                    if (snapshot.get("sha")!=source_sha or snapshot.get("tree")!=source_tree
+                            or snapshot.get("dirty") is not False):
+                        raise ValueError(f"{gate_name}: receipt is not bound to the exact clean source")
+                log_path=safe_relative(receipt_path.parent,receipt.get("log",""))
+                if digest(log_path)!=receipt.get("log_sha256"):
+                    raise ValueError(f"{gate_name}: output log is missing or has wrong digest")
+                log_text=log_path.read_text(errors="replace")
+                command=receipt.get("command")
+                if not isinstance(command,list) or not command:
+                    raise ValueError(f"{gate_name}: command receipt omits the command")
+                cmake_dir=(target_dir/"cmake").resolve()
+                if gate_name=="exact-source-release-engine-build":
+                    cargo_target=(target_dir/"cargo-target").resolve()
+                    if (binding.get("cargo_target_dir")!=str(cargo_target)
+                            or binding.get("environment",{}).get("CARGO_TARGET_DIR")!=str(cargo_target)
+                            or "--target-dir" not in command or command.index("--target-dir")+1>=len(command)
+                            or Path(command[command.index("--target-dir")+1]).resolve()!=cargo_target):
+                        raise ValueError("engine build receipt does not prove CARGO_TARGET_DIR uses the fresh target")
+                elif gate_name=="public-page-host-harness-configure":
+                    if (binding.get("cmake_binary_dir")!=str(cmake_dir) or "-B" not in command
+                            or command.index("-B")+1>=len(command)
+                            or Path(command[command.index("-B")+1]).resolve()!=cmake_dir):
+                        raise ValueError("harness configure receipt does not prove CMake used the fresh target directory")
+                elif gate_name=="integration-target-build":
+                    if (binding.get("cmake_binary_dir")!=str(cmake_dir) or "--build" not in command
+                            or command.index("--build")+1>=len(command)
+                            or Path(command[command.index("--build")+1]).resolve()!=cmake_dir):
+                        raise ValueError("integration build receipt does not prove CMake built in the fresh target directory")
+                elif gate_name in {"nonzero-ctest-discovery","T014e2s-serial"}:
+                    if (binding.get("cmake_binary_dir")!=str(cmake_dir) or "--test-dir" not in command
+                            or command.index("--test-dir")+1>=len(command)
+                            or Path(command[command.index("--test-dir")+1]).resolve()!=cmake_dir):
+                        raise ValueError(f"{gate_name}: CTest receipt does not prove it used the fresh target directory")
+                if gate_name in {"exact-source-release-engine-build","public-page-host-harness-configure","integration-target-build","T014e2s-serial"} and receipt.get("qt_include_guard")!="clear":
+                    raise ValueError(f"{gate_name}: strict Qt include guard did not remain clear")
+                if gate_name=="nonzero-ctest-discovery":
+                    if (gate.get("registered_tests",0)<=0 or gate.get("T014e2s_registered") is not True
+                            or not re.search(r"Total Tests:\s*[1-9][0-9]*",log_text)
+                            or not re.search(r"Test\s+#\d+:\s*T014e2s(?:\s|$)",log_text)):
+                        raise ValueError("discovery receipt does not prove a nonzero CTest inventory containing T014e2s")
+                if gate_name=="T014e2s-serial":
+                    command_text=" ".join(str(arg) for arg in command)
+                    selector=None
+                    for option in ("--tests-regex","-R"):
+                        if option in command:
+                            position=command.index(option)
+                            if position+1<len(command):selector=command[position+1]
+                            break
+                    target_option=(command.index("--test-dir")+1 if "--test-dir" in command
+                                   and command.index("--test-dir")+1<len(command) else None)
+                    if (gate.get("test_id")!="T014e2s" or gate.get("run_count")!=1
+                            or gate.get("failed")!=0 or gate.get("skipped")!=0 or gate.get("parallelism")!=1
+                            or receipt.get("require_tests") is not True or receipt.get("observed_test_summary_count",0)<=0
+                            or receipt.get("observed_skips")!=0 or receipt.get("observed_failed",0)!=0
+                            or selector!="^T014e2s$" or target_option is None
+                            or Path(command[target_option]).resolve()!=(target_dir/"cmake").resolve()
+                            or "--repeat" in command or "T014e2" in command_text.replace("T014e2s", "")
+                            or not re.search(r"(?:--parallel(?:\s+|=)1|(?:^|\s)-j1(?:\s|$))",command_text)):
+                        raise ValueError("serial gate does not prove one isolated T014e2s run with zero skips")
+                    if (not re.search(r"1/1\s+Test\s+#\d+:\s*T014e2s\s+Passed",log_text)
+                            or not re.search(r"100% tests passed, 0 tests failed out of 1",log_text)):
+                        raise ValueError("serial gate output does not show the single T014e2s case passed")
+        discovery=review_gates[5]
+        test_gate=review_gates[6]
+        if (discovery.get("T014e2s_registered") is not True or discovery.get("registered_tests",0)<=0):
+            raise ValueError("gate-evidence review does not prove nonzero T014e2s discovery")
+        if (test_gate.get("test_id")!="T014e2s" or test_gate.get("executed_test_count")!=1
+                or test_gate.get("skips")!=0 or test_gate.get("failures")!=0
+                or test_gate.get("parallelism")!=1):
+            raise ValueError("gate-evidence review does not accept one serial T014e2s run with zero skips")
+        monitor=run.get("live_process_monitor",{})
+        monitor_path=safe_relative(root,monitor.get("path",""))
+        if monitor.get("result")!="clear" or digest(monitor_path)!=monitor.get("sha256"):
+            raise ValueError("live compiler-process monitor is missing, uncleared, or has a digest mismatch")
+        monitor_record=load(monitor_path)
+        if (monitor_record.get("result")!="clear" or monitor_record.get("source_sha")!=source_sha
+                or monitor_record.get("source_tree")!=source_tree or monitor_record.get("attempt")!=attempt
+                or monitor_record.get("artifact")!=target_dir.name):
+            raise ValueError("live compiler-process monitor is not bound to the exact candidate and target")
+        closure_path=safe_relative(root,evidence["lease_closure"])
+        if digest(closure_path)!=evidence["lease_closure_sha256"]:raise ValueError("lease-closure digest mismatch")
+        closure=load(closure_path)
+        if (closure.get("artifact")!=target_dir.name or closure.get("source_sha")!=source_sha
+                or closure.get("source_tree")!=source_tree or closure.get("attempt")!=attempt
+                or closure.get("live_process_monitor")!=monitor.get("path")
+                or closure.get("live_process_monitor_sha256")!=monitor.get("sha256")
+                or closure.get("active_lock_released") is not True
+                or closure.get("active_build_processes_remaining")!=[]):
+            raise ValueError("A52 native lease is not fully closed")
+        summary=review.get("run_and_closure",{})
+        if (summary.get("target")!=target or summary.get("all_commands_passed") is not True or summary.get("lease_released") is not True
+                or summary.get("active_build_processes_remaining")!=[]
+                or summary.get("old_T014e2_rerun") is not False
+                or summary.get("old_T014e2r_ran") is not False
+                or summary.get("other_product_tests_run") not in (False,[])):
+            raise ValueError("gate review omits closure or old-test execution prohibitions")
+    except (OSError,KeyError,TypeError,ValueError,AttributeError,IndexError) as exc:
+        errors.append(f"F02e2s: {exc}")
+    return errors
+
 def validate_state(plan,state_path,strict=False,pack=PACK):
     errors=[]
     try:
@@ -1081,20 +1491,31 @@ def validate_state(plan,state_path,strict=False,pack=PACK):
         errors+=validate_source_attempt_extension_A48(plan,pack)
         errors+=validate_harness_prerequisite_split_A49(plan,pack)
         errors+=validate_successor_recovery_A50(plan,pack)
+        errors+=validate_successor_recovery_A52(plan,pack)
         errors+=validate_continuation_A51(plan,pack)
         errors+=validate_continuation_state_A51(state,root)
-        errors+=validate_supersession_state(plan,state,strict)
+        errors+=validate_supersession_state(plan,state,strict,state_path.name=="state.initial.json")
         if state.get("run_id") is not None:
             parent_state=state["slices"].get("F02e2",{})
             successor_state=state["slices"].get("F02e2r",{})
+            current_successor=state["slices"].get("F02e2s",{}) if plan.get("successor_recovery_A52") is not None else successor_state
             if parent_state.get("status") not in {"failed","superseded"} or parent_state.get("attempts")!=6:
                 errors.append("F02e2: A49/A50 require the parent failure and 6/6 history to remain visible")
-            if parent_state.get("status")=="failed" and successor_state.get("status")=="accepted":
-                errors.append("F02e2: transition to workflow-superseded after F02e2r acceptance")
-            if parent_state.get("status")=="superseded" and successor_state.get("status")!="accepted":
-                errors.append("F02e2: cannot supersede the failed parent before F02e2r acceptance")
-            if state["slices"].get("F02e3",{}).get("status")=="accepted" and successor_state.get("status")!="accepted":
-                errors.append("F02e3: cannot be accepted before successor F02e2r")
+            if plan.get("successor_recovery_A52") is not None:
+                if successor_state.get("attempts")!=3 or successor_state.get("A51_continuation",{}).get("result")!="failed":
+                    errors.append("F02e2r: A52 requires the immutable failed 3/3 A51 continuation record")
+                for sid in ("F02e2","F02e2r"):
+                    if state["slices"].get(sid,{}).get("status")=="superseded" and current_successor.get("status")!="accepted":
+                        errors.append(f"{sid}: cannot supersede before F02e2s acceptance")
+                if state["slices"].get("F02e3",{}).get("status")=="accepted" and current_successor.get("status")!="accepted":
+                    errors.append("F02e3: cannot be accepted before successor F02e2s")
+            else:
+                if parent_state.get("status")=="failed" and successor_state.get("status")=="accepted":
+                    errors.append("F02e2: transition to workflow-superseded after F02e2r acceptance")
+                if parent_state.get("status")=="superseded" and successor_state.get("status")!="accepted":
+                    errors.append("F02e2: cannot supersede the failed parent before F02e2r acceptance")
+                if state["slices"].get("F02e3",{}).get("status")=="accepted" and successor_state.get("status")!="accepted":
+                    errors.append("F02e3: cannot be accepted before successor F02e2r")
         for sid,t in tasks.items():
             s=state["slices"][sid]
             if s["status"] not in STATUSES:errors.append(f"{sid}: invalid status")
@@ -1106,6 +1527,7 @@ def validate_state(plan,state_path,strict=False,pack=PACK):
             if s["status"]=="accepted":
                 if any(state["slices"][d]["status"]!="accepted" for d in t["depends_on"]):errors.append(f"{sid}: unaccepted dependency")
                 errors+=validate_acceptance(t,s,root,tests)
+                errors+=validate_acceptance_A52(t,s,root)
             elif s["status"]=="superseded":
                 continue
             elif strict:errors.append(f"{sid}: not accepted ({s['status']})")

@@ -1,6 +1,6 @@
 # Dependency-ordered work inventory
 
-95 execution-plan entries (84 work slices plus 11 coordinator aggregates) and 183 acceptance cases. Mutable execution status is recorded in the external run ledger. A49 adds F02e2q as a separate static QML-registration prerequisite. A50 adds F02e2r as a separately reviewed successor for full page reparenting; A51 permits only a supplemental continuation of A3’s unrun T014e2r gates. F02e2 remains failed at 6/6 until F02e2r is accepted.
+96 execution-plan entries (85 work slices plus 11 coordinator aggregates) and 184 acceptance cases. Mutable execution status is recorded in the external run ledger. A49 adds F02e2q as a separate static QML-registration prerequisite. A50/A51 retain F02e2r and its failed continuation as immutable history; A52 adds F02e2s as the reviewed recovery with production-driven profile bootstrap. F02e2 and F02e2r remain failed until F02e2s passes T014e2s and receives independent evidence review.
 
 | ID | Outcome | Depends on |
 |---|---|---|
@@ -91,11 +91,12 @@
 | F02e1 | Implement public profile and page ownership | F02e0 |
 | F02e2 | Implement Widgets host with embedded QML chrome | F02e1 |
 | F02e2q | Qualify static CXX-Qt QML registration in a standalone public-page-host harness | F02e1 |
-| F02e2r | Qualify full page reparenting through initialized QML harness | F02e1, F02e2q |
-| F02e3 | Adapt navigation and isolated scripts to public pages | F02e2r |
+| F02e2r | Historical A50/A51 full page reparenting successor (failed) | F02e1, F02e2q |
+| F02e2s | Qualify page reparenting with production-driven profile bootstrap | F02e1, F02e2q |
+| F02e3 | Adapt navigation and isolated scripts to public pages | F02e2s |
 | F02e4 | Adapt profile services and page-owned prompts | F02e3 |
 | F02e5 | Adapt native input and auxiliary page UI | F02e4 |
 | F02e6 | Connect primary composition and profile factories | F02e5 |
 | F02e7 | Connect secondary windows and real popup adoption | F02e6 |
 | F02e8 | Qualify production public-host replacement and retire leases | F02e7 |
-| F02e | Aggregate public page-host migration and qualification | F02e0, F02e1, F02e2r, F02e3, F02e4, F02e5, F02e6, F02e7, F02e8 |
+| F02e | Aggregate public page-host migration and qualification | F02e0, F02e1, F02e2s, F02e3, F02e4, F02e5, F02e6, F02e7, F02e8 |

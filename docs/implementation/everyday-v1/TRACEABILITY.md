@@ -38,7 +38,7 @@ A36: P05b1 adds T061b UNIT and T061c COMPONENT for strict non-admission decoder/
 
 ## A37 recovery mappings
 
-- EF-F02: F02e0 native feasibility → F02e1 component ownership → F02e2r full page-host reparent qualification → F02e3–F02e8 application migration/integration → F02e aggregate → original F02b2a/T014a qualification. T014c/F02c and T014d/F02d remain historical, replaced by T014e1/F02e1 and T014e8/F02e8. A49 F02e2q/T014e2q proves only static QML registration. A50 keeps F02e2/T014e2's A48 failure immutable; A51 permits only the exact A3 T014e2r continuation and F02e3 waits for accepted F02e2r.
+- EF-F02: F02e0 native feasibility → F02e1 component ownership → F02e2s/T014e2s full page-host reparent qualification with production-driven profile bootstrap → F02e3–F02e8 application migration/integration → F02e aggregate → original F02b2a/T014a qualification. T014c/F02c and T014d/F02d remain historical, replaced by T014e1/F02e1 and T014e8/F02e8. A49 F02e2q/T014e2q proves only static QML registration. A50/A51 preserve failed F02e2/T014e2 and F02e2r/T014e2r records; A52 keeps both tasks failed and F02e3 blocked until F02e2s passes and receives independent evidence review.
 - EF-P00 and EF-W01 retain original cases; only P00a/W01b gain explicit attempt4.
 - EF-H06/T045: single-machine native qualification by user decision; numerical thresholds unchanged.
 - EF-P03: production bridge targets accepted public-page owner. Physical-phone, security review and full feature delivery remain required.

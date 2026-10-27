@@ -4556,6 +4556,82 @@
       "independent_gate_evidence_review_required": true,
       "F02e2_remains_failed_until_F02e2r_acceptance": true,
       "F02e3_remains_blocked_until_F02e2r_acceptance": true
+    },
+    {
+      "id": "A52",
+      "reason": "A51 T014e2r failed its combined profile-readiness condition. A fresh successor drives the poll_config() work used by production and preserves both exhausted histories.",
+      "added_paths": [],
+      "removed_paths": [],
+      "added_locks": [],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "path_owners": {
+        "F02e2s": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "max_changed_product_files": 10,
+      "previous_max_changed_product_files": 10,
+      "base_sha": "eb6ff74ad7134ff6fb5a2e934e08fd3f22a777a9",
+      "base_tree": "42b809fee461d7a555b79f953fe1c56d6c1a0845",
+      "attempt_limit": 3,
+      "successor_test": "T014e2s",
+      "old_tests_execution_authorized": false,
+      "pump_contract": {
+        "both_BrowserUi_instances": true,
+        "operation": "BrowserUi::poll_config()",
+        "bounded": true,
+        "stops_before_destruction": true
+      },
+      "preserved_failures": {
+        "F02e2": "A48 failed 6/6",
+        "F02e2r": "A50 attempt 3/3 and A51 continuation failed"
+      },
+      "supersession": {
+        "F02e2": "F02e2s",
+        "F02e2r": "F02e2s",
+        "T014e2": "T014e2s",
+        "T014e2r": "T014e2s",
+        "only_after_independent_T014e2s_gate_review": true
+      },
+      "downstream_dependencies": {
+        "F02e3": [
+          "F02e2s"
+        ],
+        "F02e": [
+          "F02e0",
+          "F02e1",
+          "F02e2s",
+          "F02e3",
+          "F02e4",
+          "F02e5",
+          "F02e6",
+          "F02e7",
+          "F02e8"
+        ]
+      },
+      "native_gate_sequence": [
+        "read-only-sdk-selection-preflight",
+        "exact-source-release-engine-build",
+        "public-page-host-harness-configure",
+        "integration-target-build",
+        "robust-executable-link-order-verification",
+        "nonzero-ctest-discovery",
+        "T014e2s-serial"
+      ]
     }
   ]
 }

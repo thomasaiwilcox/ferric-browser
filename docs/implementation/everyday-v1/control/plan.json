@@ -676,7 +676,7 @@
       "allowed_paths": [],
       "steps": [
         "Coordinator-only no-code qualification; do not dispatch another F02b2a implementation attempt. Preserve original implemented_unqualified3/3 status, candidates, failed receipts and root-cause evidence until new dependency repair is accepted.",
-        "A37: F02e0\u2013F02e8 own the public page-host prototype, ownership, production migration and fresh replacement qualification. Historical F02c/F02d receipts cannot satisfy these outcomes.",
+        "A37: F02e0–F02e8 own the public page-host prototype, ownership, production migration and fresh replacement qualification. Historical F02c/F02d receipts cannot satisfy these outcomes.",
         "After the F02e replacement aggregate is independently accepted, run original exact CTest everyday_T014a_popup_commands_opener_identity on current production source, adapting only implementation-specific harness details and preserving behavior assertions. Do not increment/reset the exhausted implementation counter.",
         "Independently review source-dependency equivalence and the exact zero-skip T014a runtime receipt; only that new qualification can accept this original behavior. F02b2b remains gated until it passes."
       ],
@@ -1471,7 +1471,7 @@
         "Build a narrow public-API proof on qualified Qt 6.11.2 WebEngine/WebChannel that isolates a dedicated transport from ordinary page and script worlds.",
         "Prove that main-frame origin/context facts are obtained from native trusted frame/document facts rather than page claims, and bind each challenge/lease to the current document.",
         "Exercise hostile MainWorld/ApplicationWorld access and subframe probes. Use no real authenticator material and add no production WebChannel wiring, scheme or console fallback.",
-        "Resolve compile/setup issues only within this child\u2019s five existing paths so the registered T046 application proof can run; preserve zero-skip evidence."
+        "Resolve compile/setup issues only within this child’s five existing paths so the registered T046 application proof can run; preserve zero-skip evidence."
       ],
       "kind": "proof",
       "locks": [
@@ -3872,7 +3872,7 @@
         "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt"
       ],
       "steps": [
-        "Cover mode \u00d7 hot on/off \u00d7 phone on/off with actual production owners and realistic asynchronous scheduling.",
+        "Cover mode × hot on/off × phone on/off with actual production owners and realistic asynchronous scheduling.",
         "Run credential request from a freshly adopted page, concurrent windows, renderer loss, config/profile changes and shutdown.",
         "Combine popup opening, background grouping and transfer-reserve allocation without confusing the three kinds of prepared resources.",
         "Keep privacy, history, native search, focus and accepted storage-work assertions visible across the matrix."
@@ -4124,7 +4124,7 @@
       "steps": [
         "Follow RESOURCE_POLICY dry run; retain source/commits/evidence and delete only inactive explicitly owned build products.",
         "Rebuild from accepted source/lockfiles with correct native dependencies and no stale static library.",
-        "Prove no dependence on another worktree build, user\u2019s caches/profile or hidden fixture state.",
+        "Prove no dependence on another worktree build, user’s caches/profile or hidden fixture state.",
         "Record storage/inode/Btrfs metadata observations where available; never run balance/delete snapshots automatically."
       ],
       "kind": "verification",
@@ -4366,9 +4366,9 @@
       ],
       "parent_id": "F02e",
       "superseded_by": [
-        "F02e2r"
+        "F02e2s"
       ],
-      "amendment": "A50"
+      "amendment": "A52"
     },
     {
       "id": "F02e2q",
@@ -4480,6 +4480,82 @@
         "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
         "crates/ferric-browser-engine-qt/tests/portal/tst_browser_file_choosers.cpp"
       ],
+      "parent_id": "F02e",
+      "superseded_by": [
+        "F02e2s"
+      ],
+      "amendment": "A52"
+    },
+    {
+      "id": "F02e2s",
+      "title": "Qualify page reparenting with production-driven profile bootstrap",
+      "lane": "presentation",
+      "depends_on": [
+        "F02e1",
+        "F02e2q"
+      ],
+      "contracts": [
+        "C00",
+        "C01",
+        "C02",
+        "C14"
+      ],
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/public_page_host.h",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+      ],
+      "steps": [
+        "Reapply the independently source-reviewed A50 page-host implementation as a fresh candidate based on the current integration SHA eb6ff74ad7134ff6fb5a2e934e08fd3f22a777a9 / tree 42b809fee461d7a555b79f953fe1c56d6c1a0845. Do not use the failed F02e2r candidate commit as the task base.",
+        "Add a distinct T014e2s slot and CTest registration. Keep the original T014e2 and successor T014e2r registrations and their historical results intact except for direct superseded_by mappings to T014e2s. Never run either old CTest ID or QtTest slot.",
+        "Drive asynchronous profile bootstrap for both BrowserUi instances created by the retained integration body, including the later-created foreign-profile UI. Give each UI a scoped bounded QTimer/event-loop pump invoking existing BrowserUi::poll_config(); stop and disconnect each pump before its corresponding BrowserUi is destroyed.",
+        "Do not set readiness properties, forge profile IDs, insert tabs, or bypass privacy/profile/owner validation. On timeout, report each UI’s poll invocation result, profile ID, tab_count, profile_bootstrap_pending, profile_startup_notice and status_text.",
+        "Preserve every same-page attach/detach, document identity, stale and foreign-owner rejection, focus, geometry, native dialog parent and lifecycle assertion. Do not delete, weaken, or replace the original page-host assertions.",
+        "If root-cause repair requires a product path outside this exact ten-path list, stop and request another independently reviewed amendment before editing."
+      ],
+      "kind": "implementation",
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "recipe": "application",
+      "requirement_id": "EF-F02",
+      "test_ids": [
+        "T014e2s"
+      ],
+      "max_changed_product_files": 10,
+      "path_budget_amendment": "A52",
+      "worker_may_delegate": false,
+      "new_paths_notice": "A52 creates a fresh three-attempt successor after F02e2r exhausted at 3/3. It reuses exactly A44/A50’s ten product paths and four locks; no eleventh path or new lock is allowed. F02e2 (6/6) and F02e2r (3/3) remain failed with A48/A50/A51 evidence immutable until independently reviewed T014e2s acceptance. The old T014e2 and T014e2r entries remain historical and are never executed.",
+      "slice_file": "slices/F02e2s.md",
+      "read_anchors": [
+        "crates/ferric-browser-engine-qt/src/public_page_host.h",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_static_qml_registration.cpp",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "crates/ferric-browser-engine-qt/tests/portal/tst_browser_file_choosers.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricRuntimeController.qml",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "crates/ferric-browser-engine-qt/src/browser_ui_profile_setup.rs"
+      ],
       "parent_id": "F02e"
     },
     {
@@ -4487,7 +4563,7 @@
       "title": "Adapt navigation and isolated scripts to public pages",
       "lane": "presentation",
       "depends_on": [
-        "F02e2r"
+        "F02e2s"
       ],
       "contracts": [
         "C00",
@@ -4538,7 +4614,8 @@
       ],
       "parent_id": "F02e",
       "historical_depends_on": [
-        "F02e2"
+        "F02e2",
+        "F02e2r"
       ]
     },
     {
@@ -4829,7 +4906,7 @@
       "depends_on": [
         "F02e0",
         "F02e1",
-        "F02e2r",
+        "F02e2s",
         "F02e3",
         "F02e4",
         "F02e5",
@@ -4866,7 +4943,11 @@
         "F02a",
         "F02b"
       ],
-      "parent_id": "F02b2a"
+      "parent_id": "F02b2a",
+      "historical_depends_on": [
+        "F02e2",
+        "F02e2r"
+      ]
     }
   ],
   "attempt_exceptions": {
@@ -5261,5 +5342,144 @@
       "T014e2_authorized": false,
       "T014e2r_authorized_after_pack_validation": true
     }
+  },
+  "successor_recovery_A52": {
+    "amendment": "A52",
+    "status": "revision 2 independently accepted",
+    "review_path": "evidence/A52/PLAN_REVIEW-r2_d28.json",
+    "review_sha256": "3bb0e7fb9b4469571b5933c7b69839f5201768d872e0cfad223f1089eb02f6bf",
+    "review_budget_path": "evidence/A52/PLAN_REVIEW_BUDGET-r2_d28.json",
+    "review_budget_sha256": "37018a443696596ac9d38acee51c0045102893c1767c9bc54d87594ae22a9070",
+    "proposal_path": "evidence/A52/PROPOSAL.json",
+    "proposal_sha256": "2bfa722adc314c7a1493cb580f0c09d5437dfa77a97d0d114ed2f5ca0791138d",
+    "packet_path": "packets/F02e2s-A52-profile-bootstrap-pump.md",
+    "packet_sha256": "2cc5e7f6bcbf20bab667a8712b309da00a498d98ba6d4738cd33dcb082a9faee",
+    "prior_request_changes_review": {
+      "path": "evidence/A52/PLAN_REVIEW_d28.json",
+      "sha256": "8b94ae66c55fed56a59d5df43c0477ca174c1a0c9f38a5d50a4b4b8b981c8280"
+    },
+    "failed_A51_trigger": {
+      "slice": "F02e2r",
+      "attempt": 3,
+      "attempt_limit": 3,
+      "attempt_increment": false,
+      "test_id": "T014e2r",
+      "result": "failed",
+      "candidate": {
+        "source_sha": "c6e29480e08f5e7a1ba54319ec2f2fe932d1f366",
+        "source_tree": "f5b7696b1c08d115ba435a521fc2a47fa128f538"
+      },
+      "continuation_path": "evidence/A51/native/NATIVE_CONTINUATION-A51.json",
+      "continuation_sha256": "063b5a7d7983fa416bf9ce199469d580ba4188500e4ad09c5928d8704a6ef3d3",
+      "test_receipt_path": "evidence/A51/native/T014e2r/receipt.json",
+      "test_receipt_sha256": "da9b7b3f9592cd88278ecbad6c193ac28ec3aed9c730b245274ca006c1c4a142",
+      "output_log_path": "evidence/A51/native/T014e2r/output.log",
+      "output_log_sha256": "e6963912f20a9ac31a892aaa9bff99e05aaa5483909c5bc26e82d6127c122d07",
+      "lease_closure_path": "evidence/A51/native/NATIVE_LEASE_CLOSED-A51.json",
+      "lease_closure_sha256": "aee55ef7d9f6fdb2251034e9d5cdb0348194c96005eec61a238ac54b388a5b41",
+      "failed_condition": "Combined readiness check false; preserved output does not isolate profile ID, tab_count, or profile_bootstrap_pending."
+    },
+    "root_cause": {
+      "classification": "source-inspection hypothesis only",
+      "hypothesis": "The standalone integration test may omit the production poll_config() work needed to finish asynchronous profile bootstrap.",
+      "required_diagnostic": "Capture readiness values and startup/status diagnostics separately for both primary and foreign BrowserUi objects."
+    },
+    "terminal_history": {
+      "F02e2": {
+        "status": "failed",
+        "attempts": 6,
+        "attempt_limit": 6,
+        "test_id": "T014e2",
+        "attempt_seven_authorized": false,
+        "old_test_execution_authorized": false,
+        "terminal_failure_sha256": "e6b0695df918b20713c8c86d008e99c1ac3f7a68a8852fea40d37d2fd3ae9eb1"
+      },
+      "F02e2r": {
+        "status": "failed",
+        "attempts": 3,
+        "attempt_limit": 3,
+        "test_id": "T014e2r",
+        "attempt_four_authorized": false,
+        "A50_run_sha256": "69c220a114afb4a05da8dfcf5458292db6d954305cf6900ac4cc8f07111c0906",
+        "A50_closure_sha256": "c6e059a05d0ba4271400c1dbaf4723818f05b7abf0c3901cfc0605954ce48739",
+        "A51_continuation_sha256": "063b5a7d7983fa416bf9ce199469d580ba4188500e4ad09c5928d8704a6ef3d3",
+        "A51_closure_sha256": "aee55ef7d9f6fdb2251034e9d5cdb0348194c96005eec61a238ac54b388a5b41"
+      }
+    },
+    "successor": {
+      "slice": "F02e2s",
+      "test_id": "T014e2s",
+      "dependencies": [
+        "F02e1",
+        "F02e2q"
+      ],
+      "attempt_limit": 3,
+      "base_sha": "eb6ff74ad7134ff6fb5a2e934e08fd3f22a777a9",
+      "base_tree": "42b809fee461d7a555b79f953fe1c56d6c1a0845",
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/public_page_host.h",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+      ],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "max_changed_product_files": 10,
+      "fresh_target_pattern": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2s-aN-qt6112-qmake",
+      "pump_contract": {
+        "both_UIs_required": true,
+        "operation": "BrowserUi::poll_config()",
+        "bounded_timer": true,
+        "stop_and_disconnect_before_each_UI_destroyed": true,
+        "readiness_faked": false
+      },
+      "old_test_execution_authorized": false,
+      "native_gate_sequence": [
+        "read-only-sdk-selection-preflight",
+        "exact-source-release-engine-build",
+        "public-page-host-harness-configure",
+        "integration-target-build",
+        "robust-executable-link-order-verification",
+        "nonzero-ctest-discovery",
+        "T014e2s-serial"
+      ]
+    },
+    "supersession": {
+      "old_slices": [
+        "F02e2",
+        "F02e2r"
+      ],
+      "new_slice": "F02e2s",
+      "old_tests": [
+        "T014e2",
+        "T014e2r"
+      ],
+      "new_test": "T014e2s",
+      "while_pending": "Keep F02e2 failed at 6/6 and F02e2r failed at 3/3 with all A48/A50/A51 evidence unchanged.",
+      "transition": "Only after F02e2s is accepted with an independent review of the exact passing T014e2s run may F02e2 and F02e2r transition to workflow-superseded; keep their terminal failure histories unchanged.",
+      "downstream": "F02e3 and aggregate F02e depend on F02e2s and remain blocked until it is accepted."
+    },
+    "validator_requirements": [
+      "Bind exact F02e2s paths, locks, base, test identity, attempt limit and current downstream dependencies.",
+      "Preserve A48 F02e2 6/6 failure, A50 F02e2r 3/3 failed run/closure, and A51 failed continuation/receipt/closure with exact hashes.",
+      "Reject any attempt counter change, premature old-task supersession, missing historical record, T014e2/T014e2r execution authority, wrong mapping or downstream acceptance.",
+      "Permit accepted F02e2s only with passing exact-source T014e2s evidence and independent gate-evidence review; only then permit both old task statuses to become superseded.",
+      "Keep A51 validation of its failed continuation active even after F02e2r is superseded under A52."
+    ],
+    "plan_tooling_paths": [
+      "tools/common.py",
+      "tools/validate_pack.py",
+      "tools/test_tools.py"
+    ]
   }
 }

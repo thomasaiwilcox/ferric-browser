@@ -5,7 +5,7 @@ import copy,importlib.util,json,os,subprocess,sys,tempfile,unittest
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from common import PACK,CLONE,git,load,write_json,digest,packet,validate_repo,safe_relative,repo_snapshot
+from common import PACK,CLONE,git,load,write_json,digest,packet,validate_repo,safe_relative,repo_snapshot,workspace_root
 import bootstrap,run_gate,cleanup,ready,validate_pack,preflight,qt_include_guard
 
 class TempRepo(unittest.TestCase):
@@ -26,7 +26,16 @@ class StructureTests(unittest.TestCase):
         for task in plan['slices']:
             current=prior.get(task['id'],{'status':'not_started','attempts':0,'author':None,'reviewer':None,'evidence':None,'blocker':None})
             if task.get('superseded_by'):
-                if task['id']=='F02e2' and task.get('amendment')=='A50':
+                if task['id']=='F02e2' and task.get('amendment')=='A52':
+                    current={**current,'status':'failed','attempts':6,
+                             'terminal_failure':validate_pack.A50_TERMINAL_FAILURE.copy(),
+                             'supersession':{'amendment':'A52','superseded_by':['F02e2s'],
+                                             'transition':'pending_successor_acceptance'}}
+                elif task['id']=='F02e2r' and task.get('amendment')=='A52':
+                    current={**current,'status':'failed','attempts':3,
+                             'supersession':{'amendment':'A52','superseded_by':['F02e2s'],
+                                             'transition':'pending_successor_acceptance'}}
+                elif task['id']=='F02e2' and task.get('amendment')=='A50':
                     current={**current,'status':'failed','attempts':6,
                              'terminal_failure':validate_pack.A50_TERMINAL_FAILURE.copy(),
                              'supersession':{'amendment':'A50','superseded_by':['F02e2r'],
@@ -252,14 +261,19 @@ class StructureTests(unittest.TestCase):
     def test_a50_successor_keeps_terminal_parent_closed_until_new_task_accepts(self):
         p=load(PACK/'control/plan.json')
         self.assertEqual(validate_pack.validate_successor_recovery_A50(p,PACK),[])
+        self.assertEqual(validate_pack.validate_successor_recovery_A52(p,PACK),[])
         tasks={t['id']:t for t in p['slices']}
         self.assertEqual(tasks['F02e2']['max_attempts'],6)
-        self.assertEqual(tasks['F02e2']['superseded_by'],['F02e2r'])
+        self.assertEqual(tasks['F02e2']['superseded_by'],['F02e2s'])
         self.assertEqual(tasks['F02e2r']['test_ids'],['T014e2r'])
         self.assertEqual(tasks['F02e2r']['allowed_paths'],validate_pack.A50_F02E2_PATHS_ORDERED)
         self.assertEqual(tasks['F02e2r']['locks'],validate_pack.A44_LOCKS)
-        self.assertEqual(tasks['F02e3']['depends_on'],['F02e2r'])
-        self.assertEqual(tasks['F02e3']['historical_depends_on'],['F02e2'])
+        self.assertEqual(tasks['F02e2r']['superseded_by'],['F02e2s'])
+        self.assertEqual(tasks['F02e2s']['test_ids'],['T014e2s'])
+        self.assertEqual(tasks['F02e2s']['allowed_paths'],validate_pack.A50_F02E2_PATHS_ORDERED)
+        self.assertEqual(tasks['F02e2s']['locks'],validate_pack.A44_LOCKS)
+        self.assertEqual(tasks['F02e3']['depends_on'],['F02e2s'])
+        self.assertEqual(tasks['F02e3']['historical_depends_on'],['F02e2','F02e2r'])
 
         wrong=copy.deepcopy(p)
         next(t for t in wrong['slices'] if t['id']=='F02e2r')['test_ids']=['T014e2']
@@ -345,6 +359,226 @@ class StructureTests(unittest.TestCase):
         self.assertTrue(any('attempt 3/3' in e for e in errors))
         self.assertTrue(any('continuation field attempt' in e for e in errors))
         self.assertTrue(any('product_tests_run' in e for e in errors))
+    def test_a52_preserves_both_failed_histories_and_blocks_early_supersession(self):
+        p=load(PACK/'control/plan.json')
+        prior=load(PACK/'control/state.initial.json')['slices']
+        states={t['id']:copy.deepcopy(prior.get(t['id'],{'status':'not_started','attempts':0})) for t in p['slices']}
+        states['F02e2'].update({'status':'failed','attempts':6,
+            'terminal_failure':validate_pack.A50_TERMINAL_FAILURE.copy(),
+            'supersession':{'amendment':'A52','superseded_by':['F02e2s'],'transition':'pending_successor_acceptance'}})
+        states['F02e2r'].update({'status':'failed','attempts':3,
+            'supersession':{'amendment':'A52','superseded_by':['F02e2s'],'transition':'pending_successor_acceptance'}})
+        state={'slices':states}
+        self.assertEqual(validate_pack.validate_supersession_state(p,state),[])
+        premature=copy.deepcopy(state)
+        for sid in ('F02e2','F02e2r'):
+            premature['slices'][sid]['status']='superseded'
+            premature['slices'][sid]['supersession']['transition']='successor_accepted'
+        self.assertTrue(any('status must remain failed' in e
+                            for e in validate_pack.validate_supersession_state(p,premature)))
+        accepted=copy.deepcopy(state)
+        accepted['slices']['F02e2s']['status']='accepted'
+        for sid in ('F02e2','F02e2r'):
+            accepted['slices'][sid]['status']='superseded'
+            accepted['slices'][sid]['supersession']['transition']='successor_accepted'
+        self.assertEqual(validate_pack.validate_supersession_state(p,accepted),[])
+        changed=copy.deepcopy(state);changed['slices']['F02e2r']['attempts']=4
+        self.assertTrue(any('exhausted attempt count 3/3' in e
+                            for e in validate_pack.validate_supersession_state(p,changed)))
+        wrong=copy.deepcopy(p);next(t for t in wrong['slices'] if t['id']=='F02e2s')['allowed_paths'].append('crates/unauthorized.rs')
+        self.assertTrue(any('F02e2s:' in e for e in validate_pack.validate_successor_recovery_A52(wrong,PACK)))
+        wrong=copy.deepcopy(p);wrong['successor_recovery_A52']['terminal_history']['F02e2r']['A51_continuation_sha256']='0'*64
+        self.assertTrue(any('metadata differs' in e for e in validate_pack.validate_successor_recovery_A52(wrong,PACK)))
+        wrong=copy.deepcopy(p);next(t for t in wrong['slices'] if t['id']=='F02e3')['depends_on']=['F02e2r']
+        self.assertTrue(any('F02e3:' in e for e in validate_pack.validate_successor_recovery_A52(wrong,PACK)))
+
+    def test_a52_old_a51_failure_evidence_remains_valid_after_successor_acceptance(self):
+        root=workspace_root()
+        state=load(root/'control/state.json')
+        old=state['slices']['F02e2r']
+        old['status']='superseded'
+        old['supersession']={'amendment':'A52','superseded_by':['F02e2s'],'transition':'successor_accepted'}
+        state['slices']['F02e2s']={'status':'accepted'}
+        self.assertEqual(validate_pack.validate_continuation_state_A51(state,root),[])
+
+    def test_a52_acceptance_requires_independent_exact_t014e2s_gate_review(self):
+        names=validate_pack.A52_NATIVE_GATE_SEQUENCE
+        source='a'*40;tree='b'*40
+        task=next(t for t in load(PACK/'control/plan.json')['slices'] if t['id']=='F02e2s')
+        record={'status':'accepted','author':'worker','attempts':1,'evidence':'evidence/F02e2s-a1/EVIDENCE.json'}
+
+        def build_case(root):
+            case=root/'evidence/F02e2s-a1';native=case/'native';native.mkdir(parents=True)
+            target_dir=root/'builds/native-F02e2s-a1-qt6112-qmake';target_dir.mkdir(parents=True)
+            target=str(target_dir.resolve())
+            review_path=case/'GATE_EVIDENCE_REVIEW.json';run_path=native/'NATIVE_RUN-A52-a1.json'
+            closure_path=native/'NATIVE_LEASE_CLOSED-A52-a1.json';monitor_path=native/'live-monitor.json'
+            artifacts={}
+            exe=target_dir/'public_page_host_integration_tests';exe.write_bytes(b'fixture executable');exe.chmod(0o755)
+            kf6_library='/runtime/lib/libKF6WindowSystem.so.6.28.0'
+            link=target_dir/'link.txt';link.write_text(f'libferric_browser_engine_qt.a {kf6_library}\n')
+            for index,name in enumerate(names):
+                if name=='read-only-sdk-selection-preflight':
+                    path=case/'native/sdk-preflight.json'
+                    write_json(path,{'result':'passed','exit_code':0,'no_compilation':True,'target':target,'attempt':1,
+                        'source_before':{'candidate':{'sha':source,'tree':tree,'dirty':False}},
+                        'source_after':{'candidate':{'sha':source,'tree':tree,'dirty':False}},
+                        'sdk':{'qt_version':'6.11.2','version':'6.28.0','abi':'Qt_6.11','library':kf6_library}})
+                elif name=='robust-executable-link-order-verification':
+                    path=case/'native/link-order.json'
+                    write_json(path,{'result':'passed','source_sha':source,'source_tree':tree,'target':target,
+                        'checks':{'engine_archive_before_kf6windowsystem':True,'matching_kf6_runtime':True,
+                                  'qt_version':'6.11.2','kf6_window_system_qt_abi':'Qt_6.11',
+                                  'kf6_window_system_library':kf6_library},
+                        'artifacts':{'executable':{'path':str(exe.relative_to(root)),'sha256':digest(exe)},
+                                     'link_command':{'path':str(link.relative_to(root)),'sha256':digest(link)}}})
+                else:
+                    gate_dir=native/f'gate-{index}';gate_dir.mkdir()
+                    log=gate_dir/'output.log'
+                    if name=='nonzero-ctest-discovery':
+                        log.write_text('Test project\n  Test #9: T014e2s\n  Total Tests: 9\n')
+                        command=['ctest','--test-dir',str(target_dir/'cmake'),'-N']
+                    elif name=='T014e2s-serial':
+                        log.write_text('1/1 Test #9: T014e2s Passed\n100% tests passed, 0 tests failed out of 1\n')
+                        command=['ctest','--test-dir',str(target_dir/'cmake'),'--output-on-failure','--parallel','1','--tests-regex','^T014e2s$']
+                    elif name=='exact-source-release-engine-build':
+                        log.write_text('Finished release build\n');command=['cargo','build','--release','--target-dir',str((target_dir/'cargo-target').resolve())]
+                    elif name=='public-page-host-harness-configure':
+                        log.write_text('Configuring harness\n');command=['cmake','-S','tests/public-page-host','-B',str(target_dir/'cmake')]
+                    else:
+                        log.write_text('Built integration target\n');command=['cmake','--build',str(target_dir/'cmake'),'--target','public_page_host_integration_tests']
+                    receipt={'result':'passed','exit_code':0,'timed_out':False,'output_limit_exceeded':False,'observed_failed':0,
+                        'source_before':{'sha':source,'tree':tree,'dirty':False},'source_after':{'sha':source,'tree':tree,'dirty':False},
+                        'log':'output.log','log_sha256':digest(log),'command':command,'qt_include_guard':'clear',
+                        'observed_test_summary_count':1 if name=='T014e2s-serial' else 0,'observed_skips':0,
+                        'native_target':target,'execution_binding':{'native_target':target}}
+                    if name=='exact-source-release-engine-build':
+                        cargo_target=str((target_dir/'cargo-target').resolve())
+                        receipt['execution_binding'].update({'cargo_target_dir':cargo_target,'environment':{'CARGO_TARGET_DIR':cargo_target}})
+                    elif name in {'public-page-host-harness-configure','integration-target-build','nonzero-ctest-discovery','T014e2s-serial'}:
+                        receipt['execution_binding']['cmake_binary_dir']=str((target_dir/'cmake').resolve())
+                    if name=='T014e2s-serial':receipt['require_tests']=True
+                    path=gate_dir/'receipt.json';write_json(path,receipt)
+                artifacts[name]=path
+            gate_records=[];review_gates=[]
+            for index,name in enumerate(names):
+                path=artifacts[name];sha=digest(path)
+                gate={'name':name,'result':'passed','target':target,'receipt':str(path.relative_to(root)),'receipt_sha256':sha}
+                reviewer_gate={'name':name,'decision':'pass','target':target,'receipt':gate['receipt'],'receipt_sha256':sha}
+                if name=='nonzero-ctest-discovery':
+                    gate.update({'registered_tests':9,'T014e2s_registered':True})
+                    reviewer_gate.update({'registered_tests':9,'T014e2s_registered':True})
+                if name=='T014e2s-serial':
+                    gate.update({'test_id':'T014e2s','run_count':1,'failed':0,'skipped':0,'parallelism':1})
+                    reviewer_gate.update({'test_id':'T014e2s','executed_test_count':1,'failures':0,'skips':0,'parallelism':1})
+                gate_records.append(gate);review_gates.append(reviewer_gate)
+            monitor={'result':'clear','source_sha':source,'source_tree':tree,'attempt':1,'artifact':target_dir.name}
+            write_json(monitor_path,monitor)
+            run={'result':'passed','slice':'F02e2s','amendment':'A52','attempt':1,'attempt_limit':3,'source_sha':source,'source_tree':tree,
+                'product_tests_run':['T014e2s'],'target':target,'gates':gate_records,'lease_released':True,
+                'active_build_processes_remaining':[],'live_process_monitor':{'result':'clear','path':str(monitor_path.relative_to(root)),'sha256':digest(monitor_path)}}
+            closure={'artifact':target_dir.name,'source_sha':source,'source_tree':tree,'attempt':1,
+                'live_process_monitor':str(monitor_path.relative_to(root)),'live_process_monitor_sha256':digest(monitor_path),
+                'active_lock_released':True,'active_build_processes_remaining':[]}
+            review={'reviewer':'independent-reviewer','decision':'accept',
+                'candidate':{'slice':'F02e2s','amendment':'A52','attempt':1,'commit':source,'tree':tree},'gates':review_gates,
+                'run_and_closure':{'target':target,'all_commands_passed':True,'lease_released':True,
+                    'active_build_processes_remaining':[],'old_T014e2_rerun':False,'old_T014e2r_ran':False,'other_product_tests_run':False}}
+            write_json(run_path,run);write_json(closure_path,closure);write_json(review_path,review)
+            evidence_path=case/'EVIDENCE.json'
+            evidence={'source_sha':source,'source_tree':tree,'reviewer':'independent-reviewer',
+                'gate_evidence_review':'evidence/F02e2s-a1/GATE_EVIDENCE_REVIEW.json','gate_evidence_review_sha256':digest(review_path),
+                'native_run':'evidence/F02e2s-a1/native/NATIVE_RUN-A52-a1.json','native_run_sha256':digest(run_path),
+                'lease_closure':'evidence/F02e2s-a1/native/NATIVE_LEASE_CLOSED-A52-a1.json','lease_closure_sha256':digest(closure_path)}
+            write_json(evidence_path,evidence)
+            return {'root':root,'run':run,'review':review,'closure':closure,'evidence':evidence,'artifacts':artifacts,
+                    'run_path':run_path,'review_path':review_path,'closure_path':closure_path,'evidence_path':evidence_path}
+
+        def seal(case):
+            for gate,review_gate in zip(case['run']['gates'],case['review']['gates']):
+                path=safe_relative(case['root'],gate['receipt']);sha=digest(path)
+                gate['receipt_sha256']=sha;review_gate['receipt_sha256']=sha
+            write_json(case['run_path'],case['run']);write_json(case['closure_path'],case['closure'])
+            write_json(case['review_path'],case['review'])
+            case['evidence']['native_run_sha256']=digest(case['run_path'])
+            case['evidence']['lease_closure_sha256']=digest(case['closure_path'])
+            case['evidence']['gate_evidence_review_sha256']=digest(case['review_path'])
+            write_json(case['evidence_path'],case['evidence'])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case=build_case(Path(tmp))
+            self.assertEqual(validate_pack.validate_acceptance_A52(task,record,case['root']),[])
+
+        for name in names:
+            for mutation in ('missing gate','failed gate','missing receipt','wrong receipt artifact','wrong source'):
+                with self.subTest(gate=name,mutation=mutation), tempfile.TemporaryDirectory() as tmp:
+                    case=build_case(Path(tmp));index=names.index(name);gate=case['run']['gates'][index]
+                    receipt_path=safe_relative(case['root'],gate['receipt'])
+                    if mutation=='missing gate':
+                        case['run']['gates'].pop(index);case['review']['gates'].pop(index)
+                    elif mutation=='failed gate':
+                        gate['result']='failed';case['review']['gates'][index]['decision']='fail'
+                    elif mutation=='missing receipt':receipt_path.unlink()
+                    elif mutation=='wrong receipt artifact':
+                        receipt_path.write_bytes(receipt_path.read_bytes()+b' tampered')
+                    else:
+                        receipt=load(receipt_path)
+                        if name=='robust-executable-link-order-verification':receipt['source_sha']='c'*40
+                        elif name=='read-only-sdk-selection-preflight':receipt['source_before']['candidate']['sha']='c'*40
+                        else:receipt['source_before']['sha']='c'*40
+                        write_json(receipt_path,receipt);seal(case)
+                    if mutation in {'missing gate','failed gate','wrong source'}:seal(case)
+                    errors=validate_pack.validate_acceptance_A52(task,record,case['root'])
+                    self.assertTrue(errors, f'{name} accepted with {mutation}')
+
+        for name in names[1:4]+names[5:]:
+            for mutation in ('wrong target binding','wrong invocation target'):
+                with self.subTest(gate=name,mutation=mutation), tempfile.TemporaryDirectory() as tmp:
+                    case=build_case(Path(tmp));receipt_path=case['artifacts'][name];receipt=load(receipt_path)
+                    other=str((case['root']/'builds/other-target').resolve())
+                    if mutation=='wrong target binding':
+                        receipt['native_target']=other
+                    else:
+                        command=receipt['command']
+                        if name=='exact-source-release-engine-build':
+                            command[command.index('--target-dir')+1]=str((Path(other)/'cargo-target').resolve())
+                        else:
+                            option='-B' if name=='public-page-host-harness-configure' else '--build' if name=='integration-target-build' else '--test-dir'
+                            command[command.index(option)+1]=str((Path(other)/'cmake').resolve())
+                    write_json(receipt_path,receipt);seal(case)
+                    errors=validate_pack.validate_acceptance_A52(task,record,case['root'])
+                    self.assertTrue(errors, f'{name} accepted with {mutation}')
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case=build_case(Path(tmp));receipt_path=case['artifacts']['exact-source-release-engine-build']
+            receipt=load(receipt_path);receipt['execution_binding']['environment']['CARGO_TARGET_DIR']='/tmp/stale-cargo-target'
+            write_json(receipt_path,receipt);seal(case)
+            self.assertTrue(validate_pack.validate_acceptance_A52(task,record,case['root']))
+
+        for mutation in ('misordered actual link command','same-basename foreign KF6 library',
+                         'missing executable artifact','missing link-command artifact','wrong matching library'):
+            with self.subTest(link_artifact=mutation), tempfile.TemporaryDirectory() as tmp:
+                case=build_case(Path(tmp));report_path=case['artifacts']['robust-executable-link-order-verification']
+                report=load(report_path);files=report['artifacts']
+                if mutation=='misordered actual link command':
+                    link_path=safe_relative(case['root'],files['link_command']['path'])
+                    link_path.write_text('/runtime/lib/libKF6WindowSystem.so.6.28.0 libferric_browser_engine_qt.a\n')
+                    files['link_command']['sha256']=digest(link_path);write_json(report_path,report);seal(case)
+                elif mutation=='same-basename foreign KF6 library':
+                    link_path=safe_relative(case['root'],files['link_command']['path'])
+                    link_path.write_text(f"libferric_browser_engine_qt.a /other/lib/libKF6WindowSystem.so.6.28.0\n")
+                    files['link_command']['sha256']=digest(link_path);write_json(report_path,report);seal(case)
+                elif mutation in {'missing executable artifact','missing link-command artifact'}:
+                    name='executable' if mutation=='missing executable artifact' else 'link_command'
+                    safe_relative(case['root'],files[name]['path']).unlink();seal(case)
+                else:
+                    report['checks']['kf6_window_system_library']='/wrong/libKF6WindowSystem.so.6.28.0'
+                    write_json(report_path,report);seal(case)
+                self.assertTrue(validate_pack.validate_acceptance_A52(task,record,case['root']))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case=build_case(Path(tmp));case['review']['reviewer']='worker';seal(case)
+            self.assertTrue(any('independently accept' in e for e in validate_pack.validate_acceptance_A52(task,record,case['root'])))
     def test_a45_native_retry_is_exact_same_source_and_not_attempt6(self):
         p=load(PACK/'control/plan.json')
         self.assertEqual(validate_pack.validate_native_gate_retries(p,PACK),[])
@@ -448,7 +682,7 @@ class StructureTests(unittest.TestCase):
         self.assertEqual(retry['existing_product_locks_unchanged'],['public-page-host','bridge','test-registration','browser-ui-input'])
         a46=p['native_gate_retry_extensions']['F02e2']
         self.assertEqual(a46['same_source_retry_number'],2)
-        manifest_path=PACK.parents[3]/'evidence/A47/NATIVE_COMMANDS-A47-r1.json'
+        manifest_path=workspace_root()/'evidence/A47/NATIVE_COMMANDS-A47-r1.json'
         manifest=load(manifest_path)
         self.assertEqual(manifest['amendment'],'A47');self.assertEqual(manifest['retry_number'],3)
         self.assertEqual(manifest['sdk']['pkg_config_path'],qt_pc)
@@ -457,19 +691,19 @@ class StructureTests(unittest.TestCase):
             env=gate.get('environment',{})
             self.assertEqual(env.get('PKG_CONFIG_PATH'),qt_pc)
             self.assertEqual(env.get('PKG_CONFIG_LIBDIR'),retry['pkg_config_libdir'])
-        versions_receipt=load(PACK.parents[3]/'evidence/A47/pkgconfig-modversions-r1/receipt.json')
-        versions=(PACK.parents[3]/'evidence/A47/pkgconfig-modversions-r1/output.log').read_text().split()
+        versions_receipt=load(workspace_root()/'evidence/A47/pkgconfig-modversions-r1/receipt.json')
+        versions=(workspace_root()/'evidence/A47/pkgconfig-modversions-r1/output.log').read_text().split()
         self.assertEqual(versions_receipt['result'],'passed')
         self.assertEqual(versions,['6.11.2']*4+['6.31.0'])
-        cflags_receipt=load(PACK.parents[3]/'evidence/A47/pkgconfig-cflags-r1/receipt.json')
-        cflags=(PACK.parents[3]/'evidence/A47/pkgconfig-cflags-r1/output.log').read_text().split()
+        cflags_receipt=load(workspace_root()/'evidence/A47/pkgconfig-cflags-r1/receipt.json')
+        cflags=(workspace_root()/'evidence/A47/pkgconfig-cflags-r1/output.log').read_text().split()
         self.assertEqual(cflags_receipt['result'],'passed')
         self.assertTrue(any(x.startswith('-I/usr/include/KF6/KWindowSystem') for x in cflags))
         self.assertTrue(all(not x.startswith('-I') or '/Qt' not in x and '/qt' not in x or x[2:].startswith('/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/') for x in cflags))
         source_map=load(PACK/'control/source-map.execution.json')
         records=[x for x in source_map['execution_amendments'] if x.get('id')=='A47']
         self.assertEqual(len(records),1);self.assertEqual(records[0]['pkg_config_libdir'],retry['pkg_config_libdir'])
-        watcher=PACK.parents[3]/'evidence/A47/watch_qt_includes.py'
+        watcher=workspace_root()/'evidence/A47/watch_qt_includes.py'
         spec=importlib.util.spec_from_file_location('a47_watch_qt_includes',watcher)
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         self.assertIs(module.qt_include_escape,qt_include_guard.qt_include_escape)
@@ -625,7 +859,7 @@ class GateTests(TempRepo):
         self.assertIsNone(qt_include_guard.qt_include_escape(['c++',f'-I{prefix}/include/QtCore','-c','x.cpp'],prefix))
         self.assertIsNone(qt_include_guard.qt_include_escape(['c++',f'-I{wrapper}','-c','x.cpp'],prefix))
     def test_live_process_monitor_uses_shared_qt_classifier(self):
-        watcher=PACK.parents[3]/'evidence/A46/watch_qt_includes.py'
+        watcher=workspace_root()/'evidence/A46/watch_qt_includes.py'
         spec=importlib.util.spec_from_file_location('a46_watch_qt_includes',watcher)
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         self.assertIs(module.qt_include_escape,qt_include_guard.qt_include_escape)

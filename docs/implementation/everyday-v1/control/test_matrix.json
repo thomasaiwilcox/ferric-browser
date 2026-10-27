@@ -1759,7 +1759,7 @@
       "result": "failed",
       "binding": "A48 failed: run evidence/F02e2-a6/native/NATIVE_RUN-A48.json (SHA-256 e6b0695df918b20713c8c86d008e99c1ac3f7a68a8852fea40d37d2fd3ae9eb1); receipt evidence/F02e2-a6/native/T014e2-A48/receipt.json (SHA-256 2e35b498a9a5db8802bac48bf3f28fbfed17ace1ac70810170bcc6bc38d9f32a); CTest exit 8; QtTest 2 passed, 1 failed, 0 skipped; BrowserUi QML registration failed before page-reparent assertions.",
       "superseded_by": [
-        "T014e2r"
+        "T014e2s"
       ]
     },
     {
@@ -1780,7 +1780,10 @@
       "name": "Reparent the same public page across Widgets hosts with initialized QML registration",
       "expected": "Call cxx_qt_init_crate_ferric_browser_engine_qt() after QApplication construction and before QTest/QML use. Run the distinct rustBrowserUiRequestReparentsSamePageAcrossHostsWithInitializer slot with the complete original page-reparent assertion body unchanged: same-page identity, attach/detach, stale and foreign-owner rejection, focus, and safe host replacement. Preserve the old T014e2 registration and failed result; never run T014e2 or its old slot.",
       "result": "not_run",
-      "binding": "Register T014e2r as its own CTest entry invoking only the new QtTest slot; require nonzero discovery, exact-source receipts, one serial execution and zero skips."
+      "binding": "Register T014e2r as its own CTest entry invoking only the new QtTest slot; require nonzero discovery, exact-source receipts, one serial execution and zero skips.",
+      "superseded_by": [
+        "T014e2s"
+      ]
     },
     {
       "id": "T014e3",
@@ -1841,6 +1844,25 @@
       "expected": "Retire obsolete Quick opener lease machinery after production public-host lifecycle tests pass; preserve generic profile drain functionality still used by production. Replace implementation-specific T014d harness with composed public-host assertions: no reload, true closed opener/no navigation, surviving native pointer/keyboard, profile/privacy, renderer replacement and resource drain. Rerun original T013/T014a/T015 behaviors and S01 baseline on the exact integrated production host; no unchanged old-source receipt substitutes for new-host qualification. Document actual public API ownership and rollout; default switch occurs only with all replacement components and full affected regression gates passing. No security, physical-device or numeric threshold waiver.",
       "result": "not_run",
       "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e2s",
+      "slice": "F02e2s",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Reparent the same public page with production-driven bootstrap for both profiles",
+      "expected": "After QApplication construction and CXX-Qt initialization, create the BrowserUi used by the public page-host integration body. Drive asynchronous profile bootstrap for both the primary and later-created foreign BrowserUi through separate bounded, scoped poll_config() timers while the Qt event loop runs; stop/disconnect each timer before destroying its UI. Require a nonempty profile ID, positive tab_count and profile_bootstrap_pending == false for each UI; report profile ID, tab_count, pending, startup notice, status and poll invocation result on timeout. Then exercise the full same-page attach/detach and document-preservation path, stale/foreign owner rejection, focus, geometry, dialog parent identity and lifecycle assertions. Never fake readiness or weaken assertions.",
+      "result": "not_run",
+      "binding": "New A52 successor test. Register T014e2s as a distinct CTest entry invoking only the new QtTest slot. Require exact-source build/configure, integration target build, robust executable/link-order verification, nonzero discovery, one serial run with zero skips, and independent gate-evidence review before acceptance. T014e2 and T014e2r remain historical and execution-prohibited.",
+      "native_gate_sequence": [
+        "read-only-sdk-selection-preflight",
+        "exact-source-release-engine-build",
+        "public-page-host-harness-configure",
+        "integration-target-build",
+        "robust-executable-link-order-verification",
+        "nonzero-ctest-discovery",
+        "T014e2s-serial"
+      ]
     }
   ],
   "note": "Specifications with one receipt-bound historical failure recorded. No case is marked passed at authoring."

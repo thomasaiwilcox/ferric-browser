@@ -9,7 +9,7 @@ CLONE=f"https://github.com/{REPO}.git"
 ATTEMPT_EXCEPTION_AMENDMENTS={"P00a":"A37","W01b":"A37","F02e2":"A48"}
 ATTEMPT_EXCEPTION_LIMITS={"P00a":4,"W01b":4,"F02e2":6}
 ATTEMPT_EXCEPTION_TASKS=set(ATTEMPT_EXCEPTION_AMENDMENTS)
-TASK_SUPERSESSION_AMENDMENTS={"F02e2":"A50"}
+TASK_SUPERSESSION_AMENDMENTS={"F02e2":"A52","F02e2r":"A52"}
 GLOBAL_MAX_ATTEMPTS=3
 def load(path:Path):
     with path.open(encoding="utf-8") as f:return json.load(f)
@@ -67,6 +67,14 @@ def safe_relative(root:Path,value:str):
     return q
 
 def read_plan(path:Path|None=None):return load(path or PACK/"control/plan.json")
+
+def workspace_root(pack:Path|None=None):
+    """Find the external run workspace from either the main checkout or an isolated worktree."""
+    start=(pack or PACK).resolve()
+    for candidate in (start,*start.parents):
+        if all((candidate/name).exists() for name in ("RUN_CONTEXT.json","control","evidence","packets")):
+            return candidate
+    raise FileNotFoundError("Could not locate the Ferric execution workspace above the pack")
 
 def effective_attempt_limit(plan,task):
     """Return only a schema-authorized per-task override; malformed overrides fail closed."""
