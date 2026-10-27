@@ -63,6 +63,7 @@ mod profile_session;
 pub use download_catalog::{
     DownloadFailure, DownloadRetryState, DownloadRow, DownloadSaveFailure, DownloadSessionError,
 };
+pub use profile_session::ProfileInstanceId;
 mod session_download_retries;
 pub use session_download_retries::DownloadRetryPermit;
 mod session_downloads;
@@ -408,6 +409,14 @@ impl BrowserApplication {
     #[must_use]
     pub fn profile_snapshot(&self) -> Option<ProfileSnapshot> {
         self.active_profile.as_ref().map(ActiveProfile::snapshot)
+    }
+
+    /// Returns the opaque identity of the active live profile session.
+    #[must_use]
+    pub fn profile_instance_id(&self) -> Option<ProfileInstanceId> {
+        self.active_profile
+            .as_ref()
+            .map(|profile| profile.session.instance_id())
     }
 
     #[must_use]
@@ -841,6 +850,338 @@ impl BrowserApplication {
 
 #[cfg(test)]
 mod credential_tests;
+
+#[cfg(test)]
+mod profile_instance_identity_tests {
+    use super::*;
+    use ferric_browser_config::PermissionDecision;
+    use ferric_browser_storage::{DownloadRecord, RootSpec, StorageRoots};
+    use std::{collections::hash_map::DefaultHasher, hash::Hasher};
+    use uuid::Uuid;
+
+    fn memory(privacy: PrivacyKind, name: &str) -> ProfileActivation {
+        ProfileActivation {
+            name: name.into(),
+            id: None,
+            privacy,
+            roots: None,
+            lock: None,
+            contexts: None,
+            storage_path: None,
+        }
+    }
+
+    fn durable(id: Uuid, roots: StorageRoots) -> ProfileActivation {
+        ProfileActivation {
+            name: "durable".into(),
+            id: Some(id),
+            privacy: PrivacyKind::Normal,
+            storage_path: Some(roots.state.join("profile.sqlite3")),
+            roots: Some(roots.clone()),
+            lock: None,
+            contexts: None,
+        }
+    }
+
+    #[test]
+    fn profile_instance_identity_shared_live_identity() {
+        let session = profile_session::ProfileSession::new(&memory(PrivacyKind::Normal, "same"));
+        let cloned = session.clone();
+        let first = session.instance_id();
+        assert_eq!(first, cloned.instance_id());
+        assert_eq!(first.to_string(), cloned.instance_id().to_string());
+        let mut left = DefaultHasher::new();
+        let mut right = DefaultHasher::new();
+        std::hash::Hash::hash(&first, &mut left);
+        std::hash::Hash::hash(&cloned.instance_id(), &mut right);
+        assert_eq!(left.finish(), right.finish());
+    }
+
+    #[test]
+    fn profile_instance_identity_independent_memory_identity() {
+        let first = profile_session::ProfileSession::new(&memory(PrivacyKind::Normal, "same"));
+        let second = profile_session::ProfileSession::new(&memory(PrivacyKind::Normal, "same"));
+        assert_ne!(first.instance_id(), second.instance_id());
+    }
+
+    #[test]
+    fn profile_instance_identity_privacy_mode_identity() {
+        let normal = profile_session::ProfileSession::new(&memory(PrivacyKind::Normal, "same"));
+        let private = profile_session::ProfileSession::new(&memory(PrivacyKind::Private, "same"));
+        let ephemeral =
+            profile_session::ProfileSession::new(&memory(PrivacyKind::Ephemeral, "same"));
+        let another_ephemeral =
+            profile_session::ProfileSession::new(&memory(PrivacyKind::Ephemeral, "same"));
+        let cloned_ephemeral = ephemeral.clone();
+        assert_ne!(normal.instance_id(), private.instance_id());
+        assert_ne!(normal.instance_id(), ephemeral.instance_id());
+        assert_ne!(private.instance_id(), ephemeral.instance_id());
+        assert_ne!(ephemeral.instance_id(), another_ephemeral.instance_id());
+        assert_eq!(ephemeral.instance_id(), cloned_ephemeral.instance_id());
+    }
+
+    #[test]
+    fn profile_instance_identity_durable_shared_identity() {
+        let roots = StorageRoots::resolve(RootSpec::Base(
+            std::env::temp_dir().join(format!("ferric-profile-identity-{}", Uuid::new_v4())),
+        ))
+        .expect("durable roots");
+        let activation = durable(Uuid::new_v4(), roots);
+        let first = profile_session::ProfileSession::new(&activation);
+        let second = profile_session::ProfileSession::new(&activation);
+        assert_eq!(first.instance_id(), second.instance_id());
+    }
+
+    #[test]
+    fn profile_instance_identity_different_storage_roots() {
+        let id = Uuid::new_v4();
+        let roots = |label: &str| {
+            StorageRoots::resolve(RootSpec::Base(
+                std::env::temp_dir().join(format!("ferric-{label}-{}", Uuid::new_v4())),
+            ))
+            .expect("durable roots")
+        };
+        let first = profile_session::ProfileSession::new(&durable(id, roots("first")));
+        let second = profile_session::ProfileSession::new(&durable(id, roots("second")));
+        assert_ne!(first.instance_id(), second.instance_id());
+
+        let shared_roots = roots("shared");
+        let same_root_first =
+            profile_session::ProfileSession::new(&durable(id, shared_roots.clone()));
+        let different_id =
+            profile_session::ProfileSession::new(&durable(Uuid::new_v4(), shared_roots));
+        assert_ne!(same_root_first.instance_id(), different_id.instance_id());
+    }
+
+    #[test]
+    fn profile_instance_identity_weak_lifetime_and_renewal() {
+        let activation = memory(PrivacyKind::Private, "private");
+        let mut source = BrowserApplication::new(Config::default());
+        source
+            .activate_profile(memory(PrivacyKind::Private, "private"))
+            .expect("activate private source");
+        let copied_id = source.profile_instance_id().expect("source identity");
+        let weak = Arc::downgrade(&source.active_profile.as_ref().unwrap().session.0);
+        let (runtime, _, _) =
+            ferric_browser_runtime::BrowserRuntime::bootstrap(PrivacyKind::Private, "private")
+                .expect("private child runtime");
+        let mut child = source.inherit_profile(runtime).expect("inherit profile");
+        source
+            .remember_session_permission(
+                "https://identity.example",
+                "camera",
+                &PermissionDecision::Allow,
+            )
+            .expect("remember private grant");
+
+        source.close_profile();
+        assert_eq!(child.profile_instance_id(), Some(copied_id));
+        assert_eq!(
+            child.session_permission("https://identity.example", "camera"),
+            Some(PermissionDecision::Allow)
+        );
+        assert!(
+            weak.upgrade().is_some(),
+            "surviving child must retain the shared session"
+        );
+        child.close_profile();
+        assert!(
+            weak.upgrade().is_none(),
+            "copied identity retained the session"
+        );
+        let mut renewed = BrowserApplication::new(Config::default());
+        renewed
+            .activate_profile(activation)
+            .expect("activate renewed private profile");
+        assert_ne!(Some(copied_id), renewed.profile_instance_id());
+        assert_eq!(
+            renewed.session_permission("https://identity.example", "camera"),
+            None
+        );
+        renewed.close_profile();
+
+        let roots = StorageRoots::resolve(RootSpec::Base(
+            std::env::temp_dir().join(format!("ferric-profile-identity-{}", Uuid::new_v4())),
+        ))
+        .expect("durable roots");
+        let durable_activation = durable(Uuid::new_v4(), roots);
+        let durable_session = profile_session::ProfileSession::new(&durable_activation);
+        let durable_id = durable_session.instance_id();
+        let durable_weak = Arc::downgrade(&durable_session.0);
+        drop(durable_session);
+        assert!(durable_weak.upgrade().is_none());
+        let durable_renewed = profile_session::ProfileSession::new(&durable_activation);
+        assert_ne!(durable_id, durable_renewed.instance_id());
+    }
+
+    #[test]
+    fn profile_instance_identity_application_projection() {
+        let mut application = BrowserApplication::new(Config::default());
+        assert_eq!(application.profile_instance_id(), None);
+        for privacy in [
+            PrivacyKind::Normal,
+            PrivacyKind::Private,
+            PrivacyKind::Ephemeral,
+        ] {
+            application
+                .activate_profile(memory(privacy, "same label"))
+                .expect("activate profile");
+            let snapshot = application.profile_snapshot().expect("profile snapshot");
+            let identity = application
+                .profile_instance_id()
+                .expect("active profile identity");
+            assert_eq!(snapshot.privacy, privacy);
+            assert_eq!(snapshot.id, None);
+            assert_eq!(snapshot.roots, None);
+            assert!(!snapshot.durable);
+            assert_eq!(
+                Some(identity),
+                application
+                    .active_profile
+                    .as_ref()
+                    .map(|profile| profile.session.instance_id())
+            );
+            application.close_profile();
+            assert_eq!(application.profile_instance_id(), None);
+        }
+    }
+
+    #[test]
+    fn profile_instance_identity_persistence_privacy_unchanged() {
+        let roots = StorageRoots::resolve(RootSpec::Base(
+            std::env::temp_dir().join(format!("ferric-profile-identity-{}", Uuid::new_v4())),
+        ))
+        .expect("durable roots");
+        let id = Uuid::new_v4();
+        let durable_activation = durable(id, roots.clone());
+        let durable_session = profile_session::ProfileSession::new(&durable_activation);
+        assert!(matches!(
+            &durable_session.0.scope,
+            profile_session::SessionScope::Durable { id: durable_id, roots: durable_roots }
+                if *durable_id == id && durable_roots == &roots
+        ));
+        let durable_profile = ActiveProfile::activate(1, durable_activation);
+        let durable_snapshot = durable_profile.snapshot();
+        assert_eq!(durable_snapshot.id, Some(id));
+        assert_eq!(durable_snapshot.roots, Some(roots.clone()));
+        assert_eq!(durable_snapshot.privacy, PrivacyKind::Normal);
+        assert!(durable_snapshot.durable);
+
+        let private_session = profile_session::ProfileSession::new(&ProfileActivation {
+            name: "durable".into(),
+            id: Some(id),
+            privacy: PrivacyKind::Private,
+            roots: Some(roots.clone()),
+            storage_path: None,
+            lock: None,
+            contexts: None,
+        });
+        assert!(matches!(
+            &private_session.0.scope,
+            profile_session::SessionScope::Memory(_)
+        ));
+        assert_ne!(durable_session.instance_id(), private_session.instance_id());
+        assert!(durable_session.0.decisions.lock().unwrap().is_empty());
+        assert!(private_session.0.decisions.lock().unwrap().is_empty());
+
+        let private_profile = ActiveProfile::activate(
+            2,
+            ProfileActivation {
+                name: "durable".into(),
+                id: Some(id),
+                privacy: PrivacyKind::Private,
+                roots: Some(roots.clone()),
+                storage_path: None,
+                lock: None,
+                contexts: None,
+            },
+        );
+        let private_snapshot = private_profile.snapshot();
+        assert_eq!(private_snapshot.id, Some(id));
+        assert_eq!(private_snapshot.roots, Some(roots));
+        assert_eq!(private_snapshot.privacy, PrivacyKind::Private);
+        assert!(!private_snapshot.durable);
+
+        // Exercise the same real application owners used by inherited windows:
+        // private grants and active downloads are shared only by the live session.
+        let mut source = BrowserApplication::new(Config::default());
+        source
+            .activate_profile(memory(PrivacyKind::Private, "same label"))
+            .expect("activate private source");
+        let (runtime, _, _) =
+            ferric_browser_runtime::BrowserRuntime::bootstrap(PrivacyKind::Private, "same label")
+                .expect("private child runtime");
+        let mut child = source.inherit_profile(runtime).expect("inherit profile");
+        let mut independent = BrowserApplication::new(Config::default());
+        independent
+            .activate_profile(memory(PrivacyKind::Private, "same label"))
+            .expect("activate independent private profile");
+        let shared_id = source.profile_instance_id().expect("source identity");
+        assert_eq!(Some(shared_id), child.profile_instance_id());
+        assert_ne!(Some(shared_id), independent.profile_instance_id());
+        source
+            .remember_session_permission(
+                "https://identity.example",
+                "camera",
+                &PermissionDecision::Allow,
+            )
+            .expect("remember private grant");
+        assert_eq!(
+            child.session_permission("https://identity.example", "camera"),
+            Some(PermissionDecision::Allow)
+        );
+        assert_eq!(
+            independent.session_permission("https://identity.example", "camera"),
+            None
+        );
+
+        let download_id = Uuid::new_v4();
+        source
+            .offer_session_download(download_id, "https://identity.example/file", "file.bin", 10)
+            .expect("offer private download");
+        assert_eq!(
+            child.update_session_download(
+                &download_id.to_string(),
+                ferric_browser_storage::DownloadState::Cancelled,
+                0,
+                true,
+                None,
+            ),
+            Err(DownloadSessionError::WrongOwner)
+        );
+        source
+            .update_session_download(
+                &download_id.to_string(),
+                ferric_browser_storage::DownloadState::Cancelled,
+                0,
+                true,
+                None,
+            )
+            .expect("update owning download");
+        assert_eq!(
+            source.download_history_status(),
+            DownloadHistoryStatus::NotStored
+        );
+        let mut unrelated_saved = DownloadRecord {
+            id: Uuid::new_v4().to_string(),
+            source_url: "https://identity.example/saved".into(),
+            destination: "/tmp/saved".into(),
+            state: ferric_browser_storage::DownloadState::Completed,
+            bytes_received: 1,
+            created_at: 1,
+            completed_at: Some(2),
+        };
+        unrelated_saved.id = Uuid::new_v4().to_string();
+        let rows = child
+            .session_download_rows(&[unrelated_saved])
+            .expect("private rows");
+        assert_eq!(rows.len(), 1, "private history must ignore saved rows");
+        assert_eq!(rows[0].record.id, download_id.to_string());
+        source.close_profile();
+        child.close_profile();
+        independent.close_profile();
+    }
+}
 
 #[cfg(test)]
 mod tests {
