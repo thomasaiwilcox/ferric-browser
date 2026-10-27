@@ -4331,7 +4331,8 @@
         "Attach/detach the same owned QWebEnginePage for tab/window presentation. Host transfer preserves document state and never recreates a URL or admits a foreign profile.",
         "Expose typed BrowserUi attach/detach operations through the bridge, keyed by opaque host/page-owner tokens and existing TabId plus page/document generation. Validate live owner, profile context and generations in Rust, then reuse existing EngineEffect::ReparentView through the native request lane. Extend that projection to carry captured page/document identity and host/page-owner tokens so stale requests are discarded before C++ resolves tokens and performs QWebEngineView attachment/lifetime work. Reject stale, retired and foreign-profile requests without effects. Do not introduce a new core event/effect or parallel string command channel; if ReparentView cannot safely represent the operation, stop for another reviewed scope correction. Keep lifecycle policy outside QML; exercise focus, scale and safe host replacement.",
         "A46 authorizes one final same-source native retry (retry 2) of the exact accepted A5 SHA/tree after the A45 coordinator false positive; no source changes or attempt 6. Use fresh target native-F02e2-a5-qt6112-qmake-r2, shared tools/qt_include_guard.py in run_gate.py and the A46 process monitor, and exact reviewed tooling scope/cap. Pack/state validation and pinned Qt preflight precede the exclusive native-build lease. Run the exact engine build, existing harness configure/build, nonzero discovery including T014e2, then only T014e2 serially with no skips; any failure closes the lease and ends F02e2 native work.",
-        "A47 authorizes only final same-source retry 3 of the exact A5 SHA/tree after a read-only combined pkg-config diagnostic proves pinned Qt 6.11.2 modules plus KF6WindowSystem >=6.28 resolve correctly. Keep PKG_CONFIG_PATH pinned to Qt and set PKG_CONFIG_LIBDIR to pinned Qt then /usr/lib/pkgconfig:/usr/share/pkgconfig. Use fresh r3 target, existing shared Qt classifier, the exact three-file coordinator/test scope, pack/state validation, and exclusive native-build lease. Run the exact engine build, existing harness configure/build, nonzero T014e2 discovery, then only T014e2 serially with zero skips; any failure closes the lease and ends F02e2 native work, with no retry 4 or attempt 6."
+        "A47 authorizes only final same-source retry 3 of the exact A5 SHA/tree after a read-only combined pkg-config diagnostic proves pinned Qt 6.11.2 modules plus KF6WindowSystem >=6.28 resolve correctly. Keep PKG_CONFIG_PATH pinned to Qt and set PKG_CONFIG_LIBDIR to pinned Qt then /usr/lib/pkgconfig:/usr/share/pkgconfig. Use fresh r3 target, existing shared Qt classifier, the exact three-file coordinator/test scope, pack/state validation, and exclusive native-build lease. Run the exact engine build, existing harness configure/build, nonzero T014e2 discovery, then only T014e2 serially with zero skips; any failure closes the lease and ends F02e2 native work, with no retry 4 or attempt 6.",
+        "A48 is the single final source attempt after A47's integration-target compile failure. From accepted A5 SHA 58c047c04072bb7efa382e3cd7ca65a11da1b117, change only the existing public-page-host integration test translation unit by adding #include <QQuickWidget>; do not change assertions, production code, fixtures, or registration. Obtain fresh independent source acceptance before native work. Any other source change or attempt-6 gate failure ends F02e2; attempt 7 and any retry are prohibited. Run the pinned Qt 6.11.2 engine build, existing harness configure/build, nonzero discovery including only T014e2, then T014e2 serially with zero skips and exact-source evidence under a fresh target."
       ],
       "kind": "implementation",
       "locks": [
@@ -4347,9 +4348,9 @@
       ],
       "max_changed_product_files": 10,
       "path_budget_amendment": "A44",
-      "max_attempts": 5,
+      "max_attempts": 6,
       "worker_may_delegate": false,
-      "new_paths_notice": "A42 retains the original nine paths including engine_requests.rs as path 9. A44 approves exactly browser_ui_input.rs as the tenth product path (path 10) and the browser-ui-input lock; no eleventh path or attempt 6 is authorized.",
+      "new_paths_notice": "A42 retains the original nine paths including engine_requests.rs as path 9. A44 approves exactly browser_ui_input.rs as the tenth product path and the browser-ui-input lock; no eleventh path is authorized. A48 permits only one attempt-6 include change in the already-owned tst_public_page_host_integration.cpp path; no attempt 7 or retry after failure.",
       "slice_file": "slices/F02e2.md",
       "read_anchors": [
         "crates/ferric-browser-engine-qt/src/public_page_host.h",
@@ -4763,10 +4764,10 @@
       "reason": "User-authorized fourth attempt: reconstruct reviewed routing and fix E0716 while preserving accepted W01a/W01c; execute original T104."
     },
     "F02e2": {
-      "amendment": "A44",
+      "amendment": "A48",
       "default_limit": 3,
-      "authorized_limit": 5,
-      "reason": "One final source candidate after A4 passed source review but the pinned build exposed three Rust compile errors, including a ReparentView match in A44 path 10; preserve attempts 1-4 and stop after attempt 5."
+      "authorized_limit": 6,
+      "reason": "A48 authorizes one final source attempt 6 from accepted A5 solely to add the QQuickWidget complete-type include after A47 harness compile failure; preserve attempts 1-5 and stop after any attempt-6 failure with no attempt 7 or retry."
     }
   },
   "native_gate_retries": {
@@ -4880,6 +4881,41 @@
       ],
       "exclusive_native_lock": "control/build-active.lock",
       "only_test_id": "T014e2",
+      "stop_after_any_failure": true
+    }
+  },
+  "source_attempt_extensions_A48": {
+    "F02e2": {
+      "amendment": "A48",
+      "prior_limit": 5,
+      "authorized_limit": 6,
+      "prior_attempts_used": 5,
+      "attempt_number": 6,
+      "base_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "base_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "allowed_source_paths": [
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+      ],
+      "max_source_paths_changed": 1,
+      "allowed_source_change": "add #include <QQuickWidget>",
+      "product_path_cap": 10,
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "attempt_seven_authorized": false,
+      "same_source_retry_after_failure_authorized": false,
+      "native_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a6-qt6112-qmake",
+      "test_id": "T014e2",
+      "tooling_paths": [
+        "docs/implementation/everyday-v1/tools/common.py",
+        "docs/implementation/everyday-v1/tools/validate_pack.py",
+        "docs/implementation/everyday-v1/tools/test_tools.py"
+      ],
+      "tooling_file_cap": 3,
+      "source_review_before_native": true,
       "stop_after_any_failure": true
     }
   }

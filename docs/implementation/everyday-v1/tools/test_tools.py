@@ -187,32 +187,41 @@ class StructureTests(unittest.TestCase):
                 state['slices']['W01b']['attempts']=attempts;write_json(path,state)
                 errors=validate_pack.validate_state(p,path,pack=PACK)
                 self.assertEqual(not any('W01b: attempt limit' in e for e in errors),valid)
-    def test_f02e2_a44_attempt5_exact_exception_and_no_sixth(self):
+    def test_f02e2_a48_final_attempt6_exact_exception_and_no_seventh(self):
         p=load(PACK/'control/plan.json')
         tasks={x['id']:x for x in p['slices']}
         self.assertEqual(p['limits']['max_attempts'],3)
         self.assertEqual(p['attempt_exceptions']['P00a']['amendment'],'A37')
         self.assertEqual(p['attempt_exceptions']['W01b']['amendment'],'A37')
-        self.assertEqual(tasks['F02e2']['max_attempts'],5)
+        self.assertEqual(tasks['F02e2']['max_attempts'],6)
         entry=p['attempt_exceptions']['F02e2']
         self.assertEqual(set(entry),{'amendment','default_limit','authorized_limit','reason'})
-        self.assertEqual(entry['amendment'],'A44')
+        self.assertEqual(entry['amendment'],'A48')
         self.assertEqual(entry['default_limit'],3)
-        self.assertEqual(entry['authorized_limit'],5)
+        self.assertEqual(entry['authorized_limit'],6)
         self.assertTrue(entry['reason'].strip())
         self.assertEqual(validate_pack.validate_attempt_limits(p,tasks),[])
-        for wrong_amendment in ('A37','A42','A43'):
+        for wrong_amendment in ('A37','A42','A44','A47'):
             wrong=json.loads(json.dumps(p))
             wrong['attempt_exceptions']['F02e2']['amendment']=wrong_amendment
-            self.assertTrue(any('F02e2: attempt exception must cite A44' in e for e in validate_pack.validate_attempt_limits(wrong,{x['id']:x for x in wrong['slices']})))
+            self.assertTrue(any('F02e2: attempt exception must cite A48' in e for e in validate_pack.validate_attempt_limits(wrong,{x['id']:x for x in wrong['slices']})))
         amendment=(PACK/'control/AMENDMENTS.md').read_text()
         a43=amendment.split('## A43',1)[1].split('\n## ',1)[0]
         a44=amendment.split('## A44',1)[1].split('\n## ',1)[0]
+        a47=amendment.split('## A47',1)[1].split('\n## ',1)[0]
+        a48=amendment.split('## A48',1)[1].split('\n## ',1)[0]
         self.assertIn('no fifth attempt',a43)
         self.assertIn('attempt 4/4 is exhausted',a44)
+        self.assertIn('attempt 6',a47)
+        self.assertIn('attempt 7',a48.lower())
+        self.assertEqual(validate_pack.validate_source_attempt_extension_A48(p,PACK),[])
+        extension=copy.deepcopy(p);extension['source_attempt_extensions_A48']['F02e2']['attempt_seven_authorized']=True
+        self.assertTrue(any('invalid attempt_seven_authorized' in e for e in validate_pack.validate_source_attempt_extension_A48(extension,PACK)))
+        widened=copy.deepcopy(p);widened['source_attempt_extensions_A48']['F02e2']['allowed_source_paths'].append('crates/example/extra.cpp')
+        self.assertTrue(any('invalid allowed_source_paths' in e for e in validate_pack.validate_source_attempt_extension_A48(widened,PACK)))
         with tempfile.TemporaryDirectory() as tmp:
             state=self.initial_state_for_plan(p);path=Path(tmp)/'control/state.json';path.parent.mkdir()
-            for attempts,valid in ((3,True),(4,True),(5,True),(6,False)):
+            for attempts,valid in ((3,True),(5,True),(6,True),(7,False)):
                 state['slices']['F02e2']['attempts']=attempts;write_json(path,state)
                 errors=validate_pack.validate_state(p,path,pack=PACK)
                 self.assertEqual(not any('F02e2: attempt limit' in e for e in errors),valid)
@@ -272,7 +281,7 @@ class StructureTests(unittest.TestCase):
         missing_task=copy.deepcopy(p)
         missing_task['slices']=[task for task in missing_task['slices'] if task.get('id')!='F02e2']
         errors=validate_pack.validate_native_gate_retries(missing_task,PACK)
-        self.assertTrue(any("retain A44's 5/5" in e for e in errors))
+        self.assertTrue(any("retain A44's historical 5/5" in e for e in errors))
     def test_a46_final_native_retry_scope_is_bounded(self):
         p=load(PACK/'control/plan.json');retry=p['native_gate_retry_extensions']['F02e2']
         expected_paths=[

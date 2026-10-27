@@ -45,6 +45,15 @@ A45_CANDIDATE_SHA="58c047c04072bb7efa382e3cd7ca65a11da1b117"
 A45_CANDIDATE_TREE="f5cc15efd18496bb209d25866d060347157a00bd"
 A45_QT_PREFIX="/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64"
 A45_FRESH_TARGET="/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake"
+A48_BASE_SHA="58c047c04072bb7efa382e3cd7ca65a11da1b117"
+A48_BASE_TREE="f5cc15efd18496bb209d25866d060347157a00bd"
+A48_SOURCE_PATH="crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+A48_NATIVE_TARGET="/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a6-qt6112-qmake"
+A48_TOOLING_PATHS=[
+    "docs/implementation/everyday-v1/tools/common.py",
+    "docs/implementation/everyday-v1/tools/validate_pack.py",
+    "docs/implementation/everyday-v1/tools/test_tools.py",
+]
 SUPERSESSION_AMENDMENT="A37"
 
 def validate_edit_path_budget(task,pack=PACK):
@@ -165,7 +174,7 @@ def validate_attempt_limits(plan,tasks):
     return errors
 
 def validate_native_gate_retries(plan,pack=PACK):
-    """Allow only the accepted A45 same-source Qt selection retry; never a sixth source attempt."""
+    """Validate historical A45-A47 retries; A48 separately authorizes one final source attempt."""
     errors=[]
     if not isinstance(plan,dict):return ["plan must be an object"]
     entries=plan.get("native_gate_retries",{})
@@ -175,8 +184,11 @@ def validate_native_gate_retries(plan,pack=PACK):
         amendments=(pack/"control/AMENDMENTS.md").read_text()
         section=amendments.split("## A45",1)[1].split("\n## ",1)[0]
         accepted_a45=("**Status:** independently reviewed and accepted" in section)
+        a48_section=amendments.split("## A48",1)[1].split("\n## ",1)[0]
+        accepted_a48=("**Status:** independently reviewed and accepted" in a48_section)
     except (IndexError,OSError):
         section=""
+        accepted_a48=False
     if accepted_a45 and "F02e2" not in entries:
         errors.append("F02e2: accepted A45 amendment lacks its exact native-gate retry entry")
     for sid in entries:
@@ -205,9 +217,10 @@ def validate_native_gate_retries(plan,pack=PACK):
     for key,value in expected.items():
         if entry.get(key)!=value:errors.append(f"F02e2: A45 native retry has invalid {key}")
     task=next((t for t in plan.get("slices",[]) if t.get("id")=="F02e2"),None)
-    if (task is None or task.get("max_attempts")!=5 or task.get("path_budget_amendment")!="A44"
+    expected_source_limit=6 if accepted_a48 else 5
+    if (task is None or task.get("max_attempts")!=expected_source_limit or task.get("path_budget_amendment")!="A44"
             or len(task.get("allowed_paths",[]))!=10 or task.get("locks")!=A44_LOCKS):
-        errors.append("F02e2: A45 must retain A44's 5/5 source limit, exact ten paths and four locks")
+        errors.append("F02e2: A45 must retain A44's historical 5/5 source record and exact ten paths/four locks; any sixth attempt requires accepted A48")
     if task is None:return errors
     if ("**Status:** independently reviewed and accepted" not in section
             or "QMAKE" not in section or "attempt 6" not in section):
@@ -258,6 +271,80 @@ def validate_native_gate_retries(plan,pack=PACK):
             errors.append("F02e2: A45 source-map retry record must preserve A44 scope and exact same-source environment exception")
     except (OSError,ValueError,TypeError,AttributeError) as exc:
         errors.append(f"F02e2: cannot validate A45 native retry metadata: {exc}")
+    return errors
+
+def validate_source_attempt_extension_A48(plan,pack=PACK):
+    """Accept exactly one reviewed F02e2 attempt 6 while preserving A47's terminal retry record."""
+    errors=[]
+    try:
+        amendments=(pack/"control/AMENDMENTS.md").read_text()
+        section=amendments.split("## A48",1)[1].split("\n## ",1)[0]
+        accepted=("**Status:** independently reviewed and accepted" in section)
+    except (IndexError,OSError):
+        section="";accepted=False
+    extensions=plan.get("source_attempt_extensions_A48")
+    if not accepted:
+        if extensions is not None:
+            errors.append("F02e2: A48 source-attempt extension requires its accepted amendment record")
+        return errors
+    if not isinstance(extensions,dict) or set(extensions)!={"F02e2"}:
+        return ["F02e2: A48 source-attempt extension is authorized only for F02e2"]
+    record=extensions["F02e2"]
+    expected={
+        "amendment":"A48","prior_limit":5,"authorized_limit":6,
+        "prior_attempts_used":5,"attempt_number":6,
+        "base_sha":A48_BASE_SHA,"base_tree":A48_BASE_TREE,
+        "allowed_source_paths":[A48_SOURCE_PATH],"max_source_paths_changed":1,
+        "allowed_source_change":"add #include <QQuickWidget>",
+        "product_path_cap":10,"locks":A44_LOCKS,
+        "attempt_seven_authorized":False,
+        "same_source_retry_after_failure_authorized":False,
+        "native_target":A48_NATIVE_TARGET,"test_id":"T014e2",
+        "tooling_paths":A48_TOOLING_PATHS,"tooling_file_cap":3,
+        "source_review_before_native":True,"stop_after_any_failure":True,
+    }
+    if not isinstance(record,dict) or set(record)!=set(expected):
+        errors.append("F02e2: A48 source-attempt extension must have exactly the reviewed fields")
+        return errors
+    for key,value in expected.items():
+        if record.get(key)!=value:errors.append(f"F02e2: A48 source-attempt extension has invalid {key}")
+    task=next((t for t in plan.get("slices",[]) if t.get("id")=="F02e2"),None)
+    if (task is None or task.get("max_attempts")!=6 or task.get("path_budget_amendment")!="A44"
+            or task.get("max_changed_product_files")!=10 or task.get("allowed_paths") is None
+            or len(task.get("allowed_paths",[]))!=10 or task.get("locks")!=A44_LOCKS
+            or A48_SOURCE_PATH not in task.get("allowed_paths",[])):
+        errors.append("F02e2: A48 must preserve the exact A44 ten-path/four-lock task and set only the attempt limit to 6")
+    if ("attempt 7" not in section.lower() or "T014e2" not in section
+            or "QQuickWidget" not in section or "zero skips" not in section):
+        errors.append("F02e2: A48 accepted amendment record lacks the exact source repair, terminal limit, or native gate")
+    try:
+        source_map=load(pack/"control/source-map.execution.json")
+        records=[x for x in source_map.get("execution_amendments",[]) if isinstance(x,dict) and x.get("id")=="A48"]
+        if len(records)!=1:
+            errors.append("F02e2: source-map must contain exactly one A48 attempt record")
+        else:
+            a48=records[0]
+            owners=a48.get("path_owners",{}).get("F02e2")
+            if (a48.get("added_paths")!=[] or a48.get("removed_paths")!=[]
+                    or a48.get("added_locks")!=[] or a48.get("locks")!=A44_LOCKS
+                    or owners!=task.get("allowed_paths")
+                    or a48.get("max_changed_product_files")!=10
+                    or a48.get("previous_max_changed_product_files")!=10
+                    or a48.get("source_attempt_count")!=6
+                    or a48.get("previous_source_attempt_limit")!=5
+                    or a48.get("attempt_seven_authorized") is not False
+                    or a48.get("same_source_retry_after_failure_authorized") is not False
+                    or a48.get("candidate_base_sha")!=A48_BASE_SHA
+                    or a48.get("candidate_base_tree")!=A48_BASE_TREE
+                    or a48.get("allowed_source_paths")!=[A48_SOURCE_PATH]
+                    or a48.get("max_source_paths_changed")!=1
+                    or a48.get("allowed_source_change")!="add #include <QQuickWidget>"
+                    or a48.get("native_target")!=A48_NATIVE_TARGET
+                    or a48.get("tooling_paths")!=A48_TOOLING_PATHS
+                    or a48.get("tooling_file_cap")!=3):
+                errors.append("F02e2: A48 source-map record widens the reviewed attempt or path scope")
+    except (OSError,ValueError,TypeError,AttributeError) as exc:
+        errors.append(f"F02e2: cannot validate A48 source-map metadata: {exc}")
     return errors
 
 def validate_supersession_structure(tasks,tests):
@@ -373,6 +460,7 @@ def validate_structure(pack=PACK,plan=None):
         if len(set(testids))!=len(testids):errors.append("Duplicate test IDs")
         errors+=validate_attempt_limits(plan,tasks)
         errors+=validate_native_gate_retries(plan,pack)
+        errors+=validate_source_attempt_extension_A48(plan,pack)
         errors+=validate_supersession_structure(tasks,tests)
         reqids=[r["id"] for r in reqs]
         if len(set(reqids))!=len(reqids):errors.append("Duplicate requirement IDs")
@@ -480,6 +568,7 @@ def validate_state(plan,state_path,strict=False,pack=PACK):
         tasks={x["id"]:x for x in plan["slices"]}
         if set(state["slices"])!=set(tasks):raise ValueError("State task inventory differs from plan")
         errors+=validate_attempt_limits(plan,tasks)
+        errors+=validate_source_attempt_extension_A48(plan,pack)
         errors+=validate_supersession_state(plan,state,strict)
         for sid,t in tasks.items():
             s=state["slices"][sid]

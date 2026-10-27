@@ -4303,6 +4303,59 @@
       "required_test_suite": "docs/implementation/everyday-v1/tools/test_tools.py",
       "only_test_id": "T014e2",
       "preserved": "A45/A46 outcomes and evidence, exact A5 candidate, source count 5/5, ten product paths/four locks, global attempt default 3, no retry 4/attempt 6."
+    },
+    {
+      "id": "A48",
+      "reason": "A47 built the accepted F02e2 engine and configured the harness, then the integration target failed on incomplete QQuickWidget uses in the already-owned test translation unit; permit one narrow include-only source attempt.",
+      "source_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "source_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "added_paths": [],
+      "removed_paths": [],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "added_locks": [],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "max_changed_product_files": 10,
+      "previous_max_changed_product_files": 10,
+      "source_attempt_count": 6,
+      "previous_source_attempt_limit": 5,
+      "candidate_base_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "candidate_base_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "allowed_source_paths": [
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+      ],
+      "max_source_paths_changed": 1,
+      "allowed_source_change": "add #include <QQuickWidget>",
+      "attempt_seven_authorized": false,
+      "same_source_retry_after_failure_authorized": false,
+      "native_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a6-qt6112-qmake",
+      "tooling_paths": [
+        "docs/implementation/everyday-v1/tools/common.py",
+        "docs/implementation/everyday-v1/tools/validate_pack.py",
+        "docs/implementation/everyday-v1/tools/test_tools.py"
+      ],
+      "tooling_file_cap": 3,
+      "test_id": "T014e2",
+      "required_source_review_before_native": true,
+      "stop_after_any_failure": true,
+      "preserved": "A37/A42/A43/A44/A45/A46/A47 records and evidence; global max_attempts 3; exact A5 source review; A47 retry 3 consumed; ten product paths/four locks; no attempt 7 or retry after attempt 6."
     }
   ]
 }
