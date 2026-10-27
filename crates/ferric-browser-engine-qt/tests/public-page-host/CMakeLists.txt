@@ -48,6 +48,17 @@ if(BUILD_TESTING)
     set_tests_properties(T014e1_public_page_owner PROPERTIES
         TIMEOUT 180 LABELS "component;webengine")
 
+    add_executable(static_qml_registration_tests tst_static_qml_registration.cpp)
+    target_link_libraries(static_qml_registration_tests PRIVATE
+        "${FERRIC_ENGINE_LIBRARY}"
+        SQLite::SQLite3
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickControls2
+        Qt6::QuickWidgets Qt6::Network Qt6::DBus
+        Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::WebEngineWidgets Qt6::Test)
+    add_test(NAME T014e2q COMMAND static_qml_registration_tests)
+    set_tests_properties(T014e2q PROPERTIES
+        TIMEOUT 90 LABELS "component;qml")
+
     set_tests_properties(public_page_host_native_input PROPERTIES
         LABELS "native;wayland"
         TIMEOUT 45)
