@@ -54,7 +54,9 @@
     "source_review": "evidence/F02e2i-a4/SOURCE_REVIEW.json",
     "integrated_source_review": "evidence/F02e2i-a4/INTEGRATED_SOURCE_REVIEW.json",
     "lifecycle": "evidence/F02e2i-a4/ATTEMPT_LIFECYCLE.jsonl",
-    "gate_evidence_review": "evidence/F02e2i-a4/GATE_EVIDENCE_REVIEW.json"
+    "gate_evidence_review": "evidence/F02e2i-a4/GATE_EVIDENCE_REVIEW.json",
+    "audit_repository": "control/A54-lifecycle-audit.git",
+    "audit_ref_prefix": "refs/ferric/f02e2i-a4/"
   },
   "attempt_exception": {
     "amendment": "A54",
@@ -319,7 +321,9 @@
     "fixed_source_review": "evidence/F02e2i-a4/SOURCE_REVIEW.json",
     "fixed_integrated_review": "evidence/F02e2i-a4/INTEGRATED_SOURCE_REVIEW.json",
     "fixed_gate_review": "evidence/F02e2i-a4/GATE_EVIDENCE_REVIEW.json",
-    "failure_history_retained": true
+    "failure_history_retained": true,
+    "audit_repository": "control/A54-lifecycle-audit.git",
+    "audit_ref_prefix": "refs/ferric/f02e2i-a4/"
   },
   "prior_attempt_exceptions": {
     "P00a": {

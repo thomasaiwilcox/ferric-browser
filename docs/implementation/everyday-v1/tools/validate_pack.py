@@ -1630,7 +1630,7 @@ def validate_identity_acceptance_A53(task,record,root,pack=PACK):
     return errors
 
 
-A54_CONTRACT_SHA256="40cdbb66ca83bd28ec79fc26967d52f66834842b4adaa5743237dc420b429153"
+A54_CONTRACT_SHA256="08bde2b22c39345500157cdc8e843cda8d4af3a272ecdaea71589dc688a2ce48"
 
 def identity_repair_contract_A54(pack=PACK):
     path=pack/"control/profile-identity-repair.A54.json"

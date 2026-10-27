@@ -1090,6 +1090,25 @@ class IdentityRepairA54Tests(unittest.TestCase):
         fixed=self.root/meta['source_review'];saved=fixed.read_bytes();fixed.unlink();self.assertTrue(self.check_state(c,state));fixed.write_bytes(saved)
         child['integrated_source_review_sha256']='0'*64;self.assertTrue(self.check_state(c,state))
 
+    def test_independent_audit_rejects_combined_journal_state_history_rollback(self):
+        c,state=self.fixture();self.assign(c,state);meta=c['metadata'];child=state['slices']['F02e2i']
+        journal=self.root/meta['lifecycle'];seed=journal.read_bytes();seed_state=copy.deepcopy(child)
+        receipt=self.root/meta['unit_gate_receipts']['focused'];write_json(receipt,{'result':'failed','exit_code':101})
+        self.terminal(c,state);self.assertEqual(self.check_state(c,state),[])
+        (self.root/meta['terminal_marker']).unlink();receipt.unlink();journal.write_bytes(seed)
+        child.clear();child.update(seed_state);child.update(status='in_progress',source_changes_authorized=True,compile_test_authorized=True)
+        self.assertTrue(self.check_state(c,state))
+        with self.assertRaises(ValueError):validate_pack.append_identity_attempt_event_A54(self.root,child,c,'source_review_started')
+        # Even rolling back just the mutable audit head cannot erase the
+        # independently retained per-event refs.
+        audit=self.root/meta['audit_repository'];assignment=load(self.root/meta['source4_assignment'])
+        prefix=meta['audit_ref_prefix']+assignment['run_nonce']
+        seed_oid=subprocess.check_output(['git','--git-dir',str(audit),'rev-parse',prefix+'/events/000'],text=True).strip()
+        subprocess.run(['git','-c','core.hooksPath=/dev/null','--git-dir',str(audit),'update-ref',prefix+'/head',seed_oid],check=True)
+        self.assertTrue(self.check_state(c,state))
+        with self.assertRaises(ValueError):validate_pack.append_identity_attempt_event_A54(self.root,child,c,'source_review_started')
+        (audit/'.ferric-a54-owner.json').unlink();self.assertTrue(self.check_state(c,state))
+
     def test_append_refuses_bad_phase_failed_proof_and_alternate_path_before_writing(self):
         c,state=self.fixture();self.assign(c,state);child=state['slices']['F02e2i'];meta=c['metadata'];journal=self.root/meta['lifecycle']
         before=journal.read_bytes()

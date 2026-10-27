@@ -61,6 +61,50 @@ def identity_failed_artifacts_A54(root,meta):
         if failed:failures[name]={"path":value,"sha256":digest(path)}
     return failures
 
+def identity_audit_git_A54(root,contract,assignment_path,create=False):
+    """Separate, owned audit refs outlive rollback of mutable state/evidence."""
+    meta=contract["metadata"];assignment=load(assignment_path)
+    path=safe_relative(root,meta["audit_repository"]);owner_path=path/".ferric-a54-owner.json"
+    owner={"kind":"F02e2i-A54-lifecycle","assignment_sha256":digest(assignment_path),"run_nonce":assignment["run_nonce"]}
+    environment={k:v for k,v in os.environ.items() if not k.startswith("GIT_")}
+    if not path.exists():
+        if not create:raise ValueError("A54 independent audit store is missing; never recreate an assigned4 store")
+        path.mkdir(parents=True);write_json(owner_path,owner)
+        result=subprocess.run(["git","-c","core.hooksPath=/dev/null","init","--bare","--object-format=sha1",str(path)],env=environment,capture_output=True)
+        if result.returncode:raise ValueError("A54 could not initialize its owned audit store")
+    if not owner_path.is_file() or load(owner_path)!=owner:raise ValueError("A54 audit store owner/assignment changed")
+    def command(arguments,data=None,allow_missing=False):
+        result=subprocess.run(["git","-c","core.hooksPath=/dev/null","-c","gc.auto=0","--git-dir",str(path),*arguments],
+                              env=environment,input=data,capture_output=True)
+        if result.returncode:
+            if allow_missing and result.returncode==1:return b""
+            raise ValueError("A54 audit Git operation failed: "+result.stderr.decode(errors="replace")[:300])
+        return result.stdout
+    if command(["rev-parse","--is-bare-repository"]).strip()!=b"true":raise ValueError("A54 audit store is not its own bare repository")
+    return command,meta["audit_ref_prefix"]+assignment["run_nonce"]
+
+def identity_attempt_audit_A54(root,child,contract,events,create_event=None):
+    assignment_path=safe_relative(root,contract["metadata"]["source4_assignment"])
+    command,prefix=identity_audit_git_A54(root,contract,assignment_path,create=create_event is not None and not events)
+    refs={}
+    for line in command(["for-each-ref","--format=%(refname) %(objectname)",prefix+"/events/"]).decode().splitlines():
+        name,oid=line.split();refs[name]=oid
+    expected={}
+    for index,event in enumerate(events):
+        encoded=json.dumps(event,sort_keys=True,separators=(",",":")).encode()
+        oid=hashlib.sha1(b"blob "+str(len(encoded)).encode()+b"\0"+encoded).hexdigest()
+        expected[prefix+f"/events/{index:03d}"]=oid
+    head=command(["rev-parse","--verify","--quiet",prefix+"/head"],allow_missing=True).decode().strip()
+    last=list(expected.values())[-1] if expected else ""
+    if refs!=expected or head!=last:raise ValueError("A54 independent audit witness rejects journal/state/history rollback")
+    if create_event is not None:
+        encoded=json.dumps(create_event,sort_keys=True,separators=(",",":")).encode()
+        oid=command(["hash-object","-w","--stdin"],encoded).decode().strip()
+        # Each event ref is created once; the head moves only by compare-and-swap.
+        # Per-event refs retain old blobs even when the head advances.
+        command(["update-ref",prefix+f"/events/{len(events):03d}",oid,"0"*40])
+        command(["update-ref",prefix+"/head",oid,head or "0"*40])
+
 def identity_attempt_lifecycle_A54(root,child,contract):
     """Validate the retained append-only coordinator journal, not process liveness."""
     meta=contract["metadata"];assignment=load(safe_relative(root,meta["source4_assignment"]))
@@ -96,6 +140,7 @@ def identity_attempt_lifecycle_A54(root,child,contract):
         previous=identity_attempt_event_hash_A54(event);events.append(event)
     if not events or binding.get("events")!=len(events) or binding.get("phase")!=events[-1]["phase"]:
         raise ValueError("A54 lifecycle head/length is missing or changed")
+    identity_attempt_audit_A54(root,child,contract,events)
     return events
 
 def append_identity_attempt_event_A54(root,child,contract,phase,artifact=None):
@@ -113,6 +158,7 @@ def append_identity_attempt_event_A54(root,child,contract,phase,artifact=None):
                 or "4" in child.get("attempt_history",{})):
             raise ValueError("A54 lifecycle seed is created only during the one ready3-to-assigned4 transition; never recreated")
         event=identity_attempt_seed_A54(assignment["run_nonce"]);mode="xb"
+        events=[]
         if identity_attempt_event_hash_A54(event)!=assignment.get("lifecycle_seed_sha256"):raise ValueError("A54 assignment seed digest mismatch")
     expected_artifact=identity_attempt_artifact_A54(meta,phase)
     if artifact!=expected_artifact:raise ValueError("A54 event must bind only its exact required artifact")
@@ -135,6 +181,7 @@ def append_identity_attempt_event_A54(root,child,contract,phase,artifact=None):
             raise ValueError("A54 terminal event requires retained assignment/terminal source4 failure history")
         event["history_record_sha256"]=identity_attempt_event_hash_A54(history)
     encoded=(json.dumps(event,sort_keys=True,separators=(",",":"))+"\n").encode()
+    identity_attempt_audit_A54(root,child,contract,events,create_event=event)
     with path.open(mode) as output:output.write(encoded);output.flush();os.fsync(output.fileno())
     child["lifecycle_A54"]={"path":meta["lifecycle"],"sha256":digest(path),"events":event["sequence"]+1,"phase":phase}
     identity_attempt_lifecycle_A54(root,child,contract)

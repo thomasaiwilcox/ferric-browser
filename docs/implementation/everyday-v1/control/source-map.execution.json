@@ -4742,7 +4742,9 @@
       "fixed_source_review": "evidence/F02e2i-a4/SOURCE_REVIEW.json",
       "fixed_integrated_review": "evidence/F02e2i-a4/INTEGRATED_SOURCE_REVIEW.json",
       "fixed_gate_review": "evidence/F02e2i-a4/GATE_EVIDENCE_REVIEW.json",
-      "failure_history_retained": true
+      "failure_history_retained": true,
+      "audit_repository": "control/A54-lifecycle-audit.git",
+      "audit_ref_prefix": "refs/ferric/f02e2i-a4/"
     }
   ]
 }
