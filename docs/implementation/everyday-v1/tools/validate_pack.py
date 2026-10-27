@@ -12,6 +12,7 @@ from a55 import (contract_A55, validate_plan_A55, validate_state_A55, validate_a
                  validate_pack_authority_A55)
 from a56 import (contract_A56, validate_plan_A56, validate_state_A56, validate_acceptance_A56,
                  validate_pack_authority_A56)
+from a57 import validate_plan_A57, validate_state_A57
 STATUSES={"not_started","ready","in_progress","submitted","reviewing","accepted","superseded","blocked_environment","blocked_specification","implemented_unqualified","failed"}
 LEVELS={"inspection","unit","component","application","native","physical","benchmark","build","fuzz"}
 RECIPES={"preflight","baseline","config","rust-policy","application-rust","storage","application","credential","helper","rp","fuzz","benchmark","native","physical","package","ci","docs","review","rebuild","release"}
@@ -1187,6 +1188,7 @@ def validate_structure(pack=PACK,plan=None):
         errors+=validate_identity_repair_A54(plan,pack)
         errors+=validate_plan_A55(plan,pack)
         errors+=validate_plan_A56(plan,pack)
+        errors+=validate_plan_A57(plan,pack)
         errors+=validate_continuation_A51(plan,pack)
         errors+=validate_supersession_structure(tasks,tests)
         reqids=[r["id"] for r in reqs]
@@ -1846,13 +1848,18 @@ def validate_state(plan,state_path,strict=False,pack=PACK):
         errors+=validate_identity_repair_A54(plan,pack)
         errors+=validate_plan_A55(plan,pack)
         errors+=validate_plan_A56(plan,pack)
+        errors+=validate_plan_A57(plan,pack)
         errors+=validate_continuation_A51(plan,pack)
         errors+=validate_continuation_state_A51(state,root)
         errors+=validate_supersession_state(plan,state,strict,state_path.name=="state.initial.json")
         errors+=validate_profile_identity_state_A53(plan,state,root,state_path.name=="state.initial.json",pack)
         errors+=validate_identity_repair_state_A54(plan,state,root,state_path.name=="state.initial.json",pack)
-        errors+=validate_state_A55(plan,state,root,state_path.name=="state.initial.json",pack)
-        errors+=validate_state_A56(plan,state,root,state_path.name=="state.initial.json",pack)
+        if plan.get("direct_recovery_A57") is not None and state_path.name!="state.initial.json":
+            errors+=validate_state_A57(plan,state,root,False,pack)
+        else:
+            errors+=validate_state_A55(plan,state,root,state_path.name=="state.initial.json",pack)
+            errors+=validate_state_A56(plan,state,root,state_path.name=="state.initial.json",pack)
+            errors+=validate_state_A57(plan,state,root,state_path.name=="state.initial.json",pack)
         if state.get("run_id") is not None:
             parent_state=state["slices"].get("F02e2",{})
             successor_state=state["slices"].get("F02e2r",{})
@@ -1885,11 +1892,13 @@ def validate_state(plan,state_path,strict=False,pack=PACK):
             if s["status"]=="accepted":
                 if any(state["slices"][d]["status"]!="accepted" for d in t["depends_on"]):errors.append(f"{sid}: unaccepted dependency")
                 errors+=validate_acceptance(t,s,root,tests)
-                errors+=validate_acceptance_A52(t,s,root,pack)
+                imported_parent=sid=="F02e2s" and plan.get("direct_recovery_A57") is not None
+                if not imported_parent:errors+=validate_acceptance_A52(t,s,root,pack)
                 errors+=validate_identity_acceptance_A53(t,s,root,pack)
                 errors+=validate_identity_repair_acceptance_A54(plan,t,s,root,pack)
-                errors+=validate_acceptance_A55(plan,t,s,root,pack)
-                errors+=validate_acceptance_A56(plan,t,s,root,pack)
+                if not imported_parent:
+                    errors+=validate_acceptance_A55(plan,t,s,root,pack)
+                    errors+=validate_acceptance_A56(plan,t,s,root,pack)
             elif s["status"]=="superseded":
                 continue
             elif strict:errors.append(f"{sid}: not accepted ({s['status']})")

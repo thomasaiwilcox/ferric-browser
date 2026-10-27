@@ -79,6 +79,9 @@ def validate_plan_A55(plan, pack=PACK):
             if hashlib.sha256(section.encode()).hexdigest() != expected_hash:
                 raise ValueError("A53/A54 amendment section changed")
         source = load(pack / "control/source-map.execution.json")
+        if plan.get("direct_recovery_A57") is not None:
+            from a57 import historical_source_map_A57
+            source = historical_source_map_A57(source, pack)
         if overlay:source["execution_amendments"] = [x for x in source["execution_amendments"] if x.get("id") != "A56"]
         if [x for x in source["execution_amendments"] if x.get("id") == "A55"] != [c["source_map"]]:
             raise ValueError("exact A55 source map differs")
@@ -261,8 +264,17 @@ def validate_state_A55(plan, state, root, initial=False, pack=PACK, contract=Non
         if contract is None and plan.get("input_delivery_recovery_A56") is not None:
             from a56 import contract_A56
             historical = contract_A56(pack)
-            state = copy.deepcopy(state)
-            state["slices"]["F02e2s"] = copy.deepcopy(c["initial_parent"] if initial else historical["prior_parent"])
+            if initial:
+                state = copy.deepcopy(state)
+                state["slices"]["F02e2s"] = copy.deepcopy(c["initial_parent"])
+            else:
+                reference = historical["metadata"]["historical_state"]
+                path = safe_relative(root, reference["path"])
+                if digest(path) != reference["sha256"]:
+                    raise ValueError("A56 immutable historical state changed")
+                state = load(path)
+                if state["slices"]["F02e2s"] != historical["prior_parent"]:
+                    raise ValueError("A56 historical state differs from frozen terminal4")
         amendment, attempt = parent_attempt_version_A55(c)
         m = parent_repair_metadata_A55(c)
         parent = state["slices"]["F02e2s"]

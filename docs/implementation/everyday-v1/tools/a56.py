@@ -38,6 +38,10 @@ def validate_plan_A56(plan, pack=PACK):
         if tasks["F02e2s"] != c["task"]:
             raise ValueError("A56 named task differs from exact reviewed scope")
         previous = copy.deepcopy(plan)
+        if previous.get("direct_recovery_A57") is not None:
+            from a57 import contract_A57
+            if previous.pop("direct_recovery_A57") != contract_A57(pack)["metadata"]:
+                raise ValueError("A57 direct recovery metadata changed")
         previous.pop("input_delivery_recovery_A56")
         previous["slices"] = [c["prior_task"] if task["id"] == "F02e2s" else task
                               for task in previous["slices"]]
@@ -63,6 +67,9 @@ def validate_plan_A56(plan, pack=PACK):
             if hashlib.sha256(section.encode()).hexdigest() != expected:
                 raise ValueError("A56 historical amendment section changed")
         mapping = load(pack / "control/source-map.execution.json")
+        if plan.get("direct_recovery_A57") is not None:
+            from a57 import historical_source_map_A57
+            mapping = historical_source_map_A57(mapping, pack)
         if [entry for entry in mapping["execution_amendments"] if entry.get("id") == "A56"] != [c["source_map"]]:
             raise ValueError("A56 exact source map changed")
         mapping["execution_amendments"] = [entry for entry in mapping["execution_amendments"]

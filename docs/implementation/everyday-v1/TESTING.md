@@ -22,6 +22,10 @@ python3 "$PACK/tools/run_gate.py" --repo "$REPO"   --out "$RUN/evidence/F00-a1/c
 
 Every invocation needs a fresh evidence directory. A timeout is a failed/unqualified invocation even if partial test output looks green. Don't retain secrets in logs; test with disposable synthetic identities.
 
+A57 retains the exact runner version used by each direct-recovery invocation, including earlier successful SDK/build commands. The final qualification manifest binds all execution support, raw logs, source snapshots, Qt/KF selection, linked artifacts and cleanup receipts. A separate sanitizer diagnostic extracts the candidate's actual callback helper; it supplements the real native assertions and cannot replace them. The native CTest timeout remains180 seconds and its invocation remains serial. Never describe the later pack-only reconciliation commit as the commit that was compiled.
+
+The final A57 application test uses an owned Hyprland Wayland session with a private headless output and the recorded activation policy, inside the private D-Bus process scope. A locked user desktop cannot supply reliable window focus. The parent Wayland connection supplies rendering resources; the private compositor disables its nested visible output, hardware-seat access and systemd environment integration. The session receipt pins the real compositor, private configuration, output inventory, invocation, log and cleanup; source assertions and timeouts remain unchanged. This proves automated native application behavior in the recorded compositor environment, not physical input, the user's compositor, hardware rendering or performance qualification.
+
 ## Existing baseline gates
 
 Verified in the inspected CI; recheck any renamed commands in S00:

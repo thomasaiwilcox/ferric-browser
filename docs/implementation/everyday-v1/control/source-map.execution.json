@@ -4824,6 +4824,27 @@
       "source_base_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
       "reapply_source_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
       "attempt6_authorized": false
+    },
+    {
+      "id": "A57",
+      "kind": "qualified_direct_recovery",
+      "slice": "F02e2s",
+      "tested_source_sha": "441cc61a69a9084e2184fef12490f7cfb1adffaa",
+      "tested_source_tree": "05b8fe2b3b3b1b5b986ccf8b83d391468264341a",
+      "contract": "control/direct-recovery.A57.json",
+      "history": "Five failed numbered attempts preserved; direct recovery imported under later explicit user authority.",
+      "product_paths": [
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/src/public_page_host.h",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+      ]
     }
   ]
 }

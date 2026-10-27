@@ -45,6 +45,8 @@ The task graph covers all three features, production integration, packaging, nat
 
 Read `RUN_CONTEXT.json`, external `control/state.json`, `control/CHECKPOINT.md`, outstanding attempt records and the latest reviewed integration SHA. Check worktrees and owned processes before restarting jobs. Do not kill every Cargo/Qt process or delete generic caches. Use `RESOURCE_POLICY.md` and the dry-run cleanup tool.
 
+For the A57 recovery, use the pack path selected by `RUN_CONTEXT.json` and validate the actual external state with that pack's `tools/validate_pack.py --state /absolute/workspace/control/state.json` before running `tools/ready.py` against the same state. A57 imports the separately user-authorized, independently qualified F02e2s repair. Its five failed numbered attempts remain historical; neither redispatch them nor infer a sixth attempt. The accepted source commit and pack-only reconciliation commit are distinct and both are recorded. Read the current checkpoint for the next eligible slice; downstream physical, security and performance qualification remains required.
+
 ## 5. Deliver
 
 Provide local branch/SHA, per-feature implementation and qualification status, tests actually run, unavailable tests, dependency/packaging changes, measured hot-tab results and precise user journeys. No push, remote PR, merge, release, browser install, real-account credential registration or compositor configuration edit is authorised by this pack alone.

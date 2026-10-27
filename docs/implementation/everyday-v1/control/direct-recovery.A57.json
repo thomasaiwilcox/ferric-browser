@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "amendment": "A57",
+    "kind": "qualified_direct_recovery",
+    "slice": "F02e2s",
+    "authorization": {
+      "path": "evidence/F02e2s-direct-recovery/USER_AUTHORIZATION.json",
+      "sha256": "6e4dbbe5e8c95165ac4d33e5a8e4fb77f315eeed58e7217b9282ff3794c49978"
+    },
+    "historical_state": {
+      "path": "control/state-A57-historical-A56.json",
+      "sha256": "5739a4f46daa298bf9c9dd94af42ed6f9625876fdb90a68c7323781cd75e5f6d"
+    },
+    "original_historical_state": {
+      "path": "evidence/F02e2s-direct-recovery/STATE_BEFORE_RECOVERY.json",
+      "sha256": "5739a4f46daa298bf9c9dd94af42ed6f9625876fdb90a68c7323781cd75e5f6d"
+    },
+    "qualification": {
+      "path": "evidence/F02e2s-direct-recovery/QUALIFICATION.json",
+      "sha256": "5efb25b78d3be1215cce2bba143dd096b31be4bcfa61e5eb91c289950a09b508"
+    },
+    "evidence_review": {
+      "path": "evidence/F02e2s-direct-recovery/GATE_EVIDENCE_REVIEW.json",
+      "sha256": "155f3ecdc5daf5cb8fdca420e3e81590465ee59d88f374539694085e6c5a4d3f"
+    },
+    "acceptance_evidence": {
+      "path": "evidence/F02e2s-direct-recovery/EVIDENCE.json",
+      "sha256": "5a11654e4d9ed1ea15f3a6f9a7c6b5eadd20a0140a3bb18f3d9d72da2ac086c3"
+    },
+    "pack_review": "evidence/F02e2s-direct-recovery/PACK_REVIEW.json"
+  },
+  "prior_plan_sha256": "980106f9281cc47c5967b45272d3dca282ed662127719688b047f75fb6c02c2e",
+  "prior_source_map_sha256": "e0d140bc3882beba24cfc2f33f47c1213b5e5ac9fa7a863610a071d4f0ef1c2b",
+  "source_map": {
+    "id": "A57",
+    "kind": "qualified_direct_recovery",
+    "slice": "F02e2s",
+    "tested_source_sha": "441cc61a69a9084e2184fef12490f7cfb1adffaa",
+    "tested_source_tree": "05b8fe2b3b3b1b5b986ccf8b83d391468264341a",
+    "contract": "control/direct-recovery.A57.json",
+    "history": "Five failed numbered attempts preserved; direct recovery imported under later explicit user authority.",
+    "product_paths": [
+      "crates/ferric-browser-engine-qt/build.rs",
+      "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+      "crates/ferric-browser-engine-qt/src/bridge.rs",
+      "crates/ferric-browser-engine-qt/src/browser_ui_input.rs",
+      "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+      "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+      "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+      "crates/ferric-browser-engine-qt/src/public_page_host.h",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+    ]
+  },
+  "historical_validator": {
+    "worktree": "worktrees/A56-validator-context",
+    "commit": "877be41a17afa4041ee7769b0e5b1d5621ece037",
+    "tree": "7d762108a25021b64b14d84eb3dbdce94c451046",
+    "entry_point": "docs/implementation/everyday-v1/tools/coordinator_validate_A56.py"
+  },
+  "source": {
+    "commit": "441cc61a69a9084e2184fef12490f7cfb1adffaa",
+    "tree": "05b8fe2b3b3b1b5b986ccf8b83d391468264341a",
+    "worktree": "worktrees/F02e2s-direct-recovery",
+    "base_commit": "a2b39ea649a9664572081eaead771c3db7a0b943",
+    "product_blobs": {
+      "crates/ferric-browser-engine-qt/build.rs": "a5a018c9d94b63ffe4c1a6773612a881ea41fff58c0cef92c40305945db1f79f",
+      "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml": "67cab9a0b18465b9bc016f3010b6a36869e3b56f96b9b9583f3171db4d08449e",
+      "crates/ferric-browser-engine-qt/src/bridge.rs": "ba1b4a495087e8f85f872ca12b47e4134382fad89491ba258465f850557a4e9c",
+      "crates/ferric-browser-engine-qt/src/browser_ui_input.rs": "526c21cd179185518162d945b13664518d1c1b991d1a03785bec1c3c88174740",
+      "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs": "0936458daed6ccf2a1b81c1c930abe2c7238de3b40874071dc9fe2191554f7b4",
+      "crates/ferric-browser-engine-qt/src/engine_requests.rs": "6530239164f533527b5c96f40e104bc6e7e6eb65de9d05407789066b847e3ddf",
+      "crates/ferric-browser-engine-qt/src/public_page_host.cpp": "186054b1ed9b1131a72a74197ff015585ca772144dd7d2f5503839431aaf66f0",
+      "crates/ferric-browser-engine-qt/src/public_page_host.h": "3f55a0d175c05b6c7731d53d82b59c42aa29af0bc15f3d9210e67226b15798e5",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt": "c67720932a0078408ec716105d51346e9377e354ac7a79e5d99465beabc11118",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp": "0392983d1d13053770394704e1a05fbf201a78eeb78d30c96fdecc05998d14e0"
+    }
+  },
+  "target": "builds/native-F02e2s-direct-recovery-qt6112",
+  "private_bus_helper": {
+    "path": "evidence/A53/private_bus-r5.py",
+    "sha256": "2c6c963ba71eb9515ec386aa15b1acc37c2a06fdc29e76f47e8d4c21eacc5fc5"
+  },
+  "accepted_parent_sha256": "31d214b60b187eca131f90784668689b40c317c0d52a95f4f3e9c7dfe1cb27d4",
+  "accepted_states_sha256": {
+    "S00": "78a2b0a33201b8590b3ce72f0ca563e04aac20fb93145889b858c63cbc3e94d7",
+    "S01": "ccc06d4bfc21f763f9e94cdef93a33682727e98c7aa304d3be835209a99b8171",
+    "F00": "ed5ad3a1ae1cd91f72a6563f3fbe25854bf7c8c8f828eae94afd2b76017be099",
+    "F01": "3c10291ccb1765d3b576f0a59634a0f88834dd38f8823e0478b9068c0f246de9",
+    "F02a": "2dabaeb36aebf9cc47a32a2d1bd460531bdf0dde706c532bb0a4c3bbd20384b4",
+    "H00": "9eba8efb664a18fec389b76f50bbd9bfbc435f646f9010959cd66f77c991334e",
+    "P00": "b03f564921c9509ba8641c10fb8b29301439d58f4ff543ee59f793069fba703e",
+    "P00a": "2bb83fb70eee876ce4b03c6c5f2b5f8dced113e9965684054a6c139820079a6c",
+    "P00b": "28460ce5fe03626bd82a04a89ba3d614a5ed8b976187f00dcc7a3612f25c94a3",
+    "P00c": "23f1e839e36cf3682492a214e6b93452b5e1b82731ee40a60be3f02a4f9c6374",
+    "P01": "95711ff6945b27ee36639cbe52ffcda4efa55881d5a93315bc70c79605dbb519",
+    "P02": "2f0484fba4acb732a60ae17fdca2200d77d9184391319308d8506a1eec006bb7",
+    "P06": "c98d7cec5ad0c2c0e879bdc3088ea438a511d62b81e68e93e71b1b95f842a963",
+    "P07": "ed3da07f432b21cd140442c7aa436d8711a93a320a5bf9085ca15a867948d900",
+    "P13": "c4925a4a1eebf00a667e99ed85746823e590699e8b3ed2f7ed5ed8e60a08b433",
+    "W00": "21d081265c7ef32d715528b78b300e96c3c7140a0d5771725eba90cc053ffa17",
+    "W01": "bf0265e342080caafb69d5db2ec2b0521369139d72999b3fb4d19c8c36d2b53a",
+    "W04": "90f903c913b5f5db17aa474cc6797f84882530af699de5cfda26d6255af2a793",
+    "F01b": "5bfa29df60185fdb07e5b5a6a1f838846676f5fd2577de8c4f3d8ba27d5e5e5f",
+    "W01a": "6ca2f1ebb49a1656cee685b0183ebcc9b7dd9d493dad541a477b35381dc68967",
+    "W01b": "592e4255806bd3d35a39fd422c9bff4247de35a4899d54611e1829aab3bd9ddc",
+    "W01c": "9a134857048faf7d844ff8d4d89373a53c5b400116cbcf6462759ed60f4eab71",
+    "F02b1": "c89bef7e4d9f68a17031303c214f12950e76d481539f855feb02df5a998b3de7",
+    "H00a": "3ffbd87cf252a8895989e221123fc07f324ae4cfdb4a8596ea3b67f6d2cc5a5f",
+    "H00b": "83970fb281e5b723b024af923c4c269ffd3d7b34bfc8e55a5991919b35108da4",
+    "H00c": "bbc60a441715370a951f495d92640577281e0095e6d9f0fd37788cfdd5765c11",
+    "P02a": "82fd17eceda01b0c07742aeb898595ea0626824aabc5f0ee9614b4ff6ce5eb7d",
+    "P02b": "d8fd8ea59e30e45a232b13a21e06b5e25dc1b0efa567e86c680cdbe6266814d5",
+    "P02c": "81f5b9f11f51fd617a9b17f082e74b66269276340678c96830a27f71c10912f8",
+    "P05a": "f87c09c739f15c3ba297f4181831628c951f3b6650ac8e267935fedd55285acd",
+    "P07a": "79d814f503585e999bbbf6f8b1942f492394db1698cfe677b56391453e387c30",
+    "P07b": "c51fd53c9f70ba19cef81f4b9eaafcec1bff201f1fba7aa169e04f2453734c67",
+    "P05b1": "b8b4f135262e71fb3544d48359791178c1bcaef8ffd27509a5623926fe6abc14",
+    "F02e0": "18819d95bd57747047710ab3ec4553646aa91a58d0332a9bd7cc40205de015a5",
+    "F02e1": "74d901d2809935b8c3d8393fbdc47729fba1d210cad40d0f4f381010f2b85ccf",
+    "F02e2q": "7567fb05ba550503b0acc9c6466e33b202c0bc6f7508165fa42d8e8a6fedf45c",
+    "F02e2i": "e8e1042519185284ec38bb84f852d61e02e53c3031bbaa9cbf4412cb8e8f1b45"
+  }
+}

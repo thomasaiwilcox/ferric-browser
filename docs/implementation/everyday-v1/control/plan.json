@@ -5933,5 +5933,35 @@
     "source_assignment": "evidence/F02e2s-a5/ASSIGNMENT.json",
     "source_worktree_relative": "worktrees/F02e2s-a5",
     "accepted_slices_before_source5": 37
+  },
+  "direct_recovery_A57": {
+    "amendment": "A57",
+    "kind": "qualified_direct_recovery",
+    "slice": "F02e2s",
+    "authorization": {
+      "path": "evidence/F02e2s-direct-recovery/USER_AUTHORIZATION.json",
+      "sha256": "6e4dbbe5e8c95165ac4d33e5a8e4fb77f315eeed58e7217b9282ff3794c49978"
+    },
+    "historical_state": {
+      "path": "control/state-A57-historical-A56.json",
+      "sha256": "5739a4f46daa298bf9c9dd94af42ed6f9625876fdb90a68c7323781cd75e5f6d"
+    },
+    "original_historical_state": {
+      "path": "evidence/F02e2s-direct-recovery/STATE_BEFORE_RECOVERY.json",
+      "sha256": "5739a4f46daa298bf9c9dd94af42ed6f9625876fdb90a68c7323781cd75e5f6d"
+    },
+    "qualification": {
+      "path": "evidence/F02e2s-direct-recovery/QUALIFICATION.json",
+      "sha256": "5efb25b78d3be1215cce2bba143dd096b31be4bcfa61e5eb91c289950a09b508"
+    },
+    "evidence_review": {
+      "path": "evidence/F02e2s-direct-recovery/GATE_EVIDENCE_REVIEW.json",
+      "sha256": "155f3ecdc5daf5cb8fdca420e3e81590465ee59d88f374539694085e6c5a4d3f"
+    },
+    "acceptance_evidence": {
+      "path": "evidence/F02e2s-direct-recovery/EVIDENCE.json",
+      "sha256": "5a11654e4d9ed1ea15f3a6f9a7c6b5eadd20a0140a3bb18f3d9d72da2ac086c3"
+    },
+    "pack_review": "evidence/F02e2s-direct-recovery/PACK_REVIEW.json"
   }
 }
