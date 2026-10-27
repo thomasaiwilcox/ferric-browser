@@ -1822,13 +1822,13 @@ class ParentRepairA56Tests(TempRepo):
             if mutation=='terminal_status':parent['status']='accepted'
             with self.subTest(mutation=mutation):self.assertTrue(a55.validate_state_A55(plan,changed,self.workspace,pack=oldpack,contract=old))
 
-    def test_actual_failed4_preserved_and_no_ready_from_user_approval_alone(self):
-        state=load(self.workspace/self.m['historical_state']['path'])
-        self.assertEqual(a56.validate_state_A56(self.plan,state,self.workspace,pack=self.pack),[])
-        state['slices']['F02e2s']['status']='ready'
-        self.assertTrue(a56.validate_state_A56(self.plan,state,self.workspace,pack=self.pack))
-        state=load(self.workspace/self.m['historical_state']['path']);state['slices']['F02e2s']['attempt_history']['4']['verified_source_read_bytes']=0
-        self.assertTrue(a56.validate_state_A56(self.plan,state,self.workspace,pack=self.pack))
+    def test_frozen_failed4_preserved_and_no_ready_from_user_approval_alone(self):
+        self.fixture()
+        self.assertEqual(a55.validate_state_A55(self.plan,self.s,self.root,pack=self.pack,contract=self.c),[])
+        self.p.pop('source_repair_A56_authority');self.p['status']='ready'
+        self.assertTrue(a55.validate_state_A55(self.plan,self.s,self.root,pack=self.pack,contract=self.c))
+        self.p['status']='failed';self.p['attempt_history']['4']['verified_source_read_bytes']=0
+        self.assertTrue(a55.validate_state_A55(self.plan,self.s,self.root,pack=self.pack,contract=self.c))
 
     def test_policy_pairs_are_explicit_and_seed_has_no_sixth_attempt(self):
         self.assertEqual(common.parent_attempt_version_A55(self.c),('A56',5))
