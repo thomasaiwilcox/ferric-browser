@@ -731,11 +731,11 @@ class ProfileIdentityA53Tests(unittest.TestCase):
 
     def state(self):
         return {'slices':{'F02e2s':copy.deepcopy(self.contract['initial_parent']),
-                          'F02e2i':copy.deepcopy(self.contract['initial_child'])}}
+                          'F02e2i':copy.deepcopy(load(PACK/'control/state.initial.json')['slices']['F02e2i'])}}
 
     def test_approved_scope_dependency_and_case_contract(self):
         self.assertEqual(validate_pack.validate_profile_identity_A53(self.plan,PACK),[])
-        mutations=[('F02e2i','allowed_paths',[]),('F02e2i','max_attempts',4),
+        mutations=[('F02e2i','allowed_paths',[]),('F02e2i','max_attempts',5),
                    ('F02e2i','locks',[]),('F02e2s','depends_on',['F02e1','F02e2q'])]
         for sid,key,value in mutations:
             with self.subTest(sid=sid,key=key):
@@ -911,6 +911,151 @@ class ProfileIdentityA53Tests(unittest.TestCase):
                 write_json(path,receipt);ref['sha256']=digest(path)
                 self.save_acceptance(evidence,review)
                 self.assertTrue(self.check_acceptance(record))
+
+
+class IdentityRepairA54Tests(unittest.TestCase):
+    def setUp(self):
+        self.plan=load(PACK/'control/plan.json');self.contract=validate_pack.identity_repair_contract_A54(PACK)
+        temporary=tempfile.TemporaryDirectory(prefix='ferric-a54-test-');self.addCleanup(temporary.cleanup)
+        self.root=Path(temporary.name)
+
+    def fixture(self):
+        c=copy.deepcopy(self.contract);state={'slices':{'F02e2i':copy.deepcopy(c['initial_child'])},'active':[],'active_locks':{}}
+        # Disposable evidence bytes replace fixture hashes only. The separate
+        # structural test verifies the real immutable canonical contract.
+        for number,record in c['history'].items():
+            for name,ref in record['files'].items():
+                path=self.root/ref['path'];write_json(path,{'fixture':number,'file':name});ref['sha256']=digest(path)
+        patch_path=self.root/c['metadata']['repair_patch']['path'];patch_path.parent.mkdir(parents=True,exist_ok=True)
+        patch_path.write_text('disposable exact cfg-test patch\n');c['metadata']['repair_patch']['sha256']=digest(patch_path)
+        review_path=self.root/'evidence/pack-review.json'
+        review={'decision':'accept','reviewer':'independent-pack-reviewer','candidate':{'commit':'a'*40,'tree':'b'*40}}
+        write_json(review_path,review)
+        state['slices']['F02e2i']['source_repair_A54_authority']={
+            'review':'evidence/pack-review.json','review_sha256':digest(review_path),'pack_commit':'a'*40,'pack_tree':'b'*40}
+        return c,state
+
+    def check_state(self,c,state):
+        with patch.object(validate_pack,'identity_repair_contract_A54',return_value=c):
+            return validate_pack.validate_identity_repair_state_A54(self.plan,state,self.root)
+
+    def assign(self,c,state):
+        child=state['slices']['F02e2i'];meta=c['metadata'];child.update(attempts=4,status='in_progress',author='fixture-worker',source_sha=None)
+        assignment={'slice':'F02e2i','amendment':'A54','attempt':4,'attempt_limit':4,'worker':'fixture-worker',
+                    'base_sha':meta['source_base_sha'],'base_tree':meta['source_base_tree'],
+                    'reapply_source_sha':meta['reapply_source_sha'],'reapply_source_tree':meta['reapply_source_tree'],
+                    'repair_patch_sha256':meta['repair_patch']['sha256'],'expected_lib_sha256':meta['expected_lib_sha256'],
+                    'unchanged_session_sha256':meta['unchanged_session_sha256'],'pack_commit':'a'*40,'pack_tree':'b'*40}
+        path=self.root/meta['source4_assignment'];write_json(path,assignment)
+        child.update(assignment=meta['source4_assignment'],assignment_sha256=digest(path))
+
+    def terminal(self,c,state):
+        write_json(self.root/c['metadata']['terminal_marker'],{'slice':'F02e2i','attempt':4,'result':'failed','no_retry':True})
+        state['slices']['F02e2i'].update(status='failed',source_changes_authorized=False,compile_test_authorized=False)
+
+    def test_exact_named_exception_and_narrow_a53_overlay(self):
+        self.assertEqual(validate_pack.validate_identity_repair_A54(self.plan,PACK),[])
+        self.assertEqual(validate_pack.validate_profile_identity_A53(self.plan,PACK),[])
+        task=next(t for t in self.plan['slices'] if t['id']=='F02e2i')
+        self.assertEqual(validate_pack.effective_attempt_limit(self.plan,task),4)
+        for mutation in ['global','parent','child5','wrong_amendment','bool','missing_exception','other_task']:
+            with self.subTest(mutation=mutation):
+                plan=copy.deepcopy(self.plan)
+                if mutation=='global':plan['limits']['max_attempts']=4
+                if mutation=='parent':next(t for t in plan['slices'] if t['id']=='F02e2s')['max_attempts']=4
+                if mutation=='child5':next(t for t in plan['slices'] if t['id']=='F02e2i')['max_attempts']=5
+                if mutation=='wrong_amendment':plan['attempt_exceptions']['F02e2i']['amendment']='A53'
+                if mutation=='bool':plan['attempt_exceptions']['F02e2i']['authorized_limit']=True
+                if mutation=='missing_exception':plan['attempt_exceptions'].pop('F02e2i')
+                if mutation=='other_task':plan['attempt_exceptions']['F02c']=plan['attempt_exceptions']['F02e2i'].copy()
+                errors=validate_pack.validate_identity_repair_A54(plan,PACK)+validate_pack.validate_attempt_limits(plan,{t['id']:t for t in plan['slices']})
+                self.assertTrue(errors)
+        plan=copy.deepcopy(self.plan);next(t for t in plan['slices'] if t['id']=='F02e2i')['locks']=[]
+        self.assertTrue(validate_pack.validate_profile_identity_A53(plan,PACK))
+
+    def test_canonical_contract_and_initial_history_are_immutable(self):
+        from shutil import copytree
+        pack=self.root/'pack';copytree(PACK/'control',pack/'control')
+        for name in ['profile-identity.A53.json','profile-identity-repair.A54.json']:
+            path=pack/'control'/name;raw=path.read_bytes();path.write_text('{}')
+            with self.subTest(name=name):
+                if name=='profile-identity.A53.json':self.assertTrue(validate_pack.validate_profile_identity_A53(self.plan,pack))
+                else:self.assertTrue(validate_pack.validate_identity_repair_A54(self.plan,pack))
+            path.write_bytes(raw)
+        path=pack/'control/state.initial.json';initial=load(path);initial['slices']['F02e2i']['attempts']=0;write_json(path,initial)
+        self.assertTrue(validate_pack.validate_identity_repair_A54(self.plan,pack))
+
+    def test_preserved_history_patch_and_budget_uncertainty_cannot_be_changed(self):
+        c,state=self.fixture();self.assertEqual(self.check_state(c,state),[])
+        for mutation in ['missing_history','changed_state','changed_budget','changed_patch','uncertainty']:
+            with self.subTest(mutation=mutation):
+                c,state=self.fixture();child=state['slices']['F02e2i']
+                if mutation=='missing_history':child['attempt_history'].pop('1')
+                if mutation=='changed_state':child['attempt_history']['3']['candidate_sha']='c'*40
+                if mutation=='changed_budget':(self.root/c['history']['1']['files']['SOURCE_BUDGET.json']['path']).write_text('pretend exact zero')
+                if mutation=='changed_patch':(self.root/c['metadata']['repair_patch']['path']).write_text('different correction')
+                if mutation=='uncertainty':child['preserved_source_failures_A54']['1']['budget_uncertain']=False
+                self.assertTrue(self.check_state(c,state))
+
+    def test_single_assignment_requires_accepted_authority_and_no_reset(self):
+        c,state=self.fixture();child=state['slices']['F02e2i'];child['status']='ready'
+        self.assertEqual(self.check_state(c,state),[])
+        child.pop('source_repair_A54_authority');self.assertTrue(self.check_state(c,state))
+        c,state=self.fixture();self.assign(c,state);self.assertEqual(self.check_state(c,state),[])
+        for attempt in [0,2,3,5,True]:
+            wrong=copy.deepcopy(state);wrong['slices']['F02e2i']['attempts']=attempt
+            with self.subTest(attempt=attempt):self.assertTrue(self.check_state(c,wrong))
+        wrong=copy.deepcopy(state);wrong['slices']['F02e2i']['status']='ready';self.assertTrue(self.check_state(c,wrong))
+        path=self.root/c['metadata']['source4_assignment'];assignment=load(path);assignment['repair_patch_sha256']='0'*64;write_json(path,assignment)
+        state['slices']['F02e2i']['assignment_sha256']=digest(path)
+        self.assertTrue(self.check_state(c,state))
+
+    def test_failed_fixed_gate_or_review_cannot_be_retried_or_accepted(self):
+        for kind in ['focused','source_review','integrated_source_review']:
+            with self.subTest(kind=kind):
+                # Each independent instance gets its own directory to preserve
+                # source4's unique assignment and terminal evidence.
+                temporary=tempfile.TemporaryDirectory(prefix='ferric-a54-terminal-');self.addCleanup(temporary.cleanup)
+                self.root=Path(temporary.name);c,state=self.fixture();self.assign(c,state)
+                if kind=='focused':
+                    write_json(self.root/c['metadata']['unit_gate_receipts']['focused'],{'result':'failed','exit_code':101})
+                    write_json(self.root/'evidence/alternate-retry/receipt.json',{'result':'passed','exit_code':0})
+                else:write_json(self.root/c['metadata'][kind],{'recommendation':'request_changes'})
+                self.assertTrue(self.check_state(c,state))
+                self.terminal(c,state);self.assertEqual(self.check_state(c,state),[])
+                state['slices']['F02e2i']['status']='accepted';self.assertTrue(self.check_state(c,state))
+                state['slices']['F02e2i'].update(status='failed',source_changes_authorized=True)
+                self.assertTrue(self.check_state(c,state))
+
+    def test_actual_commit_content_and_fixed_gate_target_are_bound(self):
+        c=copy.deepcopy(self.contract);repository=self.root/'worktrees/identity';repository.mkdir(parents=True)
+        git(repository,'init','--initial-branch=main');git(repository,'config','user.name','Pack Fixture');git(repository,'config','user.email','fixture@example.invalid')
+        paths={'crates/ferric-browser-application/src/lib.rs':'expected cfg tests\n',
+               'crates/ferric-browser-application/src/profile_session.rs':'unchanged actual session\n'}
+        for path,body in paths.items():
+            file=repository/path;file.parent.mkdir(parents=True,exist_ok=True);file.write_text(body)
+        c['metadata']['expected_lib_sha256']=digest(repository/'crates/ferric-browser-application/src/lib.rs')
+        c['metadata']['unchanged_session_sha256']=digest(repository/'crates/ferric-browser-application/src/profile_session.rs')
+        git(repository,'add','.');git(repository,'commit','-m','exact fixture source')
+        source=git(repository,'rev-parse','HEAD')
+        evidence={'source_repository':str(repository),'source_sha':source,'unit_gates':{}}
+        for name,path in c['metadata']['unit_gate_receipts'].items():
+            write_json(self.root/path,{'execution_binding':{'cargo_target_dir':str((self.root/c['metadata']['cargo_target_relative']).resolve())}})
+            evidence['unit_gates'][name]={'receipt':path}
+        evidence_path=self.root/'evidence/EVIDENCE.json';write_json(evidence_path,evidence)
+        record={'status':'accepted','attempts':4,'evidence':'evidence/EVIDENCE.json'};task={'id':'F02e2i'}
+        def check():
+            with patch.object(validate_pack,'identity_repair_contract_A54',return_value=c):
+                return validate_pack.validate_identity_repair_acceptance_A54(self.plan,task,record,self.root)
+        self.assertEqual(check(),[])
+        evidence['unit_gates']['focused']['receipt']='evidence/alternate/receipt.json';write_json(evidence_path,evidence);self.assertTrue(check())
+        evidence['unit_gates']['focused']['receipt']=c['metadata']['unit_gate_receipts']['focused'];write_json(evidence_path,evidence)
+        receipt_path=self.root/c['metadata']['unit_gate_receipts']['focused'];receipt=load(receipt_path);receipt['execution_binding']['cargo_target_dir']=str(self.root/'builds/other');write_json(receipt_path,receipt);self.assertTrue(check())
+        for path in paths:
+            with self.subTest(path=path):
+                (repository/path).write_text('unapproved production or assertion edit\n');git(repository,'add','.');git(repository,'commit','-m','unapproved fixture source')
+                with self.assertRaises(ValueError):validate_pack.validate_identity_product_A54(repository,git(repository,'rev-parse','HEAD'),c)
+                (repository/path).write_text(paths[path]);git(repository,'add','.');git(repository,'commit','-m','restore fixture content')
 
 
 class SupersessionTests(unittest.TestCase):

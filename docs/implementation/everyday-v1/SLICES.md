@@ -103,3 +103,5 @@
 | F02e | Aggregate public page-host migration and qualification | F02e0, F02e1, F02e2i, F02e2s, F02e3, F02e4, F02e5, F02e6, F02e7, F02e8 |
 
 A53 preserves F02e2s failed attempts1/2 and the reserved scope-blocked source attempt3. F02e2i is a separate typed-identity prerequisite; it does not reset or replace F02e2s.
+
+A54 adds no task/case: only one explicit F02e2i test-only source4 after failed3, preserving all histories and A53 gates. Parent F02e2s remains reserved3/no4.

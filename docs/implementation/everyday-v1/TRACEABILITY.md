@@ -46,3 +46,8 @@ A36: P05b1 adds T061b UNIT and T061c COMPONENT for strict non-admission decoder/
 ## A53 identity prerequisite trace
 
 EF-F02/C01 → F02e2i/T014e2i → opaque actual live profile-session identity and pure Rust lifetime/privacy regressions. F02e2s attempt3 consumes the accepted API for all page-host profile checks; its T014e2s/owner/document/focus/geometry/dialog/lifecycle requirements are unchanged. F02e3 and aggregate F02e require the accepted native successor, not merely the new API.
+
+
+## A54 exact test-only repair
+
+EF-F02 retains F02e2i/T014e2i and all eight identity cases. A54 is one explicitly reviewed test-only source4 exception after failed3, not a new outcome or accepted implementation. F02e2s original parent3/native scope remains unchanged.

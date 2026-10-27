@@ -12,4 +12,4 @@ Commit only your scoped product changes using configured identity when instructe
 
 ## A37 exceptions
 
-Only P00a and W01b have a reviewed fourth-attempt allowance in plan.json; retain original attempt history. All other scopes keep the ordinary cap. Superseded slices must never be dispatched. Public-page-host migration is gated by its native prototype and exact scope; a ninth path requires coordinator review.
+P00a/W01b have A37 attempt4; F02e2 has A48 attempt6; F02e2i has only A54 test-only attempt4. Preserve histories; all other caps stay3. Never dispatch superseded tasks. Public-page-host migration requires its qualified native prototype and exact scope; an extra path requires reviewed amendment.

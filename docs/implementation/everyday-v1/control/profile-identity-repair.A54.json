@@ -1,0 +1,448 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "amendment": "A54",
+    "review": {
+      "path": "evidence/A54/PLAN_REVIEW.json",
+      "sha256": "d5b073a7b1ea44b8913766da2ae5b9414ddb44d200235a6d5985f26db60f0bb9"
+    },
+    "review_budget": {
+      "path": "evidence/A54/PLAN_REVIEW_BUDGET.json",
+      "sha256": "202e96a97d23ba4480a752817d34f27ecf07c95d66f946fa51e4429944a3ec05"
+    },
+    "proposal": {
+      "path": "evidence/A54/PROPOSAL.json",
+      "sha256": "4b836d2e90d387548c284d3b5071487eb2c94abf44dd0f24995dab296cf693a1"
+    },
+    "packet": {
+      "path": "packets/A54-test-only-final-repair-proposal.md",
+      "sha256": "0402ff445568c4d6267350695491e518b5121366ddc1858d8f295df2070e4f7d"
+    },
+    "slice": "F02e2i",
+    "attempt": 4,
+    "previous_limit": 3,
+    "attempt_reset": false,
+    "source5_authorized": false,
+    "same_source_retry_authorized": false,
+    "global_limit": 3,
+    "parent_slice": "F02e2s",
+    "parent_attempt": 3,
+    "parent_limit": 3,
+    "parent_attempt4_authorized": false,
+    "source_base_sha": "eb6ff74ad7134ff6fb5a2e934e08fd3f22a777a9",
+    "source_base_tree": "42b809fee461d7a555b79f953fe1c56d6c1a0845",
+    "reapply_source_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+    "reapply_source_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+    "repair_patch": {
+      "path": "evidence/A54/TEST_ONLY_REPAIR.diff",
+      "sha256": "3dc08cebb99304ff18173aef743159565e54fe189147a3193eda1e803d474abc",
+      "utf8_bytes": 1153
+    },
+    "expected_lib_sha256": "d8b3925b956a0e749df56593efc7d11b243413ebb1f6ae21746e7e16275d3b9c",
+    "unchanged_session_sha256": "41293d4d09d5a935c59a074bda9ed6348391e7ca90edf378793b66c95a56a5f2",
+    "source4_evidence_directory": "evidence/F02e2i-a4",
+    "source4_assignment": "evidence/F02e2i-a4/ASSIGNMENT.json",
+    "terminal_marker": "evidence/F02e2i-a4/TERMINAL.json",
+    "production_changes_authorized": false,
+    "test_changes_beyond_exact_patch_authorized": false,
+    "qualification_gates_unchanged": true,
+    "unit_gate_receipts": {
+      "focused": "evidence/F02e2i-a4/focused/receipt.json",
+      "application_regression": "evidence/F02e2i-a4/application-regression/receipt.json"
+    },
+    "cargo_target_relative": "builds/application-F02e2i-a4/cargo-target",
+    "source_review": "evidence/F02e2i-a4/SOURCE_REVIEW.json",
+    "integrated_source_review": "evidence/F02e2i-a4/INTEGRATED_SOURCE_REVIEW.json"
+  },
+  "attempt_exception": {
+    "amendment": "A54",
+    "default_limit": 3,
+    "authorized_limit": 4,
+    "reason": "A54 permits only one final source attempt4 for the pinned three cfg(test) replacements after three preserved source-review failures; no source5 or retry, production delta, test reduction or parent4."
+  },
+  "history": {
+    "1": {
+      "attempt": 1,
+      "candidate_sha": "1d309eda2a4d6c24f00c7245e6f3294d43bc54b2",
+      "candidate_tree": "f26be2f2047464170439ebf996b97af49f52b4f5",
+      "state_record_sha256": "1f33bba9da4aeae99e7cb518fc0fc65b0d4261ddd02929b587d1ccd82281deaa",
+      "files": {
+        "ASSIGNMENT.json": {
+          "path": "evidence/F02e2i-a1/ASSIGNMENT.json",
+          "sha256": "5f870e30d1798a6e1be0402e68b903577351068791c0af8549054e0fc41910d7"
+        },
+        "WORKER_RESULT.json": {
+          "path": "evidence/F02e2i-a1/WORKER_RESULT.json",
+          "sha256": "d319d8cefa569593444c86407eaf79142e660e0dbe5f617c13da3c835b3374e7"
+        },
+        "SOURCE_REVIEW.json": {
+          "path": "evidence/F02e2i-a1/SOURCE_REVIEW.json",
+          "sha256": "05d9976be82cb075019741f1cdf8ca234628ff3d40c82aa2e2de1ec4d7cec6ea"
+        },
+        "SOURCE_REVIEW_BUDGET.json": {
+          "path": "evidence/F02e2i-a1/SOURCE_REVIEW_BUDGET.json",
+          "sha256": "222a7ab0f0fc992f09c462061794dcb89c747fdcba75f5fa0ddbf1ec169bf9aa"
+        },
+        "SOURCE_BUDGET.json": {
+          "path": "evidence/F02e2i-a1/SOURCE_BUDGET.json",
+          "sha256": "be215acef9c6c8aae67225251828217e12ec2e06debc492bb26c2652aa6c9c18"
+        },
+        "SOURCE_READ_LOG.json": {
+          "path": "evidence/F02e2i-a1/SOURCE_READ_LOG.json",
+          "sha256": "4b52814fac54193eb599d3b8fe7cbafa5cbd78f4fd77e03bacd95a291bebddd2"
+        },
+        "SOURCE_COMMAND_INVENTORY.json": {
+          "path": "evidence/F02e2i-a1/SOURCE_COMMAND_INVENTORY.json",
+          "sha256": "fb85960680fabcb571e1b2609af6bfdf9c972065b58d2eec89223fc926444f11"
+        }
+      },
+      "qualification": "no_compile_or_test_run",
+      "budget_uncertain": true
+    },
+    "2": {
+      "attempt": 2,
+      "candidate_sha": "672018c484ebc49bbfa03d6fb5425a54fb4345be",
+      "candidate_tree": "1b56c25301b81e123d1fa3e48ca5f93c707604c8",
+      "state_record_sha256": "e44822ec563707da87328426d54102636cbe8e8e81bdf51af234db3c6860ac9a",
+      "files": {
+        "ASSIGNMENT.json": {
+          "path": "evidence/F02e2i-a2/ASSIGNMENT.json",
+          "sha256": "7345a1edd90e3124de313928d9426fca0b8b510d537de81c0491408e668323ae"
+        },
+        "WORKER_RESULT.json": {
+          "path": "evidence/F02e2i-a2/WORKER_RESULT.json",
+          "sha256": "af211f4c4bc66a74ee155988e665c4e082f1344a94dcfaa6ce38d249fda2dbbe"
+        },
+        "SOURCE_REVIEW.json": {
+          "path": "evidence/F02e2i-a2/SOURCE_REVIEW.json",
+          "sha256": "ca21affa30f98a78a900d448078e91a890dacbe59f1c52682c9b7cca8f8a439a"
+        },
+        "SOURCE_REVIEW_BUDGET.json": {
+          "path": "evidence/F02e2i-a2/SOURCE_REVIEW_BUDGET.json",
+          "sha256": "bd81c0ae73c7fa43ecb73e9f5ea2b91d414e62273ac4fccdeb3a4c1936bd6056"
+        },
+        "SOURCE_BUDGET.json": {
+          "path": "evidence/F02e2i-a2/SOURCE_BUDGET.json",
+          "sha256": "0c2c6d034e73735b254fb4811242f66e59b91c372f379d2edf4739e7e07c12e3"
+        },
+        "SOURCE_READ_LOG.json": {
+          "path": "evidence/F02e2i-a2/SOURCE_READ_LOG.json",
+          "sha256": "9cde5abd4fa18f13bcc428c50de6f6a8f8e6e099721591086622cd00cb7820dd"
+        }
+      },
+      "qualification": "no_compile_or_test_run",
+      "budget_uncertain": false
+    },
+    "3": {
+      "attempt": 3,
+      "candidate_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+      "candidate_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+      "state_record_sha256": "0e5cc5a797dc83ad9ad3a49938ce36b3f7412f41c69ae90d67cc35ae5aba4e5e",
+      "files": {
+        "ASSIGNMENT.json": {
+          "path": "evidence/F02e2i-a3/ASSIGNMENT.json",
+          "sha256": "c4de856d059597aa8ede1ae2dacb5db1faa29e8beec4179fa9cb4e1d45224489"
+        },
+        "WORKER_RESULT.json": {
+          "path": "evidence/F02e2i-a3/WORKER_RESULT.json",
+          "sha256": "32f816c8ca67b9aba3f2e008b08db692c3dd37bb95aa3b858f52209e4e749ccb"
+        },
+        "SOURCE_REVIEW.json": {
+          "path": "evidence/F02e2i-a3/SOURCE_REVIEW.json",
+          "sha256": "887f96f3adf26f246fc1f56648fb77dc2a000cdc1e7426552de3d02ab00bd24c"
+        },
+        "SOURCE_REVIEW_BUDGET.json": {
+          "path": "evidence/F02e2i-a3/SOURCE_REVIEW_BUDGET.json",
+          "sha256": "6e66fa199a25e9a3af788b5dbffddcf204cdef747532a866976a93a0c0dbe870"
+        },
+        "SOURCE_BUDGET.json": {
+          "path": "evidence/F02e2i-a3/SOURCE_BUDGET.json",
+          "sha256": "adeaf24f42613114078be737858e75d746b59e92f0bc5258cf9ee8a21c9f583a"
+        },
+        "SOURCE_READ_LOG.json": {
+          "path": "evidence/F02e2i-a3/SOURCE_READ_LOG.json",
+          "sha256": "92ef9998daea50ea60eefb8896d27c2769f33fb634ec65cd434a2a17173efb39"
+        }
+      },
+      "qualification": "no_compile_or_test_run",
+      "budget_uncertain": false
+    }
+  },
+  "preserved_state_bindings": {
+    "1": {
+      "attempt": 1,
+      "candidate_sha": "1d309eda2a4d6c24f00c7245e6f3294d43bc54b2",
+      "candidate_tree": "f26be2f2047464170439ebf996b97af49f52b4f5",
+      "state_record_sha256": "1f33bba9da4aeae99e7cb518fc0fc65b0d4261ddd02929b587d1ccd82281deaa",
+      "budget_uncertain": true
+    },
+    "2": {
+      "attempt": 2,
+      "candidate_sha": "672018c484ebc49bbfa03d6fb5425a54fb4345be",
+      "candidate_tree": "1b56c25301b81e123d1fa3e48ca5f93c707604c8",
+      "state_record_sha256": "e44822ec563707da87328426d54102636cbe8e8e81bdf51af234db3c6860ac9a",
+      "budget_uncertain": false
+    },
+    "3": {
+      "attempt": 3,
+      "candidate_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+      "candidate_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+      "state_record_sha256": "0e5cc5a797dc83ad9ad3a49938ce36b3f7412f41c69ae90d67cc35ae5aba4e5e",
+      "budget_uncertain": false
+    }
+  },
+  "initial_child": {
+    "status": "failed",
+    "attempts": 3,
+    "author": null,
+    "reviewer": null,
+    "evidence": null,
+    "blocker": "A54 preserves exhausted source3; one exact test-only repair4 requires accepted pack and a fresh recorded assignment. No reset/source5/retry.",
+    "source_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+    "source_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+    "attempt_history": {
+      "1": {
+        "result": "source_request_changes_no_compilation",
+        "candidate_sha": "1d309eda2a4d6c24f00c7245e6f3294d43bc54b2",
+        "candidate_tree": "f26be2f2047464170439ebf996b97af49f52b4f5",
+        "source_review": "evidence/F02e2i-a1/SOURCE_REVIEW.json",
+        "source_review_sha256": "05d9976be82cb075019741f1cdf8ca234628ff3d40c82aa2e2de1ec4d7cec6ea",
+        "worker_result": "evidence/F02e2i-a1/WORKER_RESULT.json",
+        "worker_result_sha256": "d319d8cefa569593444c86407eaf79142e660e0dbe5f617c13da3c835b3374e7",
+        "budget_disposition": "Original uncertain records retained; no exact bound or qualification inferred. wc values were overcharged; intermediate diff/search outputs not all saved.",
+        "source_budget": "evidence/F02e2i-a1/SOURCE_BUDGET.json",
+        "source_budget_sha256": "be215acef9c6c8aae67225251828217e12ec2e06debc492bb26c2652aa6c9c18"
+      },
+      "2": {
+        "result": "source_request_changes_no_compilation",
+        "candidate_sha": "672018c484ebc49bbfa03d6fb5425a54fb4345be",
+        "candidate_tree": "1b56c25301b81e123d1fa3e48ca5f93c707604c8",
+        "source_review": "evidence/F02e2i-a2/SOURCE_REVIEW.json",
+        "source_review_sha256": "ca21affa30f98a78a900d448078e91a890dacbe59f1c52682c9b7cca8f8a439a",
+        "worker_result": "evidence/F02e2i-a2/WORKER_RESULT.json",
+        "worker_result_sha256": "af211f4c4bc66a74ee155988e665c4e082f1344a94dcfaa6ce38d249fda2dbbe",
+        "source_budget": "evidence/F02e2i-a2/SOURCE_BUDGET.json",
+        "source_budget_sha256": "0c2c6d034e73735b254fb4811242f66e59b91c372f379d2edf4739e7e07c12e3",
+        "verified_source_read_bytes": 90967,
+        "remaining_required_repairs": [
+          "A53-A2-R1",
+          "A53-A2-R2",
+          "A53-A2-R3"
+        ]
+      },
+      "3": {
+        "result": "source_request_changes_no_compilation",
+        "candidate_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+        "candidate_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+        "source_review": "evidence/F02e2i-a3/SOURCE_REVIEW.json",
+        "source_review_sha256": "887f96f3adf26f246fc1f56648fb77dc2a000cdc1e7426552de3d02ab00bd24c",
+        "worker_result": "evidence/F02e2i-a3/WORKER_RESULT.json",
+        "worker_result_sha256": "32f816c8ca67b9aba3f2e008b08db692c3dd37bb95aa3b858f52209e4e749ccb",
+        "source_budget": "evidence/F02e2i-a3/SOURCE_BUDGET.json",
+        "source_budget_sha256": "adeaf24f42613114078be737858e75d746b59e92f0bc5258cf9ee8a21c9f583a",
+        "source_read_log": "evidence/F02e2i-a3/SOURCE_READ_LOG.json",
+        "source_read_log_sha256": "92ef9998daea50ea60eefb8896d27c2769f33fb634ec65cd434a2a17173efb39",
+        "verified_source_read_bytes": 72767
+      }
+    },
+    "preserved_source_failures_A54": {
+      "1": {
+        "attempt": 1,
+        "candidate_sha": "1d309eda2a4d6c24f00c7245e6f3294d43bc54b2",
+        "candidate_tree": "f26be2f2047464170439ebf996b97af49f52b4f5",
+        "state_record_sha256": "1f33bba9da4aeae99e7cb518fc0fc65b0d4261ddd02929b587d1ccd82281deaa",
+        "budget_uncertain": true
+      },
+      "2": {
+        "attempt": 2,
+        "candidate_sha": "672018c484ebc49bbfa03d6fb5425a54fb4345be",
+        "candidate_tree": "1b56c25301b81e123d1fa3e48ca5f93c707604c8",
+        "state_record_sha256": "e44822ec563707da87328426d54102636cbe8e8e81bdf51af234db3c6860ac9a",
+        "budget_uncertain": false
+      },
+      "3": {
+        "attempt": 3,
+        "candidate_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+        "candidate_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+        "state_record_sha256": "0e5cc5a797dc83ad9ad3a49938ce36b3f7412f41c69ae90d67cc35ae5aba4e5e",
+        "budget_uncertain": false
+      }
+    }
+  },
+  "source_map": {
+    "id": "A54",
+    "kind": "one_time_test_only_source_exception",
+    "slice": "F02e2i",
+    "attempt": 4,
+    "previous_limit": 3,
+    "no_reset": true,
+    "no_source5_or_retry": true,
+    "parent_F02e2s_attempt": 3,
+    "parent_attempt4_authorized": false,
+    "allowed_delta_paths": [
+      "crates/ferric-browser-application/src/lib.rs"
+    ],
+    "expected_lib_sha256": "d8b3925b956a0e749df56593efc7d11b243413ebb1f6ae21746e7e16275d3b9c",
+    "unchanged_session_sha256": "41293d4d09d5a935c59a074bda9ed6348391e7ca90edf378793b66c95a56a5f2",
+    "repair_patch": {
+      "path": "evidence/A54/TEST_ONLY_REPAIR.diff",
+      "sha256": "3dc08cebb99304ff18173aef743159565e54fe189147a3193eda1e803d474abc",
+      "utf8_bytes": 1153
+    },
+    "preserved_source_failures": {
+      "1": {
+        "attempt": 1,
+        "candidate_sha": "1d309eda2a4d6c24f00c7245e6f3294d43bc54b2",
+        "candidate_tree": "f26be2f2047464170439ebf996b97af49f52b4f5",
+        "state_record_sha256": "1f33bba9da4aeae99e7cb518fc0fc65b0d4261ddd02929b587d1ccd82281deaa",
+        "budget_uncertain": true
+      },
+      "2": {
+        "attempt": 2,
+        "candidate_sha": "672018c484ebc49bbfa03d6fb5425a54fb4345be",
+        "candidate_tree": "1b56c25301b81e123d1fa3e48ca5f93c707604c8",
+        "state_record_sha256": "e44822ec563707da87328426d54102636cbe8e8e81bdf51af234db3c6860ac9a",
+        "budget_uncertain": false
+      },
+      "3": {
+        "attempt": 3,
+        "candidate_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+        "candidate_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+        "state_record_sha256": "0e5cc5a797dc83ad9ad3a49938ce36b3f7412f41c69ae90d67cc35ae5aba4e5e",
+        "budget_uncertain": false
+      }
+    },
+    "review_sha256": "d5b073a7b1ea44b8913766da2ae5b9414ddb44d200235a6d5985f26db60f0bb9"
+  },
+  "prior_attempt_exceptions": {
+    "P00a": {
+      "amendment": "A37",
+      "default_limit": 3,
+      "authorized_limit": 4,
+      "reason": "User-authorized fourth attempt: repair pinned-Qt certificate handle and Reload API compile failures, then execute original T046."
+    },
+    "W01b": {
+      "amendment": "A37",
+      "default_limit": 3,
+      "authorized_limit": 4,
+      "reason": "User-authorized fourth attempt: reconstruct reviewed routing and fix E0716 while preserving accepted W01a/W01c; execute original T104."
+    },
+    "F02e2": {
+      "amendment": "A48",
+      "default_limit": 3,
+      "authorized_limit": 6,
+      "reason": "A48 authorizes one final source attempt 6 from accepted A5 solely to add the QQuickWidget complete-type include after A47 harness compile failure; preserve attempts 1-5 and stop after any attempt-6 failure with no attempt 7 or retry."
+    }
+  },
+  "prior_max_attempts": {
+    "S00": 3,
+    "S01": 3,
+    "F00": 3,
+    "F01": 3,
+    "F01b": 3,
+    "F01c": 2,
+    "F02": 3,
+    "F02a": 3,
+    "F02b": 3,
+    "F02b1": 3,
+    "F02b2": 3,
+    "F02c": 3,
+    "F02d": 3,
+    "F02b2a": 3,
+    "F02b2b": 3,
+    "F03": 3,
+    "F04": 3,
+    "F05": 3,
+    "H00": 3,
+    "H00a": 3,
+    "H00b": 3,
+    "H00c": 3,
+    "H01": 3,
+    "H02": 3,
+    "H03": 3,
+    "H04": 3,
+    "H05": 3,
+    "H06": 3,
+    "P00": 3,
+    "P00a": 4,
+    "P00b": 3,
+    "P00c": 3,
+    "P01": 3,
+    "P02": 3,
+    "P02a": 3,
+    "P02b": 3,
+    "P02c": 3,
+    "P03": 3,
+    "P04": 3,
+    "P05a": 3,
+    "P05b": 3,
+    "P05b1": 3,
+    "P05b2": 3,
+    "P05": 3,
+    "P06": 3,
+    "P07a": 3,
+    "P07b": 3,
+    "P07": 3,
+    "P08": 3,
+    "P09": 3,
+    "P10": 3,
+    "P11": 3,
+    "P12": 3,
+    "P13": 3,
+    "P14": 3,
+    "P15": 3,
+    "P16": 3,
+    "P17": 3,
+    "W00": 3,
+    "W01": 3,
+    "W01a": 3,
+    "W01b": 4,
+    "W01c": 3,
+    "W02": 3,
+    "W03": 3,
+    "W04": 3,
+    "W05": 3,
+    "W06": 3,
+    "W07": 3,
+    "W08": 3,
+    "W09": 3,
+    "W10": 3,
+    "W11": 3,
+    "W12": 3,
+    "W13": 3,
+    "W14": 3,
+    "X00": 3,
+    "X01": 3,
+    "X02": 3,
+    "X03": 3,
+    "X04": 3,
+    "X05": 3,
+    "X06": 3,
+    "F02e0": 3,
+    "F02e1": 3,
+    "F02e2": 6,
+    "F02e2q": null,
+    "F02e2r": null,
+    "F02e2i": 3,
+    "F02e2s": null,
+    "F02e3": 3,
+    "F02e4": 3,
+    "F02e5": 3,
+    "F02e6": 3,
+    "F02e7": 3,
+    "F02e8": 3,
+    "F02e": 3
+  },
+  "policy_amendments": {
+    "P00a": "A37",
+    "W01b": "A37",
+    "F02e2": "A48",
+    "F02e2i": "A54"
+  },
+  "policy_limits": {
+    "P00a": 4,
+    "W01b": 4,
+    "F02e2": 6,
+    "F02e2i": 4
+  }
+}

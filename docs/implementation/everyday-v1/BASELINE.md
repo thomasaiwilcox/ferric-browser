@@ -52,3 +52,8 @@ Source inspection found 65 direct application `add_test` registrations and three
 ## A53 — Durable ID is not actual profile-session identity
 
 A52 attempt2 reached a ready Ephemeral runtime but its optional durable ProfileId was empty. ProfileSession already owns actual session resources through Arc/Weak lifetime; no public session identity projection exists. F02e2i supplies an opaque typed live identity and BrowserApplication accessor in two existing application files. The original source baseline and failed histories remain; only the reserved F02e2s attempt3 source-base rule is overridden to accepted prerequisite integration descended from eb6ff74. No adapter path or attempt budget is widened.
+
+
+## A54 exact test-only repair
+
+A54 preserves F02e2i failed source candidates1/2/3 and proposes only a pinned cfg-test correction to A3 ba665d9e; accepted product integration remains eb6ff74 until exact integrated source and actual focused/full application regressions are independently accepted.

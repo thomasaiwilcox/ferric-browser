@@ -132,3 +132,8 @@ Historical T014c/T014d map to T014e1/T014e8 at the same component/application ev
 ## A53 typed live session identity
 
 T014e2i uses focused `profile_instance_identity` Rust unit functions and full ferric-browser-application --lib regressions, exact clean source, explicit owned target, nonzero execution and zero failures/skips. Independent review maps real test names to stable/shared identity, independent transient/durable-root identity, weak lifetime/renewal, application activation for Normal/Private/Ephemeral and unchanged persistence/privacy/grants. Pure API acceptance does not qualify native pages. The same reserved F02e2s attempt3 then runs its unchanged seven-gate/T014e2s contract against the accepted API; previous failed tests are never replayed or relabelled.
+
+
+## A54 exact test-only repair
+
+A54 source4 preserves T014e2i and all eight actual identity cases. Require expected lib/session hashes, independent source review, serial integration, focused and full application --lib exact-source gates with zero failures/skips, and independent evidence acceptance. Any failure ends4, no same-source rerun.

@@ -4693,6 +4693,51 @@
       "proposal_sha256": "0229d82ffbff22f1986f5a623e0b53624c586ea2dee671bfeee0ca2d7c118f89",
       "native_gate_sequence_unchanged": true,
       "old_tests_execution_authorized": false
+    },
+    {
+      "id": "A54",
+      "kind": "one_time_test_only_source_exception",
+      "slice": "F02e2i",
+      "attempt": 4,
+      "previous_limit": 3,
+      "no_reset": true,
+      "no_source5_or_retry": true,
+      "parent_F02e2s_attempt": 3,
+      "parent_attempt4_authorized": false,
+      "allowed_delta_paths": [
+        "crates/ferric-browser-application/src/lib.rs"
+      ],
+      "expected_lib_sha256": "d8b3925b956a0e749df56593efc7d11b243413ebb1f6ae21746e7e16275d3b9c",
+      "unchanged_session_sha256": "41293d4d09d5a935c59a074bda9ed6348391e7ca90edf378793b66c95a56a5f2",
+      "repair_patch": {
+        "path": "evidence/A54/TEST_ONLY_REPAIR.diff",
+        "sha256": "3dc08cebb99304ff18173aef743159565e54fe189147a3193eda1e803d474abc",
+        "utf8_bytes": 1153
+      },
+      "preserved_source_failures": {
+        "1": {
+          "attempt": 1,
+          "candidate_sha": "1d309eda2a4d6c24f00c7245e6f3294d43bc54b2",
+          "candidate_tree": "f26be2f2047464170439ebf996b97af49f52b4f5",
+          "state_record_sha256": "1f33bba9da4aeae99e7cb518fc0fc65b0d4261ddd02929b587d1ccd82281deaa",
+          "budget_uncertain": true
+        },
+        "2": {
+          "attempt": 2,
+          "candidate_sha": "672018c484ebc49bbfa03d6fb5425a54fb4345be",
+          "candidate_tree": "1b56c25301b81e123d1fa3e48ca5f93c707604c8",
+          "state_record_sha256": "e44822ec563707da87328426d54102636cbe8e8e81bdf51af234db3c6860ac9a",
+          "budget_uncertain": false
+        },
+        "3": {
+          "attempt": 3,
+          "candidate_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+          "candidate_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+          "state_record_sha256": "0e5cc5a797dc83ad9ad3a49938ce36b3f7412f41c69ae90d67cc35ae5aba4e5e",
+          "budget_uncertain": false
+        }
+      },
+      "review_sha256": "d5b073a7b1ea44b8913766da2ae5b9414ddb44d200235a6d5985f26db60f0bb9"
     }
   ]
 }

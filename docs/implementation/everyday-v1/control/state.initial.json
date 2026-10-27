@@ -885,12 +885,82 @@
       }
     },
     "F02e2i": {
-      "status": "not_started",
-      "attempts": 0,
+      "status": "failed",
+      "attempts": 3,
       "author": null,
       "reviewer": null,
       "evidence": null,
-      "blocker": null
+      "blocker": "A54 preserves exhausted source3; one exact test-only repair4 requires accepted pack and a fresh recorded assignment. No reset/source5/retry.",
+      "source_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+      "source_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+      "attempt_history": {
+        "1": {
+          "result": "source_request_changes_no_compilation",
+          "candidate_sha": "1d309eda2a4d6c24f00c7245e6f3294d43bc54b2",
+          "candidate_tree": "f26be2f2047464170439ebf996b97af49f52b4f5",
+          "source_review": "evidence/F02e2i-a1/SOURCE_REVIEW.json",
+          "source_review_sha256": "05d9976be82cb075019741f1cdf8ca234628ff3d40c82aa2e2de1ec4d7cec6ea",
+          "worker_result": "evidence/F02e2i-a1/WORKER_RESULT.json",
+          "worker_result_sha256": "d319d8cefa569593444c86407eaf79142e660e0dbe5f617c13da3c835b3374e7",
+          "budget_disposition": "Original uncertain records retained; no exact bound or qualification inferred. wc values were overcharged; intermediate diff/search outputs not all saved.",
+          "source_budget": "evidence/F02e2i-a1/SOURCE_BUDGET.json",
+          "source_budget_sha256": "be215acef9c6c8aae67225251828217e12ec2e06debc492bb26c2652aa6c9c18"
+        },
+        "2": {
+          "result": "source_request_changes_no_compilation",
+          "candidate_sha": "672018c484ebc49bbfa03d6fb5425a54fb4345be",
+          "candidate_tree": "1b56c25301b81e123d1fa3e48ca5f93c707604c8",
+          "source_review": "evidence/F02e2i-a2/SOURCE_REVIEW.json",
+          "source_review_sha256": "ca21affa30f98a78a900d448078e91a890dacbe59f1c52682c9b7cca8f8a439a",
+          "worker_result": "evidence/F02e2i-a2/WORKER_RESULT.json",
+          "worker_result_sha256": "af211f4c4bc66a74ee155988e665c4e082f1344a94dcfaa6ce38d249fda2dbbe",
+          "source_budget": "evidence/F02e2i-a2/SOURCE_BUDGET.json",
+          "source_budget_sha256": "0c2c6d034e73735b254fb4811242f66e59b91c372f379d2edf4739e7e07c12e3",
+          "verified_source_read_bytes": 90967,
+          "remaining_required_repairs": [
+            "A53-A2-R1",
+            "A53-A2-R2",
+            "A53-A2-R3"
+          ]
+        },
+        "3": {
+          "result": "source_request_changes_no_compilation",
+          "candidate_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+          "candidate_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+          "source_review": "evidence/F02e2i-a3/SOURCE_REVIEW.json",
+          "source_review_sha256": "887f96f3adf26f246fc1f56648fb77dc2a000cdc1e7426552de3d02ab00bd24c",
+          "worker_result": "evidence/F02e2i-a3/WORKER_RESULT.json",
+          "worker_result_sha256": "32f816c8ca67b9aba3f2e008b08db692c3dd37bb95aa3b858f52209e4e749ccb",
+          "source_budget": "evidence/F02e2i-a3/SOURCE_BUDGET.json",
+          "source_budget_sha256": "adeaf24f42613114078be737858e75d746b59e92f0bc5258cf9ee8a21c9f583a",
+          "source_read_log": "evidence/F02e2i-a3/SOURCE_READ_LOG.json",
+          "source_read_log_sha256": "92ef9998daea50ea60eefb8896d27c2769f33fb634ec65cd434a2a17173efb39",
+          "verified_source_read_bytes": 72767
+        }
+      },
+      "preserved_source_failures_A54": {
+        "1": {
+          "attempt": 1,
+          "candidate_sha": "1d309eda2a4d6c24f00c7245e6f3294d43bc54b2",
+          "candidate_tree": "f26be2f2047464170439ebf996b97af49f52b4f5",
+          "state_record_sha256": "1f33bba9da4aeae99e7cb518fc0fc65b0d4261ddd02929b587d1ccd82281deaa",
+          "budget_uncertain": true
+        },
+        "2": {
+          "attempt": 2,
+          "candidate_sha": "672018c484ebc49bbfa03d6fb5425a54fb4345be",
+          "candidate_tree": "1b56c25301b81e123d1fa3e48ca5f93c707604c8",
+          "state_record_sha256": "e44822ec563707da87328426d54102636cbe8e8e81bdf51af234db3c6860ac9a",
+          "budget_uncertain": false
+        },
+        "3": {
+          "attempt": 3,
+          "candidate_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+          "candidate_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+          "state_record_sha256": "0e5cc5a797dc83ad9ad3a49938ce36b3f7412f41c69ae90d67cc35ae5aba4e5e",
+          "budget_uncertain": false
+        }
+      }
     }
   }
 }

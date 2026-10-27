@@ -83,3 +83,8 @@ Default is preview. Apply requires explicit eligible names. The tool rejects mis
 ## A53 validation boundary
 
 Validate the typed-identity prerequisite, actual-source unit/full-regression receipts, reserved parent attempt3, accepted-prerequisite source base and immutable A52 failed history. The A52 native receipt/source/target/link/test/monitor/closure checks remain active. Coordinator private-D-Bus cleanup and operational build-supervisor changes require exact script/manifest review; a helper cleanup is never a product-test pass.
+
+
+## A54 exact test-only repair
+
+A54 validates only the named F02e2i cap4 exception and exact three cfg-test replacements, preserves all A53 source/identity/parent/native checks, binds failed1/2/3 history and unique fourth assignment, and rejects reset/source5/retry/additional product delta. A failed or missing receipt is never acceptance.

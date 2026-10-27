@@ -42,7 +42,7 @@ Workers who need a shared registration edit submit the exact diff and test regis
 
 ## Status and repair limits
 
-Allowed execution states: `not_started`, `ready`, `in_progress`, `submitted`, `reviewing`, `accepted`, `blocked_environment`, `blocked_specification`, `implemented_unqualified`, `failed`, `superseded`. Initial state is not implementation evidence. `accepted` requires independent review and all slice cases evidenced. Maximum three attempts total (initial plus two repair rounds), except the reviewed A37 per-slice attempt-four exceptions for P00a and W01b, and A48's single final F02e2 attempt 6. A48 does not authorize attempt 7 or a retry after an attempt-6 gate failure. No other increase or counter reset is authorized. If repeated repairs fail, preserve work/logs, record the exact failure and split or block it; do not weaken tests, expand scope indefinitely or ask another agent to rubber-stamp it.
+Allowed execution states: `not_started`, `ready`, `in_progress`, `submitted`, `reviewing`, `accepted`, `blocked_environment`, `blocked_specification`, `implemented_unqualified`, `failed`, `superseded`. Initial state is not implementation evidence. `accepted` requires independent review and all slice cases evidenced. Maximum three attempts total (initial plus two repair rounds), except the reviewed A37 per-slice attempt-four exceptions for P00a and W01b, A48's single final F02e2 attempt6, and A54's pinned test-only F02e2i attempt4. A48 does not authorize attempt 7 or a retry after an attempt-6 gate failure. No other increase or counter reset is authorized. If repeated repairs fail, preserve work/logs, record the exact failure and split or block it; do not weaken tests, expand scope indefinitely or ask another agent to rubber-stamp it.
 
 An implementation can be present while native evidence is missing. Store that as `implemented_unqualified`; dependent code that truly needs only the implementation may be split from a separate qualification gate through an explicit plan amendment. Do not change a declared dependency merely to turn a dashboard green. Keep working on unrelated helper, policy, fixture and generic-window tasks.
 
@@ -65,3 +65,8 @@ The public-host prototype precedes production migration; source budgets and max8
 ## A53 reserved-attempt continuation
 
 F02e2i is a genuine two-path typed-session prerequisite. Qualify and accept it independently, then resume the already-reserved F02e2s attempt3; do not increment to4 or reset to0. Preserve original staged A3 worktree and reading ledger. A continued source worktree starts from accepted prerequisite integration descended from eb6ff74 and reapplies reviewed adapter code. Claim the original four locks only when resuming. Native work still requires exact-source independent review and seven ordered gates; A1/A2 and older failures remain immutable. A53 validator rules explicitly version A52 dependency/base/initial-state assumptions while preserving all other history and acceptance checks.
+
+
+## A54 exact test-only repair
+
+A54 grants F02e2i only one pinned cfg-test source4 after failed3; preserve all history and A53 identity/native gates. Exact patch/hash, accepted pack authority and unique assignment precede source4. Any failure is terminal; no source5/retry/reset. Parent F02e2s stays separately reserved3/no4.

@@ -4520,7 +4520,7 @@
         "T014e2i"
       ],
       "max_changed_product_files": 2,
-      "max_attempts": 3,
+      "max_attempts": 4,
       "worker_may_delegate": false,
       "slice_file": "slices/F02e2i.md",
       "read_anchors": [
@@ -5021,6 +5021,12 @@
       "default_limit": 3,
       "authorized_limit": 6,
       "reason": "A48 authorizes one final source attempt 6 from accepted A5 solely to add the QQuickWidget complete-type include after A47 harness compile failure; preserve attempts 1-5 and stop after any attempt-6 failure with no attempt 7 or retry."
+    },
+    "F02e2i": {
+      "amendment": "A54",
+      "default_limit": 3,
+      "authorized_limit": 4,
+      "reason": "A54 permits only one final source attempt4 for the pinned three cfg(test) replacements after three preserved source-review failures; no source5 or retry, production delta, test reduction or parent4."
     }
   },
   "native_gate_retries": {
@@ -5605,5 +5611,59 @@
       "verbose_single_test_output_required": true,
       "product_thresholds_changed": false
     }
+  },
+  "identity_test_repair_A54": {
+    "amendment": "A54",
+    "review": {
+      "path": "evidence/A54/PLAN_REVIEW.json",
+      "sha256": "d5b073a7b1ea44b8913766da2ae5b9414ddb44d200235a6d5985f26db60f0bb9"
+    },
+    "review_budget": {
+      "path": "evidence/A54/PLAN_REVIEW_BUDGET.json",
+      "sha256": "202e96a97d23ba4480a752817d34f27ecf07c95d66f946fa51e4429944a3ec05"
+    },
+    "proposal": {
+      "path": "evidence/A54/PROPOSAL.json",
+      "sha256": "4b836d2e90d387548c284d3b5071487eb2c94abf44dd0f24995dab296cf693a1"
+    },
+    "packet": {
+      "path": "packets/A54-test-only-final-repair-proposal.md",
+      "sha256": "0402ff445568c4d6267350695491e518b5121366ddc1858d8f295df2070e4f7d"
+    },
+    "slice": "F02e2i",
+    "attempt": 4,
+    "previous_limit": 3,
+    "attempt_reset": false,
+    "source5_authorized": false,
+    "same_source_retry_authorized": false,
+    "global_limit": 3,
+    "parent_slice": "F02e2s",
+    "parent_attempt": 3,
+    "parent_limit": 3,
+    "parent_attempt4_authorized": false,
+    "source_base_sha": "eb6ff74ad7134ff6fb5a2e934e08fd3f22a777a9",
+    "source_base_tree": "42b809fee461d7a555b79f953fe1c56d6c1a0845",
+    "reapply_source_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+    "reapply_source_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+    "repair_patch": {
+      "path": "evidence/A54/TEST_ONLY_REPAIR.diff",
+      "sha256": "3dc08cebb99304ff18173aef743159565e54fe189147a3193eda1e803d474abc",
+      "utf8_bytes": 1153
+    },
+    "expected_lib_sha256": "d8b3925b956a0e749df56593efc7d11b243413ebb1f6ae21746e7e16275d3b9c",
+    "unchanged_session_sha256": "41293d4d09d5a935c59a074bda9ed6348391e7ca90edf378793b66c95a56a5f2",
+    "source4_evidence_directory": "evidence/F02e2i-a4",
+    "source4_assignment": "evidence/F02e2i-a4/ASSIGNMENT.json",
+    "terminal_marker": "evidence/F02e2i-a4/TERMINAL.json",
+    "production_changes_authorized": false,
+    "test_changes_beyond_exact_patch_authorized": false,
+    "qualification_gates_unchanged": true,
+    "unit_gate_receipts": {
+      "focused": "evidence/F02e2i-a4/focused/receipt.json",
+      "application_regression": "evidence/F02e2i-a4/application-regression/receipt.json"
+    },
+    "cargo_target_relative": "builds/application-F02e2i-a4/cargo-target",
+    "source_review": "evidence/F02e2i-a4/SOURCE_REVIEW.json",
+    "integrated_source_review": "evidence/F02e2i-a4/INTEGRATED_SOURCE_REVIEW.json"
   }
 }

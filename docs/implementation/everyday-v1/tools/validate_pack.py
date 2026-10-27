@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate pack/ledger consistency. This does not establish real browser correctness."""
 from __future__ import annotations
-import argparse,json,re,shlex,sys
+import argparse,hashlib,json,re,shlex,subprocess,sys
 from pathlib import Path
 from common import (PACK,load,read_plan,packet,safe_relative,digest,git,
                     ATTEMPT_EXCEPTION_TASKS,ATTEMPT_EXCEPTION_AMENDMENTS,
@@ -1174,6 +1174,7 @@ def validate_structure(pack=PACK,plan=None):
         errors+=validate_successor_recovery_A50(plan,pack)
         errors+=validate_successor_recovery_A52(plan,pack)
         errors+=validate_profile_identity_A53(plan,pack)
+        errors+=validate_identity_repair_A54(plan,pack)
         errors+=validate_continuation_A51(plan,pack)
         errors+=validate_supersession_structure(tasks,tests)
         reqids=[r["id"] for r in reqs]
@@ -1505,13 +1506,16 @@ def validate_profile_identity_A53(plan,pack=PACK):
         c=profile_identity_contract(pack);meta=c["metadata"]
         if plan.get("profile_instance_prerequisite_A53")!=meta:errors.append("A53: identity prerequisite metadata differs from accepted plan")
         for sid,key in (("F02e2i","task"),("F02e2s","parent_task")):
-            if tasks.get(sid)!=c[key]:errors.append(f"{sid}: A53 exact scope, dependency, cases or reserved-attempt continuation changed")
+            expected=dict(c[key])
+            if sid=="F02e2i" and plan.get("identity_test_repair_A54") is not None:expected["max_attempts"]=4
+            if tasks.get(sid)!=expected:errors.append(f"{sid}: A53 exact scope, dependency, cases or reserved-attempt continuation changed")
         if tasks.get("F02e",{}).get("depends_on")!=c["aggregate_dependencies"]:errors.append("A53: aggregate omits live identity prerequisite")
         tests=load(pack/"control/test_matrix.json")["tests"]
         if [x for x in tests if x.get("id")=="T014e2i"]!=[c["test"]]:errors.append("A53: typed-identity unit case was weakened or removed")
         initial=load(pack/"control/state.initial.json")["slices"]
         if initial.get("F02e2s")!=c["initial_parent"]:errors.append("A53: initial ledger must retain failed history and reserved scope-blocked attempt3")
-        if initial.get("F02e2i")!=c["initial_child"]:errors.append("A53: only the new identity prerequisite starts at zero")
+        expected_child=(identity_repair_contract_A54(pack)["initial_child"] if plan.get("identity_test_repair_A54") is not None else c["initial_child"])
+        if initial.get("F02e2i")!=expected_child:errors.append("A53: identity prerequisite initial history changed without its reviewed version")
         mapping=load(pack/"control/source-map.execution.json").get("execution_amendments",[])
         if [x for x in mapping if x.get("id")=="A53"]!=[c["source_map"]]:errors.append("A53: source map lost identity scope, base or history bindings")
         section=amendments.split("## A53",1)[1].split("\n## ",1)[0]
@@ -1541,7 +1545,8 @@ def validate_profile_identity_state_A53(plan,state,root,initial=False,pack=PACK)
                     or not HEX.fullmatch(child.get("source_sha", "")) or not HEX.fullmatch(child.get("source_tree", ""))):
                 errors.append("A53: resumed attempt3 must use exact accepted identity integration as its base")
         if initial:
-            if parent!=c["initial_parent"] or child!=c["initial_child"]:errors.append("A53: initial snapshot cannot authorize resumed work or reset history")
+            expected_child=(identity_repair_contract_A54(pack)["initial_child"] if plan.get("identity_test_repair_A54") is not None else c["initial_child"])
+            if parent!=c["initial_parent"] or child!=expected_child:errors.append("A53: initial snapshot cannot authorize resumed work or reset history")
         else:
             for name,record in meta["preserved_failures"].items():
                 rp=safe_relative(root,record["run"]);cp=safe_relative(root,record["closure"])
@@ -1624,6 +1629,145 @@ def validate_identity_acceptance_A53(task,record,root,pack=PACK):
     return errors
 
 
+A54_CONTRACT_SHA256="830986d107c49558385a8d23198f16b16c4c255c9b52307f6c8fe899e15dde78"
+
+def identity_repair_contract_A54(pack=PACK):
+    path=pack/"control/profile-identity-repair.A54.json"
+    if digest(path)!=A54_CONTRACT_SHA256:raise ValueError("A54 approved test-only contract digest mismatch")
+    return load(path)
+
+def validate_identity_repair_A54(plan,pack=PACK):
+    section_path=pack/"control/AMENDMENTS.md"
+    text=section_path.read_text() if section_path.exists() else ""
+    if plan.get("identity_test_repair_A54") is None and "## A54" not in text:return []
+    errors=[]
+    try:
+        c=identity_repair_contract_A54(pack);meta=c["metadata"]
+        if plan.get("identity_test_repair_A54")!=meta:errors.append("A54: exact repair policy/review/patch metadata changed")
+        tasks={t["id"]:t for t in plan["slices"]}
+        if set(tasks)!=set(c["prior_max_attempts"]):errors.append("A54: repair must not replace or add a task to reset history")
+        for sid,previous in c["prior_max_attempts"].items():
+            if tasks.get(sid,{}).get("max_attempts")!=(4 if sid=="F02e2i" else previous):errors.append(f"A54: unauthorized attempt cap for {sid}")
+        exceptions=plan.get("attempt_exceptions",{})
+        if exceptions.get("F02e2i")!=c["attempt_exception"]:errors.append("A54: only the exact named fourth-attempt exception is authorized")
+        if {k:v for k,v in exceptions.items() if k!="F02e2i"}!=c["prior_attempt_exceptions"]:errors.append("A54: prior named attempt exceptions changed")
+        if ATTEMPT_EXCEPTION_AMENDMENTS!=c["policy_amendments"] or ATTEMPT_EXCEPTION_LIMITS!=c["policy_limits"] or GLOBAL_MAX_ATTEMPTS!=3:
+            errors.append("A54: common attempt policy allowlist changed beyond this exception")
+        initial=load(pack/"control/state.initial.json")["slices"]
+        if initial.get("F02e2i")!=c["initial_child"]:errors.append("A54: initial child must preserve the exhausted three-source history")
+        mapping=load(pack/"control/source-map.execution.json")["execution_amendments"]
+        if [x for x in mapping if x.get("id")=="A54"]!=[c["source_map"]]:errors.append("A54: source map lost exact repair/history restrictions")
+        section=text.split("## A54",1)[1].split("\n## ",1)[0]
+        if any(ref["sha256"] not in section for ref in (meta["review"],meta["review_budget"],meta["proposal"],meta["packet"],meta["repair_patch"])):
+            errors.append("A54: amendment omits bound independent approval or exact patch")
+    except (OSError,KeyError,ValueError,TypeError,IndexError) as exc:errors.append(f"A54: {exc}")
+    return errors
+
+def validate_identity_product_A54(repository,source,c):
+    if not HEX.fullmatch(source or ""):raise ValueError("A54 source commit is invalid")
+    expected={"crates/ferric-browser-application/src/lib.rs":c["metadata"]["expected_lib_sha256"],
+              "crates/ferric-browser-application/src/profile_session.rs":c["metadata"]["unchanged_session_sha256"]}
+    for path,wanted in expected.items():
+        raw=subprocess.run(["git","-C",str(repository),"show",f"{source}:{path}"],capture_output=True)
+        if raw.returncode or hashlib.sha256(raw.stdout).hexdigest()!=wanted:
+            raise ValueError(f"A54: {path} differs from the exact test-only repair/source preservation")
+
+def validate_identity_repair_state_A54(plan,state,root,initial=False,pack=PACK):
+    if plan.get("identity_test_repair_A54") is None:return []
+    errors=[]
+    try:
+        c=identity_repair_contract_A54(pack);meta=c["metadata"];child=state["slices"]["F02e2i"]
+        if initial:
+            if child!=c["initial_child"]:raise ValueError("initial child cannot reset failed source history or assign source4")
+            return []
+        attempt=child.get("attempts");status=child.get("status")
+        if not isinstance(attempt,int) or isinstance(attempt,bool) or attempt not in (3,4):raise ValueError("retain3 then assign exactly4 once; no reset or source5")
+        if child.get("preserved_source_failures_A54")!=c["preserved_state_bindings"]:raise ValueError("preserved source failure bindings changed")
+        for number,record in c["history"].items():
+            actual=child.get("attempt_history",{}).get(number)
+            hashed=hashlib.sha256(json.dumps(actual,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+            if hashed!=record["state_record_sha256"]:raise ValueError(f"source{number} failed state record changed")
+            for name,ref in record["files"].items():
+                if digest(safe_relative(root,ref["path"]))!=ref["sha256"]:raise ValueError(f"source{number} {name} digest changed")
+        patch=safe_relative(root,meta["repair_patch"]["path"])
+        if digest(patch)!=meta["repair_patch"]["sha256"]:raise ValueError("exact cfg-test patch digest changed")
+        assignment_path=safe_relative(root,meta["source4_assignment"])
+        terminal_path=safe_relative(root,meta["terminal_marker"])
+        failed_artifacts=[]
+        for name,path in meta["unit_gate_receipts"].items():
+            receipt_path=safe_relative(root,path)
+            if receipt_path.exists():
+                receipt=load(receipt_path)
+                if (receipt.get("result")!="passed" or receipt.get("exit_code")!=0
+                        or receipt.get("timed_out") or receipt.get("output_limit_exceeded")
+                        or receipt.get("observed_failed",0)>0 or receipt.get("observed_skips",0)>0):
+                    failed_artifacts.append(name)
+        for name in ("source_review","integrated_source_review"):
+            review_path=safe_relative(root,meta[name])
+            if review_path.exists():
+                review=load(review_path)
+                if review.get("recommendation",review.get("decision")) in {"request_changes","repair","block","reject"}:failed_artifacts.append(name)
+        if failed_artifacts and (attempt!=4 or status!="failed" or not terminal_path.exists()):
+            raise ValueError("source4 failed review/gate is terminal; no alternate-path retry: "+", ".join(failed_artifacts))
+        if attempt==3:
+            if assignment_path.exists() or terminal_path.exists():raise ValueError("source4 was already assigned or ended; cannot return to3")
+            if status not in {"failed","blocked_specification","ready"}:raise ValueError("failed3 cannot resume as source3 or accept without source4 qualification")
+        elif status in {"ready","not_started"}:raise ValueError("source4 is a single assignment, not a dispatchable retry")
+        if terminal_path.exists():
+            terminal=load(terminal_path)
+            if (terminal.get("slice")!="F02e2i" or terminal.get("attempt")!=4 or terminal.get("result")!="failed"
+                    or terminal.get("no_retry") is not True or attempt!=4 or status!="failed"):
+                raise ValueError("source4 terminal failure cannot be retried, reset or accepted")
+        if attempt==4 and status=="failed" and not terminal_path.exists():raise ValueError("source4 failure requires an immutable terminal marker")
+        needs_authority=status=="ready" or attempt==4
+        if needs_authority:
+            authority=child.get("source_repair_A54_authority",{})
+            rp=safe_relative(root,authority["review"])
+            if digest(rp)!=authority["review_sha256"]:raise ValueError("accepted pack review digest mismatch")
+            review=load(rp);candidate=review.get("candidate",{})
+            if (review.get("decision")!="accept" or not review.get("reviewer") or review.get("reviewer")=="/root"
+                    or not HEX.fullmatch(authority.get("pack_commit", "")) or not HEX.fullmatch(authority.get("pack_tree", ""))
+                    or candidate.get("commit")!=authority["pack_commit"] or candidate.get("tree")!=authority["pack_tree"]):
+                raise ValueError("source4 readiness requires independent exact accepted pack authority")
+        if attempt==4:
+            if child.get("assignment")!=meta["source4_assignment"] or digest(assignment_path)!=child.get("assignment_sha256"):
+                raise ValueError("source4 must use the sole exact recorded assignment")
+            assignment=load(assignment_path)
+            required={"slice":"F02e2i","amendment":"A54","attempt":4,"attempt_limit":4,
+                      "base_sha":meta["source_base_sha"],"base_tree":meta["source_base_tree"],
+                      "reapply_source_sha":meta["reapply_source_sha"],"reapply_source_tree":meta["reapply_source_tree"],
+                      "repair_patch_sha256":meta["repair_patch"]["sha256"],"expected_lib_sha256":meta["expected_lib_sha256"],
+                      "unchanged_session_sha256":meta["unchanged_session_sha256"],
+                      "pack_commit":authority["pack_commit"],"pack_tree":authority["pack_tree"]}
+            if any(assignment.get(k)!=v for k,v in required.items()) or assignment.get("worker")!=child.get("author"):
+                raise ValueError("source4 assignment changes exact base/patch/content/authority/owner")
+            if status in {"submitted","reviewing","implemented_unqualified","accepted"}:
+                validate_identity_product_A54(Path(child["worktree"]),child.get("source_sha"),c)
+        if status=="failed":
+            if child.get("source_changes_authorized") is True or child.get("compile_test_authorized") is True:
+                raise ValueError("terminal source failure authorizes no correction or gate replay")
+            if "F02e2i" in state.get("active",[]) or any(x.get("slice")=="F02e2i" for x in state.get("active_locks",{}).values()):
+                raise ValueError("terminal source failure must release its assignment locks")
+    except (OSError,KeyError,ValueError,TypeError,AttributeError,RuntimeError) as exc:errors.append(f"A54 state: {exc}")
+    return errors
+
+def validate_identity_repair_acceptance_A54(plan,task,record,root,pack=PACK):
+    if plan.get("identity_test_repair_A54") is None or task.get("id")!="F02e2i" or record.get("status")!="accepted":return []
+    errors=[]
+    try:
+        c=identity_repair_contract_A54(pack)
+        if record.get("attempts")!=4:raise ValueError("A54 acceptance must be the one authorized source4")
+        evidence=load(safe_relative(root,record["evidence"]))
+        validate_identity_product_A54(Path(evidence["source_repository"]),evidence["source_sha"],c)
+        for name,path in c["metadata"]["unit_gate_receipts"].items():
+            gate=evidence.get("unit_gates",{}).get(name,{})
+            if gate.get("receipt")!=path:raise ValueError("A54 accepts only each fixed one-time focused/full receipt; no retry directory")
+            receipt=load(safe_relative(root,path));target=str((root/c["metadata"]["cargo_target_relative"]).resolve())
+            if receipt.get("execution_binding",{}).get("cargo_target_dir")!=target:
+                raise ValueError("A54 focused/full suites must use the same exact owned target")
+    except (OSError,KeyError,ValueError,TypeError,RuntimeError) as exc:errors.append(f"F02e2i A54: {exc}")
+    return errors
+
 def validate_state(plan,state_path,strict=False,pack=PACK):
     errors=[]
     try:
@@ -1637,10 +1781,12 @@ def validate_state(plan,state_path,strict=False,pack=PACK):
         errors+=validate_successor_recovery_A50(plan,pack)
         errors+=validate_successor_recovery_A52(plan,pack)
         errors+=validate_profile_identity_A53(plan,pack)
+        errors+=validate_identity_repair_A54(plan,pack)
         errors+=validate_continuation_A51(plan,pack)
         errors+=validate_continuation_state_A51(state,root)
         errors+=validate_supersession_state(plan,state,strict,state_path.name=="state.initial.json")
         errors+=validate_profile_identity_state_A53(plan,state,root,state_path.name=="state.initial.json",pack)
+        errors+=validate_identity_repair_state_A54(plan,state,root,state_path.name=="state.initial.json",pack)
         if state.get("run_id") is not None:
             parent_state=state["slices"].get("F02e2",{})
             successor_state=state["slices"].get("F02e2r",{})
@@ -1675,6 +1821,7 @@ def validate_state(plan,state_path,strict=False,pack=PACK):
                 errors+=validate_acceptance(t,s,root,tests)
                 errors+=validate_acceptance_A52(t,s,root)
                 errors+=validate_identity_acceptance_A53(t,s,root,pack)
+                errors+=validate_identity_repair_acceptance_A54(plan,t,s,root,pack)
             elif s["status"]=="superseded":
                 continue
             elif strict:errors.append(f"{sid}: not accepted ({s['status']})")
