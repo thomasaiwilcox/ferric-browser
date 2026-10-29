@@ -427,11 +427,14 @@ async fn get_assertion_fido2<C: Channel>(
         };
 
     validate_rp_id_hash(&response)?;
-    // Cap iteration so a hostile numberOfCredentials cannot force an unbounded loop.
-    let max_count = get_info_response
-        .max_credential_count_in_list()
-        .unwrap_or(255);
-    let count = (response.credentials_count.unwrap_or(1) as usize).min(max_count);
+    // Ferric's one-shot helper must bound retained accounts independently of
+    // device claims. maxCredentialCountInList describes input allowLists, not
+    // the number of resident assertions. Never silently truncate account choice.
+    const MAX_ASSERTIONS: usize = 16;
+    let count = response.credentials_count.unwrap_or(1) as usize;
+    if count == 0 || count > MAX_ASSERTIONS {
+        return Err(WebAuthnError::Platform(PlatformError::InvalidDeviceResponse));
+    }
     let mut ctap_responses = vec![response];
     for i in 1..count {
         debug!({ i }, "Fetching additional credential");
@@ -1042,7 +1045,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn get_next_assertion_iteration_is_bounded() {
+        async fn hostile_assertion_count_is_rejected_before_fetching_more() {
             let info = Ctap2GetInfoResponse {
                 max_credential_count: Some(2),
                 ..Default::default()
@@ -1061,12 +1064,24 @@ mod tests {
                 expected_cbor,
                 get_assertion_response_with(&hash, Some(u32::MAX)),
             );
-            // Only one getNextAssertion is queued, so unbounded iteration would panic.
-            let next_request = CborRequest::new(Ctap2CommandCode::AuthenticatorGetNextAssertion);
-            channel.push_command_pair(next_request, get_assertion_response_with(&hash, None));
-
             let result = get_assertion_fido2(&mut channel, &op).await;
-            assert!(result.is_ok(), "bounded iteration failed: {result:?}");
+            assert!(matches!(result, Err(WebAuthnError::Platform(PlatformError::InvalidDeviceResponse))));
+        }
+
+        #[tokio::test]
+        async fn resident_assertions_are_not_truncated_to_allow_list_limit() {
+            let info = Ctap2GetInfoResponse { max_credential_count: Some(1), ..Default::default() };
+            let op = assertion_request(vec![]);
+            let request = Ctap2GetAssertionRequest::from_webauthn_request(&op, &info).unwrap();
+            let mut channel = NoPreflightChannel::new();
+            let get_info = CborRequest::new(Ctap2CommandCode::AuthenticatorGetInfo);
+            channel.push_command_pair(get_info.clone(), get_info_response(&info));
+            channel.push_command_pair(get_info, get_info_response(&info));
+            let hash = rp_id_hash("example.com");
+            channel.push_command_pair((&request).try_into().unwrap(), get_assertion_response_with(&hash, Some(2)));
+            channel.push_command_pair(CborRequest::new(Ctap2CommandCode::AuthenticatorGetNextAssertion), get_assertion_response_with(&hash, None));
+            let response = get_assertion_fido2(&mut channel, &op).await.unwrap();
+            assert_eq!(response.assertions.len(), 2);
         }
 
         #[tokio::test]

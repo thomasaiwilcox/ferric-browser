@@ -100,8 +100,18 @@ async fn prepare_with_psl(
         return Err(AdmissionError::InvalidOrigin);
     }
 
-    let options = envelope.options.into_value();
+    let mut options = envelope.options.into_value();
     validate_options(envelope.op, &options)?;
+    // WebAuthn's residentKey enum takes precedence over the legacy boolean.
+    // Keep requireResidentKey only as the fallback when residentKey is absent.
+    if envelope.op == Operation::Create
+        && let Some(selection) = options
+            .get_mut("authenticatorSelection")
+            .and_then(Value::as_object_mut)
+        && selection.contains_key("residentKey")
+    {
+        selection.remove("requireResidentKey");
+    }
     let options_json =
         serde_json::to_string(&options).map_err(|_| AdmissionError::InvalidEnvelope)?;
     let settings = RequestSettings {
@@ -394,6 +404,42 @@ mod tests {
             UserVerificationRequirement::Required
         );
         assert_eq!(request.algorithms.len(), 1);
+    }
+
+    #[test]
+    fn resident_key_enum_precedes_the_legacy_boolean() {
+        let psl = fixture();
+        for (value, expected) in [
+            ("discouraged", ResidentKeyRequirement::Discouraged),
+            ("preferred", ResidentKeyRequirement::Preferred),
+            ("required", ResidentKeyRequirement::Required),
+        ] {
+            let mut options = make_options("example.com");
+            options["authenticatorSelection"]["residentKey"] = value.into();
+            options["authenticatorSelection"]["requireResidentKey"] = true.into();
+            let prepared = run(prepare_with_psl(
+                envelope("create", "https://login.example.com", options),
+                &psl,
+            ))
+            .unwrap();
+            let PreparedRequest::Create(request) = prepared.request else {
+                panic!("create request")
+            };
+            assert_eq!(request.resident_key, Some(expected));
+        }
+        let mut options = make_options("example.com");
+        let selection = options["authenticatorSelection"].as_object_mut().unwrap();
+        selection.remove("residentKey");
+        selection.insert("requireResidentKey".into(), true.into());
+        let prepared = run(prepare_with_psl(
+            envelope("create", "https://login.example.com", options),
+            &psl,
+        ))
+        .unwrap();
+        let PreparedRequest::Create(request) = prepared.request else {
+            panic!("create request")
+        };
+        assert_eq!(request.resident_key, Some(ResidentKeyRequirement::Required));
     }
 
     #[test]

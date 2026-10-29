@@ -26,6 +26,9 @@ use crate::transport::cable::known_devices::CableKnownDeviceId;
 
 const P256_X962_LENGTH: usize = 65;
 const MAX_CBOR_SIZE: usize = 1024 * 1024;
+// This patched transport is used by Ferric's single-ceremony process. Bound
+// cumulative received CTAP bytes before queueing or parsing additional replies.
+const MAX_CEREMONY_CTAP_BYTES: usize = 1024 * 1024;
 const PADDING_GRANULARITY: usize = 32;
 /// After sending Shutdown, how long to wait for the peer to close its side.
 const PEER_CLOSE_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
@@ -299,6 +302,8 @@ pub(crate) async fn connection(mut input: TunnelConnectionInput) -> Result<(), C
     };
     debug!(?get_info_response_serialized, "Received initial message");
 
+    let mut received_ctap_bytes = get_info_response_serialized.len();
+    if received_ctap_bytes > MAX_CEREMONY_CTAP_BYTES { return Err(CableError::InvalidFraming); }
     loop {
         tokio::select! {
             result = input.data_channel.recv() => {
@@ -313,6 +318,7 @@ pub(crate) async fn connection(mut input: TunnelConnectionInput) -> Result<(), C
                             message,
                             &input.cbor_rx_send,
                             &mut input.noise_state,
+                            &mut received_ctap_bytes,
                         )
                         .await
                         {
@@ -605,6 +611,7 @@ async fn connection_recv(
     encrypted_frame: Vec<u8>,
     cbor_rx_send: &Sender<CborResponse>,
     noise_state: &mut TunnelNoiseState,
+    received_ctap_bytes: &mut usize,
 ) -> Result<RecvOutcome, CableError> {
     let decrypted_frame = decrypt_frame(encrypted_frame, noise_state).await?;
 
@@ -618,6 +625,10 @@ async fn connection_recv(
             Ok(RecvOutcome::PeerShutdown)
         }
         CableTunnelMessageType::Ctap => {
+            let total = received_ctap_bytes.checked_add(cable_message.payload.len())
+                .filter(|total| *total <= MAX_CEREMONY_CTAP_BYTES)
+                .ok_or(CableError::InvalidFraming)?;
+            *received_ctap_bytes = total;
             let cbor_response: CborResponse = (&cable_message.payload.to_vec())
                 .try_into()
                 .or(Err(CableError::InvalidFraming))?;
@@ -832,6 +843,28 @@ mod tests {
             transport_state: hs.into_transport_mode().unwrap(),
         };
         (state(initiator), state(responder))
+    }
+
+    #[tokio::test]
+    async fn ctap_receive_budget_rejects_before_queueing_an_excess_response() {
+        let (mut desktop, mut phone) = noise_pair();
+        let connection_type = CableTunnelConnectionType::QrCode {
+            routing_id: "000000".into(), tunnel_id: "00".repeat(16),
+            private_key: NonZeroScalar::generate(),
+        };
+        let mut channel = RecordingChannel::default();
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(2);
+        let mut bytes = MAX_CEREMONY_CTAP_BYTES - 4;
+        send_tunnel_message(CableTunnelMessageType::Ctap, &[0, 0xA1, 1, 2], &mut channel, &mut phone).await.unwrap();
+        connection_recv(&connection_type, "cable.ua5v.com", &None,
+            channel.sent.remove(0), &sender, &mut desktop, &mut bytes).await.unwrap();
+        assert_eq!(bytes, MAX_CEREMONY_CTAP_BYTES);
+        assert_eq!(receiver.recv().await.unwrap().data, Some(vec![0xA1, 1, 2]));
+        send_tunnel_message(CableTunnelMessageType::Ctap, &[0], &mut channel, &mut phone).await.unwrap();
+        let result = connection_recv(&connection_type, "cable.ua5v.com", &None,
+            channel.sent.remove(0), &sender, &mut desktop, &mut bytes).await;
+        assert!(matches!(result, Err(CableError::InvalidFraming)));
+        assert!(receiver.try_recv().is_err(), "excess response was never retained in the queue");
     }
 
     #[derive(Default)]
