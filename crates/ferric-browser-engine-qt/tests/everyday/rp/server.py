@@ -260,7 +260,10 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                 # and required UV. Counter freshness is RP state policy here.
                 if verified.credential_id != self.app.credential.credential_id:
                     raise ValueError("unexpected credential")
-                if count <= self.app.signature_counter:
+                # WebAuthn §7.2: authenticators without counters keep both
+                # values at zero. Retain clone/replay rejection when either
+                # stored or received counter is nonzero.
+                if (count or self.app.signature_counter) and count <= self.app.signature_counter:
                     raise ValueError("signature counter did not increase")
                 self.app.signature_counter = count
                 self._respond(200, {"ok": True})

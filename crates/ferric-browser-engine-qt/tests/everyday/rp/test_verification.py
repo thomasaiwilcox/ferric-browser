@@ -196,6 +196,17 @@ class RelyingPartyVerificationTests(unittest.TestCase):
         self.assertEqual((status, response), (200, {"ok": True}))
         self.assertEqual(self.fixture.httpd.app.signature_counter, 2)
 
+    def test_counterless_credentials_pass_with_fresh_challenges(self):
+        self.authenticator.registration_counter = 0
+        self._register_disposable_credential()
+        self.assertEqual(self._assertion_result(counter=0), (200, {"ok": True}))
+        self.assertEqual(self._assertion_result(counter=0), (200, {"ok": True}))
+        self.assertEqual(self.fixture.httpd.app.signature_counter, 0)
+
+    def test_counter_cannot_return_to_zero_after_incrementing(self):
+        self._register_disposable_credential()
+        self.assertEqual(self._assertion_result(counter=0)[0], 400)
+
     def test_t086_wrong_challenge_fails_fido2_assertion_verifier(self):
         self._register_disposable_credential()
         transaction, options = self._begin_assertion()

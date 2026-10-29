@@ -21,11 +21,13 @@ credential public key from authenticator data.
 `authenticate_complete` parses assertion bytes and checks get type, exact
 origin, server-issued challenge, RP ID hash, user presence, required UV, known
 credential ID, and the assertion signature using the registered public key.
-The fixture adds an RP counter policy: each new authenticator counter must be
-strictly greater than the registered/last accepted count. That is a deliberate
-fixture policy for the counter replay negative; it is stricter than authenticators
-whose counters are absent or permanently zero. Errors returned to the browser
-are generic and request bodies are never logged.
+The fixture follows WebAuthn's signature-counter condition: if either the new
+or stored counter is nonzero, the new value must increase. Counterless
+authenticators may keep both values at zero; their assertions still require
+fresh server challenges and valid signatures. This supports physical passkeys
+without disguising a non-increasing nonzero counter. See
+[WebAuthn §7.2](https://www.w3.org/TR/webauthn-3/#sctn-verifying-assertion).
+Errors returned to the browser are generic and request bodies are never logged.
 
 The test authenticator makes fresh P-256 keys, credential IDs, authenticator
 data, a `none` attestation object, client data, and ECDSA signatures for each
@@ -67,7 +69,7 @@ cleanup. No global CA store, DNS, firewall, browser, desktop, or profile is
 modified. The test asserts account state is empty, temporary trust files are
 gone, and Python's default CA paths are unchanged.
 
-## Guided browser route and future physical test
+## Guided browser route and physical test preparation
 
 `../fixtures/phone-auth.html` is a small guided `navigator.credentials.create`
 and `navigator.credentials.get` page served from `/`. It creates one disposable
@@ -76,10 +78,31 @@ with Ferric. Opening it on localhost with the temporary self-signed certificate
 requires an explicitly scoped local browser trust action; the unit tests avoid
 browser trust changes by using a private `SSLContext`.
 
-For a later operator-approved physical test, use only a domain you control, a
-certificate/key that the test phone already trusts, an RP ID valid for that
-domain, and an explicit P17 consent/fixture plan. Example shape (replace every
-placeholder with owned values; do not expose an untrusted test service):
+The local hybrid test can use the reserved hostname `passkeys.ferric.test`,
+an exact matching RP ID, and a loopback-only listener. The independent review
+confirmed that the packaged PSL/library admits this exact RP and rejects a
+parent `ferric.test` or unrelated RP. Supply a certificate with the exact
+fixture hostname in its SAN and trust its test CA only in the disposable
+browser profile. Qt 6.11's
+[`WebEngineProfilePrototype.additionalTrustedCertificateFiles`](https://doc.qt.io/qt-6/qml-qtwebengine-webengineprofileprototype.html#additionalTrustedCertificateFiles-prop)
+supports this without changing the system trust store. A dedicated fixture
+process may map only this hostname to loopback; do not change global DNS or
+disable certificate validation.
+
+The phone is the CTAP hybrid authenticator, so it need not browse or trust the
+RP's HTTPS certificate. The hybrid relay still uses normal public network/TLS
+and Bluetooth proximity. This tests a real authenticator and independently
+verified local create/get results; it does not qualify public deployment or
+replace native-fallback checks against normal browser trust decisions.
+
+Before scanning, explain that the disposable RP/account creates a real passkey
+on the phone's selected provider and that the provider may sync it. Deleting
+the RP fixture does not delete that passkey; remove it from the phone/provider
+after the run. Never use a personal website account for this check.
+
+For a separately requested remote test, use a domain you control and an
+operator-provided certificate/key. Example shape (replace every placeholder
+with owned values; do not expose an untrusted test service):
 
 ```sh
 ARTIFACT=/absolute/path/to/builds/rp-P13-a1
@@ -91,6 +114,5 @@ ARTIFACT=/absolute/path/to/builds/rp-P13-a1
 
 Non-loopback binds require an explicit HTTPS origin and operator-provided
 certificate and key; the fixture never installs their trust. Stop the process
-with Ctrl-C. This is a future manual route only: no remote listener, phone,
-personal account, native provider, or physical credential was used or qualified
-for P13.
+with Ctrl-C. No physical credential is qualified by the automated verifier
+tests or by these preparation instructions.

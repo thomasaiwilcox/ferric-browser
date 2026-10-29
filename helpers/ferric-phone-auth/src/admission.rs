@@ -241,7 +241,6 @@ fn validate_create(options: &Value) -> Result<(), AdmissionError> {
             &[
                 "credProps",
                 "credProtect",
-                "credBlob",
                 "largeBlob",
                 "minPinLength",
                 "hmacCreateSecret",
@@ -289,7 +288,7 @@ fn validate_get(options: &Value) -> Result<(), AdmissionError> {
     array_nested_keys(options, "allowCredentials", &["type", "id", "transports"])?;
     if let Some(extensions) = object(options)?.get("extensions") {
         // hmacGetSecret is parsed by upstream but absent from its prepared request.
-        keys(extensions, &["getCredBlob", "largeBlob", "prf", "appid"])?;
+        keys(extensions, &["largeBlob", "prf", "appid"])?;
         nested_keys(extensions, "largeBlob", &["support", "read", "write"])?;
         if let Some(large_blob) = object(extensions)?.get("largeBlob") {
             enum_value(large_blob, "support", &["preferred", "required"])?;
@@ -440,6 +439,26 @@ mod tests {
             panic!("create request")
         };
         assert_eq!(request.resident_key, Some(ResidentKeyRequirement::Required));
+    }
+
+    #[test]
+    fn unsupported_blob_results_are_rejected_before_transport() {
+        let psl = fixture();
+        let mut create = make_options("example.com");
+        create["extensions"] = serde_json::json!({"credBlob":"AQID"});
+        let get = serde_json::json!({
+            "rpId":"example.com", "challenge":"AQIDBAUGBwgJCgsMDQ4PEA",
+            "extensions":{"getCredBlob":true}
+        });
+        for (operation, options) in [("create", create), ("get", get)] {
+            assert!(matches!(
+                run(prepare_with_psl(
+                    envelope(operation, "https://example.com", options),
+                    &psl
+                )),
+                Err(AdmissionError::UnsupportedOptions)
+            ));
+        }
     }
 
     #[test]

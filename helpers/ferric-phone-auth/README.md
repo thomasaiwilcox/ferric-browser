@@ -38,7 +38,10 @@ Request and terminal lines are limited to 1 MiB, progress lines to 32 KiB,
 stdout to 4 MiB, JSON depth to 32, IDs to 128 ASCII bytes, and operations to
 180 seconds. Each output line is flushed. A lost result never causes automatic
 replay or provider fallback. Get results retain all assertions for an owned
-account decision rather than silently choosing the first.
+account decision rather than silently choosing the first. Enumeration rejects
+counts outside 1–16 and applies a cumulative 1 MiB incoming CTAP-payload budget
+before decoding or queueing responses, including the initial GetInfo payload.
+The authenticator's input allow-list limit is not an output assertion limit.
 
 The parent cancels by terminating this one-shot process, using the existing
 supervised termination/grace/kill path. The helper closes its channel after
@@ -84,7 +87,7 @@ preserved in `vendor/COPYING`, `vendor/README.md` and the copied library.
 | --- | --- |
 | Passed to the pinned parser and preserved by its response serializer | The P06 allowlisted fields represented by the pinned request/response types; this slice adds no independent extension-verifier claim. |
 | Optional ignored with no success claim | None newly ignored by P07b. |
-| Native-only | Enterprise attestation requires browser RP policy; the helper rejects it and the shim delegates it to native WebAuthn. |
+| Native-only | Enterprise attestation requires browser RP policy. `credBlob` and `getCredBlob` results are not preserved by the pinned library. The helper rejects these requests before transport and the shim delegates them to native WebAuthn. |
 | Rejected | Unknown/unmapped fields, including `hmacGetSecret` because the pinned prepared request does not retain it. |
 | Verified end to end here | None; P07b tests create/get envelopes, not extension semantics or independent RP verification. |
 
