@@ -8,7 +8,8 @@ function execute(request, ui, host, services, source) {
     // A captured native target must never fall through to a Quick replacement,
     // including when its QObject has been retired since projection.
     if (request.nativeTarget === true) {
-        if (request.nativePage) request.nativePage.executeCaptured(request)
+        var nativePage = ui.native_page_for_request(request)
+        if (nativePage) nativePage.executeCaptured(request)
         return true
     }
     var index = ui.tab_index_for_id(request.tabId)

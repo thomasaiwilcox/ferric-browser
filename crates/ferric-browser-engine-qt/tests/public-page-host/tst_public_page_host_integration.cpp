@@ -721,13 +721,13 @@ private slots:
         FerricPublicProfileOwner profile(&interceptor);
         QObject lifetime;
         auto *owner = profile.createPage(&lifetime);
-        FerricPublicPageHost host(ui.get(), profile.profile(), owner, nullptr, tab);
-        QVERIFY(host.isReady());
+        auto host = std::make_unique<FerricPublicPageHost>(ui.get(), profile.profile(), owner, nullptr, tab);
+        QVERIFY(host->isReady());
         const QString url = QStringLiteral("http://127.0.0.1:%1/positive").arg(server.serverPort());
         QSignalSpy loaded(owner->page(), &QWebEnginePage::loadFinished);
         QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, url)));
         QVERIFY(requests.isEmpty());
-        QVERIFY(QMetaObject::invokeMethod(host.chromeView()->rootObject(), "dispatchPendingEngineRequest"));
+        QVERIFY(QMetaObject::invokeMethod(host->chromeView()->rootObject(), "dispatchPendingEngineRequest"));
         QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
         QVERIFY(loaded.last().at(0).toBool());
         QVERIFY(requests.contains("/positive"));
@@ -738,16 +738,25 @@ private slots:
 
         const QString staleUrl = QStringLiteral("http://127.0.0.1:%1/stale").arg(server.serverPort());
         QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, staleUrl)));
-        const QVariant captured = takeReparentRequest(ui.get());
+        QVariant captured = takeReparentRequest(ui.get());
         QVERIFY(captured.toMap().value("nativeTarget").toBool());
-        QVERIFY(captured.toMap().value("nativePage").value<QObject *>() == &host);
-        owner->close();
-        QVERIFY(!host.executeCaptured(captured));
-        QTest::qWait(100);
+        QCOMPARE(captured.toMap().value("nativeHost").toString(), host->hostToken());
+        QVERIFY(!captured.toMap().contains("nativePage"));
+        // Real document replacement must invalidate even a still-current Rust
+        // target. Do not simulate the document epoch or load lifecycle here.
+        QSignalSpy reloaded(owner->page(), &QWebEnginePage::loadFinished);
+        owner->page()->triggerAction(QWebEnginePage::Reload);
+        QTRY_VERIFY_WITH_TIMEOUT(!reloaded.isEmpty(), 15000);
+        QVERIFY(reloaded.last().at(0).toBool());
+        QVERIFY(!host->executeCaptured(captured));
         QVERIFY(!requests.contains("/stale"));
-        // A registered retired native owner cannot fall through to a Quick view.
+        // A new browser intent produces the fresh envelope used for independent
+        // owner retirement and host-destruction checks below.
         QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, staleUrl)));
-        QVERIFY(QMetaObject::invokeMethod(host.chromeView()->rootObject(), "dispatchPendingEngineRequest"));
+        captured = takeReparentRequest(ui.get());
+        QVERIFY(captured.toMap().value("nativeTarget").toBool());
+        owner->close();
+        QVERIFY(!host->executeCaptured(captured));
         QTest::qWait(100);
         QVERIFY(!requests.contains("/stale"));
         delete owner;
@@ -771,8 +780,13 @@ private slots:
         QVERIFY2(replay.isReady(), qPrintable(componentErrors(replay)));
         std::unique_ptr<QObject> replayObject(replay.createWithInitialProperties({
             {"ui", QVariant::fromValue(ui.get())},
-            {"host", QVariant::fromValue(host.chromeView()->rootObject())}}));
+            {"host", QVariant::fromValue(host->chromeView()->rootObject())}}));
         QVERIFY(replayObject);
+        QVERIFY(QMetaObject::invokeMethod(replayObject.get(), "execute", Q_ARG(QVariant, captured)));
+        // Retaining an envelope after destroying its host is safe: resolution
+        // uses the current registry, never a raw QObject saved in the envelope.
+        host.reset();
+        replayObject->setProperty("host", QVariant::fromValue(replacement.chromeView()->rootObject()));
         QVERIFY(QMetaObject::invokeMethod(replayObject.get(), "execute", Q_ARG(QVariant, captured)));
         QTest::qWait(100);
         QCOMPARE(replacementLoads.count(), 0);

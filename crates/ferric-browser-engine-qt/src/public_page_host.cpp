@@ -532,6 +532,7 @@ int FerricPublicPageHost::currentTabIndex() const
 bool FerricPublicPageHost::requestIsCurrent(const QVariantMap &row) const
 {
     if (!m_browserUi || !m_pageOwner || !m_pageOwner->page() || m_detached
+        || !m_pageView || m_pageView->page() != m_pageOwner->page()
         || QThread::currentThread() != thread()
         || pageHostRegistry().owner_hosts.value(m_pageOwnerToken) != this
         || row.value("tabId").toString() != m_tabId
@@ -565,8 +566,6 @@ QVariant FerricPublicPageHost::captureRequest(const QVariant &request) const
     row.insert("nativeHost", m_hostToken);
     row.insert("nativeOwner", m_pageOwnerToken);
     row.insert("nativeDocument", m_pageOwner ? QString::number(m_pageOwner->documentGeneration()) : QString());
-    row.insert("nativePage", QVariant::fromValue(static_cast<QObject *>(
-        requestIsCurrent(row) ? const_cast<FerricPublicPageHost *>(this) : nullptr)));
     return row;
 }
 
@@ -577,6 +576,16 @@ QVariant ferric_public_page_capture_request(const QString &ownerToken, const QVa
     QVariantMap row = request.toMap();
     row.insert("nativeTarget", true);
     return row;
+}
+
+QVariant ferric_public_page_for_request(const QVariant &request)
+{
+    const auto row = request.toMap();
+    const auto host = pageHostRegistry().hosts.value(row.value("nativeHost").toString());
+    // Request envelopes contain only values. Resolve the QObject immediately
+    // before dispatch, so retaining a request cannot retain a dangling pointer.
+    return QVariant::fromValue(static_cast<QObject *>(
+        host && host->requestIsCurrent(row) ? host.data() : nullptr));
 }
 
 bool FerricPublicPageHost::executeCaptured(const QVariant &request)

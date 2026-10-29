@@ -49,6 +49,7 @@ private:
         const QString &profileId,
         bool attach);
 
+    friend QVariant ferric_public_page_for_request(const QVariant &request);
     bool requestIsCurrent(const QVariantMap &request) const;
     int currentTabIndex() const;
     void bindPageSignals();
@@ -86,5 +87,6 @@ bool ferric_public_page_host_tokens_live(
     bool attach);
 
 QVariant ferric_public_page_capture_request(const QString &ownerToken, const QVariant &request);
+QVariant ferric_public_page_for_request(const QVariant &request);
 
 #endif // FERRIC_BROWSER_ENGINE_QT_PUBLIC_PAGE_HOST_H

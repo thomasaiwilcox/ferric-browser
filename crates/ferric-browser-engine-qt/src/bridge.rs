@@ -26,6 +26,8 @@ pub(crate) mod qobject {
         type QGuiApplication = cxx_qt_lib::QGuiApplication;
         type QVector_QByteArray = cxx_qt_lib::QVector<cxx_qt_lib::QByteArray>;
 
+        fn ferric_public_page_for_request(request: &QVariant) -> QVariant;
+
         fn ferric_public_page_capture_request(
             owner_token: &QString,
             request: &QVariant,
@@ -1644,6 +1646,9 @@ pub(crate) mod qobject {
 
         #[qinvokable]
         fn take_engine_action(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn native_page_for_request(&self, request: &QVariant) -> QVariant;
 
         #[qinvokable]
         fn take_engine_request(self: Pin<&mut BrowserUi>) -> QVariant;

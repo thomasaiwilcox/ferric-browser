@@ -948,6 +948,30 @@ impl qobject::BrowserUi {
         true
     }
 
+    pub(super) fn native_page_for_request(&self, request: &super::QVariant) -> super::QVariant {
+        let Some(row) = request.value::<cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>>()
+        else {
+            return super::QVariant::default();
+        };
+        let text = |key: &str| {
+            row.get_or_default(&QString::from(key))
+                .value_or_default::<QString>()
+        };
+        let tab = text("tabId");
+        let generation = text("generation");
+        if !self.request_target_current(&tab, &generation, &text("documentId"))
+            || !self.page_host_owner_matches_target(
+                &text("nativeOwner"),
+                &self.page_host_profile_id(),
+                &tab,
+                &generation,
+            )
+        {
+            return super::QVariant::default();
+        }
+        qobject::ferric_public_page_for_request(request)
+    }
+
     pub(super) fn take_engine_request(mut self: Pin<&mut Self>) -> super::QVariant {
         loop {
             let request = {
@@ -1015,8 +1039,9 @@ impl qobject::BrowserUi {
                 // A browser command may intentionally advance the target
                 // generation. Bind the existing native owner to that accepted
                 // target, before capturing the native document incarnation.
-                if let Some(target) = request.captured_target()
-                    && request.page_host_tokens().is_none()
+                if let Some(target) = request
+                    .captured_target()
+                    .filter(|_| request.page_host_tokens().is_none())
                 {
                     let native_owner = PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
                         let mut bindings = bindings.borrow_mut();
