@@ -159,3 +159,13 @@ phone availability remain runtime prerequisites, not claims from these tests.
 This helper does not enable the phone provider. The separate package remains
 outside Ferric's root Cargo graph. Production request handling stays unavailable
 until a later reviewed slice connects an admitted transport.
+
+## Compiler verification — 29 October 2026
+
+The complete helper workspace now builds and tests on its declared Rust 1.88.0
+compiler. All 11 library tests and 4 binary tests passed, with zero failures or
+ignored cases. `cargo +1.88.0 clippy --all-targets --locked -- -D warnings` also
+passed. These results supersede the earlier compiler-unavailable notes above;
+the dependency pin and advertised compiler floor are unchanged. They cover the
+helper implementation and supported virtual test backend. Production phone
+transport remains unavailable, and no physical phone qualification is implied.
