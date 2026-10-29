@@ -38,7 +38,7 @@ jobs:
             libxkbfile1 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libxtst6 libxss1 \
             fonts-dejavu-core cmake libsqlite3-dev libwayland-dev libxkbcommon-dev python3-venv
       - name: Install qualified Qt SDK
-        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ steps.qt-version.outputs.version }}
           modules: qtwebengine qtwebchannel qtpositioning qtwaylandcompositor
