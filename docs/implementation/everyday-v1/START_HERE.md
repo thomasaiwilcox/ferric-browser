@@ -1,3 +1,5 @@
+> **Historical execution pack.** For current window-mode and phone-passkey implementation use [the active product plan](../WINDOW_PASSKEYS_PLAN.md). Hot tabs are deferred. The historical amendment/attempt machinery below does not control new work.
+
 # Start here — Ferric Everyday Features implementation pack
 
 **Pack:** everyday-v1 / 1.0.0 · **Prepared:** 24 October 2026

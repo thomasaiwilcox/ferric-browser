@@ -216,15 +216,13 @@ mod tests {
             .unwrap();
         let tab = application.windows()[&window].active_tab.unwrap();
         let target = application.capture_target(tab).unwrap();
-        let mut rust = BrowserUiRust {
-            state: Some(application),
-            window: Some(window),
-            tab: Some(tab),
-            tab_ids: vec![tab],
-            undo_fallback: Some(target),
-            undo_fallback_ready: true,
-            ..BrowserUiRust::default()
-        };
+        let mut rust = BrowserUiRust::default();
+        rust.state = Some(application);
+        rust.window = Some(window);
+        rust.tab = Some(tab);
+        rust.tab_ids = vec![tab];
+        rust.undo_fallback = Some(target);
+        rust.undo_fallback_ready = true;
         let mut history = ContentHistory::default();
         history.record("rb://start".into(), 0, false);
         rust.navigation.content_histories.insert(tab, history);

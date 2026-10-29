@@ -119,6 +119,10 @@ mod browser_ui_spatial;
 mod browser_ui_start_page;
 mod browser_ui_state;
 mod browser_ui_storage_writes;
+#[expect(
+    clippy::redundant_closure_for_method_calls,
+    reason = "pre-existing findings in browser_ui_tab_state.rs are outside F02e3q's source scope"
+)]
 mod browser_ui_tab_state;
 mod browser_ui_tabs;
 mod browser_ui_target_search;
@@ -496,7 +500,7 @@ use std::cell::{Cell, RefCell};
 use std::os::unix::process::CommandExt;
 use std::time::Instant;
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -548,7 +552,7 @@ pub struct BrowserUiRust {
     core_mode: Mode,
     binding_clock: Instant,
     pending_engine_action: Option<String>,
-    pending_engine_actions: VecDeque<engine_requests::NativeRequest>,
+    pending_engine_actions: engine_requests::PendingEngineRequests,
     pending_print: Option<PathBuf>,
     pending_history_clear: Option<(Option<i64>, Option<String>)>,
     tab_ids: Vec<TabId>,
