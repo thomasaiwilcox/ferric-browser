@@ -13,6 +13,9 @@ macro_rules! opaque_id {
 
         #[allow(dead_code)]
         impl $name {
+            pub(crate) const fn raw(self) -> u64 {
+                self.0
+            }
             pub(crate) const fn from_raw(value: u64) -> Self {
                 Self(value)
             }
@@ -106,6 +109,18 @@ impl Default for IdSource {
 }
 
 impl IdSource {
+    pub(crate) fn reserve_transferred_page(&mut self, tab: TabId, document: DocumentId) -> bool {
+        let Some(next) = tab.raw().max(document.raw()).checked_add(1) else {
+            return false;
+        };
+        match &mut self.allocation {
+            Allocation::Local(current) => *current = (*current).max(next),
+            Allocation::Shared(allocator) => {
+                allocator.0.fetch_max(next, Ordering::Relaxed);
+            }
+        }
+        true
+    }
     #[must_use]
     pub fn new() -> Self {
         Self::default()

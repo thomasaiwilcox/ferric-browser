@@ -48,12 +48,36 @@ impl ClipboardEdit {
 /// reparented by the UI adapter.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TabTransfer {
+    /// Only a trusted native transfer may retain an existing logical identity.
+    /// Generic transfer JSON/IPC must leave this absent.
+    pub identity: Option<TabTransferIdentity>,
     pub url: Option<String>,
     pub title: String,
     pub loading: LoadingState,
     pub pinned: bool,
     pub muted: bool,
     pub zoom_hundredths: u32,
+}
+
+/// Non-deserializable identity captured from an actual source page. Native
+/// orchestration must verify its live owner/profile and commit source release
+/// before publishing or navigating the imported destination.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TabTransferIdentity {
+    tab: TabId,
+    generation: u64,
+    document: DocumentId,
+}
+
+impl TabTransferIdentity {
+    #[must_use]
+    pub const fn capture(page: &crate::TabState) -> Self {
+        Self {
+            tab: page.id,
+            generation: page.generation,
+            document: page.document,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -748,7 +772,43 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                             && tab.loading == LoadingState::Idle
                     })
                 });
-            let tab = if let Some(tab) = reusable_tab {
+            let tab = if let Some(identity) = transfer.identity {
+                let placeholder = reusable_tab.ok_or(ReduceError::InvalidActivation)?;
+                let untouched = state.tabs.get(&placeholder).is_some_and(|page| {
+                    page.generation == 0
+                        && page.search.is_none()
+                        && !page.pinned
+                        && !page.muted
+                        && page.zoom.to_bits() == 1.0f64.to_bits()
+                        && page.resources == ResourceLifecycle::Active
+                        && page.renderer == RendererState::Healthy
+                });
+                if !untouched
+                    || state.tabs.contains_key(&identity.tab)
+                    || !state
+                        .ids
+                        .reserve_transferred_page(identity.tab, identity.document)
+                {
+                    return Err(ReduceError::InvalidActivation);
+                }
+                let mut page = state
+                    .tabs
+                    .remove(&placeholder)
+                    .expect("placeholder validated");
+                page.id = identity.tab;
+                page.generation = identity.generation;
+                page.document = identity.document;
+                page.url.clone_from(&transfer.url);
+                state.tabs.insert(identity.tab, page);
+                let destination = state
+                    .windows
+                    .get_mut(&window)
+                    .expect("destination validated");
+                destination.tabs = vec![identity.tab];
+                destination.active_tab = Some(identity.tab);
+                destination.previous_tab = None;
+                identity.tab
+            } else if let Some(tab) = reusable_tab {
                 state
                     .tabs
                     .get_mut(&tab)
@@ -2584,6 +2644,7 @@ mod tests {
             Event::TransferTabIn {
                 window,
                 transfer: TabTransfer {
+                    identity: None,
                     url: Some("https://example.test/".into()),
                     title: "Example".into(),
                     loading: LoadingState::Complete,
@@ -2608,6 +2669,85 @@ mod tests {
                 .any(|effect| matches!(effect, Effect::Persist(_)))
         );
         assert!(state.validate().is_ok());
+    }
+
+    #[test]
+    fn native_transfer_preserves_identity_and_replaces_placeholder_references() {
+        let (mut state, _, window, tab, target) = setup();
+        let mut page = state.tabs[&tab].clone();
+        // Import from a different allocator, including a newer document ID.
+        page.id = TabId::from_raw(1000);
+        page.document = DocumentId::from_raw(2000);
+        page.generation = 9;
+        let transfer = TabTransfer {
+            identity: Some(TabTransferIdentity::capture(&page)),
+            url: Some("https://example.test/page".into()),
+            title: "Preserved".into(),
+            loading: LoadingState::Idle,
+            pinned: true,
+            muted: true,
+            zoom_hundredths: 125,
+        };
+        let effects = reduce(&mut state, Event::TransferTabIn { window, transfer }).unwrap();
+        assert!(!state.tabs.contains_key(&tab));
+        assert_eq!(state.windows[&window].tabs, vec![page.id]);
+        assert_eq!(state.windows[&window].active_tab, Some(page.id));
+        assert_eq!(state.windows[&window].previous_tab, None);
+        assert_eq!(
+            state.capture_target(page.id),
+            Some(Target {
+                tab: page.id,
+                generation: 9,
+                document: page.document
+            })
+        );
+        assert_eq!(state.tabs[&page.id].window, window);
+        assert!(state.tabs[&page.id].pinned && state.tabs[&page.id].muted);
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::Engine(_)))
+        );
+        assert!(state.validate().is_ok());
+        reduce(&mut state, Event::OpenTab { window }).unwrap();
+        assert!(state.windows[&window].active_tab.unwrap().raw() > page.document.raw());
+        assert_ne!(state.capture_target(page.id), Some(target));
+    }
+
+    #[test]
+    fn native_transfer_rejects_collision_modified_destination_and_overflow_without_mutation() {
+        for scenario in ["collision", "modified", "overflow"] {
+            let (mut state, _, window, tab, _) = setup();
+            let mut page = state.tabs[&tab].clone();
+            if scenario != "collision" {
+                page.id = TabId::from_raw(1000);
+            }
+            if scenario == "overflow" {
+                page.document = DocumentId::from_raw(u64::MAX);
+            }
+            if scenario == "modified" {
+                state.tabs.get_mut(&tab).unwrap().muted = true;
+            }
+            let previous_tabs = state.tabs.clone();
+            let previous_windows = state.windows.clone();
+            let revision = state.revision;
+            let transfer = TabTransfer {
+                identity: Some(TabTransferIdentity::capture(&page)),
+                url: None,
+                title: String::new(),
+                loading: LoadingState::Idle,
+                pinned: false,
+                muted: false,
+                zoom_hundredths: 100,
+            };
+            assert!(
+                reduce(&mut state, Event::TransferTabIn { window, transfer }).is_err(),
+                "{scenario}"
+            );
+            assert_eq!(state.tabs, previous_tabs, "{scenario}");
+            assert_eq!(state.windows, previous_windows, "{scenario}");
+            assert_eq!(state.revision, revision, "{scenario}");
+        }
     }
 
     #[test]
