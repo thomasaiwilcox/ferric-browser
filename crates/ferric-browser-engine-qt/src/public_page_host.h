@@ -16,6 +16,7 @@ class FerricPublicPageOwner;
 // A disposable Widgets presentation for a page whose profile/page owner has a
 // longer lifetime. Destroying this widget never closes the page owner.
 class FerricPublicPageHost final : public QWidget {
+    Q_OBJECT
 public:
     // initialOwner is bootstrap-only. Every later view move must consume a
     // current Rust ReparentView request through applyNativeRequest().
@@ -29,6 +30,10 @@ public:
     ~FerricPublicPageHost() override;
 
     bool isReady() const;
+    // Only captured browser requests enter this surface; it is never published
+    // to web content. Native incarnations are checked again at execution.
+    Q_INVOKABLE bool executeCaptured(const QVariant &request);
+    QVariant captureRequest(const QVariant &request) const;
     bool applyNativeRequest(const QVariant &request);
     FerricPublicPageOwner *pageOwner() const;
     QWebEngineView *pageView() const;
@@ -44,6 +49,15 @@ private:
         const QString &profileId,
         bool attach);
 
+    bool requestIsCurrent(const QVariantMap &request) const;
+    int currentTabIndex() const;
+    void bindPageSignals();
+    QVariantMap m_navigationRequest;
+    QString m_tabId;
+    quint64 m_navigationDocument = 0;
+    mutable quint64 m_nextRequestId = 0;
+    quint64 m_lastExecutedRequest = 0;
+    QList<QMetaObject::Connection> m_pageConnections;
     bool registerInitialPage(FerricPublicPageOwner *owner, const QString &tabId);
     QWebEngineView *takePageViewForTransfer(FerricPublicPageOwner *owner);
     bool acceptTransferredPage(
@@ -70,5 +84,7 @@ bool ferric_public_page_host_tokens_live(
     const QString &pageOwnerToken,
     const QString &profileId,
     bool attach);
+
+QVariant ferric_public_page_capture_request(const QString &ownerToken, const QVariant &request);
 
 #endif // FERRIC_BROWSER_ENGINE_QT_PUBLIC_PAGE_HOST_H

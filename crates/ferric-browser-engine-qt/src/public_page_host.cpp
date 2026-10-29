@@ -18,6 +18,7 @@
 #include <QVariantMap>
 
 #include <utility>
+#include <limits>
 
 namespace {
 
@@ -291,6 +292,8 @@ bool FerricPublicPageHost::registerInitialPage(
         return false;
     }
 
+    m_tabId = ownerTabId;
+    bindPageSignals();
     m_detached = false;
     return m_pageView->page() == owner->page();
 }
@@ -419,6 +422,8 @@ QWebEngineView *FerricPublicPageHost::takePageViewForTransfer(FerricPublicPageOw
     m_layout->removeWidget(view);
     view->hide();
     view->setParent(nullptr);
+    for (const auto &connection : std::as_const(m_pageConnections)) QObject::disconnect(connection);
+    m_pageConnections.clear();
     m_pageView = nullptr;
     m_pageOwner = nullptr;
     m_pageOwnerToken.clear();
@@ -452,7 +457,10 @@ bool FerricPublicPageHost::acceptTransferredPage(
     m_pageOwnerToken = pageOwnerToken;
     m_detached = false;
     m_pageViewHadFocus = restoreFocus;
+    auto *source = pageHostRegistry().owner_hosts.value(pageOwnerToken).data();
+    if (source && source != this) m_tabId = source->m_tabId;
     pageHostRegistry().owner_hosts.insert(pageOwnerToken, this);
+    bindPageSignals();
     if (restoreFocus) {
         view->setFocus(Qt::OtherFocusReason);
     }
@@ -508,4 +516,114 @@ bool ferric_public_page_host_tokens_live(
     }
     return registry.owner_hosts.value(pageOwnerToken) == host
         && host->m_pageOwner == owner && host->m_pageOwnerToken == pageOwnerToken;
+}
+
+
+int FerricPublicPageHost::currentTabIndex() const
+{
+    int index = -1;
+    if (m_browserUi) {
+        QMetaObject::invokeMethod(m_browserUi, "tab_index_for_id", Qt::DirectConnection,
+                                  Q_RETURN_ARG(int, index), Q_ARG(QString, m_tabId));
+    }
+    return index;
+}
+
+bool FerricPublicPageHost::requestIsCurrent(const QVariantMap &row) const
+{
+    if (!m_browserUi || !m_pageOwner || !m_pageOwner->page() || m_detached
+        || QThread::currentThread() != thread()
+        || pageHostRegistry().owner_hosts.value(m_pageOwnerToken) != this
+        || row.value("tabId").toString() != m_tabId
+        || row.value("nativeHost").toString() != m_hostToken
+        || row.value("nativeOwner").toString() != m_pageOwnerToken
+        || row.value("nativeDocument").toString() != QString::number(m_pageOwner->documentGeneration())
+        || m_pageOwner->profile() != m_profile) return false;
+    QString profile;
+    bool current = false;
+    bool ownerMatches = false;
+    QMetaObject::invokeMethod(m_browserUi, "page_host_profile_id", Qt::DirectConnection,
+                              Q_RETURN_ARG(QString, profile));
+    const QString tab = row.value("tabId").toString();
+    const QString generation = row.value("generation").toString();
+    const QString document = row.value("documentId").toString();
+    QMetaObject::invokeMethod(m_browserUi, "request_target_current", Qt::DirectConnection,
+                              Q_RETURN_ARG(bool, current), Q_ARG(QString, tab),
+                              Q_ARG(QString, generation), Q_ARG(QString, document));
+    QMetaObject::invokeMethod(m_browserUi, "page_host_owner_matches_target", Qt::DirectConnection,
+                              Q_RETURN_ARG(bool, ownerMatches), Q_ARG(QString, m_pageOwnerToken),
+                              Q_ARG(QString, m_profileId), Q_ARG(QString, tab), Q_ARG(QString, generation));
+    return profile == m_profileId && current && ownerMatches && currentTabIndex() >= 0;
+}
+
+QVariant FerricPublicPageHost::captureRequest(const QVariant &request) const
+{
+    QVariantMap row = request.toMap();
+    row.insert("nativeTarget", true);
+    if (m_nextRequestId == std::numeric_limits<quint64>::max()) return row;
+    row.insert("nativeRequest", QString::number(++m_nextRequestId));
+    row.insert("nativeHost", m_hostToken);
+    row.insert("nativeOwner", m_pageOwnerToken);
+    row.insert("nativeDocument", m_pageOwner ? QString::number(m_pageOwner->documentGeneration()) : QString());
+    row.insert("nativePage", QVariant::fromValue(static_cast<QObject *>(
+        requestIsCurrent(row) ? const_cast<FerricPublicPageHost *>(this) : nullptr)));
+    return row;
+}
+
+QVariant ferric_public_page_capture_request(const QString &ownerToken, const QVariant &request)
+{
+    const auto host = pageHostRegistry().owner_hosts.value(ownerToken);
+    if (host) return host->captureRequest(request);
+    QVariantMap row = request.toMap();
+    row.insert("nativeTarget", true);
+    return row;
+}
+
+bool FerricPublicPageHost::executeCaptured(const QVariant &request)
+{
+    const QVariantMap row = request.toMap();
+    bool serialValid = false;
+    const auto serial = row.value("nativeRequest").toString().toULongLong(&serialValid);
+    if (!serialValid || serial <= m_lastExecutedRequest || serial > m_nextRequestId
+        || !requestIsCurrent(row) || row.value("kind").toString() != "navigate") return false;
+    const QUrl url(row.value("url").toString());
+    if (!url.isValid() || url.isRelative()) return false;
+    m_lastExecutedRequest = serial;
+    m_navigationRequest = row;
+    m_pageOwner->page()->setUrl(url);
+    return true;
+}
+
+void FerricPublicPageHost::bindPageSignals()
+{
+    for (const auto &connection : std::as_const(m_pageConnections)) QObject::disconnect(connection);
+    m_pageConnections.clear();
+    auto *page = m_pageOwner->page();
+    m_pageConnections.append(connect(page, &QWebEnginePage::loadStarted, this, [this] {
+        if (!m_pageOwner) return;
+        // The owner advances its native document generation before this slot.
+        m_navigationRequest.insert("nativeDocument", QString::number(m_pageOwner->documentGeneration()));
+        if (!requestIsCurrent(m_navigationRequest)) return;
+        m_navigationDocument = m_pageOwner->documentGeneration();
+        const int index = currentTabIndex();
+        const QString url = m_navigationRequest.value("url").toString();
+        QMetaObject::invokeMethod(m_browserUi, "navigation_started_for", Qt::DirectConnection,
+                                  Q_ARG(int, index), Q_ARG(QString, url));
+    }));
+    m_pageConnections.append(connect(page, &QWebEnginePage::loadFinished, this, [this, page](bool ok) {
+        if (!requestIsCurrent(m_navigationRequest)
+            || m_navigationDocument != m_pageOwner->documentGeneration()) return;
+        const int index = currentTabIndex();
+        const QString url = page->url().toString();
+        const QString title = page->title();
+        if (ok) {
+            QMetaObject::invokeMethod(m_browserUi, "navigation_committed_for", Qt::DirectConnection,
+                                      Q_ARG(int, index), Q_ARG(QString, url), Q_ARG(QString, title));
+            QMetaObject::invokeMethod(m_browserUi, "navigation_completed_for", Qt::DirectConnection,
+                                      Q_ARG(int, index));
+        } else {
+            QMetaObject::invokeMethod(m_browserUi, "navigation_failed_for", Qt::DirectConnection,
+                                      Q_ARG(int, index));
+        }
+    }));
 }

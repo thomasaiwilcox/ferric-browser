@@ -1011,7 +1011,29 @@ impl qobject::BrowserUi {
                 if !self.as_ref().rust().pending_engine_actions.is_empty() {
                     self.as_mut().runtime_work_available();
                 }
-                return request.projection();
+                let projection = request.projection();
+                // A browser command may intentionally advance the target
+                // generation. Bind the existing native owner to that accepted
+                // target, before capturing the native document incarnation.
+                if let Some(target) = request.captured_target()
+                    && request.page_host_tokens().is_none()
+                {
+                    let native_owner = PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+                        let mut bindings = bindings.borrow_mut();
+                        let binding = bindings
+                            .iter_mut()
+                            .find(|binding| binding.ui == ui && binding.tab == target.tab)?;
+                        binding.generation = target.generation.to_string();
+                        Some(binding.owner.clone())
+                    });
+                    if let Some(owner) = native_owner {
+                        return qobject::ferric_public_page_capture_request(
+                            &QString::from(owner),
+                            &projection,
+                        );
+                    }
+                }
+                return projection;
             }
         }
     }

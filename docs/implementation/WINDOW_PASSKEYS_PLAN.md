@@ -5,7 +5,7 @@ Active implementation plan, authorized 29 October 2026. Supersedes everyday-v1 e
 ## Milestones
 
 - [x] Clean branch from product integration 7eb1c94; recover queue candidate 517eb9f including fixture repairs.
-- [ ] Real captured navigation through the public page host, real lifecycle feedback and stale-request rejection.
+- [x] Real captured navigation through the public page host, real lifecycle feedback and stale-request rejection.
 - [ ] Complete shared native backend: history/form reload, search/scripts/hints, input/chrome, services, popup and profile lifetime.
 - [ ] Early production credential-only isolated-world boundary and real native provider choice; independent security review before credentials.
 - [ ] Complete single-page window presentation, commands, exact Hyprland grouping, restoration and generic Wayland fallback.
@@ -26,4 +26,10 @@ Use ordinary Git review and actual test logs. No amendment transactions, file-co
 
 ## Progress
 
-Implementation started on branch work/window-passkeys in the window-passkeys worktree. No feature or physical qualification is yet claimed.
+Branch: `work/window-passkeys`, worktree: `/home/tom/Projects/ferric-everyday-work/worktrees/window-passkeys`.
+
+29 October: captured navigation passes through the existing production queue consumer and shared EngineRequests dispatcher to the native owner. Actual page load/title events update Rust state. Native host/owner/document stamps and single-use request serials reject stale execution and replacement-page replay; retired native targets cannot fall through to a Quick view. This remains an experimental integration seam, not a completed browsing backend.
+
+Validation on current source: pinned Qt 6.11.2 dev library builds; native host and test C++ syntax checks pass; Rust formatting and diff checks pass. Resource manifest matches all 118 current resources. The new navigation test passes offscreen and on an owned native Wayland compositor. Existing T014e2s transfer passes on that compositor (zero failures/skips). T014e1 owner suite passes offscreen. Build/test logs and reproducible SDK environment are in `/home/tom/Projects/ferric-everyday-work/builds/window-passkeys/`. Queue Rust tests are running separately.
+
+Next: finish the production credential-boundary proof early, then complete shared backend services/interaction, window presentation/grouping/restoration, helper transport/UI and final combined qualification. No full-feature or physical qualification is claimed.

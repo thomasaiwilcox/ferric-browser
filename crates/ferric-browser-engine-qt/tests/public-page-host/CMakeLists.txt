@@ -42,7 +42,8 @@ if(BUILD_TESTING)
     target_link_libraries(public_page_owner_tests PRIVATE
         "${FERRIC_ENGINE_LIBRARY}"
         SQLite::SQLite3
-        Qt6::Quick Qt6::Widgets Qt6::QuickControls2 Qt6::DBus
+        Qt6::Quick Qt6::Widgets Qt6::QuickControls2 Qt6::QuickWidgets Qt6::DBus
+        Qt6::WebEngineWidgets KF6::WindowSystem
         Qt6::Core Qt6::Gui Qt6::Network Qt6::WebEngineCore Qt6::WebEngineQuick
         Qt6::Test)
     add_test(NAME T014e1_public_page_owner COMMAND public_page_owner_tests)
@@ -71,6 +72,9 @@ if(BUILD_TESTING)
         Qt6::WebEngineWidgets)
     target_include_directories(public_page_host_integration_tests PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}/../../src")
+    add_test(NAME public_page_captured_navigation COMMAND public_page_host_integration_tests
+        capturedNavigationUsesProductionDispatcher)
+    set_tests_properties(public_page_captured_navigation PROPERTIES TIMEOUT 90 LABELS "application;webengine;qml")
     add_test(NAME T014e2 COMMAND public_page_host_integration_tests
         rustBrowserUiRequestReparentsSamePageAcrossHosts)
     add_test(NAME T014e2r COMMAND public_page_host_integration_tests

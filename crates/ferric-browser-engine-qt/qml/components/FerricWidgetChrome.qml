@@ -4,6 +4,12 @@ Item {
     id: chrome
 
     property var browserUi: null
+    readonly property var runtimeController: FerricRuntimeController { host: chrome }
+
+    function syncTabModel() {}
+    function dispatchPendingEngineRequest() {
+        runtimeController.executePendingEngineAction()
+    }
     readonly property string statusText: browserUi ? browserUi.status_text : ""
     readonly property QtObject presentationWindow: QtObject {
         readonly property color accentColor: "#597a9f"

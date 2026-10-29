@@ -26,6 +26,11 @@ pub(crate) mod qobject {
         type QGuiApplication = cxx_qt_lib::QGuiApplication;
         type QVector_QByteArray = cxx_qt_lib::QVector<cxx_qt_lib::QByteArray>;
 
+        fn ferric_public_page_capture_request(
+            owner_token: &QString,
+            request: &QVariant,
+        ) -> QVariant;
+
         fn ferric_public_page_host_tokens_live(
             host_token: &QString,
             page_owner_token: &QString,

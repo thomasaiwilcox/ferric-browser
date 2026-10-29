@@ -19,6 +19,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QVariantMap>
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
@@ -687,6 +689,96 @@ private:
     }
 
 private slots:
+    void capturedNavigationUsesProductionDispatcher()
+    {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        QStringList requests;
+        connect(&server, &QTcpServer::newConnection, this, [&] {
+            while (auto *socket = server.nextPendingConnection()) {
+                auto buffer = std::make_shared<QByteArray>();
+                connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
+                    buffer->append(socket->readAll());
+                    if (!buffer->contains("\r\n\r\n")) return;
+                    requests.append(QString::fromUtf8(buffer->split(' ').value(1)));
+                    const QByteArray body("<!doctype html><title>Captured navigation</title><body>real page</body>");
+                    socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\nContent-Length: "
+                                  + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                    socket->disconnectFromHost();
+                });
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+            }
+        });
+        QTemporaryDir storage;
+        QQmlEngine engine;
+        std::unique_ptr<QObject> ui(makeBrowserUi(engine));
+        QVERIFY(ui);
+        QVERIFY(configureBrowserUi(ui.get(), storage.path()));
+        QString diagnostics;
+        QVERIFY2(waitForProfileBootstrap(ui.get(), &diagnostics), qPrintable(diagnostics));
+        const QString tab = browserUiTabAt(ui.get(), 0);
+        FerricBrowserRequestInterceptor interceptor;
+        FerricPublicProfileOwner profile(&interceptor);
+        QObject lifetime;
+        auto *owner = profile.createPage(&lifetime);
+        FerricPublicPageHost host(ui.get(), profile.profile(), owner, nullptr, tab);
+        QVERIFY(host.isReady());
+        const QString url = QStringLiteral("http://127.0.0.1:%1/positive").arg(server.serverPort());
+        QSignalSpy loaded(owner->page(), &QWebEnginePage::loadFinished);
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, url)));
+        QVERIFY(requests.isEmpty());
+        QVERIFY(QMetaObject::invokeMethod(host.chromeView()->rootObject(), "dispatchPendingEngineRequest"));
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        QVERIFY(loaded.last().at(0).toBool());
+        QVERIFY(requests.contains("/positive"));
+        QCOMPARE(owner->page()->url().toString(), url);
+        QTRY_COMPARE(ui->property("current_url").toString(), url);
+        QTRY_COMPARE(ui->property("load_state").toString(), QStringLiteral("complete"));
+        QCOMPARE(ui->property("page_title").toString(), QStringLiteral("Captured navigation"));
+
+        const QString staleUrl = QStringLiteral("http://127.0.0.1:%1/stale").arg(server.serverPort());
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, staleUrl)));
+        const QVariant captured = takeReparentRequest(ui.get());
+        QVERIFY(captured.toMap().value("nativeTarget").toBool());
+        QVERIFY(captured.toMap().value("nativePage").value<QObject *>() == &host);
+        owner->close();
+        QVERIFY(!host.executeCaptured(captured));
+        QTest::qWait(100);
+        QVERIFY(!requests.contains("/stale"));
+        // A registered retired native owner cannot fall through to a Quick view.
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, staleUrl)));
+        QVERIFY(QMetaObject::invokeMethod(host.chromeView()->rootObject(), "dispatchPendingEngineRequest"));
+        QTest::qWait(100);
+        QVERIFY(!requests.contains("/stale"));
+        delete owner;
+        QObject replacementLifetime;
+        auto *replacementOwner = profile.createPage(&replacementLifetime);
+        QVERIFY(replacementOwner);
+        FerricPublicPageHost replacement(ui.get(), profile.profile(), replacementOwner, nullptr, tab);
+        QVERIFY(replacement.isReady());
+        QSignalSpy replacementLoads(replacementOwner->page(), &QWebEnginePage::loadStarted);
+        QVERIFY(!replacement.executeCaptured(captured));
+        QQmlComponent replay(&engine);
+        replay.setData(R"QML(
+            import QtQml
+            import "qrc:/qt/qml/io/github/ferricbrowser/qml/scripts/EngineRequests.js" as EngineRequests
+            QtObject {
+                required property var ui
+                required property var host
+                function execute(request) { return EngineRequests.execute(request, ui, host, host) }
+            }
+        )QML", QUrl());
+        QVERIFY2(replay.isReady(), qPrintable(componentErrors(replay)));
+        std::unique_ptr<QObject> replayObject(replay.createWithInitialProperties({
+            {"ui", QVariant::fromValue(ui.get())},
+            {"host", QVariant::fromValue(host.chromeView()->rootObject())}}));
+        QVERIFY(replayObject);
+        QVERIFY(QMetaObject::invokeMethod(replayObject.get(), "execute", Q_ARG(QVariant, captured)));
+        QTest::qWait(100);
+        QCOMPARE(replacementLoads.count(), 0);
+        QVERIFY(!requests.contains("/stale"));
+    }
+
     void rustBrowserUiRequestReparentsSamePageAcrossHosts()
     {
         verifySamePageReparentsAcrossHosts();

@@ -5,6 +5,12 @@ function execute(request, ui, host, services, source) {
     if (!request || !request.kind) return false
     host.syncTabModel()
     if (!ui.request_target_current(request.tabId, request.generation, request.documentId)) return true
+    // A captured native target must never fall through to a Quick replacement,
+    // including when its QObject has been retired since projection.
+    if (request.nativeTarget === true) {
+        if (request.nativePage) request.nativePage.executeCaptured(request)
+        return true
+    }
     var index = ui.tab_index_for_id(request.tabId)
     var view = index >= 0 ? host.tabViewAt(index) : null
     if (!view) return true
