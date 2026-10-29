@@ -17,6 +17,7 @@ arch_packages = [
   "qt6-declarative>=6.11",
   "qt6-wayland",
   "qt6-webengine>=6.11",
+  "qt6-webchannel>=6.11",
   "kwindowsystem>=6.28",
 ]
 
@@ -35,14 +36,16 @@ qt_modules = [
   "Positioning",
   "Quick",
   "QuickControls2",
+  "QuickWidgets",
   "WebChannel",
   "WebEngineCore",
   "WebEngineQuick",
+  "WebEngineWidgets",
   "Widgets",
 ]
 
 [build]
-arch_packages = ["desktop-file-utils", "rust"]
+arch_packages = ["desktop-file-utils", "rust>=1.88", "pkgconf", "python"]
 check_packages = ["dbus", "weston", "wayland", "wayland-protocols"]
 note = "desktop-file-utils is required by the package check phase; rust builds the locked application source; dbus and weston provide the disposable native-Wayland qualification harness."
 
@@ -69,3 +72,12 @@ note = "Required only for qualified WebRTC screen/window capture; absence is rep
 arch_packages = ["hunspell"]
 external_tools = ["neovim", "mpv"]
 note = "Dictionaries and external tools are feature inputs, not browser compile-time requirements."
+
+[phone_auth]
+workspace = "helpers/ferric-phone-auth"
+rust_minimum = "1.88.0"
+installed_helper = "/usr/bin/ferric-phone-auth-helper"
+arch_packages = ["dbus", "systemd-libs", "ca-certificates"]
+optional_runtime_packages = ["bluez"]
+psl_fallback = "/usr/share/ferric-browser/public_suffix_list.dat"
+note = "Separate locked helper graph; transient cloud-assisted caBLE only. Existing BlueZ adapter access is required. Browser policy must explicitly admit direct networking; other policies disable phone routing. The official packaged PSL is refreshed at release; no ceremony fetches it."

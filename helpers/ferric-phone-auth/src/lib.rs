@@ -4,11 +4,9 @@
 
 mod admission;
 mod errors;
-// P07a stages the production-shared operation core; P08 alone may connect it
-// to the production caBLE channel. Keep the compiled core available meanwhile.
-#[allow(dead_code)]
 mod hybrid;
 mod protocol;
+mod suffix_list;
 
 use admission::prepare_request;
 use protocol::parse_envelope;
@@ -40,8 +38,30 @@ pub fn process_request(line: &[u8]) -> Value {
 /// Processes a framed private-pipe request and writes its bounded terminal
 /// envelope through the same serializer used by hybrid progress/results.
 pub fn process_request_to_pipe(line: &[u8], writer: &mut impl Write) -> io::Result<()> {
-    let response = process_request(line);
-    hybrid::write_terminal(&response, |encoded| writer.write_all(encoded))
+    let envelope = match parse_envelope(line) {
+        Ok(envelope) => envelope,
+        Err(error) => return write_error(writer, None, error.code()),
+    };
+    let direct = envelope.network.direct();
+    let id = envelope.id.clone();
+    let prepared = match prepare_request(envelope) {
+        Ok(prepared) => prepared,
+        Err(error) => return write_error(writer, Some(&id), error.code()),
+    };
+    if !direct {
+        return write_error(writer, Some(&id), "transport_unavailable");
+    }
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    runtime.block_on(hybrid::execute_phone_to_pipe(prepared, writer))
+}
+
+fn write_error(writer: &mut impl Write, id: Option<&str>, code: &str) -> io::Result<()> {
+    hybrid::write_terminal(&error_response(id, code), |encoded| {
+        writer.write_all(encoded)?;
+        writer.flush()
+    })
 }
 
 fn error_response(id: Option<&str>, code: &str) -> Value {

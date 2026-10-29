@@ -92,6 +92,8 @@ fn run() -> io::Result<()> {
 }
 
 fn main() {
+    // An upstream panic may contain request or ephemeral pairing data.
+    std::panic::set_hook(Box::new(|_| {}));
     if run().is_err() {
         // Deliberately omit diagnostics: request envelopes can contain secrets.
         std::process::exit(1);

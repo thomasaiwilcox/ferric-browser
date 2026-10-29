@@ -18,11 +18,14 @@ depends=(
   'qt6-declarative>=6.11'
   'qt6-wayland'
   'qt6-webengine>=6.11'
+  'qt6-webchannel>=6.11'
   'kwindowsystem>=6.28'
 )
 makedepends=(
   'desktop-file-utils'
-  'rust'
+  'rust>=1.88'
+  'pkgconf'
+  'python'
 )
 checkdepends=(
   'dbus'
@@ -50,12 +53,20 @@ build() {
   # them; keep the distro hardening flags and disable only that elision for
   # Cargo's final links.
   LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo build --release --locked
+  cargo build --manifest-path helpers/ferric-phone-auth/Cargo.toml --release --locked --target-dir target/phone-auth
 }
 
 check() {
   cd "${srcdir}/${pkgname}-${pkgver}"
   LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo test --workspace --locked
   cargo xtask package artifacts
+  python helpers/ferric-phone-auth/tools/check_vendor.py
+  python helpers/ferric-phone-auth/tools/check_inputs.py --release
+  python helpers/ferric-phone-auth/tools/check_install.py --helper target/phone-auth/release/ferric-phone-auth
+  cargo test --manifest-path helpers/ferric-phone-auth/Cargo.toml --locked --all-targets --target-dir target/phone-auth
+  cargo test --manifest-path helpers/ferric-phone-auth/vendor/Cargo.toml -p libwebauthn --lib --locked --target-dir target/phone-auth pin::
+  cargo test --manifest-path helpers/ferric-phone-auth/vendor/Cargo.toml -p libwebauthn --lib --locked --target-dir target/phone-auth transport::cable::protocol::
+  cargo test --manifest-path helpers/ferric-phone-auth/vendor/Cargo.toml -p snow --features use-p256,vector-tests --test vectors --locked --target-dir target/phone-auth
   LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo xtask test wayland
   LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo xtask test blocking
   desktop-file-validate packaging/io.github.ferricbrowser.FerricBrowser.desktop
@@ -64,6 +75,24 @@ check() {
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"
   install -Dm755 "target/release/ferric-browser" "${pkgdir}/usr/bin/ferric-browser"
+  install -Dm755 "target/phone-auth/release/ferric-phone-auth" "${pkgdir}/usr/bin/ferric-phone-auth-helper"
+  install -Dm644 helpers/ferric-phone-auth/data/public_suffix_list.dat \
+    "${pkgdir}/usr/share/ferric-browser/public_suffix_list.dat"
+  install -Dm644 helpers/ferric-phone-auth/data/provenance.json \
+    "${pkgdir}/usr/share/doc/${pkgname}/phone-auth-psl-provenance.json"
+  install -Dm644 helpers/ferric-phone-auth/vendor/COPYING \
+    "${pkgdir}/usr/share/licenses/${pkgname}/phone-auth-LGPL-2.1"
+  install -Dm644 helpers/ferric-phone-auth/data/LICENSE.MPL-2.0 \
+    "${pkgdir}/usr/share/licenses/${pkgname}/phone-auth-PSL-MPL-2.0"
+  install -Dm644 helpers/ferric-phone-auth/RELINKING.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/phone-auth-RELINKING.md"
+  # Retain the helper and patched library source needed to rebuild/relink it.
+  mkdir -p "${pkgdir}/usr/share/doc/${pkgname}"
+  tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+    -C helpers/ferric-phone-auth --transform='s,^,ferric-phone-auth/,' -cf - \
+    Cargo.toml Cargo.lock rust-toolchain.toml README.md RELINKING.md deny.toml dependency-inventory.json \
+    src tools vendor data | gzip -n > \
+    "${pkgdir}/usr/share/doc/${pkgname}/phone-auth-source.tar.gz"
   install -Dm644 "packaging/io.github.ferricbrowser.FerricBrowser.desktop" \
     "${pkgdir}/usr/share/applications/io.github.ferricbrowser.FerricBrowser.desktop"
   install -Dm644 "packaging/io.github.ferricbrowser.FerricBrowser.svg" \

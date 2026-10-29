@@ -1,0 +1,435 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -80,7 +80,7 @@
+ ] }
+ bitflags = "2.4.1"
+ rand = "0.8.5"
+-p256 = { version = "0.13.2", features = ["ecdh", "arithmetic", "serde"] }
++p256 = { version = "0.14.0", features = ["ecdh", "arithmetic", "serde"] }
+ cosey = "0.4.0"
+ spki = { version = "0.7", default-features = false, features = ["alloc"] }
+ der = { version = "0.7", default-features = false, features = ["alloc", "derive", "oid"] }
+--- a/src/pin/mod.rs
++++ b/src/pin/mod.rs
+@@ -22,11 +22,12 @@
+ use hkdf::Hkdf;
+ use hmac::Mac;
+ use icu_normalizer::ComposingNormalizerBorrowed;
++use p256::elliptic_curve::Generate;
+ use p256::{
+-    ecdh::EphemeralSecret, elliptic_curve::sec1::FromEncodedPoint, EncodedPoint,
++    ecdh::EphemeralSecret, elliptic_curve::sec1::FromSec1Point, Sec1Point,
+     PublicKey as P256PublicKey,
+ };
+-use rand::{rngs::OsRng, thread_rng, Rng, SeedableRng};
++use rand::{thread_rng, Rng};
+ use sha2::{Digest, Sha256};
+ use tracing::{error, instrument, warn};
+ use x509_parser::nom::AsBytes;
+@@ -136,14 +137,10 @@
+ 
+ impl PinUvAuthProtocolOne {
+     pub fn new() -> Self {
+-        let private_key = if cfg!(test) {
+-            // For testing only!!
+-            // We need a deterministic, seedable RNG to be able to "predict" crypto-operations
+-            let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+-            EphemeralSecret::random(&mut rng)
+-        } else {
+-            EphemeralSecret::random(&mut OsRng)
+-        };
++        #[cfg(test)]
++        let private_key = deterministic_test_secret();
++        #[cfg(not(test))]
++        let private_key = EphemeralSecret::generate();
+         let public_key = private_key.public_key();
+         Self {
+             private_key,
+@@ -214,8 +211,8 @@
+             );
+             PlatformError::CryptoError(String::from("pin/uv crypto operation failed"))
+         })?;
+-        let encoded_point = EncodedPoint::from_affine_coordinates(x.into(), y.into(), false);
+-        let Some(peer_public_key) = P256PublicKey::from_encoded_point(&encoded_point).into() else {
++        let encoded_point = Sec1Point::from_affine_coordinates(x.into(), y.into(), false);
++        let Some(peer_public_key) = P256PublicKey::from_sec1_point(&encoded_point).into() else {
+             error!("Failed to parse public key.");
+             return Err(PlatformError::CryptoError(String::from(
+                 "pin/uv crypto operation failed",
+@@ -232,7 +229,7 @@
+ 
+     /// getPublicKey()
+     fn get_public_key(&self) -> Result<cose::PublicKey, PlatformError> {
+-        let point = EncodedPoint::from(self.public_key());
++        let point = Sec1Point::from(self.public_key());
+         let x_bytes = point.x().ok_or_else(|| {
+             error!("Public key is the identity point");
+             PlatformError::CryptoError("public key is the identity point".into())
+@@ -333,14 +330,10 @@
+ 
+ impl PinUvAuthProtocolTwo {
+     pub fn new() -> Self {
+-        let private_key = if cfg!(test) {
+-            // For testing only!!
+-            // We need a deterministic, seedable RNG to be able to "predict" crypto-operations
+-            let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+-            EphemeralSecret::random(&mut rng)
+-        } else {
+-            EphemeralSecret::random(&mut OsRng)
+-        };
++        #[cfg(test)]
++        let private_key = deterministic_test_secret();
++        #[cfg(not(test))]
++        let private_key = EphemeralSecret::generate();
+         let public_key = private_key.public_key();
+         Self {
+             private_key,
+@@ -749,3 +742,21 @@
+         assert!(matches!(result, Err(PlatformError::CryptoError(_))));
+     }
+ }
++
++// Preserve upstream's deterministic PIN-vector RNG across the rand_core API
++// update. This compatibility adapter is absent from production builds.
++#[cfg(test)]
++fn deterministic_test_secret() -> EphemeralSecret {
++    use rand::{RngCore, SeedableRng};
++    struct TestRng(rand::rngs::StdRng);
++    impl p256::elliptic_curve::rand_core::TryRng for TestRng {
++        type Error = std::convert::Infallible;
++        fn try_next_u32(&mut self) -> Result<u32, Self::Error> { Ok(self.0.next_u32()) }
++        fn try_next_u64(&mut self) -> Result<u64, Self::Error> { Ok(self.0.next_u64()) }
++        fn try_fill_bytes(&mut self, output: &mut [u8]) -> Result<(), Self::Error> {
++            self.0.fill_bytes(output); Ok(())
++        }
++    }
++    impl p256::elliptic_curve::rand_core::TryCryptoRng for TestRng {}
++    EphemeralSecret::generate_from_rng(&mut TestRng(rand::rngs::StdRng::seed_from_u64(42)))
++}
+--- a/src/ops/u2f.rs
++++ b/src/ops/u2f.rs
+@@ -56,7 +56,7 @@
+         // Let coseEncodedCredentialPublicKey be the result of converting x9encodedUserPublicKey’s value
+         // from ANS X9.62 / Sec-1 v2 uncompressed curve point representation [SEC1V2]
+         // to COSE_Key representation ([RFC8152] Section 7).
+-        let Ok(encoded_point) = p256::EncodedPoint::from_bytes(&self.public_key) else {
++        let Ok(encoded_point) = p256::Sec1Point::from_bytes(&self.public_key) else {
+             error!(?self.public_key, "Failed to parse public key as SEC-1 v2 encoded point");
+             return Err(WebAuthnError::Ctap(CtapError::Other));
+         };
+--- a/src/transport/cable/mod.rs
++++ b/src/transport/cable/mod.rs
+@@ -33,3 +33,6 @@
+         write!(f, "Cable")
+     }
+ }
++
++/// Ferric direct-only relay policy; see vendor/UPSTREAM.json.
++pub mod direct_egress;
+--- a/src/transport/cable/tunnel.rs
++++ b/src/transport/cable/tunnel.rs
+@@ -2,11 +2,12 @@
+ use sha2::{Digest, Sha256};
+ use tokio::net::TcpStream;
+ use tokio_tungstenite::tungstenite::handshake::client::Request;
+-use tokio_tungstenite::tungstenite::http::{header::LOCATION, StatusCode};
++use tokio_tungstenite::tungstenite::http::StatusCode;
+ use tokio_tungstenite::tungstenite::Error as TungsteniteError;
+-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
++use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+ use tracing::{debug, error, trace};
+ use tungstenite::client::IntoClientRequest;
++#[cfg(test)]
+ use url::Url;
+ 
+ use super::error::CableTunnelError;
+@@ -15,7 +16,6 @@
+ use crate::proto::ctap2::cbor;
+ use crate::transport::cable::error::CableError;
+ 
+-const MAX_TUNNEL_REDIRECTS: usize = 5;
+ 
+ fn ensure_rustls_crypto_provider() {
+     use std::sync::Once;
+@@ -82,6 +82,7 @@
+ }
+ 
+ /// Resolves a redirect Location, which may be relative, against the current URL.
++#[cfg(test)]
+ fn resolve_redirect_target(base: &str, location: &str) -> Result<String, CableError> {
+     let base = Url::parse(base)?;
+     let target = base.join(location)?;
+@@ -119,8 +120,11 @@
+     connection_type: &CableTunnelConnectionType,
+ ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, CableError> {
+     ensure_rustls_crypto_provider();
+-
+-    let mut connect_url = match connection_type {
++    if !super::direct_egress::relay_domain_allowed(tunnel_domain) {
++        return Err(CableError::ConnectionFailed);
++    }
++
++    let connect_url = match connection_type {
+         CableTunnelConnectionType::QrCode {
+             routing_id,
+             tunnel_id,
+@@ -134,16 +138,16 @@
+         }
+     };
+ 
+-    for _ in 0..=MAX_TUNNEL_REDIRECTS {
+-        debug!(?connect_url, "Connecting to tunnel server");
++    {
++        debug!("Connecting to approved tunnel server");
+         let request = build_tunnel_request(&connect_url, connection_type)?;
+-        trace!(?request);
+-
+-        let error = match connect_async(request).await {
++        trace!("Sending tunnel handshake");
++
++        let error = match super::direct_egress::connect(request).await {
+             Ok((ws_stream, response)) => {
+-                debug!(?response, "Connected to tunnel server");
++                debug!("Connected to tunnel server");
+                 if response.status() != StatusCode::SWITCHING_PROTOCOLS {
+-                    error!(?response, "Failed to switch to websocket protocol");
++                    error!("Failed to switch to websocket protocol");
+                     return Err(CableError::ConnectionFailed);
+                 }
+                 debug!("Tunnel server returned success");
+@@ -155,40 +159,29 @@
+         let response = match error {
+             TungsteniteError::Http(response) => response,
+             error => {
+-                error!(?error, "Failed to connect to tunnel server");
++                error!("Failed to connect to tunnel server");
+                 return Err(CableError::from(error));
+             }
+         };
+ 
+         let status = response.status();
+         if status.is_redirection() {
+-            let Some(location) = response
+-                .headers()
+-                .get(LOCATION)
+-                .and_then(|value| value.to_str().ok())
+-            else {
+-                error!(?status, "Tunnel redirect missing a usable Location header");
+-                return Err(CableError::ConnectionFailed);
+-            };
+-            connect_url = resolve_redirect_target(&connect_url, location)?;
+-            debug!(?connect_url, "Following tunnel redirect");
+-            continue;
++            // Never expand the admitted endpoint set or downgrade TLS.
++            return Err(CableError::ConnectionFailed);
+         }
+ 
+         error!(?status, "Tunnel server rejected the connection");
+         return Err(tunnel_status_error(status));
+     }
+ 
+-    error!("Exceeded the maximum number of tunnel redirects");
+-    Err(CableTunnelError::TooManyRedirects.into())
+ }
+ 
+ #[cfg(test)]
+ mod tests {
++    use p256::elliptic_curve::Generate;
+     use super::*;
+     use crate::transport::cable::known_devices::{ClientPayload, ClientPayloadHint};
+     use p256::NonZeroScalar;
+-    use rand::rngs::OsRng;
+     use serde_bytes::ByteBuf;
+ 
+     fn known_device_connection_type(public_key: Vec<u8>) -> CableTunnelConnectionType {
+@@ -207,7 +200,7 @@
+         CableTunnelConnectionType::QrCode {
+             routing_id: "aabbcc".to_string(),
+             tunnel_id: "00112233445566778899aabbccddeeff".to_string(),
+-            private_key: NonZeroScalar::random(&mut OsRng),
++            private_key: NonZeroScalar::generate(),
+         }
+     }
+ 
+--- a/src/transport/cable/qr_code_device.rs
++++ b/src/transport/cable/qr_code_device.rs
+@@ -1,9 +1,10 @@
++use p256::elliptic_curve::Generate;
+ use std::fmt::{Debug, Display};
+ use std::sync::Arc;
+ use std::time::SystemTime;
+ 
+ use async_trait::async_trait;
+-use p256::elliptic_curve::sec1::ToEncodedPoint;
++use p256::elliptic_curve::sec1::ToSec1Point;
+ use p256::{NonZeroScalar, SecretKey};
+ use rand::rngs::OsRng;
+ use rand::RngCore;
+@@ -163,12 +164,12 @@
+         store: Option<Arc<dyn CableKnownDeviceInfoStore>>,
+         transports: CableTransports,
+     ) -> Result<Self, CableError> {
+-        let private_key_scalar = NonZeroScalar::random(&mut OsRng);
++        let private_key_scalar = NonZeroScalar::generate();
+         let private_key = SecretKey::from(private_key_scalar);
+         let public_key: [u8; 33] = private_key
+             .public_key()
+             .as_affine()
+-            .to_encoded_point(true)
++            .to_sec1_point(true)
+             .as_bytes()
+             .try_into()
+             .map_err(|_| CableError::InvalidKey)?;
+--- a/src/transport/cable/protocol.rs
++++ b/src/transport/cable/protocol.rs
+@@ -738,13 +738,13 @@
+ 
+ #[cfg(test)]
+ mod tests {
++    use p256::elliptic_curve::Generate;
+     use super::*;
+ 
+     use std::sync::Mutex;
+ 
+     use async_trait::async_trait;
+-    use p256::elliptic_curve::sec1::ToEncodedPoint;
+-    use rand::rngs::OsRng;
++    use p256::elliptic_curve::sec1::ToSec1Point;
+ 
+     #[derive(Debug, Default)]
+     struct RecordingStore {
+@@ -783,11 +783,11 @@
+ 
+     #[tokio::test]
+     async fn invalid_signature_does_not_evict() {
+-        let client_private_key = NonZeroScalar::random(&mut OsRng);
+-        let authenticator_secret = SecretKey::random(&mut OsRng);
++        let client_private_key = NonZeroScalar::generate();
++        let authenticator_secret = SecretKey::generate();
+         let authenticator_public_key = authenticator_secret
+             .public_key()
+-            .to_encoded_point(false)
++            .to_sec1_point(false)
+             .as_bytes()
+             .to_vec();
+ 
+@@ -893,7 +893,7 @@
+             connection_type: CableTunnelConnectionType::QrCode {
+                 routing_id: "000000".into(),
+                 tunnel_id: "00".repeat(16),
+-                private_key: NonZeroScalar::random(&mut OsRng),
++                private_key: NonZeroScalar::generate(),
+             },
+             tunnel_domain: "cable.example.com".into(),
+             known_device_store: None,
+--- /dev/null
++++ b/src/transport/cable/direct_egress.rs
+@@ -0,0 +1,108 @@
++//! Ferric's deliberately narrow first hybrid route. It neither implements a
++//! proxy nor follows redirects. DNS answers are checked once and the selected
++//! socket address is used directly, avoiding a second DNS lookup at connect.
++//! Address exclusions follow IANA's special-purpose registries (2025-10-09).
++
++use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
++use std::time::Duration;
++use tokio::net::TcpStream;
++use tokio::time::timeout;
++use tokio_tungstenite::tungstenite::handshake::client::Request;
++use tokio_tungstenite::tungstenite::Error;
++use tokio_tungstenite::{client_async_tls, MaybeTlsStream, WebSocketStream};
++use url::Url;
++
++pub fn relay_domain_allowed(host: &str) -> bool {
++    matches!(host, "cable.ua5v.com" | "cable.auth.com")
++}
++
++fn public_v4(address: Ipv4Addr) -> bool {
++    let [a, b, c, _] = address.octets();
++    !(a == 0
++        || a == 10
++        || a == 127
++        || a >= 224
++        || (a == 100 && (64..=127).contains(&b))
++        || (a == 169 && b == 254)
++        || (a == 172 && (16..=31).contains(&b))
++        || (a == 192 && b == 168)
++        || (a == 192 && b == 0 && (c == 0 || c == 2))
++        || (a == 192 && b == 88 && c == 99)
++        || (a == 198 && (b == 18 || b == 19))
++        || (a == 198 && b == 51 && c == 100)
++        || (a == 203 && b == 0 && c == 113))
++}
++
++fn public_v6(address: Ipv6Addr) -> bool {
++    if let Some(v4) = address.to_ipv4_mapped() {
++        return public_v4(v4);
++    }
++    let parts = address.segments();
++    (parts[0] & 0xe000) == 0x2000
++        && !(parts[0] == 0x2001 && (parts[1] <= 0x01ff || parts[1] == 0x0db8))
++        && parts[0] != 0x2002
++        && !(parts[0] == 0x3fff && (parts[1] & 0xf000) == 0)
++}
++
++pub fn public_address(address: IpAddr) -> bool {
++    match address {
++        IpAddr::V4(v4) => public_v4(v4),
++        IpAddr::V6(v6) => public_v6(v6),
++    }
++}
++
++pub fn relay_url_allowed(url: &Url) -> bool {
++    url.scheme() == "wss"
++        && url.host_str().is_some_and(relay_domain_allowed)
++        && url.port_or_known_default() == Some(443)
++        && url.username().is_empty()
++        && url.password().is_none()
++        && url.fragment().is_none()
++        && url.query().is_none()
++}
++
++pub async fn connect(
++    request: Request,
++) -> Result<
++    (
++        WebSocketStream<MaybeTlsStream<TcpStream>>,
++        tokio_tungstenite::tungstenite::handshake::client::Response,
++    ),
++    Error,
++> {
++    let url = Url::parse(&request.uri().to_string()).map_err(|_| denied())?;
++    if !relay_url_allowed(&url) {
++        return Err(denied());
++    }
++    let addresses: Vec<_> = timeout(
++        Duration::from_secs(10),
++        tokio::net::lookup_host((url.host_str().ok_or_else(denied)?, 443)),
++    )
++    .await
++    .map_err(|_| denied())??
++    .take(17)
++    .collect();
++    if addresses.is_empty()
++        || addresses.len() > 16
++        || addresses
++            .iter()
++            .any(|address| !public_address(address.ip()))
++    {
++        return Err(denied());
++    }
++    for address in addresses {
++        if let Ok(Ok(stream)) = timeout(Duration::from_secs(5), TcpStream::connect(address)).await {
++            // SNI and normal certificate verification use the original URI;
++            // only the already validated TCP destination is supplied here.
++            return client_async_tls(request, stream).await;
++        }
++    }
++    Err(denied())
++}
++
++fn denied() -> Error {
++    Error::Io(std::io::Error::new(
++        std::io::ErrorKind::PermissionDenied,
++        "relay route unavailable",
++    ))
++}

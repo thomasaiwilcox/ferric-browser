@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use libwebauthn::ops::webauthn::{
     GetAssertionRequest, MakeCredentialRequest, OriginValidation, RelatedOrigins, RequestOrigin,
-    RequestSettings, Scheme, SystemPublicSuffixList,
+    RequestSettings, Scheme,
 };
 use serde_json::{Map, Value};
 
@@ -40,7 +40,7 @@ impl PreparedCredentialRequest {
 pub(crate) fn prepare_request(
     envelope: Envelope,
 ) -> Result<PreparedCredentialRequest, AdmissionError> {
-    prepare_request_with_psl_loader(envelope, SystemPublicSuffixList::auto)
+    prepare_request_with_psl_loader(envelope, crate::suffix_list::load)
 }
 
 fn prepare_request_with_psl_loader<P, E>(
@@ -77,7 +77,7 @@ async fn prepare_with_psl(
     envelope: Envelope,
     psl: &dyn libwebauthn::ops::webauthn::PublicSuffixList,
 ) -> Result<PreparedCredentialRequest, AdmissionError> {
-    // No transport can proceed until C07 network enforcement is implemented.
+    // Transport policy is consumed by the private entry point before channel creation.
     let _network_policy = envelope.network;
     let request_origin =
         RequestOrigin::from_str(&envelope.origin).map_err(|_| AdmissionError::InvalidOrigin)?;
@@ -190,11 +190,12 @@ fn validate_create(options: &Value) -> Result<(), AdmissionError> {
     nested_keys(options, "user", &["id", "name", "displayName"])?;
     array_nested_keys(options, "pubKeyCredParams", &["type", "alg"])?;
     array_nested_keys(options, "excludeCredentials", &["type", "id", "transports"])?;
-    enum_value(
-        options,
-        "attestation",
-        &["none", "indirect", "direct", "enterprise"],
-    )?;
+    // Enterprise attestation requires the browser's RP policy. This first
+    // helper route cannot establish that policy; leave it to native WebAuthn.
+    if object(options)?.get("attestation").and_then(Value::as_str) == Some("enterprise") {
+        return Err(AdmissionError::UnsupportedOptions);
+    }
+    enum_value(options, "attestation", &["none", "indirect", "direct"])?;
     if let Some(selection) = object(options)?.get("authenticatorSelection") {
         keys(
             selection,
@@ -318,8 +319,7 @@ mod tests {
         UserVerificationRequirement,
     };
 
-    const FIXTURE_PSL: &str =
-        "/home/tom/Projects/ferric-everyday-work/builds/P06-fixtures/public_suffix_list.dat";
+    const FIXTURE_PSL: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/data/public_suffix_list.dat");
 
     fn envelope(op: &str, origin: &str, options: serde_json::Value) -> crate::protocol::Envelope {
         let value = serde_json::json!({
@@ -498,6 +498,15 @@ mod tests {
             run(prepare_with_psl(
                 envelope("create", "https://example.com", unsupported),
                 &psl,
+            )),
+            Err(AdmissionError::UnsupportedOptions)
+        ));
+        let mut enterprise = make_options("example.com");
+        enterprise["attestation"] = serde_json::json!("enterprise");
+        assert!(matches!(
+            run(prepare_with_psl(
+                envelope("create", "https://example.com", enterprise),
+                &psl
             )),
             Err(AdmissionError::UnsupportedOptions)
         ));

@@ -234,12 +234,27 @@ pub(super) fn validate_arch_install_layout() -> Result<(), String> {
         "xdg-utils",
         "[build]",
         "desktop-file-utils",
-        "check_packages = [\"dbus\", \"weston\"]",
         "[optional.portals]",
     ] {
         if !dependencies.contains(fragment) {
             return Err(format!(
                 "dependency manifest does not declare the distribution boundary: {fragment}"
+            ));
+        }
+    }
+    let table = dependencies
+        .parse::<toml::Table>()
+        .map_err(|error| format!("could not parse dependency manifest: {error}"))?;
+    let checks = table
+        .get("build")
+        .and_then(toml::Value::as_table)
+        .and_then(|build| build.get("check_packages"))
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| "dependency manifest must declare build.check_packages".to_owned())?;
+    for required in ["dbus", "weston"] {
+        if !checks.iter().any(|value| value.as_str() == Some(required)) {
+            return Err(format!(
+                "dependency manifest omits required check package: {required}"
             ));
         }
     }

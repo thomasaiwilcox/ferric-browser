@@ -17,11 +17,26 @@ pub(crate) enum Operation {
     Get,
 }
 
-/// No transport policy can yet be represented honestly. An empty policy is
-/// accepted; every nonempty/unknown form is rejected before preparation.
-#[derive(Debug, Deserialize)]
+/// Only the trusted parent may admit direct egress. An empty policy retains
+/// the disabled protocol behavior; proxy and unknown policies fail parsing.
+#[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct NetworkPolicy {}
+pub(crate) struct NetworkPolicy {
+    #[serde(default)]
+    mode: Option<NetworkMode>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum NetworkMode {
+    Direct,
+}
+
+impl NetworkPolicy {
+    pub(crate) fn direct(&self) -> bool {
+        self.mode == Some(NetworkMode::Direct)
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -149,4 +164,88 @@ pub(crate) fn parse_envelope(line: &[u8]) -> Result<Envelope, AdmissionError> {
         return Err(AdmissionError::InvalidEnvelope);
     }
     Ok(envelope)
+}
+
+#[cfg(test)]
+mod network_tests {
+    use super::NetworkPolicy;
+
+    #[test]
+    fn only_explicit_direct_policy_enables_transport() {
+        for disabled in ["{}", r#"{"mode":null}"#] {
+            let policy: NetworkPolicy = serde_json::from_str(disabled).unwrap();
+            assert!(!policy.direct());
+        }
+        let policy: NetworkPolicy = serde_json::from_str(r#"{"mode":"direct"}"#).unwrap();
+        assert!(policy.direct());
+        for invalid in [
+            r#"{"mode":"proxy"}"#,
+            r#"{"mode":"offline"}"#,
+            r#"{"mode":"direct","proxy":"http://localhost"}"#,
+            r#"{"mode":"direct","mode":"direct"}"#,
+        ] {
+            assert!(serde_json::from_str::<NetworkPolicy>(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn actual_transport_filters_reject_redirect_and_private_routes() {
+        use libwebauthn::transport::cable::direct_egress::{
+            public_address, relay_domain_allowed, relay_url_allowed,
+        };
+        for host in ["cable.ua5v.com", "cable.auth.com"] {
+            assert!(relay_domain_allowed(host));
+            assert!(relay_url_allowed(
+                &format!("wss://{host}/cable/connect/opaque/opaque")
+                    .parse()
+                    .unwrap()
+            ));
+        }
+        for url in [
+            "ws://cable.ua5v.com/cable",
+            "wss://cable.ua5v.com:444/cable",
+            "wss://cable.ua5v.com.evil.example/cable",
+            "wss://user@cable.auth.com/cable",
+            "wss://cable.auth.com/cable?secret",
+            "wss://cable.auth.com/cable#fragment",
+            "wss://127.0.0.1/cable",
+            "wss://[::1]/cable",
+        ] {
+            assert!(!relay_url_allowed(&url.parse().unwrap()), "{url}");
+        }
+        for address in [
+            "0.0.0.0",
+            "10.1.2.3",
+            "100.64.0.1",
+            "127.0.0.1",
+            "169.254.1.1",
+            "172.16.0.1",
+            "192.168.1.1",
+            "192.0.2.1",
+            "198.18.0.1",
+            "198.51.100.1",
+            "203.0.113.1",
+            "224.0.0.1",
+            "255.255.255.255",
+            "::",
+            "::1",
+            "fc00::1",
+            "fe80::1",
+            "ff02::1",
+            "2001:db8::1",
+            "2002:7f00:1::",
+            "3fff::1",
+            "::ffff:127.0.0.1",
+        ] {
+            assert!(!public_address(address.parse().unwrap()), "{address}");
+        }
+        for address in [
+            "8.8.8.8",
+            "1.1.1.1",
+            "2606:4700:4700::1111",
+            "2001:4860:4860::8888",
+        ] {
+            assert!(public_address(address.parse().unwrap()), "{address}");
+        }
+    }
 }

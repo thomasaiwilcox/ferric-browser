@@ -27,3 +27,18 @@ texts required by the selected distribution and dependency packages.
 packaging/license-policy.toml is the bounded machine-readable companion:
 cargo xtask check verifies that each named package is present in the locked
 Cargo graph and that its reviewed license/provenance fields are non-empty.
+
+The separate `helpers/ferric-phone-auth` graph is checked independently. Its
+pinned libwebauthn 0.10.0 source is LGPL-2.1-or-later; the exact original tree
+hashes and direct-egress patch are in `vendor/UPSTREAM.json` and
+`vendor/FERRIC_PATCH.md`. The package retains the helper/library source archive,
+LGPL text and rebuild/relink instructions. QR rendering uses qrcode 0.14.1
+(MIT OR Apache-2.0). The official PSL snapshot is MPL-2.0, with its complete
+notice, license text, version, upstream commit and SHA-256 retained under
+`data/` and installed with the package. Qt's bundled WebChannel client retains
+its original copyright and SPDX notice in the embedded source resource.
+
+Run helper `cargo deny --exclude-dev check licenses sources` for the production
+graph; run `check_inputs.py` as well to verify exact test-only Git commits.
+The upstream virtual-authenticator test dependency names a tag and is pinned by
+its lockfile commit; the production source rule continues to require revisions.

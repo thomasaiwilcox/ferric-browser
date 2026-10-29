@@ -9,7 +9,9 @@ use libwebauthn::ops::webauthn::WebAuthnIDLResponse;
 use libwebauthn::transport::cable::qr_code_device::{
     CableQrCodeDevice, CableTransports, QrCodeOperationHint,
 };
+use libwebauthn::transport::{Channel, ChannelSettings, Device};
 use libwebauthn::webauthn::WebAuthn;
+use qrcode::{Color, QrCode};
 
 const MAX_TERMINAL_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_STDOUT_BYTES: usize = 4 * 1024 * 1024;
@@ -33,13 +35,11 @@ pub(crate) enum OperationFailure {
 
 #[derive(Debug)]
 pub(crate) struct OperationResult {
-    pub(crate) id: String,
     pub(crate) response: Value,
 }
 
 /// Builds the library's transient caBLE QR device for an admitted operation.
-/// Callers must keep its payload private. P08 owns presentation and channel
-/// admission; this helper deliberately drops the device without connecting.
+/// Callers must keep its payload private and admit network policy first.
 pub(crate) fn transient_device(
     prepared: &PreparedCredentialRequest,
 ) -> Result<CableQrCodeDevice, OperationFailure> {
@@ -50,6 +50,83 @@ pub(crate) fn transient_device(
     };
     CableQrCodeDevice::new_transient(hint, CableTransports::CloudAssistedOnly)
         .map_err(|_| OperationFailure::Authenticator)
+}
+
+/// Starts a single transient phone ceremony after explicit direct-policy
+/// admission. QR output must reach the parent before BLE/network work starts.
+/// Process termination by the parent is the cancellation boundary.
+pub(crate) async fn execute_phone_to_pipe(
+    prepared: PreparedCredentialRequest,
+    writer: &mut impl Write,
+) -> io::Result<()> {
+    let id = prepared.id().to_owned();
+    let mut output = BoundedOutput::new(|encoded: &[u8]| {
+        writer.write_all(encoded)?;
+        writer.flush()
+    });
+    let mut device = match transient_device(&prepared) {
+        Ok(device) => device,
+        Err(error) => {
+            return output
+                .emit_value(
+                    &error_envelope(&id, failure_code(&error)),
+                    MAX_TERMINAL_RESPONSE_BYTES,
+                )
+                .map_err(pipe_error);
+        }
+    };
+    let frame = qr_frame(&id, &device).map_err(pipe_error)?;
+    output
+        .emit_value(&frame, MAX_PROGRESS_LINE_BYTES)
+        .map_err(pipe_error)?;
+    let mut channel = match device.channel(ChannelSettings::default()).await {
+        Ok(channel) => channel,
+        Err(_) => {
+            return output
+                .emit_value(
+                    &error_envelope(&id, "transport_unavailable"),
+                    MAX_TERMINAL_RESPONSE_BYTES,
+                )
+                .map_err(pipe_error);
+        }
+    };
+    let result = execute_to_pipe(prepared, &mut channel, |line| {
+        // The outer output budget also includes the QR frame.
+        let next = output
+            .planned_bytes
+            .checked_add(line.len())
+            .filter(|total| *total <= MAX_STDOUT_BYTES)
+            .ok_or_else(|| io::Error::other("private output limit"))?;
+        output.planned_bytes = next;
+        (output.sink)(line)
+    })
+    .await;
+    channel.close().await;
+    // execute_to_pipe has already emitted one terminal error on operation
+    // failure. A failed output is terminal and must never trigger a retry.
+    match result {
+        Err(OperationFailure::Output) => Err(pipe_error(OperationFailure::Output)),
+        _ => Ok(()),
+    }
+}
+
+fn pipe_error(_: OperationFailure) -> io::Error {
+    io::Error::other("private ceremony output unavailable")
+}
+
+fn qr_frame(id: &str, device: &CableQrCodeDevice) -> Result<Value, OperationFailure> {
+    let qr = QrCode::new(device.qr_code.to_string().as_bytes())
+        .map_err(|_| OperationFailure::Serialization)?;
+    let width = qr.width();
+    let modules: Vec<u8> = qr
+        .into_colors()
+        .into_iter()
+        .map(|color| u8::from(color == Color::Dark))
+        .collect();
+    let frame = json!({"v": 1, "id": id, "kind": "qr",
+        "body": {"width": width, "modules": modules}});
+    encode_bounded(&frame, MAX_PROGRESS_LINE_BYTES)?;
+    Ok(frame)
 }
 
 /// Executes only a library-prepared request over a pinned library Channel.
@@ -100,7 +177,7 @@ where
     // an unbounded encoded copy before the protocol limit is applied.
     let _encoded = encode_bounded(&response, MAX_TERMINAL_RESPONSE_BYTES)?;
     progress(OperationProgress::Completed)?;
-    Ok(OperationResult { id, response })
+    Ok(OperationResult { response })
 }
 
 /// Executes one already admitted request and writes bounded typed protocol
@@ -315,8 +392,7 @@ mod tests {
     use std::path::Path;
     use std::process::{Command, Stdio};
 
-    const FIXTURE_PSL: &str =
-        "/home/tom/Projects/ferric-everyday-work/builds/P06-fixtures/public_suffix_list.dat";
+    const FIXTURE_PSL: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/data/public_suffix_list.dat");
 
     async fn prepare(
         op: &str,
@@ -370,6 +446,34 @@ mod tests {
             }
         }
         Ok(files)
+    }
+
+    #[test]
+    fn phone_qr_frame_contains_only_bounded_renderable_modules() {
+        use super::qr_frame;
+        let first = CableQrCodeDevice::new_transient(
+            QrCodeOperationHint::GetAssertionRequest,
+            CableTransports::CloudAssistedOnly,
+        )
+        .unwrap();
+        let second = CableQrCodeDevice::new_transient(
+            QrCodeOperationHint::GetAssertionRequest,
+            CableTransports::CloudAssistedOnly,
+        )
+        .unwrap();
+        let a = qr_frame("private-native-request", &first).unwrap();
+        let b = qr_frame("private-native-request", &second).unwrap();
+        let width = a["body"]["width"].as_u64().unwrap() as usize;
+        let modules = a["body"]["modules"].as_array().unwrap();
+        assert_eq!(modules.len(), width * width);
+        assert!((21..=177).contains(&width));
+        assert!(modules.iter().all(|bit| bit == 0 || bit == 1));
+        assert_ne!(a["body"]["modules"], b["body"]["modules"]);
+        let encoded = serde_json::to_vec(&a).unwrap();
+        assert!(encoded.len() < 32 * 1024);
+        assert!(!String::from_utf8(encoded).unwrap().contains("FIDO:/"));
+        assert_eq!(first.qr_code.known_tunnel_domains_count, 2);
+        assert_eq!(first.qr_code.state_assisted, None);
     }
 
     #[test]
@@ -561,7 +665,7 @@ mod tests {
             let credential_id = created.response["body"]["id"]
                 .as_str()
                 .expect("serialized dynamic credential id");
-            assert_eq!(created.id, "t067a-create");
+            assert_eq!(created.response["id"], "t067a-create");
 
             let get_options = serde_json::json!({
                 "challenge": "EBESExQVFhcYGRobHB0eHw",
@@ -586,7 +690,7 @@ mod tests {
                     .map(Vec::len),
                 Some(1)
             );
-            assert_eq!(asserted.id, "t067a-get");
+            assert_eq!(asserted.response["id"], "t067a-get");
             assert_eq!(
                 progress,
                 [

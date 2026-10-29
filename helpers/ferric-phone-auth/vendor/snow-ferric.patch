@@ -1,0 +1,40 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -176,7 +176,7 @@
+ optional = true
+ 
+ [dependencies.p256]
+-version = "0.13.2"
++version = "0.14.0"
+ features = ["ecdh"]
+ optional = true
+ 
+--- a/src/resolvers/default.rs
++++ b/src/resolvers/default.rs
+@@ -32,7 +32,7 @@
+ #[cfg(feature = "use-pqcrypto-kyber1024")]
+ use crate::types::Kem;
+ #[cfg(feature = "p256")]
+-use p256::{self, EncodedPoint, elliptic_curve::sec1::ToEncodedPoint};
++use p256::{self, Sec1Point, elliptic_curve::sec1::ToSec1Point};
+ #[cfg(feature = "use-pqcrypto-kyber1024")]
+ use pqcrypto_kyber::kyber1024;
+ #[cfg(feature = "use-pqcrypto-kyber1024")]
+@@ -136,7 +136,7 @@
+ #[derive(Default)]
+ struct P256 {
+     privkey: [u8; 32],
+-    pubkey: EncodedPoint,
++    pubkey: Sec1Point,
+ }
+ 
+ /// Wraps `aes-gcm`'s AES256-GCM implementation.
+@@ -255,7 +255,7 @@
+     fn derive_pubkey(&mut self) {
+         let secret_key = p256::SecretKey::from_bytes(&self.privkey.into()).unwrap();
+         let public_key = secret_key.public_key();
+-        let encoded_pub = public_key.to_encoded_point(false);
++        let encoded_pub = public_key.to_sec1_point(false);
+         self.pubkey = encoded_pub;
+     }
+ }

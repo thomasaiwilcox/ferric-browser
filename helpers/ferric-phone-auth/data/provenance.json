@@ -1,0 +1,8 @@
+{
+  "source": "https://publicsuffix.org/list/public_suffix_list.dat",
+  "license": "MPL-2.0",
+  "version": "2026-10-28_13-15-55_UTC",
+  "upstream_commit": "9dfbe81931367b3f0af21035c36ae7eeb830dd88",
+  "sha256": "1f96bae40adfc22ca2474d7c0099bbcfcb25aefd3e2547b5c2147c0dd2e3ebd9",
+  "use": "Packaged runtime fallback when distribution PSL files are unavailable; also the portable test fixture. Refresh from the official source for each release."
+}

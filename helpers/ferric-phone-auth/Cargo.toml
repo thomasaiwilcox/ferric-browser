@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.88"
 license = "GPL-3.0-or-later"
 publish = false
-description = "Private helper protocol placeholder; phone authentication is not implemented"
+description = "Private supervised helper for transient phone passkey ceremonies"
 
 [workspace]
 members = ["."]
@@ -15,7 +15,8 @@ resolver = "2"
 libwebauthn = { git = "https://github.com/linux-credentials/libwebauthn", rev = "9c0e5f78ac445d35dca05170efbb0afefc5a89ae", default-features = false }
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.149"
-tokio = { version = "=1.52.3", features = ["rt", "time"] }
+tokio = { version = "=1.53.3", features = ["rt", "time"] }
+qrcode = { version = "=0.14.1", default-features = false }
 
 [dev-dependencies]
 libwebauthn = { git = "https://github.com/linux-credentials/libwebauthn", rev = "9c0e5f78ac445d35dca05170efbb0afefc5a89ae", default-features = false, features = ["virt"] }
@@ -24,5 +25,10 @@ libwebauthn-tests = { git = "https://github.com/linux-credentials/libwebauthn", 
 # The companion test package is an upstream workspace member. Mirror its exact
 # workspace patches because Cargo does not inherit patch tables from dependencies.
 [patch.crates-io]
+snow = { path = "vendor/snow" }
 trussed = { git = "https://github.com/trussed-dev/trussed.git", rev = "024e0eca5fb7dbd2457831f7c7bffe4341e08775" }
 trussed-staging = { git = "https://github.com/trussed-dev/trussed-staging.git", rev = "7922d67e9637a87e5625aaff9e5111f0d4ec0346" }
+
+# Exact upstream source plus the documented direct-egress hardening patch.
+[patch."https://github.com/linux-credentials/libwebauthn"]
+libwebauthn = { path = "vendor/libwebauthn" }

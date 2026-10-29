@@ -25,3 +25,10 @@
 /usr/share/doc/ferric-browser/CONTRIBUTING.md
 /usr/share/doc/ferric-browser/CODE_OF_CONDUCT.md
 /usr/share/doc/ferric-browser/ADR-0010-license-and-release-identity.md
+/usr/bin/ferric-phone-auth-helper
+/usr/share/ferric-browser/public_suffix_list.dat
+/usr/share/doc/ferric-browser/phone-auth-psl-provenance.json
+/usr/share/licenses/ferric-browser/phone-auth-LGPL-2.1
+/usr/share/licenses/ferric-browser/phone-auth-PSL-MPL-2.0
+/usr/share/doc/ferric-browser/phone-auth-RELINKING.md
+/usr/share/doc/ferric-browser/phone-auth-source.tar.gz
