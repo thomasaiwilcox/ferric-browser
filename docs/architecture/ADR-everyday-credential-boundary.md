@@ -307,3 +307,18 @@ production cases. Native sessions/private buses clean up, and engine/browser
 Clippy passes with warnings denied. Provider/MainWorld wiring, broader window
 workflow parity and physical qualification remain required; no real credential
 or combined-release approval is claimed.
+
+### Peer page-state mutation review — 30 October 2026
+
+Pin/mute commands now resolve actual registered owners within the same logical
+group and profile/privacy/context scope. Their queued application checks native
+owner, page generation and current group membership. The return queue captures
+the issuing page, requiring its exact active Core Target before document work.
+Pure mutation keeps focus; an inherited selection receipt retains final focus
+intent. Both queues retain the original receipt through destruction or failure.
+
+Independent scoped review closed with no findings. `page-mutations-r34` passes
+association 6/6 and window 29/29; `window-ipc-r34` passes fourteen production IPC
+cases. No failures/skips or residual owned processes are reported, and engine
+Clippy passes with warnings denied. Global ordering, broader commands/sessions
+and credential provider/device work remain incomplete.

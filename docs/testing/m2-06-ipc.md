@@ -159,6 +159,14 @@ executors still need the same handoff semantics; this restriction avoids
 running a following document command on an intermediate owner. Repeated
 multi-selection playback is likewise unavailable until that work is complete.
 
+Window-mode `tab-pin` and `tab-mute` resolve stable page IDs in the same logical
+group and actual profile/privacy/context scope. They change the peer's state
+without moving focus. A following document command resumes on the exact issuing
+page and retains its captured document; it does not follow the mutation target.
+An earlier selection in the chain still determines final focus. Queued mutation
+and issuer callbacks retain one operation receipt, so lost windows and stale
+document continuations report terminal failure.
+
 ## Limitations
 
 The remaining V1 method surface is now limited to richer binding/config

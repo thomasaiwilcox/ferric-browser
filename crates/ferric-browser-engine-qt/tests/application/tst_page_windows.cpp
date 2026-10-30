@@ -31,7 +31,7 @@ bool clickCloseDecision(QQuickWindow *host, bool proceed) {
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -241,6 +241,67 @@ void ApplicationTests::pageWindowPresentation()
         QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), sourceView.data());
         pageReceiver = popup + ".host.activeView";
         QCOMPARE(page("window.popupGroupDraft").toInt(), 19);
+        return;
+    }
+    if (scenario.startsWith("window-mutation")) {
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        const auto childId = evaluate(entry + ".ui.tab_id_for_index(0)").toString();
+        if (scenario != "window-mutations") {
+            evaluate("testWindow.commandNoticeVisible=false;testWindow.commandNoticeText=''");
+            QVERIFY(command("tab-mute " + childId + " on ;; jseval --world page window.wrongMutationDoc=1"));
+            if (scenario == "window-mutation-discard") delete childWindow;
+            else {
+                const auto replacement = initial + "?mutation-new-document=yes";
+                evaluate("testWindow.browserUi.navigate_without_context_route(" + quoted(replacement) + ")");
+                pageReceiver = "testWindow.activeWebView()";
+                QTRY_COMPARE(page("location.href").toString(), replacement);
+                QTRY_VERIFY(evaluate(entry + ".ui.tab_muted_at(0)").toBool());
+            }
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_VERIFY(evaluate("testWindow.commandNoticeVisible && testWindow.commandNoticeError").toBool());
+            pageReceiver = "testWindow.activeWebView()";
+            QVERIFY(page("typeof window.wrongMutationDoc === 'undefined'").toBool());
+            QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+            return;
+        }
+        QVERIFY(command("tab-pin " + childId + " on"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_VERIFY(evaluate(entry + ".ui.tab_pinned_at(0)").toBool());
+        QCOMPARE(QGuiApplication::focusWindow(), window);
+        QVERIFY(command("tab-mute " + childId + " on ;; jseval --world page window.mutationIssuer=99"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_VERIFY(evaluate(childHost + ".activeView.audioMuted").toBool());
+        pageReceiver = "testWindow.activeWebView()";
+        QTRY_COMPARE(page("window.mutationIssuer").toInt(), 99);
+        pageReceiver = childHost + ".activeView";
+        QVERIFY(page("typeof window.mutationIssuer === 'undefined'").toBool());
+        QCOMPARE(QGuiApplication::focusWindow(), window);
+        QVERIFY(command("tab-select 1"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+        QVERIFY(command("tab-pin " + childId + " off"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_VERIFY(!evaluate(entry + ".ui.tab_pinned_at(0)").toBool());
+        QCOMPARE(QGuiApplication::focusWindow(), childWindow);
+        QVERIFY(command("tab-focus " + childId + " ;; tab-pin " + sourceId + " on ;; jseval --world page window.mutationChain=11"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        pageReceiver = childHost + ".activeView";
+        QTRY_COMPARE(page("window.mutationChain").toInt(), 11);
+        QVERIFY(evaluate("testWindow.browserUi.tab_pinned_at(0)").toBool());
+        QCOMPARE(QGuiApplication::focusWindow(), childWindow);
+        pageReceiver = "testWindow.activeWebView()";
+        QVERIFY(page("typeof window.mutationChain === 'undefined'").toBool());
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        QVERIFY(command("tab-mute " + childId + " off"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_VERIFY(!evaluate(childHost + ".activeView.audioMuted").toBool());
+        evaluate("testWindow.commandNoticeVisible=false;testWindow.commandNoticeText=''");
+        QVERIFY(command("tab-mute " + childId + " on"));
+        QVERIFY(evaluate(entry + ".ui.assign_window_context('changed')").toBool());
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_VERIFY(evaluate("testWindow.commandNoticeVisible && testWindow.commandNoticeError").toBool());
+        QVERIFY(!evaluate(entry + ".ui.tab_muted_at(0)").toBool());
         return;
     }
     if (scenario.startsWith("window-chain-")) {

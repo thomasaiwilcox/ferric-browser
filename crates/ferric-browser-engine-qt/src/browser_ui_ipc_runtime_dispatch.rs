@@ -84,7 +84,8 @@ impl qobject::BrowserUi {
         if result.get("pending").and_then(Value::as_str) != Some("context-route")
             && result.get("requires_confirmation").and_then(Value::as_bool) != Some(true)
             && !(self.as_ref().in_page_window_mode()
-                && super::browser_ui_page_windows::handles(&command))
+                && (super::browser_ui_page_windows::handles(&command)
+                    || super::browser_ui_page_mutations::handles(&command)))
             && !(command.name == "open"
                 && command.arguments.first().map(String::as_str) == Some("--clean-link"))
         {

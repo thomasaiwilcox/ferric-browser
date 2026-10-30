@@ -19,6 +19,7 @@ struct PageHandoffState {
     page: TabId,
     operation: Option<String>,
     finished: AtomicBool,
+    focus_requested: AtomicBool,
 }
 
 impl Drop for PageHandoffState {
@@ -31,12 +32,101 @@ impl Drop for PageHandoffState {
         let operation = self.operation.clone();
         let _ = self.thread.queue(move |mut ui| {
             ui.as_mut().page_window_command_failed(
-                "Page selection failed because a window closed. Try again.",
+                "Page command failed because a window closed. Try again.",
             );
             if let Some(operation) = operation {
-                ui.as_mut()
-                    .complete_window_focus(&QString::from(operation), &QString::from("failed"));
+                ui.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                    operation,
+                    crate::OperationUpdate::failed(
+                        crate::FailureKind::Engine,
+                        "page window closed",
+                    ),
+                );
             }
+        });
+    }
+}
+
+impl PageHandoff {
+    pub(super) fn finish(self, selected: bool, succeeded: bool, target_token: String) {
+        let root = self.0;
+        let thread = root.thread.clone();
+        let _ = thread.queue(move |mut source_ui| {
+            root.finished.store(true, Ordering::Release);
+            let source_current = PageWindowSnapshot::capture(source_ui.as_ref().get_ref())
+                .is_some_and(|snapshot| {
+                    snapshot.scope == root.scope
+                        && snapshot.group == root.group
+                        && snapshot.pages.iter().any(|page| page.id == root.page)
+                });
+            if !selected || !source_current {
+                source_ui.as_mut().page_window_command_failed(
+                    "Page command failed because the window changed. Try again.",
+                );
+                if let Some(operation) = &root.operation {
+                    source_ui
+                        .as_mut()
+                        .rust_mut()
+                        .as_mut()
+                        .get_mut()
+                        .set_operation(
+                            operation.clone(),
+                            crate::OperationUpdate::failed(
+                                crate::FailureKind::StaleTarget,
+                                "page command target changed",
+                            ),
+                        );
+                }
+                return;
+            }
+            if !succeeded {
+                source_ui.as_mut().page_window_command_failed(
+                    "The command failed in the requested page. Try again.",
+                );
+                if let Some(operation) = &root.operation {
+                    source_ui
+                        .as_mut()
+                        .rust_mut()
+                        .as_mut()
+                        .get_mut()
+                        .set_operation(
+                            operation.clone(),
+                            crate::OperationUpdate::failed(
+                                crate::FailureKind::Engine,
+                                "page command failed",
+                            ),
+                        );
+                }
+                return;
+            }
+            if !root.focus_requested.load(Ordering::Acquire) {
+                if let Some(operation) = &root.operation {
+                    source_ui
+                        .as_mut()
+                        .rust_mut()
+                        .as_mut()
+                        .get_mut()
+                        .set_operation(
+                            operation.clone(),
+                            crate::OperationUpdate::completed("page state updated"),
+                        );
+                }
+                return;
+            }
+            source_ui.as_mut().queue_pending_engine_action();
+            let action = format!(
+                "window-focus\t{target_token}{}",
+                root.operation
+                    .as_deref()
+                    .map_or_else(String::new, |id| format!("\t{id}"))
+            );
+            source_ui
+                .as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_engine_action = Some(action);
+            source_ui.as_mut().runtime_work_available();
         });
     }
 }
@@ -53,7 +143,7 @@ pub(super) enum PageContinuation {
 }
 
 impl PageContinuation {
-    fn has_commands(&self) -> bool {
+    pub(super) fn has_commands(&self) -> bool {
         match self {
             Self::Interactive { commands, .. } => !commands.is_empty(),
             Self::Ipc { commands, .. } => !commands.is_empty(),
@@ -88,7 +178,7 @@ impl PageWindowSnapshot {
         Self::capture_checked(ui).ok()
     }
 
-    fn capture_checked(ui: &qobject::BrowserUi) -> Result<Self, String> {
+    pub(super) fn capture_checked(ui: &qobject::BrowserUi) -> Result<Self, String> {
         let rust = ui.rust();
         let state = rust
             .state
@@ -160,13 +250,16 @@ pub(super) struct PageWindowOwner {
 }
 
 #[derive(Clone)]
-struct Candidate {
-    owner: PageWindowOwner,
-    page: PresentedPage,
+pub(super) struct Candidate {
+    pub(super) owner: PageWindowOwner,
+    pub(super) page: PresentedPage,
     index: usize,
 }
 
-fn candidates(owners: Vec<PageWindowOwner>, source: &PageWindowSnapshot) -> Vec<Candidate> {
+pub(super) fn candidates(
+    owners: Vec<PageWindowOwner>,
+    source: &PageWindowSnapshot,
+) -> Vec<Candidate> {
     let mut pages = owners
         .into_iter()
         .filter(|owner| owner.snapshot.scope == source.scope)
@@ -195,7 +288,7 @@ fn candidates(owners: Vec<PageWindowOwner>, source: &PageWindowSnapshot) -> Vec<
     pages
 }
 
-fn continuation_current(
+pub(super) fn continuation_current(
     ui: &qobject::BrowserUi,
     scope: &PageScope,
     group: &str,
@@ -305,6 +398,36 @@ fn select_index(
 }
 
 impl qobject::BrowserUi {
+    pub(super) fn prepare_page_handoff(
+        mut self: Pin<&mut Self>,
+        incoming: Option<PageHandoff>,
+        source: &PageWindowSnapshot,
+        operation_id: Option<&str>,
+    ) -> Result<PageHandoff, String> {
+        if let Some(incoming) = incoming {
+            return Ok(incoming);
+        }
+        let page = self.as_ref().rust().tab.ok_or("No active page")?;
+        let operation = operation_id
+            .map(|id| {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .start_native_handoff(Some(id))
+            })
+            .transpose()?;
+        Ok(PageHandoff(Arc::new(PageHandoffState {
+            thread: self.as_ref().get_ref().qt_thread(),
+            scope: source.scope.clone(),
+            group: source.group.clone(),
+            page,
+            operation,
+            finished: AtomicBool::new(false),
+            focus_requested: AtomicBool::new(false),
+        })))
+    }
+
     pub(super) fn in_page_window_mode(&self) -> bool {
         self.rust().state.as_ref().is_some_and(|state| {
             state.configuration().tabs.presentation
@@ -413,30 +536,12 @@ impl qobject::BrowserUi {
         let result_window = target.owner.window;
         let source_token = self.as_ref().rust().window_token.to_string();
         let same_owner = source_token == target_token;
+        let handoff = self
+            .as_mut()
+            .prepare_page_handoff(handoff, &source, operation_id)?;
+        handoff.0.focus_requested.store(true, Ordering::Release);
         let scope = source.scope;
         let group = source.group;
-        let handoff = match handoff {
-            Some(handoff) => handoff,
-            None => {
-                let operation = operation_id
-                    .map(|id| {
-                        self.as_mut()
-                            .rust_mut()
-                            .as_mut()
-                            .get_mut()
-                            .start_native_handoff(Some(id))
-                    })
-                    .transpose()?;
-                PageHandoff(Arc::new(PageHandoffState {
-                    thread: self.as_ref().get_ref().qt_thread(),
-                    scope: scope.clone(),
-                    group: group.clone(),
-                    page: current,
-                    operation,
-                    finished: AtomicBool::new(false),
-                }))
-            }
-        };
         let repeat_command = command.clone();
         target
             .owner
@@ -534,55 +639,7 @@ impl qobject::BrowserUi {
                 let Some(handoff) = handoff else {
                     return;
                 };
-                let root = handoff.0;
-                let thread = root.thread.clone();
-                let _ = thread.queue(move |mut source_ui| {
-                    root.finished.store(true, Ordering::Release);
-                    let source_current = PageWindowSnapshot::capture(source_ui.as_ref().get_ref())
-                        .is_some_and(|snapshot| {
-                            snapshot.scope == root.scope
-                                && snapshot.group == root.group
-                                && snapshot.pages.iter().any(|page| page.id == root.page)
-                        });
-                    if !selected || !source_current {
-                        source_ui.as_mut().page_window_command_failed(
-                            "Page selection failed because the window changed. Try again.",
-                        );
-                        if let Some(operation) = &root.operation {
-                            source_ui.as_mut().complete_window_focus(
-                                &QString::from(operation.as_str()),
-                                &QString::from("stale"),
-                            );
-                        }
-                        return;
-                    }
-                    if !succeeded {
-                        source_ui.as_mut().page_window_command_failed(
-                            "The command failed in the selected page. Try again.",
-                        );
-                        if let Some(operation) = &root.operation {
-                            source_ui.as_mut().complete_window_focus(
-                                &QString::from(operation.as_str()),
-                                &QString::from("failed"),
-                            );
-                        }
-                        return;
-                    }
-                    source_ui.as_mut().queue_pending_engine_action();
-                    let action = format!(
-                        "window-focus\t{target_token}{}",
-                        root.operation
-                            .as_deref()
-                            .map_or_else(String::new, |id| format!("\t{id}"))
-                    );
-                    source_ui
-                        .as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .pending_engine_action = Some(action);
-                    source_ui.as_mut().runtime_work_available();
-                });
+                handoff.finish(selected, succeeded, target_token);
             })
             .map_err(|_| "The requested page window is no longer available".to_owned())?;
         Ok(
@@ -624,7 +681,7 @@ impl qobject::BrowserUi {
         self.execute_routed_ipc_chain_with_handoff(commands, operation_id, &mut None)
     }
 
-    fn execute_routed_ipc_chain_with_handoff(
+    pub(super) fn execute_routed_ipc_chain_with_handoff(
         mut self: Pin<&mut Self>,
         commands: Vec<(ParsedCommand, super::IpcRoute)>,
         operation_id: Option<&str>,
@@ -683,6 +740,17 @@ impl qobject::BrowserUi {
         }
         let mut operations = Vec::new();
         for (index, (command, route)) in expanded.iter().enumerate() {
+            if self.as_ref().in_page_window_mode()
+                && super::browser_ui_page_mutations::handles(command)
+            {
+                return self.execute_page_window_ipc_mutation(
+                    command,
+                    route,
+                    expanded[index + 1..].to_vec(),
+                    operation_id,
+                    handoff,
+                );
+            }
             if self.as_ref().in_page_window_mode() && handles(command) {
                 return self.execute_page_window_ipc_selection_with_handoff(
                     command,

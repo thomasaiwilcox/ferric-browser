@@ -191,6 +191,45 @@ def main():
             assert rejected.get('error', {}).get('code') == 'E_UNSUPPORTED', rejected
             assert sorted((tab['id'], tab['title'], tab['url']) for tab in tabs()) == before
             facts['cases'].append('unsupported nested workflow rejects before selection or document mutation')
+            pinned = raw_request({'command': 'tab-pin', 'arguments': {'id': child['id'], 'state': 'on'},
+                                  'context': {'window': source, 'source': 'cli'}})
+            assert not pinned.get('error'), pinned
+            assert pinned['result']['window_id'] == child['window_id'], pinned
+            operation_id = pinned['result']['operation_id']
+            wait(lambda: next((tab for tab in tabs() if tab['id'] == child['id'] and tab['pinned']), None))
+            terminal = wait(completed_handoff)
+            assert terminal['status'] == 'completed' and terminal['detail'] == 'page state updated', terminal
+            facts['cases'].append('pin changes the actual peer owner and completes after its state update')
+            muted = raw_request({'command': 'tab-mute', 'arguments': {'id': child['id'], 'state': 'on'},
+                                 'context': {'window': source, 'source': 'cli'},
+                                 'continuation': [{'command': 'jseval', 'arguments': {'world': 'page', 'script': 'document.title=23456'}}]})
+            assert not muted.get('error'), muted
+            operation_id = muted['result']['operation_id']
+            wait(lambda: next((tab for tab in tabs() if tab['id'] == first['id'] and tab['title'] == '23456'), None))
+            assert next(tab for tab in tabs() if tab['id'] == child['id'])['muted']
+            assert next(tab for tab in tabs() if tab['id'] == child['id'])['title'] == '12345'
+            assert wait(completed_handoff)['status'] == 'completed'
+            facts['cases'].append('remote mute resumes the document continuation on its issuing owner')
+            selected_mutation = raw_request({'command': 'tab-focus', 'arguments': {'id': child['id']},
+                                             'context': {'window': source, 'source': 'cli'},
+                                             'continuation': [
+                                                 {'command': 'tab-pin', 'arguments': {'id': first['id'], 'state': 'on'}},
+                                                 {'command': 'jseval', 'arguments': {'world': 'page', 'script': 'document.title=23457'}}]})
+            assert not selected_mutation.get('error'), selected_mutation
+            operation_id = selected_mutation['result']['operation_id']
+            wait(lambda: next((tab for tab in tabs() if tab['id'] == child['id'] and tab['title'] == '23457'), None))
+            assert next(tab for tab in tabs() if tab['id'] == first['id'])['pinned']
+            assert next(tab for tab in tabs() if tab['id'] == first['id'])['title'] == '23456'
+            terminal = wait(completed_handoff)
+            assert terminal['status'] == 'completed' and terminal['detail'] in ('activated', 'activation outcome unknown'), terminal
+            facts['cases'].append('selection and remote mutation share one final-owner activation receipt')
+            cli('command', '--window', source, '--', 'open --target window ' + base + '/standalone')
+            standalone = next(tab for tab in wait(lambda: complete_tabs(3)) if tab['id'] not in (first['id'], child['id']))
+            rejected = raw_request({'command': 'tab-pin', 'arguments': {'id': standalone['id'], 'state': 'on'},
+                                    'context': {'window': source, 'source': 'cli'}})
+            assert rejected.get('error'), rejected
+            assert not next(tab for tab in tabs() if tab['id'] == standalone['id'])['pinned']
+            facts['cases'].append('peer mutation excludes a standalone window outside the current logical group')
             facts['success'] = True
         finally:
             if owner is not None:

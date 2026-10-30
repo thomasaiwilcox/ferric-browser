@@ -229,7 +229,7 @@ void ApplicationTests::init() {
     const bool identityTemporary = testName == "productPolishPrivacyIdentity" && dataTag.endsWith("-temporary");
     const bool recoveryTemporary = (testName == "productPolishTabRecovery" || testName == "productPolishLastTabUndo")
         && dataTag.startsWith("temporary-");
-    const bool windowContext = testName == "pageWindowPresentation" && (dataTag == "activation-context" || dataTag == "session-aggregate");
+    const bool windowContext = testName == "pageWindowPresentation" && (dataTag == "activation-context" || dataTag == "session-aggregate" || dataTag == "window-mutations");
     const bool durable = windowContext || !identityPrivate && !identityTemporary && !recoveryTemporary && (testName.startsWith("durablePersistence")
                          || testName == "selectorValidationRejectsWholeCandidate"
                          || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary"

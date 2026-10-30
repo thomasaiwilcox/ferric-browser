@@ -64,6 +64,30 @@ impl qobject::BrowserUi {
                 CommandDispatchControl::Unhandled => {}
             }
             if self.as_ref().in_page_window_mode()
+                && super::browser_ui_page_mutations::handles(&command)
+            {
+                let continuation = super::browser_ui_page_windows::PageContinuation::Interactive {
+                    commands: commands[command_index + 1..].to_vec(),
+                    count,
+                };
+                return match self.as_mut().execute_page_window_mutation(
+                    &command,
+                    continuation,
+                    None,
+                    handoff,
+                ) {
+                    Ok(_) => {
+                        self.as_mut()
+                            .note_repeatable_invocation(&command, None, count);
+                        true
+                    }
+                    Err(error) => {
+                        self.set_status_text(QString::from(error));
+                        false
+                    }
+                };
+            }
+            if self.as_ref().in_page_window_mode()
                 && super::browser_ui_page_windows::handles(&command)
             {
                 if let Err(error) = registry.validate(&command, self.as_ref().rust().core_mode) {
