@@ -338,6 +338,39 @@ def main():
             wait(lambda: script_marker.exists() and script_marker.stat().st_size > 0)
             assert json.loads(script_marker.read_text())['context']['tab_id'] == child['id']
             facts['cases'].append('registered action collisions execute their script on the captured owner without recursive wrapper expansion')
+            retained = sorted((tab['id'], tab['url'], tab['window_id']) for tab in tabs())
+            detached = raw_request({'command': 'tab-detach', 'arguments': {},
+                                    'context': {'window': source, 'source': 'cli'},
+                                    'continuation': [{'command': 'tab-next', 'arguments': {}},
+                                                     {'command': 'jseval', 'arguments': {'world': 'page', 'script': 'document.title=56101'}}]})
+            assert not detached.get('error'), detached
+            operation_id = detached['result']['operation_id']
+            wait(lambda: next((tab for tab in tabs() if tab['id'] == first['id'] and tab['title'] == '56101'), None))
+            assert wait(completed_handoff)['status'] == 'completed'
+            rejected = raw_request({'command': 'tab-pin', 'arguments': {'id': child['id'], 'state': 'on'}, 'context': {'window': source, 'source': 'cli'}})
+            assert rejected.get('error'), rejected
+            facts['cases'].append('detach preserves its native page and isolates singleton selection and peer mutation')
+            given = raw_request({'command': 'tab-give', 'arguments': {'window_id': standalone['window_id']},
+                                 'context': {'window': source, 'source': 'cli'},
+                                 'continuation': [{'command': 'tab-next', 'arguments': {}},
+                                                  {'command': 'jseval', 'arguments': {'world': 'page', 'script': 'document.title=56102'}}]})
+            assert not given.get('error'), given
+            operation_id = given['result']['operation_id']
+            wait(lambda: next((tab for tab in tabs() if tab['id'] == standalone['id'] and tab['title'] == '56102'), None))
+            assert wait(completed_handoff)['status'] == 'completed'
+            facts['cases'].append('give joins the explicit destination group and resumes selection on its existing owner')
+            regrouped = raw_request({'command': 'tab-focus', 'arguments': {'id': standalone['id']},
+                                     'context': {'window': source, 'source': 'cli'},
+                                     'continuation': [{'command': 'tab-focus', 'arguments': {'id': first['id']}},
+                                                      {'command': 'tab-detach', 'arguments': {}},
+                                                      {'command': 'tab-next', 'arguments': {}},
+                                                      {'command': 'jseval', 'arguments': {'world': 'page', 'script': 'document.title=56103'}}]})
+            assert not regrouped.get('error'), regrouped
+            operation_id = regrouped['result']['operation_id']
+            wait(lambda: next((tab for tab in tabs() if tab['id'] == first['id'] and tab['title'] == '56103'), None))
+            assert wait(completed_handoff)['status'] == 'completed'
+            assert sorted((tab['id'], tab['url'], tab['window_id']) for tab in tabs()) == retained
+            facts['cases'].append('an authorized root regroup retains the original multi-hop receipt and every live page identity')
             facts['success'] = True
         finally:
             if owner is not None:

@@ -32,6 +32,16 @@ impl qobject::BrowserUi {
         route: &IpcRoute,
         operation_id: Option<&str>,
     ) -> Result<Value, super::PublicError> {
+        if self.as_ref().in_page_window_mode() && super::browser_ui_page_regroup::handles(&command)
+        {
+            return self.execute_page_window_ipc_regroup(
+                &command,
+                route,
+                Vec::new(),
+                operation_id,
+                &mut None,
+            );
+        }
         if self.as_ref().in_page_window_mode()
             && super::browser_ui_page_mutations::handles(&command)
         {

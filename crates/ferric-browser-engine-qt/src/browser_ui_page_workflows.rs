@@ -174,6 +174,30 @@ impl qobject::BrowserUi {
             if index > 0 {
                 self.as_mut().queue_pending_engine_action();
             }
+            if crate::browser_ui_page_regroup::handles(&step.command) {
+                if let Some(route) = &step.route {
+                    if route.context.is_some()
+                        || Some(self.as_ref().ipc_route_window(route)?)
+                            != self.as_ref().rust().window
+                    {
+                        return Err(
+                            "Choose the page group in its issuing window without context routing"
+                                .into(),
+                        );
+                    }
+                }
+                return self
+                    .execute_page_window_regroup(
+                        &step.command,
+                        PageContinuation::Recorded {
+                            commands: expanded[index + 1..].to_vec(),
+                            invocation: step.clone(),
+                        },
+                        operation,
+                        handoff,
+                    )
+                    .map_err(Into::into);
+            }
             if crate::browser_ui_page_windows::handles(&step.command) {
                 if let Some(route) = &step.route {
                     if route.context.is_some() {

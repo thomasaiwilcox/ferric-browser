@@ -94,6 +94,7 @@ mod browser_ui_navigation;
 mod browser_ui_navigation_lifecycle;
 mod browser_ui_operations;
 mod browser_ui_page_mutations;
+mod browser_ui_page_regroup;
 mod browser_ui_page_sessions;
 mod browser_ui_page_windows;
 mod browser_ui_page_workflows;

@@ -60,7 +60,7 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -185,6 +185,65 @@ void ApplicationTests::pageWindowPresentation()
     }
     pageReceiver = "testWindow.tabViewAt(0)";
     QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+    if (scenario.startsWith("window-regroup")) {
+        const auto childId = evaluate(entry + ".ui.tab_id_for_index(0)").toString();
+        const auto peerWindowId = evaluate(entry + ".ui.core_window_id").toString();
+        QPointer<QObject> peerView(evaluate(childHost + ".activeView").value<QObject *>());
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        QVERIFY(command("tab-detach ;; tab-next ;; jseval --world page window.detachedIssuer=1"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        pageReceiver = "testWindow.activeWebView()";
+        QTRY_COMPARE(page("window.detachedIssuer").toInt(), 1);
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        QVERIFY(!command("tab-pin " + childId + " on"));
+        QVERIFY(!evaluate(entry + ".ui.tab_pinned_at(0)").toBool());
+        if (scenario == "window-regroup-pin") {
+            QVERIFY(evaluate("testWindow.browserUi.set_tab_pinned(0,true)>=0").toBool());
+            QVERIFY(command("tab-give " + peerWindowId + " ;; tab-select 1 ;; jseval --world page window.currentPinOrder=4"));
+            QVERIFY(evaluate("testWindow.browserUi.set_tab_pinned(0,false)>=0").toBool());
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            pageReceiver = childHost + ".activeView";
+            QTRY_COMPARE(page("window.currentPinOrder").toInt(), 4);
+            QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+        } else if (scenario == "window-regroup-background") {
+            evaluate("testWindow.commandNoticeVisible=false;testWindow.commandNoticeText='';testWindow.browserWindowComponentObject=null");
+            QVERIFY(command("tab-give " + peerWindowId + " ;; jseval --world page window.backgroundRegroup=1"));
+            QVERIFY(command("open --target tab-bg " + initial + "?regroup-background=yes"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_COMPARE(evaluate("testWindow.tabViews.length").toInt(), 2);
+            QTRY_VERIFY(evaluate("testWindow.commandNoticeVisible && testWindow.commandNoticeError").toBool());
+            QVERIFY(page("typeof window.backgroundRegroup === 'undefined'").toBool());
+            QVERIFY(!command("tab-pin " + childId + " on"));
+        } else if (scenario == "window-regroup-stale") {
+            evaluate("testWindow.commandNoticeVisible=false;testWindow.commandNoticeText=''");
+            QVERIFY(command("tab-give " + peerWindowId + " ;; jseval --world page window.staleRegroup=1"));
+            QVERIFY(evaluate(entry + ".ui.assign_window_context('changed')").toBool());
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_VERIFY(evaluate("testWindow.commandNoticeVisible && testWindow.commandNoticeError").toBool());
+            QVERIFY(page("typeof window.staleRegroup === 'undefined'").toBool());
+        } else {
+            QVERIFY(command("tab-give " + peerWindowId + " ;; tab-next ;; jseval --world page window.givenPeer=2"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            pageReceiver = childHost + ".activeView";
+            QTRY_COMPARE(page("window.givenPeer").toInt(), 2);
+            QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+            QVERIFY(command("tab-next ;; tab-prev ;; tab-detach ;; tab-next ;; jseval --world page window.regroupedRoot=3"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            pageReceiver = "testWindow.activeWebView()";
+            QTRY_COMPARE(page("window.regroupedRoot").toInt(), 3);
+            QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+            QVERIFY(page("typeof window.givenPeer === 'undefined'").toBool());
+        }
+        pageReceiver = "testWindow.activeWebView()";
+        QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 2);
+        QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), sourceView.data());
+        QCOMPARE(evaluate(childHost + ".activeView").value<QObject *>(), peerView.data());
+        QCOMPARE(evaluate("testWindow.browserUi.tab_id_for_index(0)").toString(), sourceId);
+        QCOMPARE(evaluate(entry + ".ui.tab_id_for_index(0)").toString(), childId);
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        return;
+    }
     if (scenario.startsWith("window-undo")) {
         const bool expiry = scenario == "window-undo-private-expiry" || scenario == "window-undo-private-root-last";
         const bool primary = scenario == "window-undo-primary" || scenario == "window-undo-private-expiry";

@@ -5,7 +5,7 @@ use super::{CxxQtType, ParsedCommand, Pin, PrivacyKind, QString, TabId, qobject}
 use cxx_qt::{CxxQtThread, Threading};
 use ferric_browser_application::ProfileInstanceId;
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -15,7 +15,7 @@ pub(super) struct PageHandoff(Arc<PageHandoffState>);
 struct PageHandoffState {
     thread: CxxQtThread<qobject::BrowserUi>,
     scope: PageScope,
-    group: String,
+    group: Mutex<String>,
     page: TabId,
     operation: Option<String>,
     finished: AtomicBool,
@@ -48,6 +48,20 @@ impl Drop for PageHandoffState {
 }
 
 impl PageHandoff {
+    pub(super) fn authorize_regroup(&self, source: &PageWindowSnapshot, group: &str) -> bool {
+        if !source.pages.iter().any(|page| page.id == self.0.page) {
+            return true;
+        }
+        let Ok(mut current) = self.0.group.lock() else {
+            return false;
+        };
+        if self.0.scope != source.scope || *current != source.group {
+            return false;
+        }
+        *current = group.into();
+        true
+    }
+
     pub(super) fn finish(self, selected: bool, succeeded: bool, target_token: String) {
         let root = self.0;
         let thread = root.thread.clone();
@@ -56,7 +70,10 @@ impl PageHandoff {
             let source_current = PageWindowSnapshot::capture(source_ui.as_ref().get_ref())
                 .is_some_and(|snapshot| {
                     snapshot.scope == root.scope
-                        && snapshot.group == root.group
+                        && root
+                            .group
+                            .lock()
+                            .is_ok_and(|group| snapshot.group == *group)
                         && snapshot.pages.iter().any(|page| page.id == root.page)
                 });
             if !selected || !source_current {
@@ -291,7 +308,9 @@ pub(super) fn candidates(
 ) -> Vec<Candidate> {
     let mut pages = owners
         .into_iter()
-        .filter(|owner| owner.snapshot.scope == source.scope)
+        .filter(|owner| {
+            owner.snapshot.scope == source.scope && owner.snapshot.group == source.group
+        })
         .flat_map(|owner| {
             owner
                 .snapshot
@@ -306,13 +325,6 @@ pub(super) fn candidates(
                 })
         })
         .collect::<Vec<_>>();
-    let grouped = pages
-        .iter()
-        .filter(|page| page.owner.snapshot.group == source.group)
-        .count();
-    if grouped > 1 {
-        pages.retain(|page| page.owner.snapshot.group == source.group);
-    }
     pages.sort_by_key(|page| {
         (
             !page.page.pinned,
@@ -446,7 +458,7 @@ impl qobject::BrowserUi {
         Ok(PageHandoff(Arc::new(PageHandoffState {
             thread: self.as_ref().get_ref().qt_thread(),
             scope: source.scope.clone(),
-            group: source.group.clone(),
+            group: Mutex::new(source.group.clone()),
             page,
             operation,
             finished: AtomicBool::new(false),
@@ -801,6 +813,17 @@ impl qobject::BrowserUi {
         }
         let mut operations = Vec::new();
         for (index, (command, route)) in expanded.iter().enumerate() {
+            if self.as_ref().in_page_window_mode()
+                && super::browser_ui_page_regroup::handles(command)
+            {
+                return self.execute_page_window_ipc_regroup(
+                    command,
+                    route,
+                    expanded[index + 1..].to_vec(),
+                    operation_id,
+                    handoff,
+                );
+            }
             if self.as_ref().in_page_window_mode()
                 && super::browser_ui_page_mutations::handles(command)
             {
