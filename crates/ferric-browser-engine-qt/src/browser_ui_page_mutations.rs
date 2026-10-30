@@ -10,9 +10,136 @@ use cxx_qt::Threading;
 
 pub(super) fn handles(command: &ParsedCommand) -> bool {
     matches!(command.name.as_str(), "tab-pin" | "tab-mute")
+        || command.name == "tab-move"
+            && command
+                .arguments
+                .iter()
+                .any(|value| matches!(value.as_str(), "left" | "right"))
+            && !command.arguments.iter().any(|value| value == "--context")
 }
 
 impl qobject::BrowserUi {
+    pub(super) fn synchronize_local_page_order(mut self: Pin<&mut Self>) -> Result<bool, String> {
+        let (window, desired, original) = {
+            let rust = self.as_ref();
+            let rust = rust.rust();
+            let window = rust.window.ok_or("The page window is unavailable")?;
+            let state = rust.state.as_ref().ok_or("The page state is unavailable")?;
+            let original = state
+                .windows()
+                .get(&window)
+                .ok_or("The page window is unavailable")?
+                .tabs
+                .clone();
+            let ranks = super::live_ipc_owners::page_order_ranks(&original);
+            let mut desired = original.clone();
+            desired.sort_by_key(|id| {
+                (
+                    !state.tabs().get(id).is_some_and(|page| page.pinned),
+                    ranks.get(id).copied().unwrap_or(usize::MAX),
+                )
+            });
+            (window, desired, original)
+        };
+        if desired == original {
+            return Ok(false);
+        }
+        self.as_mut()
+            .reduce_event(super::Event::ReorderTabs {
+                window,
+                tabs: desired,
+            })
+            .map_err(|error| error.to_string())?;
+        self.as_mut().sync_tab_order_from_core();
+        Ok(true)
+    }
+
+    fn apply_page_order_move(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        source: &PageWindowSnapshot,
+    ) -> Result<(), String> {
+        let [id, direction] = command.arguments.as_slice() else {
+            return Err("tab-move requires a page and left or right".into());
+        };
+        let id = TabId::from_display(id).ok_or("The page ID is invalid")?;
+        let pages = candidates(
+            super::live_ipc_owners::page_window_owners(&source.scope),
+            source,
+        );
+        let moving = pages
+            .iter()
+            .find(|page| page.page.id == id)
+            .ok_or("This page is no longer available")?;
+        let pinned = moving.page.pinned;
+        let expected = moving.owner.snapshot.clone();
+        let pages = pages
+            .into_iter()
+            .filter(|page| page.page.pinned == pinned)
+            .collect::<Vec<_>>();
+        let index = pages
+            .iter()
+            .position(|page| page.page.id == id)
+            .ok_or("This page is no longer available")?;
+        let neighbor = if direction == "left" {
+            index.checked_sub(1)
+        } else {
+            index.checked_add(1).filter(|index| *index < pages.len())
+        };
+        let Some(neighbor) = neighbor.map(|index| pages[index].clone()) else {
+            return Ok(());
+        };
+        self.as_mut().refresh_ipc_owner();
+        let valid = PageWindowSnapshot::capture(self.as_ref().get_ref()).is_some_and(|current| {
+            current.scope == expected.scope
+                && current.group == expected.group
+                && current
+                    .pages
+                    .iter()
+                    .any(|page| page.id == id && page.pinned == pinned)
+        });
+        let fresh = candidates(
+            super::live_ipc_owners::page_window_owners(&source.scope),
+            source,
+        )
+        .into_iter()
+        .filter(|page| page.page.pinned == pinned)
+        .collect::<Vec<_>>();
+        let adjacent = fresh
+            .iter()
+            .position(|page| page.page.id == id)
+            .is_some_and(|index| {
+                let next = if direction == "left" {
+                    index.checked_sub(1)
+                } else {
+                    index.checked_add(1)
+                };
+                next.and_then(|index| fresh.get(index))
+                    .is_some_and(|page| page.page.id == neighbor.page.id)
+            });
+        if !valid || !adjacent || !super::live_ipc_owners::swap_page_order(id, neighbor.page.id) {
+            return Err("The page order changed. Try the move again.".into());
+        }
+        self.as_mut().synchronize_local_page_order()?;
+        let valid = PageWindowSnapshot::capture(self.as_ref().get_ref()).is_some_and(|current| {
+            current.scope == expected.scope
+                && current.group == expected.group
+                && current
+                    .pages
+                    .iter()
+                    .any(|page| page.id == id && page.pinned == pinned)
+        });
+        if !valid {
+            return Err("The page window changed during its move".into());
+        }
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        this.library.switcher_cache = None;
+        this.checkpoint
+            .mark_dirty(super::elapsed_ms(this.binding_clock));
+        Ok(())
+    }
+
     pub(super) fn execute_page_window_ipc_mutation(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
@@ -65,8 +192,19 @@ impl qobject::BrowserUi {
         let mut normalized = command.clone();
         super::normalize_active_tab_command(&mut normalized, Some(current.to_string()))?;
         let id = match normalized.arguments.as_slice() {
+            [id, direction]
+                if normalized.name == "tab-move"
+                    && matches!(direction.as_str(), "left" | "right") =>
+            {
+                id
+            }
             [id] => id,
-            [id, state] if matches!(state.as_str(), "on" | "off" | "toggle") => id,
+            [id, state]
+                if normalized.name != "tab-move"
+                    && matches!(state.as_str(), "on" | "off" | "toggle") =>
+            {
+                id
+            }
             _ => return Err("Use a stable page ID and optional on, off or toggle state".into()),
         };
         let id = TabId::from_display(id).ok_or("The page ID is invalid")?;
@@ -114,7 +252,14 @@ impl qobject::BrowserUi {
                     receipt.finish(false, false, target_token);
                     return;
                 }
-                if ui.as_mut().execute_tab_action(&normalized, None).is_err() {
+                let applied = if normalized.name == "tab-move" {
+                    ui.as_mut().apply_page_order_move(&normalized, &source)
+                } else {
+                    ui.as_mut()
+                        .execute_tab_action(&normalized, None)
+                        .map(|_| ())
+                };
+                if applied.is_err() {
                     receipt.finish(true, false, target_token);
                     return;
                 }

@@ -39,10 +39,18 @@ fn page_host_owner_binding_matches(ui: &str, profile: &str, owner: &str, target:
 
 impl Drop for BrowserUiRust {
     fn drop(&mut self) {
+        super::live_ipc_owners::forget_page_order(&self.tab_ids);
         let ui = self.window_token.to_string();
         PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
             bindings.borrow_mut().retain(|binding| binding.ui != ui);
         });
+    }
+}
+
+impl BrowserUiRust {
+    pub(super) fn clear_owned_page_ids(&mut self) {
+        super::live_ipc_owners::forget_page_order(&self.tab_ids);
+        self.tab_ids.clear();
     }
 }
 
@@ -311,6 +319,7 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Tab transfer source could not be released"));
             return false;
         }
+        super::live_ipc_owners::forget_page_order(&[tab]);
         let needs_fallback = self
             .as_ref()
             .rust()
@@ -360,6 +369,7 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Tab transfer rollback was rejected"));
             return false;
         }
+        super::live_ipc_owners::forget_page_order(&[tab]);
         let needs_fallback = self.as_ref().rust().window.is_some_and(|window| {
             self.as_ref()
                 .rust()
@@ -1468,5 +1478,33 @@ impl qobject::BrowserUi {
         self.as_mut().set_initial_url(QString::from(&url));
         self.as_mut().set_page_title(QString::from(&title));
         self.as_mut().set_load_state(QString::from(&load_state));
+    }
+}
+
+#[cfg(test)]
+mod page_order_cleanup_tests {
+    use super::BrowserUiRust;
+    use crate::live_ipc_owners::{forget_page_order, page_order_rank_for_test, reserve_page_order};
+    use ferric_browser_core::TabId;
+
+    #[test]
+    fn transient_ids_are_forgotten_before_empty_owner_drop() {
+        let pages = [
+            TabId::from_display("tabid-18446744073709549001").unwrap(),
+            TabId::from_display("tabid-18446744073709549002").unwrap(),
+        ];
+        let survivor = TabId::from_display("tabid-18446744073709549003").unwrap();
+        reserve_page_order(&[pages[0], pages[1], survivor]);
+        let mut owner = BrowserUiRust::default();
+        owner.tab_ids = pages.to_vec();
+        owner.clear_owned_page_ids();
+        assert!(owner.tab_ids.is_empty());
+        for page in pages {
+            assert_eq!(page_order_rank_for_test(page), usize::MAX);
+        }
+        assert_ne!(page_order_rank_for_test(survivor), usize::MAX);
+        drop(owner);
+        assert_ne!(page_order_rank_for_test(survivor), usize::MAX);
+        forget_page_order(&[survivor]);
     }
 }

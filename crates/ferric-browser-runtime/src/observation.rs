@@ -84,6 +84,7 @@ impl RuntimeObservation {
             | Event::OpenTab { window }
             | Event::OpenTabWithNavigation { window, .. }
             | Event::ActivateTab { window, .. }
+            | Event::ReorderTabs { window, .. }
             | Event::PushMode { window, .. }
             | Event::PopMode { window }
             | Event::Escape { window } => Some(*window),

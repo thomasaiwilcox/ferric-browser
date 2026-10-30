@@ -536,6 +536,15 @@ impl qobject::BrowserUi {
         }
         if page_windows {
             // Fresh runtime groups keep repeated session loads independent.
+            let mut ordered = restored_tabs[first_restored_index..]
+                .iter()
+                .copied()
+                .zip(&entries)
+                .collect::<Vec<_>>();
+            ordered.sort_by_key(|(_, entry)| entry.order);
+            super::live_ipc_owners::restore_page_order(
+                &ordered.into_iter().map(|(tab, _)| tab).collect::<Vec<_>>(),
+            );
             let mut groups = std::collections::HashMap::new();
             let metadata = restored_tabs[first_restored_index..]
                 .iter()

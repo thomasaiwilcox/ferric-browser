@@ -31,7 +31,7 @@ bool clickCloseDecision(QQuickWindow *host, bool proceed) {
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-order", "window-order-fallback", "window-order-fallback-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -63,7 +63,7 @@ void ApplicationTests::pageWindowPresentation()
     }
 
     if (scenario == "factory-failure") evaluate("testWindow.browserWindowComponentObject = null");
-    auto destination = initial + (scenario == "session-aggregate" ? "?page-window=yes" : "?page-window=yes&token=preserve-exact-intent#section");
+    auto destination = initial + (scenario == "session-aggregate" || scenario.startsWith("window-order") ? "?page-window=yes" : "?page-window=yes&token=preserve-exact-intent#section");
     const auto target = scenario == "background" ? QStringLiteral("tab-bg")
         : scenario == "standalone" ? QStringLiteral("window")
         : scenario == "private" ? QStringLiteral("private-window") : QStringLiteral("tab");
@@ -241,6 +241,98 @@ void ApplicationTests::pageWindowPresentation()
         QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), sourceView.data());
         pageReceiver = popup + ".host.activeView";
         QCOMPARE(page("window.popupGroupDraft").toInt(), 19);
+        return;
+    }
+    if (scenario.startsWith("window-order")) {
+        const auto childId = evaluate(entry + ".ui.tab_id_for_index(0)").toString();
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        if (scenario.startsWith("window-order-fallback")) {
+            evaluate("testWindow.browserWindowComponentObject=null");
+            QVERIFY(command("tab-open " + initial + "?fallback-order=yes"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_COMPARE(evaluate("testWindow.tabViews.length").toInt(), 2);
+            const auto fallbackId = evaluate("testWindow.browserUi.tab_id_for_index(1)").toString();
+            QPointer<QObject> fallbackView(evaluate("testWindow.tabViewAt(1)").value<QObject *>());
+            QVERIFY(fallbackView);
+            pageReceiver = "testWindow.activeWebView()";
+            QTRY_COMPARE(page("location.search").toString(), QStringLiteral("?fallback-order=yes"));
+            QPointer<QObject> thirdView;
+            if (scenario == "window-order-fallback-pin") {
+                QVERIFY(command("tab-open " + initial + "?third-order=yes"));
+                evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+                QTRY_COMPARE(evaluate("testWindow.tabViews.length").toInt(), 3);
+                thirdView = evaluate("testWindow.tabViewAt(2)").value<QObject *>();
+                QVERIFY(thirdView);
+                QTRY_COMPARE(page("location.search").toString(), QStringLiteral("?third-order=yes"));
+                QVERIFY(command("tab-pin " + fallbackId + " on ;; tab-pin " + fallbackId + " off ;; jseval --world page window.pinSync=1"));
+                evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+                QTRY_COMPARE(page("window.pinSync").toInt(), 1);
+                QCOMPARE(evaluate("testWindow.browserUi.tab_id_for_index(1)").toString(), fallbackId);
+            }
+            QVERIFY(command("tab-move " + fallbackId + " left ;; jseval --world page window.orderStep=1"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_COMPARE(page("window.orderStep").toInt(), 1);
+            QVERIFY(command("tab-move " + fallbackId + " left ;; jseval --world page window.orderStep=2"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_COMPARE(evaluate("testWindow.browserUi.tab_id_for_index(0)").toString(), fallbackId);
+            pageReceiver = "testWindow.activeWebView()";
+            QTRY_COMPARE(page("window.orderStep").toInt(), 2);
+            QCOMPARE(evaluate("testWindow.tabViewAt(0)").value<QObject *>(), fallbackView.data());
+            QCOMPARE(evaluate("testWindow.tabViewAt(1)").value<QObject *>(), sourceView.data());
+            if (thirdView) QCOMPARE(evaluate("testWindow.tabViewAt(2)").value<QObject *>(), thirdView.data());
+            QVERIFY(evaluate(entry + ".ui.execute_command('tab-prev ;; jseval --world page window.fallbackOrderTarget=1')").toBool());
+            evaluate(childHost + ".applySwitcherEngineAction()");
+            pageReceiver = "testWindow.tabViewAt(1)";
+            QTRY_COMPARE(page("window.fallbackOrderTarget").toInt(), 1);
+            QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+            return;
+        }
+        for (int step = 1; step <= 3; ++step) {
+            QVERIFY(command("tab-move " + childId + (step == 2 ? " right" : " left")
+                + " ;; jseval --world page window.orderMove=" + QString::number(step)));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            pageReceiver = "testWindow.activeWebView()";
+            QTRY_COMPARE(page("window.orderMove").toInt(), step);
+            QVERIFY(command("tab-select 1 ;; jseval --world page window.selectedOrder=" + QString::number(step)));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            pageReceiver = step == 2 ? "testWindow.activeWebView()" : childHost + ".activeView";
+            QTRY_COMPARE(page("window.selectedOrder").toInt(), step);
+            QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+            QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        }
+        QVERIFY(command("tab-pin " + sourceId + " on ;; tab-move " + childId + " left ;; tab-select 1 ;; jseval --world page window.pinOrderBoundary=1"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        pageReceiver = "testWindow.activeWebView()";
+        QTRY_COMPARE(page("window.pinOrderBoundary").toInt(), 1);
+        QVERIFY(command("tab-pin " + sourceId + " off ;; jseval --world page window.orderMove=4"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(page("window.orderMove").toInt(), 4);
+        QVERIFY(evaluate("testWindow.browserUi.save_named_session('ordered-pages')").toBool());
+        QTRY_COMPARE(text("session_save_state"), QStringLiteral("succeeded"));
+        QDirIterator files(evaluate("testWindow.storageBasePath").toString(), {"ordered-pages.json"}, QDir::Files, QDirIterator::Subdirectories);
+        QVERIFY(files.hasNext()); QFile saved(files.next()); QVERIFY(saved.open(QIODevice::ReadOnly));
+        const auto group = QJsonDocument::fromJson(saved.readAll()).object()["windows"].toArray()[0].toObject();
+        const auto ordered = group["tabs"].toArray();
+        QCOMPARE(ordered.size(), 2);
+        QCOMPARE(ordered[0].toObject()["safe_restore_url"].toString(), destination);
+        QCOMPARE(ordered[1].toObject()["safe_restore_url"].toString(), initial);
+        QCOMPARE(group["selected_tab"].toString(), ordered[1].toObject()["id"].toString());
+        engine->rootContext()->setContextProperty("originalOrderChildUi", evaluate(entry + ".ui").value<QObject *>());
+        QVERIFY(evaluate("testWindow.browserUi.request_named_session_load('ordered-pages',true)").toBool());
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 4);
+        const auto restored = QStringLiteral("testWindow.liveWindowEntries().filter(function(e){return e.ui!==testWindow.browserUi && e.ui!==originalOrderChildUi})");
+        QTRY_VERIFY(evaluate(restored + ".every(function(e){return e.host.activeView && !e.host.activeView.loading})").toBool());
+        const auto restoredFirst = restored + ".find(function(e){return e.host.activeView.url.toString()===" + quoted(destination) + "})";
+        const auto restoredSelected = restored + ".find(function(e){return e.host.activeView.url.toString()===" + quoted(initial) + "})";
+        QTRY_VERIFY(evaluate("!!(" + restoredFirst + ") && !!(" + restoredSelected + ")").toBool());
+        auto *firstRestoredWindow = qobject_cast<QQuickWindow *>(evaluate(restoredFirst + ".host").value<QObject *>());
+        QVERIFY(firstRestoredWindow);
+        QVERIFY(evaluate(restoredSelected + ".ui.execute_command('tab-select 1')").toBool());
+        evaluate(restoredSelected + ".host.applySwitcherEngineAction()");
+        QTRY_COMPARE(QGuiApplication::focusWindow(), firstRestoredWindow);
+        pageReceiver = "testWindow.activeWebView()";
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
         return;
     }
     if (scenario.startsWith("window-mutation")) {

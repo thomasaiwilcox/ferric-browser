@@ -163,6 +163,7 @@ pub(super) struct PresentedPage {
     pub(super) id: TabId,
     pub(super) pinned: bool,
     pub(super) target: super::Target,
+    pub(super) order: usize,
 }
 
 #[derive(Clone)]
@@ -170,6 +171,7 @@ pub(super) struct PageWindowSnapshot {
     pub(super) scope: PageScope,
     pub(super) group: String,
     pub(super) pages: Vec<PresentedPage>,
+    pub(super) reserved: Vec<TabId>,
     pub(super) previous: Option<TabId>,
 }
 
@@ -214,6 +216,7 @@ impl PageWindowSnapshot {
                     id: *id,
                     pinned: page.pinned,
                     target: state.capture_target(*id)?,
+                    order: usize::MAX,
                 })
             })
             .collect::<Vec<_>>();
@@ -234,6 +237,17 @@ impl PageWindowSnapshot {
                 rust.page_window_group.clone()
             },
             pages,
+            reserved: rust
+                .tab_ids
+                .iter()
+                .copied()
+                .filter(|id| {
+                    !rust.popup_tab_ids.contains(id)
+                        && state.tabs().get(id).is_some_and(|page| {
+                            page.existence == ferric_browser_core::ExistenceState::Live
+                        })
+                })
+                .collect(),
             previous: window.previous_tab,
         })
     }
@@ -284,7 +298,14 @@ pub(super) fn candidates(
     if grouped > 1 {
         pages.retain(|page| page.owner.snapshot.group == source.group);
     }
-    pages.sort_by_key(|page| (!page.page.pinned, page.owner.order, page.index));
+    pages.sort_by_key(|page| {
+        (
+            !page.page.pinned,
+            page.page.order,
+            page.owner.order,
+            page.index,
+        )
+    });
     pages
 }
 

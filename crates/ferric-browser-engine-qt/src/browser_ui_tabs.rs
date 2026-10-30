@@ -78,6 +78,7 @@ impl qobject::BrowserUi {
             this.tab_ids.push(tab);
             this.tab = Some(tab);
         }
+        self.as_ref().get_ref().reserve_page_order();
         let index = i32::try_from(index).unwrap_or(i32::MAX);
         self.as_mut()
             .set_tab_count(i32::try_from(count).unwrap_or(i32::MAX));
@@ -100,7 +101,20 @@ impl qobject::BrowserUi {
             .reduce_event(Event::SetTabPinned { tab, pinned })
         {
             Ok(_) => {
-                self.as_mut().sync_tab_order_from_core();
+                let synchronized = if self.as_ref().in_page_window_mode() {
+                    match self.as_mut().synchronize_local_page_order() {
+                        Ok(synchronized) => synchronized,
+                        Err(error) => {
+                            self.set_status_text(QString::from(error));
+                            return -1;
+                        }
+                    }
+                } else {
+                    false
+                };
+                if !synchronized {
+                    self.as_mut().sync_tab_order_from_core();
+                }
                 self.as_mut().set_status_text(QString::from(if pinned {
                     "Tab pinned"
                 } else {

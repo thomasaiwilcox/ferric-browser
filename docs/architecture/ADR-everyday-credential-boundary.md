@@ -322,3 +322,20 @@ association 6/6 and window 29/29; `window-ipc-r34` passes fourteen production IP
 cases. No failures/skips or residual owned processes are reported, and engine
 Clippy passes with warnings denied. Global ordering, broader commands/sessions
 and credential provider/device work remain incomplete.
+
+### Global page-order review — 30 October 2026
+
+Logical page order is reserved before native materialization and kept separately
+from owner registration order. Moves stay within a pinned partition and retain
+actual page/view identity. Fallback native owners synchronize their Core order
+through validated ReorderTabs, preserving active/previous selection and document
+identity. Pin/unpin also synchronizes this order. Retirement, transfer and transient
+owner release forget removed IDs. Aggregate sessions retain canonical order;
+selected-first loading and independent recovery roots keep original positions.
+
+Independent scoped review closed. Fresh native `page-order-r40` passes association
+6/6 and window 32/32; production IPC passes 17 cases. Owned sessions/private buses
+close cleanly. Core 174/174, storage 117/117 and three focused engine order/cleanup
+unit tests pass. Workspace formatting and warnings-denied engine/Core/storage/
+runtime/application Clippy pass (`r41`/`r42`). Detach/give, close/undo, nested
+workflows, compositor integration and production credential/device work remain.

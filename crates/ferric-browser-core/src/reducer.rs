@@ -128,6 +128,11 @@ pub enum Event {
         to_window: WindowId,
         index: Option<usize>,
     },
+    /// Reorders exactly one window's existing pages without changing selection.
+    ReorderTabs {
+        window: WindowId,
+        tabs: Vec<TabId>,
+    },
     TransferTabOut {
         tab: TabId,
     },
@@ -616,6 +621,44 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
             }
             state.active_window = Some(window);
             state.last_focused_window = Some(window);
+        }
+        Event::ReorderTabs { window, tabs } => {
+            ensure_running(state)?;
+            let current = state
+                .windows
+                .get(&window)
+                .ok_or(ReduceError::UnknownWindow(window))?;
+            let expected = current
+                .tabs
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>();
+            let actual = tabs
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>();
+            if tabs.len() != current.tabs.len() || actual.len() != tabs.len() || actual != expected
+            {
+                return Err(ReduceError::InvalidActivation);
+            }
+            let mut unpinned = false;
+            for id in &tabs {
+                let page = state.tabs.get(id).ok_or(ReduceError::UnknownTab(*id))?;
+                if page.existence != ExistenceState::Live
+                    || page.window != window
+                    || page.profile != current.profile
+                    || unpinned && page.pinned
+                {
+                    return Err(ReduceError::InvalidActivation);
+                }
+                unpinned |= !page.pinned;
+            }
+            state
+                .windows
+                .get_mut(&window)
+                .expect("validated window")
+                .tabs = tabs;
+            persist(state, &mut effects);
         }
         Event::MoveTab {
             tab,
@@ -2083,6 +2126,68 @@ mod tests {
         )
         .unwrap();
         assert_eq!(state.windows[&window].tabs, vec![first, second]);
+        assert!(state.validate().is_ok());
+    }
+
+    #[test]
+    fn exact_window_reordering_preserves_selection_and_all_documents() {
+        let (mut state, _, window, first, _) = setup();
+        reduce(&mut state, Event::OpenTab { window }).unwrap();
+        let second = state.windows[&window].active_tab.unwrap();
+        reduce(&mut state, Event::OpenTab { window }).unwrap();
+        let third = state.windows[&window].active_tab.unwrap();
+        reduce(&mut state, Event::ActivateTab { window, tab: first }).unwrap();
+        reduce(&mut state, Event::ActivateTab { window, tab: third }).unwrap();
+        let pages = state.tabs.clone();
+        let active_window = state.active_window;
+        let focused = state.last_focused_window;
+        reduce(
+            &mut state,
+            Event::ReorderTabs {
+                window,
+                tabs: vec![second, first, third],
+            },
+        )
+        .unwrap();
+        assert_eq!(state.windows[&window].tabs, [second, first, third]);
+        assert_eq!(state.windows[&window].active_tab, Some(third));
+        assert_eq!(state.windows[&window].previous_tab, Some(first));
+        assert_eq!(state.tabs, pages);
+        assert_eq!(state.active_window, active_window);
+        assert_eq!(state.last_focused_window, focused);
+        assert!(state.validate().is_ok());
+    }
+
+    #[test]
+    fn exact_reordering_rejects_changed_membership_and_pinned_boundaries_atomically() {
+        let (mut state, profile, window, first, _) = setup();
+        reduce(&mut state, Event::OpenTab { window }).unwrap();
+        let second = state.windows[&window].active_tab.unwrap();
+        reduce(
+            &mut state,
+            Event::SetTabPinned {
+                tab: first,
+                pinned: true,
+            },
+        )
+        .unwrap();
+        reduce(&mut state, Event::CreateWindow { profile }).unwrap();
+        let other = state.active_window.unwrap();
+        reduce(&mut state, Event::OpenTab { window: other }).unwrap();
+        let foreign = state.windows[&other].active_tab.unwrap();
+        for tabs in [
+            vec![first],
+            vec![first, first],
+            vec![second, first],
+            vec![first, foreign],
+        ] {
+            let original = state.clone();
+            assert_eq!(
+                reduce(&mut state, Event::ReorderTabs { window, tabs }),
+                Err(ReduceError::InvalidActivation)
+            );
+            assert_eq!(state, original);
+        }
         assert!(state.validate().is_ok());
     }
 

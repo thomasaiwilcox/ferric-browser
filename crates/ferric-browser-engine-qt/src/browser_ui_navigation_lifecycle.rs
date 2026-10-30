@@ -723,7 +723,7 @@ impl qobject::BrowserUi {
             this.navigation.pending_redirect_tabs.clear();
             this.navigation.pending_redirect_hops.clear();
             this.navigation.popup_journey_targets.clear();
-            this.tab_ids.clear();
+            this.clear_owned_page_ids();
             this.popup_tab_ids.clear();
             this.navigation.journey_durable_ids.borrow_mut().clear();
             this.journey_export_payload = None;
@@ -915,6 +915,7 @@ impl qobject::BrowserUi {
             )));
             return false;
         }
+        super::live_ipc_owners::forget_page_order(&[tab]);
         if let Some(closed) = closed {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();

@@ -121,6 +121,8 @@ pub struct SnapshotWindowInput {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RestorePlanEntry {
+    /// Original flattened snapshot position, independent of selected-first loading.
+    pub order: usize,
     pub group: Uuid,
     pub context: Option<String>,
     pub tab_id: Uuid,
@@ -431,22 +433,38 @@ impl SessionSnapshot {
     pub fn restore_plan(&self) -> Result<Vec<RestorePlanEntry>, SessionError> {
         validate_snapshot(self)?;
         let mut entries = Vec::new();
+        let mut offset = 0;
         for window in &self.windows {
             let group = window.group.unwrap_or_else(Uuid::new_v4);
-            for tab in window
+            for (index, tab) in window
                 .tabs
                 .iter()
-                .filter(|tab| Some(tab.id) == window.selected_tab)
+                .enumerate()
+                .filter(|(_, tab)| Some(tab.id) == window.selected_tab)
             {
-                entries.push(plan_entry(tab, true, group, window.context.clone()));
+                entries.push(plan_entry(
+                    tab,
+                    true,
+                    group,
+                    window.context.clone(),
+                    offset + index,
+                ));
             }
-            for tab in window
+            for (index, tab) in window
                 .tabs
                 .iter()
-                .filter(|tab| Some(tab.id) != window.selected_tab)
+                .enumerate()
+                .filter(|(_, tab)| Some(tab.id) != window.selected_tab)
             {
-                entries.push(plan_entry(tab, false, group, window.context.clone()));
+                entries.push(plan_entry(
+                    tab,
+                    false,
+                    group,
+                    window.context.clone(),
+                    offset + index,
+                ));
             }
+            offset += window.tabs.len();
         }
         Ok(entries)
     }
@@ -661,8 +679,10 @@ fn plan_entry(
     selected: bool,
     group: Uuid,
     context: Option<String>,
+    order: usize,
 ) -> RestorePlanEntry {
     RestorePlanEntry {
+        order,
         group,
         context,
         tab_id: tab.id,
@@ -782,6 +802,50 @@ fn io_error(path: &Path, error: &io::Error) -> SessionError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selected_first_loading_retains_original_positions_across_groups() {
+        let pages = [
+            tab("https://a.test/", true, false),
+            tab("https://b.test/", true, false),
+            tab("https://c.test/", true, false),
+            tab("https://d.test/", true, false),
+        ];
+        let snapshot = SessionSnapshot::new(
+            Uuid::new_v4(),
+            "ordered groups",
+            Uuid::new_v4(),
+            1,
+            "now",
+            vec![
+                SnapshotWindowInput {
+                    group: Some(Uuid::new_v4()),
+                    context: None,
+                    selected_tab: Some(pages[1].id),
+                    workspace: None,
+                    tabs: pages[..2].to_vec(),
+                },
+                SnapshotWindowInput {
+                    group: Some(Uuid::new_v4()),
+                    context: None,
+                    selected_tab: Some(pages[2].id),
+                    workspace: None,
+                    tabs: pages[2..].to_vec(),
+                },
+            ],
+        )
+        .unwrap();
+        let mut plan = snapshot.restore_plan().unwrap();
+        assert_eq!(
+            plan.iter().map(|entry| entry.order).collect::<Vec<_>>(),
+            [1, 0, 2, 3]
+        );
+        plan.sort_by_key(|entry| entry.order);
+        assert_eq!(
+            plan.iter().map(|entry| entry.tab_id).collect::<Vec<_>>(),
+            pages.map(|page| page.id)
+        );
+    }
 
     #[test]
     fn page_window_groups_contexts_and_selection_survive_durable_round_trip() {
@@ -989,6 +1053,10 @@ mod tests {
         let recovered = load_session(&path).expect("load previous generation");
         assert_eq!(recovered.revision, 9);
         let plan = loaded.restore_plan().expect("plan");
+        assert_eq!(
+            plan.iter().map(|entry| entry.order).collect::<Vec<_>>(),
+            [1, 0]
+        );
         assert_eq!(plan[0].tab_id, second.id);
         assert!(plan[0].selected);
         assert_eq!(plan[1].tab_id, first.id);

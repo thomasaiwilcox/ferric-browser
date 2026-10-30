@@ -230,6 +230,23 @@ def main():
             assert rejected.get('error'), rejected
             assert not next(tab for tab in tabs() if tab['id'] == standalone['id'])['pinned']
             facts['cases'].append('peer mutation excludes a standalone window outside the current logical group')
+            cli('command', '--window', source, '--',
+                'tab-move ' + child['id'] + ' left ;; jseval --world page document.title=34567')
+            wait(lambda: next((tab for tab in tabs() if tab['id'] == first['id'] and tab['title'] == '34567'), None))
+            facts['cases'].append('peer page order changes within the browser group and resumes its issuing document')
+            ordered_focus = raw_request({'command': 'tab-select', 'arguments': {'selector': '1'},
+                                         'context': {'window': source, 'source': 'cli'}})
+            assert not ordered_focus.get('error'), ordered_focus
+            assert ordered_focus['result']['window_id'] == child['window_id'], ordered_focus
+            operation_id = ordered_focus['result']['operation_id']
+            assert wait(completed_handoff)['status'] == 'completed'
+            facts['cases'].append('displayed selection indices use the changed cross-owner page order')
+            cli('command', '--window', source, '--',
+                'tab-pin ' + child['id'] + ' off ;; tab-move ' + child['id']
+                + ' left ;; tab-select 1 ;; jseval --world page document.title=34568')
+            wait(lambda: next((tab for tab in tabs() if tab['id'] == first['id'] and tab['title'] == '34568'), None))
+            assert next(tab for tab in tabs() if tab['id'] == child['id'])['title'] == '23457'
+            facts['cases'].append('page movement cannot cross the pinned partition')
             facts['success'] = True
         finally:
             if owner is not None:

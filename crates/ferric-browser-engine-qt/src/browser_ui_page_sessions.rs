@@ -23,6 +23,7 @@ pub(super) struct PageSessionOwner {
     pub(super) profile: ProfileInstanceId,
     pub(super) groups: Vec<(String, SnapshotWindowInput)>,
     pub(super) checkpoint: LivePageCheckpoint,
+    pub(super) page_ids: Vec<(Uuid, super::TabId)>,
 }
 
 impl PageSessionOwner {
@@ -44,6 +45,7 @@ impl PageSessionOwner {
             return None;
         }
         let mut groups: Vec<(String, SnapshotWindowInput)> = Vec::new();
+        let mut page_ids = Vec::new();
         for id in &window.tabs {
             let page = state.tabs().get(id)?;
             if page.existence != ExistenceState::Live || page.profile != window.profile {
@@ -84,6 +86,7 @@ impl PageSessionOwner {
                     groups.len() - 1
                 });
             let durable_id = Uuid::new_v4();
+            page_ids.push((durable_id, *id));
             if window.active_tab == Some(*id) {
                 groups[index].1.selected_tab = Some(durable_id);
             }
@@ -106,11 +109,15 @@ impl PageSessionOwner {
                 path: rust.session_path.clone(),
                 recovered: rust.recovered_session_ids.clone(),
             },
+            page_ids,
         })
     }
 }
 
-pub(super) fn aggregate(mut owners: Vec<(u64, u64, PageSessionOwner)>) -> Vec<SnapshotWindowInput> {
+pub(super) fn aggregate(
+    mut owners: Vec<(u64, u64, PageSessionOwner)>,
+    positions: &std::collections::HashMap<Uuid, usize>,
+) -> Vec<SnapshotWindowInput> {
     owners.sort_by_key(|(order, _, _)| *order);
     let mut groups: Vec<(String, u64, SnapshotWindowInput)> = Vec::new();
     for (_, focused, owner) in owners {
@@ -133,7 +140,12 @@ pub(super) fn aggregate(mut owners: Vec<(u64, u64, PageSessionOwner)>) -> Vec<Sn
     groups
         .into_iter()
         .map(|(_, _, mut group)| {
-            group.tabs.sort_by_key(|tab| !tab.pinned);
+            group.tabs.sort_by_key(|tab| {
+                (
+                    !tab.pinned,
+                    positions.get(&tab.id).copied().unwrap_or(usize::MAX),
+                )
+            });
             group
         })
         .collect()

@@ -30,6 +30,7 @@ struct Owner<H = CxxQtThread<qobject::BrowserUi>> {
 
 struct Directory<H = CxxQtThread<qobject::BrowserUi>> {
     owners: BTreeMap<String, Owner<H>>,
+    page_order: crate::page_window_order::PageOrder,
     clock: u64,
     generation: u64,
     controller: Option<String>,
@@ -40,6 +41,7 @@ impl<H> Default for Directory<H> {
     fn default() -> Self {
         Self {
             owners: BTreeMap::new(),
+            page_order: crate::page_window_order::PageOrder::default(),
             clock: 0,
             generation: 0,
             controller: None,
@@ -53,6 +55,55 @@ fn directory() -> &'static Mutex<Directory> {
     DIRECTORY.get_or_init(Default::default)
 }
 
+pub(super) fn forget_page_order(pages: &[ferric_browser_core::TabId]) {
+    if let Ok(mut directory) = directory().lock() {
+        directory.page_order.forget(pages);
+    }
+}
+
+pub(super) fn reserve_page_order(pages: &[ferric_browser_core::TabId]) {
+    if let Ok(mut directory) = directory().lock() {
+        directory.page_order.observe(pages.iter().copied());
+    }
+}
+
+pub(super) fn page_order_ranks(
+    pages: &[ferric_browser_core::TabId],
+) -> std::collections::HashMap<ferric_browser_core::TabId, usize> {
+    let Ok(directory) = directory().lock() else {
+        return std::collections::HashMap::default();
+    };
+    pages
+        .iter()
+        .map(|id| (*id, directory.page_order.rank(*id)))
+        .collect()
+}
+
+#[cfg(test)]
+pub(super) fn page_order_rank_for_test(page: ferric_browser_core::TabId) -> usize {
+    directory().lock().unwrap().page_order.rank(page)
+}
+
+pub(super) fn restore_page_order(pages: &[ferric_browser_core::TabId]) {
+    if let Ok(mut directory) = directory().lock() {
+        directory.page_order.restore(pages);
+        directory.generation = directory.generation.saturating_add(1);
+    }
+}
+
+pub(super) fn swap_page_order(
+    first: ferric_browser_core::TabId,
+    second: ferric_browser_core::TabId,
+) -> bool {
+    directory().lock().is_ok_and(|mut directory| {
+        let changed = directory.page_order.swap(first, second);
+        if changed {
+            directory.generation = directory.generation.saturating_add(1);
+        }
+        changed
+    })
+}
+
 pub(super) fn page_window_owners(
     scope: &super::browser_ui_page_windows::PageScope,
 ) -> Vec<super::browser_ui_page_windows::PageWindowOwner> {
@@ -63,13 +114,17 @@ pub(super) fn page_window_owners(
         .owners
         .values()
         .filter_map(|owner| {
-            let snapshot = owner
+            let mut snapshot = owner
                 .page_window
                 .as_ref()
-                .filter(|snapshot| &snapshot.scope == scope)?;
+                .filter(|snapshot| &snapshot.scope == scope)?
+                .clone();
+            for page in &mut snapshot.pages {
+                page.order = directory.page_order.rank(page.id);
+            }
             let window = owner.window?;
             Some(super::browser_ui_page_windows::PageWindowOwner {
-                snapshot: snapshot.clone(),
+                snapshot,
                 window,
                 token: owner.token.clone(),
                 order: owner.order,
@@ -84,9 +139,12 @@ pub(super) fn page_session_windows(
     token: &str,
     current: super::browser_ui_page_sessions::PageSessionOwner,
 ) -> Vec<super::SnapshotWindowInput> {
-    let Ok(directory) = directory().lock() else {
+    let Ok(mut directory) = directory().lock() else {
         return Vec::new();
     };
+    directory
+        .page_order
+        .observe(current.page_ids.iter().map(|(_, tab)| *tab));
     let mut owners = directory
         .owners
         .values()
@@ -101,8 +159,13 @@ pub(super) fn page_session_windows(
         .collect::<Vec<_>>();
     let order = directory.owners.get(token).map_or(0, |owner| owner.order);
     owners.push((order, u64::MAX, current));
+    let positions = owners
+        .iter()
+        .flat_map(|(_, _, owner)| &owner.page_ids)
+        .map(|(id, tab)| (*id, directory.page_order.rank(*tab)))
+        .collect();
     drop(directory);
-    super::browser_ui_page_sessions::aggregate(owners)
+    super::browser_ui_page_sessions::aggregate(owners, &positions)
 }
 
 pub(super) fn page_session_checkpoint(
@@ -589,6 +652,11 @@ impl qobject::BrowserUi {
         let Ok(mut directory) = directory().lock() else {
             return;
         };
+        if let Some(snapshot) = &page_window {
+            directory
+                .page_order
+                .observe(snapshot.reserved.iter().copied());
+        }
         let Some(owner) = directory.owners.get_mut(&lease.0) else {
             return;
         };

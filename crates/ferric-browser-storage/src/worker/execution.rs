@@ -395,9 +395,15 @@ fn restore_session_paths(paths: Vec<PathBuf>) -> Result<SessionRestoreSnapshot, 
     };
     for index in roots {
         let snapshot = &snapshots[index];
-        restored
-            .entries
-            .extend(snapshot.restore_plan().map_err(|error| error.to_string())?);
+        let offset = restored.entries.len();
+        let mut entries = snapshot.restore_plan().map_err(|error| error.to_string())?;
+        for entry in &mut entries {
+            entry.order = entry
+                .order
+                .checked_add(offset)
+                .ok_or("recovery page order overflow")?;
+        }
+        restored.entries.extend(entries);
         restored
             .closed_tabs
             .extend(snapshot.closed_tabs.iter().cloned());
@@ -613,5 +619,78 @@ mod recovery_tests {
                 .contains("cyclic")
         );
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod recovery_order_tests {
+    use super::restore_session_paths;
+    use crate::{
+        RestoreSafety, SessionSnapshot, SnapshotTabInput, SnapshotWindowInput, save_session_atomic,
+    };
+    use uuid::Uuid;
+
+    #[test]
+    fn independent_recovery_roots_have_distinct_original_page_positions() {
+        let directory =
+            std::env::temp_dir().join(format!("ferric-recovery-order-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let profile = Uuid::new_v4();
+        let mut paths = Vec::new();
+        for root in 1..=2 {
+            let tabs = (0..2)
+                .map(|page| SnapshotTabInput {
+                    id: Uuid::new_v4(),
+                    url: format!("https://root{root}-page{page}.test/"),
+                    safety: RestoreSafety::SafeGet,
+                    private: false,
+                    pinned: false,
+                    muted: false,
+                    zoom: 1.0,
+                    scroll_position: None,
+                })
+                .collect::<Vec<_>>();
+            let snapshot = SessionSnapshot::new(
+                Uuid::from_u128(root),
+                "independent",
+                profile,
+                1,
+                "now",
+                vec![SnapshotWindowInput {
+                    group: None,
+                    context: None,
+                    selected_tab: Some(tabs[1].id),
+                    workspace: None,
+                    tabs,
+                }],
+            )
+            .unwrap();
+            let path = directory.join(format!("{root}.json"));
+            save_session_atomic(&path, &snapshot).unwrap();
+            paths.push(path);
+        }
+        paths.reverse();
+        let mut recovered = restore_session_paths(paths).unwrap().entries;
+        assert_eq!(
+            recovered
+                .iter()
+                .map(|entry| entry.order)
+                .collect::<Vec<_>>(),
+            [1, 0, 3, 2]
+        );
+        recovered.sort_by_key(|entry| entry.order);
+        assert_eq!(
+            recovered
+                .into_iter()
+                .map(|entry| entry.url.unwrap())
+                .collect::<Vec<_>>(),
+            [
+                "https://root1-page0.test/",
+                "https://root1-page1.test/",
+                "https://root2-page0.test/",
+                "https://root2-page1.test/"
+            ]
+        );
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }

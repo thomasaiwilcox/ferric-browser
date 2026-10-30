@@ -392,6 +392,7 @@ impl qobject::BrowserUi {
             {
                 return false;
             }
+            super::live_ipc_owners::forget_page_order(&[tab]);
         }
         self.as_mut().sync_tab_order_from_core();
         self.as_mut()
