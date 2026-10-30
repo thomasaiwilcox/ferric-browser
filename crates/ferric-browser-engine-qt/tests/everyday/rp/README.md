@@ -58,7 +58,7 @@ uv pip sync --python "$ARTIFACT/venv/bin/python" --require-hashes \
 mkdir -p "$ARTIFACT/fixture-tests"
 FERRIC_P13_TEST_TMP="$ARTIFACT/fixture-tests" \
   "$ARTIFACT/venv/bin/python" -B -m unittest discover -v \
-  -s . -p 'test_verification.py'
+  -s . -p 'test_*.py'
 ```
 
 The unit server binds only to `127.0.0.1` on an OS-assigned port. Each test
@@ -99,6 +99,32 @@ Before scanning, explain that the disposable RP/account creates a real passkey
 on the phone's selected provider and that the provider may sync it. Deleting
 the RP fixture does not delete that passkey; remove it from the phone/provider
 after the run. Never use a personal website account for this check.
+
+The native `public-page-host` build also provides `phone_rp_browser`, which
+loads the actual production Main Root. Its wrapper creates the exact-SAN
+fixture CA, inserts trust before profile creation, and copies the real helper
+and PSL into an owned temporary prefix. Build the helper's `ferric-phone-auth`
+binary separately and supply both artifact paths:
+
+```sh
+"$ARTIFACT/venv/bin/python" ../../public-page-host/run_phone_rp.py \
+  --browser /owned/build/native/phone_rp_browser \
+  --helper /owned/build/helper-target/debug/ferric-phone-auth \
+  --scratch-root /owned/existing/scratch
+```
+
+The default check displays the disposable browser, confirms the Phone choice
+is enabled, and cancels it without selecting the helper. It uses an explicit
+direct route for that process and appends only the exact RP loopback mapping;
+proxy conflicts remain errors. It prints verification/cleanup counts without
+credential bodies. TLS handshakes and process cleanup have deadlines. Failed
+cleanup keeps ownership evidence and fails the run.
+
+Add `--interactive` only for the attended device run after explaining synced
+passkey cleanup. Create and verify using Phone in both native choices, delete
+the RP account, then remove the passkey from the phone/provider before closing
+the disposable browser. Independent RP counters alone do not identify the
+physical authenticator; retain the operator's device/provider observations.
 
 For a separately requested remote test, use a domain you control and an
 operator-provided certificate/key. Example shape (replace every placeholder

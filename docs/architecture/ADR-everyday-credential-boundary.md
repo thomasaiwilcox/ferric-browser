@@ -1,6 +1,6 @@
 # Everyday credential boundary: Qt transport proof
 
-Status: prototype evidence only; the phone credential provider remains disabled.
+Status: opt-in production integration under validation; no real-provider/device qualification. The dated prototype decisions below are historical; the latest integration checkpoint records current evidence.
 
 ## Scope
 
@@ -378,3 +378,103 @@ cleanly. Engine units pass 562 with one existing opt-in performance test ignored
 five Undo units and storage 118/118 pass. Engine/storage warnings-denied Clippy
 and workspace formatting pass. Broader window commands/workflows, compositor
 grouping and integrated credential/provider/device work remain unfinished.
+
+### Process-wide credential integration in progress — 30 October 2026
+
+The private native binding now feeds one QApplication-owned ceremony actor.
+It carries the opaque Core/native lease, allocates its helper correlation ID,
+checks single-flight/capacity/deadline/phase fences, and starts only the fixed
+sibling helper after native phone choice and effective network admission.
+Results remain private and bounded until a clean supervised exit; trailing
+output or a failed exit cannot qualify an apparent success. Native delivery
+rechecks its monotonic deadline, lease and policy after the asynchronous
+main-frame challenge. Bounded native-only account labels are separate from
+the WebAuthn credential JSON; ambiguous multiple results are declined.
+
+Opt-in MainWorld installation preserves original-method native fallback and
+removes listeners/restores methods on disable without replacing the document.
+The installed interceptor's relay deny/host rules remain effective. General
+ABP paths without an existing site bypass, unresolved system proxies and
+unsupported routing decline phone use rather than bypass policy.
+
+Scoped review identified a missing native TLS fact: secure-context JavaScript
+does not prove absence of certificate exceptions. Qt caches exceptions by host,
+certificate and error bits, across view/port changes
+([exact Qt 6.11.2 source](https://raw.githubusercontent.com/qt/qtwebengine/v6.11.2/src/core/net/ssl_host_state_delegate_qt.cpp)).
+A private native profile factory now establishes TLS observation at actual
+profile birth before publishing it; importing an existing profile cannot assert
+freshness. Every managed view is observed before navigation through native
+adoption, independently of the phone switch. Host taint is bounded, never evicted
+while that actual profile survives, and overflow/unknown history deny admission.
+Native loading/frame/renderer facts and unsupported TLS flags complete the
+predicate. This factory/TLS increment is awaiting its native regression run and
+review closure; its implementation is not yet qualification evidence.
+
+Before that TLS increment, `actor-native-r61` passes Quick 16/16 with zero skips
+and clean owned-session/private-bus teardown; `actor-units-r61` passes 3/3.
+Helper `r62` passes 17 library and 4 binary cases; warnings-denied all-target
+helper Clippy passes `r64`. Consent-qualified excluded-credential errors,
+synthetic-helper end-to-end delivery, integrated security closure and actual
+device qualification remain unfinished. No real credentials were connected.
+
+
+### Integrated synthetic delivery and teardown — 30 October 2026
+
+Fresh-profile TLS regressions now pass: trusted profile CA, ordinary HTTPS
+401/404 documents, accepted bad-certificate rejection, cross-port exception
+reuse and destroyed unobserved views. Imported profiles remain ineligible;
+only the native factory establishes fresh observation before publishing a
+new actual profile. The owned Quick run passes 28 cases after adding callback
+deletion regressions. Profile lifetime's standalone cases pass 11 + 3.
+
+The production actor/shim path passes 18 synthetic-helper scenarios (Qt 20/20,
+`actor-pipeline-native-r78`), including Get/Create interface reconstruction and
+final exclusion delivery as InvalidStateError. Output waits for clean helper
+exit; late, stale, duplicate-progress, trailing-output and nonzero-exit cases
+fail safely. Abort, policy change, rejected close, disable, global busy and
+synchronous integration destruction also pass. The fixed-sibling fixture has
+no network/Bluetooth or real credential signatures. Natural helper reaping,
+layout removal and private bus/session teardown are verified. Four runner
+ownership regressions (`r79`) cover normal exit, timeout, SIGTERM and malformed
+receipts; forced cleanup is separately recorded and cannot qualify a pass.
+
+The helper maps excluded credentials only at the final awaited CTAP2
+MakeCredential stage with a nonempty exclusion list. CTAP 2.2 permits this
+response after a presence timeout, so it does not assert positive user presence.
+Silent preflight, early GetInfo/PIN, Get and empty-list failures remain generic.
+Unsupported appidExclude stays native. Helper tests pass 18 + 4 and upstream
+582 + one existing ignored test; source hashes and exact patch round-trip pass.
+
+Callback/cleanup review findings are resolved. Operation errors now reject
+any implemented annotation; admission errors require exactly false. Focused
+validation of that stricter decoder and native routing is pending. Native
+bootstrap snapshots Qt-effective Chromium flags before profiles; direct
+admission refuses changed flags, proxies and unknown routes. A single exact
+captured-RP-host-to-127.0.0.1 rule is the only admitted resolver override, never
+one for an assigned relay. The routing increment is under independent review.
+No real credential or physical-device outcome is claimed.
+
+
+### Reviewed integration and device-test readiness — 30 October 2026
+
+Independent review has no retained production credential or fixture finding.
+Explicit `--direct-network` is a fresh-process, whole-browser route selection;
+proxy conflicts and existing-instance forwarding are rejected. It does not
+change route as a side effect of choosing a phone. Native `r90` passes six CTest
+suites: Qt startup policy 8/8, Quick 29/29, ordinary/mapped helper pipelines
+21/21 each, runner ownership 4/4 and Widget shim 3/3. Both pipelines exercise
+explicit direct bootstrap and retain clean exit, deadline and delivery fences.
+Workspace all-target warnings-denied Clippy passes `r96`; CLI/application/engine
+units pass 119/150/567, with the existing opt-in benchmark ignored.
+
+The actual production Root admits Phone at the exact disposable HTTPS RP with
+profile-only fixture trust and scoped loopback mapping (`r99`). Its automatic
+check rejects the chooser without selecting the helper or creating credentials.
+The real helper and PSL are copied into an owned installation prefix, separate
+from any installed browser. No personal profile, global CA or DNS setting changes.
+The helper's disposable installation check passes. RP verifier and lifetime tests
+pass 16/16: stalled accepted TLS handshakes cannot hold shutdown; browser cleanup
+precedes RP stop; interruptions and cleanup errors fail the run while retaining
+failed ownership evidence. RP counters record only independently verified results
+and never automatically claim a physical-device outcome. The attended iPhone
+registration/assertion and phone/provider deletion remain to perform.

@@ -764,7 +764,7 @@ fn qml_idle_path_is_event_driven_and_devtools_are_lazy() {
     assert!(!qml.contains("id: attachedDevToolsView"));
     assert!(!qml.contains("id: secondaryDevToolsView"));
     assert!(script.contains("if(!root)return null"));
-    assert!(qml.contains("WebEngineProfilePrototype {\n        id: browserProfilePrototype"));
+    assert!(qml.contains("FerricProfilePrototype {\n        id: browserProfilePrototype"));
 }
 
 #[test]

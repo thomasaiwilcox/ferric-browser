@@ -11,12 +11,20 @@ find_package(Qt6 6.11.2 EXACT REQUIRED COMPONENTS WaylandClient
     Core Gui Widgets Quick QuickControls2 QuickWidgets Network DBus WebChannel WebEngineCore WebEngineQuick WebEngineWidgets Test)
 find_package(SQLite3 REQUIRED)
 find_program(FERRIC_TEST_OPENSSL openssl REQUIRED)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_package(KF6WindowSystem 6.28 REQUIRED)
 
 set(FERRIC_ENGINE_LIBRARY "" CACHE FILEPATH "Exact Cargo-built Ferric Qt engine archive")
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(credential_network_policy_tests tst_credential_network_policy.cpp
+        ../../src/credential_network_policy.cpp ../../src/credential_network_policy.h)
+    target_include_directories(credential_network_policy_tests PRIVATE ../../src)
+    target_link_libraries(credential_network_policy_tests PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+    add_test(NAME credential_network_startup_policy COMMAND credential_network_policy_tests)
+    set_tests_properties(credential_network_startup_policy PROPERTIES TIMEOUT 30 LABELS "credential;network")
+
     add_executable(quick_credential_surface_tests tst_quick_credential_surface.cpp
         ../../src/quick_credential_owner.h ../../src/quick_credential_owner.cpp
         ../../src/credential_boundary.h ../../src/credential_boundary.cpp)
@@ -28,6 +36,18 @@ if(BUILD_TESTING)
         FERRIC_TEST_OPENSSL="${FERRIC_TEST_OPENSSL}"
         FERRIC_CREDENTIAL_SCRIPTS="${CMAKE_CURRENT_LIST_DIR}/../../qml/scripts/credential")
     add_test(NAME quick_credential_public_surface COMMAND quick_credential_surface_tests)
+    add_test(NAME quick_credential_helper_pipeline COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_LIST_DIR}/run_phone_actor_fixture.py" "$<TARGET_FILE:quick_credential_surface_tests>"
+        --scratch-root "${CMAKE_CURRENT_BINARY_DIR}")
+    add_test(NAME quick_credential_helper_mapped_pipeline COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_LIST_DIR}/run_phone_actor_fixture.py" "$<TARGET_FILE:quick_credential_surface_tests>"
+        --scratch-root "${CMAKE_CURRENT_BINARY_DIR}")
+    set_tests_properties(quick_credential_helper_mapped_pipeline PROPERTIES TIMEOUT 210 LABELS "credential;wayland;qml;synthetic-helper"
+        ENVIRONMENT "QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu --disable-gpu-compositing --host-resolver-rules=\"MAP localhost 127.0.0.1\"")
+    add_test(NAME credential_fixture_ownership COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_LIST_DIR}/test_phone_actor_runner.py")
+    set_tests_properties(credential_fixture_ownership PROPERTIES TIMEOUT 60 LABELS "credential;synthetic-helper")
+    set_tests_properties(quick_credential_helper_pipeline PROPERTIES TIMEOUT 210 LABELS "credential;wayland;qml;synthetic-helper")
     set_tests_properties(quick_credential_public_surface PROPERTIES TIMEOUT 90 LABELS "credential;wayland;qml")
 
     add_executable(window_scene_tests tst_window_scene.cpp
@@ -98,6 +118,9 @@ if(BUILD_TESTING)
         Qt6::WebEngineWidgets)
     target_include_directories(public_page_host_integration_tests PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}/../../src")
+    add_executable(phone_rp_browser phone_rp_browser.cpp)
+    target_include_directories(phone_rp_browser PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../../src")
+    target_link_libraries(phone_rp_browser PRIVATE ${_public_page_owner_links})
     target_compile_definitions(public_page_host_integration_tests PRIVATE FERRIC_TEST_OPENSSL="${FERRIC_TEST_OPENSSL}" FERRIC_TEST_CREDENTIAL_SHIM="${CMAKE_CURRENT_LIST_DIR}/../../qml/scripts/credential/shim.js")
     add_test(NAME credential_shim_semantics COMMAND public_page_host_integration_tests credentialShimSemantics)
     set_tests_properties(credential_shim_semantics PROPERTIES TIMEOUT 120 LABELS "application;credential;webengine")

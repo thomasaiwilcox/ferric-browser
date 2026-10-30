@@ -2,9 +2,10 @@
 
 This separate Rust 1.88 workspace implements strict request admission and one
 transient phone ceremony over the pinned library's cloud-assisted caBLE route.
-It is not connected to Ferric's production credential provider yet. Independent
-boundary review, browser network-policy admission and physical qualification
-remain required before the combined release can enable it.
+Ferric's opt-in native provider now connects it through the private ceremony
+actor and effective direct-network admission. Independent boundary/integration
+review and synthetic delivery checks pass. Real-device qualification remains
+required for the combined release; phone passkeys default to off.
 
 ## Private protocol
 
@@ -87,7 +88,7 @@ preserved in `vendor/COPYING`, `vendor/README.md` and the copied library.
 | --- | --- |
 | Passed to the pinned parser and preserved by its response serializer | The P06 allowlisted fields represented by the pinned request/response types; this slice adds no independent extension-verifier claim. |
 | Optional ignored with no success claim | None newly ignored by P07b. |
-| Native-only | Enterprise attestation requires browser RP policy. `credBlob` and `getCredBlob` results are not preserved by the pinned library. The helper rejects these requests before transport and the shim delegates them to native WebAuthn. |
+| Native-only | Enterprise attestation requires browser RP policy. `credBlob` and `getCredBlob` results are not preserved by the pinned library. `appidExclude` lacks the required caBLE preflight semantics. The helper rejects these requests before transport and the shim delegates them to native WebAuthn. |
 | Rejected | Unknown/unmapped fields, including `hmacGetSecret` because the pinned prepared request does not retain it. |
 | Verified end to end here | None; P07b tests create/get envelopes, not extension semantics or independent RP verification. |
 

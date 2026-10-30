@@ -147,6 +147,94 @@ fn candidate_for(owner: CredentialRequestOwner) -> OriginBoundRpCandidate {
     bind(Some("login.example.com"), owner).expect("pending RP candidate")
 }
 
+#[test]
+fn native_actor_phase_edges_require_the_captured_owner_and_order() {
+    use super::{
+        CredentialCeremonyPhase as Phase, CredentialCeremonyState, HelperCompletion,
+        TransitionOutcome as Outcome,
+    };
+    let mut state = CredentialCeremonyState::for_native_integration();
+    let lease = synthetic_owner(true).lease().clone();
+    let token = state
+        .admit_document(lease, options(Some("login.example.com")), 10, 100)
+        .unwrap();
+    let owner = state.active_owner().unwrap().clone();
+    let unrelated = synthetic_owner_with(true, 99, "documentid-99", "other.example.com");
+    assert_eq!(
+        state.phone_selected(token, &owner, 11),
+        Outcome::InvalidPhase
+    );
+    assert_eq!(
+        state.begin_validation(token, &unrelated, 11),
+        Outcome::StaleOrAlreadyTerminal
+    );
+    assert_eq!(
+        state.begin_validation(token, &owner, 11),
+        Outcome::PhaseAdvanced
+    );
+    assert_eq!(
+        state.helper_started(token, &owner, 12),
+        Outcome::InvalidPhase
+    );
+    assert_eq!(
+        state.await_provider(token, &owner, 12),
+        Outcome::PhaseAdvanced
+    );
+    assert_eq!(
+        state.helper_result(token, &owner, HelperCompletion::Success, 13),
+        Outcome::InvalidPhase
+    );
+    assert_eq!(
+        state.phone_selected(token, &owner, 13),
+        Outcome::PhaseAdvanced
+    );
+    assert_eq!(
+        state.phone_selected(token, &owner, 13),
+        Outcome::InvalidPhase
+    );
+    assert_eq!(
+        state.helper_started(token, &owner, 14),
+        Outcome::PhaseAdvanced
+    );
+    assert_eq!(state.phase(), Some(Phase::AwaitingPhone));
+    assert_eq!(
+        state.helper_result(token, &owner, HelperCompletion::Success, 15),
+        Outcome::PhaseAdvanced
+    );
+    assert_eq!(
+        state.finish_completion(token, &owner, 16),
+        Outcome::TerminalEmitted
+    );
+    assert_eq!(
+        state.helper_started(token, &owner, 17),
+        Outcome::StaleOrAlreadyTerminal
+    );
+    assert_eq!(state.queued_terminal_count(), 1);
+}
+
+#[test]
+fn native_actor_expiry_prevents_start_and_emits_one_terminal() {
+    use super::{CredentialCeremonyState, TransitionOutcome as Outcome};
+    let mut state = CredentialCeremonyState::for_native_integration();
+    let token = state
+        .admit_document(synthetic_owner(true).lease().clone(), options(None), 1, 2)
+        .unwrap();
+    let owner = state.active_owner().unwrap().clone();
+    assert_eq!(
+        state.begin_validation(token, &owner, 2),
+        Outcome::PhaseAdvanced
+    );
+    assert_eq!(
+        state.await_provider(token, &owner, 3),
+        Outcome::TerminalEmitted
+    );
+    assert_eq!(
+        state.phone_selected(token, &owner, 4),
+        Outcome::StaleOrAlreadyTerminal
+    );
+    assert_eq!(state.queued_terminal_count(), 1);
+}
+
 fn synthetic_advance_to_phase(
     state: &mut super::CredentialCeremonyState,
     token: super::CeremonyToken,

@@ -77,6 +77,7 @@ struct CliOptions {
     safe_mode: bool,
     userscripts_off: bool,
     software_rendering: bool,
+    direct_network: bool,
     basedir: Option<String>,
     config_path: Option<String>,
     profile: Option<String>,
@@ -256,6 +257,22 @@ fn run(arguments: &[String]) -> Result<(), CliError> {
     run_parsed(request)
 }
 
+fn validate_gui_startup_options(options: &CliOptions, action: &CliAction) -> Result<(), String> {
+    if options.safe_mode && !matches!(&action, CliAction::Open { .. }) {
+        return Err("invalid --safe-mode use: it only applies to GUI startup".into());
+    }
+    if options.userscripts_off && !matches!(&action, CliAction::Open { .. }) {
+        return Err("invalid --userscripts-off use: it only applies to GUI startup".into());
+    }
+    if options.software_rendering && !matches!(&action, CliAction::Open { .. }) {
+        return Err("invalid --software-rendering use: it only applies to GUI startup".into());
+    }
+    if options.direct_network && !matches!(&action, CliAction::Open { .. }) {
+        return Err("invalid --direct-network use: it only applies to fresh GUI startup".into());
+    }
+    Ok(())
+}
+
 fn validate_cli_request(options: &CliOptions, action: &CliAction) -> Result<(), String> {
     if options.safe_mode
         && (options.basedir.is_some()
@@ -272,15 +289,7 @@ fn validate_cli_request(options: &CliOptions, action: &CliAction) -> Result<(), 
     if options.safe_mode && options.userscripts_off {
         return Err("invalid recovery-mode combination: --safe-mode already disables userscripts and uses a disposable profile".into());
     }
-    if options.safe_mode && !matches!(&action, CliAction::Open { .. }) {
-        return Err("invalid --safe-mode use: it only applies to GUI startup".into());
-    }
-    if options.userscripts_off && !matches!(&action, CliAction::Open { .. }) {
-        return Err("invalid --userscripts-off use: it only applies to GUI startup".into());
-    }
-    if options.software_rendering && !matches!(&action, CliAction::Open { .. }) {
-        return Err("invalid --software-rendering use: it only applies to GUI startup".into());
-    }
+    validate_gui_startup_options(options, action)?;
     if options.temp_basedir && options.basedir.is_some() {
         return Err("--basedir and --temp-basedir are mutually exclusive".into());
     }
@@ -312,6 +321,7 @@ fn validate_cli_request(options: &CliOptions, action: &CliAction) -> Result<(), 
             || options.safe_mode
             || options.userscripts_off
             || options.software_rendering
+            || options.direct_network
             || options.basedir.is_some()
             || options.config_path.is_some()
             || options.profile.is_some()
@@ -576,7 +586,9 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
         },
     ) = (&startup_instance, &action)
     {
-        let result = if options.software_rendering {
+        let result = if options.direct_network {
+            Err("direct-network startup requires a fresh GUI owner; the running instance was not changed".into())
+        } else if options.software_rendering {
             Err(
                 "software-rendering startup requested but another instance is already running"
                     .into(),
@@ -672,7 +684,9 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
         let mut instance = match startup_instance.expect("open acquired an instance") {
             InstanceStart::Owner(instance) => instance,
             InstanceStart::Existing(paths) => {
-                let result = if options.software_rendering {
+                let result = if options.direct_network {
+                    Err("direct-network startup requires a fresh GUI owner; the running instance was not changed".into())
+                } else if options.software_rendering {
                     Err("software-rendering startup requested but another instance is already running".into())
                 } else if ephemeral_profile {
                     Err("ephemeral open requires a fresh GUI owner; the running instance was not changed".into())
@@ -732,6 +746,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
             safe_mode: options.safe_mode,
             userscripts_off: options.userscripts_off,
             software_rendering: options.software_rendering,
+            direct_network: options.direct_network,
             instance_lock_path: &instance.paths.lock,
             instance_selector: options.instance.as_deref(),
             storage_base: storage_base.as_deref(),
@@ -1008,6 +1023,7 @@ struct GuiLaunchPlan<'a> {
     safe_mode: bool,
     userscripts_off: bool,
     software_rendering: bool,
+    direct_network: bool,
     instance_lock_path: &'a Path,
     instance_selector: Option<&'a str>,
     storage_base: Option<&'a Path>,
@@ -1038,6 +1054,7 @@ fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
         safe_mode,
         userscripts_off,
         software_rendering,
+        direct_network,
         instance_lock_path,
         instance_selector,
         storage_base,
@@ -1058,8 +1075,11 @@ fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
     ferric_browser_engine_qt::register_internal_scheme();
     cxx_qt::init_crate!(ferric_browser_engine_qt);
     cxx_qt::init_qml_module!("io.github.ferricbrowser");
-    let mut app = ferric_browser_engine_qt::new_gui_application();
+    let mut app = ferric_browser_engine_qt::new_gui_application_with_network_policy(direct_network);
     if app.is_null() {
+        if direct_network {
+            return Err("Direct-network startup couldn't be prepared. Check temporary storage and remove conflicting proxy environment variables or Chromium proxy options, then start a fresh browser instance.".into());
+        }
         return Err("The browser couldn't prepare its desktop interface. Check that temporary storage is available, then try again.".into());
     }
     let mut native_wayland = false;
@@ -1237,6 +1257,7 @@ Options:
   --safe-mode     start a disposable diagnostic profile with built-in config and no userscripts
   --userscripts-off  open the selected normal profile with page userscripts disabled
   --software-rendering  start with explicit software rendering for diagnostics
+  --direct-network  start a fresh GUI process with direct networking for all browser traffic
   --config PATH   validate and use a TOML configuration
   --profile NAME  select a profile for forwarded commands
   --context NAME  select a context for forwarded commands

@@ -7,9 +7,17 @@ pub(crate) use crate::browser_ui_credential_binding::{
 };
 pub(crate) use crate::browser_ui_credentials::CredentialEvents;
 pub(crate) use crate::browser_ui_credentials::create_credential_events;
+pub(crate) use crate::credential_actor::{CredentialActor, new_credential_actor};
 
 #[cxx_qt::bridge]
 pub(crate) mod qobject {
+    #[namespace = "ferric::credentials"]
+    struct NativeCredentialUpdate {
+        kind: i32,
+        width: u16,
+        modules: Vec<u8>,
+        payload: String,
+    }
     /// Only the private native main-frame receiver constructs these facts.
     /// This value has no QML or WebChannel representation.
     #[namespace = "ferric::credentials"]
@@ -25,6 +33,7 @@ pub(crate) mod qobject {
 
     unsafe extern "C++" {
         include!("credential_process.h");
+        include!("credential_network_policy.h");
         include!("cxx-qt-lib/qstring.h");
         include!("cxx-qt-lib/core/qbytearray.h");
         include!("cxx-qt-lib/qstringlist.h");
@@ -88,6 +97,10 @@ pub(crate) mod qobject {
             arguments: &QVector_QByteArray,
         ) -> UniquePtr<QGuiApplication>;
 
+        #[namespace = "FerricCredentialNetworkPolicy"]
+        #[cxx_name = "capture"]
+        fn capture_credential_network_policy(explicit_direct: bool) -> bool;
+
         fn ferric_browser_to_ascii_host(host: &QString) -> QString;
         fn ferric_browser_canonicalize_url(value: &QString) -> QString;
         fn ferric_browser_local_file_path(value: &QUrl) -> QString;
@@ -106,6 +119,42 @@ pub(crate) mod qobject {
     }
 
     extern "Rust" {
+        #[namespace = "ferric::credentials"]
+        type CredentialActor;
+        #[namespace = "ferric::credentials"]
+        fn new_credential_actor() -> Box<CredentialActor>;
+        #[namespace = "ferric::credentials"]
+        fn admit(
+            self: &mut CredentialActor,
+            lease: &CredentialLeaseCapture,
+            is_create: bool,
+            options: &[u8],
+            now: u64,
+        ) -> u64;
+        #[namespace = "ferric::credentials"]
+        fn helper_request(
+            self: &mut CredentialActor,
+            token: u64,
+            direct: bool,
+            now: u64,
+        ) -> Vec<u8>;
+        #[namespace = "ferric::credentials"]
+        fn helper_started(self: &mut CredentialActor, token: u64, now: u64) -> bool;
+        #[namespace = "ferric::credentials"]
+        fn frame(
+            self: &mut CredentialActor,
+            token: u64,
+            bytes: &[u8],
+            now: u64,
+        ) -> NativeCredentialUpdate;
+        #[namespace = "ferric::credentials"]
+        fn current(self: &mut CredentialActor, token: u64, now: u64) -> bool;
+        #[namespace = "ferric::credentials"]
+        fn response(self: &mut CredentialActor, token: u64, index: u16, now: u64) -> String;
+        #[namespace = "ferric::credentials"]
+        fn account_label(self: &CredentialActor, token: u64, index: u16) -> String;
+        #[namespace = "ferric::credentials"]
+        fn finish(self: &mut CredentialActor, token: u64, now: u64, delivered: bool);
         #[namespace = "ferric::credentials"]
         type CredentialLeaseCapture;
         #[namespace = "ferric::credentials"]

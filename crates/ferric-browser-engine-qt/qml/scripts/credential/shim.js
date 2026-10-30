@@ -6,9 +6,11 @@
             || typeof CredentialsContainer === "undefined" || !navigator.credentials
             || typeof PublicKeyCredential === "undefined") return;
     const prototype = CredentialsContainer.prototype;
-    if (Object.prototype.hasOwnProperty.call(prototype, "__ferricCredentialShimV1")) return;
-    Object.defineProperty(prototype, "__ferricCredentialShimV1", {value: true});
+    const previous = Object.getOwnPropertyDescriptor(prototype, "__ferricCredentialShimV1")?.value;
+    if (previous) { previous.enable(); return; }
     const originals = {create: prototype.create, get: prototype.get};
+    const descriptors = {create: Object.getOwnPropertyDescriptor(prototype, "create"), get: Object.getOwnPropertyDescriptor(prototype, "get")};
+    let active = false;
     const apply = Reflect.apply;
     const byteLength = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "byteLength").get;
     const isView = ArrayBuffer.isView;
@@ -179,6 +181,7 @@
         reject(request, reason);
     }
     function invoke(receiver, options, operation) {
+        if (!active) return apply(originals[operation], receiver, [options]);
         // Preserve the original methods and options for native-only requests.
         const policy = document.permissionsPolicy || document.featurePolicy;
         if (receiver !== navigator.credentials || !options || !options.publicKey
@@ -187,6 +190,7 @@
                 || (options.publicKey.extensions && ("credBlob" in options.publicKey.extensions
                     || "getCredBlob" in options.publicKey.extensions))
                 || (operation === "create" && options.publicKey.attestation === "enterprise")
+                || (operation === "create" && options.publicKey.extensions && "appidExclude" in options.publicKey.extensions)
                 || (options.mediation && options.mediation !== "optional" && options.mediation !== "required")
                 || (operation === "create" && options.publicKey.authenticatorSelection
                     && options.publicKey.authenticatorSelection.authenticatorAttachment === "platform"))
@@ -216,7 +220,7 @@
             window.postMessage({type: "ferric.credentials.request.v1", id: request.id, op: operation, options: encoded}, location.origin);
         });
     }
-    window.addEventListener("message", event => {
+    function onMessage(event) {
         if (!event.isTrusted || event.source !== window || event.origin !== location.origin || !pending) return;
         const data = event.data, request = pending;
         if (!data || data.type !== "ferric.credentials.response.v1" || data.id !== request.id || request.providerChosen) return;
@@ -239,12 +243,35 @@
             try { const value = credentialJSON(response.credential, request.operation); clear(request); request.resolve(value); }
             catch (error) { reject(request, error); }
         }
-    });
-    window.addEventListener("pagehide", () => {
+    }
+    function onPageHide() {
         if (pending) reject(pending, new DOMException("Document left", "AbortError"));
-    });
-    Object.defineProperties(prototype, {
-        create: {value: function create(options) { return invoke(this, options, "create"); }, writable: true, configurable: true},
-        get: {value: function get(options) { return invoke(this, options, "get"); }, writable: true, configurable: true}
-    });
+    }
+    const installed = {
+        create: function create(options) { return invoke(this, options, "create"); },
+        get: function get(options) { return invoke(this, options, "get"); }
+    };
+    const control = {
+        enable() {
+            if (active) return;
+            Object.defineProperties(prototype, {
+                create: {value: installed.create, writable: true, configurable: true},
+                get: {value: installed.get, writable: true, configurable: true}
+            });
+            window.addEventListener("message", onMessage);
+            window.addEventListener("pagehide", onPageHide);
+            active = true;
+        },
+        disable() {
+            active = false;
+            window.removeEventListener("message", onMessage);
+            window.removeEventListener("pagehide", onPageHide);
+            if (pending) cancel(pending, new DOMException("Phone passkeys disabled", "AbortError"));
+            for (const operation of ["create", "get"])
+                if (prototype[operation] === installed[operation]) Object.defineProperty(prototype, operation, descriptors[operation]);
+        }
+    };
+    Object.freeze(control);
+    Object.defineProperty(prototype, "__ferricCredentialShimV1", {value: control});
+    control.enable();
 })();

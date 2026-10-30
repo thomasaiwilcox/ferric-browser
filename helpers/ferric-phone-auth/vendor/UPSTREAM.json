@@ -137,16 +137,17 @@
   },
   "modified_files": [
     "Cargo.toml",
-    "src/pin/mod.rs",
     "src/ops/u2f.rs",
+    "src/pin/mod.rs",
     "src/transport/cable/mod.rs",
-    "src/transport/cable/tunnel.rs",
-    "src/transport/cable/qr_code_device.rs",
     "src/transport/cable/protocol.rs",
-    "src/webauthn.rs"
+    "src/transport/cable/qr_code_device.rs",
+    "src/transport/cable/tunnel.rs",
+    "src/webauthn.rs",
+    "src/webauthn/error.rs"
   ],
   "added_files": [
     "src/transport/cable/direct_egress.rs"
   ],
-  "purpose": "Restricted direct relay egress and upgrade to maintained p256 0.14 / patched crypto-bigint. API adaptations preserve protocol framing and cryptographic algorithms; deterministic test RNG adapter is test-only. Fixed platform assertion-count and cumulative incoming caBLE CTAP-byte limits reject hostile enumeration before retention."
+  "purpose": "Restricted direct relay egress and maintained p256 0.14 / patched crypto-bigint; protocol framing and cryptographic algorithms preserved. Bounded assertion enumeration and caBLE CTAP input. Typed final CTAP2 makeCredential exclusion with a nonempty list, preserving generic earlier errors; no positive user-presence receipt is inferred."
 }

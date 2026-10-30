@@ -1,5 +1,7 @@
 #include "quick_credential_integration.h"
 #include "quick_credential_binding.h"
+#include "phone_credential_actor.h"
+#include "credential_boundary.h"
 #include "request_interceptor.h"
 #include <limits>
 #include "ferric-browser-engine-qt/src/bridge.cxxqt.h"
@@ -41,7 +43,9 @@ void FerricQuickCredentialIntegration::clear() {
 
 void FerricQuickCredentialIntegration::setLifetime(FerricProfileLifetime *lifetime) {
     if (lifetime_ == lifetime) return;
+    const QPointer<FerricQuickCredentialIntegration> self(this);
     clear();
+    if (!self) return;
     for (const auto &watch : std::as_const(lifetimeWatches_)) disconnect(watch);
     lifetimeWatches_.clear();
     lifetime_.clear();
@@ -52,8 +56,12 @@ void FerricQuickCredentialIntegration::setLifetime(FerricProfileLifetime *lifeti
                                        this, &FerricQuickCredentialIntegration::reconcile));
         lifetimeWatches_.append(connect(lifetime, &FerricProfileLifetime::viewRetiring,
                                        this, &FerricQuickCredentialIntegration::reconcile));
-        lifetimeWatches_.append(connect(lifetime, &QObject::destroyed, this, [this] {
-            clear(); lifetime_.clear(); profileSession_.clear();
+        lifetimeWatches_.append(connect(lifetime, &FerricProfileLifetime::credentialTransportChanged,
+                                       this, &FerricQuickCredentialIntegration::policyChanged));
+        lifetimeWatches_.append(connect(lifetime, &QObject::destroyed, this, [self] {
+            if (!self) return;
+            self->clear();
+            if (self) { self->lifetime_.clear(); self->profileSession_.clear(); }
         }));
     }
     emit lifetimeChanged();
@@ -75,8 +83,9 @@ void FerricQuickCredentialIntegration::setRequestInterceptor(QObject *intercepto
             interceptor_.clear(); policyChanged();
         }));
     }
+    const QPointer<FerricQuickCredentialIntegration> self(this);
     policyChanged();
-    emit requestInterceptorChanged();
+    if (self) emit self->requestInterceptorChanged();
 }
 
 QString FerricQuickCredentialIntegration::profilePolicyIdentity(QObject *profile) const {
@@ -87,10 +96,13 @@ QString FerricQuickCredentialIntegration::profilePolicyIdentity(QObject *profile
 }
 
 void FerricQuickCredentialIntegration::policyChanged() {
+    const QPointer<FerricQuickCredentialIntegration> self(this);
     const auto entries = entries_.values();
-    for (const auto &entry : entries)
+    for (const auto &entry : entries) {
+        if (!self) return;
         if (entry.binding) entry.binding->applicationChanged();
-    reconcile();
+    }
+    if (self) self->reconcile();
 }
 
 bool FerricQuickCredentialIntegration::associationCurrent(QQuickItem *view,
@@ -108,6 +120,8 @@ bool FerricQuickCredentialIntegration::associationCurrent(QQuickItem *view,
 
 bool FerricQuickCredentialIntegration::attachView(QQuickItem *view) {
     if (!view || !lifetime_ || QThread::currentThread() != thread() || view->thread() != thread()) return false;
+    const QPointer<FerricQuickCredentialIntegration> alive(this);
+    const QPointer<QQuickItem> liveView(view);
     const auto current = lifetime_->currentView(view);
     if (!current) return false;
     auto *ui = qobject_cast<BrowserUi *>(current->ui.data());
@@ -150,8 +164,12 @@ bool FerricQuickCredentialIntegration::attachView(QQuickItem *view) {
     }
     if (found->binding && (!associationCurrent(view, found->owner, found->tab)
         || !found->binding->isReady())) {
-        delete found->binding.data();
+        auto *retired = found->binding.data();
         found->binding.clear();
+        delete retired;
+        if (!alive || !liveView || !lifetime_ || !current->ui || !lifetime_->matchesCurrentView(view, *current)) return false;
+        found = entries_.find(view);
+        if (found == entries_.end()) return false;
     }
     found->owner = *current;
     found->tab = tab;
@@ -162,26 +180,44 @@ bool FerricQuickCredentialIntegration::attachView(QQuickItem *view) {
         found->binding = FerricQuickCredentialBinding::create(view, ui, tab,
             [self, item, expected = *current, tab] {
                 return self && item && self->associationCurrent(item, expected, tab);
-            }, [self, profile = current->profile] {
-                return self && profile ? self->profilePolicyIdentity(profile) : QString();
+            }, [self, item, profile = current->profile] {
+                if (!self || !profile || !item || !self->lifetime_) return QString();
+                const auto policy = self->profilePolicyIdentity(profile);
+                const auto tls = self->lifetime_->credentialTlsIdentity(item);
+                return policy.isEmpty() || tls.isEmpty() ? QString() : policy + QLatin1Char('/') + tls;
+            }, [self, item, profile = current->profile](const QUrl &origin) {
+                const auto *interceptor = self ? qobject_cast<FerricBrowserRequestInterceptor *>(self->interceptor_.data()) : nullptr;
+                return interceptor && profile && item && self->lifetime_ && interceptor->attachedToProfile(profile)
+                    && self->lifetime_->credentialTlsEligible(item, origin)
+                    && interceptor->phoneTransportAllowed(origin);
             });
-
+        if (found->binding) {
+            FerricPhoneCredentialActor::attach(found->binding);
+            if (!found->binding->boundary()->enablePhoneShim()) {
+                delete found->binding.data();
+                found->binding.clear();
+            }
+        }
     }
     return found->binding && found->binding->isReady();
 }
 
 void FerricQuickCredentialIntegration::reconcile() {
     if (reconciling_) return;
+    const QPointer<FerricQuickCredentialIntegration> self(this);
     reconciling_ = true;
     const auto views = entries_.keys();
     for (auto *view : views) {
+        if (!self) return;
         auto found = entries_.find(view);
         if (found == entries_.end() || !found->view) continue;
+        const QPointer<QQuickItem> item(found->view);
         if (found->binding && !associationCurrent(view, found->owner, found->tab)) {
-            delete found->binding.data();
+            auto *retired = found->binding.data();
             found->binding.clear();
+            delete retired;
         }
-        attachView(view);
+        if (self && item) self->attachView(item);
     }
-    reconciling_ = false;
+    if (self) self->reconciling_ = false;
 }

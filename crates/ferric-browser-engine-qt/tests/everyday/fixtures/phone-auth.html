@@ -13,11 +13,12 @@
 <body>
   <h1>Disposable WebAuthn RP fixture</h1>
   <p>This page uses only the browser's WebAuthn API and the fixture RP at this
-     exact origin. It creates one temporary account, then verifies a sign-in.
-     It does not pair with Ferric or prove phone support.</p>
-  <p>For a future phone check, open this page on the phone only from an
-     operator-controlled HTTPS domain with a certificate already trusted by
-     that phone. Do not use a personal account.</p>
+     exact origin. It creates one temporary account, then independently verifies a sign-in.</p>
+  <p>For a phone passkey, keep this page on the desktop. Choose “Use a phone”
+     in the browser's authenticator dialog, then scan its QR code with your
+     phone's camera. The passkey may sync with your selected provider. After
+     testing, remove it from that provider as well as deleting the disposable
+     account below.</p>
   <button id="register">Create disposable credential</button>
   <button id="assert" disabled>Verify assertion</button>
   <button id="cleanup">Delete disposable account</button>

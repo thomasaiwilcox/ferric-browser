@@ -63,7 +63,7 @@ mod browser_ui_edit_commands;
 mod browser_ui_external_actions;
 mod browser_ui_guide;
 mod gui_application;
-pub use gui_application::new_gui_application;
+pub use gui_application::{new_gui_application, new_gui_application_with_network_policy};
 mod browser_ui_hint_pointer;
 pub use browser_ui_hint_pointer::reject_external_hint_interaction_chain;
 mod browser_ui_diagnostics;
@@ -1332,6 +1332,7 @@ impl qobject::BrowserUi {
 
 mod browser_ui_credential_binding;
 mod browser_ui_credentials;
+mod credential_actor;
 mod credential_protocol;
 #[cfg(test)]
 mod tests;

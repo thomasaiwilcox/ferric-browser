@@ -10,7 +10,7 @@ use libwebauthn::transport::cable::qr_code_device::{
     CableQrCodeDevice, CableTransports, QrCodeOperationHint,
 };
 use libwebauthn::transport::{Channel, ChannelSettings, Device};
-use libwebauthn::webauthn::WebAuthn;
+use libwebauthn::webauthn::{WebAuthn, WebAuthnError};
 use qrcode::{Color, QrCode};
 
 const MAX_TERMINAL_RESPONSE_BYTES: usize = 1024 * 1024;
@@ -28,6 +28,7 @@ pub(crate) enum OperationProgress {
 #[derive(Debug)]
 pub(crate) enum OperationFailure {
     Authenticator,
+    CredentialExcluded,
     Serialization,
     ResponseTooLarge,
     Output,
@@ -148,7 +149,10 @@ where
             let response = channel
                 .webauthn_make_credential(&request)
                 .await
-                .map_err(|_| OperationFailure::Authenticator)?;
+                .map_err(|error| match error {
+                    WebAuthnError::ExcludedByMakeCredential => OperationFailure::CredentialExcluded,
+                    _ => OperationFailure::Authenticator,
+                })?;
             response
                 .to_json_value(&request)
                 .map_err(|_| OperationFailure::Serialization)?
@@ -164,7 +168,31 @@ where
                 .map(|assertion| assertion.to_json_value(&request))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|_| OperationFailure::Serialization)?;
-            json!({"assertions": assertions})
+            // Native account-selection metadata is separate from WebAuthn's
+            // credential JSON. Never pass these labels to the requesting RP.
+            let accounts: Vec<Option<String>> = response
+                .assertions
+                .iter()
+                .map(|assertion| {
+                    let user = assertion.user.as_ref()?;
+                    let label = user
+                        .name
+                        .as_deref()
+                        .filter(|name| !name.trim().is_empty())
+                        .or(user.display_name.as_deref())?;
+                    let label: String = label
+                        .chars()
+                        .filter(|c| {
+                            !c.is_control()
+                                && !matches!(*c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+                        })
+                        .take(128)
+                        .collect();
+                    let label = label.trim();
+                    (!label.is_empty() && label.len() <= 512).then(|| label.to_owned())
+                })
+                .collect();
+            json!({"assertions": assertions, "accounts": accounts})
         }
     };
     let response = json!({
@@ -231,6 +259,7 @@ where
 fn failure_code(error: &OperationFailure) -> &'static str {
     match error {
         OperationFailure::Authenticator => "authenticator_failed",
+        OperationFailure::CredentialExcluded => "credential_excluded",
         OperationFailure::Serialization => "serialization_failed",
         OperationFailure::ResponseTooLarge => "response_too_large",
         OperationFailure::Output => "output_failed",
@@ -617,6 +646,40 @@ mod tests {
                     .iter()
                     .any(|m| m["body"]["status"] == "submitted")
             );
+
+            let mut duplicate = registration_options();
+            duplicate["excludeCredentials"] =
+                serde_json::json!([{"type":"public-key","id":credential_id}]);
+            let mut exclusion_lines = Vec::new();
+            let exclusion = execute_to_pipe(
+                prepare("create", duplicate, &psl).await,
+                &mut channel,
+                |line| {
+                    exclusion_lines.push(line.to_vec());
+                    Ok(())
+                },
+            )
+            .await;
+            assert!(matches!(
+                exclusion,
+                Err(OperationFailure::CredentialExcluded)
+            ));
+            let messages: Vec<serde_json::Value> = exclusion_lines
+                .iter()
+                .map(|line| serde_json::from_slice(line).unwrap())
+                .collect();
+            assert_eq!(
+                messages
+                    .iter()
+                    .filter(|message| message["kind"] == "error")
+                    .count(),
+                1
+            );
+            assert_eq!(
+                messages.last().unwrap()["body"]["code"],
+                "credential_excluded"
+            );
+            assert!(messages.iter().all(|message| message["kind"] != "result"));
 
             channel.close().await;
         });

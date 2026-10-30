@@ -33,8 +33,8 @@ pub enum CeremonyAdmissionError {
     InvalidDocument,
 }
 
-/// Pure actor phase. Phone-side phases remain unreachable in production until
-/// the independent engine and helper authorities are connected.
+/// Pure actor phase. The native adapter owns provider and transport evidence;
+/// the helper still validates the RP before starting its transport.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CredentialCeremonyPhase {
     Received,
@@ -50,6 +50,7 @@ pub enum CredentialCeremonyPhase {
 enum CredentialAvailability {
     Disabled,
     Unqualified,
+    NativeIntegration,
     #[cfg(test)]
     SyntheticAvailable,
 }
@@ -161,8 +162,18 @@ impl CredentialCeremonyState {
         )
     }
 
-    /// Constructs a phone-disabled state. No state constructor can establish
-    /// production qualification for the phone boundary.
+    /// Constructs the state used by the private native integration. This does
+    /// not validate an RP or qualify devices: admission still needs an opaque
+    /// document lease, and the helper validates requests before transport.
+    #[must_use]
+    pub fn for_native_integration() -> Self {
+        Self::with_availability(
+            CredentialAvailability::NativeIntegration,
+            DEFAULT_CREDENTIAL_TERMINAL_CAPACITY,
+        )
+    }
+
+    /// Constructs a phone-disabled state.
     #[must_use]
     pub fn disabled() -> Self {
         Self::with_availability(
@@ -251,6 +262,7 @@ impl CredentialCeremonyState {
         let availability_result = match self.availability {
             CredentialAvailability::Disabled => Err(CeremonyAdmissionError::Disabled),
             CredentialAvailability::Unqualified => Err(CeremonyAdmissionError::Unqualified),
+            CredentialAvailability::NativeIntegration => Ok(()),
             #[cfg(test)]
             CredentialAvailability::SyntheticAvailable => Ok(()),
         };
@@ -298,6 +310,56 @@ impl CredentialCeremonyState {
             owner,
             CredentialCeremonyPhase::Received,
             CredentialCeremonyPhase::Validating,
+            now_ms,
+        )
+    }
+
+    /// Native ownership and bounded request parsing succeeded. This does not
+    /// authorize the RP: full RP validation belongs to the pinned helper.
+    pub fn await_provider(
+        &mut self,
+        token: CeremonyToken,
+        owner: &crate::CredentialRequestOwner,
+        now_ms: u64,
+    ) -> TransitionOutcome {
+        self.advance_phase(
+            token,
+            owner,
+            CredentialCeremonyPhase::Validating,
+            CredentialCeremonyPhase::AwaitingProvider,
+            now_ms,
+        )
+    }
+
+    /// Called only after the native provider dialog selects phone use and the
+    /// adapter rechecks its lease and effective network policy.
+    pub fn phone_selected(
+        &mut self,
+        token: CeremonyToken,
+        owner: &crate::CredentialRequestOwner,
+        now_ms: u64,
+    ) -> TransitionOutcome {
+        self.advance_phase(
+            token,
+            owner,
+            CredentialCeremonyPhase::AwaitingProvider,
+            CredentialCeremonyPhase::Starting,
+            now_ms,
+        )
+    }
+
+    /// Records the supervised helper process starting, before accepting frames.
+    pub fn helper_started(
+        &mut self,
+        token: CeremonyToken,
+        owner: &crate::CredentialRequestOwner,
+        now_ms: u64,
+    ) -> TransitionOutcome {
+        self.advance_phase(
+            token,
+            owner,
+            CredentialCeremonyPhase::Starting,
+            CredentialCeremonyPhase::AwaitingPhone,
             now_ms,
         )
     }

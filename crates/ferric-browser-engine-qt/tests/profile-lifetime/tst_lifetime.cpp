@@ -1025,7 +1025,9 @@ ApplicationWindow {
                 }
             }
         }
-        connect(shutdownProfile, &QObject::destroyed, this, [&] {
+        // The profile is destroyed by shutdownLifetime after these local
+        // containers leave scope. Keep the weak guards alive in the observer.
+        connect(shutdownProfile, &QObject::destroyed, this, [&, shutdownViewGuards, shutdownNativeGuards] {
             shutdownProfileDestroyedAfterConsumers =
                 std::all_of(shutdownViewGuards.cbegin(),
                             shutdownViewGuards.cend(),

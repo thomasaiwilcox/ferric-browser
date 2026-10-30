@@ -1,6 +1,8 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index ce1d97f..83500d8 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -80,7 +80,7 @@
+@@ -80,7 +80,7 @@ hidapi = { version = "2.4.1", default-features = false, features = [
  ] }
  bitflags = "2.4.1"
  rand = "0.8.5"
@@ -9,9 +11,24 @@
  cosey = "0.4.0"
  spki = { version = "0.7", default-features = false, features = ["alloc"] }
  der = { version = "0.7", default-features = false, features = ["alloc", "derive", "oid"] }
+diff --git a/src/ops/u2f.rs b/src/ops/u2f.rs
+index 529beb2..8c2fd7e 100644
+--- a/src/ops/u2f.rs
++++ b/src/ops/u2f.rs
+@@ -56,7 +56,7 @@ impl UpgradableResponse<MakeCredentialResponse, MakeCredentialRequest> for Regis
+         // Let coseEncodedCredentialPublicKey be the result of converting x9encodedUserPublicKey’s value
+         // from ANS X9.62 / Sec-1 v2 uncompressed curve point representation [SEC1V2]
+         // to COSE_Key representation ([RFC8152] Section 7).
+-        let Ok(encoded_point) = p256::EncodedPoint::from_bytes(&self.public_key) else {
++        let Ok(encoded_point) = p256::Sec1Point::from_bytes(&self.public_key) else {
+             error!(?self.public_key, "Failed to parse public key as SEC-1 v2 encoded point");
+             return Err(WebAuthnError::Ctap(CtapError::Other));
+         };
+diff --git a/src/pin/mod.rs b/src/pin/mod.rs
+index 7c2586d..ddb5928 100644
 --- a/src/pin/mod.rs
 +++ b/src/pin/mod.rs
-@@ -22,11 +22,12 @@
+@@ -22,11 +22,12 @@ use cosey as cose;
  use hkdf::Hkdf;
  use hmac::Mac;
  use icu_normalizer::ComposingNormalizerBorrowed;
@@ -26,8 +43,8 @@
  use sha2::{Digest, Sha256};
  use tracing::{error, instrument, warn};
  use x509_parser::nom::AsBytes;
-@@ -136,14 +137,10 @@
-
+@@ -136,14 +137,10 @@ impl Default for PinUvAuthProtocolOne {
+ 
  impl PinUvAuthProtocolOne {
      pub fn new() -> Self {
 -        let private_key = if cfg!(test) {
@@ -45,7 +62,7 @@
          let public_key = private_key.public_key();
          Self {
              private_key,
-@@ -214,8 +211,8 @@
+@@ -214,8 +211,8 @@ where
              );
              PlatformError::CryptoError(String::from("pin/uv crypto operation failed"))
          })?;
@@ -56,8 +73,8 @@
              error!("Failed to parse public key.");
              return Err(PlatformError::CryptoError(String::from(
                  "pin/uv crypto operation failed",
-@@ -232,7 +229,7 @@
-
+@@ -232,7 +229,7 @@ where
+ 
      /// getPublicKey()
      fn get_public_key(&self) -> Result<cose::PublicKey, PlatformError> {
 -        let point = EncodedPoint::from(self.public_key());
@@ -65,8 +82,8 @@
          let x_bytes = point.x().ok_or_else(|| {
              error!("Public key is the identity point");
              PlatformError::CryptoError("public key is the identity point".into())
-@@ -333,14 +330,10 @@
-
+@@ -333,14 +330,10 @@ impl Default for PinUvAuthProtocolTwo {
+ 
  impl PinUvAuthProtocolTwo {
      pub fn new() -> Self {
 -        let private_key = if cfg!(test) {
@@ -84,7 +101,7 @@
          let public_key = private_key.public_key();
          Self {
              private_key,
-@@ -749,3 +742,21 @@
+@@ -749,3 +742,21 @@ mod tests {
          assert!(matches!(result, Err(PlatformError::CryptoError(_))));
      }
  }
@@ -106,358 +123,9 @@
 +    impl p256::elliptic_curve::rand_core::TryCryptoRng for TestRng {}
 +    EphemeralSecret::generate_from_rng(&mut TestRng(rand::rngs::StdRng::seed_from_u64(42)))
 +}
---- a/src/ops/u2f.rs
-+++ b/src/ops/u2f.rs
-@@ -56,7 +56,7 @@
-         // Let coseEncodedCredentialPublicKey be the result of converting x9encodedUserPublicKey’s value
-         // from ANS X9.62 / Sec-1 v2 uncompressed curve point representation [SEC1V2]
-         // to COSE_Key representation ([RFC8152] Section 7).
--        let Ok(encoded_point) = p256::EncodedPoint::from_bytes(&self.public_key) else {
-+        let Ok(encoded_point) = p256::Sec1Point::from_bytes(&self.public_key) else {
-             error!(?self.public_key, "Failed to parse public key as SEC-1 v2 encoded point");
-             return Err(WebAuthnError::Ctap(CtapError::Other));
-         };
---- a/src/transport/cable/mod.rs
-+++ b/src/transport/cable/mod.rs
-@@ -33,3 +33,6 @@
-         write!(f, "Cable")
-     }
- }
-+
-+/// Ferric direct-only relay policy; see vendor/UPSTREAM.json.
-+pub mod direct_egress;
---- a/src/transport/cable/tunnel.rs
-+++ b/src/transport/cable/tunnel.rs
-@@ -2,11 +2,12 @@
- use sha2::{Digest, Sha256};
- use tokio::net::TcpStream;
- use tokio_tungstenite::tungstenite::handshake::client::Request;
--use tokio_tungstenite::tungstenite::http::{header::LOCATION, StatusCode};
-+use tokio_tungstenite::tungstenite::http::StatusCode;
- use tokio_tungstenite::tungstenite::Error as TungsteniteError;
--use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
-+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
- use tracing::{debug, error, trace};
- use tungstenite::client::IntoClientRequest;
-+#[cfg(test)]
- use url::Url;
-
- use super::error::CableTunnelError;
-@@ -15,7 +16,6 @@
- use crate::proto::ctap2::cbor;
- use crate::transport::cable::error::CableError;
-
--const MAX_TUNNEL_REDIRECTS: usize = 5;
-
- fn ensure_rustls_crypto_provider() {
-     use std::sync::Once;
-@@ -82,6 +82,7 @@
- }
-
- /// Resolves a redirect Location, which may be relative, against the current URL.
-+#[cfg(test)]
- fn resolve_redirect_target(base: &str, location: &str) -> Result<String, CableError> {
-     let base = Url::parse(base)?;
-     let target = base.join(location)?;
-@@ -119,8 +120,11 @@
-     connection_type: &CableTunnelConnectionType,
- ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, CableError> {
-     ensure_rustls_crypto_provider();
--
--    let mut connect_url = match connection_type {
-+    if !super::direct_egress::relay_domain_allowed(tunnel_domain) {
-+        return Err(CableError::ConnectionFailed);
-+    }
-+
-+    let connect_url = match connection_type {
-         CableTunnelConnectionType::QrCode {
-             routing_id,
-             tunnel_id,
-@@ -134,16 +138,16 @@
-         }
-     };
-
--    for _ in 0..=MAX_TUNNEL_REDIRECTS {
--        debug!(?connect_url, "Connecting to tunnel server");
-+    {
-+        debug!("Connecting to approved tunnel server");
-         let request = build_tunnel_request(&connect_url, connection_type)?;
--        trace!(?request);
--
--        let error = match connect_async(request).await {
-+        trace!("Sending tunnel handshake");
-+
-+        let error = match super::direct_egress::connect(request).await {
-             Ok((ws_stream, response)) => {
--                debug!(?response, "Connected to tunnel server");
-+                debug!("Connected to tunnel server");
-                 if response.status() != StatusCode::SWITCHING_PROTOCOLS {
--                    error!(?response, "Failed to switch to websocket protocol");
-+                    error!("Failed to switch to websocket protocol");
-                     return Err(CableError::ConnectionFailed);
-                 }
-                 debug!("Tunnel server returned success");
-@@ -155,40 +159,29 @@
-         let response = match error {
-             TungsteniteError::Http(response) => response,
-             error => {
--                error!(?error, "Failed to connect to tunnel server");
-+                error!("Failed to connect to tunnel server");
-                 return Err(CableError::from(error));
-             }
-         };
-
-         let status = response.status();
-         if status.is_redirection() {
--            let Some(location) = response
--                .headers()
--                .get(LOCATION)
--                .and_then(|value| value.to_str().ok())
--            else {
--                error!(?status, "Tunnel redirect missing a usable Location header");
--                return Err(CableError::ConnectionFailed);
--            };
--            connect_url = resolve_redirect_target(&connect_url, location)?;
--            debug!(?connect_url, "Following tunnel redirect");
--            continue;
-+            // Never expand the admitted endpoint set or downgrade TLS.
-+            return Err(CableError::ConnectionFailed);
-         }
-
-         error!(?status, "Tunnel server rejected the connection");
-         return Err(tunnel_status_error(status));
-     }
-
--    error!("Exceeded the maximum number of tunnel redirects");
--    Err(CableTunnelError::TooManyRedirects.into())
- }
-
- #[cfg(test)]
- mod tests {
-+    use p256::elliptic_curve::Generate;
-     use super::*;
-     use crate::transport::cable::known_devices::{ClientPayload, ClientPayloadHint};
-     use p256::NonZeroScalar;
--    use rand::rngs::OsRng;
-     use serde_bytes::ByteBuf;
-
-     fn known_device_connection_type(public_key: Vec<u8>) -> CableTunnelConnectionType {
-@@ -207,7 +200,7 @@
-         CableTunnelConnectionType::QrCode {
-             routing_id: "aabbcc".to_string(),
-             tunnel_id: "00112233445566778899aabbccddeeff".to_string(),
--            private_key: NonZeroScalar::random(&mut OsRng),
-+            private_key: NonZeroScalar::generate(),
-         }
-     }
-
---- a/src/transport/cable/qr_code_device.rs
-+++ b/src/transport/cable/qr_code_device.rs
-@@ -1,9 +1,10 @@
-+use p256::elliptic_curve::Generate;
- use std::fmt::{Debug, Display};
- use std::sync::Arc;
- use std::time::SystemTime;
-
- use async_trait::async_trait;
--use p256::elliptic_curve::sec1::ToEncodedPoint;
-+use p256::elliptic_curve::sec1::ToSec1Point;
- use p256::{NonZeroScalar, SecretKey};
- use rand::rngs::OsRng;
- use rand::RngCore;
-@@ -163,12 +164,12 @@
-         store: Option<Arc<dyn CableKnownDeviceInfoStore>>,
-         transports: CableTransports,
-     ) -> Result<Self, CableError> {
--        let private_key_scalar = NonZeroScalar::random(&mut OsRng);
-+        let private_key_scalar = NonZeroScalar::generate();
-         let private_key = SecretKey::from(private_key_scalar);
-         let public_key: [u8; 33] = private_key
-             .public_key()
-             .as_affine()
--            .to_encoded_point(true)
-+            .to_sec1_point(true)
-             .as_bytes()
-             .try_into()
-             .map_err(|_| CableError::InvalidKey)?;
---- a/src/transport/cable/protocol.rs
-+++ b/src/transport/cable/protocol.rs
-@@ -26,6 +26,9 @@
-
- const P256_X962_LENGTH: usize = 65;
- const MAX_CBOR_SIZE: usize = 1024 * 1024;
-+// This patched transport is used by Ferric's single-ceremony process. Bound
-+// cumulative received CTAP bytes before queueing or parsing additional replies.
-+const MAX_CEREMONY_CTAP_BYTES: usize = 1024 * 1024;
- const PADDING_GRANULARITY: usize = 32;
- /// After sending Shutdown, how long to wait for the peer to close its side.
- const PEER_CLOSE_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
-@@ -299,6 +302,8 @@
-     };
-     debug!(?get_info_response_serialized, "Received initial message");
-
-+    let mut received_ctap_bytes = get_info_response_serialized.len();
-+    if received_ctap_bytes > MAX_CEREMONY_CTAP_BYTES { return Err(CableError::InvalidFraming); }
-     loop {
-         tokio::select! {
-             result = input.data_channel.recv() => {
-@@ -313,6 +318,7 @@
-                             message,
-                             &input.cbor_rx_send,
-                             &mut input.noise_state,
-+                            &mut received_ctap_bytes,
-                         )
-                         .await
-                         {
-@@ -605,6 +611,7 @@
-     encrypted_frame: Vec<u8>,
-     cbor_rx_send: &Sender<CborResponse>,
-     noise_state: &mut TunnelNoiseState,
-+    received_ctap_bytes: &mut usize,
- ) -> Result<RecvOutcome, CableError> {
-     let decrypted_frame = decrypt_frame(encrypted_frame, noise_state).await?;
-
-@@ -618,6 +625,10 @@
-             Ok(RecvOutcome::PeerShutdown)
-         }
-         CableTunnelMessageType::Ctap => {
-+            let total = received_ctap_bytes.checked_add(cable_message.payload.len())
-+                .filter(|total| *total <= MAX_CEREMONY_CTAP_BYTES)
-+                .ok_or(CableError::InvalidFraming)?;
-+            *received_ctap_bytes = total;
-             let cbor_response: CborResponse = (&cable_message.payload.to_vec())
-                 .try_into()
-                 .or(Err(CableError::InvalidFraming))?;
-@@ -738,13 +749,13 @@
-
- #[cfg(test)]
- mod tests {
-+    use p256::elliptic_curve::Generate;
-     use super::*;
-
-     use std::sync::Mutex;
-
-     use async_trait::async_trait;
--    use p256::elliptic_curve::sec1::ToEncodedPoint;
--    use rand::rngs::OsRng;
-+    use p256::elliptic_curve::sec1::ToSec1Point;
-
-     #[derive(Debug, Default)]
-     struct RecordingStore {
-@@ -783,11 +794,11 @@
-
-     #[tokio::test]
-     async fn invalid_signature_does_not_evict() {
--        let client_private_key = NonZeroScalar::random(&mut OsRng);
--        let authenticator_secret = SecretKey::random(&mut OsRng);
-+        let client_private_key = NonZeroScalar::generate();
-+        let authenticator_secret = SecretKey::generate();
-         let authenticator_public_key = authenticator_secret
-             .public_key()
--            .to_encoded_point(false)
-+            .to_sec1_point(false)
-             .as_bytes()
-             .to_vec();
-
-@@ -834,6 +845,28 @@
-         (state(initiator), state(responder))
-     }
-
-+    #[tokio::test]
-+    async fn ctap_receive_budget_rejects_before_queueing_an_excess_response() {
-+        let (mut desktop, mut phone) = noise_pair();
-+        let connection_type = CableTunnelConnectionType::QrCode {
-+            routing_id: "000000".into(), tunnel_id: "00".repeat(16),
-+            private_key: NonZeroScalar::generate(),
-+        };
-+        let mut channel = RecordingChannel::default();
-+        let (sender, mut receiver) = tokio::sync::mpsc::channel(2);
-+        let mut bytes = MAX_CEREMONY_CTAP_BYTES - 4;
-+        send_tunnel_message(CableTunnelMessageType::Ctap, &[0, 0xA1, 1, 2], &mut channel, &mut phone).await.unwrap();
-+        connection_recv(&connection_type, "cable.ua5v.com", &None,
-+            channel.sent.remove(0), &sender, &mut desktop, &mut bytes).await.unwrap();
-+        assert_eq!(bytes, MAX_CEREMONY_CTAP_BYTES);
-+        assert_eq!(receiver.recv().await.unwrap().data, Some(vec![0xA1, 1, 2]));
-+        send_tunnel_message(CableTunnelMessageType::Ctap, &[0], &mut channel, &mut phone).await.unwrap();
-+        let result = connection_recv(&connection_type, "cable.ua5v.com", &None,
-+            channel.sent.remove(0), &sender, &mut desktop, &mut bytes).await;
-+        assert!(matches!(result, Err(CableError::InvalidFraming)));
-+        assert!(receiver.try_recv().is_err(), "excess response was never retained in the queue");
-+    }
-+
-     #[derive(Default)]
-     struct RecordingChannel {
-         sent: Vec<Vec<u8>>,
-@@ -893,7 +926,7 @@
-             connection_type: CableTunnelConnectionType::QrCode {
-                 routing_id: "000000".into(),
-                 tunnel_id: "00".repeat(16),
--                private_key: NonZeroScalar::random(&mut OsRng),
-+                private_key: NonZeroScalar::generate(),
-             },
-             tunnel_domain: "cable.example.com".into(),
-             known_device_store: None,
---- a/src/webauthn.rs
-+++ b/src/webauthn.rs
-@@ -427,11 +427,14 @@
-         };
-
-     validate_rp_id_hash(&response)?;
--    // Cap iteration so a hostile numberOfCredentials cannot force an unbounded loop.
--    let max_count = get_info_response
--        .max_credential_count_in_list()
--        .unwrap_or(255);
--    let count = (response.credentials_count.unwrap_or(1) as usize).min(max_count);
-+    // Ferric's one-shot helper must bound retained accounts independently of
-+    // device claims. maxCredentialCountInList describes input allowLists, not
-+    // the number of resident assertions. Never silently truncate account choice.
-+    const MAX_ASSERTIONS: usize = 16;
-+    let count = response.credentials_count.unwrap_or(1) as usize;
-+    if count == 0 || count > MAX_ASSERTIONS {
-+        return Err(WebAuthnError::Platform(PlatformError::InvalidDeviceResponse));
-+    }
-     let mut ctap_responses = vec![response];
-     for i in 1..count {
-         debug!({ i }, "Fetching additional credential");
-@@ -1042,7 +1045,7 @@
-         }
-
-         #[tokio::test]
--        async fn get_next_assertion_iteration_is_bounded() {
-+        async fn hostile_assertion_count_is_rejected_before_fetching_more() {
-             let info = Ctap2GetInfoResponse {
-                 max_credential_count: Some(2),
-                 ..Default::default()
-@@ -1061,12 +1064,24 @@
-                 expected_cbor,
-                 get_assertion_response_with(&hash, Some(u32::MAX)),
-             );
--            // Only one getNextAssertion is queued, so unbounded iteration would panic.
--            let next_request = CborRequest::new(Ctap2CommandCode::AuthenticatorGetNextAssertion);
--            channel.push_command_pair(next_request, get_assertion_response_with(&hash, None));
--
-             let result = get_assertion_fido2(&mut channel, &op).await;
--            assert!(result.is_ok(), "bounded iteration failed: {result:?}");
-+            assert!(matches!(result, Err(WebAuthnError::Platform(PlatformError::InvalidDeviceResponse))));
-+        }
-+
-+        #[tokio::test]
-+        async fn resident_assertions_are_not_truncated_to_allow_list_limit() {
-+            let info = Ctap2GetInfoResponse { max_credential_count: Some(1), ..Default::default() };
-+            let op = assertion_request(vec![]);
-+            let request = Ctap2GetAssertionRequest::from_webauthn_request(&op, &info).unwrap();
-+            let mut channel = NoPreflightChannel::new();
-+            let get_info = CborRequest::new(Ctap2CommandCode::AuthenticatorGetInfo);
-+            channel.push_command_pair(get_info.clone(), get_info_response(&info));
-+            channel.push_command_pair(get_info, get_info_response(&info));
-+            let hash = rp_id_hash("example.com");
-+            channel.push_command_pair((&request).try_into().unwrap(), get_assertion_response_with(&hash, Some(2)));
-+            channel.push_command_pair(CborRequest::new(Ctap2CommandCode::AuthenticatorGetNextAssertion), get_assertion_response_with(&hash, None));
-+            let response = get_assertion_fido2(&mut channel, &op).await.unwrap();
-+            assert_eq!(response.assertions.len(), 2);
-         }
-
-         #[tokio::test]
+diff --git a/src/transport/cable/direct_egress.rs b/src/transport/cable/direct_egress.rs
+new file mode 100644
+index 0000000..ba31bc8
 --- /dev/null
 +++ b/src/transport/cable/direct_egress.rs
 @@ -0,0 +1,108 @@
@@ -569,3 +237,569 @@
 +        "relay route unavailable",
 +    ))
 +}
+diff --git a/src/transport/cable/mod.rs b/src/transport/cable/mod.rs
+index 5258344..95b7638 100644
+--- a/src/transport/cable/mod.rs
++++ b/src/transport/cable/mod.rs
+@@ -33,3 +33,6 @@ impl Display for Cable {
+         write!(f, "Cable")
+     }
+ }
++
++/// Ferric direct-only relay policy; see vendor/UPSTREAM.json.
++pub mod direct_egress;
+diff --git a/src/transport/cable/protocol.rs b/src/transport/cable/protocol.rs
+index 9d1cc1c..d4b448e 100644
+--- a/src/transport/cable/protocol.rs
++++ b/src/transport/cable/protocol.rs
+@@ -26,6 +26,9 @@ use crate::transport::cable::known_devices::CableKnownDeviceId;
+ 
+ const P256_X962_LENGTH: usize = 65;
+ const MAX_CBOR_SIZE: usize = 1024 * 1024;
++// This patched transport is used by Ferric's single-ceremony process. Bound
++// cumulative received CTAP bytes before queueing or parsing additional replies.
++const MAX_CEREMONY_CTAP_BYTES: usize = 1024 * 1024;
+ const PADDING_GRANULARITY: usize = 32;
+ /// After sending Shutdown, how long to wait for the peer to close its side.
+ const PEER_CLOSE_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
+@@ -299,6 +302,8 @@ pub(crate) async fn connection(mut input: TunnelConnectionInput) -> Result<(), C
+     };
+     debug!(?get_info_response_serialized, "Received initial message");
+ 
++    let mut received_ctap_bytes = get_info_response_serialized.len();
++    if received_ctap_bytes > MAX_CEREMONY_CTAP_BYTES { return Err(CableError::InvalidFraming); }
+     loop {
+         tokio::select! {
+             result = input.data_channel.recv() => {
+@@ -313,6 +318,7 @@ pub(crate) async fn connection(mut input: TunnelConnectionInput) -> Result<(), C
+                             message,
+                             &input.cbor_rx_send,
+                             &mut input.noise_state,
++                            &mut received_ctap_bytes,
+                         )
+                         .await
+                         {
+@@ -605,6 +611,7 @@ async fn connection_recv(
+     encrypted_frame: Vec<u8>,
+     cbor_rx_send: &Sender<CborResponse>,
+     noise_state: &mut TunnelNoiseState,
++    received_ctap_bytes: &mut usize,
+ ) -> Result<RecvOutcome, CableError> {
+     let decrypted_frame = decrypt_frame(encrypted_frame, noise_state).await?;
+ 
+@@ -618,6 +625,10 @@ async fn connection_recv(
+             Ok(RecvOutcome::PeerShutdown)
+         }
+         CableTunnelMessageType::Ctap => {
++            let total = received_ctap_bytes.checked_add(cable_message.payload.len())
++                .filter(|total| *total <= MAX_CEREMONY_CTAP_BYTES)
++                .ok_or(CableError::InvalidFraming)?;
++            *received_ctap_bytes = total;
+             let cbor_response: CborResponse = (&cable_message.payload.to_vec())
+                 .try_into()
+                 .or(Err(CableError::InvalidFraming))?;
+@@ -738,13 +749,13 @@ fn parse_known_device(
+ 
+ #[cfg(test)]
+ mod tests {
++    use p256::elliptic_curve::Generate;
+     use super::*;
+ 
+     use std::sync::Mutex;
+ 
+     use async_trait::async_trait;
+-    use p256::elliptic_curve::sec1::ToEncodedPoint;
+-    use rand::rngs::OsRng;
++    use p256::elliptic_curve::sec1::ToSec1Point;
+ 
+     #[derive(Debug, Default)]
+     struct RecordingStore {
+@@ -783,11 +794,11 @@ mod tests {
+ 
+     #[tokio::test]
+     async fn invalid_signature_does_not_evict() {
+-        let client_private_key = NonZeroScalar::random(&mut OsRng);
+-        let authenticator_secret = SecretKey::random(&mut OsRng);
++        let client_private_key = NonZeroScalar::generate();
++        let authenticator_secret = SecretKey::generate();
+         let authenticator_public_key = authenticator_secret
+             .public_key()
+-            .to_encoded_point(false)
++            .to_sec1_point(false)
+             .as_bytes()
+             .to_vec();
+ 
+@@ -834,6 +845,28 @@ mod tests {
+         (state(initiator), state(responder))
+     }
+ 
++    #[tokio::test]
++    async fn ctap_receive_budget_rejects_before_queueing_an_excess_response() {
++        let (mut desktop, mut phone) = noise_pair();
++        let connection_type = CableTunnelConnectionType::QrCode {
++            routing_id: "000000".into(), tunnel_id: "00".repeat(16),
++            private_key: NonZeroScalar::generate(),
++        };
++        let mut channel = RecordingChannel::default();
++        let (sender, mut receiver) = tokio::sync::mpsc::channel(2);
++        let mut bytes = MAX_CEREMONY_CTAP_BYTES - 4;
++        send_tunnel_message(CableTunnelMessageType::Ctap, &[0, 0xA1, 1, 2], &mut channel, &mut phone).await.unwrap();
++        connection_recv(&connection_type, "cable.ua5v.com", &None,
++            channel.sent.remove(0), &sender, &mut desktop, &mut bytes).await.unwrap();
++        assert_eq!(bytes, MAX_CEREMONY_CTAP_BYTES);
++        assert_eq!(receiver.recv().await.unwrap().data, Some(vec![0xA1, 1, 2]));
++        send_tunnel_message(CableTunnelMessageType::Ctap, &[0], &mut channel, &mut phone).await.unwrap();
++        let result = connection_recv(&connection_type, "cable.ua5v.com", &None,
++            channel.sent.remove(0), &sender, &mut desktop, &mut bytes).await;
++        assert!(matches!(result, Err(CableError::InvalidFraming)));
++        assert!(receiver.try_recv().is_err(), "excess response was never retained in the queue");
++    }
++
+     #[derive(Default)]
+     struct RecordingChannel {
+         sent: Vec<Vec<u8>>,
+@@ -893,7 +926,7 @@ mod tests {
+             connection_type: CableTunnelConnectionType::QrCode {
+                 routing_id: "000000".into(),
+                 tunnel_id: "00".repeat(16),
+-                private_key: NonZeroScalar::random(&mut OsRng),
++                private_key: NonZeroScalar::generate(),
+             },
+             tunnel_domain: "cable.example.com".into(),
+             known_device_store: None,
+diff --git a/src/transport/cable/qr_code_device.rs b/src/transport/cable/qr_code_device.rs
+index 7ab0e46..d74b621 100644
+--- a/src/transport/cable/qr_code_device.rs
++++ b/src/transport/cable/qr_code_device.rs
+@@ -1,9 +1,10 @@
++use p256::elliptic_curve::Generate;
+ use std::fmt::{Debug, Display};
+ use std::sync::Arc;
+ use std::time::SystemTime;
+ 
+ use async_trait::async_trait;
+-use p256::elliptic_curve::sec1::ToEncodedPoint;
++use p256::elliptic_curve::sec1::ToSec1Point;
+ use p256::{NonZeroScalar, SecretKey};
+ use rand::rngs::OsRng;
+ use rand::RngCore;
+@@ -163,12 +164,12 @@ impl CableQrCodeDevice {
+         store: Option<Arc<dyn CableKnownDeviceInfoStore>>,
+         transports: CableTransports,
+     ) -> Result<Self, CableError> {
+-        let private_key_scalar = NonZeroScalar::random(&mut OsRng);
++        let private_key_scalar = NonZeroScalar::generate();
+         let private_key = SecretKey::from(private_key_scalar);
+         let public_key: [u8; 33] = private_key
+             .public_key()
+             .as_affine()
+-            .to_encoded_point(true)
++            .to_sec1_point(true)
+             .as_bytes()
+             .try_into()
+             .map_err(|_| CableError::InvalidKey)?;
+diff --git a/src/transport/cable/tunnel.rs b/src/transport/cable/tunnel.rs
+index 528bcc6..81271da 100644
+--- a/src/transport/cable/tunnel.rs
++++ b/src/transport/cable/tunnel.rs
+@@ -2,11 +2,12 @@
+ use sha2::{Digest, Sha256};
+ use tokio::net::TcpStream;
+ use tokio_tungstenite::tungstenite::handshake::client::Request;
+-use tokio_tungstenite::tungstenite::http::{header::LOCATION, StatusCode};
++use tokio_tungstenite::tungstenite::http::StatusCode;
+ use tokio_tungstenite::tungstenite::Error as TungsteniteError;
+-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
++use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+ use tracing::{debug, error, trace};
+ use tungstenite::client::IntoClientRequest;
++#[cfg(test)]
+ use url::Url;
+ 
+ use super::error::CableTunnelError;
+@@ -15,7 +16,6 @@ use super::protocol::CableTunnelConnectionType;
+ use crate::proto::ctap2::cbor;
+ use crate::transport::cable::error::CableError;
+ 
+-const MAX_TUNNEL_REDIRECTS: usize = 5;
+ 
+ fn ensure_rustls_crypto_provider() {
+     use std::sync::Once;
+@@ -82,6 +82,7 @@ pub(crate) fn build_tunnel_request(
+ }
+ 
+ /// Resolves a redirect Location, which may be relative, against the current URL.
++#[cfg(test)]
+ fn resolve_redirect_target(base: &str, location: &str) -> Result<String, CableError> {
+     let base = Url::parse(base)?;
+     let target = base.join(location)?;
+@@ -119,8 +120,11 @@ pub(crate) async fn connect(
+     connection_type: &CableTunnelConnectionType,
+ ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, CableError> {
+     ensure_rustls_crypto_provider();
++    if !super::direct_egress::relay_domain_allowed(tunnel_domain) {
++        return Err(CableError::ConnectionFailed);
++    }
+ 
+-    let mut connect_url = match connection_type {
++    let connect_url = match connection_type {
+         CableTunnelConnectionType::QrCode {
+             routing_id,
+             tunnel_id,
+@@ -134,16 +138,16 @@ pub(crate) async fn connect(
+         }
+     };
+ 
+-    for _ in 0..=MAX_TUNNEL_REDIRECTS {
+-        debug!(?connect_url, "Connecting to tunnel server");
++    {
++        debug!("Connecting to approved tunnel server");
+         let request = build_tunnel_request(&connect_url, connection_type)?;
+-        trace!(?request);
++        trace!("Sending tunnel handshake");
+ 
+-        let error = match connect_async(request).await {
++        let error = match super::direct_egress::connect(request).await {
+             Ok((ws_stream, response)) => {
+-                debug!(?response, "Connected to tunnel server");
++                debug!("Connected to tunnel server");
+                 if response.status() != StatusCode::SWITCHING_PROTOCOLS {
+-                    error!(?response, "Failed to switch to websocket protocol");
++                    error!("Failed to switch to websocket protocol");
+                     return Err(CableError::ConnectionFailed);
+                 }
+                 debug!("Tunnel server returned success");
+@@ -155,40 +159,29 @@ pub(crate) async fn connect(
+         let response = match error {
+             TungsteniteError::Http(response) => response,
+             error => {
+-                error!(?error, "Failed to connect to tunnel server");
++                error!("Failed to connect to tunnel server");
+                 return Err(CableError::from(error));
+             }
+         };
+ 
+         let status = response.status();
+         if status.is_redirection() {
+-            let Some(location) = response
+-                .headers()
+-                .get(LOCATION)
+-                .and_then(|value| value.to_str().ok())
+-            else {
+-                error!(?status, "Tunnel redirect missing a usable Location header");
+-                return Err(CableError::ConnectionFailed);
+-            };
+-            connect_url = resolve_redirect_target(&connect_url, location)?;
+-            debug!(?connect_url, "Following tunnel redirect");
+-            continue;
++            // Never expand the admitted endpoint set or downgrade TLS.
++            return Err(CableError::ConnectionFailed);
+         }
+ 
+         error!(?status, "Tunnel server rejected the connection");
+         return Err(tunnel_status_error(status));
+     }
+ 
+-    error!("Exceeded the maximum number of tunnel redirects");
+-    Err(CableTunnelError::TooManyRedirects.into())
+ }
+ 
+ #[cfg(test)]
+ mod tests {
++    use p256::elliptic_curve::Generate;
+     use super::*;
+     use crate::transport::cable::known_devices::{ClientPayload, ClientPayloadHint};
+     use p256::NonZeroScalar;
+-    use rand::rngs::OsRng;
+     use serde_bytes::ByteBuf;
+ 
+     fn known_device_connection_type(public_key: Vec<u8>) -> CableTunnelConnectionType {
+@@ -207,7 +200,7 @@ mod tests {
+         CableTunnelConnectionType::QrCode {
+             routing_id: "aabbcc".to_string(),
+             tunnel_id: "00112233445566778899aabbccddeeff".to_string(),
+-            private_key: NonZeroScalar::random(&mut OsRng),
++            private_key: NonZeroScalar::generate(),
+         }
+     }
+ 
+diff --git a/src/webauthn/error.rs b/src/webauthn/error.rs
+index 31f5714..de44b7e 100644
+--- a/src/webauthn/error.rs
++++ b/src/webauthn/error.rs
+@@ -10,6 +10,12 @@ pub use crate::proto::CtapError;
+ pub enum Error<E> {
+     #[error("ctap error: {0}")]
+     Ctap(#[source] CtapError),
++    /// A nonempty exclusion list was rejected by the final CTAP2
++    /// makeCredential command. This is protocol-stage evidence, not an
++    /// independently verified user-presence receipt (CTAP2.2 permits an
++    /// exclusion response after the presence wait times out).
++    #[error("credential excluded by final makeCredential")]
++    ExcludedByMakeCredential,
+     #[error("transport error: {0}")]
+     Transport(#[source] E),
+     #[error("platform error: {0}")]
+diff --git a/src/webauthn.rs b/src/webauthn.rs
+index 9d715da..7f1efde 100644
+--- a/src/webauthn.rs
++++ b/src/webauthn.rs
+@@ -294,7 +294,16 @@ async fn make_credential_fido2<C: Channel>(
+             channel,
+             channel
+                 .ctap2_make_credential(&ctap2_request, op.timeout)
+-                .await,
++                .await
++                .map_err(|error| match error {
++                    WebAuthnError::Ctap(CtapError::CredentialExcluded)
++                        if ctap2_request
++                            .exclude
++                            .as_ref()
++                            .is_some_and(|list| !list.is_empty()) =>
++                        WebAuthnError::ExcludedByMakeCredential,
++                    other => other,
++                }),
+             uv_auth_used,
+             op.timeout
+         )
+@@ -427,11 +436,16 @@ async fn get_assertion_fido2<C: Channel>(
+         };
+ 
+     validate_rp_id_hash(&response)?;
+-    // Cap iteration so a hostile numberOfCredentials cannot force an unbounded loop.
+-    let max_count = get_info_response
+-        .max_credential_count_in_list()
+-        .unwrap_or(255);
+-    let count = (response.credentials_count.unwrap_or(1) as usize).min(max_count);
++    // Ferric's one-shot helper must bound retained accounts independently of
++    // device claims. maxCredentialCountInList describes input allowLists, not
++    // the number of resident assertions. Never silently truncate account choice.
++    const MAX_ASSERTIONS: usize = 16;
++    let count = response.credentials_count.unwrap_or(1) as usize;
++    if count == 0 || count > MAX_ASSERTIONS {
++        return Err(WebAuthnError::Platform(
++            PlatformError::InvalidDeviceResponse,
++        ));
++    }
+     let mut ctap_responses = vec![response];
+     for i in 1..count {
+         debug!({ i }, "Fetching additional credential");
+@@ -934,6 +948,165 @@ mod tests {
+             }
+         }
+ 
++        fn registration_request(
++            exclude: Option<Vec<Ctap2PublicKeyCredentialDescriptor>>,
++        ) -> MakeCredentialRequest {
++            MakeCredentialRequest {
++                challenge: vec![0; 32],
++                origin: "https://example.com".into(),
++                top_origin: None,
++                relying_party: crate::proto::ctap2::Ctap2PublicKeyCredentialRpEntity::new(
++                    "example.com",
++                    "Example",
++                ),
++                user: crate::proto::ctap2::Ctap2PublicKeyCredentialUserEntity {
++                    id: ByteBuf::from(vec![1]),
++                    name: Some("user".into()),
++                    display_name: Some("Fixture".into()),
++                },
++                resident_key: None,
++                user_verification: UserVerificationRequirement::Discouraged,
++                algorithms: vec![Default::default()],
++                exclude,
++                hints: vec![],
++                authenticator_attachment: None,
++                extensions: None,
++                attestation: None,
++                timeout: Duration::from_secs(1),
++            }
++        }
++
++        fn error_response(status_code: CtapError) -> CborResponse {
++            CborResponse {
++                status_code,
++                data: None,
++            }
++        }
++
++        #[tokio::test]
++        async fn final_make_credential_exclusion_is_typed_only_with_a_nonempty_list() {
++            for (list, status, typed) in [
++                (
++                    Some(vec![descriptor(b"excluded")]),
++                    CtapError::CredentialExcluded,
++                    true,
++                ),
++                (Some(vec![]), CtapError::CredentialExcluded, false),
++                (None, CtapError::CredentialExcluded, false),
++                (
++                    Some(vec![descriptor(b"excluded")]),
++                    CtapError::OperationDenied,
++                    false,
++                ),
++                (
++                    Some(vec![descriptor(b"excluded")]),
++                    CtapError::UserActionTimeout,
++                    false,
++                ),
++            ] {
++                let info = Ctap2GetInfoResponse::default();
++                let request = registration_request(list);
++                let command = Ctap2MakeCredentialRequest::from_webauthn_request::<
++                    std::convert::Infallible,
++                >(&request, &info)
++                .unwrap();
++                let mut channel = NoPreflightChannel::new();
++                let get_info = CborRequest::new(Ctap2CommandCode::AuthenticatorGetInfo);
++                channel.push_command_pair(get_info.clone(), get_info_response(&info));
++                channel.push_command_pair(get_info, get_info_response(&info));
++                channel.push_command_pair((&command).try_into().unwrap(), error_response(status));
++                let result = channel.webauthn_make_credential(&request).await;
++                if typed {
++                    assert!(matches!(
++                        result,
++                        Err(WebAuthnError::ExcludedByMakeCredential)
++                    ));
++                } else {
++                    assert!(matches!(result, Err(WebAuthnError::Ctap(code)) if code == status));
++                }
++            }
++        }
++
++        #[tokio::test]
++        async fn get_info_exclusion_is_not_final_registration_evidence() {
++            let mut channel = NoPreflightChannel::new();
++            channel.push_command_pair(
++                CborRequest::new(Ctap2CommandCode::AuthenticatorGetInfo),
++                error_response(CtapError::CredentialExcluded),
++            );
++            let result = channel
++                .webauthn_make_credential(&registration_request(Some(vec![descriptor(
++                    b"excluded",
++                )])))
++                .await;
++            assert!(matches!(
++                result,
++                Err(WebAuthnError::Ctap(CtapError::CredentialExcluded))
++            ));
++            // An unexpected makeCredential command would panic in MockChannel.
++        }
++
++        #[tokio::test]
++        async fn silent_preflight_exclusion_is_not_final_registration_evidence() {
++            let request = registration_request(Some(vec![descriptor(b"excluded")]));
++            let info = Ctap2GetInfoResponse::default();
++            let preflight = Ctap2GetAssertionRequest {
++                relying_party_id: request.relying_party.id.clone(),
++                client_data_hash: ByteBuf::from(request.client_data_hash()),
++                allow: request.exclude.clone().unwrap(),
++                extensions: None,
++                // Default options encode the silent up=false, uv=false probe.
++                options: Some(Default::default()),
++                pin_auth_param: None,
++                pin_auth_proto: None,
++            };
++            let mut channel = MockChannel::new();
++            channel.push_command_pair(
++                CborRequest::new(Ctap2CommandCode::AuthenticatorGetInfo),
++                get_info_response(&info),
++            );
++            channel.push_command_pair(
++                (&preflight).try_into().unwrap(),
++                error_response(CtapError::CredentialExcluded),
++            );
++            let result = channel.webauthn_make_credential(&request).await;
++            assert!(matches!(
++                result,
++                Err(WebAuthnError::Ctap(CtapError::CredentialExcluded))
++            ));
++        }
++
++        #[tokio::test]
++        async fn client_pin_exclusion_is_not_final_registration_evidence() {
++            let mut request = registration_request(Some(vec![descriptor(b"excluded")]));
++            request.user_verification = UserVerificationRequirement::Required;
++            let info = Ctap2GetInfoResponse {
++                options: Some(
++                    [("uv".into(), true), ("pinUvAuthToken".into(), true)]
++                        .into_iter()
++                        .collect(),
++                ),
++                pin_auth_protos: Some(vec![1]),
++                ..Default::default()
++            };
++            let mut channel = NoPreflightChannel::new();
++            let get_info = CborRequest::new(Ctap2CommandCode::AuthenticatorGetInfo);
++            channel.push_command_pair(get_info.clone(), get_info_response(&info));
++            channel.push_command_pair(get_info, get_info_response(&info));
++            let pin = crate::proto::ctap2::Ctap2ClientPinRequest::new_get_key_agreement(
++                crate::proto::ctap2::Ctap2PinUvAuthProtocol::One,
++            );
++            channel.push_command_pair(
++                (&pin).try_into().unwrap(),
++                error_response(CtapError::CredentialExcluded),
++            );
++            let result = channel.webauthn_make_credential(&request).await;
++            assert!(matches!(
++                result,
++                Err(WebAuthnError::Ctap(CtapError::CredentialExcluded))
++            ));
++        }
++
+         // Cable has no preflight, so the whole allowList is serialized into one getAssertion.
+         // An id longer than maxCredentialIdLength cannot belong to this device and must be
+         // dropped before sending (CTAP 2.1/2.2 6.4).
+@@ -1042,7 +1215,7 @@ mod tests {
+         }
+ 
+         #[tokio::test]
+-        async fn get_next_assertion_iteration_is_bounded() {
++        async fn hostile_assertion_count_is_rejected_before_fetching_more() {
+             let info = Ctap2GetInfoResponse {
+                 max_credential_count: Some(2),
+                 ..Default::default()
+@@ -1061,12 +1234,38 @@ mod tests {
+                 expected_cbor,
+                 get_assertion_response_with(&hash, Some(u32::MAX)),
+             );
+-            // Only one getNextAssertion is queued, so unbounded iteration would panic.
+-            let next_request = CborRequest::new(Ctap2CommandCode::AuthenticatorGetNextAssertion);
+-            channel.push_command_pair(next_request, get_assertion_response_with(&hash, None));
+-
+             let result = get_assertion_fido2(&mut channel, &op).await;
+-            assert!(result.is_ok(), "bounded iteration failed: {result:?}");
++            assert!(matches!(
++                result,
++                Err(WebAuthnError::Platform(
++                    PlatformError::InvalidDeviceResponse
++                ))
++            ));
++        }
++
++        #[tokio::test]
++        async fn resident_assertions_are_not_truncated_to_allow_list_limit() {
++            let info = Ctap2GetInfoResponse {
++                max_credential_count: Some(1),
++                ..Default::default()
++            };
++            let op = assertion_request(vec![]);
++            let request = Ctap2GetAssertionRequest::from_webauthn_request(&op, &info).unwrap();
++            let mut channel = NoPreflightChannel::new();
++            let get_info = CborRequest::new(Ctap2CommandCode::AuthenticatorGetInfo);
++            channel.push_command_pair(get_info.clone(), get_info_response(&info));
++            channel.push_command_pair(get_info, get_info_response(&info));
++            let hash = rp_id_hash("example.com");
++            channel.push_command_pair(
++                (&request).try_into().unwrap(),
++                get_assertion_response_with(&hash, Some(2)),
++            );
++            channel.push_command_pair(
++                CborRequest::new(Ctap2CommandCode::AuthenticatorGetNextAssertion),
++                get_assertion_response_with(&hash, None),
++            );
++            let response = get_assertion_fido2(&mut channel, &op).await.unwrap();
++            assert_eq!(response.assertions.len(), 2);
+         }
+ 
+         #[tokio::test]

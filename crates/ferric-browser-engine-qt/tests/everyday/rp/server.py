@@ -34,6 +34,7 @@ from fido2.webauthn import (
 )
 
 MAX_BODY_BYTES = 65_536
+TLS_HANDSHAKE_TIMEOUT_SECONDS = 3
 FIXTURE_HTML = Path(__file__).parents[1] / "fixtures" / "phone-auth.html"
 
 
@@ -125,6 +126,8 @@ class VerifierApplication:
         self.credential = None
         self.signature_counter = 0
         self.account_id: str | None = None
+        self.verified_registrations = 0
+        self.verified_assertions = 0
 
     def clear_account(self) -> None:
         self.registration_states.clear()
@@ -223,6 +226,7 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                 auth_data = self.app.verifier.register_complete(state, request.get("credential"))
                 self.app.credential = auth_data.credential_data
                 self.app.signature_counter = auth_data.counter
+                self.app.verified_registrations += 1
                 self._respond(200, {"ok": True})
                 return
 
@@ -266,6 +270,7 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                 if (count or self.app.signature_counter) and count <= self.app.signature_counter:
                     raise ValueError("signature counter did not increase")
                 self.app.signature_counter = count
+                self.app.verified_assertions += 1
                 self._respond(200, {"ok": True})
                 return
 
@@ -278,6 +283,23 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             # Do not reflect library exception text or WebAuthn response data.
             self._respond(400, {"error": "verification_failed"})
+
+
+class _BoundedTlsServer(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+    tls_context: ssl.SSLContext
+
+    def get_request(self):
+        connection, peer = super().get_request()
+        # Wrapping the listening socket makes accept() itself perform an
+        # unbounded TLS handshake. Bound each accepted connection instead so
+        # shutdown can always return even if a TCP peer never sends TLS.
+        connection.settimeout(TLS_HANDSHAKE_TIMEOUT_SECONDS)
+        try:
+            return self.tls_context.wrap_socket(connection, server_side=True), peer
+        except BaseException:
+            connection.close()
+            raise
 
 
 class VerifierFixture:
@@ -305,8 +327,8 @@ class VerifierFixture:
 
         self.temp = tempfile.TemporaryDirectory(prefix="p13-rp-", dir=temporary_root)
         self.temp_path = Path(self.temp.name)
-        self.httpd = http.server.ThreadingHTTPServer((bind, port), _RequestHandler)
-        self.httpd.daemon_threads = True
+        self.httpd = _BoundedTlsServer((bind, port), _RequestHandler)
+        self.httpd.socket.settimeout(TLS_HANDSHAKE_TIMEOUT_SECONDS)
         local_host = "localhost" if bind in ("127.0.0.1", "::1") else bind
         self.origin = origin or f"https://{local_host}:{self.httpd.server_port}"
         if not _origin_is_valid_for_rp(self.origin, rp_id):
@@ -320,7 +342,7 @@ class VerifierFixture:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.load_cert_chain(self.certificate_path, self.private_key_path)
-        self.httpd.socket = context.wrap_socket(self.httpd.socket, server_side=True)
+        self.httpd.tls_context = context
         self.httpd.app = VerifierApplication(rp_id, self.origin)
         self.thread = threading.Thread(target=self.httpd.serve_forever, name="p13-rp-fixture", daemon=True)
         self.closed = False

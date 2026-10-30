@@ -894,8 +894,8 @@ private slots:
         FerricPublicPageHost host(ui.get(), profile.profile(), owner, nullptr, browserUiTabAt(ui.get(), 0));
         auto *boundary = host.prepareCredentialBoundary();
         QVERIFY(boundary && boundary->isReady());
-        // Install the candidate only in this fixture. Production does not yet
-        // intercept real navigator.credentials calls or connect a provider.
+        // This Widgets fixture installs the same shim independently; production
+        // Quick attachment installs it through the opted-in native integration.
         QFile source(QStringLiteral(FERRIC_TEST_CREDENTIAL_SHIM));
         QVERIFY(source.open(QIODevice::ReadOnly));
         QWebEngineScript shim;
@@ -926,7 +926,7 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(host.chromeView()->rootObject(), "dispatchPendingEngineRequest"));
         QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
         QVERIFY(loaded.last().at(0).toBool());
-        QVERIFY(runWorld(owner->page(), "CredentialsContainer.prototype.__ferricCredentialShimV1 === true", 0).toBool());
+        QVERIFY(runWorld(owner->page(), "typeof CredentialsContainer.prototype.__ferricCredentialShimV1.disable === 'function'", 0).toBool());
         QVERIFY(runWorld(owner->page(), "PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === originalPlatformCapability", 0).toBool());
         const int capturedBeforeBlob = captured.count();
         runWorld(owner->page(), R"JS(
@@ -941,9 +941,14 @@ private slots:
             navigator.credentials.get({publicKey:{challenge:new Uint8Array([1]),
                 extensions:{getCredBlob:true}},signal:blobAbort.signal})
                 .catch(() => window.blobDelegationsFinished++);
+            navigator.credentials.create({publicKey:{rp:{name:'Fixture'},
+                user:{id:new Uint8Array([1]),name:'fixture',displayName:'Fixture'},
+                challenge:new Uint8Array([1]),pubKeyCredParams:[{type:'public-key',alg:-7}],
+                extensions:{appidExclude:'https://legacy.example/appid'}},signal:blobAbort.signal})
+                .catch(() => window.blobDelegationsFinished++);
         )JS", 0);
-        QTRY_VERIFY(runWorld(owner->page(), "blobDelegationsFinished === 2", 0).toBool());
-        QVERIFY(runWorld(owner->page(), "nativeCredentialCalls - blobNativeCallsBefore === 2", 0).toBool());
+        QTRY_VERIFY(runWorld(owner->page(), "blobDelegationsFinished === 3", 0).toBool());
+        QVERIFY(runWorld(owner->page(), "nativeCredentialCalls - blobNativeCallsBefore === 3", 0).toBool());
         QCOMPARE(captured.count(), capturedBeforeBlob);
         runWorld(owner->page(), R"JS(
             window.finishedCredential = null; window.credentialFailure = null;

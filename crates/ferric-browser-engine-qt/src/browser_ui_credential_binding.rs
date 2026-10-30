@@ -6,7 +6,7 @@ use cxx_qt::CxxQtType;
 use ferric_browser_application::{CredentialDocumentLease, EngineCredentialFacts};
 use ferric_browser_core::TabId;
 
-pub(crate) struct CredentialLeaseCapture(Option<CredentialDocumentLease>);
+pub(crate) struct CredentialLeaseCapture(pub(super) Option<CredentialDocumentLease>);
 
 pub(crate) fn credential_view_association_current(
     ui: &BrowserUi,

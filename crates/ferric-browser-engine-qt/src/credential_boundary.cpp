@@ -25,6 +25,7 @@
 namespace {
 constexpr auto ClientResource = ":/qt/qml/io/github/ferricbrowser/qml/scripts/credential/qwebchannel.js";
 constexpr auto MediatorResource = ":/qt/qml/io/github/ferricbrowser/qml/scripts/credential/mediator.js";
+constexpr auto ShimResource = ":/qt/qml/io/github/ferricbrowser/qml/scripts/credential/shim.js";
 QString readResource(const char *path) {
     QFile file(QString::fromLatin1(path));
     return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()) : QString();
@@ -81,14 +82,16 @@ void FerricCredentialBoundary::initializeTimers() {
     deadline_.setSingleShot(true);
     deadline_.setInterval(180000);
     connect(&deadline_, &QTimer::timeout, this, [this] {
+        const QPointer<FerricCredentialBoundary> self(this);
         emit cancelRequested();
-        if (!complete("{\"error\":\"NotAllowedError\"}")) invalidate();
+        if (self && !self->complete("{\"error\":\"NotAllowedError\"}")) self->invalidate();
     });
     deliveryDeadline_.setSingleShot(true);
     deliveryDeadline_.setInterval(1000);
     connect(&deliveryDeadline_, &QTimer::timeout, this, [this] {
+        const QPointer<FerricCredentialBoundary> self(this);
         invalidate();
-        emit responseCompleted(false);
+        if (self) emit self->responseCompleted(false);
     });
 }
 
@@ -116,12 +119,55 @@ FerricCredentialBoundary::FerricCredentialBoundary(FerricQuickCredentialOwner *o
 }
 FerricCredentialBoundary::~FerricCredentialBoundary() {
     invalidate();
+    disablePhoneShim();
     if (quickOwner_) quickOwner_->removeChannel(channel_, mediatorScript_);
     if (owner_ && owner_->page() && owner_->page()->webChannel() == channel_) {
         owner_->page()->setWebChannel(nullptr, World);
         auto scripts = owner_->page()->scripts().find(QStringLiteral("ferric-credential-mediator-v1"));
         for (const auto &script : scripts) owner_->page()->scripts().remove(script);
     }
+}
+
+void FerricCredentialBoundary::disablePhoneShim() {
+    if (shimScript_.sourceCode().isEmpty()) return;
+    auto frame = mainFrame();
+    // Retirement may revoke admission while the actual Quick view/document
+    // still exists. This direct public property is used only to restore our
+    // own MainWorld methods, never to capture or deliver a credential.
+    if (!frame.isValid() && quickOwner_ && quickOwner_->view_)
+        frame = quickOwner_->view_->property("mainFrame").value<QWebEngineFrame>();
+    if (frame.isValid() && frame.isMainFrame())
+        frame.runJavaScript(QStringLiteral("if(typeof CredentialsContainer!=='undefined') CredentialsContainer.prototype.__ferricCredentialShimV1?.disable()"), QWebEngineScript::MainWorld);
+    if (quickOwner_ && quickOwner_->view_) {
+        if (auto *scripts = quickOwner_->view_->property("userScripts").value<QObject *>()) {
+            bool removed = false;
+            QMetaObject::invokeMethod(scripts, "remove", Qt::DirectConnection, Q_RETURN_ARG(bool, removed), Q_ARG(QWebEngineScript, shimScript_));
+        }
+    } else if (owner_ && owner_->page()) owner_->page()->scripts().remove(shimScript_);
+    shimScript_ = QWebEngineScript();
+}
+
+bool FerricCredentialBoundary::enablePhoneShim() {
+    if (!isReady()) return false;
+    if (!shimScript_.sourceCode().isEmpty()) return true;
+    const auto code = readResource(ShimResource);
+    if (code.isEmpty()) return false;
+    QWebEngineScript script;
+    script.setName(QStringLiteral("ferric-credential-shim-v1"));
+    script.setWorldId(QWebEngineScript::MainWorld);
+    script.setInjectionPoint(QWebEngineScript::DocumentCreation);
+    script.setRunsOnSubFrames(false);
+    script.setSourceCode(code);
+    if (quickOwner_ && quickOwner_->view_) {
+        auto *scripts = quickOwner_->view_->property("userScripts").value<QObject *>();
+        if (!scripts || !QMetaObject::invokeMethod(scripts, "insert", Qt::DirectConnection, Q_ARG(QWebEngineScript, script))) return false;
+    } else if (owner_ && owner_->page()) owner_->page()->scripts().insert(script);
+    else return false;
+    shimScript_ = script;
+    auto frame = mainFrame();
+    if (frame.isValid() && frame.isMainFrame() && frame.url().scheme() == QLatin1String("https"))
+        frame.runJavaScript(code, QWebEngineScript::MainWorld);
+    return true;
 }
 
 void FerricCredentialBoundary::ensureMediatorInCurrentDocument(int attempts) {
@@ -206,7 +252,7 @@ void FerricCredentialBoundary::challenge() {
         if (guard->captured_) {
             if (cancelled && guard->request_.requestNonce == requestNonce) {
                 emit guard->cancelRequested();
-                if (!guard->complete("{\"error\":\"AbortError\"}")) guard->invalidate();
+                if (guard && !guard->complete("{\"error\":\"AbortError\"}")) guard->invalidate();
             }
             return;
         }
@@ -216,7 +262,7 @@ void FerricCredentialBoundary::challenge() {
         guard->captured_ = true;
         if (cancelled) {
             emit guard->cancelRequested();
-            if (!guard->complete("{\"error\":\"AbortError\"}")) guard->invalidate();
+            if (guard && !guard->complete("{\"error\":\"AbortError\"}")) guard->invalidate();
             return;
         }
         guard->deadline_.start();
@@ -259,15 +305,17 @@ bool FerricCredentialBoundary::showProviderChoice(bool phoneAvailable) {
         if (!current() || !dialog->isVisible() || !nativeWindow || !nativeWindow->isActive()
             || QGuiApplication::focusWindow() != nativeWindow) { dialog->reject(); return; }
         providerConfirmed_ = true;
+        const QPointer<FerricCredentialBoundary> self(this);
         dialog->accept();
-        emit providerChosen(phoneSelected);
+        if (self) emit self->providerChosen(phoneSelected);
     };
     connect(native, &QPushButton::clicked, this, [choose] { choose(false); });
     connect(phone, &QPushButton::clicked, this, [choose] { choose(true); });
     connect(cancel, &QPushButton::clicked, dialog, &QDialog::reject);
     connect(dialog, &QDialog::rejected, this, [this] {
+        const QPointer<FerricCredentialBoundary> self(this);
         emit cancelRequested();
-        if (!complete("{\"error\":\"NotAllowedError\"}")) invalidate();
+        if (self && !self->complete("{\"error\":\"NotAllowedError\"}")) self->invalidate();
     });
     dialog->open();
     QTimer::singleShot(0, dialog, [requestWindow, dialog] {
@@ -280,7 +328,7 @@ bool FerricCredentialBoundary::showProviderChoice(bool phoneAvailable) {
     });
     return true;
 }
-bool FerricCredentialBoundary::complete(const QByteArray &response) {
+bool FerricCredentialBoundary::complete(const QByteArray &response, std::function<bool()> deliveryAdmission) {
     if (!current() || completing_ || response.size() > 1048576
         || challengeSequence_ == std::numeric_limits<quint64>::max()) return false;
     QJsonParseError error;
@@ -304,7 +352,7 @@ bool FerricCredentialBoundary::complete(const QByteArray &response) {
     mainFrame().runJavaScript(QStringLiteral(
         "globalThis.__ferricCredentialMediator ? globalThis.__ferricCredentialMediator.challenge(%1) : ''")
         .arg(literal(challengeId)), World,
-        [guard, operation, nonce, docNonce, origin, challengeId, sequence, response](const QVariant &value) {
+        [guard, operation, nonce, docNonce, origin, challengeId, sequence, response, deliveryAdmission = std::move(deliveryAdmission)](const QVariant &value) {
         if (!guard || sequence != guard->challengeSequence_ || !guard->current()
             || !guard->operationCurrent(operation)) return;
         const auto bytes = value.toString().toUtf8();
@@ -313,6 +361,11 @@ bool FerricCredentialBoundary::complete(const QByteArray &response) {
         if (row.value("challenge").toString() != challengeId || row.value("documentNonce").toString() != docNonce
             || row.value("requestNonce").toString() != nonce || row.value("origin").toString() != origin
             || !row.value("secureContext").toBool() || !row.value("policyAllowed").toBool()) return;
+        if (deliveryAdmission && !deliveryAdmission()) {
+            if (guard) guard->invalidate();
+            return;
+        }
+        if (!guard || sequence != guard->challengeSequence_ || !guard->current() || !guard->operationCurrent(operation)) return;
         guard->mainFrame().runJavaScript(QStringLiteral(
             "globalThis.__ferricCredentialMediator.complete(%1, %2, %3, JSON.parse(%4))")
             .arg(literal(nonce), literal(docNonce), literal(origin), literal(QString::fromUtf8(response))), World,
@@ -320,7 +373,7 @@ bool FerricCredentialBoundary::complete(const QByteArray &response) {
                 if (!guard || sequence != guard->challengeSequence_ || !guard->current()
                     || !guard->operationCurrent(operation)) return;
                 const bool delivered = ack.toBool();
-                if (!delivered) { guard->invalidate(); emit guard->responseCompleted(false); return; }
+                if (!delivered) { guard->invalidate(); if (guard) emit guard->responseCompleted(false); return; }
                 guard->captured_ = false;
                 guard->completing_ = false;
                 guard->challenging_ = false;

@@ -1,4 +1,5 @@
 #include "profile_lifetime.h"
+#include "profile_tls.h"
 
 #include <QMetaProperty>
 #include <QQmlContext>
@@ -87,7 +88,27 @@ bool FerricProfileLifetime::ownProfile(QObject *factory, QObject *profile) {
     // Keep that ownership intact rather than deleting the instance separately.
     profile->setParent(factory);
     ownedProfile_ = profile;
-    return true;
+    auto *tls = FerricProfileTls::establish(profile);
+    if (tls_ != tls) {
+        if (tls_) disconnect(tls_, nullptr, this, nullptr);
+        tls_ = tls;
+        if (tls_) connect(tls_, &FerricProfileTls::changed, this, &FerricProfileLifetime::credentialTransportChanged);
+    }
+    const QPointer<FerricProfileLifetime> self(this);
+    const auto views = views_.values();
+    for (const auto &view : views) {
+        if (!self) return false;
+        if (self->tls_ && view.item) self->tls_->observeView(view.item);
+    }
+    return !self.isNull();
+}
+
+QString FerricProfileLifetime::credentialTlsIdentity(QQuickItem *view) const {
+    return tls_ && currentView(view) ? tls_->identity(view) : QString();
+}
+
+bool FerricProfileLifetime::credentialTlsEligible(QQuickItem *view, const QUrl &origin) const {
+    return tls_ && currentView(view) && tls_->eligible(view, origin);
 }
 
 std::optional<FerricProfileLifetime::CurrentView>
@@ -156,8 +177,10 @@ bool FerricProfileLifetime::adoptView(QQuickItem *view, QObject *host,
     if (current != views_.end()) {
         const bool sameOwner = current->hostKey == host && current->ui == ui &&
                                current->windowGeneration == owner->generation;
-        if (sameOwner)
+        if (sameOwner) {
+            if (tls_) tls_->observeView(view);
             return true;
+        }
         for (const auto &lease : std::as_const(popupLeases_))
             if (lease.source == view || lease.target == view)
                 return false;
@@ -215,8 +238,11 @@ bool FerricProfileLifetime::adoptView(QQuickItem *view, QObject *host,
     }
     view->setParent(this);
     views_.insert(view, entry);
+    const QPointer<FerricProfileLifetime> self(this);
+    const QPointer<QQuickItem> observed(view);
     refresh();
-    return true;
+    if (self && observed && self->tls_) self->tls_->observeView(observed);
+    return self && observed;
 }
 
 bool FerricProfileLifetime::isCurrentView(QQuickItem *view,

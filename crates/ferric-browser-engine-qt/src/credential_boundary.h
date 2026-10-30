@@ -50,7 +50,9 @@ public:
     // Caller supplies already-established provider eligibility. This adapter
     // never invents phone capability or invokes either provider itself.
     bool showProviderChoice(bool phoneAvailable);
-    bool complete(const QByteArray &response);
+    bool complete(const QByteArray &response, std::function<bool()> deliveryAdmission = {});
+    bool enablePhoneShim();
+    void disablePhoneShim();
     void invalidate();
     void notification();
 signals:
@@ -82,6 +84,7 @@ private:
     QWebChannel *channel_ = nullptr;
     FerricCredentialNotification *notification_ = nullptr;
     QWebEngineScript mediatorScript_;
+    QWebEngineScript shimScript_;
     QWebEngineFrame capturedFrame_;
     std::function<QString()> contextIdentity_;
     QTimer coalesce_;

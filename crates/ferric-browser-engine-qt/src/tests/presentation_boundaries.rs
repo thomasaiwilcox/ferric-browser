@@ -1372,7 +1372,7 @@ fn background_link_navigation_captures_the_source_journey_node() {
 fn ephemeral_profile_uses_off_the_record_memory_only_setup() {
     let qml = QML_SOURCE;
     assert!(qml.contains("property bool ephemeralProfile"));
-    assert!(qml.contains("WebEngineProfilePrototype {"));
+    assert!(qml.contains("FerricProfilePrototype {"));
     assert!(qml.contains("storageName: window.temporaryProfile ? \"\""));
     assert!(qml.contains("persistentStoragePath: window.temporaryProfile"));
     assert!(qml.contains("cachePath: window.temporaryProfile"));

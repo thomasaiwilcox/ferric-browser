@@ -294,7 +294,16 @@ async fn make_credential_fido2<C: Channel>(
             channel,
             channel
                 .ctap2_make_credential(&ctap2_request, op.timeout)
-                .await,
+                .await
+                .map_err(|error| match error {
+                    WebAuthnError::Ctap(CtapError::CredentialExcluded)
+                        if ctap2_request
+                            .exclude
+                            .as_ref()
+                            .is_some_and(|list| !list.is_empty()) =>
+                        WebAuthnError::ExcludedByMakeCredential,
+                    other => other,
+                }),
             uv_auth_used,
             op.timeout
         )
@@ -433,7 +442,9 @@ async fn get_assertion_fido2<C: Channel>(
     const MAX_ASSERTIONS: usize = 16;
     let count = response.credentials_count.unwrap_or(1) as usize;
     if count == 0 || count > MAX_ASSERTIONS {
-        return Err(WebAuthnError::Platform(PlatformError::InvalidDeviceResponse));
+        return Err(WebAuthnError::Platform(
+            PlatformError::InvalidDeviceResponse,
+        ));
     }
     let mut ctap_responses = vec![response];
     for i in 1..count {
@@ -937,6 +948,165 @@ mod tests {
             }
         }
 
+        fn registration_request(
+            exclude: Option<Vec<Ctap2PublicKeyCredentialDescriptor>>,
+        ) -> MakeCredentialRequest {
+            MakeCredentialRequest {
+                challenge: vec![0; 32],
+                origin: "https://example.com".into(),
+                top_origin: None,
+                relying_party: crate::proto::ctap2::Ctap2PublicKeyCredentialRpEntity::new(
+                    "example.com",
+                    "Example",
+                ),
+                user: crate::proto::ctap2::Ctap2PublicKeyCredentialUserEntity {
+                    id: ByteBuf::from(vec![1]),
+                    name: Some("user".into()),
+                    display_name: Some("Fixture".into()),
+                },
+                resident_key: None,
+                user_verification: UserVerificationRequirement::Discouraged,
+                algorithms: vec![Default::default()],
+                exclude,
+                hints: vec![],
+                authenticator_attachment: None,
+                extensions: None,
+                attestation: None,
+                timeout: Duration::from_secs(1),
+            }
+        }
+
+        fn error_response(status_code: CtapError) -> CborResponse {
+            CborResponse {
+                status_code,
+                data: None,
+            }
+        }
+
+        #[tokio::test]
+        async fn final_make_credential_exclusion_is_typed_only_with_a_nonempty_list() {
+            for (list, status, typed) in [
+                (
+                    Some(vec![descriptor(b"excluded")]),
+                    CtapError::CredentialExcluded,
+                    true,
+                ),
+                (Some(vec![]), CtapError::CredentialExcluded, false),
+                (None, CtapError::CredentialExcluded, false),
+                (
+                    Some(vec![descriptor(b"excluded")]),
+                    CtapError::OperationDenied,
+                    false,
+                ),
+                (
+                    Some(vec![descriptor(b"excluded")]),
+                    CtapError::UserActionTimeout,
+                    false,
+                ),
+            ] {
+                let info = Ctap2GetInfoResponse::default();
+                let request = registration_request(list);
+                let command = Ctap2MakeCredentialRequest::from_webauthn_request::<
+                    std::convert::Infallible,
+                >(&request, &info)
+                .unwrap();
+                let mut channel = NoPreflightChannel::new();
+                let get_info = CborRequest::new(Ctap2CommandCode::AuthenticatorGetInfo);
+                channel.push_command_pair(get_info.clone(), get_info_response(&info));
+                channel.push_command_pair(get_info, get_info_response(&info));
+                channel.push_command_pair((&command).try_into().unwrap(), error_response(status));
+                let result = channel.webauthn_make_credential(&request).await;
+                if typed {
+                    assert!(matches!(
+                        result,
+                        Err(WebAuthnError::ExcludedByMakeCredential)
+                    ));
+                } else {
+                    assert!(matches!(result, Err(WebAuthnError::Ctap(code)) if code == status));
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn get_info_exclusion_is_not_final_registration_evidence() {
+            let mut channel = NoPreflightChannel::new();
+            channel.push_command_pair(
+                CborRequest::new(Ctap2CommandCode::AuthenticatorGetInfo),
+                error_response(CtapError::CredentialExcluded),
+            );
+            let result = channel
+                .webauthn_make_credential(&registration_request(Some(vec![descriptor(
+                    b"excluded",
+                )])))
+                .await;
+            assert!(matches!(
+                result,
+                Err(WebAuthnError::Ctap(CtapError::CredentialExcluded))
+            ));
+            // An unexpected makeCredential command would panic in MockChannel.
+        }
+
+        #[tokio::test]
+        async fn silent_preflight_exclusion_is_not_final_registration_evidence() {
+            let request = registration_request(Some(vec![descriptor(b"excluded")]));
+            let info = Ctap2GetInfoResponse::default();
+            let preflight = Ctap2GetAssertionRequest {
+                relying_party_id: request.relying_party.id.clone(),
+                client_data_hash: ByteBuf::from(request.client_data_hash()),
+                allow: request.exclude.clone().unwrap(),
+                extensions: None,
+                // Default options encode the silent up=false, uv=false probe.
+                options: Some(Default::default()),
+                pin_auth_param: None,
+                pin_auth_proto: None,
+            };
+            let mut channel = MockChannel::new();
+            channel.push_command_pair(
+                CborRequest::new(Ctap2CommandCode::AuthenticatorGetInfo),
+                get_info_response(&info),
+            );
+            channel.push_command_pair(
+                (&preflight).try_into().unwrap(),
+                error_response(CtapError::CredentialExcluded),
+            );
+            let result = channel.webauthn_make_credential(&request).await;
+            assert!(matches!(
+                result,
+                Err(WebAuthnError::Ctap(CtapError::CredentialExcluded))
+            ));
+        }
+
+        #[tokio::test]
+        async fn client_pin_exclusion_is_not_final_registration_evidence() {
+            let mut request = registration_request(Some(vec![descriptor(b"excluded")]));
+            request.user_verification = UserVerificationRequirement::Required;
+            let info = Ctap2GetInfoResponse {
+                options: Some(
+                    [("uv".into(), true), ("pinUvAuthToken".into(), true)]
+                        .into_iter()
+                        .collect(),
+                ),
+                pin_auth_protos: Some(vec![1]),
+                ..Default::default()
+            };
+            let mut channel = NoPreflightChannel::new();
+            let get_info = CborRequest::new(Ctap2CommandCode::AuthenticatorGetInfo);
+            channel.push_command_pair(get_info.clone(), get_info_response(&info));
+            channel.push_command_pair(get_info, get_info_response(&info));
+            let pin = crate::proto::ctap2::Ctap2ClientPinRequest::new_get_key_agreement(
+                crate::proto::ctap2::Ctap2PinUvAuthProtocol::One,
+            );
+            channel.push_command_pair(
+                (&pin).try_into().unwrap(),
+                error_response(CtapError::CredentialExcluded),
+            );
+            let result = channel.webauthn_make_credential(&request).await;
+            assert!(matches!(
+                result,
+                Err(WebAuthnError::Ctap(CtapError::CredentialExcluded))
+            ));
+        }
+
         // Cable has no preflight, so the whole allowList is serialized into one getAssertion.
         // An id longer than maxCredentialIdLength cannot belong to this device and must be
         // dropped before sending (CTAP 2.1/2.2 6.4).
@@ -1065,12 +1235,20 @@ mod tests {
                 get_assertion_response_with(&hash, Some(u32::MAX)),
             );
             let result = get_assertion_fido2(&mut channel, &op).await;
-            assert!(matches!(result, Err(WebAuthnError::Platform(PlatformError::InvalidDeviceResponse))));
+            assert!(matches!(
+                result,
+                Err(WebAuthnError::Platform(
+                    PlatformError::InvalidDeviceResponse
+                ))
+            ));
         }
 
         #[tokio::test]
         async fn resident_assertions_are_not_truncated_to_allow_list_limit() {
-            let info = Ctap2GetInfoResponse { max_credential_count: Some(1), ..Default::default() };
+            let info = Ctap2GetInfoResponse {
+                max_credential_count: Some(1),
+                ..Default::default()
+            };
             let op = assertion_request(vec![]);
             let request = Ctap2GetAssertionRequest::from_webauthn_request(&op, &info).unwrap();
             let mut channel = NoPreflightChannel::new();
@@ -1078,8 +1256,14 @@ mod tests {
             channel.push_command_pair(get_info.clone(), get_info_response(&info));
             channel.push_command_pair(get_info, get_info_response(&info));
             let hash = rp_id_hash("example.com");
-            channel.push_command_pair((&request).try_into().unwrap(), get_assertion_response_with(&hash, Some(2)));
-            channel.push_command_pair(CborRequest::new(Ctap2CommandCode::AuthenticatorGetNextAssertion), get_assertion_response_with(&hash, None));
+            channel.push_command_pair(
+                (&request).try_into().unwrap(),
+                get_assertion_response_with(&hash, Some(2)),
+            );
+            channel.push_command_pair(
+                CborRequest::new(Ctap2CommandCode::AuthenticatorGetNextAssertion),
+                get_assertion_response_with(&hash, None),
+            );
             let response = get_assertion_fido2(&mut channel, &op).await.unwrap();
             assert_eq!(response.assertions.len(), 2);
         }

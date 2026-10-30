@@ -33,6 +33,30 @@ bool clickCloseDecision(QQuickWindow *host, bool proceed) {
 }
 }
 
+void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
+{
+    // One direct QML invocation leaves the named-save receipt pending even if
+    // the background write has finished. The flush must drain that older save
+    // and capture the later mutation, without requiring a second close attempt.
+    const auto result = evaluate(QStringLiteral(R"JS((function(){
+        var ui=testWindow.browserUi;
+        if(!ui.execute_command('session-save before-close'))return 'save not queued';
+        if(!ui.set_tab_muted(0,true))return 'mutation not applied';
+        return ui.flush_durable_state() ? 'flushed' : String(ui.status_text);
+    })())JS")).toString();
+    QCOMPARE(result, QStringLiteral("flushed"));
+    QDirIterator checkpoints(evaluate("testWindow.storageBasePath").toString(), {"current*.json"}, QDir::Files, QDirIterator::Subdirectories);
+    QVERIFY(checkpoints.hasNext());
+    QFile saved(checkpoints.next());
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    const auto snapshot = QJsonDocument::fromJson(saved.readAll()).object();
+    const auto windows = snapshot["windows"].toArray();
+    QCOMPARE(windows.size(), 1);
+    const auto pages = windows[0].toObject()["tabs"].toArray();
+    QCOMPARE(pages.size(), 1);
+    QVERIFY(pages[0].toObject()["muted"].toBool());
+}
+
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");

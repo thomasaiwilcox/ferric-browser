@@ -5,11 +5,13 @@
 #include <QPointer>
 #include <QQuickItem>
 #include <QString>
+#include <QUrl>
 #include <QtQml/qqmlregistration.h>
 #include <QMetaObject>
 #include <QQmlEngine>
 #include <QSet>
 #include <optional>
+class FerricProfileTls;
 
 // Native ownership only. Profile policy and request presentation stay with
 // the existing runtime and its application-lived QML context.
@@ -51,14 +53,18 @@ class FerricProfileLifetime : public QObject {
     };
     std::optional<CurrentView> currentView(QQuickItem *view) const;
     bool matchesCurrentView(QQuickItem *view, const CurrentView &expected) const;
+    QString credentialTlsIdentity(QQuickItem *view) const;
+    bool credentialTlsEligible(QQuickItem *view, const QUrl &origin) const;
   signals:
     void viewRetiring(QQuickItem *view);
     void policyUiChanged();
     void consumersChanged();
     void drained();
     void popupOpenerLeaseReleased(const QString &leaseId);
+    void credentialTransportChanged();
 
   private:
+    QPointer<FerricProfileTls> tls_;
     struct Window {
         QObject *key;
         QPointer<QObject> host;

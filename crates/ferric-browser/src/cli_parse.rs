@@ -27,6 +27,8 @@ pub(super) fn parse_cli(arguments: &[String]) -> Result<(CliOptions, CliAction),
             "--software-rendering" => {
                 return Err("--software-rendering may be specified only once".into());
             }
+            "--direct-network" if !options.direct_network => options.direct_network = true,
+            "--direct-network" => return Err("--direct-network may be specified only once".into()),
             "--basedir" if options.basedir.is_none() => {
                 options.basedir = Some(next_cli_value(arguments, &mut index, argument)?);
             }

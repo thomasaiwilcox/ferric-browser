@@ -1,0 +1,2 @@
+# Unified patches use a context-marker space on otherwise empty lines.
+helpers/ferric-phone-auth/vendor/*.patch whitespace=-blank-at-eol

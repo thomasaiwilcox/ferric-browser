@@ -301,6 +301,7 @@ class ApplicationTests final : public QObject {
     void scopedHintAndSearchJourneys_data();
     void scopedHintAndSearchJourneys();
     void durablePersistenceFailurePreservesConfiguration();
+    void durablePersistenceFlushWaitsForPendingSave();
     void selectorValidationRejectsWholeCandidate();
     void productPolishSettingDurability();
 };

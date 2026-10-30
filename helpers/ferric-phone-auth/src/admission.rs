@@ -1,8 +1,9 @@
 use std::str::FromStr;
 
 use libwebauthn::ops::webauthn::{
-    GetAssertionRequest, MakeCredentialRequest, OriginValidation, RelatedOrigins, RequestOrigin,
-    RequestSettings, Scheme,
+    GetAssertionPrepareError, GetAssertionRequest, MakeCredentialPrepareError,
+    MakeCredentialRequest, OriginValidation, RelatedOrigins, RequestOrigin, RequestSettings,
+    Scheme,
 };
 use serde_json::{Map, Value};
 
@@ -125,12 +126,26 @@ async fn prepare_with_psl(
         Operation::Create => PreparedRequest::Create(
             MakeCredentialRequest::prepare(&request_origin, &options_json, &settings)
                 .await
-                .map_err(|_| AdmissionError::InvalidRequest)?,
+                .map_err(|error| match error {
+                    MakeCredentialPrepareError::InvalidRelyingPartyId(_)
+                    | MakeCredentialPrepareError::MismatchingRelyingPartyId(_, _)
+                    | MakeCredentialPrepareError::InvalidAppId(_) => AdmissionError::Security,
+                    MakeCredentialPrepareError::EncodingError(_) => AdmissionError::InvalidRequest,
+                })?,
         ),
         Operation::Get => PreparedRequest::Get(
             GetAssertionRequest::prepare(&request_origin, &options_json, &settings)
                 .await
-                .map_err(|_| AdmissionError::InvalidRequest)?,
+                .map_err(|error| match error {
+                    GetAssertionPrepareError::InvalidRelyingPartyId(_)
+                    | GetAssertionPrepareError::MismatchingRelyingPartyId(_, _)
+                    | GetAssertionPrepareError::InvalidAppId(_) => AdmissionError::Security,
+                    GetAssertionPrepareError::NotSupported(_) => AdmissionError::UnsupportedOptions,
+                    GetAssertionPrepareError::EncodingError(_)
+                    | GetAssertionPrepareError::UnexpectedLengthError(_, _) => {
+                        AdmissionError::InvalidRequest
+                    }
+                })?,
         ),
     };
 
@@ -180,6 +195,15 @@ fn validate_options(operation: Operation, options: &Value) -> Result<(), Admissi
 }
 
 fn validate_create(options: &Value) -> Result<(), AdmissionError> {
+    // Hybrid deliberately has no silent legacy-AppID preflight. Do not claim
+    // appidExclude was applied when the transport cannot perform it.
+    if options
+        .get("extensions")
+        .and_then(Value::as_object)
+        .is_some_and(|extensions| extensions.contains_key("appidExclude"))
+    {
+        return Err(AdmissionError::UnsupportedOptions);
+    }
     keys(
         options,
         &[
@@ -462,6 +486,18 @@ mod tests {
     }
 
     #[test]
+    fn legacy_appid_exclusion_is_rejected_before_phone_transport() {
+        let mut options = make_options("example.com");
+        options["extensions"] = serde_json::json!({"appidExclude":"https://example.com/legacy"});
+        options["excludeCredentials"] = serde_json::json!([{"type":"public-key","id":"AQID"}]);
+        let response = run(prepare_with_psl(
+            envelope("create", "https://login.example.com", options),
+            &fixture(),
+        ));
+        assert!(matches!(response, Err(AdmissionError::UnsupportedOptions)));
+    }
+
+    #[test]
     fn get_parent_domain_and_idn_are_prepared_by_pinned_library() {
         let psl = fixture();
         assert_eq!(
@@ -526,7 +562,7 @@ mod tests {
             envelope("create", "https://login.example.com", make_options("com")),
             &psl,
         ));
-        assert!(matches!(public_suffix, Err(AdmissionError::InvalidRequest)));
+        assert!(matches!(public_suffix, Err(AdmissionError::Security)));
 
         let sibling = run(prepare_with_psl(
             envelope(
@@ -536,7 +572,7 @@ mod tests {
             ),
             &psl,
         ));
-        assert!(matches!(sibling, Err(AdmissionError::InvalidRequest)));
+        assert!(matches!(sibling, Err(AdmissionError::Security)));
 
         let insecure = run(prepare_with_psl(
             envelope("create", "http://localhost", make_options("localhost")),

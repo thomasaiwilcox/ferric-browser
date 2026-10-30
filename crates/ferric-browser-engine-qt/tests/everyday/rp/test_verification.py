@@ -7,6 +7,10 @@ import hashlib
 import json
 import os
 import ssl
+import socket
+import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from urllib.error import HTTPError
@@ -195,6 +199,8 @@ class RelyingPartyVerificationTests(unittest.TestCase):
         status, response = self._assertion_result()
         self.assertEqual((status, response), (200, {"ok": True}))
         self.assertEqual(self.fixture.httpd.app.signature_counter, 2)
+        self.assertEqual(self.fixture.httpd.app.verified_registrations, 1)
+        self.assertEqual(self.fixture.httpd.app.verified_assertions, 1)
 
     def test_counterless_credentials_pass_with_fresh_challenges(self):
         self.authenticator.registration_counter = 0
@@ -228,6 +234,7 @@ class RelyingPartyVerificationTests(unittest.TestCase):
     def test_t086_corrupt_signature_fails_fido2_assertion_verifier(self):
         self._register_disposable_credential()
         self.assertEqual(self._assertion_result(corrupt_signature=True)[0], 400)
+        self.assertEqual(self.fixture.httpd.app.verified_assertions, 0)
 
     def test_t086_missing_required_uv_fails_fido2_assertion_verifier(self):
         self._register_disposable_credential()
@@ -258,6 +265,37 @@ class RelyingPartyVerificationTests(unittest.TestCase):
         self.assertIsNone(self.fixture.httpd.app.credential)
         self.assertIsNone(self.fixture.httpd.app.account_id)
         self.assertEqual(self.fixture.httpd.app.signature_counter, 0)
+
+
+class RelyingPartyTeardownTests(unittest.TestCase):
+    def test_stalled_pre_tls_connection_cannot_hold_shutdown(self):
+        with tempfile.TemporaryDirectory(prefix="stalled-rp-", dir=os.environ["FERRIC_P13_TEST_TMP"]) as temporary:
+            fixture = VerifierFixture(Path(temporary))
+            entered = threading.Event()
+            original = fixture.httpd.get_request
+
+            def observed_accept():
+                entered.set()
+                return original()
+
+            fixture.httpd.get_request = observed_accept
+            fixture.start()
+            peer = socket.create_connection(("127.0.0.1", fixture.port), timeout=2)
+            closer = threading.Thread(target=fixture.close, daemon=True)
+            try:
+                self.assertTrue(entered.wait(2))
+                started = time.monotonic()
+                closer.start()
+                closer.join(timeout=5)
+                self.assertFalse(closer.is_alive(), "stalled TLS handshake blocked RP shutdown")
+                self.assertLess(time.monotonic() - started, 5)
+                self.assertTrue(fixture.closed)
+            finally:
+                peer.close()
+                if closer.ident is not None:
+                    closer.join(timeout=5)
+                if not closer.is_alive():
+                    fixture.close()
 
 
 def ssl_default_paths() -> tuple[str | None, str | None]:

@@ -7,6 +7,7 @@
 #include <QQuickItem>
 #include <QThread>
 #include <QWindow>
+#include <QUrl>
 #include <optional>
 #include <utility>
 
@@ -34,7 +35,7 @@ struct FerricQuickCredentialBinding::State {
 };
 
 FerricQuickCredentialBinding *FerricQuickCredentialBinding::create(
-    QQuickItem *view, QObject *ui, const QString &tabId, std::function<bool()> associationCurrent, std::function<QString()> profilePolicyIdentity)
+    QQuickItem *view, QObject *ui, const QString &tabId, std::function<bool()> associationCurrent, std::function<QString()> profilePolicyIdentity, std::function<bool(const QUrl &)> phoneNetworkAdmission)
 {
     if (!view || !ui || QThread::currentThread() != view->thread()
         || ui->thread() != view->thread() || !qobject_cast<BrowserUi *>(ui)
@@ -42,16 +43,16 @@ FerricQuickCredentialBinding *FerricQuickCredentialBinding::create(
     // Do not allow two adapters to assign different Core identities to a view.
     if (view->findChild<FerricQuickCredentialBinding *>(QString(), Qt::FindDirectChildrenOnly))
         return nullptr;
-    auto *binding = new FerricQuickCredentialBinding(view, ui, tabId, std::move(associationCurrent), std::move(profilePolicyIdentity));
+    auto *binding = new FerricQuickCredentialBinding(view, ui, tabId, std::move(associationCurrent), std::move(profilePolicyIdentity), std::move(phoneNetworkAdmission));
     if (binding->isReady()) return binding;
     delete binding;
     return nullptr;
 }
 
 FerricQuickCredentialBinding::FerricQuickCredentialBinding(QQuickItem *view,
-    QObject *ui, const QString &tabId, std::function<bool()> associationCurrent, std::function<QString()> profilePolicyIdentity)
+    QObject *ui, const QString &tabId, std::function<bool()> associationCurrent, std::function<QString()> profilePolicyIdentity, std::function<bool(const QUrl &)> phoneNetworkAdmission)
     : QObject(view), state_(std::make_unique<State>()), view_(view), ui_(ui), tabId_(tabId),
-      associationCurrent_(std::move(associationCurrent)), profilePolicyIdentity_(std::move(profilePolicyIdentity))
+      associationCurrent_(std::move(associationCurrent)), profilePolicyIdentity_(std::move(profilePolicyIdentity)), phoneNetworkAdmission_(std::move(phoneNetworkAdmission))
 {
     owner_ = FerricQuickCredentialOwner::create(view);
     if (!owner_) return;
@@ -71,11 +72,16 @@ FerricQuickCredentialBinding::FerricQuickCredentialBinding(QQuickItem *view,
     if (!boundary_) return;
     connect(boundary_, &FerricCredentialBoundary::requestCaptured, this, &FerricQuickCredentialBinding::capture);
     connect(boundary_, &FerricCredentialBoundary::cancelled, this, &FerricQuickCredentialBinding::clearLease);
-    connect(boundary_, &FerricCredentialBoundary::responseCompleted, this, &FerricQuickCredentialBinding::clearLease);
-    connect(ui, &QObject::destroyed, this, [this] {
-        ui_.clear();
-        if (boundary_) boundary_->invalidate();
-        clearLease();
+    connect(boundary_, &FerricCredentialBoundary::responseCompleted, this, [self](bool delivered) {
+        if (!self) return;
+        emit self->responseSettled(delivered);
+        if (self) self->clearLease();
+    });
+    connect(ui, &QObject::destroyed, this, [self] {
+        if (!self) return;
+        self->ui_.clear();
+        if (self->boundary_) self->boundary_->invalidate();
+        if (self) self->clearLease();
     });
     // Direct invalidation after application ownership/selection changes. The
     // full context and lease are also revalidated at every use.
@@ -90,7 +96,11 @@ FerricQuickCredentialBinding::FerricQuickCredentialBinding(QQuickItem *view,
 
 FerricQuickCredentialBinding::~FerricQuickCredentialBinding()
 {
-    if (boundary_) boundary_->invalidate();
+    if (boundary_) {
+        disconnect(boundary_, nullptr, this, nullptr);
+        boundary_->disablePhoneShim();
+        boundary_->invalidate();
+    }
 }
 
 bool FerricQuickCredentialBinding::isReady() const
@@ -100,6 +110,27 @@ bool FerricQuickCredentialBinding::isReady() const
 }
 
 FerricCredentialBoundary *FerricQuickCredentialBinding::boundary() const { return boundary_.data(); }
+
+QWindow *FerricQuickCredentialBinding::presentationWindow() const
+{
+    return owner_ ? owner_->presentationWindow() : nullptr;
+}
+
+bool FerricQuickCredentialBinding::phoneNetworkAllowed() const
+{
+    return hasCurrentLease() && phoneNetworkAdmission_
+        && phoneNetworkAdmission_(QUrl(boundary_->request()->origin));
+}
+
+quint64 FerricQuickCredentialBinding::admitActor(ferric::credentials::CredentialActor &actor, quint64 now) const
+{
+    if (!hasCurrentLease()) return 0;
+    const auto *request = boundary_->request();
+    if (!request || (request->operation != QLatin1String("create") && request->operation != QLatin1String("get"))) return 0;
+    const auto &options = request->options;
+    return actor.admit(**state_->lease, request->operation == QLatin1String("create"),
+        {reinterpret_cast<const std::uint8_t *>(options.constData()), static_cast<size_t>(options.size())}, now);
+}
 
 bool FerricQuickCredentialBinding::hasCurrentLease() const
 {
@@ -114,7 +145,9 @@ bool FerricQuickCredentialBinding::hasCurrentLease() const
 
 void FerricQuickCredentialBinding::capture()
 {
+    const QPointer<FerricQuickCredentialBinding> self(this);
     clearLease();
+    if (!self) return;
     if (!isReady() || !boundary_->request()) return;
     auto *ui = qobject_cast<BrowserUi *>(ui_.data());
     if (!ui) return;
@@ -133,8 +166,9 @@ void FerricQuickCredentialBinding::capture()
 void FerricQuickCredentialBinding::applicationChanged()
 {
     if (state_->lease && !hasCurrentLease()) {
+        const QPointer<FerricQuickCredentialBinding> self(this);
         boundary_->invalidate();
-        clearLease();
+        if (self) self->clearLease();
     }
 }
 

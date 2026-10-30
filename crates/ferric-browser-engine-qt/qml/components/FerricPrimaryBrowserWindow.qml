@@ -844,7 +844,7 @@ ApplicationWindow {
     readonly property int browserScriptWorld: WebEngineScript.ApplicationWorld
     readonly property string browserScriptBundleVersion: "1"
 
-    WebEngineProfilePrototype {
+    FerricProfilePrototype {
         id: browserProfilePrototype
         storageName: window.temporaryProfile ? "" : "ferric-browser-" + window.profileName
         persistentStoragePath: window.temporaryProfile || window.storageBasePath.length === 0

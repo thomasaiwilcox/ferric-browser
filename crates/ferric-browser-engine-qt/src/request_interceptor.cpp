@@ -629,6 +629,27 @@ bool FerricBrowserRequestInterceptor::admitDownloadController(QWebEngineUrlReque
     return false;
 }
 
+bool FerricBrowserRequestInterceptor::phoneTransportAllowed(const QUrl &requestingOrigin) const
+{
+    if (requestingOrigin.scheme() != QLatin1String("https") || requestingOrigin.host().isEmpty()) return false;
+    QReadLocker locker(&policyLock_);
+    if (!enabled_) return true;
+    const auto &policy = *policy_;
+    const auto matches = [](const QStringList &patterns, const QString &host) {
+        return std::any_of(patterns.cbegin(), patterns.cend(), [&](const QString &pattern) { return hostMatches(host, pattern); });
+    };
+    for (const auto &host : {QStringLiteral("cable.ua5v.com"), QStringLiteral("cable.auth.com")})
+        if (matches(policy.securityDenyHosts, host)) return false;
+    if (matches(policy.bypassSites, normalizedHost(requestingOrigin.host()))) return true;
+    // Relay paths include fresh handshake material. This adapter cannot prove
+    // every future path is allowed by a general ABP engine, so decline that
+    // policy instead of bypassing it in the helper's independent sockets.
+    if (policy.adblockEngine) return false;
+    for (const auto &host : {QStringLiteral("cable.ua5v.com"), QStringLiteral("cable.auth.com")})
+        if (matches(policy.blockedHosts, host) && !matches(policy.exceptionHosts, host)) return false;
+    return true;
+}
+
 void FerricBrowserRequestInterceptor::interceptRequest(QWebEngineUrlRequestInfo &info)
 {
     bool ownedDownload = false;

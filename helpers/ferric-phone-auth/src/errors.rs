@@ -5,6 +5,7 @@ pub(crate) enum AdmissionError {
     PublicSuffixListUnavailable,
     UnsupportedOptions,
     InvalidRequest,
+    Security,
 }
 
 impl AdmissionError {
@@ -15,6 +16,7 @@ impl AdmissionError {
             Self::PublicSuffixListUnavailable => "unavailable",
             Self::UnsupportedOptions => "unsupported_options",
             Self::InvalidRequest => "invalid_request",
+            Self::Security => "security_error",
         }
     }
 }

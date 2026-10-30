@@ -262,7 +262,7 @@ pub(crate) fn remove(id: Uuid, scope: &Scope) {
 mod tests {
     use super::*;
     use ferric_browser_application::{BrowserApplication, ProfileOpenRequest, ProfileStorage};
-    use ferric_browser_config::Config;
+    use ferric_browser_config::{Config, ContextsConfig, RuntimeOverrides};
     use std::time::{Duration, Instant};
 
     fn scope(privacy: PrivacyKind) -> Scope {
@@ -275,11 +275,11 @@ mod tests {
                 privacy,
                 storage: ProfileStorage::Transient,
                 base_configuration: Config::default(),
-                initial_profile_overrides: Default::default(),
-                command_line_overrides: Default::default(),
+                initial_profile_overrides: RuntimeOverrides::default(),
+                command_line_overrides: RuntimeOverrides::default(),
                 config_path: None,
                 script_catalog_root: None,
-                contexts: Default::default(),
+                contexts: ContextsConfig::default(),
                 context_configuration_error: None,
             })
             .unwrap();

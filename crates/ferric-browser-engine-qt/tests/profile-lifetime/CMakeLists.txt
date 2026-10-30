@@ -2,10 +2,11 @@ cmake_minimum_required(VERSION 3.20)
 project(ferric_profile_lifetime_tests LANGUAGES CXX)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_CXX_STANDARD 17)
-find_package(Qt6 6.11.2 EXACT REQUIRED COMPONENTS Quick WebEngineQuick Test)
+find_package(Qt6 6.11.2 EXACT REQUIRED COMPONENTS Quick WebEngineCore WebEngineQuick Test)
 add_executable(profile_lifetime_tests
-    tst_lifetime.cpp ../../src/profile_lifetime.h ../../src/profile_lifetime.cpp)
-target_link_libraries(profile_lifetime_tests PRIVATE Qt6::Quick Qt6::WebEngineQuick Qt6::Test)
+    tst_lifetime.cpp ../../src/profile_lifetime.h ../../src/profile_lifetime.cpp
+    ../../src/profile_tls.h ../../src/profile_tls.cpp)
+target_link_libraries(profile_lifetime_tests PRIVATE Qt6::Quick Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::Test)
 enable_testing()
 add_test(NAME profile_lifetime COMMAND profile_lifetime_tests
     pendingWindowCannotSupplyPolicyOrOwnAView

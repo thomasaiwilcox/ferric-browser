@@ -34,7 +34,7 @@ QtObject {
         requestInterceptor: resources.interceptor
     }
     property Component profileFactory: Component {
-        WebEngineProfilePrototype {
+        FerricProfilePrototype {
             storageName: resources.transientProfile ? "" : "ferric-browser-" + resources.profileName
             persistentStoragePath: resources.transientProfile || resources.storageBase.length === 0
                                    ? "" : resources.storageBase + "/webengine/" + resources.profileName

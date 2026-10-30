@@ -62,6 +62,14 @@ const NATIVE_SOURCES: &[&str] = &[
     "src/quick_credential_integration.cpp",
     "src/credential_process.h",
     "src/credential_process.cpp",
+    "src/phone_credential_actor.h",
+    "src/phone_credential_actor.cpp",
+    "src/credential_network_policy.h",
+    "src/credential_network_policy.cpp",
+    "src/profile_tls.h",
+    "src/profile_tls.cpp",
+    "src/quick_profile_factory.h",
+    "src/quick_profile_factory.cpp",
 ];
 
 fn main() {

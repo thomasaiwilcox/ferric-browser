@@ -3,6 +3,8 @@
 #include "credential_boundary.h"
 #include "quick_credential_binding.h"
 #include "quick_credential_integration.h"
+#include "phone_credential_actor.h"
+#include "credential_network_policy.h"
 #include "profile_lifetime.h"
 #include "request_interceptor.h"
 #include "popup_owner_bridge.h"
@@ -10,6 +12,12 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDialog>
+#include <QDialogButtonBox>
+#include <QDir>
+#include <QLabel>
+#include <QNetworkProxy>
+#include <QNetworkProxyFactory>
+#include <QScopeGuard>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QJsonDocument>
@@ -30,6 +38,7 @@
 #include <QtWebEngineQuick/QQuickWebEngineProfile>
 #include <memory>
 #include <signal.h>
+#include <utility>
 
 extern "C" bool cxx_qt_init_crate_ferric_browser_engine_qt();
 
@@ -48,9 +57,11 @@ public:
     quint64 documentGeneration = 0;
     QWebEngineFrame frame;
     int fixturePort = 0;
+    int certificateErrors = 0;
     Q_INVOKABLE void notify() { ++notifications; }
 public slots:
     void certificateError(QWebEngineCertificateError error) {
+        ++certificateErrors;
         if (error.url().host() == "localhost" && error.url().port() == fixturePort)
             error.acceptCertificate();
         else error.rejectCertificate();
@@ -100,17 +111,19 @@ QString read(const QString &name)
 constexpr auto source = R"QML(
 import QtQuick
 import QtWebEngine
+import io.github.ferricbrowser 1.0
 Window {
     id: root
     visible: false; width: 640; height: 420
     property alias view: content
     property alias profilePrototype: prototype
     property var fixtureProfile: null
+    property var fixtureTrustFiles: []
     Component.onCompleted: fixtureProfile = prototype.instance()
     WebEngineView {
         // The profile factory must outlive WebContents teardown. Keeping it
         // under the view also gives standalone fixture roots that ordering.
-        WebEngineProfilePrototype { id: prototype; storageName: "" }
+        FerricProfilePrototype { id: prototype; storageName: ""; additionalTrustedCertificateFiles: root.fixtureTrustFiles }
         id: content
         anchors.fill: parent
         url: ""
@@ -135,14 +148,16 @@ struct OwnedQuickCase {
     QQuickItem *view = nullptr;
     FerricQuickCredentialOwner *owner = nullptr;
     FerricCredentialBoundary *boundary = nullptr;
+    bool nativeProfileFactory = true;
 
-    bool open(std::function<FerricCredentialBoundary *(QQuickItem *)> makeBoundary = {}, bool installBeforeLoad = true) {
+    bool open(std::function<FerricCredentialBoundary *(QQuickItem *)> makeBoundary = {}, bool installBeforeLoad = true, bool trusted = false, int httpStatus = 200) {
         if (!server.start()) return false;
         server.setDocuments("<!doctype html><title>Quick lifetime</title>", "<!doctype html>");
+        server.setHttpStatus(httpStatus);
         witness.fixturePort = server.pageUrl().port();
         QQmlComponent component(&engine);
-        component.setData(source, QUrl("qrc:/quick-lifetime-fixture.qml"));
-        root.reset(component.create());
+        component.setData(nativeProfileFactory ? QByteArray(source) : QString::fromUtf8(source).replace("FerricProfilePrototype", "WebEngineProfilePrototype").toUtf8(), QUrl("qrc:/quick-lifetime-fixture.qml"));
+        root.reset(trusted ? component.createWithInitialProperties({{QStringLiteral("fixtureTrustFiles"), QVariant::fromValue(QList<QUrl>{QUrl::fromLocalFile(server.certificateFile())})}}) : component.create());
         if (!root) return false;
         window = qobject_cast<QQuickWindow *>(root.get());
         view = qobject_cast<QQuickItem *>(root->property("view").value<QObject *>());
@@ -221,6 +236,364 @@ bool isOwnedProcess(qint64 pid)
 class QuickCredentialSurfaceTests final : public QObject {
     Q_OBJECT
 private slots:
+    void phoneRouteAllowsOnlyTheCapturedOriginsExactLoopbackMapping()
+    {
+        using namespace FerricCredentialNetworkPolicy;
+        const QUrl origin(QStringLiteral("https://passkeys.ferric.test:8443"));
+        const QString exact = QStringLiteral("--host-resolver-rules=MAP passkeys.ferric.test 127.0.0.1");
+        QVERIFY(argumentsAllowDirect({exact}, origin));
+        for (const auto &argument : {QStringLiteral("--host-resolver-rules=MAP * 127.0.0.1"),
+                exact + QStringLiteral(", MAP cable.auth.com 127.0.0.1"),
+                QStringLiteral("--host-resolver-rules=MAP other.test 127.0.0.1"),
+                QStringLiteral("--host-resolver-rules=MAP passkeys.ferric.test 127.0.0.2"),
+                QStringLiteral("--host-resolver-rules=MAP passkeys.ferric.test:8443 127.0.0.1"),
+                QStringLiteral("--host-rules=MAP * 127.0.0.1"), QStringLiteral("--proxy-server=localhost:9"),
+                QStringLiteral("--dns-over-https-servers=https://localhost")})
+            QVERIFY(!argumentsAllowDirect({argument}, origin));
+        QVERIFY(!argumentsAllowDirect({exact, exact}, origin));
+        QVERIFY(!argumentsAllowDirect({QStringLiteral("--host-resolver-rules=MAP cable.auth.com 127.0.0.1")}, QUrl("https://cable.auth.com")));
+        QVERIFY(!argumentsAllowDirect({QStringLiteral("--host-resolver-rules=MAP cable.ua5v.com 127.0.0.1")}, QUrl("https://cable.ua5v.com")));
+        const QStringList argv{"browser", "--webEngineArgs", exact};
+        QCOMPARE(*chromiumArguments(argv, std::nullopt), QStringList{exact});
+        QCOMPARE(*chromiumArguments(argv, QString()), QStringList{});
+        QCOMPARE(*chromiumArguments(argv, QStringLiteral("--disable-gpu --host-resolver-rules=\"MAP passkeys.ferric.test 127.0.0.1\"")),
+                 (QStringList{"--disable-gpu", exact}));
+        QVERIFY(!chromiumArguments(argv, QStringLiteral("--host-resolver-rules=\"MAP passkeys.ferric.test 127.0.0.1")));
+    }
+
+    void uiDestructionCanSynchronouslyDeleteItsBinding()
+    {
+        OwnedQuickCase fixture;
+        QTemporaryDir storage;
+        auto ui = applicationOwner(fixture, storage);
+        QVERIFY(ui);
+        QPointer<FerricQuickCredentialBinding> binding;
+        QVERIFY(fixture.open([&](QQuickItem *view) {
+            binding = FerricQuickCredentialBinding::create(view, ui.get(), firstTab(ui.get()));
+            return binding ? binding->boundary() : nullptr;
+        }));
+        QVERIFY(fixture.request());
+        QVERIFY(binding->hasCurrentLease());
+        connect(binding, &FerricQuickCredentialBinding::leaseInvalidated, fixture.window,
+                [&] { delete binding.data(); });
+        ui.reset();
+        QVERIFY(!binding);
+        QVERIFY(!fixture.boundary->request());
+        QVERIFY(fixture.owner->isReady());
+    }
+
+    void cancellationCanSynchronouslyDeleteItsView_data()
+    {
+        QTest::addColumn<bool>("alreadyCaptured");
+        QTest::newRow("captured") << true;
+        QTest::newRow("before-capture") << false;
+    }
+
+    void cancellationCanSynchronouslyDeleteItsView()
+    {
+        QFETCH(bool, alreadyCaptured);
+        OwnedQuickCase fixture;
+        QVERIFY(fixture.open());
+        QPointer<QQuickItem> view(fixture.view);
+        QPointer<FerricQuickCredentialOwner> owner(fixture.owner);
+        int cancellations = 0;
+        connect(fixture.boundary, &FerricCredentialBoundary::cancelRequested, fixture.window, [&] {
+            ++cancellations;
+            delete view.data();
+        });
+        if (alreadyCaptured) QVERIFY(fixture.request());
+        const QString request = alreadyCaptured ? QString() : QStringLiteral(
+            "postMessage({type:'ferric.credentials.request.v1',id:'lifetime',op:'get',options:{challenge:'AQ'}},location.origin);");
+        run(fixture.owner->mainFrame(), request + QStringLiteral(
+            "postMessage({type:'ferric.credentials.cancel.v1',id:'lifetime'},location.origin)"), 0);
+        QTRY_COMPARE(cancellations, 1);
+        QVERIFY(!view);
+        QVERIFY(!owner);
+    }
+
+    void nativeFactoryPublishesUniqueProfilesAndDeclinesDuplicateStorage()
+    {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData("import io.github.ferricbrowser 1.0; FerricProfilePrototype {}", QUrl("qrc:/native-factory-case.qml"));
+        std::unique_ptr<QObject> first(component.create()), second(component.create());
+        QVERIFY2(first && second, qPrintable(component.errorString()));
+        QObject *one = nullptr, *two = nullptr, *again = nullptr;
+        QVERIFY(QMetaObject::invokeMethod(first.get(), "instance", Qt::DirectConnection, Q_RETURN_ARG(QObject *, one)));
+        QVERIFY(QMetaObject::invokeMethod(second.get(), "instance", Qt::DirectConnection, Q_RETURN_ARG(QObject *, two)));
+        QVERIFY(one && two && one != two);
+        QVERIFY(QMetaObject::invokeMethod(first.get(), "instance", Qt::DirectConnection, Q_RETURN_ARG(QObject *, again)));
+        QCOMPARE(again, one);
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const QVariantMap settings{{"storageName", "native-factory-fixture"}, {"persistentStoragePath", root.filePath("data")}, {"cachePath", root.filePath("cache")}};
+        std::unique_ptr<QObject> persistent(component.createWithInitialProperties(settings)), duplicate(component.createWithInitialProperties(settings));
+        QVERIFY(persistent && duplicate);
+        QObject *stored = nullptr, *declined = nullptr;
+        QVERIFY(QMetaObject::invokeMethod(persistent.get(), "instance", Qt::DirectConnection, Q_RETURN_ARG(QObject *, stored)));
+        QVERIFY(stored);
+        QVERIFY(QMetaObject::invokeMethod(duplicate.get(), "instance", Qt::DirectConnection, Q_RETURN_ARG(QObject *, declined)));
+        QVERIFY(!declined);
+    }
+
+    void importedProfileWithDestroyedUnobservedViewStaysDenied()
+    {
+        OwnedQuickCase fixture;
+        fixture.nativeProfileFactory = false;
+        QVERIFY(fixture.open());
+        QVERIFY(fixture.witness.certificateErrors > 0);
+        QPointer<QObject> profile(fixture.view->property("profile").value<QObject *>());
+        QPointer<QObject> prototype(fixture.root->property("profilePrototype").value<QObject *>());
+        QVERIFY(profile && prototype);
+        prototype->setParent(fixture.root.get());
+        // Qt creates this profile with the prototype's original parent (the
+        // view), while also retaining scoped ownership in the prototype.
+        // Preserve both before destroying the deliberately unobserved view.
+        profile->setParent(prototype);
+        QQmlEngine::setObjectOwnership(profile, QQmlEngine::CppOwnership);
+        delete fixture.view;
+        fixture.view = nullptr; fixture.owner = nullptr; fixture.boundary = nullptr;
+        QVERIFY(profile);
+        QObject ui;
+        FerricProfileLifetime lifetime;
+        QVERIFY(lifetime.ownProfile(prototype, profile));
+        QQmlComponent component(&fixture.engine);
+        component.setData(R"QML(import QtQuick; import QtWebEngine
+            Window { width:640; height:420; property var sharedProfile; property alias view:content;
+                WebEngineView { id:content; anchors.fill:parent; url:""; profile:sharedProfile }
+            })QML", QUrl("qrc:/imported-tls-profile.qml"));
+        std::unique_ptr<QObject> root(component.createWithInitialProperties({{QStringLiteral("sharedProfile"), QVariant::fromValue(profile.data())}}));
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        auto *view = qobject_cast<QQuickItem *>(root->property("view").value<QObject *>());
+        QVERIFY(window && view);
+        QuickCredentialWitness witness;
+        witness.fixturePort = fixture.server.pageUrl().port();
+        QVERIFY(connect(view, SIGNAL(certificateError(QWebEngineCertificateError)), &witness, SLOT(certificateError(QWebEngineCertificateError))));
+        QVERIFY(lifetime.retainWindow(window, &ui));
+        QVERIFY(lifetime.activateWindow(window));
+        QVERIFY(lifetime.adoptView(view, window, &ui));
+        window->show();
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(view->setProperty("url", fixture.server.pageUrl()));
+        QTRY_COMPARE(view->property("title").toString(), QStringLiteral("Quick lifetime"));
+        QTRY_VERIFY(!view->property("loading").toBool());
+        QCOMPARE(witness.certificateErrors, 0);
+        QVERIFY(!lifetime.credentialTlsEligible(view, fixture.server.pageUrl()));
+        const auto beforeReload = lifetime.credentialTlsIdentity(view);
+        QVERIFY(QMetaObject::invokeMethod(view, "reload"));
+        QTRY_VERIFY(lifetime.credentialTlsIdentity(view) != beforeReload);
+        QTRY_VERIFY(!view->property("loading").toBool());
+        QVERIFY(!lifetime.credentialTlsEligible(view, fixture.server.pageUrl()));
+    }
+
+    void nativeTlsProofRequiresObservedTrustedProfile_data()
+    {
+        QTest::addColumn<bool>("trusted");
+        QTest::addColumn<bool>("late");
+        QTest::addColumn<int>("httpStatus");
+        QTest::newRow("trusted-profile-ca") << true << false << 200;
+        QTest::newRow("trusted-http-401") << true << false << 401;
+        QTest::newRow("trusted-http-404") << true << false << 404;
+        QTest::newRow("accepted-bad-certificate") << false << false << 200;
+        QTest::newRow("unobserved-profile") << true << true << 200;
+    }
+
+    void nativeTlsProofRequiresObservedTrustedProfile()
+    {
+        QFETCH(bool, trusted);
+        QFETCH(bool, late);
+        QFETCH(int, httpStatus);
+        OwnedQuickCase fixture;
+        QObject ui;
+        FerricProfileLifetime lifetime;
+        const auto registerView = [&](QQuickItem *view) {
+            auto *profile = view->property("profile").value<QObject *>();
+            auto *prototype = fixture.root->property("profilePrototype").value<QObject *>();
+            return lifetime.ownProfile(prototype, profile) && lifetime.retainWindow(fixture.window, &ui)
+                && lifetime.activateWindow(fixture.window) && lifetime.adoptView(view, fixture.window, &ui);
+        };
+        QVERIFY(fixture.open([&](QQuickItem *view) {
+            if (!late && !registerView(view)) return static_cast<FerricCredentialBoundary *>(nullptr);
+            return fixture.owner->prepareBoundary([&] { return fixture.context; });
+        }, true, trusted, httpStatus));
+        if (late) QVERIFY(registerView(fixture.view));
+        QVERIFY(!lifetime.credentialTlsIdentity(fixture.view).isEmpty());
+        QCOMPARE(fixture.witness.certificateErrors == 0, trusted);
+        QVERIFY(run(fixture.owner->mainFrame(), "isSecureContext", 0).toBool());
+        const auto requestOrigin = fixture.server.pageUrl().adjusted(QUrl::RemovePath);
+        if (trusted && !late) QTRY_VERIFY(lifetime.credentialTlsEligible(fixture.view, requestOrigin));
+        else QVERIFY(!lifetime.credentialTlsEligible(fixture.view, requestOrigin));
+        QVERIFY(!lifetime.credentialTlsEligible(fixture.view, QUrl("https://other.example")));
+        const auto previous = lifetime.credentialTlsIdentity(fixture.view);
+        QVERIFY(QMetaObject::invokeMethod(fixture.view, "reload"));
+        QTRY_VERIFY(lifetime.credentialTlsIdentity(fixture.view) != previous);
+        QTRY_VERIFY(!fixture.view->property("loading").toBool());
+        if (trusted && !late) QTRY_VERIFY(lifetime.credentialTlsEligible(fixture.view, requestOrigin));
+        else QVERIFY(!lifetime.credentialTlsEligible(fixture.view, requestOrigin));
+    }
+
+    void nativeTlsTaintSurvivesSiblingPorts()
+    {
+        OwnedQuickCase fixture;
+        QObject ui;
+        FerricProfileLifetime lifetime;
+        QVERIFY(fixture.open([&](QQuickItem *view) {
+            auto *profile = view->property("profile").value<QObject *>();
+            auto *prototype = fixture.root->property("profilePrototype").value<QObject *>();
+            if (!lifetime.ownProfile(prototype, profile) || !lifetime.retainWindow(fixture.window, &ui)
+                || !lifetime.activateWindow(fixture.window) || !lifetime.adoptView(view, fixture.window, &ui)) return static_cast<FerricCredentialBoundary *>(nullptr);
+            return fixture.owner->prepareBoundary([&] { return fixture.context; });
+        }));
+        QVERIFY(fixture.witness.certificateErrors > 0);
+        QVERIFY(!lifetime.credentialTlsEligible(fixture.view, fixture.server.pageUrl()));
+        FixtureServer siblingServer;
+        QVERIFY(siblingServer.start(&fixture.server));
+        siblingServer.setDocuments("<!doctype html><title>Sibling exception reuse</title>", "<!doctype html>");
+        QQmlComponent component(&fixture.engine);
+        component.setData(R"QML(import QtQuick; import QtWebEngine
+            Window { width:640; height:420; property var sharedProfile; property alias view:content;
+                WebEngineView { id:content; anchors.fill:parent; url:""; profile:sharedProfile }
+            })QML", QUrl("qrc:/tls-sibling.qml"));
+        std::unique_ptr<QObject> sibling(component.createWithInitialProperties({{QStringLiteral("sharedProfile"), fixture.view->property("profile")}}));
+        QVERIFY2(sibling, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(sibling.get());
+        auto *view = qobject_cast<QQuickItem *>(sibling->property("view").value<QObject *>());
+        QVERIFY(window && view);
+        QuickCredentialWitness witness;
+        witness.fixturePort = siblingServer.pageUrl().port();
+        QVERIFY(connect(view, SIGNAL(certificateError(QWebEngineCertificateError)), &witness, SLOT(certificateError(QWebEngineCertificateError))));
+        QVERIFY(lifetime.retainWindow(window, &ui));
+        QVERIFY(lifetime.activateWindow(window));
+        QVERIFY(lifetime.adoptView(view, window, &ui));
+        window->show();
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(view->setProperty("url", siblingServer.pageUrl()));
+        QTRY_COMPARE(view->property("title").toString(), QStringLiteral("Sibling exception reuse"));
+        QTRY_VERIFY(!view->property("loading").toBool());
+        // The same bad certificate is silently reused at a different port.
+        QCOMPARE(witness.certificateErrors, 0);
+        QVERIFY(!lifetime.credentialTlsEligible(view, siblingServer.pageUrl()));
+        QVERIFY(!lifetime.credentialTlsEligible(fixture.view, fixture.server.pageUrl()));
+    }
+
+    void phoneTransportAdmissionHonorsInstalledPolicy()
+    {
+        FerricBrowserRequestInterceptor interceptor;
+        const QUrl origin("https://login.example.com");
+        QVERIFY(interceptor.phoneTransportAllowed(origin));
+        interceptor.setEnabled(true);
+        interceptor.setBlockedHosts({"cable.auth.com"});
+        QVERIFY(!interceptor.phoneTransportAllowed(origin));
+        interceptor.setExceptionHosts({"cable.auth.com"});
+        QVERIFY(interceptor.phoneTransportAllowed(origin));
+        interceptor.setSecurityDenyHosts({"*.auth.com"});
+        QVERIFY(!interceptor.phoneTransportAllowed(origin));
+        interceptor.setBypassSites({"login.example.com"});
+        QVERIFY(!interceptor.phoneTransportAllowed(origin));
+        interceptor.setSecurityDenyHosts({});
+        QVERIFY(interceptor.phoneTransportAllowed(origin));
+        QVERIFY(!interceptor.phoneTransportAllowed(QUrl("http://login.example.com")));
+    }
+
+    void nativeActorOwnsShimProviderCancellationAndDisable()
+    {
+        OwnedQuickCase fixture;
+        QTemporaryDir storage;
+        auto ui = applicationOwner(fixture, storage);
+        QVERIFY(ui);
+        QVERIFY(fixture.open({}, false));
+        run(fixture.owner->mainFrame(), R"JS(
+            window.actorDraft='keep this document';
+            window.nativeStub=function(options) {
+                window.nativeReceiverCorrect=this===navigator.credentials;
+                window.nativeOptionsCorrect=options===window.actorOptions;
+                return Promise.resolve('native-fixture');
+            };
+            CredentialsContainer.prototype.get=window.nativeStub;
+        )JS", 0);
+        const auto proxy = QNetworkProxy::applicationProxy();
+        const auto systemProxy = QNetworkProxyFactory::usesSystemConfiguration();
+        const auto restoreProxy = qScopeGuard([&] {
+            if (systemProxy) QNetworkProxyFactory::setUseSystemConfiguration(true);
+            else QNetworkProxy::setApplicationProxy(proxy);
+        });
+        QNetworkProxy::setApplicationProxy(QNetworkProxy(QNetworkProxy::HttpProxy, "127.0.0.1", 9));
+        FerricProfileLifetime lifetime;
+        FerricBrowserRequestInterceptor interceptor;
+        FerricQuickCredentialIntegration integration;
+        auto *profile = fixture.view->property("profile").value<QObject *>();
+        auto *prototype = fixture.root->property("profilePrototype").value<QObject *>();
+        QVERIFY(lifetime.ownProfile(prototype, profile));
+        QVERIFY(lifetime.ownResource(&interceptor));
+        QVERIFY(interceptor.attach(profile));
+        QVERIFY(lifetime.retainWindow(fixture.window, ui.get()));
+        QVERIFY(lifetime.activateWindow(fixture.window));
+        QString promptIdentity;
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "new_prompt_view_identity", Qt::DirectConnection, Q_RETURN_ARG(QString, promptIdentity)));
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "register_prompt_view_identity", Qt::DirectConnection, Q_ARG(int, 0), Q_ARG(QString, promptIdentity)));
+        fixture.view->setProperty("viewUi", QVariant::fromValue(ui.get()));
+        fixture.view->setProperty("stableTabId", firstTab(ui.get()));
+        fixture.view->setProperty("promptLeaseIdentity", promptIdentity);
+        QVERIFY(lifetime.adoptView(fixture.view, fixture.window, ui.get()));
+        integration.setLifetime(&lifetime);
+        integration.setRequestInterceptor(&interceptor);
+        QVERIFY(integration.attachView(fixture.view));
+        auto *binding = fixture.view->findChild<FerricQuickCredentialBinding *>(QString(), Qt::FindDirectChildrenOnly);
+        QVERIFY(binding);
+        fixture.boundary = binding->boundary();
+        FerricPhoneCredentialActor::attach(binding);
+        FerricPhoneCredentialActor::attach(binding);
+        QTRY_VERIFY(!run(fixture.owner->mainFrame(), "navigator.credentials.get===nativeStub", 0).toBool());
+        const auto request = [&] {
+            fixture.window->requestActivate();
+            if (!QTest::qWaitFor([&] { return QGuiApplication::focusWindow() == fixture.window; }, 5000)) return false;
+            run(fixture.owner->mainFrame(), R"JS(
+                window.actorResult='pending';
+                window.actorOptions={publicKey:{challenge:new Uint8Array([1,2,3]),timeout:20000}};
+                navigator.credentials.get(actorOptions).then(value=>actorResult=value,error=>actorResult=error.name);
+            )JS", 0);
+            return true;
+        };
+        const auto chooser = []() -> QDialog * {
+            for (auto *widget : QApplication::topLevelWidgets())
+                if (auto *dialog = qobject_cast<QDialog *>(widget); dialog && dialog->isVisible()
+                    && dialog->windowTitle() == "Choose an authenticator") return dialog;
+            return nullptr;
+        };
+        QVERIFY(request());
+        QTRY_VERIFY(chooser());
+        QPointer<QDialog> dialog(chooser());
+        QCOMPARE(dialog->windowHandle()->transientParent(), fixture.window);
+        auto *phone = dialog->findChild<QPushButton *>("credentialPhoneProvider");
+        QVERIFY(phone && !phone->isEnabled());
+        dialog->windowHandle()->requestActivate();
+        QTRY_COMPARE(QGuiApplication::focusWindow(), dialog->windowHandle());
+        auto *buttons = dialog->findChild<QDialogButtonBox *>();
+        QVERIFY(buttons && buttons->button(QDialogButtonBox::Cancel));
+        QTest::mouseClick(buttons->button(QDialogButtonBox::Cancel), Qt::LeftButton);
+        QTRY_COMPARE(run(fixture.owner->mainFrame(), "actorResult", 0).toString(), QStringLiteral("NotAllowedError"));
+        QVERIFY(!binding->hasCurrentLease());
+        QVERIFY(request());
+        QTRY_VERIFY(chooser());
+        dialog = chooser();
+        dialog->windowHandle()->requestActivate();
+        QTRY_COMPARE(QGuiApplication::focusWindow(), dialog->windowHandle());
+        QTest::mouseClick(dialog->findChild<QPushButton *>("credentialNativeProvider"), Qt::LeftButton);
+        QTRY_COMPARE(run(fixture.owner->mainFrame(), "actorResult", 0).toString(), QStringLiteral("native-fixture"));
+        QVERIFY(run(fixture.owner->mainFrame(), "nativeReceiverCorrect&&nativeOptionsCorrect", 0).toBool());
+        QVERIFY(request());
+        QTRY_VERIFY(chooser());
+        integration.setLifetime(nullptr);
+        QTRY_COMPARE(run(fixture.owner->mainFrame(), "actorResult", 0).toString(), QStringLiteral("AbortError"));
+        QTRY_VERIFY(run(fixture.owner->mainFrame(), "navigator.credentials.get===nativeStub", 0).toBool());
+        QTRY_VERIFY(!chooser());
+        integration.setLifetime(&lifetime);
+        QVERIFY(integration.attachView(fixture.view));
+        QTRY_VERIFY(!run(fixture.owner->mainFrame(), "navigator.credentials.get===nativeStub", 0).toBool());
+        QCOMPARE(run(fixture.owner->mainFrame(), "actorDraft", 0).toString(), QStringLiteral("keep this document"));
+    }
+
     void closeCancellationCanDestroyTheOwner_data()
     {
         QTest::addColumn<bool>("destroyHost");
@@ -792,11 +1165,231 @@ private slots:
     }
 };
 
+struct PhoneActorCase {
+    OwnedQuickCase fixture;
+    QTemporaryDir storage;
+    std::unique_ptr<QObject> ui;
+    FerricProfileLifetime lifetime;
+    FerricBrowserRequestInterceptor interceptor;
+    std::unique_ptr<FerricQuickCredentialIntegration> integration = std::make_unique<FerricQuickCredentialIntegration>();
+    QPointer<FerricQuickCredentialBinding> binding;
+
+    bool open() {
+        ui = applicationOwner(fixture, storage);
+        if (!ui) return false;
+        return fixture.open([this](QQuickItem *view) -> FerricCredentialBoundary * {
+            auto *profile = view->property("profile").value<QObject *>();
+            auto *prototype = fixture.root->property("profilePrototype").value<QObject *>();
+            if (!lifetime.ownProfile(prototype, profile) || !lifetime.ownResource(&interceptor)
+                || !interceptor.attach(profile) || !lifetime.retainWindow(fixture.window, ui.get())
+                || !lifetime.activateWindow(fixture.window)) return nullptr;
+            interceptor.setEnabled(true);
+            QString identity;
+            if (!QMetaObject::invokeMethod(ui.get(), "new_prompt_view_identity", Qt::DirectConnection, Q_RETURN_ARG(QString, identity))
+                || !QMetaObject::invokeMethod(ui.get(), "register_prompt_view_identity", Qt::DirectConnection, Q_ARG(int, 0), Q_ARG(QString, identity))) return nullptr;
+            view->setProperty("viewUi", QVariant::fromValue(ui.get()));
+            view->setProperty("stableTabId", firstTab(ui.get()));
+            view->setProperty("promptLeaseIdentity", identity);
+            if (!lifetime.adoptView(view, fixture.window, ui.get())) return nullptr;
+            integration->setLifetime(&lifetime);
+            integration->setRequestInterceptor(&interceptor);
+            if (!integration->attachView(view)) return nullptr;
+            binding = view->findChild<FerricQuickCredentialBinding *>(QString(), Qt::FindDirectChildrenOnly);
+            return binding ? binding->boundary() : nullptr;
+        }, true, true);
+    }
+
+    bool request(int scenario, int timeout = 10000) {
+        fixture.window->requestActivate();
+        if (!QTest::qWaitFor([&] { return QGuiApplication::focusWindow() == fixture.window; }, 5000)) return false;
+        run(fixture.owner->mainFrame(), QString(R"JS(
+            window.phoneDone=false; window.phoneId=''; window.phoneError=''; window.phoneCount=0;
+            window.phoneController=new AbortController();
+            const create=%1===17 || %1===18;
+            const publicKey=create ? {challenge:new Uint8Array([%1]),rp:{id:'localhost',name:'Fixture'},
+                user:{id:new Uint8Array([1]),name:'fixture',displayName:'Fixture'},pubKeyCredParams:[{type:'public-key',alg:-7}],
+                excludeCredentials:%1===18 ? [{type:'public-key',id:new Uint8Array([1])}] : [],timeout:%2}
+                : {challenge:new Uint8Array([%1]),rpId:'localhost',timeout:%2};
+            navigator.credentials[create?'create':'get']({publicKey,signal:phoneController.signal})
+              .then(value=>{phoneId=value.id;window.phoneIDL=value instanceof PublicKeyCredential
+                    && value.response instanceof (create?AuthenticatorAttestationResponse:AuthenticatorAssertionResponse)
+                    && value.toJSON().id===value.id
+                    && (!create || (value.response.getAuthenticatorData().byteLength===37
+                        && value.response.getPublicKey()===null && value.response.getPublicKeyAlgorithm()===-7
+                        && value.response.getTransports().join(',')==='hybrid'
+                        && value.toJSON().response.attestationObject==='oA'));
+                    phoneCount++;phoneDone=true},
+                    error=>{phoneError=error.name;phoneCount++;phoneDone=true});
+        )JS").arg(scenario).arg(timeout), 0);
+        return true;
+    }
+    QVariant value(const QString &expression) { return run(fixture.owner->mainFrame(), expression, 0); }
+};
+
+QDialog *visibleCredentialDialog(const QString &title) {
+    for (auto *widget : QApplication::topLevelWidgets())
+        if (auto *dialog = qobject_cast<QDialog *>(widget); dialog && dialog->isVisible() && dialog->windowTitle() == title) return dialog;
+    return nullptr;
+}
+
+QList<QJsonObject> helperReceipts() {
+    QFile file(QString::fromLocal8Bit(qgetenv("FERRIC_PHONE_ACTOR_RECEIPT")));
+    if (!file.open(QIODevice::ReadOnly)) return {};
+    QList<QJsonObject> rows;
+    for (const auto &line : file.readAll().split('\n')) {
+        const auto document = QJsonDocument::fromJson(line);
+        if (document.isObject()) rows.append(document.object());
+    }
+    return rows;
+}
+
+bool helperReceiptsReaped(int offset) {
+    const auto rows = helperReceipts();
+    for (int index = offset; index < rows.size(); ++index) {
+        const auto row = rows[index];
+        QFile stat(QStringLiteral("/proc/%1/stat").arg(row.value("pid").toInteger()));
+        if (stat.open(QIODevice::ReadOnly) && QString::fromLatin1(stat.readAll().split(' ').value(21)) == row.value("start").toString()) return false;
+    }
+    return true;
+}
+
+class PhoneCredentialActorTests final : public QObject {
+    Q_OBJECT
+private slots:
+    void nativeHelperPipeline_data() {
+        QTest::addColumn<int>("scenario");
+        for (const auto &[name, scenario] : {std::pair{"success",1}, {"account-choice",2}, {"late-exit",3},
+                {"trailing-output",4}, {"nonzero-exit",5}, {"abort",6}, {"stale-id",7}, {"security-error",8},
+                {"route-before-started",9}, {"installed-policy",10}, {"rejected-close",11}, {"disable",12}, {"global-busy",13},
+                {"late-account-choice",14}, {"duplicate-progress",15}, {"synchronous-cancellation",16},
+                {"create-success",17}, {"create-excluded",18}, {"changed-startup-flags",19}})
+            QTest::newRow(name) << scenario;
+    }
+
+    void nativeHelperPipeline() {
+        QFETCH(int, scenario);
+        const auto proxy = QNetworkProxy::applicationProxy();
+        const auto system = QNetworkProxyFactory::usesSystemConfiguration();
+        const auto flags = qgetenv("QTWEBENGINE_CHROMIUM_FLAGS");
+        const auto restore = qScopeGuard([&] {
+            if (flags.isNull()) qunsetenv("QTWEBENGINE_CHROMIUM_FLAGS");
+            else qputenv("QTWEBENGINE_CHROMIUM_FLAGS", flags);
+            if (system) QNetworkProxyFactory::setUseSystemConfiguration(true);
+            else QNetworkProxy::setApplicationProxy(proxy);
+        });
+        QNetworkProxy::setApplicationProxy(QNetworkProxy(QNetworkProxy::NoProxy));
+        const int offset = helperReceipts().size();
+        PhoneActorCase current;
+        QVERIFY(current.open());
+        QCOMPARE(current.fixture.witness.certificateErrors, 0);
+        QTRY_VERIFY(current.lifetime.credentialTlsEligible(current.fixture.view, current.fixture.server.pageUrl()));
+        QVERIFY(current.request(scenario, scenario == 3 || scenario == 14 ? 1500 : 10000));
+        const auto chooserTitle = QStringLiteral("Choose an authenticator");
+        QTRY_VERIFY(visibleCredentialDialog(chooserTitle));
+        QPointer<QDialog> chooser(visibleCredentialDialog(chooserTitle));
+        auto *phone = chooser->findChild<QPushButton *>("credentialPhoneProvider");
+        QVERIFY(phone && phone->isEnabled());
+        chooser->windowHandle()->requestActivate();
+        QTRY_COMPARE(QGuiApplication::focusWindow(), chooser->windowHandle());
+        if (scenario == 9) {
+            // Connected after the actor's provider slot: change the route
+            // after start(), before the asynchronous started/stdin boundary.
+            connect(current.binding->boundary(), &FerricCredentialBoundary::providerChosen, this, [](bool selected) {
+                if (selected) QNetworkProxy::setApplicationProxy(QNetworkProxy(QNetworkProxy::HttpProxy, "127.0.0.1", 9));
+            });
+        }
+        QTest::mouseClick(phone, Qt::LeftButton);
+        const auto qrTitle = QStringLiteral("Use a phone passkey");
+        if (scenario == 2 || scenario == 14) {
+            QTRY_VERIFY(visibleCredentialDialog(qrTitle));
+            QPointer<QDialog> accounts(visibleCredentialDialog(qrTitle));
+            const auto bob = [&]() -> QPushButton * {
+                if (!accounts) return nullptr;
+                for (auto *button : accounts->findChildren<QPushButton *>()) if (button->text() == "Bob") return button;
+                return nullptr;
+            };
+            QTRY_VERIFY(bob());
+            if (scenario == 2) {
+                accounts->windowHandle()->requestActivate();
+                QTRY_COMPARE(QGuiApplication::focusWindow(), accounts->windowHandle());
+                QTest::mouseClick(bob(), Qt::LeftButton);
+            }
+        } else if (scenario == 3) {
+            const auto completing = [&] {
+                auto *dialog = visibleCredentialDialog(qrTitle);
+                if (dialog) for (auto *label : dialog->findChildren<QLabel *>()) if (label->text() == QStringLiteral("Finishing…")) return true;
+                return false;
+            };
+            QTRY_VERIFY(completing());
+        } else if (scenario == 6 || (scenario >= 10 && scenario <= 13) || scenario == 16 || scenario == 19) {
+            const auto qrDrawn = [&] {
+                auto *dialog = visibleCredentialDialog(qrTitle);
+                if (!dialog) return false;
+                for (auto *label : dialog->findChildren<QLabel *>()) if (!label->pixmap().isNull()) return true;
+                return false;
+            };
+            QTRY_VERIFY(qrDrawn());
+            if (scenario == 19) {
+                // Removing an admitted startup mapping cannot retrospectively
+                // change Chromium's already-initialized resolver policy.
+                if (flags.isNull()) qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu");
+                else qunsetenv("QTWEBENGINE_CHROMIUM_FLAGS");
+            }
+            else if (scenario == 10) current.interceptor.setSecurityDenyHosts({"cable.auth.com"});
+            else if (scenario == 11) {
+                QQmlComponent component(&current.fixture.engine);
+                component.setData("import QtQuick; Connections { property var host; target:host; function onClosing(event) {event.accepted=false} }", QUrl());
+                std::unique_ptr<QObject> reject(component.create());
+                QVERIFY(reject && reject->setProperty("host", QVariant::fromValue(static_cast<QObject *>(current.fixture.window))));
+                QVERIFY(!current.fixture.window->close());
+                QVERIFY(current.fixture.window->isVisible());
+            } else if (scenario == 12) current.integration->setLifetime(nullptr);
+            else if (scenario == 16) {
+                connect(current.binding, &FerricQuickCredentialBinding::leaseInvalidated, current.fixture.window, [&] { current.integration.reset(); });
+                current.interceptor.setBlockedHosts({"tracker.invalid"});
+                QVERIFY(!current.integration);
+            }
+            else if (scenario == 13) {
+                PhoneActorCase other;
+                QVERIFY(other.open());
+                QVERIFY(other.request(1));
+                QTRY_VERIFY(other.value("phoneDone").toBool());
+                QCOMPARE(other.value("phoneError").toString(), QStringLiteral("NotAllowedError"));
+                QCOMPARE(other.value("phoneId").toString(), QString());
+                current.value("phoneController.abort(new DOMException('fixture abort','AbortError'))");
+            } else current.value("phoneController.abort(new DOMException('fixture abort','AbortError'))");
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(current.value("phoneDone").toBool(), 15000);
+        QCOMPARE(current.value("phoneCount").toInt(), 1);
+        if (scenario == 1 || scenario == 2 || scenario == 17) {
+            QCOMPARE(current.value("phoneId").toString(), scenario == 2 ? QStringLiteral("Zml4dHVyZS0y") : QStringLiteral("Zml4dHVyZS0x"));
+            QVERIFY(current.value("phoneIDL").toBool());
+            QCOMPARE(current.value("phoneError").toString(), QString());
+        } else {
+            QCOMPARE(current.value("phoneId").toString(), QString());
+            QCOMPARE(current.value("phoneError").toString(), scenario == 18 ? QStringLiteral("InvalidStateError") : scenario == 8 ? QStringLiteral("SecurityError")
+                : scenario == 6 || (scenario >= 10 && scenario <= 13) || scenario == 16 ? QStringLiteral("AbortError") : QStringLiteral("NotAllowedError"));
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(helperReceiptsReaped(offset), 5000);
+        QTRY_VERIFY(!visibleCredentialDialog(qrTitle));
+        int requests = 0;
+        const auto rows = helperReceipts();
+        for (int index = offset; index < rows.size(); ++index) if (rows[index].value("kind").toString() == "request") ++requests;
+        QCOMPARE(requests, scenario == 9 ? 0 : 1);
+    }
+};
+
 int main(int argc, char **argv)
 {
     QtWebEngineQuick::initialize();
     QApplication application(argc, argv);
+    const bool helperFixture = qgetenv("FERRIC_PHONE_ACTOR_FIXTURE") == "1";
+    if (!FerricCredentialNetworkPolicy::capture(helperFixture)) return 1;
     if (!cxx_qt_init_crate_ferric_browser_engine_qt()) return 1;
+    if (helperFixture) {
+        PhoneCredentialActorTests tests;
+        return QTest::qExec(&tests, argc, argv);
+    }
     QuickCredentialSurfaceTests tests;
     return QTest::qExec(&tests, argc, argv);
 }

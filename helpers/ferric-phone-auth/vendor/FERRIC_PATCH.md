@@ -23,6 +23,18 @@ cumulative incoming CTAP payloads (including initial GetInfo) to 1 MiB before
 queueing or parsing another response. Tests exercise hostile counts, legitimate
 multiple resident assertions and the encrypted transport's queue boundary.
 
+Final CTAP2 makeCredential exclusion now has a separate typed error only when
+the actual final command carried a nonempty exclusion list. GetInfo, silent
+preflight, client-PIN and Get errors retain their generic classification. This
+matches the final-operation distinction used by platform clients; it does not
+invent a positive user-presence receipt. CTAP2.2 permits an exclusion status
+after the presence wait times out. The helper maps this evidence only for
+Create, and the browser accepts its allowlisted InvalidStateError only for
+that operation. U2F presence-free probes remain generic. The phone helper
+rejects appidExclude before transport and the shim leaves it to native WebAuthn,
+because hybrid intentionally skips the required legacy exclusion preflight.
+See [CTAP2.2 makeCredential](https://fidoalliance.org/specs/fido-v2.2-ps-20250714/fido-client-to-authenticator-protocol-v2.2-ps-20250714.html#authenticatorMakeCredential).
+
 The first supported route uses the two relay names advertised by this pinned
 library, TLS on port 443, no redirects, and validated public socket addresses.
 DNS is resolved once, and TLS uses the checked socket with the original hostname

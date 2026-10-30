@@ -88,6 +88,10 @@ public:
     // this shared profile, independently of which window supplied it.
     quint64 policyGeneration() const;
     bool attachedToProfile(QObject *profile) const;
+    // Private native admission for the fixed phone relay set. Complex ABP
+    // path policy is unsupported unless the requesting site already bypasses
+    // it; never infer approval from an arbitrary representative relay URL.
+    bool phoneTransportAllowed(const QUrl &requestingOrigin) const;
     bool enabled() const;
     void setEnabled(bool enabled);
 

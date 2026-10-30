@@ -27,6 +27,14 @@ cargo run --locked -p ferric-browser -- open https://example.org
 For a local release installation, see the
 [installation instructions](packaging/README.md#local-source-installation).
 
+`--direct-network` selects direct networking for every window and profile in a
+fresh GUI process. It rejects conflicting proxy environment variables or
+Chromium proxy options and cannot be forwarded to an already running browser.
+Without this option, Qt's system route remains in control. Phone passkeys are
+opt-in with `passkeys.phone = "on"`; they also require the installed helper,
+an eligible HTTPS connection and an admitted direct route. Physical-device
+qualification remains in progress.
+
 Useful development checks:
 
 ```sh

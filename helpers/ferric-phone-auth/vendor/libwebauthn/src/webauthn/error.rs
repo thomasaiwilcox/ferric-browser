@@ -10,6 +10,12 @@ pub use crate::proto::CtapError;
 pub enum Error<E> {
     #[error("ctap error: {0}")]
     Ctap(#[source] CtapError),
+    /// A nonempty exclusion list was rejected by the final CTAP2
+    /// makeCredential command. This is protocol-stage evidence, not an
+    /// independently verified user-presence receipt (CTAP2.2 permits an
+    /// exclusion response after the presence wait times out).
+    #[error("credential excluded by final makeCredential")]
+    ExcludedByMakeCredential,
     #[error("transport error: {0}")]
     Transport(#[source] E),
     #[error("platform error: {0}")]

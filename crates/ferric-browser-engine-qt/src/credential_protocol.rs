@@ -74,10 +74,23 @@ pub(crate) enum Operation {
         reason = "request encoder is retained for the later P05b2 caller"
     )
 )]
-pub(crate) struct NetworkPolicy {}
+pub(crate) struct NetworkPolicy {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<&'static str>,
+}
+
+impl NetworkPolicy {
+    // Only the private actor, after native direct-route admission, uses this.
+    pub(crate) fn direct() -> Self {
+        Self {
+            mode: Some("direct"),
+        }
+    }
+}
 
 /// Strict JSON value that rejects duplicate object members at every depth.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
 pub(crate) enum Json {
     Null,
     Bool(bool),
@@ -395,13 +408,19 @@ fn validate_result(body: &std::collections::BTreeMap<String, Json>, operation: O
     match operation {
         Operation::Create => credential_outer_fields(body),
         Operation::Get => {
-            if body.len() != 1 {
+            if !exact_fields(body, &["assertions"], &["accounts"]) {
                 return false;
             }
             let Some(Json::Array(assertions)) = body.get("assertions") else {
                 return false;
             };
-            !assertions.is_empty() && assertions.iter().all(credential_outer_shape)
+            !assertions.is_empty() && assertions.len() <= 16 && assertions.iter().all(credential_outer_shape)
+                && body.get("accounts").is_none_or(|accounts| {
+                    matches!(accounts, Json::Array(labels) if labels.len() == assertions.len()
+                        && labels.iter().all(|label| matches!(label, Json::Null)
+                            || matches!(label, Json::String(text) if !text.is_empty() && text.len() <= 512
+                                && !text.chars().any(|c| c.is_control() || matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')))))
+                })
         }
     }
 }
@@ -416,6 +435,7 @@ fn admission_error(code: &str) -> bool {
             | "invalid_request"
             | "request_too_large"
             | "transport_unavailable"
+            | "security_error"
     )
 }
 
@@ -513,13 +533,15 @@ pub(crate) fn decode_frame(
         }
         "error" => {
             let code = take_string(&mut body, "code")?;
-            if body.remove("implemented") == Some(Json::Bool(false))
-                && body.is_empty()
-                && admission_error(&code)
-            {
+            let implemented = body.remove("implemented");
+            if implemented == Some(Json::Bool(false)) && body.is_empty() && admission_error(&code) {
                 return Ok(HelperFrame::Error { id, code });
             }
-            if body.is_empty() && operation_error(&code) {
+            if implemented.is_none()
+                && body.is_empty()
+                && (operation_error(&code)
+                    || (code == "credential_excluded" && operation == Operation::Create))
+            {
                 Ok(HelperFrame::Error { id, code })
             } else {
                 Err(ProtocolError::InvalidFrame)
@@ -560,6 +582,19 @@ mod tests {
             serde_json::json!({"code":"unavailable","implemented":false}),
         );
         assert!(decode_frame(&admission, "r1", Operation::Get).is_ok());
+        for code in ["authenticator_failed", "credential_excluded"] {
+            for implemented in [
+                serde_json::json!(false),
+                serde_json::json!(true),
+                serde_json::Value::Null,
+            ] {
+                let annotated = envelope(
+                    "error",
+                    serde_json::json!({"code":code,"implemented":implemented}),
+                );
+                assert!(decode_frame(&annotated, "r1", Operation::Create).is_err());
+            }
+        }
         for bad in [
             envelope("error", serde_json::json!({"code":"no_input"})),
             envelope("error", serde_json::json!({"code":"invalid_request"})),
