@@ -85,7 +85,7 @@ impl ProfileStoreWorker {
     ) -> Result<(), StorageWorkerError> {
         self.submit(
             StorageOperation::SessionSave,
-            StorageCommand::SessionSave { path, snapshot },
+            StorageCommand::session_save(path, snapshot),
         )
     }
 

@@ -4,9 +4,11 @@
 #include "request_interceptor.h"
 
 #include <QList>
+#include <QDir>
 #include <QPointer>
 #include <QThread>
 #include <QtWebEngineCore/QWebEngineProfile>
+#include <QtWebEngineCore/QWebEngineProfileBuilder>
 
 #include <atomic>
 #include <utility>
@@ -17,6 +19,11 @@ std::atomic<quint64> nextProfileGeneration{1};
 
 FerricPublicProfileOwner::FerricPublicProfileOwner(
     FerricBrowserRequestInterceptor *interceptor, QObject *parent)
+    : FerricPublicProfileOwner(interceptor, Configuration{}, parent) {}
+
+FerricPublicProfileOwner::FerricPublicProfileOwner(
+    FerricBrowserRequestInterceptor *interceptor,
+    const Configuration &configuration, QObject *parent)
     : QObject(parent), interceptor_(interceptor),
       generation_(
           nextProfileGeneration.fetch_add(1, std::memory_order_relaxed)) {
@@ -24,7 +31,23 @@ FerricPublicProfileOwner::FerricPublicProfileOwner(
     return;
   }
 
-  auto *profile = new QWebEngineProfile(this);
+  QWebEngineProfile *profile = nullptr;
+  if (configuration.storageName.isEmpty()) {
+    // An accidental persistent path must not silently turn a private profile
+    // into a disk-backed profile or be ignored by a misleading configuration.
+    if (!configuration.persistentStoragePath.isEmpty() || !configuration.cachePath.isEmpty()) return;
+    profile = QWebEngineProfileBuilder::createOffTheRecordProfile(this);
+  } else {
+    if (!QDir::isAbsolutePath(configuration.persistentStoragePath)
+        || !QDir::isAbsolutePath(configuration.cachePath)) return;
+    QWebEngineProfileBuilder builder;
+    builder.setPersistentStoragePath(configuration.persistentStoragePath)
+        .setCachePath(configuration.cachePath)
+        .setPersistentPermissionsPolicy(QWebEngineProfile::PersistentPermissionsPolicy::AskEveryTime);
+    profile = builder.createProfile(configuration.storageName, this);
+  }
+  if (!profile) return;
+  profile->setPersistentPermissionsPolicy(QWebEngineProfile::PersistentPermissionsPolicy::AskEveryTime);
   if (!interceptor->attach(profile)) {
     delete profile;
     return;

@@ -600,6 +600,9 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn checkpoint_session(mut self: Pin<&mut Self>) -> bool {
+        if self.as_ref().rust().page_window_preparing || self.as_ref().rust().tab_ids.is_empty() {
+            return false;
+        }
         let now = elapsed_ms(self.as_ref().rust().binding_clock);
         let due = {
             let pinned = self.as_ref();

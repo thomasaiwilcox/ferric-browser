@@ -76,6 +76,8 @@ bool FerricProfileLifetime::ownProfile(QObject *factory, QObject *profile) {
     if (!factory || !profile || factory == profile || profile == this ||
         profile->thread() != thread())
         return false;
+    if (ownedProfile_ && (ownedProfile_ != profile || profile->parent() != factory))
+        return false;
     for (QObject *ancestor = factory; ancestor; ancestor = ancestor->parent())
         if (ancestor == profile)
             return false;
@@ -84,7 +86,27 @@ bool FerricProfileLifetime::ownProfile(QObject *factory, QObject *profile) {
     // WebEngineProfilePrototype owns its instance through a scoped pointer.
     // Keep that ownership intact rather than deleting the instance separately.
     profile->setParent(factory);
+    ownedProfile_ = profile;
     return true;
+}
+
+std::optional<FerricProfileLifetime::CurrentView>
+FerricProfileLifetime::currentView(QQuickItem *view) const {
+    QObject *profile = nullptr;
+    if (!isCurrentView(view, &profile, nullptr) || !ownedProfile_
+        || profile != ownedProfile_ || !ownedProfile_->parent()
+        || ownedProfile_->parent()->parent() != this) return std::nullopt;
+    const auto &entry = views_[view];
+    return CurrentView{entry.host, entry.ui, profile, entry.incarnation,
+                       entry.windowGeneration};
+}
+
+bool FerricProfileLifetime::matchesCurrentView(QQuickItem *view,
+                                               const CurrentView &expected) const {
+    const auto current = currentView(view);
+    return current && current->host == expected.host && current->ui == expected.ui
+        && current->profile == expected.profile && current->incarnation == expected.incarnation
+        && current->windowGeneration == expected.windowGeneration;
 }
 
 bool FerricProfileLifetime::retainWindow(QObject *host, QObject *ui) {

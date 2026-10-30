@@ -14,6 +14,14 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         policy: network_policy::PolicySnapshot,
     ) {
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            if this.credential_policy_epoch != 0 {
+                this.credential_policy_epoch =
+                    this.credential_policy_epoch.checked_add(1).unwrap_or(0);
+            }
+        }
         let valid = policy.compile_failures.is_empty();
         if valid {
             self.as_mut().set_blocking_policy_ready(false);

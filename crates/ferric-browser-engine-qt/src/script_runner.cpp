@@ -31,7 +31,7 @@ void FerricScriptRunner::finish(quint64 id, const QVariant &value) {
     pending_.erase(it);
     if (pending.timer) { pending.timer->stop(); pending.timer->deleteLater(); }
     if (!pending.owner || !pending.context || !pending.context->isValid()) return;
-    if (auto *engine = qjsEngine(this))
+    if (auto *engine = pending.context->engine())
         pending.callback.call({engine->toScriptValue(value)});
 }
 

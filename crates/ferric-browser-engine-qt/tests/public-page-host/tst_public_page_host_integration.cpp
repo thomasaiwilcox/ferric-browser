@@ -3,8 +3,11 @@
 #include "public_page_owner.h"
 #include "public_profile_owner.h"
 #include "request_interceptor.h"
+#include "credential_boundary.h"
+#include "../credential_https_fixture.h"
 
 #include <QApplication>
+#include <QClipboard>
 #include <QDebug>
 #include <QEventLoop>
 #include <QFileDialog>
@@ -19,6 +22,16 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QPushButton>
+#include <QWebEngineCertificateError>
+#include <QWebEngineFrame>
+#include <QWebEngineSettings>
+#include <QWebEngineScript>
+#include <QWebEngineScriptCollection>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QVariantMap>
@@ -246,6 +259,18 @@ QVariant runJavaScript(QWebEnginePage *page, const QString &script)
     });
 }
 
+QVariant runWorld(QWebEnginePage *page, const QString &script, quint32 world) {
+    return waitForJavaScriptResult([page, script, world](JavaScriptResultCallback callback) {
+        page->mainFrame().runJavaScript(script, world, std::move(callback));
+    });
+}
+
+void acceptFixtureCertificate(QWebEnginePage *page, const QUrl &fixture) {
+    QObject::connect(page, &QWebEnginePage::certificateError, page, [fixture](QWebEngineCertificateError error) {
+        if (error.url().host() == fixture.host() && error.url().port() == fixture.port()) error.acceptCertificate();
+    });
+}
+
 bool pageViewHasFocus(QWidget *view)
 {
     QWidget *focus = QApplication::focusWidget();
@@ -356,6 +381,7 @@ private:
         const quint64 documentGeneration = owner->documentGeneration();
         const quint64 pageGeneration = owner->pageGeneration();
         const quint64 ownerHostGeneration = owner->hostGeneration();
+        const quint64 presentationGeneration = owner->presentationGeneration();
         const int originalTabCount = browserUi->property("tab_count").toInt();
         const int originalActiveIndex = browserUi->property("active_tab_index").toInt();
         const QString ownerToken = first->pageOwnerToken();
@@ -477,6 +503,7 @@ private:
         QCOMPARE(owner->documentGeneration(), documentGeneration);
         QCOMPARE(owner->pageGeneration(), pageGeneration);
         QCOMPARE(owner->hostGeneration(), ownerHostGeneration);
+        QVERIFY(owner->presentationGeneration() > presentationGeneration);
         QCOMPARE(originalPage->url(), originalUrl);
         QCOMPARE(runJavaScript(originalPage, QStringLiteral("window.__ferricDocumentNonce")),
                  QStringLiteral("e2-retained"));
@@ -689,6 +716,408 @@ private:
     }
 
 private slots:
+    void productionCredentialBoundaryAndChoice()
+    {
+        FixtureServer server;
+        server.setDocuments(R"HTML(<!doctype html><title>Credential receiver</title>
+            <script>window.responses=[];addEventListener('message',e=>{
+              if(e.data && e.data.type==='ferric.credentials.response.v1') responses.push(e.data);});</script>
+            <iframe src='/frame'></iframe>)HTML", "<!doctype html><title>Hostile child</title>");
+        QVERIFY(server.start());
+        QTemporaryDir storage;
+        QQmlEngine engine;
+        std::unique_ptr<QObject> ui(makeBrowserUi(engine));
+        QVERIFY(ui && configureBrowserUi(ui.get(), storage.path()));
+        QString diagnostics;
+        QVERIFY2(waitForProfileBootstrap(ui.get(), &diagnostics), qPrintable(diagnostics));
+        FerricBrowserRequestInterceptor interceptor;
+        FerricPublicProfileOwner profile(&interceptor);
+        QObject lifetime;
+        auto *owner = profile.createPage(&lifetime);
+        FerricPublicPageHost host(ui.get(), profile.profile(), owner, nullptr, browserUiTabAt(ui.get(), 0));
+        auto *boundary = host.prepareCredentialBoundary();
+        QVERIFY(boundary && boundary->isReady());
+        acceptFixtureCertificate(owner->page(), server.pageUrl());
+        QSignalSpy captured(boundary, &FerricCredentialBoundary::requestCaptured);
+        QSignalSpy chosen(boundary, &FerricCredentialBoundary::providerChosen);
+        QSignalSpy cancelRequested(boundary, &FerricCredentialBoundary::cancelRequested);
+        QSignalSpy loaded(owner->page(), &QWebEnginePage::loadFinished);
+        host.show(); host.activateWindow(); host.pageView()->setFocus();
+        const QString url = server.pageUrl().toString();
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, url)));
+        QVERIFY(QMetaObject::invokeMethod(host.chromeView()->rootObject(), "dispatchPendingEngineRequest"));
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        QVERIFY(loaded.last().at(0).toBool());
+        QTRY_VERIFY_WITH_TIMEOUT(runWorld(owner->page(), "typeof __ferricCredentialMediator === 'object'", 42).toBool(), 5000);
+        QCOMPARE(runWorld(owner->page(), "typeof __ferricCredentialMediator", 0).toString(), QStringLiteral("undefined"));
+        QCOMPARE(runWorld(owner->page(), "typeof __ferricCredentialMediator", 1).toString(), QStringLiteral("undefined"));
+        QVERIFY(!runWorld(owner->page(), "typeof qt !== 'undefined' && !!qt.webChannelTransport", 0).toBool());
+        QVERIFY(!runWorld(owner->page(), "typeof qt !== 'undefined' && !!qt.webChannelTransport", 1).toBool());
+        const QString forged = "({type:'ferric.credentials.request.v1',id:'forged',op:'get',options:{challenge:'AA'}})";
+        runWorld(owner->page(), "dispatchEvent(new MessageEvent('message',{source:window,origin:location.origin,data:" + forged + "}))", 0);
+        QTRY_VERIFY_WITH_TIMEOUT(!owner->page()->mainFrame().children().isEmpty(), 5000);
+        auto child = owner->page()->mainFrame().children().first();
+        waitForJavaScriptResult([&](JavaScriptResultCallback callback) {
+            child.runJavaScript("parent.postMessage(" + forged + ", '*')", 0, std::move(callback));
+        });
+        QTest::qWait(100);
+        QCOMPARE(captured.count(), 0);
+        runWorld(owner->page(), "window.qt={webChannelTransport:{send:()=>{}}};postMessage({type:'ferric.credentials.request.v1',id:'phone',op:'get',origin:'https://evil.invalid',options:{challenge:'AA'}},location.origin)", 0);
+        QTRY_COMPARE_WITH_TIMEOUT(captured.count(), 1, 5000);
+        QVERIFY(boundary->request());
+        QCOMPARE(boundary->request()->origin, QStringLiteral("https://localhost:%1").arg(server.pageUrl().port()));
+        QCOMPARE(boundary->request()->id, QStringLiteral("phone"));
+        QVERIFY(!boundary->complete("{\"skippedChoice\":true}"));
+        QCOMPARE(chosen.count(), 0);
+        QTRY_VERIFY_WITH_TIMEOUT(host.isActiveWindow(), 3000);
+        QVERIFY(boundary->showProviderChoice(true));
+        auto *phone = host.findChild<QPushButton *>(QStringLiteral("credentialPhoneProvider"));
+        QVERIFY(phone && phone->isEnabled());
+        QTRY_VERIFY_WITH_TIMEOUT(phone->window()->isActiveWindow(), 3000);
+        QTest::mouseClick(phone, Qt::LeftButton);
+        QCOMPARE(chosen.count(), 1);
+        QVERIFY(chosen.first().first().toBool());
+        QVERIFY(boundary->complete("{\"ok\":true}"));
+        QVERIFY(!boundary->complete("{\"ok\":true}"));
+        QTRY_VERIFY_WITH_TIMEOUT(!boundary->request(), 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(runWorld(owner->page(), "responses.length", 0).toInt(), 1, 5000);
+        QVERIFY(runWorld(owner->page(), "responses[0].response.ok", 0).toBool());
+
+        runWorld(owner->page(), "postMessage({type:'ferric.credentials.request.v1',id:'native',op:'create',options:{challenge:'AA'}},location.origin)", 0);
+        QTRY_COMPARE_WITH_TIMEOUT(captured.count(), 2, 5000);
+        host.activateWindow();
+        QTRY_VERIFY_WITH_TIMEOUT(host.isActiveWindow(), 3000);
+        QVERIFY(boundary->showProviderChoice(false));
+        auto *native = host.findChild<QPushButton *>(QStringLiteral("credentialNativeProvider"));
+        QVERIFY(native);
+        QVERIFY(!host.findChild<QPushButton *>(QStringLiteral("credentialPhoneProvider"))->isEnabled());
+        QTRY_VERIFY_WITH_TIMEOUT(native->window()->isActiveWindow(), 3000);
+        QTest::mouseClick(native, Qt::LeftButton);
+        QCOMPARE(chosen.count(), 2);
+        QVERIFY(!chosen.last().first().toBool());
+        QVERIFY(boundary->complete("{\"native\":true}"));
+        QTRY_VERIFY_WITH_TIMEOUT(!boundary->request(), 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(runWorld(owner->page(), "responses.length", 0).toInt(), 2, 5000);
+
+        runWorld(owner->page(), "postMessage({type:'ferric.credentials.request.v1',id:'abort',op:'get',options:{challenge:'AA'}},location.origin);postMessage({type:'ferric.credentials.cancel.v1',id:'abort'},location.origin)", 0);
+        QTRY_COMPARE_WITH_TIMEOUT(runWorld(owner->page(), "responses.length", 0).toInt(), 3, 5000);
+        QCOMPARE(runWorld(owner->page(), "responses[2].response.error", 0).toString(), QStringLiteral("AbortError"));
+        QCOMPARE(captured.count(), 2);
+        QCOMPARE(cancelRequested.count(), 1);
+    }
+
+    void productionCredentialBoundaryInvalidation()
+    {
+        FixtureServer server;
+        server.setDocuments("<!doctype html><title>Credential lifetime</title>", "");
+        QVERIFY(server.start());
+        QTemporaryDir storage;
+        QQmlEngine engine;
+        std::unique_ptr<QObject> ui(makeBrowserUi(engine));
+        QVERIFY(ui && configureBrowserUi(ui.get(), storage.path()));
+        QString diagnostics;
+        QVERIFY2(waitForProfileBootstrap(ui.get(), &diagnostics), qPrintable(diagnostics));
+        FerricBrowserRequestInterceptor interceptor;
+        FerricPublicProfileOwner profile(&interceptor);
+        QObject lifetime;
+        auto *owner = profile.createPage(&lifetime);
+        const auto tab = browserUiTabAt(ui.get(), 0);
+        const auto profileId = browserUiProfileId(ui.get());
+        FerricPublicPageHost host(ui.get(), profile.profile(), owner, nullptr, tab);
+        FerricPublicPageHost destination(ui.get(), profile.profile());
+        auto *boundary = host.prepareCredentialBoundary();
+        QVERIFY(boundary && boundary->isReady());
+        acceptFixtureCertificate(owner->page(), server.pageUrl());
+        QSignalSpy captured(boundary, &FerricCredentialBoundary::requestCaptured);
+        QSignalSpy cancelled(boundary, &FerricCredentialBoundary::cancelled);
+        QSignalSpy loaded(owner->page(), &QWebEnginePage::loadFinished);
+        const QString url = server.pageUrl().toString();
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, url)));
+        QVERIFY(QMetaObject::invokeMethod(host.chromeView()->rootObject(), "dispatchPendingEngineRequest"));
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        QVERIFY(loaded.last().at(0).toBool());
+        runWorld(owner->page(), "postMessage({type:'ferric.credentials.request.v1',id:'reload',op:'get',options:{challenge:'AA'}},location.origin)", 0);
+        QTRY_COMPARE_WITH_TIMEOUT(captured.count(), 1, 5000);
+        const auto previous = *boundary->request();
+        loaded.clear();
+        owner->page()->triggerAction(QWebEnginePage::Reload);
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        QVERIFY(loaded.last().at(0).toBool());
+        QVERIFY(!boundary->request());
+        QVERIFY(!boundary->complete("{\"late\":true}"));
+        QCOMPARE(cancelled.count(), 1);
+        runWorld(owner->page(), "postMessage({type:'ferric.credentials.request.v1',id:'transfer',op:'get',options:{challenge:'AA'}},location.origin)", 0);
+        QTRY_COMPARE_WITH_TIMEOUT(captured.count(), 2, 5000);
+        QVERIFY(boundary->request()->documentNonce != previous.documentNonce);
+        const auto beforeTransfer = boundary->request()->owner;
+        QVERIFY(requestHostOperation(ui.get(), "detach_page_host", tab, profileId, host.hostToken(), host.pageOwnerToken()));
+        const auto detach = takeReparentRequest(ui.get());
+        const auto ownerToken = host.pageOwnerToken();
+        QVERIFY(host.applyNativeRequest(detach));
+        QVERIFY(!boundary->request());
+        QVERIFY(!owner->isCurrent(beforeTransfer));
+        QCOMPARE(cancelled.count(), 2);
+        QVERIFY(requestHostOperation(ui.get(), "attach_page_host", tab, profileId, destination.hostToken(), ownerToken));
+        QVERIFY(destination.applyNativeRequest(takeReparentRequest(ui.get())));
+        QCOMPARE(owner->findChild<FerricCredentialBoundary *>(), boundary);
+        QTest::qWait(100);
+        runWorld(owner->page(), "postMessage({type:'ferric.credentials.request.v1',id:'survivor',op:'get',options:{challenge:'AA'}},location.origin)", 0);
+        QTRY_COMPARE_WITH_TIMEOUT(captured.count(), 3, 5000);
+        QVERIFY(boundary->request());
+        // Advance the Rust target without dispatching a Qt load. The prior
+        // credential cannot acquire the newly selected document's authority.
+        const QString replacementUrl = url + QStringLiteral("?next");
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, replacementUrl)));
+        QVERIFY(!boundary->request());
+        QVERIFY(!boundary->complete("{\"late\":true}"));
+        owner->close();
+        QVERIFY(!boundary->request());
+        QVERIFY(!boundary->complete("{\"late\":true}"));
+        QCOMPARE(cancelled.count(), 3);
+    }
+
+    void credentialShimSemantics()
+    {
+        FixtureServer server;
+        server.setDocuments("<!doctype html><title>Credential shim semantics</title>", "");
+        QVERIFY(server.start());
+        QTemporaryDir storage;
+        QQmlEngine engine;
+        std::unique_ptr<QObject> ui(makeBrowserUi(engine));
+        QVERIFY(ui && configureBrowserUi(ui.get(), storage.path()));
+        QString diagnostics;
+        QVERIFY2(waitForProfileBootstrap(ui.get(), &diagnostics), qPrintable(diagnostics));
+        FerricBrowserRequestInterceptor interceptor;
+        FerricPublicProfileOwner profile(&interceptor);
+        QObject lifetime;
+        auto *owner = profile.createPage(&lifetime);
+        FerricPublicPageHost host(ui.get(), profile.profile(), owner, nullptr, browserUiTabAt(ui.get(), 0));
+        auto *boundary = host.prepareCredentialBoundary();
+        QVERIFY(boundary && boundary->isReady());
+        // Install the candidate only in this fixture. Production does not yet
+        // intercept real navigator.credentials calls or connect a provider.
+        QFile source(QStringLiteral(FERRIC_TEST_CREDENTIAL_SHIM));
+        QVERIFY(source.open(QIODevice::ReadOnly));
+        QWebEngineScript shim;
+        shim.setName("fixture-credential-shim");
+        shim.setWorldId(QWebEngineScript::MainWorld);
+        shim.setInjectionPoint(QWebEngineScript::DocumentCreation);
+        shim.setRunsOnSubFrames(false);
+        shim.setSourceCode(R"JS(
+            window.originalPlatformCapability = PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable;
+            window.nativeCredentialCalls = 0;
+            for (const operation of ['create', 'get']) {
+                const original = CredentialsContainer.prototype[operation];
+                CredentialsContainer.prototype[operation] = function (...args) {
+                    window.nativeCredentialCalls++;
+                    return Reflect.apply(original, this, args);
+                };
+            }
+        )JS"
+            + QString::fromUtf8(source.readAll()));
+        owner->page()->scripts().insert(shim);
+        acceptFixtureCertificate(owner->page(), server.pageUrl());
+        QSignalSpy captured(boundary, &FerricCredentialBoundary::requestCaptured);
+        QSignalSpy delivered(boundary, &FerricCredentialBoundary::responseCompleted);
+        QSignalSpy loaded(owner->page(), &QWebEnginePage::loadFinished);
+        host.show(); host.activateWindow(); host.pageView()->setFocus();
+        const QString url = server.pageUrl().toString();
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, url)));
+        QVERIFY(QMetaObject::invokeMethod(host.chromeView()->rootObject(), "dispatchPendingEngineRequest"));
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        QVERIFY(loaded.last().at(0).toBool());
+        QVERIFY(runWorld(owner->page(), "CredentialsContainer.prototype.__ferricCredentialShimV1 === true", 0).toBool());
+        QVERIFY(runWorld(owner->page(), "PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === originalPlatformCapability", 0).toBool());
+        const int capturedBeforeBlob = captured.count();
+        runWorld(owner->page(), R"JS(
+            window.blobNativeCallsBefore = nativeCredentialCalls;
+            window.blobDelegationsFinished = 0;
+            const blobAbort = new AbortController(); blobAbort.abort('native blob fixture');
+            navigator.credentials.create({publicKey:{rp:{name:'Fixture'},
+                user:{id:new Uint8Array([1]),name:'fixture',displayName:'Fixture'},
+                challenge:new Uint8Array([1]),pubKeyCredParams:[{type:'public-key',alg:-7}],
+                extensions:{credBlob:new Uint8Array([1])}},signal:blobAbort.signal})
+                .catch(() => window.blobDelegationsFinished++);
+            navigator.credentials.get({publicKey:{challenge:new Uint8Array([1]),
+                extensions:{getCredBlob:true}},signal:blobAbort.signal})
+                .catch(() => window.blobDelegationsFinished++);
+        )JS", 0);
+        QTRY_VERIFY(runWorld(owner->page(), "blobDelegationsFinished === 2", 0).toBool());
+        QVERIFY(runWorld(owner->page(), "nativeCredentialCalls - blobNativeCallsBefore === 2", 0).toBool());
+        QCOMPARE(captured.count(), capturedBeforeBlob);
+        runWorld(owner->page(), R"JS(
+            window.finishedCredential = null; window.credentialFailure = null;
+            const challengeStorage = new Uint8Array([9,1,2,3,8]);
+            const userStorage = new Uint8Array([9,4,5,8]);
+            navigator.credentials.create({publicKey:{rp:{name:'Fixture'},
+                user:{name:'fixture',displayName:'Fixture',id:new DataView(userStorage.buffer,1,2)},
+                challenge:challengeStorage.subarray(1,4),pubKeyCredParams:[{type:'public-key',alg:-7}],
+                extensions:{prf:{eval:{first:new Uint8Array([6,7])}}}}})
+                .then(value => finishedCredential=value, error => credentialFailure=error.name);
+            challengeStorage.fill(0); userStorage.fill(0);
+        )JS", 0);
+        QTRY_COMPARE(captured.count(), 1);
+        QVERIFY(boundary->request());
+        const auto options = QJsonDocument::fromJson(boundary->request()->options).object();
+        QCOMPARE(options.value("challenge").toString(), QStringLiteral("AQID"));
+        QCOMPARE(options.value("user").toObject().value("id").toString(), QStringLiteral("BAU"));
+        QCOMPARE(options.value("extensions").toObject().value("prf").toObject().value("eval").toObject().value("first").toString(), QStringLiteral("Bgc"));
+        QTRY_VERIFY(host.isActiveWindow());
+        QVERIFY(boundary->showProviderChoice(true));
+        auto *dialog = host.findChild<QDialog *>("ferricCredentialProviderChoice");
+        QVERIFY(dialog); QTRY_VERIFY(dialog->isActiveWindow());
+        auto *phone = dialog->findChild<QPushButton *>("credentialPhoneProvider");
+        QVERIFY(phone); QTest::mouseClick(phone, Qt::LeftButton);
+        // Synthetic bytes exercise IDL reconstruction only. They are not a
+        // valid attestation and no authenticator, helper or RP is involved.
+        const QByteArray result = R"JSON({"credential":{"id":"AQID","rawId":"AQID","type":"public-key","authenticatorAttachment":"cross-platform","response":{"clientDataJSON":"e30","authenticatorData":"AA","attestationObject":"AA","publicKey":"AQI","publicKeyAlgorithm":-7,"transports":["hybrid"]},"clientExtensionResults":{"prf":{"results":{"first":"AQI"}}}}})JSON";
+        QVERIFY(boundary->complete(result));
+        QVERIFY(!boundary->complete(result));
+        QTRY_COMPARE(delivered.count(), 1);
+        QVERIFY(delivered.last().at(0).toBool());
+        QTRY_VERIFY(runWorld(owner->page(), "finishedCredential instanceof PublicKeyCredential", 0).toBool());
+        QVERIFY(runWorld(owner->page(), "finishedCredential.response instanceof AuthenticatorAttestationResponse", 0).toBool());
+        QCOMPARE(runWorld(owner->page(), "Array.from(new Uint8Array(finishedCredential.rawId)).join(',')", 0).toString(), QStringLiteral("1,2,3"));
+        QCOMPARE(runWorld(owner->page(), "finishedCredential.response.getPublicKeyAlgorithm()", 0).toInt(), -7);
+        QCOMPARE(runWorld(owner->page(), "Array.from(new Uint8Array(finishedCredential.getClientExtensionResults().prf.results.first)).join(',')", 0).toString(), QStringLiteral("1,2"));
+        QCOMPARE(runWorld(owner->page(), "finishedCredential.toJSON().id", 0).toString(), QStringLiteral("AQID"));
+        QCOMPARE(runWorld(owner->page(), "PublicKeyCredential.prototype.toJSON.call(finishedCredential).id", 0).toString(), QStringLiteral("AQID"));
+        QVERIFY(runWorld(owner->page(), "const nativeTransports=AuthenticatorAttestationResponse.prototype.getTransports;AuthenticatorAttestationResponse.prototype.getTransports=function(){return nativeTransports.call(this).concat('prototype-fixture')};finishedCredential.response.getTransports().includes('prototype-fixture')", 0).toBool());
+        QVERIFY(runWorld(owner->page(), "finishedCredential.response.getTransports=()=>['fixture'];finishedCredential.response.getTransports()[0]==='fixture'", 0).toBool());
+        runWorld(owner->page(), R"JS(
+            window.preAborted = false; const aborted = new AbortController(); aborted.abort('fixture reason');
+            navigator.credentials.get({publicKey:{challenge:new Uint8Array([1])},signal:aborted.signal})
+                .catch(error => preAborted=error === 'fixture reason');
+        )JS", 0);
+        QTRY_VERIFY(runWorld(owner->page(), "preAborted", 0).toBool());
+        QCOMPARE(captured.count(), 1);
+        runWorld(owner->page(), R"JS(
+            window.abortedCorrectly = false; window.cancelling = new AbortController();
+            navigator.credentials.get({publicKey:{challenge:new Uint8Array([1])},signal:cancelling.signal})
+                .catch(error => abortedCorrectly=error === 'late fixture abort');
+        )JS", 0);
+        QTRY_COMPARE(captured.count(), 2);
+        runWorld(owner->page(), "cancelling.abort('late fixture abort')", 0);
+        QTRY_VERIFY(runWorld(owner->page(), "abortedCorrectly", 0).toBool());
+        QTRY_VERIFY(!boundary->request());
+        QVERIFY(!boundary->complete(result));
+    }
+
+    void capturedCommandsUseProductionDispatcher()
+    {
+        FixtureServer server;
+        server.setDocuments(R"HTML(<!doctype html><title>Native commands</title>
+            <body><p>needle needle Needle</p><form method='post' action='/posted'>
+            <input name='field' value='original'><button>Submit</button></form>
+            <div style='height:4000px'>Tall page</div></body>)HTML", "");
+        QVERIFY(server.start());
+        QTemporaryDir storage;
+        QQmlEngine engine;
+        std::unique_ptr<QObject> ui(makeBrowserUi(engine));
+        QVERIFY(ui && configureBrowserUi(ui.get(), storage.path()));
+        QString diagnostics;
+        QVERIFY2(waitForProfileBootstrap(ui.get(), &diagnostics), qPrintable(diagnostics));
+        FerricBrowserRequestInterceptor interceptor;
+        FerricPublicProfileOwner profile(&interceptor);
+        QObject lifetime;
+        auto *owner = profile.createPage(&lifetime);
+        FerricPublicPageHost host(ui.get(), profile.profile(), owner, nullptr, browserUiTabAt(ui.get(), 0));
+        QVERIFY(host.isReady());
+        acceptFixtureCertificate(owner->page(), server.pageUrl());
+        QSignalSpy loaded(owner->page(), &QWebEnginePage::loadFinished);
+        QSignalSpy results(&host, &FerricPublicPageHost::capturedCommandFinished);
+        host.resize(900, 600); host.show(); host.activateWindow(); host.pageView()->setFocus();
+        auto dispatch = [&] {
+            return QMetaObject::invokeMethod(host.chromeView()->rootObject(), "dispatchPendingEngineRequest");
+        };
+        auto action = [&](const char *method) {
+            return QMetaObject::invokeMethod(ui.get(), method, Qt::DirectConnection) && dispatch();
+        };
+        auto command = [&](const QString &text) {
+            bool accepted = false;
+            return QMetaObject::invokeMethod(ui.get(), "execute_command", Qt::DirectConnection,
+                Q_RETURN_ARG(bool, accepted), Q_ARG(QString, text)) && accepted && dispatch();
+        };
+        const QString first = server.pageUrl().toString();
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, first)));
+        QVERIFY(dispatch());
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        QVERIFY(loaded.last().at(0).toBool());
+        // The compositor owns a disposable clipboard. Exercise the native
+        // retained field through typed browser commands, without JS editing.
+        host.pageView()->setFocus();
+        runWorld(owner->page(), "document.querySelector('input').focus();document.querySelector('input').select()", 0);
+        QApplication::clipboard()->setText("native fixture paste");
+        QVERIFY(command("edit paste"));
+        QTRY_COMPARE(runWorld(owner->page(), "document.querySelector('input').value", 0).toString(), QStringLiteral("native fixture paste"));
+        runWorld(owner->page(), "document.querySelector('input').select()", 0);
+        QVERIFY(command("edit cut"));
+        QTRY_COMPARE(runWorld(owner->page(), "document.querySelector('input').value", 0).toString(), QString());
+        QCOMPARE(QApplication::clipboard()->text(), QStringLiteral("native fixture paste"));
+        QVERIFY(command("edit paste-plain"));
+        QTRY_COMPARE(runWorld(owner->page(), "document.querySelector('input').value", 0).toString(), QStringLiteral("native fixture paste"));
+        QVERIFY(command("zoom 1.25"));
+        QTRY_COMPARE(owner->page()->zoomFactor(), 1.25);
+        QVERIFY(command("jseval 'window.nativeCommandProof = 7'"));
+        QTRY_VERIFY(!results.isEmpty());
+        QCOMPARE(runWorld(owner->page(), "window.nativeCommandProof", 1).toInt(), 7);
+        QVERIFY(!runWorld(owner->page(), "window.nativeCommandProof", 0).isValid());
+        results.clear();
+        QVERIFY(command("scroll-to bottom"));
+        QTRY_VERIFY(!results.isEmpty());
+        QVERIFY(runWorld(owner->page(), "scrollY", 0).toDouble() > 500);
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "enter_search", Qt::DirectConnection, Q_ARG(bool, false)));
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "search_changed", Qt::DirectConnection, Q_ARG(QString, QStringLiteral("Needle"))));
+        results.clear(); QVERIFY(dispatch());
+        QTRY_VERIFY(!results.isEmpty());
+        QCOMPARE(results.last().at(1).toMap().value("count").toInt(), 1);
+        QVERIFY(action("escape"));
+        loaded.clear(); QVERIFY(command("reload"));
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        QCOMPARE(server.requestCount("GET", "/page"), 2);
+        QVERIFY(!host.findChild<QDialog *>("nativeFormReloadConfirmation"));
+        loaded.clear();
+        const QString second = first + "?second";
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, second)));
+        QVERIFY(dispatch());
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        loaded.clear(); QVERIFY(command("back"));
+        QTRY_COMPARE_WITH_TIMEOUT(owner->page()->url().toString(), first, 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        loaded.clear(); QVERIFY(command("forward"));
+        QTRY_COMPARE_WITH_TIMEOUT(owner->page()->url().toString(), second, 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        // A real POST entry requires an owned confirmation before any repeat.
+        loaded.clear();
+        runWorld(owner->page(), "document.querySelector('form').submit()", 0);
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        QCOMPARE(server.requestCount("POST", "/posted"), 1);
+        QVERIFY(command("reload"));
+        QTRY_VERIFY(host.findChild<QDialog *>("nativeFormReloadConfirmation"));
+        auto *dialog = host.findChild<QDialog *>("nativeFormReloadConfirmation");
+        dialog->reject();
+        QTest::qWait(100);
+        QCOMPARE(server.requestCount("POST", "/posted"), 1);
+        QTRY_VERIFY(!host.findChild<QDialog *>("nativeFormReloadConfirmation"));
+        QVERIFY(command("reload"));
+        QTRY_VERIFY(host.findChild<QDialog *>("nativeFormReloadConfirmation"));
+        dialog = host.findChild<QDialog *>("nativeFormReloadConfirmation");
+        auto *resend = dialog->findChild<QPushButton *>("nativeFormReloadResend");
+        QVERIFY(resend); loaded.clear(); QTest::mouseClick(resend, Qt::LeftButton);
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        QCOMPARE(server.requestCount("POST", "/posted"), 2);
+        QTRY_VERIFY(!host.findChild<QDialog *>("nativeFormReloadConfirmation"));
+        QVERIFY(command("reload"));
+        QTRY_VERIFY(host.findChild<QDialog *>("nativeFormReloadConfirmation"));
+        QPointer<QDialog> closingDialog = host.findChild<QDialog *>("nativeFormReloadConfirmation");
+        owner->close();
+        QTRY_VERIFY(!closingDialog || !closingDialog->isVisible());
+        QVERIFY(!host.pageView()->isEnabled());
+        QVERIFY(!host.pageView()->isVisible());
+        QCOMPARE(server.requestCount("POST", "/posted"), 2);
+
+    }
+
     void capturedNavigationUsesProductionDispatcher()
     {
         QTcpServer server;
@@ -735,6 +1164,23 @@ private slots:
         QTRY_COMPARE(ui->property("current_url").toString(), url);
         QTRY_COMPARE(ui->property("load_state").toString(), QStringLiteral("complete"));
         QCOMPARE(ui->property("page_title").toString(), QStringLiteral("Captured navigation"));
+
+        // Leave an actual browser command queued across a same-URL native
+        // replacement. It must not acquire the replacement's stamp on dequeue.
+        auto *wakeup = host->chromeView()->rootObject()->property("requestWakeup").value<QObject *>();
+        auto *pump = host->chromeView()->rootObject()->property("requestPump").value<QObject *>();
+        QVERIFY(wakeup && pump);
+        wakeup->setProperty("enabled", false); pump->setProperty("running", false);
+        bool queued = false;
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "execute_command", Qt::DirectConnection,
+            Q_RETURN_ARG(bool, queued), Q_ARG(QString, QStringLiteral("jseval 'document.documentElement.dataset.nativeQueuedProof = 1'"))));
+        QVERIFY(queued);
+        loaded.clear(); owner->page()->triggerAction(QWebEnginePage::Reload);
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        QVERIFY(loaded.last().at(0).toBool());
+        QVERIFY(QMetaObject::invokeMethod(host->chromeView()->rootObject(), "dispatchPendingEngineRequest"));
+        QTest::qWait(100);
+        QCOMPARE(runWorld(owner->page(), "document.documentElement.dataset.nativeQueuedProof === undefined", 0).toBool(), true);
 
         const QString staleUrl = QStringLiteral("http://127.0.0.1:%1/stale").arg(server.serverPort());
         QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, staleUrl)));

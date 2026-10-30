@@ -20,11 +20,50 @@ ApplicationWindow {
     readonly property alias browserKeyRouterObject: secondaryKeyRouter
     width: 1180
     height: 760
-    visible: true
+    visible: secondaryPageIdentity.prepared && windowInitialVisible
+    property bool windowInitialVisible: true
+    FerricPageWindowIdentity { id: secondaryPageIdentity; targetWindow: secondaryWindow }
+    readonly property string pageWindowTag: secondaryPageIdentity.tag
+    property string pageGroupId: secondaryPageIdentity.tag
+    property bool windowPreparedPageMode: false
+    property var windowPreparedPageSourceUi: null
+    property string windowPreparedPageId: ""
+    property bool windowPreparedPageAccepted: false
+    property bool windowPreparedPageAdmitted: false
+    property bool windowPreparedPageCommitted: false
+    property bool windowPreparedPageActivateRequested: false
+    property var windowPreparedPageFocusSource: null
+    Timer {
+        id: preparedPageCommitTimer
+        interval: 0
+        onTriggered: {
+            secondaryWindow.completeProfileBootstrap()
+            if (secondaryWindow.profileBootstrapComplete && secondaryWindow.windowPreparedPageActivateRequested
+                    && secondaryWindow.windowPreparedPageFocusSource
+                    && secondaryWindow.windowPreparedPageFocusSource.active)
+                rootWindow.activateBrowserWindow(secondaryWindow, secondaryUi)
+        }
+    }
+    onWindowPreparedPageCommittedChanged: if (windowPreparedPageCommitted) preparedPageCommitTimer.restart()
+    Timer {
+        id: preparedPageReadyTimer
+        interval: 0
+        onTriggered: rootWindow.pageWindowCoordinator.resumePreparedPage(secondaryWindow)
+    }
+    Timer {
+        interval: 15000
+        running: secondaryWindow.windowPreparedPageAdmitted && !secondaryWindow.windowPreparedPageAccepted
+        onTriggered: rootWindow.pageWindowCoordinator.failPreparedPage(secondaryWindow)
+    }
+    onWindowPreparedPageAcceptedChanged: if (windowPreparedPageAccepted) preparedPageReadyTimer.restart()
+    property real windowPreparedScrollX: -1
+    property real windowPreparedScrollY: -1
     readonly property string windowPrivacyLabel: secondaryPrivacyHeader.label
     title: "Ferric Browser · "
            + (secondaryWindow.windowPrivacyLabel.length > 0 ? secondaryWindow.windowPrivacyLabel + " · " : "")
            + (secondaryWindow.windowEphemeralProfile ? secondaryWindow.windowProfileLabel : secondaryWindow.windowProfileName)
+           + (secondaryUi.feature_tabs_presentation_effective === "windows" && secondaryUi.page_title.length > 0
+              ? " · " + secondaryUi.page_title : "")
     color: secondaryAppearance.backgroundColor
     font: secondaryAppearance.font
     palette.window: secondaryAppearance.backgroundColor
@@ -59,10 +98,12 @@ ApplicationWindow {
     property var windowInheritedUi: null
     property var windowSharedRequestInterceptor: null
     property bool windowPopup: false
+    property bool windowOrdinaryPage: !windowPopup
     property var windowPopupRequest: null
     property var windowPopupOpenerUi: null
     property string windowPopupToken: ""
     FerricPopupOwnerBridge { id: popupOwnerBridge }
+    function commitPreparedPage() { return popupOwnerBridge.commitPageWindow() }
     property var windowTransferView: null
     property var windowTransferSourceUi: null
     property var windowTransferSourceHost: null
@@ -578,6 +619,7 @@ ApplicationWindow {
 
     BrowserUi {
         id: secondaryUi
+        page_window_ordinary: secondaryWindow.windowOrdinaryPage
         hint_chrome_available: true
         status_text: "Ready"
         onRuntime_work_available: secondaryWindow.scheduleRuntimeWork(0)
@@ -591,11 +633,13 @@ ApplicationWindow {
                     && secondaryUi.mode !== "command"
                     && secondaryUi.status_text !== "Normal mode") {
                 var loweredStatus = secondaryUi.status_text.toLowerCase()
-                secondaryWindow.showCommandNotice(
-                    secondaryUi.status_text,
-                    loweredStatus.indexOf("failed") >= 0
-                    || loweredStatus.indexOf("error") >= 0
-                    || loweredStatus.indexOf("rejected") >= 0)
+                var statusIsError = loweredStatus.indexOf("failed") >= 0
+                        || loweredStatus.indexOf("error") >= 0
+                        || loweredStatus.indexOf("rejected") >= 0
+                // Background load/focus updates must not bury an error. A
+                // subsequent explicit command can replace the notice normally.
+                if (!secondaryWindow.commandNoticeError || statusIsError)
+                    secondaryWindow.showCommandNotice(secondaryUi.status_text, statusIsError)
             }
         }
     }
@@ -883,6 +927,16 @@ function onContext_workspaceChanged() {
         rootWindow.restoreOverlayFocus(secondaryWindow)
     }
     function applySwitcherEngineAction() {
+        // Profile policy can finish after a page's navigation is queued.
+        // Keep that request owned until this host has materialized its view.
+        if (!profileBootstrapComplete || runtimeReleased) return
+        if (windowPreparedPageMode && !windowPreparedPageCommitted) return
+        if (secondaryUi.feature_tabs_presentation_effective === "windows") {
+            secondaryWindow.syncTabModel()
+            if (rootWindow.pageWindowCoordinator.pendingExpansion
+                    && rootWindow.pageWindowCoordinator.pendingExpansion.controller.browserUi === secondaryUi) return
+            if (rootWindow.pageWindowCoordinator.hasPendingFor(secondaryUi)) return
+        }
         if (EngineRequests.execute(secondaryUi.take_engine_request(), secondaryUi, secondaryWindow, rootWindow)) return
         var action = secondaryUi.take_engine_action()
         if (!action || action.length === 0) {
@@ -890,6 +944,10 @@ function onContext_workspaceChanged() {
         }
         if (action.indexOf("new-window\t") === 0 || action.indexOf("context-window\t") === 0) {
             rootWindow.executeNewWindowAction(secondaryUi, action)
+            return
+        }
+        if (action.indexOf("command-error\t") === 0) {
+            secondaryWindow.showCommandNotice(action.split("\t").slice(1).join("\t"), true)
             return
         }
         if (action.indexOf("window-focus\t") === 0) {
@@ -919,6 +977,11 @@ function onContext_workspaceChanged() {
             var tabCloseCount = Number(tabCloseActiveParts[1])
             if (!Number.isFinite(tabCloseCount) || tabCloseCount < 1 || tabCloseCount > 100) {
                 secondaryUi.status_text = "Tab close count is invalid"
+                return
+            }
+            if (secondaryUi.feature_tabs_presentation_effective === "windows" && secondaryUi.tab_count === 1) {
+                if (!secondaryTabs.get(0).pinned) secondaryWindow.closeTabAtIndex(0)
+                else secondaryUi.status_text = "No unpinned tabs available to close"
                 return
             }
             var closedCount = 0
@@ -1242,9 +1305,10 @@ function onContext_workspaceChanged() {
     readonly property string tabPosition: secondaryUi.chrome_tab_position
     readonly property bool sideTabs: tabPosition === "left" || tabPosition === "right"
     readonly property real sideTabWidth: Math.max(160, Math.min(280, width * 0.22))
-    readonly property bool tabStripVisible: secondaryUi.chrome_tabs_mode === "always"
+    readonly property bool tabStripVisible: (secondaryUi.feature_tabs_presentation_effective !== "windows" || tabViews.length > 1)
+        && (secondaryUi.chrome_tabs_mode === "always"
         || (secondaryUi.chrome_tabs_mode === "multiple" && secondaryUi.tab_count > 1)
-        || (secondaryUi.chrome_tabs_mode === "switching" && tabSwitchingVisible)
+        || (secondaryUi.chrome_tabs_mode === "switching" && tabSwitchingVisible))
     function noteTabActivity() { tabSwitchingVisible = true; secondaryTabSwitchTimer.restart() }
     Timer { id: secondaryTabSwitchTimer; interval: 800; onTriggered: secondaryWindow.tabSwitchingVisible = false }
     FerricTabStrip {
@@ -1295,6 +1359,7 @@ function onContext_workspaceChanged() {
     FerricTabViewController {
         id: secondaryTabController
         ready: secondaryWindow.profileBootstrapComplete && !secondaryWindow.runtimeReleased
+        pageWindowCoordinator: rootWindow.pageWindowCoordinator
         browserUi: secondaryUi
         browserHost: secondaryWindow
         tabs: secondaryTabs
@@ -1412,6 +1477,10 @@ function onContext_workspaceChanged() {
         var view = tabViewAt(index)
         if (index < 0 || !view) {
             return false
+        }
+        if (secondaryUi.feature_tabs_presentation_effective === "windows" && secondaryUi.tab_count === 1) {
+            secondaryWindow.close()
+            return true
         }
         rootWindow.clearPageDialogForView(view)
         rootWindow.clearClientCertificateForView(view)
@@ -1740,6 +1809,17 @@ function onContext_workspaceChanged() {
             secondaryWindow.completeProfileBootstrap()
             return
         }
+        if (secondaryWindow.windowPreparedPageMode) {
+            if (!popupOwnerBridge.preparePageWindow(windowPreparedPageSourceUi, secondaryUi, windowPreparedPageId)) {
+                secondaryWindow.rejectPopupAdmission()
+                return
+            }
+            windowPreparedPageAdmitted = true
+            windowPreparedPageSourceUi = null
+            if (secondaryUi.profile_bootstrap_pending) secondaryProfileBootstrapTimer.start()
+            else secondaryWindow.completeProfileBootstrap()
+            return
+        }
         if (secondaryWindow.windowInheritedUi) {
             var inherited = popupOwnerBridge.inheritProfile(windowInheritedUi, secondaryUi, windowProfileName)
             windowInheritedUi = null
@@ -1832,6 +1912,12 @@ function onContext_workspaceChanged() {
     function completeProfileBootstrap() {
         if (runtimeReleased || profileBootstrapComplete || !secondaryUi.profile_available()
                 || (!windowPopup && secondaryUi.profile_bootstrap_pending)) return
+        if (windowPreparedPageMode && !windowPreparedPageCommitted) {
+            // A prepared window owns no engine document, prompt or published
+            // IPC owner until the source releases the unpresented page.
+            windowPreparedPageAccepted = true
+            return
+        }
         rootWindow.profileResourceRegistry.activateWindow(secondaryWindow)
         // Disable the inherited popup visibility binding before marking this
         // host bootstrapped. The page and resource registry must be ready for
@@ -1867,7 +1953,23 @@ function onContext_workspaceChanged() {
             request.openIn(view)
             windowPopupRequest=null
             popupRequestAdopted=true
-            secondaryWindow.visible=popupRequestAdopted && profileBootstrapComplete
+            secondaryWindow.visible=popupRequestAdopted && profileBootstrapComplete && windowInitialVisible
+            return
+        }
+        if (windowPreparedPageMode) {
+            if (secondaryTabs.count !== 1 || !secondaryWindow.activeView
+                    || secondaryWindow.activeView.profile !== windowSharedProfile) return
+            secondaryTabs.setProperty(0, "scrollX", windowPreparedScrollX)
+            secondaryTabs.setProperty(0, "scrollY", windowPreparedScrollY)
+            // Release the private single-use intent only after the committed
+            // Core identity and its actual shared-profile view both exist.
+            var preparationError = popupOwnerBridge.activatePreparedPage()
+            if (preparationError.length > 0) {
+                secondaryUi.status_text = preparationError
+                secondaryWindow.showCommandNotice(preparationError, true)
+            }
+            secondaryWindow.applySwitcherEngineAction()
+            windowPreparedPageAccepted = true
             return
         }
         if (secondaryWindow.windowTransferMode) {
@@ -2013,6 +2115,9 @@ function onContext_workspaceChanged() {
         rootWindow.profileResourceRegistry.releaseWindow(secondaryWindow)
         secondaryUi.view_closed()
         secondaryUi.release_transient_resources()
+        if (rootWindow.primaryPageRetired && !rootWindow.applicationShutdownInProgress
+                && rootWindow.liveWindowEntries().length === 0)
+            rootWindow.beginApplicationShutdown()
     }
     Component.onDestruction: {
         if (!secondaryWindow.runtimeReleased && !rootWindow.runtimeDisposing) releaseWindowResources()

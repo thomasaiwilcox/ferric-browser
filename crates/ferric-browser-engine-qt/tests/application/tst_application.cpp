@@ -229,11 +229,16 @@ void ApplicationTests::init() {
     const bool identityTemporary = testName == "productPolishPrivacyIdentity" && dataTag.endsWith("-temporary");
     const bool recoveryTemporary = (testName == "productPolishTabRecovery" || testName == "productPolishLastTabUndo")
         && dataTag.startsWith("temporary-");
-    const bool durable = !identityPrivate && !identityTemporary && !recoveryTemporary && (testName.startsWith("durablePersistence")
+    const bool windowContext = testName == "pageWindowPresentation" && (dataTag == "activation-context" || dataTag == "session-aggregate");
+    const bool durable = windowContext || !identityPrivate && !identityTemporary && !recoveryTemporary && (testName.startsWith("durablePersistence")
                          || testName == "selectorValidationRejectsWholeCandidate"
                          || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary"
                              && !(testName == "productPolishDiagnosticLifecycle" && QString::fromLatin1(QTest::currentDataTag()) == "private")));
     QString startupConfig = "{\"schema_version\":3}";
+    if (testName == "credentialViewAssociation")
+        startupConfig = R"JSON({"schema_version":3,"passkeys":{"phone":"on"}})JSON";
+    if (testName == "pageWindowPresentation")
+        startupConfig = R"JSON({"schema_version":3,"tabs":{"presentation":"windows"}})JSON";
     if (testName == "productPolishExternalActionFeedback") {
         const auto tag = QString::fromLatin1(QTest::currentDataTag());
         const auto subject = tag.startsWith("selection") ? "selection" : "url";
@@ -298,7 +303,7 @@ void ApplicationTests::init() {
         QVERIFY(invalidConfig.open(QIODevice::WriteOnly));
         invalidConfig.write("schema_version = [ malformed private setting");
     }
-    engine->setInitialProperties(
+    QVariantMap initialProperties
         {{"temporaryProfile", !durable},
          {"ephemeralProfile", identityTemporary || recoveryTemporary},
          {"ephemeralInvocationToken", identityTemporary ? QString("privacy-identity-fixture")
@@ -318,7 +323,10 @@ void ApplicationTests::init() {
          {"startupCleanLink", testName == "productPolishStartupCleanLink"},
          {"startupUrl", QString("http://127.0.0.1:%1/fixture.html%2")
                             .arg(server.serverPort()).arg(testName == "productPolishStartupCleanLink"
-                                ? "?keep=yes&utm_source=polish" : "")}});
+                                ? "?keep=yes&utm_source=polish" : "")}};
+    if (windowContext) initialProperties.insert("startupContextsJson", QStringLiteral(
+        R"JSON({"schema_version":3,"contexts":[{"name":"changed","label":"Changed","profile":"default"}]})JSON"));
+    engine->setInitialProperties(initialProperties);
     qInfo() << "loading production QML";
     engine->load(QUrl("qrc:/qt/qml/io/github/ferricbrowser/qml/Main.qml"));
     qInfo() << "production QML created";

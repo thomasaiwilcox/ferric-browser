@@ -1,0 +1,403 @@
+#include "tst_application.h"
+#include "owned_browser_keyboard.h"
+#include <QQuickItem>
+#include <QQmlContext>
+#include <QGuiApplication>
+#include <QPointer>
+#include <QtTest>
+#include <QDirIterator>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+
+namespace {
+QQuickItem *findVisible(QQuickItem *parent, const QString &name) {
+    if (parent->isVisible() && parent->objectName() == name) return parent;
+    for (auto *child : parent->childItems()) if (auto *match = findVisible(child, name)) return match;
+    return nullptr;
+}
+bool clickCloseDecision(QQuickWindow *host, bool proceed) {
+    QSignalSpy frame(host, &QQuickWindow::frameSwapped);
+    host->requestUpdate();
+    if (!QTest::qWaitFor([&] { return !frame.isEmpty(); })) return false;
+    auto *button = findVisible(host->contentItem(), proceed ? "shutdownProceedButton" : "shutdownKeepButton");
+    if (!button) return false;
+    QTest::mouseClick(host, Qt::LeftButton, Qt::NoModifier, button->mapToScene(button->boundingRect().center()).toPoint());
+    return true;
+}
+}
+
+void ApplicationTests::pageWindowPresentation_data()
+{
+    QTest::addColumn<QString>("scenario");
+    for (const auto *scenario : {"window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+        QTest::newRow(scenario) << QString::fromLatin1(scenario);
+}
+
+void ApplicationTests::pageWindowPresentation()
+{
+    QFETCH(QString, scenario);
+    QCOMPARE(text("feature_tabs_presentation_effective"), QStringLiteral("windows"));
+    QPointer<QObject> sourceView(evaluate("testWindow.activeWebView()").value<QObject *>());
+    QVERIFY(sourceView);
+    const auto sourceId = evaluate("testWindow.browserUi.tab_id_for_index(0)").toString();
+    const auto initial = page("location.href").toString();
+    QVERIFY(!initial.isEmpty());
+    page("window.pageWindowDraft = 'unfinished work'");
+    QVERIFY(!evaluate("testWindow.tabStripVisible").toBool());
+    QVERIFY(!evaluate("testWindow.pageWindowTag").toString().isEmpty());
+
+    if (scenario == "expansion-cancel") {
+        evaluate("for(var i=0;i<12;++i)testWindow.browserUi.new_tab(); testWindow.syncTabModel()");
+        QTRY_VERIFY(evaluate("!!testWindow.pageWindowCoordinator.expansionPrompt").toBool());
+        QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 1);
+        QCOMPARE(evaluate("testWindow.tabViews.length").toInt(), 1);
+        sendOwnedBrowserKey(window, Qt::Key_Escape);
+        QTRY_VERIFY(!evaluate("testWindow.pageWindowCoordinator.pendingExpansion").toBool());
+        QCOMPARE(evaluate("testWindow.browserUi.tab_count").toInt(), 1);
+        QCOMPARE(evaluate("testWindow.tabViews.length").toInt(), 1);
+        QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), sourceView.data());
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        return;
+    }
+
+    if (scenario == "factory-failure") evaluate("testWindow.browserWindowComponentObject = null");
+    auto destination = initial + (scenario == "session-aggregate" ? "?page-window=yes" : "?page-window=yes&token=preserve-exact-intent#section");
+    const auto target = scenario == "background" ? QStringLiteral("tab-bg")
+        : scenario == "standalone" ? QStringLiteral("window")
+        : scenario == "private" ? QStringLiteral("private-window") : QStringLiteral("tab");
+    savedSelection = QString();
+    QPointer<QObject> observed(evaluate("Qt.createQmlObject('import QtQuick; Connections { target: testWindow.browserUi; function onTab_countChanged() { if (target.tab_count === 2) testProbe.savedSelection = target.tab_id_for_index(1) } }', testWindow)").value<QObject *>());
+    QVERIFY(observed);
+    const bool opened = command("open --target " + target + " " + destination);
+    delete observed.data();
+    const auto requestedId = savedSelection.toString();
+    QVERIFY(opened);
+    evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+    if (scenario == "activation-context") {
+        auto *staged = evaluate("Object.values(testWindow.pageWindowCoordinator.pendingPages)[0].child").value<QObject *>();
+        QVERIFY(staged);
+        engine->rootContext()->setContextProperty("testPreparedPage", staged);
+        QVERIFY(evaluate("Qt.createQmlObject('import QtQuick; Connections { target: testPreparedPage; function onWindowPreparedPageCommittedChanged() { if (target.windowPreparedPageCommitted) testProbe.savedSelection = target.windowUi.assign_window_context(\"changed\") } }', testWindow)").value<QObject *>());
+    }
+    if (scenario.startsWith("preparation-")) {
+        const auto prepared = QStringLiteral("Object.values(testWindow.pageWindowCoordinator.pendingPages)[0]");
+        QVERIFY(evaluate("!!(" + prepared + ")").toBool());
+        // The dormant destination has neither a WebEngine document nor a
+        // published application-window owner before source commit.
+        QVERIFY(!evaluate(prepared + ".child.activeView").value<QObject *>());
+        QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 1);
+        if (scenario == "preparation-focus") {
+            QVERIFY(evaluate("testWindow.browserUi.select_tab(0)").toBool());
+        } else if (scenario == "preparation-navigation") {
+            destination = initial + "?newer-page-window-intent=yes#latest";
+            evaluate("testWindow.browserUi.navigate_without_context_route(" + quoted(destination) + ")");
+            QCOMPARE(evaluate("testWindow.browserUi.current_url").toString(), destination);
+        } else {
+            QPointer<QObject> staged(evaluate(prepared + ".child").value<QObject *>());
+            QVERIFY(evaluate("testWindow.browserUi.request_shutdown()").toBool());
+            QTRY_VERIFY(staged.isNull());
+            QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 1);
+            QCOMPARE(evaluate("testWindow.browserUi.tab_index_for_id(" + quoted(requestedId) + ")").toInt(), 1);
+            return;
+        }
+    }
+    if (scenario == "factory-failure") {
+        QTRY_COMPARE(evaluate("testWindow.browserUi.tab_count").toInt(), 2);
+        QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 1);
+        QCOMPARE(evaluate("testWindow.tabViewAt(0)").value<QObject *>(), sourceView.data());
+        QVERIFY(evaluate("testWindow.tabStripVisible").toBool());
+        pageReceiver = "testWindow.tabViewAt(1)";
+        QTRY_COMPARE(page("location.href").toString(), destination);
+        pageReceiver = "testWindow.tabViewAt(0)";
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        return;
+    }
+
+    const QString entry = "testWindow.liveWindowEntries().find(function(e){return e.ui!==testWindow.browserUi})";
+    QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 2);
+    const auto childHost = entry + ".host";
+    auto *childWindow = qobject_cast<QQuickWindow *>(evaluate(childHost).value<QObject *>());
+    QVERIFY(childWindow);
+    QTRY_COMPARE(evaluate("testWindow.browserUi.tab_count").toInt(), 1);
+    QCOMPARE(evaluate("testWindow.tabViews.length").toInt(), 1);
+    QCOMPARE(evaluate("testWindow.browserUi.tab_id_for_index(0)").toString(), sourceId);
+    QCOMPARE(evaluate("testWindow.tabViewAt(0)").value<QObject *>(), sourceView.data());
+    QCOMPARE(evaluate(entry + ".ui.tab_count").toInt(), 1);
+    QVERIFY(!evaluate(childHost + ".tabStripVisible").toBool());
+    QVERIFY(evaluate(childHost + ".pageWindowTag !== testWindow.pageWindowTag").toBool());
+    QCOMPARE(evaluate(childHost + ".pageGroupId === testWindow.pageGroupId").toBool(),
+             target == "tab" || target == "tab-bg");
+    QTRY_VERIFY(evaluate(childHost + ".profileBootstrapComplete && !!" + childHost + ".activeView").toBool());
+    QCOMPARE(evaluate(childHost + ".activeView.profile === testWindow.browserProfile").toBool(), scenario != "private");
+    if (target == "tab" || target == "tab-bg") {
+        QVERIFY(!requestedId.isEmpty());
+        QCOMPARE(evaluate(entry + ".ui.tab_id_for_index(0)").toString(), requestedId);
+        QCOMPARE(evaluate("testWindow.browserUi.tab_index_for_id(" + quoted(requestedId) + ")").toInt(), -1);
+    }
+    if (scenario == "background" || scenario == "preparation-focus") {
+        QVERIFY(!childWindow->isVisible());
+        QCOMPARE(QGuiApplication::focusWindow(), window);
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(" + childHost + "," + entry + ".ui)").toBool());
+    }
+    QTRY_VERIFY(childWindow->isVisible());
+    pageReceiver = childHost + ".activeView";
+    if (scenario == "activation-context") {
+        QTRY_COMPARE(evaluate(entry + ".ui.context_name").toString(), QStringLiteral("changed"));
+        QVERIFY(savedSelection.toBool());
+        QTRY_VERIFY(evaluate(childHost + ".commandNoticeVisible").toBool());
+        QTRY_VERIFY2(evaluate(childHost + ".commandNoticeText").toString().startsWith("Page opening cancelled"),
+                     qPrintable(evaluate(childHost + ".commandNoticeText").toString()));
+        QCOMPARE(page("location.href").toString(), QStringLiteral("about:blank"));
+    } else {
+        QTRY_COMPARE(page("location.href").toString(), destination);
+    }
+    pageReceiver = "testWindow.tabViewAt(0)";
+    QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+    if (scenario == "session-aggregate") {
+        QVERIFY(evaluate(entry + ".ui.assign_window_context('changed')").toBool());
+        QVERIFY(evaluate(entry + ".ui.set_tab_muted(0,true)").toBool());
+        QVERIFY(evaluate("testWindow.browserUi.set_tab_pinned(0,true)>=0").toBool());
+        QVERIFY(evaluate("testWindow.browserUi.save_named_session('all-page-windows')").toBool());
+        QTRY_COMPARE(text("session_save_state"), QStringLiteral("succeeded"));
+        QDirIterator files(evaluate("testWindow.storageBasePath").toString(), {"all-page-windows.json"}, QDir::Files, QDirIterator::Subdirectories);
+        QVERIFY(files.hasNext()); QFile saved(files.next()); QVERIFY(saved.open(QIODevice::ReadOnly));
+        const auto snapshot = QJsonDocument::fromJson(saved.readAll()).object();
+        QCOMPARE(snapshot["schema_version"].toInt(), 5);
+        const auto groups = snapshot["windows"].toArray();
+        QCOMPARE(groups.size(), 2);
+        QSet<QString> addresses;
+        bool pinned = false, muted = false, context = false;
+        for (const auto &value : groups) {
+            const auto group = value.toObject();
+            QVERIFY(!group["group"].toString().isEmpty());
+            const auto tabs = group["tabs"].toArray();
+            QCOMPARE(tabs.size(), 1);
+            const auto tab = tabs[0].toObject();
+            addresses.insert(tab["safe_restore_url"].toString());
+            pinned |= tab["pinned"].toBool(); muted |= tab["muted"].toBool();
+            context |= group["context"].toString() == "changed";
+        }
+        QVERIFY(addresses.contains(initial) && addresses.contains(destination));
+        QVERIFY(pinned && muted && context);
+        QVERIFY(evaluate("testWindow.browserUi.request_named_session_load('all-page-windows',true)").toBool());
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 4);
+        QTRY_VERIFY(evaluate("testWindow.liveWindowEntries().every(function(e){return !!(e.host===testWindow?testWindow.activeWebView():e.host.activeView) && e.ui.tab_count===1})").toBool());
+        QCOMPARE(evaluate("testWindow.liveWindowEntries().filter(function(e){return e.ui.context_name==='changed'}).length").toInt(), 2);
+        QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), sourceView.data());
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        // A retained restored page must subsequently persist its live context,
+        // rather than the staging metadata from the file just loaded.
+        QVERIFY(evaluate("testWindow.browserUi.request_named_session_load('all-page-windows',false)").toBool());
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 5);
+        QTRY_COMPARE(text("context_name"), QString());
+        QVERIFY(evaluate("testWindow.browserUi.assign_window_context('changed')").toBool());
+        QVERIFY(evaluate("testWindow.browserUi.save_named_session('changed-keeper')").toBool());
+        QTRY_COMPARE(text("session_save_state"), QStringLiteral("succeeded"));
+        QDirIterator changed(evaluate("testWindow.storageBasePath").toString(), {"changed-keeper.json"}, QDir::Files, QDirIterator::Subdirectories);
+        QVERIFY(changed.hasNext()); QFile keeper(changed.next()); QVERIFY(keeper.open(QIODevice::ReadOnly));
+        const auto keeperGroups = QJsonDocument::fromJson(keeper.readAll()).object()["windows"].toArray();
+        QCOMPARE(keeperGroups[0].toObject()["context"].toString(), QStringLiteral("changed"));
+        return;
+    }
+    if (scenario == "window-selection") {
+        // Exercise the production command entry and queue consumer, including
+        // a continuation that must execute on the selected native owner.
+        pageReceiver = childHost + ".activeView";
+        page("window.pageWindowDraft = 'child work'");
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        QTRY_VERIFY(evaluate("testWindow.browserKeyFocusActive").toBool());
+        sendOwnedBrowserKey(window, Qt::Key_3);
+        sendOwnedBrowserKey(window, Qt::Key_PageDown, Qt::ControlModifier);
+        QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+        QVERIFY(evaluate(entry + ".ui.execute_command('tab-prev')").toBool());
+        evaluate(childHost + ".applySwitcherEngineAction()");
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        QVERIFY(command("tab-select previous"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+        QVERIFY(command("tab-select 1 ;; jseval --world page window.selectedPageCommand=7"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        pageReceiver = "testWindow.activeWebView()";
+        QTRY_COMPARE(page("window.selectedPageCommand").toInt(), 7);
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        pageReceiver = childHost + ".activeView";
+        QVERIFY(page("typeof window.selectedPageCommand === 'undefined'").toBool());
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("child work"));
+        QVERIFY(command("tab-focus " + requestedId));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+        QVERIFY(!command("tab-select 0"));
+        QVERIFY(!command("tab-focus tabid-999999999"));
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        evaluate("testWindow.commandNoticeVisible=false;testWindow.commandNoticeText=''");
+        const auto replacement = initial + "?replacement-before-continuation=yes";
+        QVERIFY(evaluate("(function(){var accepted=testWindow.browserUi.execute_command('tab-next ;; jseval --world page window.staleWindowCommand=9');" + entry + ".ui.navigate_without_context_route(" + quoted(replacement) + ");return accepted})()").toBool());
+        evaluate(childHost + ".applySwitcherEngineAction()");
+        pageReceiver = childHost + ".activeView";
+        QTRY_COMPARE(page("location.href").toString(), replacement);
+        QVERIFY(page("typeof window.staleWindowCommand === 'undefined'").toBool());
+        QTRY_VERIFY(evaluate("testWindow.commandNoticeVisible && testWindow.commandNoticeError && testWindow.commandNoticeText.indexOf('changed')>=0").toBool());
+        // Selection itself emits synchronous Qt signals. A navigation from
+        // one of those callbacks must also revoke the document continuation.
+        engine->rootContext()->setContextProperty("testSelectedPageUi", evaluate(entry + ".ui").value<QObject *>());
+        const auto duringSelection = initial + "?replacement-during-selection=yes";
+        const auto connectionQml = QString("import QtQuick; Connections { target: testSelectedPageUi; property bool armed: true; function onInput_epochChanged() { if(armed) { armed=false; testSelectedPageUi.navigate_without_context_route(%1) } } }").arg(quoted(duringSelection));
+        QPointer<QObject> selectionObserver(evaluate("Qt.createQmlObject(" + quoted(connectionQml) + ",testWindow)").value<QObject *>());
+        QVERIFY(selectionObserver);
+        QVERIFY(command("tab-next ;; jseval --world page window.reentrantWindowCommand=9"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(page("location.href").toString(), duringSelection);
+        QVERIFY(page("typeof window.reentrantWindowCommand === 'undefined'").toBool());
+        delete selectionObserver.data();
+        // A standalone page is excluded while this logical group has peers.
+        QVERIFY(command("open --target window " + destination + "-standalone"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 3);
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        QVERIFY(command("tab-next --count 3"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+        // Allocation fallback can retain two actual views in one owner. A
+        // reentrant selection must not redirect a captured document command.
+        evaluate("testWindow.browserWindowComponentObject=null");
+        const auto fallback = initial + "?fallback-active-page=yes";
+        QVERIFY(command("tab-open " + fallback));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(evaluate("testWindow.browserUi.tab_count").toInt(), 2);
+        QTRY_COMPARE(evaluate("testWindow.tabViews.length").toInt(), 2);
+        pageReceiver = "testWindow.tabViewAt(1)";
+        QTRY_COMPARE(page("location.href").toString(), fallback);
+        evaluate("testWindow.commandNoticeVisible=false;testWindow.commandNoticeText=''");
+        QTRY_COMPARE(evaluate("testWindow.browserUi.active_tab_index").toInt(), 1);
+        const auto reselectionQml = QStringLiteral("import QtQuick; Connections { target: testWindow.browserUi; property bool armed: true; function onActive_tab_indexChanged() { if(armed && target.active_tab_index===0) { armed=false; target.select_tab(1) } } }");
+        QPointer<QObject> reselectionObserver(evaluate("Qt.createQmlObject(" + quoted(reselectionQml) + ",testWindow)").value<QObject *>());
+        QVERIFY(reselectionObserver);
+        QVERIFY(command("tab-select 1 ;; jseval --world page window.redirectedWindowCommand=9"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_VERIFY(!reselectionObserver->property("armed").toBool());
+        // Drain the queued receipt before inspecting both unchanged documents.
+        QTRY_VERIFY2(evaluate("testWindow.commandNoticeError && testWindow.commandNoticeText.indexOf('changed')>=0").toBool(),
+            qPrintable(evaluate("JSON.stringify({notice:testWindow.commandNoticeText,error:testWindow.commandNoticeError,status:testWindow.browserUi.status_text,active:testWindow.browserUi.active_tab_index,url:testWindow.browserUi.current_url})").toString()));
+        QVERIFY(page("typeof window.redirectedWindowCommand === 'undefined'").toBool());
+        pageReceiver = "testWindow.tabViewAt(0)";
+        QVERIFY(page("typeof window.redirectedWindowCommand === 'undefined'").toBool());
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        delete reselectionObserver.data();
+        return;
+    }
+    if (scenario == "private") {
+        QVERIFY(command("open --target private-window " + destination + "-second"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 3);
+        QVERIFY(evaluate("(function(){var e=testWindow.liveWindowEntries().filter(function(e){return e.ui!==testWindow.browserUi});return e.length===2 && e[0].profile!==e[1].profile && e[0].ui.page_host_profile_id()!==e[1].ui.page_host_profile_id()})()").toBool());
+    }
+    if (scenario.startsWith("last-page-close")) {
+        QPointer<QQuickWindow> closingWindow(childWindow);
+        engine->rootContext()->setContextProperty("closingPageHost", childWindow);
+        QPointer<QObject> closingView(evaluate(childHost + ".activeView").value<QObject *>());
+        QVERIFY(evaluate(entry + ".ui.execute_command('tab-close')").toBool());
+        evaluate(childHost + ".applySwitcherEngineAction()");
+        QTRY_VERIFY(evaluate(childHost + ".windowCloseConfirmationVisible").toBool());
+        QCOMPARE(evaluate(entry + ".ui.tab_count").toInt(), 1);
+        QVERIFY(closingView);
+        QVERIFY(clickCloseDecision(childWindow, scenario != "last-page-close-cancel"));
+        if (scenario == "last-page-close-cancel") {
+            QTRY_VERIFY(!evaluate(childHost + ".windowCloseConfirmationVisible").toBool());
+            QVERIFY(childWindow->isVisible());
+            QCOMPARE(evaluate(entry + ".ui.tab_count").toInt(), 1);
+            pageReceiver = childHost + ".activeView";
+            QCOMPARE(page("location.href").toString(), destination);
+        } else {
+            QTRY_VERIFY(!closingWindow || !closingWindow->isVisible()
+                        || evaluate("closingPageHost && closingPageHost.windowShutdownPagePromptVisible").toBool());
+            if (closingWindow && closingWindow->isVisible()
+                    && evaluate("closingPageHost.windowShutdownPagePromptVisible").toBool())
+                QVERIFY(clickCloseDecision(closingWindow, true));
+            QTRY_VERIFY(!closingWindow || !closingWindow->isVisible());
+            QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 1);
+            QTRY_VERIFY(closingView.isNull());
+        }
+        QVERIFY(window->isVisible());
+        pageReceiver = "testWindow.tabViewAt(0)";
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        return;
+    }
+    if (scenario == "first-host-close" || scenario == "first-page-tab-close") {
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        if (scenario == "first-page-tab-close") {
+            QVERIFY(command("tab-close"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        } else evaluate("testWindow.close()");
+        QTRY_VERIFY(evaluate("testWindow.shutdownConfirmationVisible").toBool());
+        QVERIFY(clickCloseDecision(window, true));
+        QTRY_VERIFY(!evaluate("testWindow.shutdownConfirmationVisible").toBool());
+        QTRY_VERIFY(!window->isVisible() || evaluate("testWindow.shutdownPagePromptVisible").toBool());
+        if (evaluate("testWindow.shutdownPagePromptVisible").toBool()) {
+            QVERIFY(clickCloseDecision(window, true));
+        }
+        QTRY_VERIFY(!window->isVisible());
+        QCOMPARE(evaluate("testWindow.browserUi.tab_count").toInt(), 0);
+        QCOMPARE(evaluate("testWindow.tabViews.length").toInt(), 0);
+        QTRY_VERIFY(sourceView.isNull());
+        QVERIFY(childWindow->isVisible());
+        pageReceiver = childHost + ".activeView";
+        const auto next = initial + "?after-first-host-close=yes";
+        evaluate(entry + ".ui.navigate_without_context_route(" + quoted(next) + ")");
+        evaluate(childHost + ".applySwitcherEngineAction()");
+        QTRY_COMPARE(page("location.href").toString(), next);
+    }
+}
+
+
+void ApplicationTests::credentialViewAssociation_data()
+{
+    QTest::addColumn<QString>("reassignment");
+    for (const auto *item : {"tab-identity", "ui", "host", "visual-parent"})
+        QTest::newRow(item) << QString::fromLatin1(item);
+}
+
+void ApplicationTests::credentialViewAssociation()
+{
+    QFETCH(QString, reassignment);
+    QPointer<QObject> view(evaluate("testWindow.activeWebView()").value<QObject *>());
+    QVERIFY(view);
+    engine->rootContext()->setContextProperty("associatedView", view);
+    const auto bindingFor = [&]() -> QObject * {
+        for (auto *child : view->children())
+            if (QString::fromLatin1(child->metaObject()->className()) == "FerricQuickCredentialBinding") return child;
+        return nullptr;
+    };
+    QTRY_VERIFY(bindingFor());
+    QPointer<QObject> previous(bindingFor());
+    QCOMPARE(view->property("webChannelWorld").toUInt(), 42U);
+    const auto id = view->property("stableTabId").toString();
+    const auto location = page("location.href").toString();
+    page("window.credentialAssociationDraft = 'keep this document'");
+    QVERIFY(page("String(navigator.credentials.get).includes('[native code]')").toBool());
+    if (reassignment == "tab-identity") evaluate("associatedView.stableTabId='tabid-999999999'");
+    else if (reassignment == "ui") evaluate("associatedView.viewUi=null");
+    else if (reassignment == "host") evaluate("associatedView.viewHost=null");
+    else {
+        auto *item = qobject_cast<QQuickItem *>(view.data());
+        QVERIFY(item);
+        engine->rootContext()->setContextProperty("associatedParent", item->parentItem());
+        evaluate("associatedView.parent=null");
+    }
+    QTRY_VERIFY(previous.isNull());
+    QVERIFY(!bindingFor());
+    if (reassignment == "tab-identity") evaluate("associatedView.stableTabId=" + quoted(id));
+    else if (reassignment == "ui") evaluate("associatedView.viewUi=testWindow.browserUi");
+    else if (reassignment == "host") evaluate("associatedView.viewHost=testWindow");
+    else evaluate("associatedView.parent=associatedParent");
+    QTRY_VERIFY(bindingFor());
+    QCOMPARE(view->property("stableTabId").toString(), id);
+    QCOMPARE(page("location.href").toString(), location);
+    QCOMPARE(page("window.credentialAssociationDraft").toString(), QStringLiteral("keep this document"));
+}

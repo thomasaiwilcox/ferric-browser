@@ -1,15 +1,31 @@
 .pragma library
+.import "BrowserScripts.js" as BrowserScripts
 
 // Both window shells execute the same captured request against an exact view.
 function execute(request, ui, host, services, source) {
     if (!request || !request.kind) return false
     host.syncTabModel()
     if (!ui.request_target_current(request.tabId, request.generation, request.documentId)) return true
+    if (request.kind === "reparent-view") {
+        var presentation = ui.native_page_for_request(request)
+        if (presentation) presentation.applyNativeRequest(request)
+        return true
+    }
     // A captured native target must never fall through to a Quick replacement,
     // including when its QObject has been retired since projection.
     if (request.nativeTarget === true) {
         var nativePage = ui.native_page_for_request(request)
-        if (nativePage) nativePage.executeCaptured(request)
+        if (nativePage) {
+            // Use the same browser-owned script generator in both adapters.
+            if (request.kind === "scroll" || request.kind === "scroll-page" || request.kind === "scroll-to") {
+                request.script = BrowserScripts.scroll(request.kind, request.direction,
+                    request.half === true, request.count || 1)
+            } else if (request.kind === "scroll-target") {
+                request.script = request.action === "status" ? BrowserScripts.scrollTargetStatus()
+                    : BrowserScripts.scrollTargetPolicy(request.action)
+            }
+            nativePage.executeCaptured(request)
+        }
         return true
     }
     var index = ui.tab_index_for_id(request.tabId)

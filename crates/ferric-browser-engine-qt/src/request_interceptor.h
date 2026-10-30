@@ -84,6 +84,10 @@ public:
     qulonglong adblockEngineHandle() const;
     void setAdblockEngineHandle(qulonglong handle);
 
+    // Native credential admission observes the policy actually installed on
+    // this shared profile, independently of which window supplied it.
+    quint64 policyGeneration() const;
+    bool attachedToProfile(QObject *profile) const;
     bool enabled() const;
     void setEnabled(bool enabled);
 
@@ -107,6 +111,7 @@ public:
     void interceptRequest(QWebEngineUrlRequestInfo &info) override;
 
     signals:
+    void policyChanged();
     void blockedHostsChanged();
     void exceptionHostsChanged();
     void bypassSitesChanged();
@@ -159,9 +164,12 @@ private:
     void recordDecision(const QString &site, const QVariantMap &decision);
     void scheduleEvidenceChanged();
     void detachProfiles();
+    void advancePolicyGenerationLocked();
+    void publishPolicyLocked(PolicySnapshot replacement);
 
     mutable QReadWriteLock policyLock_;
     std::shared_ptr<const PolicySnapshot> policy_;
+    quint64 policyGeneration_ = 1;
     QStringList blockedRuleHosts_;
     QStringList blockedRuleListIds_;
     QStringList exceptionRuleHosts_;

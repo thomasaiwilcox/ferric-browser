@@ -93,6 +93,8 @@ mod browser_ui_native_prompts;
 mod browser_ui_navigation;
 mod browser_ui_navigation_lifecycle;
 mod browser_ui_operations;
+mod browser_ui_page_sessions;
+mod browser_ui_page_windows;
 mod browser_ui_persistence;
 mod browser_ui_popup_owner;
 mod browser_ui_popups;
@@ -553,6 +555,14 @@ pub struct BrowserUiRust {
     binding_clock: Instant,
     pending_engine_action: Option<String>,
     pending_engine_actions: engine_requests::PendingEngineRequests,
+    // Prepared page windows are unpublished and cannot consume document work.
+    page_window_preparing: bool,
+    page_window_ordinary: bool,
+    page_window_group: String,
+    restored_page_windows:
+        std::collections::HashMap<TabId, browser_ui_page_sessions::RestoredPageWindow>,
+    credential_policy_epoch: u64,
+    prepared_page_window: Option<browser_ui_popup_owner::PreparedPageWindow>,
     pending_print: Option<PathBuf>,
     pending_history_clear: Option<(Option<i64>, Option<String>)>,
     tab_ids: Vec<TabId>,
@@ -1314,6 +1324,7 @@ impl qobject::BrowserUi {
     }
 }
 
+mod browser_ui_credential_binding;
 mod browser_ui_credentials;
 mod credential_protocol;
 #[cfg(test)]

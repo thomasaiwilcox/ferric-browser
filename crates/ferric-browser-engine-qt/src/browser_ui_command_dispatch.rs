@@ -33,7 +33,7 @@ impl qobject::BrowserUi {
             return false;
         }
         let command_count = commands.len();
-        for (command_index, mut command) in commands.into_iter().enumerate() {
+        for (command_index, mut command) in commands.iter().cloned().enumerate() {
             if command_index > 0 {
                 self.as_mut().queue_pending_engine_action();
             }
@@ -44,6 +44,34 @@ impl qobject::BrowserUi {
                 CommandDispatchControl::Continue => continue,
                 CommandDispatchControl::Failed => return false,
                 CommandDispatchControl::Unhandled => {}
+            }
+            if self.as_ref().in_page_window_mode()
+                && super::browser_ui_page_windows::handles(&command)
+            {
+                if let Err(error) = registry.validate(&command, self.as_ref().rust().core_mode) {
+                    self.set_status_text(QString::from(error.to_string()));
+                    return false;
+                }
+                let continuation = super::browser_ui_page_windows::PageContinuation::Interactive {
+                    commands: commands[command_index + 1..].to_vec(),
+                    count,
+                };
+                return match self.as_mut().execute_page_window_selection(
+                    &command,
+                    count,
+                    continuation,
+                    None,
+                ) {
+                    Ok(_) => {
+                        self.as_mut()
+                            .note_repeatable_invocation(&command, None, count);
+                        true
+                    }
+                    Err(error) => {
+                        self.set_status_text(QString::from(error));
+                        false
+                    }
+                };
             }
             if let Some(executor) = registry
                 .resolve(&command.name)

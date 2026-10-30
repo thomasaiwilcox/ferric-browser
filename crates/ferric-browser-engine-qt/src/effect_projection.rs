@@ -41,6 +41,8 @@ mod tests {
     #[test]
     fn restore_projection_uses_explicit_placeholder_scroll_coordinates() {
         let entry = RestorePlanEntry {
+            group: uuid::Uuid::new_v4(),
+            context: None,
             tab_id: Uuid::new_v4(),
             selected: true,
             url: None,

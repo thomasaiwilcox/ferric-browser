@@ -1,0 +1,566 @@
+//! Application-wide presentation selection over actual registered Core owners.
+//! No renderer-supplied window, profile or document claim enters this directory.
+
+use super::{CxxQtType, ParsedCommand, Pin, PrivacyKind, QString, TabId, qobject};
+use cxx_qt::{CxxQtThread, Threading};
+use ferric_browser_application::ProfileInstanceId;
+
+pub(super) enum PageContinuation {
+    Interactive {
+        commands: Vec<ParsedCommand>,
+        count: u32,
+    },
+    Ipc {
+        commands: Vec<ParsedCommand>,
+        route: super::IpcRoute,
+    },
+}
+
+impl PageContinuation {
+    fn has_commands(&self) -> bool {
+        match self {
+            Self::Interactive { commands, .. } | Self::Ipc { commands, .. } => !commands.is_empty(),
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub(super) struct PageScope {
+    profile: ProfileInstanceId,
+    privacy: PrivacyKind,
+    context: Option<String>,
+}
+
+#[derive(Clone)]
+pub(super) struct PresentedPage {
+    pub(super) id: TabId,
+    pub(super) pinned: bool,
+    pub(super) target: super::Target,
+}
+
+#[derive(Clone)]
+pub(super) struct PageWindowSnapshot {
+    pub(super) scope: PageScope,
+    pub(super) group: String,
+    pub(super) pages: Vec<PresentedPage>,
+    pub(super) previous: Option<TabId>,
+}
+
+impl PageWindowSnapshot {
+    pub(super) fn capture(ui: &qobject::BrowserUi) -> Option<Self> {
+        Self::capture_checked(ui).ok()
+    }
+
+    fn capture_checked(ui: &qobject::BrowserUi) -> Result<Self, String> {
+        let rust = ui.rust();
+        let state = rust
+            .state
+            .as_ref()
+            .ok_or("The browser state is unavailable")?;
+        if !rust.page_window_ordinary
+            || !rust.view_alive
+            || rust.page_window_preparing
+            || rust.profile_bootstrap_pending
+            || rust.ipc_shutdown_gate
+            || state.shutdown() != ferric_browser_core::ShutdownState::Running
+            || state.configuration().tabs.presentation
+                != ferric_browser_config::TabsPresentation::Windows
+        {
+            return Err("Page commands require a ready ordinary window".into());
+        }
+        let window = rust
+            .window
+            .and_then(|id| state.windows().get(&id))
+            .ok_or("The browser window is unavailable")?;
+        let profile = state
+            .profiles()
+            .get(&window.profile)
+            .ok_or("The browser profile is unavailable")?;
+        let pages = window
+            .tabs
+            .iter()
+            .filter_map(|id| {
+                let page = state.tabs().get(id)?;
+                (page.existence == ferric_browser_core::ExistenceState::Live
+                    && rust.interaction.prompt_view_identities.contains_key(id))
+                .then_some(PresentedPage {
+                    id: *id,
+                    pinned: page.pinned,
+                    target: state.capture_target(*id)?,
+                })
+            })
+            .collect::<Vec<_>>();
+        if pages.is_empty() {
+            return Err("This window has no registered page view".into());
+        }
+        Ok(Self {
+            scope: PageScope {
+                profile: state
+                    .profile_instance_id()
+                    .ok_or("The live profile session is unavailable")?,
+                privacy: profile.privacy,
+                context: window.context.clone(),
+            },
+            group: if rust.page_window_group.is_empty() {
+                rust.window_token.to_string()
+            } else {
+                rust.page_window_group.clone()
+            },
+            pages,
+            previous: window.previous_tab,
+        })
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct PageWindowOwner {
+    pub(super) snapshot: PageWindowSnapshot,
+    pub(super) token: String,
+    pub(super) window: super::WindowId,
+    pub(super) order: u64,
+    pub(super) focused: u64,
+    pub(super) thread: CxxQtThread<qobject::BrowserUi>,
+}
+
+#[derive(Clone)]
+struct Candidate {
+    owner: PageWindowOwner,
+    page: PresentedPage,
+    index: usize,
+}
+
+fn candidates(owners: Vec<PageWindowOwner>, source: &PageWindowSnapshot) -> Vec<Candidate> {
+    let mut pages = owners
+        .into_iter()
+        .filter(|owner| owner.snapshot.scope == source.scope)
+        .flat_map(|owner| {
+            owner
+                .snapshot
+                .pages
+                .clone()
+                .into_iter()
+                .enumerate()
+                .map(move |(index, page)| Candidate {
+                    owner: owner.clone(),
+                    page,
+                    index,
+                })
+        })
+        .collect::<Vec<_>>();
+    let grouped = pages
+        .iter()
+        .filter(|page| page.owner.snapshot.group == source.group)
+        .count();
+    if grouped > 1 {
+        pages.retain(|page| page.owner.snapshot.group == source.group);
+    }
+    pages.sort_by_key(|page| (!page.page.pinned, page.owner.order, page.index));
+    pages
+}
+
+fn continuation_current(
+    ui: &qobject::BrowserUi,
+    scope: &PageScope,
+    group: &str,
+    target: super::Target,
+) -> bool {
+    let rust = ui.rust();
+    if rust.tab != Some(target.tab)
+        || usize::try_from(rust.active_tab_index)
+            .ok()
+            .and_then(|index| rust.tab_ids.get(index))
+            != Some(&target.tab)
+        || rust
+            .state
+            .as_ref()
+            .and_then(|state| state.windows().get(&rust.window?))
+            .is_none_or(|window| window.active_tab != Some(target.tab))
+    {
+        return false;
+    }
+    PageWindowSnapshot::capture(ui).is_some_and(|snapshot| {
+        snapshot.scope == *scope
+            && snapshot.group == group
+            && snapshot.pages.iter().any(|page| page.target == target)
+    })
+}
+
+pub(super) fn handles(command: &ParsedCommand) -> bool {
+    matches!(
+        command.name.as_str(),
+        "tab-next" | "tab-prev" | "tab-select" | "tab-focus"
+    )
+}
+
+fn select_index(
+    command: &ParsedCommand,
+    count: u32,
+    ids: &[TabId],
+    current: usize,
+    previous: Option<TabId>,
+) -> Result<usize, String> {
+    if ids.is_empty() {
+        return Err("No page windows are ready".into());
+    }
+    match command.name.as_str() {
+        "tab-next" | "tab-prev" => {
+            let count = match command.arguments.as_slice() {
+                [] => count,
+                [flag, value] if flag == "--count" => value
+                    .parse::<u32>()
+                    .map_err(|_| "Tab count must be from 1 to 100")?,
+                _ => return Err("Use tab-next or tab-prev with an optional --count N".into()),
+            };
+            if !(1..=100).contains(&count) {
+                return Err("Tab count must be from 1 to 100".into());
+            }
+            let offset = count as usize % ids.len();
+            Ok(if command.name == "tab-next" {
+                (current + offset) % ids.len()
+            } else {
+                (current + ids.len() - offset) % ids.len()
+            })
+        }
+        "tab-select" | "tab-focus" => {
+            let [value] = command.arguments.as_slice() else {
+                return Err("Select a displayed page index or stable page ID".into());
+            };
+            if command.name == "tab-select" {
+                if value == "last" {
+                    return Ok(ids.len() - 1);
+                }
+                if value == "previous" {
+                    return previous
+                        .and_then(|id| ids.iter().position(|candidate| *candidate == id))
+                        .ok_or_else(|| "No previous page window is available".into());
+                }
+                if let Ok(index) = value.parse::<usize>() {
+                    return index
+                        .checked_sub(1)
+                        .filter(|index| *index < ids.len())
+                        .ok_or_else(|| "The page index is outside this group".into());
+                }
+            }
+            let id = TabId::from_display(value).ok_or("The page ID is invalid")?;
+            ids.iter()
+                .position(|candidate| *candidate == id)
+                .ok_or_else(|| "This page is outside the current group".into())
+        }
+        _ => Err("Unsupported page-window selection".into()),
+    }
+}
+
+impl qobject::BrowserUi {
+    pub(super) fn in_page_window_mode(&self) -> bool {
+        self.rust().state.as_ref().is_some_and(|state| {
+            state.configuration().tabs.presentation
+                == ferric_browser_config::TabsPresentation::Windows
+        })
+    }
+
+    pub(super) fn execute_page_window_ipc_selection(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        route: &super::IpcRoute,
+        commands: Vec<ParsedCommand>,
+        operation_id: Option<&str>,
+    ) -> Result<super::Value, super::PublicError> {
+        if route.context.is_some() {
+            return Err("context routing is not valid for page selection".into());
+        }
+        self.as_ref().validate_ipc_route_public(route)?;
+        // Resolve the external selector at the issuing owner before changing
+        // presentation. Continuations are rebound to the selected native owner.
+        if Some(self.as_ref().ipc_route_window(route)?) != self.as_ref().rust().window {
+            return Err("Choose a page in the requested window.".into());
+        }
+        self.as_ref()
+            .rust()
+            .registry
+            .validate(command, self.as_ref().rust().core_mode)
+            .map_err(|error| error.to_string())?;
+        let mut continuation_route = route.clone();
+        continuation_route.selector = super::DispatchTarget::Active;
+        let result = self.as_mut().execute_page_window_selection(
+            command,
+            1,
+            PageContinuation::Ipc {
+                commands,
+                route: continuation_route,
+            },
+            operation_id,
+        )?;
+        self.as_mut()
+            .note_repeatable_invocation(command, Some(route), 1);
+        Ok(result)
+    }
+
+    pub(super) fn execute_page_window_selection(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        count: u32,
+        continuation: PageContinuation,
+        operation_id: Option<&str>,
+    ) -> Result<super::Value, String> {
+        let source = PageWindowSnapshot::capture_checked(self.as_ref().get_ref())?;
+        let current = self.as_ref().rust().tab.ok_or("No active page")?;
+        self.as_mut().refresh_ipc_owner();
+        let pages = candidates(
+            super::live_ipc_owners::page_window_owners(&source.scope),
+            &source,
+        );
+        let ids = pages.iter().map(|page| page.page.id).collect::<Vec<_>>();
+        let index = ids
+            .iter()
+            .position(|id| *id == current)
+            .ok_or("This page is no longer presented")?;
+        let previous = source
+            .previous
+            .filter(|id| *id != current && ids.contains(id))
+            .or_else(|| {
+                pages
+                    .iter()
+                    .filter(|page| page.page.id != current && page.owner.focused > 0)
+                    .max_by_key(|page| page.owner.focused)
+                    .map(|page| page.page.id)
+            });
+        let target = pages[select_index(command, count, &ids, index, previous)?].clone();
+        let target_id = target.page.id;
+        let target_document = target.page.target;
+        let document_continuation = continuation.has_commands();
+        let target_token = target.owner.token.clone();
+        let result_window = target.owner.window;
+        let source_token = self.as_ref().rust().window_token.to_string();
+        let same_owner = source_token == target_token;
+        let scope = source.scope;
+        let group = source.group;
+        let source_thread = self.as_ref().get_ref().qt_thread();
+        let operation = if let Some(id) = operation_id {
+            Some(
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .start_native_handoff(Some(id))?,
+            )
+        } else {
+            None
+        };
+        let repeat_command = command.clone();
+        target
+            .owner
+            .thread
+            .queue(move |mut ui| {
+                let source_current = super::live_ipc_owners::page_window_owners(&scope)
+                    .iter()
+                    .any(|owner| {
+                        owner.token == source_token
+                            && owner.snapshot.group == group
+                            && owner.snapshot.pages.iter().any(|page| page.id == current)
+                    });
+                let valid = source_current
+                    && PageWindowSnapshot::capture(ui.as_ref().get_ref()).is_some_and(|snapshot| {
+                        snapshot.scope == scope
+                            && snapshot.group == target.owner.snapshot.group
+                            && snapshot.pages.iter().any(|page| page.id == target_id)
+                    });
+                let valid = valid
+                    && (!document_continuation
+                        || ui.as_ref().rust().state.as_ref().is_some_and(|state| {
+                            state.capture_target(target_id) == Some(target_document)
+                        }));
+                let target_index = ui
+                    .as_ref()
+                    .rust()
+                    .tab_ids
+                    .iter()
+                    .position(|id| *id == target_id)
+                    .and_then(|index| i32::try_from(index).ok());
+                let mut selected =
+                    valid && target_index.is_some_and(|index| ui.as_mut().select_tab(index));
+                let mut succeeded = selected;
+                if selected {
+                    ui.as_mut().set_core_mode(super::Mode::Normal);
+                    match continuation {
+                        PageContinuation::Interactive { commands, count } => {
+                            if !same_owner {
+                                ui.as_mut().note_repeatable_invocation(
+                                    &repeat_command,
+                                    None,
+                                    count,
+                                );
+                            }
+                            if !commands.is_empty() {
+                                // Selection, mode and repeat recording emit Qt
+                                // signals. Recheck after all synchronous reentry,
+                                // immediately before capturing document work.
+                                selected = continuation_current(
+                                    ui.as_ref().get_ref(),
+                                    &scope,
+                                    &target.owner.snapshot.group,
+                                    target_document,
+                                );
+                                succeeded = selected
+                                    && ui.as_mut().execute_counted_parsed_commands(commands, count);
+                            }
+                        }
+                        PageContinuation::Ipc { commands, route } => {
+                            if !same_owner {
+                                ui.as_mut().note_repeatable_invocation(
+                                    &repeat_command,
+                                    Some(&route),
+                                    1,
+                                );
+                            }
+                            selected = commands.is_empty()
+                                || continuation_current(
+                                    ui.as_ref().get_ref(),
+                                    &scope,
+                                    &target.owner.snapshot.group,
+                                    target_document,
+                                );
+                            if !selected {
+                                succeeded = false;
+                            } else if let Err(error) =
+                                ui.as_mut().execute_page_window_ipc_chain(commands, &route)
+                            {
+                                ui.as_mut()
+                                    .set_status_text(QString::from(error.user_message()));
+                                succeeded = false;
+                            }
+                        }
+                    }
+                    ui.as_mut().runtime_work_available();
+                }
+                let _ = source_thread.queue(move |mut source_ui| {
+                    let source_current = PageWindowSnapshot::capture(source_ui.as_ref().get_ref())
+                        .is_some_and(|snapshot| {
+                            snapshot.scope == scope
+                                && snapshot.group == group
+                                && snapshot.pages.iter().any(|page| page.id == current)
+                        });
+                    if !selected || !source_current {
+                        source_ui.as_mut().page_window_command_failed(
+                            "Page selection failed because the window changed. Try again.",
+                        );
+                        if let Some(operation) = operation {
+                            source_ui.as_mut().complete_window_focus(
+                                &QString::from(operation),
+                                &QString::from("stale"),
+                            );
+                        }
+                        return;
+                    }
+                    if !succeeded {
+                        source_ui.as_mut().page_window_command_failed(
+                            "The command failed in the selected page. Try again.",
+                        );
+                        if let Some(operation) = operation {
+                            source_ui.as_mut().complete_window_focus(
+                                &QString::from(operation),
+                                &QString::from("failed"),
+                            );
+                        }
+                        return;
+                    }
+                    source_ui.as_mut().queue_pending_engine_action();
+                    let action = format!(
+                        "window-focus\t{target_token}{}",
+                        operation.map_or_else(String::new, |id| format!("\t{id}"))
+                    );
+                    source_ui
+                        .as_mut()
+                        .rust_mut()
+                        .as_mut()
+                        .get_mut()
+                        .pending_engine_action = Some(action);
+                    source_ui.as_mut().runtime_work_available();
+                });
+            })
+            .map_err(|_| "The requested page window is no longer available".to_owned())?;
+        Ok(
+            serde_json::json!({"status":"accepted", "action":"focus", "tab_id":target_id.to_string(), "window_id":result_window.to_string(), "pending":true}),
+        )
+    }
+
+    fn page_window_command_failed(mut self: Pin<&mut Self>, message: &str) {
+        self.as_mut().set_status_text(QString::from(message));
+        self.as_mut().queue_pending_engine_action();
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .pending_engine_action = Some(format!("command-error\t{message}"));
+        self.as_mut().runtime_work_available();
+    }
+
+    pub(super) fn execute_page_window_ipc_chain(
+        mut self: Pin<&mut Self>,
+        commands: Vec<ParsedCommand>,
+        route: &super::IpcRoute,
+    ) -> Result<super::Value, super::PublicError> {
+        let mut result = serde_json::json!({"status":"accepted"});
+        let mut operations = Vec::new();
+        for (index, command) in commands.iter().enumerate() {
+            if self.as_ref().in_page_window_mode() && handles(command) {
+                return self.execute_page_window_ipc_selection(
+                    command,
+                    route,
+                    commands[index + 1..].to_vec(),
+                    None,
+                );
+            }
+            result =
+                self.as_mut()
+                    .execute_ipc_command_with_operation(command.clone(), route, None)?;
+            if let Some(id) = result.get("operation_id").and_then(super::Value::as_str) {
+                operations.push(id.to_owned());
+            }
+        }
+        result["operation_ids"] = serde_json::json!(operations);
+        Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn id(number: u64) -> TabId {
+        TabId::from_display(&format!("tabid-{number}")).unwrap()
+    }
+    fn command(name: &str, arguments: &[&str]) -> ParsedCommand {
+        ParsedCommand {
+            name: name.into(),
+            arguments: arguments.iter().map(|v| (*v).into()).collect(),
+        }
+    }
+    #[test]
+    fn selections_wrap_with_counts_and_validate_group_ids() {
+        let ids = [id(1), id(2), id(3)];
+        assert_eq!(
+            select_index(&command("tab-next", &["--count", "4"]), 1, &ids, 0, None),
+            Ok(1)
+        );
+        assert_eq!(
+            select_index(&command("tab-prev", &[]), 2, &ids, 0, None),
+            Ok(1)
+        );
+        assert_eq!(
+            select_index(&command("tab-select", &["last"]), 1, &ids, 0, None),
+            Ok(2)
+        );
+        assert_eq!(
+            select_index(
+                &command("tab-select", &["previous"]),
+                1,
+                &ids,
+                0,
+                Some(id(2))
+            ),
+            Ok(1)
+        );
+        assert!(select_index(&command("tab-focus", &["tabid-4"]), 1, &ids, 0, None).is_err());
+        assert!(select_index(&command("tab-select", &["0"]), 1, &ids, 0, None).is_err());
+        assert!(select_index(&command("tab-next", &["--count", "101"]), 1, &ids, 0, None).is_err());
+    }
+}

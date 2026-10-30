@@ -84,6 +84,7 @@ impl qobject::BrowserUi {
         };
         let started_url = url.to_string();
         if let Some(target) = self.as_ref().get_ref().target_for_index(index) {
+            self.as_mut().retire_native_document_work(target);
             self.as_mut().note_navigation_started(target, &started_url);
             let _ = self
                 .as_mut()

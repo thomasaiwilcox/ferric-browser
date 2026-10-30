@@ -32,6 +32,15 @@ impl qobject::BrowserUi {
         route: &IpcRoute,
         operation_id: Option<&str>,
     ) -> Result<Value, super::PublicError> {
+        if self.as_ref().in_page_window_mode() && super::browser_ui_page_windows::handles(&command)
+        {
+            return self.execute_page_window_ipc_selection(
+                &command,
+                route,
+                Vec::new(),
+                operation_id,
+            );
+        }
         if let Some(executor) = self
             .as_ref()
             .rust()

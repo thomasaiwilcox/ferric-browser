@@ -1,6 +1,7 @@
 #include "public_page_host.h"
 
 #include "public_page_owner.h"
+#include "credential_boundary.h"
 
 #include <QQuickWidget>
 #include <QVBoxLayout>
@@ -8,6 +9,8 @@
 #include <QMetaObject>
 #include <QThread>
 #include <QWebEnginePage>
+#include <QWebEngineNavigationRequest>
+#include <QDialog>
 #include <QWebEngineProfile>
 #include <QWebEngineView>
 #include <QQmlContext>
@@ -171,6 +174,7 @@ FerricPublicPageHost::FerricPublicPageHost(
 
     m_pageView->setObjectName(QStringLiteral("ferricHostedPageView"));
     m_pageView->setFocusPolicy(Qt::StrongFocus);
+    m_pageView->setEnabled(false);
     // Bind the native profile pointer to the profile UUID owned by this Rust
     // BrowserUi instead of accepting a caller-supplied profile string.
     if (browserUi) {
@@ -196,6 +200,7 @@ FerricPublicPageHost::~FerricPublicPageHost()
     auto &registry = pageHostRegistry();
     registry.hosts.remove(m_hostToken);
     if (!m_pageOwnerToken.isEmpty() && registry.owner_hosts.value(m_pageOwnerToken) == this) {
+        if (m_pageOwner) m_pageOwner->invalidatePresentation();
         registry.owner_hosts.remove(m_pageOwnerToken);
     }
 }
@@ -293,8 +298,11 @@ bool FerricPublicPageHost::registerInitialPage(
     }
 
     m_tabId = ownerTabId;
+    m_pageView->setEnabled(true);
     bindPageSignals();
     m_detached = false;
+    if (m_browserUi->property("feature_phone_passkeys_requested").toString() == "on")
+        prepareCredentialBoundary();
     return m_pageView->page() == owner->page();
 }
 
@@ -378,6 +386,7 @@ bool FerricPublicPageHost::applyNativeRequest(const QVariant &request)
         m_layout->removeWidget(m_pageView);
         m_pageView->hide();
         m_detached = true;
+        owner->invalidatePresentation();
         return true;
     }
 
@@ -424,6 +433,7 @@ QWebEngineView *FerricPublicPageHost::takePageViewForTransfer(FerricPublicPageOw
     view->setParent(nullptr);
     for (const auto &connection : std::as_const(m_pageConnections)) QObject::disconnect(connection);
     m_pageConnections.clear();
+    owner->invalidatePresentation();
     m_pageView = nullptr;
     m_pageOwner = nullptr;
     m_pageOwnerToken.clear();
@@ -450,6 +460,7 @@ bool FerricPublicPageHost::acceptTransferredPage(
     }
     view->setParent(this);
     view->setFocusPolicy(Qt::StrongFocus);
+    view->setEnabled(true);
     m_layout->addWidget(view, 1);
     view->show();
     m_pageView = view;
@@ -460,7 +471,9 @@ bool FerricPublicPageHost::acceptTransferredPage(
     auto *source = pageHostRegistry().owner_hosts.value(pageOwnerToken).data();
     if (source && source != this) m_tabId = source->m_tabId;
     pageHostRegistry().owner_hosts.insert(pageOwnerToken, this);
+    owner->invalidatePresentation();
     bindPageSignals();
+    if (owner->findChild<FerricCredentialBoundary *>()) prepareCredentialBoundary();
     if (restoreFocus) {
         view->setFocus(Qt::OtherFocusReason);
     }
@@ -539,7 +552,10 @@ bool FerricPublicPageHost::requestIsCurrent(const QVariantMap &row) const
         || row.value("nativeHost").toString() != m_hostToken
         || row.value("nativeOwner").toString() != m_pageOwnerToken
         || row.value("nativeDocument").toString() != QString::number(m_pageOwner->documentGeneration())
-        || m_pageOwner->profile() != m_profile) return false;
+        || m_pageOwner->profile() != m_profile
+        || row.value("nativeHostGeneration").toString() != QString::number(m_pageOwner->hostGeneration())
+        || row.value("nativePageGeneration").toString() != QString::number(m_pageOwner->pageGeneration())
+        || row.value("nativePresentationGeneration").toString() != QString::number(m_pageOwner->presentationGeneration())) return false;
     QString profile;
     bool current = false;
     bool ownerMatches = false;
@@ -557,15 +573,23 @@ bool FerricPublicPageHost::requestIsCurrent(const QVariantMap &row) const
     return profile == m_profileId && current && ownerMatches && currentTabIndex() >= 0;
 }
 
-QVariant FerricPublicPageHost::captureRequest(const QVariant &request) const
+QVariantMap FerricPublicPageHost::ownerStamp(QVariantMap row) const
 {
-    QVariantMap row = request.toMap();
     row.insert("nativeTarget", true);
-    if (m_nextRequestId == std::numeric_limits<quint64>::max()) return row;
-    row.insert("nativeRequest", QString::number(++m_nextRequestId));
     row.insert("nativeHost", m_hostToken);
     row.insert("nativeOwner", m_pageOwnerToken);
     row.insert("nativeDocument", m_pageOwner ? QString::number(m_pageOwner->documentGeneration()) : QString());
+    row.insert("nativeHostGeneration", m_pageOwner ? QString::number(m_pageOwner->hostGeneration()) : QString());
+    row.insert("nativePageGeneration", m_pageOwner ? QString::number(m_pageOwner->pageGeneration()) : QString());
+    row.insert("nativePresentationGeneration", m_pageOwner ? QString::number(m_pageOwner->presentationGeneration()) : QString());
+    return row;
+}
+
+QVariant FerricPublicPageHost::captureRequest(const QVariant &request) const
+{
+    auto row = ownerStamp(request.toMap());
+    if (m_nextRequestId == std::numeric_limits<quint64>::max()) return row;
+    row.insert("nativeRequest", QString::number(++m_nextRequestId));
     return row;
 }
 
@@ -581,6 +605,14 @@ QVariant ferric_public_page_capture_request(const QString &ownerToken, const QVa
 QVariant ferric_public_page_for_request(const QVariant &request)
 {
     const auto row = request.toMap();
+    if (row.value("kind").toString() == "reparent-view") {
+        const QString operation = row.value("operation").toString();
+        const auto host = pageHostRegistry().hosts.value(row.value("hostToken").toString());
+        const bool live = (operation == "attach" || operation == "detach")
+            && ferric_public_page_host_tokens_live(row.value("hostToken").toString(),
+                row.value("pageOwnerToken").toString(), row.value("profileId").toString(), operation == "attach");
+        return QVariant::fromValue(static_cast<QObject *>(host && live ? host.data() : nullptr));
+    }
     const auto host = pageHostRegistry().hosts.value(row.value("nativeHost").toString());
     // Request envelopes contain only values. Resolve the QObject immediately
     // before dispatch, so retaining a request cannot retain a dangling pointer.
@@ -594,13 +626,10 @@ bool FerricPublicPageHost::executeCaptured(const QVariant &request)
     bool serialValid = false;
     const auto serial = row.value("nativeRequest").toString().toULongLong(&serialValid);
     if (!serialValid || serial <= m_lastExecutedRequest || serial > m_nextRequestId
-        || !requestIsCurrent(row) || row.value("kind").toString() != "navigate") return false;
-    const QUrl url(row.value("url").toString());
-    if (!url.isValid() || url.isRelative()) return false;
+        || !requestIsCurrent(row)) return false;
+    // Consume before any reentrant Qt call, including validation failures.
     m_lastExecutedRequest = serial;
-    m_navigationRequest = row;
-    m_pageOwner->page()->setUrl(url);
-    return true;
+    return executePageCommand(row);
 }
 
 void FerricPublicPageHost::bindPageSignals()
@@ -608,8 +637,22 @@ void FerricPublicPageHost::bindPageSignals()
     for (const auto &connection : std::as_const(m_pageConnections)) QObject::disconnect(connection);
     m_pageConnections.clear();
     auto *page = m_pageOwner->page();
+    m_pageConnections.append(connect(m_pageOwner, &FerricPublicPageOwner::authorityInvalidated, this, [this] {
+        if (m_formReloadDialog) m_formReloadDialog->reject();
+        if (m_pageOwner && m_pageOwner->isClosed() && m_pageView) {
+            // A retired owner must not leave an interactive view that can
+            // lazily acquire Qt's unrelated default page/profile.
+            m_pageView->setEnabled(false);
+            m_pageView->hide();
+        }
+    }));
+    m_pageConnections.append(connect(page, &QWebEnginePage::navigationRequested, this,
+        [this](QWebEngineNavigationRequest &request) {
+            if (request.isMainFrame()) m_documentHasFormData = request.hasFormData();
+        }));
     m_pageConnections.append(connect(page, &QWebEnginePage::loadStarted, this, [this] {
         if (!m_pageOwner) return;
+        m_engineLoadState = QStringLiteral("provisional");
         // The owner advances its native document generation before this slot.
         m_navigationRequest.insert("nativeDocument", QString::number(m_pageOwner->documentGeneration()));
         if (!requestIsCurrent(m_navigationRequest)) return;
@@ -620,6 +663,7 @@ void FerricPublicPageHost::bindPageSignals()
                                   Q_ARG(int, index), Q_ARG(QString, url));
     }));
     m_pageConnections.append(connect(page, &QWebEnginePage::loadFinished, this, [this, page](bool ok) {
+        m_engineLoadState = ok ? QStringLiteral("complete") : QStringLiteral("failed");
         if (!requestIsCurrent(m_navigationRequest)
             || m_navigationDocument != m_pageOwner->documentGeneration()) return;
         const int index = currentTabIndex();
@@ -635,4 +679,28 @@ void FerricPublicPageHost::bindPageSignals()
                                       Q_ARG(int, index));
         }
     }));
+}
+
+QString FerricPublicPageHost::credentialContextIdentity() const {
+    if (!m_browserUi || !m_pageOwner || !m_pageOwner->page() || m_detached
+        || !m_pageView || m_pageView->page() != m_pageOwner->page()
+        || pageHostRegistry().owner_hosts.value(m_pageOwnerToken) != this) return {};
+    QVariant target;
+    const int index = currentTabIndex();
+    if (index < 0 || !QMetaObject::invokeMethod(m_browserUi, "navigation_target_for_index", Qt::DirectConnection,
+            Q_RETURN_ARG(QVariant, target), Q_ARG(int, index))) return {};
+    const auto row = ownerStamp(target.toMap());
+    if (!requestIsCurrent(row)) return {};
+    return QStringList{m_profileId, m_hostToken, m_pageOwnerToken,
+        row.value("tabId").toString(), row.value("generation").toString(), row.value("documentId").toString()}.join(QLatin1Char('/'));
+}
+
+FerricCredentialBoundary *FerricPublicPageHost::prepareCredentialBoundary() {
+    if (credentialContextIdentity().isEmpty()) return nullptr;
+    QPointer<FerricPublicPageHost> guard(this);
+    auto contextIdentity = [guard] { return guard ? guard->credentialContextIdentity() : QString(); };
+    auto *boundary = m_pageOwner->findChild<FerricCredentialBoundary *>(QString(), Qt::FindDirectChildrenOnly);
+    if (boundary) boundary->bindPresentation(m_pageView, std::move(contextIdentity));
+    else boundary = new FerricCredentialBoundary(m_pageOwner, m_pageView, std::move(contextIdentity));
+    return boundary->isReady() ? boundary : nullptr;
 }

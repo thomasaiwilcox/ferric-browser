@@ -90,8 +90,8 @@ pub use storage::{StorageEffect, StorageTicket};
 mod credential_policy;
 pub use credential_policy::{
     CredentialAdmissionError, CredentialDocumentLease, CredentialOperation, CredentialRequestId,
-    CredentialRequestOptions, CredentialRequestOwner, OriginBoundRpCandidate, RpValidationStatus,
-    VerifiedOrigin,
+    CredentialRequestOptions, CredentialRequestOwner, EngineCredentialFacts,
+    OriginBoundRpCandidate, RpValidationStatus, VerifiedOrigin,
 };
 mod credential_state;
 pub use credential_state::{
@@ -877,7 +877,7 @@ mod profile_instance_identity_tests {
             id: Some(id),
             privacy: PrivacyKind::Normal,
             storage_path: Some(roots.state.join("profile.sqlite3")),
-            roots: Some(roots.clone()),
+            roots: Some(roots),
             lock: None,
             contexts: None,
         }
@@ -1101,9 +1101,11 @@ mod profile_instance_identity_tests {
         assert_eq!(private_snapshot.roots, Some(roots));
         assert_eq!(private_snapshot.privacy, PrivacyKind::Private);
         assert!(!private_snapshot.durable);
+    }
 
-        // Exercise the same real application owners used by inherited windows:
-        // private grants and active downloads are shared only by the live session.
+    #[test]
+    fn profile_instance_identity_shared_permissions_and_downloads() {
+        // Private grants and active downloads are shared only by the live session.
         let mut source = BrowserApplication::new(Config::default());
         source
             .activate_profile(memory(PrivacyKind::Private, "same label"))

@@ -22,6 +22,7 @@ public:
     quint64 pageGeneration = 0;
     quint64 hostGeneration = 0;
     quint64 documentGeneration = 0;
+    quint64 presentationGeneration = 0;
   };
   using JavaScriptCallback = std::function<void(const QVariant &)>;
 
@@ -31,6 +32,7 @@ public:
   QWebEngineProfile *profile() const { return profile_; }
   bool isClosed() const { return closed_; }
   quint64 hostGeneration() const { return hostGeneration_; }
+  quint64 presentationGeneration() const { return presentationGeneration_; }
   quint64 pageGeneration() const { return pageGeneration_; }
   quint64 documentGeneration() const { return documentGeneration_; }
 
@@ -42,10 +44,12 @@ public:
   bool adoptNewWindowFrom(FerricPublicPageOwner *source,
                           QWebEngineNewWindowRequest &request);
   bool close();
+  void invalidatePresentation();
 
 signals:
   void documentChanged(quint64 generation);
   void closed();
+  void authorityInvalidated();
 
 private:
   friend class FerricPublicProfileOwner;
@@ -53,6 +57,7 @@ private:
                         QWebEngineProfile *profile, QObject *host,
                         QObject *parent);
 
+  void invalidateDocument();
   QPointer<FerricPublicProfileOwner> profileOwner_;
   QPointer<QWebEngineProfile> profile_;
   QPointer<QObject> host_;
@@ -62,6 +67,7 @@ private:
   quint64 pageGeneration_ = 0;
   quint64 hostGeneration_ = 0;
   quint64 documentGeneration_ = 0;
+  quint64 presentationGeneration_ = 1;
   bool closed_ = false;
   bool popupAdopted_ = false;
 };

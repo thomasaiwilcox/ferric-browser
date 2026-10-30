@@ -527,6 +527,29 @@ impl qobject::BrowserUi {
             this.status_text = status.clone();
             status
         };
+        if self.as_ref().in_page_window_mode() {
+            let checkpoint = {
+                let owner = self.as_ref();
+                let rust = owner.rust();
+                rust.state
+                    .as_ref()
+                    .and_then(ferric_browser_application::BrowserApplication::profile_instance_id)
+                    .and_then(|profile| {
+                        super::live_ipc_owners::page_session_checkpoint(
+                            profile,
+                            &rust.window_token.to_string(),
+                        )
+                    })
+            };
+            if let Some(checkpoint) = checkpoint {
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                this.session_id = checkpoint.session_id;
+                this.session_path = checkpoint.path;
+                this.recovered_session_ids = checkpoint.recovered;
+                this.recovery_paths.clear();
+            }
+        }
         self.as_mut().set_session_recovery_pending(false);
         self.as_mut().set_session_recovery_error(QString::default());
         self.as_mut().clear_userscript_inventory_rows();

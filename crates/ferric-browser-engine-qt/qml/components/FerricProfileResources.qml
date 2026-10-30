@@ -18,6 +18,7 @@ QtObject {
     property var managedInterceptor: null
     readonly property var interceptor: existingInterceptor || managedInterceptor
     readonly property alias lifetime: lifetime
+    readonly property alias credentialIntegration: credentialAdapter
     readonly property var policyUi: lifetime.policyUi
     property bool usable: false
     property var policySnapshot: ({enabled:false,blockedHosts:[],exceptionHosts:[],blockedRuleHosts:[],blockedRuleListIds:[],exceptionRuleHosts:[],exceptionRuleListIds:[],bypassSites:[],securityDenyHosts:[],adblockEngineHandle:0})
@@ -26,6 +27,11 @@ QtObject {
         id: lifetime
         onViewRetiring: function(view) { resources.retireView(view) }
         onDrained: resources.rootWindow.profileResourceRegistry.release(resources)
+    }
+    property FerricCredentialIntegration nativeCredentials: FerricCredentialIntegration {
+        id: credentialAdapter
+        lifetime: resources.lifetime
+        requestInterceptor: resources.interceptor
     }
     property Component profileFactory: Component {
         WebEngineProfilePrototype {

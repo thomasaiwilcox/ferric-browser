@@ -13,8 +13,10 @@ Item {
     required property var interceptor
     required property bool transientProfile
     property bool ready: true
+    property var pageWindowCoordinator: null
     property var tabViews: []
     property string tabIdentitySignature: ""
+    property bool restoreInProgress: false
     signal activity
     signal restored
 
@@ -73,8 +75,10 @@ Item {
         if (!ready || !viewFactory || !viewParent) return false
         var pending = browserUi.take_session_restore_values()
         if (pending.length > 0) {
+            restoreInProgress = true
             controller.applyRestorePayload(pending, true)
         }
+        if (pageWindowCoordinator && !pageWindowCoordinator.prepare(controller)) return false
         var coreIds = []
         for (var coreIndex = 0; coreIndex < browserUi.tab_count; ++coreIndex) {
             coreIds.push(browserUi.tab_id_for_index(coreIndex))
@@ -202,6 +206,9 @@ Item {
         for (var viewIndex = 0; viewIndex < tabViews.length; ++viewIndex) {
             tabViews[viewIndex].tabIndex = viewIndex
             tabViews[viewIndex].viewModel = tabs.get(viewIndex)
+            // Core may have replaced its owner before these indices became
+            // stable. Reassert the retained native view association now.
+            tabViews[viewIndex].refreshPromptViewIdentity()
         }
         if (tabViews.length !== tabs.count || tabs.count !== browserUi.tab_count) {
             browserUi.status_text = "The tabs couldn't be synchronized. Try reopening the window."
@@ -218,7 +225,10 @@ Item {
             }
         }
         refreshMetadata()
-        if (pending.length > 0) restored()
+        if (restoreInProgress) {
+            restoreInProgress = false
+            restored()
+        }
     }
 
 }

@@ -1,4 +1,6 @@
 #include "request_interceptor.h"
+#include <QThread>
+#include <QCoreApplication>
 
 #include <QtCore/QReadLocker>
 #include <QtCore/QMutexLocker>
@@ -13,6 +15,16 @@
 #include <utility>
 
 namespace {
+// All Ferric interceptor installation goes through attach/detach on the GUI
+// thread. A competitor must explicitly detach the current owner first.
+bool onApplicationThread() {
+    const auto *app = QCoreApplication::instance();
+    return app && app->thread() == QThread::currentThread();
+}
+QHash<QObject *, QPointer<FerricBrowserRequestInterceptor>> &profileInterceptors() {
+    static QHash<QObject *, QPointer<FerricBrowserRequestInterceptor>> owners;
+    return owners;
+}
 QString resourceTypeName(const QWebEngineUrlRequestInfo::ResourceType type)
 {
     switch (type) {
@@ -191,8 +203,9 @@ void FerricBrowserRequestInterceptor::setBlockedHosts(const QStringList &hosts)
         }
         auto replacement = *policy_;
         replacement.blockedHosts = next;
-        policy_ = std::make_shared<const PolicySnapshot>(replacement);
+        publishPolicyLocked(std::move(replacement));
     }
+    emit policyChanged();
     emit blockedHostsChanged();
 }
 
@@ -212,8 +225,9 @@ void FerricBrowserRequestInterceptor::setExceptionHosts(const QStringList &hosts
         }
         auto replacement = *policy_;
         replacement.exceptionHosts = next;
-        policy_ = std::make_shared<const PolicySnapshot>(replacement);
+        publishPolicyLocked(std::move(replacement));
     }
+    emit policyChanged();
     emit exceptionHostsChanged();
 }
 
@@ -233,8 +247,9 @@ void FerricBrowserRequestInterceptor::setBypassSites(const QStringList &hosts)
         }
         auto replacement = *policy_;
         replacement.bypassSites = next;
-        policy_ = std::make_shared<const PolicySnapshot>(replacement);
+        publishPolicyLocked(std::move(replacement));
     }
+    emit policyChanged();
     emit bypassSitesChanged();
 }
 
@@ -254,8 +269,9 @@ void FerricBrowserRequestInterceptor::setSecurityDenyHosts(const QStringList &ho
         }
         auto replacement = *policy_;
         replacement.securityDenyHosts = next;
-        policy_ = std::make_shared<const PolicySnapshot>(replacement);
+        publishPolicyLocked(std::move(replacement));
     }
+    emit policyChanged();
     emit securityDenyHostsChanged();
 }
 
@@ -271,6 +287,7 @@ void FerricBrowserRequestInterceptor::setBlockedRuleHosts(const QStringList &hos
     }
     blockedRuleHosts_ = hosts;
     updateBlockedRuleLists();
+    emit policyChanged();
     emit blockedRuleHostsChanged();
 }
 
@@ -286,6 +303,7 @@ void FerricBrowserRequestInterceptor::setBlockedRuleListIds(const QStringList &i
     }
     blockedRuleListIds_ = ids;
     updateBlockedRuleLists();
+    emit policyChanged();
     emit blockedRuleListIdsChanged();
 }
 
@@ -301,6 +319,7 @@ void FerricBrowserRequestInterceptor::setExceptionRuleHosts(const QStringList &h
     }
     exceptionRuleHosts_ = hosts;
     updateExceptionRuleLists();
+    emit policyChanged();
     emit exceptionRuleHostsChanged();
 }
 
@@ -316,6 +335,7 @@ void FerricBrowserRequestInterceptor::setExceptionRuleListIds(const QStringList 
     }
     exceptionRuleListIds_ = ids;
     updateExceptionRuleLists();
+    emit policyChanged();
     emit exceptionRuleListIdsChanged();
 }
 
@@ -329,7 +349,7 @@ void FerricBrowserRequestInterceptor::updateBlockedRuleLists()
         }
         auto replacement = *policy_;
         replacement.blockedRuleLists = next;
-        policy_ = std::make_shared<const PolicySnapshot>(replacement);
+        publishPolicyLocked(std::move(replacement));
     }
 }
 
@@ -343,7 +363,7 @@ void FerricBrowserRequestInterceptor::updateExceptionRuleLists()
         }
         auto replacement = *policy_;
         replacement.exceptionRuleLists = next;
-        policy_ = std::make_shared<const PolicySnapshot>(replacement);
+        publishPolicyLocked(std::move(replacement));
     }
 }
 
@@ -362,8 +382,9 @@ void FerricBrowserRequestInterceptor::setAdblockSourceIds(const QStringList &ids
         }
         auto replacement = *policy_;
         replacement.adblockSourceIds = ids;
-        policy_ = std::make_shared<const PolicySnapshot>(replacement);
+        publishPolicyLocked(std::move(replacement));
     }
+    emit policyChanged();
     emit adblockSourceIdsChanged();
 }
 
@@ -386,8 +407,9 @@ void FerricBrowserRequestInterceptor::setAdblockEngineHandle(const qulonglong ha
         QWriteLocker locker(&policyLock_);
         auto replacement = *policy_;
         replacement.adblockEngine = std::move(next);
-        policy_ = std::make_shared<const PolicySnapshot>(replacement);
+        publishPolicyLocked(std::move(replacement));
     }
+    emit policyChanged();
     emit adblockEngineHandleChanged();
 }
 
@@ -405,7 +427,9 @@ void FerricBrowserRequestInterceptor::setEnabled(const bool enabled)
             return;
         }
         enabled_ = enabled;
+        advancePolicyGenerationLocked();
     }
+    emit policyChanged();
     emit enabledChanged();
 }
 
@@ -474,63 +498,66 @@ void FerricBrowserRequestInterceptor::clearSiteEvidence(const QString &site)
     }
 }
 
+void FerricBrowserRequestInterceptor::advancePolicyGenerationLocked() {
+    if (policyGeneration_ != 0)
+        policyGeneration_ = policyGeneration_ == std::numeric_limits<quint64>::max() ? 0 : policyGeneration_ + 1;
+}
+
+void FerricBrowserRequestInterceptor::publishPolicyLocked(PolicySnapshot replacement) {
+    advancePolicyGenerationLocked();
+    policy_ = std::make_shared<const PolicySnapshot>(std::move(replacement));
+}
+
+quint64 FerricBrowserRequestInterceptor::policyGeneration() const {
+    QReadLocker locker(&policyLock_);
+    return policyGeneration_;
+}
+
+bool FerricBrowserRequestInterceptor::attachedToProfile(QObject *profile) const {
+    return profile && onApplicationThread() && QThread::currentThread() == thread() && profile->thread() == thread()
+        && profileInterceptors().value(profile) == this;
+}
+
 bool FerricBrowserRequestInterceptor::attach(QObject *profile)
 {
-    auto *quickProfile = qobject_cast<QQuickWebEngineProfile *>(profile);
-    if (quickProfile != nullptr) {
-        const auto alreadyAttached = std::any_of(
-            profiles_.cbegin(), profiles_.cend(),
-            [quickProfile](const ProfileAttachment &entry) {
-                return entry.quickProfile == quickProfile;
-            });
-        if (!alreadyAttached) {
-            profiles_.append(ProfileAttachment{QPointer<QWebEngineProfile>(),
-                                               QPointer<QQuickWebEngineProfile>(quickProfile)});
-        }
-        quickProfile->setUrlRequestInterceptor(this);
-        return true;
-    }
-
-    auto *webProfile = qobject_cast<QWebEngineProfile *>(profile);
-    if (webProfile == nullptr) {
-        return false;
-    }
-    const auto alreadyAttached = std::any_of(
-        profiles_.cbegin(), profiles_.cend(),
-        [webProfile](const ProfileAttachment &entry) {
-            return entry.webProfile == webProfile;
-        });
-    if (!alreadyAttached) {
-        profiles_.append(ProfileAttachment{QPointer<QWebEngineProfile>(webProfile),
-                                               QPointer<QQuickWebEngineProfile>()});
-    }
-    webProfile->setUrlRequestInterceptor(this);
-    return true;
+    if (!profile || !onApplicationThread() || QThread::currentThread() != thread() || profile->thread() != thread()) return false;
+    auto *quick = qobject_cast<QQuickWebEngineProfile *>(profile);
+    auto *web = qobject_cast<QWebEngineProfile *>(profile);
+    if (!quick && !web) return false;
+    const auto current = profileInterceptors().value(profile);
+    if (current) return current == this;
+    const QPointer<QObject> profileGuard(profile);
+    const QPointer<FerricBrowserRequestInterceptor> self(this);
+    profileInterceptors().insert(profile, this);
+    profiles_.append(ProfileAttachment{web, quick});
+    connect(profile, &QObject::destroyed, this, [this, profile] {
+        if (!onApplicationThread()) qFatal("Ferric profile attachment cleanup requires the application thread");
+        if (profileInterceptors().value(profile) != this) return;
+        profileInterceptors().remove(profile);
+        profiles_.erase(std::remove_if(profiles_.begin(), profiles_.end(), [](const auto &entry) {
+            return !entry.quickProfile && !entry.webProfile;
+        }), profiles_.end());
+        { QWriteLocker locker(&policyLock_); advancePolicyGenerationLocked(); }
+        emit policyChanged();
+    });
+    if (quick) quick->setUrlRequestInterceptor(this);
+    else web->setUrlRequestInterceptor(this);
+    { QWriteLocker locker(&policyLock_); advancePolicyGenerationLocked(); }
+    emit policyChanged();
+    return self && profileGuard && self->attachedToProfile(profileGuard);
 }
 
 bool FerricBrowserRequestInterceptor::detach(QObject *profile)
 {
-    auto *quickProfile = qobject_cast<QQuickWebEngineProfile *>(profile);
-    if (quickProfile != nullptr) {
-        quickProfile->setUrlRequestInterceptor(nullptr);
-        profiles_.erase(std::remove_if(profiles_.begin(), profiles_.end(),
-                                       [quickProfile](const ProfileAttachment &entry) {
-                                           return entry.quickProfile == quickProfile;
-                                       }),
-                         profiles_.end());
-        return true;
-    }
-
-    auto *webProfile = qobject_cast<QWebEngineProfile *>(profile);
-    if (webProfile == nullptr) {
-        return false;
-    }
-    webProfile->setUrlRequestInterceptor(nullptr);
-    profiles_.erase(std::remove_if(profiles_.begin(), profiles_.end(),
-                                   [webProfile](const ProfileAttachment &entry) {
-                                       return entry.webProfile == webProfile;
-                                   }),
-                     profiles_.end());
+    if (!attachedToProfile(profile)) return false;
+    profileInterceptors().remove(profile);
+    profiles_.erase(std::remove_if(profiles_.begin(), profiles_.end(), [profile](const auto &entry) {
+        return entry.quickProfile == profile || entry.webProfile == profile;
+    }), profiles_.end());
+    if (auto *quick = qobject_cast<QQuickWebEngineProfile *>(profile)) quick->setUrlRequestInterceptor(nullptr);
+    else if (auto *web = qobject_cast<QWebEngineProfile *>(profile)) web->setUrlRequestInterceptor(nullptr);
+    { QWriteLocker locker(&policyLock_); advancePolicyGenerationLocked(); }
+    emit policyChanged();
     return true;
 }
 
@@ -872,13 +899,15 @@ QStringList FerricBrowserRequestInterceptor::validatedHosts(const QStringList &h
 
 void FerricBrowserRequestInterceptor::detachProfiles()
 {
-    for (const auto &attachment : std::as_const(profiles_)) {
-        if (attachment.quickProfile != nullptr) {
-            attachment.quickProfile->setUrlRequestInterceptor(nullptr);
-        }
-        if (attachment.webProfile != nullptr) {
-            attachment.webProfile->setUrlRequestInterceptor(nullptr);
-        }
+    if (profiles_.isEmpty()) return;
+    if (!onApplicationThread()) qFatal("Attached Ferric interceptors must be destroyed on the application thread");
+    const auto profiles = std::exchange(profiles_, {});
+    for (const auto &attachment : profiles) {
+        QObject *profile = attachment.quickProfile ? static_cast<QObject *>(attachment.quickProfile.data())
+                                                  : static_cast<QObject *>(attachment.webProfile.data());
+        if (!profile || profileInterceptors().value(profile) != this) continue;
+        profileInterceptors().remove(profile);
+        if (attachment.quickProfile) attachment.quickProfile->setUrlRequestInterceptor(nullptr);
+        else if (attachment.webProfile) attachment.webProfile->setUrlRequestInterceptor(nullptr);
     }
-    profiles_.clear();
 }

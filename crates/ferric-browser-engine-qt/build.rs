@@ -2,6 +2,68 @@ use std::{env, fmt::Write as _, fs, path::Path, path::PathBuf};
 
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
+const NATIVE_SOURCES: &[&str] = &[
+    "src/browser_key_router.h",
+    "src/browser_key_router.cpp",
+    "src/hint_frame_broker.h",
+    "src/hint_frame_broker.cpp",
+    "src/script_runner.h",
+    "src/script_runner.cpp",
+    "src/profile_lifetime.h",
+    "src/profile_lifetime.cpp",
+    "src/public_profile_owner.h",
+    "src/public_profile_owner.cpp",
+    "src/public_page_owner.h",
+    "src/public_page_owner.cpp",
+    "src/public_page_host.h",
+    "src/public_page_host.cpp",
+    "src/public_page_commands.cpp",
+    "src/window_scene.h",
+    "src/window_scene.cpp",
+    "src/page_window_identity.h",
+    "src/page_window_identity.cpp",
+    "src/native_page_surface.h",
+    "src/native_page_surface.cpp",
+    "src/download_source.h",
+    "src/download_source.cpp",
+    "src/popup_owner_bridge.h",
+    "src/popup_owner_bridge.cpp",
+    "src/browser_page_pointer_adapter.h",
+    "src/browser_page_pointer_adapter.cpp",
+    "src/request_interceptor.h",
+    "src/request_interceptor.cpp",
+    "src/blocklist_updater.h",
+    "src/blocklist_updater.cpp",
+    "src/link_rule_updater.h",
+    "src/link_rule_updater.cpp",
+    "src/notification_presenter.h",
+    "src/notification_presenter.cpp",
+    "src/native_file_chooser.h",
+    "src/native_file_chooser.cpp",
+    "src/portal_file_request.h",
+    "src/portal_file_request.cpp",
+    "src/gui_application.h",
+    "src/gui_application.cpp",
+    "src/local_file_url.h",
+    "src/local_file_url.cpp",
+    "src/mpris_controller.h",
+    "src/mpris_controller.cpp",
+    "src/settings_model.h",
+    "src/settings_model.cpp",
+    "src/url_display.h",
+    "src/url_display.cpp",
+    "src/credential_boundary.h",
+    "src/credential_boundary.cpp",
+    "src/quick_credential_owner.h",
+    "src/quick_credential_owner.cpp",
+    "src/quick_credential_binding.h",
+    "src/quick_credential_binding.cpp",
+    "src/quick_credential_integration.h",
+    "src/quick_credential_integration.cpp",
+    "src/credential_process.h",
+    "src/credential_process.cpp",
+];
+
 fn main() {
     println!("cargo:rerun-if-changed=src/qt_compat/profile_adapter_client.h");
     println!("cargo:rerun-if-changed=src/qt_compat/api/qtwebenginecoreglobal_p.h");
@@ -49,52 +111,7 @@ fn main() {
     };
     builder
         .files(["src/bridge.rs"])
-        .cpp_files([
-            "src/browser_key_router.h",
-            "src/browser_key_router.cpp",
-            "src/hint_frame_broker.h",
-            "src/hint_frame_broker.cpp",
-            "src/script_runner.h",
-            "src/script_runner.cpp",
-            "src/profile_lifetime.h",
-            "src/profile_lifetime.cpp",
-            "src/public_profile_owner.h",
-            "src/public_profile_owner.cpp",
-            "src/public_page_owner.h",
-            "src/public_page_owner.cpp",
-            "src/public_page_host.h",
-            "src/public_page_host.cpp",
-            "src/download_source.h",
-            "src/download_source.cpp",
-            "src/popup_owner_bridge.h",
-            "src/popup_owner_bridge.cpp",
-            "src/browser_page_pointer_adapter.h",
-            "src/browser_page_pointer_adapter.cpp",
-            "src/request_interceptor.h",
-            "src/request_interceptor.cpp",
-            "src/blocklist_updater.h",
-            "src/blocklist_updater.cpp",
-            "src/link_rule_updater.h",
-            "src/link_rule_updater.cpp",
-            "src/notification_presenter.h",
-            "src/notification_presenter.cpp",
-            "src/native_file_chooser.h",
-            "src/native_file_chooser.cpp",
-            "src/portal_file_request.h",
-            "src/portal_file_request.cpp",
-            "src/gui_application.h",
-            "src/gui_application.cpp",
-            "src/local_file_url.h",
-            "src/local_file_url.cpp",
-            "src/mpris_controller.h",
-            "src/mpris_controller.cpp",
-            "src/settings_model.h",
-            "src/settings_model.cpp",
-            "src/url_display.h",
-            "src/url_display.cpp",
-            "src/credential_process.h",
-            "src/credential_process.cpp",
-        ])
+        .cpp_files(NATIVE_SOURCES)
         .qrc(&qrc_path)
         .qt_module("Gui")
         .qt_module("Quick")
@@ -105,6 +122,7 @@ fn main() {
         .qt_module("WebEngineWidgets")
         .qt_module("QuickWidgets")
         .qt_module("Network")
+        .qt_module("WebChannel")
         .qt_module("DBus")
         .build()
         .export();

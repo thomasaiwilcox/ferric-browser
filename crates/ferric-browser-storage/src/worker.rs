@@ -21,9 +21,12 @@ use super::{
     JourneyNodeRecord, JourneyWrite, MarkWrite, PermissionRule, PermissionRulesSnapshot,
     ProfileStore, Quickmark, RestorePlanEntry, SessionSnapshot, StoreMode, VisitInput,
     clear_current_session_checkpoints, current_session_paths, delete_named_session,
-    list_named_sessions, load_session, save_session_atomic,
+    list_named_sessions, load_session,
 };
 use uuid::Uuid;
+
+#[cfg(test)]
+use super::save_session_atomic;
 
 const QUEUE_CAPACITY: usize = 1;
 const COMPLETION_CAPACITY: usize = 32;

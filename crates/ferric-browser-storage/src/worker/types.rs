@@ -89,6 +89,7 @@ pub enum StorageCommand {
     SessionSave {
         path: PathBuf,
         snapshot: SessionSnapshot,
+        order: crate::SessionSaveOrder,
     },
     SessionDelete {
         root: PathBuf,
@@ -243,8 +244,22 @@ impl StorageCommand {
     /// # Errors
     ///
     /// Returns the request's validation error when a field or batch is invalid.
+    /// Capture ordering before an application's scheduler can defer this intent.
+    #[must_use]
+    pub fn session_save(path: PathBuf, snapshot: SessionSnapshot) -> Self {
+        let order = crate::SessionSaveOrder::capture(&path);
+        Self::SessionSave {
+            path,
+            snapshot,
+            order,
+        }
+    }
+
     pub fn validate(&self) -> Result<(), StorageWorkerError> {
         match self {
+            Self::SessionSave { path, order, .. } if !order.matches_path(path) => {
+                Err(StorageWorkerError::InvalidBatch)
+            }
             Self::Library { limit } if !(1..=MAX_LIBRARY_LIMIT).contains(limit) => {
                 Err(StorageWorkerError::InvalidLimit)
             }

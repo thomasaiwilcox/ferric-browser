@@ -9,6 +9,7 @@
 #include <QtWebEngineCore/QWebEngineProfile>
 
 #include <atomic>
+#include <limits>
 #include <utility>
 
 namespace {
@@ -33,13 +34,13 @@ FerricPublicPageOwner::FerricPublicPageOwner(
   }
 
   page_ = new QWebEnginePage(profile_, this);
-  connect(page_, &QWebEnginePage::loadStarted, this, [this] {
-    if (closed_) {
-      return;
-    }
-    ++documentGeneration_;
-    emit documentChanged(documentGeneration_);
-  });
+  connect(page_, &QWebEnginePage::loadStarted, this, &FerricPublicPageOwner::invalidateDocument);
+  connect(page_, &QWebEnginePage::renderProcessTerminated, this,
+          [this] { invalidateDocument(); });
+  connect(page_, &QWebEnginePage::lifecycleStateChanged, this,
+          [this](QWebEnginePage::LifecycleState state) {
+            if (state == QWebEnginePage::LifecycleState::Discarded) invalidateDocument();
+          });
   hostDestroyed_ =
       connect(host, &QObject::destroyed, this, [this] { close(); });
 }
@@ -54,7 +55,7 @@ FerricPublicPageOwner::~FerricPublicPageOwner() {
 FerricPublicPageOwner::Operation
 FerricPublicPageOwner::captureOperation() const {
   return {profileGeneration_, pageGeneration_, hostGeneration_,
-          documentGeneration_};
+          documentGeneration_, presentationGeneration_};
 }
 
 bool FerricPublicPageOwner::isCurrent(const Operation &operation) const {
@@ -64,7 +65,8 @@ bool FerricPublicPageOwner::isCurrent(const Operation &operation) const {
          operation.profileGeneration == profileOwner_->generation() &&
          operation.pageGeneration == pageGeneration_ &&
          operation.hostGeneration == hostGeneration_ &&
-         operation.documentGeneration == documentGeneration_;
+         operation.documentGeneration == documentGeneration_ &&
+         operation.presentationGeneration == presentationGeneration_;
 }
 
 bool FerricPublicPageOwner::runJavaScript(const QString &script,
@@ -122,6 +124,7 @@ bool FerricPublicPageOwner::close() {
   }
   closed_ = true;
   ++documentGeneration_;
+  emit authorityInvalidated();
   QObject::disconnect(hostDestroyed_);
 
   QWebEnginePage *const page = page_.data();
@@ -139,4 +142,19 @@ bool FerricPublicPageOwner::close() {
     emit closed();
   }
   return true;
+}
+
+void FerricPublicPageOwner::invalidateDocument() {
+  if (closed_) return;
+  if (documentGeneration_ == std::numeric_limits<quint64>::max()) { close(); return; }
+  ++documentGeneration_;
+  emit documentChanged(documentGeneration_);
+  emit authorityInvalidated();
+}
+
+void FerricPublicPageOwner::invalidatePresentation() {
+  if (closed_) return;
+  if (presentationGeneration_ == std::numeric_limits<quint64>::max()) { close(); return; }
+  ++presentationGeneration_;
+  emit authorityInvalidated();
 }

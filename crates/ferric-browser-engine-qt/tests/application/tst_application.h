@@ -43,6 +43,10 @@ class ApplicationTests final : public QObject {
     Q_INVOKABLE void accept(const QVariant &value);
     Q_INVOKABLE void frameOperationComplete(const QVariant &value);
   private slots:
+    void credentialViewAssociation_data();
+    void credentialViewAssociation();
+    void pageWindowPresentation_data();
+    void pageWindowPresentation();
     void repeatWindowRouting();
     void repeatKeyboardCount_data();
     void repeatKeyboardCount();

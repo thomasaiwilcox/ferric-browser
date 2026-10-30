@@ -33,21 +33,7 @@ impl qobject::BrowserUi {
             },
         )?;
         if expanded.len() != 1 {
-            let mut result = serde_json::json!({"status": "accepted"});
-            let mut operations = Vec::new();
-            for command in expanded {
-                // Each asynchronous command owns its own admission. Reusing
-                // the envelope ID would let the first completion terminate
-                // unrelated work or replace its cancellation authority.
-                result = self
-                    .as_mut()
-                    .execute_ipc_command_with_operation(command, route, None)?;
-                if let Some(id) = result.get("operation_id").and_then(Value::as_str) {
-                    operations.push(id.to_owned());
-                }
-            }
-            result["operation_ids"] = serde_json::json!(operations);
-            return Ok(result);
+            return self.execute_page_window_ipc_chain(expanded, route);
         }
         let command = expanded.into_iter().next().expect("one expanded command");
         if let Some(result) = self.as_mut().dispatch_support_command(&command, route) {
@@ -97,6 +83,8 @@ impl qobject::BrowserUi {
         // immediately or after confirmation; recording here would duplicate it.
         if result.get("pending").and_then(Value::as_str) != Some("context-route")
             && result.get("requires_confirmation").and_then(Value::as_bool) != Some(true)
+            && !(self.as_ref().in_page_window_mode()
+                && super::browser_ui_page_windows::handles(&command))
             && !(command.name == "open"
                 && command.arguments.first().map(String::as_str) == Some("--clean-link"))
         {

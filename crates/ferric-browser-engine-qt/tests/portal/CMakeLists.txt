@@ -44,7 +44,8 @@ if(DEFINED FERRIC_ENGINE_LIBRARY)
         add_library(SQLite3::SQLite3 ALIAS SQLite::SQLite3)
     endif()
     add_executable(portal_browser_tests tst_browser_file_choosers.cpp)
-    target_link_libraries(portal_browser_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" KF6::WindowSystem
+    find_package(Qt6 REQUIRED COMPONENTS WebChannel QuickWidgets WebEngineWidgets)
+    target_link_libraries(portal_browser_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem
         Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Widgets Qt6::DBus Qt6::Network Qt6::Test
         SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
     list(APPEND PORTAL_TESTS browser)

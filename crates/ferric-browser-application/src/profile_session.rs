@@ -20,6 +20,20 @@ use uuid::Uuid;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ProfileInstanceId(Uuid);
 
+#[cfg(test)]
+impl ProfileInstanceId {
+    pub(crate) fn synthetic_for_profile(profile: ferric_browser_core::ProfileId) -> Self {
+        let label = profile.to_string();
+        let sequence = label
+            .rsplit_once('-')
+            .expect("profile display form")
+            .1
+            .parse::<u128>()
+            .expect("numeric profile fixture");
+        Self(Uuid::from_u128(sequence))
+    }
+}
+
 impl fmt::Display for ProfileInstanceId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, formatter)

@@ -30,6 +30,7 @@ pub enum CeremonyAdmissionError {
     InvalidDeadline,
     TokenExhausted,
     CandidateNotPending,
+    InvalidDocument,
 }
 
 /// Pure actor phase. Phone-side phases remain unreachable in production until
@@ -210,6 +211,27 @@ impl CredentialCeremonyState {
             }
             CredentialRequestIngress::OutsidePhoneShim => CredentialIngressDecision::LeaveNative,
         }
+    }
+
+    /// Binds native-verified document ownership to an actor-allocated request
+    /// ID. Provider qualification and capacity checks remain in `admit`.
+    ///
+    /// # Errors
+    /// Rejects an ineligible document or the ordinary ceremony admission errors.
+    pub fn admit_document(
+        &mut self,
+        lease: crate::CredentialDocumentLease,
+        request: crate::CredentialRequestOptions,
+        now_ms: u64,
+        timeout_ms: u64,
+    ) -> Result<CeremonyToken, CeremonyAdmissionError> {
+        let owner = crate::CredentialRequestOwner::capture(
+            crate::CredentialRequestId::from_sequence(self.next_token),
+            lease,
+        );
+        let candidate = crate::credential_policy::bind_request_to_owner(request, owner)
+            .map_err(|_| CeremonyAdmissionError::InvalidDocument)?;
+        self.admit(candidate, now_ms, timeout_ms)
     }
 
     /// Captures ownership only after confirming both single-flow and outbox

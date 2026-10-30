@@ -51,6 +51,7 @@ ApplicationWindow {
 
     readonly property var modalInputScope: FerricModalInputController { hostWindow: window }
     property bool runtimeDisposing: false
+    property bool primaryPageRetired: false
     property bool profileBootstrapComplete: false
     property var primaryProfileResources: null
     readonly property alias profileResourceRegistry: profileResources
@@ -93,12 +94,18 @@ ApplicationWindow {
     objectName: "ferric_browserWindow"
     width: 1280
     height: 800
-    visible: true
+    visible: primaryPageIdentity.prepared
+    FerricPageWindowIdentity { id: primaryPageIdentity; targetWindow: window }
+    readonly property string pageWindowTag: primaryPageIdentity.tag
+    property string pageGroupId: primaryPageIdentity.tag
+    readonly property var pageWindowCoordinator: FerricPageWindowCoordinator { rootWindow: window }
     readonly property string windowPrivacyLabel: primaryPrivacyHeader.label
     title: "Ferric Browser"
            + (window.windowPrivacyLabel.length > 0 ? " · " + window.windowPrivacyLabel : "")
            + (window.ephemeralProfile ? " · " + window.profileLabel : "")
-           + (!window.tabStripVisible ? " · " + browserUi.tab_count + (browserUi.tab_count === 1 ? " tab" : " tabs") : "")
+           + (browserUi.feature_tabs_presentation_effective === "windows" && browserUi.page_title.length > 0
+              ? " · " + browserUi.page_title
+              : (!window.tabStripVisible ? " · " + browserUi.tab_count + (browserUi.tab_count === 1 ? " tab" : " tabs") : ""))
     color: window.backgroundColor
     font.family: window.chromeFontFamily
     font.pointSize: window.chromeFontPointSize
@@ -152,9 +159,9 @@ ApplicationWindow {
     property string tabPosition: "top"
     property bool tabSwitchingVisible: false
     readonly property bool tabStripVisible:
-        tabsMode === "always"
+        (browserUi.feature_tabs_presentation_effective !== "windows" || tabViews.length > 1) && (tabsMode === "always"
         || (tabsMode === "multiple" && browserUi.tab_count > 1)
-        || (tabsMode === "switching" && tabSwitchingVisible)
+        || (tabsMode === "switching" && tabSwitchingVisible))
     readonly property bool sideTabs: tabPosition === "left" || tabPosition === "right"
     readonly property real sideTabWidth: Math.max(160, Math.min(280, width * 0.22))
     readonly property bool inputBarActive: browserUi.mode === "command"
@@ -462,6 +469,7 @@ ApplicationWindow {
             return
         }
         close.accepted = false
+        if (window.primaryPageRetired) { window.hide(); return }
         window.beginQuitRequest(":window-close")
     }
     property string startupUrl: "about:blank"
@@ -1079,6 +1087,7 @@ ApplicationWindow {
 
     BrowserUi {
         id: browserUi
+        page_window_ordinary: true
         status_text: "Ready"
         onRuntime_work_available: window.scheduleRuntimeWork(0)
         onSwitcher_sources_changed: {
@@ -1089,11 +1098,11 @@ ApplicationWindow {
             if (window.commandNoticeVisible && browserUi.mode !== "command"
                     && browserUi.status_text !== "Normal mode") {
                 var loweredStatus = browserUi.status_text.toLowerCase()
-                window.showCommandNotice(
-                    browserUi.status_text,
-                    loweredStatus.indexOf("failed") >= 0
-                    || loweredStatus.indexOf("error") >= 0
-                    || loweredStatus.indexOf("rejected") >= 0)
+                var statusIsError = loweredStatus.indexOf("failed") >= 0
+                        || loweredStatus.indexOf("error") >= 0
+                        || loweredStatus.indexOf("rejected") >= 0
+                if (!window.commandNoticeError || statusIsError)
+                    window.showCommandNotice(browserUi.status_text, statusIsError)
             }
         }
     }
@@ -1515,7 +1524,8 @@ ApplicationWindow {
     property alias tabViews: primaryTabController.tabViews
     FerricTabViewController {
         id: primaryTabController
-        ready: window.profileBootstrapComplete && !window.runtimeDisposing
+        ready: window.profileBootstrapComplete && !window.runtimeDisposing && !window.primaryPageRetired
+        pageWindowCoordinator: window.pageWindowCoordinator
         browserUi: window.browserUi
         browserHost: window
         tabs: window.tabsModel
@@ -1691,6 +1701,42 @@ ApplicationWindow {
     function continueQuitRequest() { return runtimePresentation.continueQuitRequest() }
 
     function finalizeQuit() { return runtimePresentation.finalizeQuit() }
+    function retirePrimaryPage() {
+        primaryPageRetired = true
+        if (!browserUi.retire_page_presentation()) {
+            primaryPageRetired = false
+            browserUi.status_text = "The page couldn't close. Try again."
+            return false
+        }
+        var views = tabViews.slice(0)
+        for (var i = 0; i < views.length; ++i) {
+            var view = views[i]
+            if (!view) continue
+            window.cancelScriptsForView(view)
+            window.clearPageDialogForView(view)
+            window.clearClientCertificateForView(view)
+            window.clearCertificateErrorForView(view)
+            window.clearWebAuthForView(view)
+            window.clearContextMenuForView(view)
+            window.clearDesktopMediaForView(view)
+            window.clearCaptureSessionForView(view)
+            window.clearRendererFailureForView(view)
+            window.clearSiteDataClearForView(view)
+        }
+        window.closeDevTools()
+        window.profileResourceRegistry.releaseWindow(window)
+        primaryTabController.tabViews = []
+        tabs.clear()
+        // Retain the empty process controller and QML service context while
+        // removing the retired presentation from ordinary window routing.
+        window.browserWindowRegistry = window.browserWindowRegistry.filter(function(entry) {
+            return entry && entry.ui !== browserUi
+        })
+        window.publishBrowserWindowRegistry()
+        window.hide()
+        return true
+    }
+
 
     function cancelDownloadsAndQuit() { return runtimePresentation.cancelDownloadsAndQuit() }
 
@@ -3382,6 +3428,10 @@ GridLayout {
         message: {
             if (window.shutdownConfirmationCommand === ":quit") {
                 return "This will close every Ferric Browser window and tab."
+            }
+            if (browserUi.feature_tabs_presentation_effective === "windows"
+                    && window.liveWindowEntries().some(function(entry) { return entry.host !== window })) {
+                return "This will close this page window. Other Ferric Browser windows stay open."
             }
             if (window.shutdownParticipantCount() > 0) {
                 return "This is the primary browser window, so closing it will close every Ferric Browser window and tab."

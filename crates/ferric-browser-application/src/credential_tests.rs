@@ -899,3 +899,92 @@ fn t053_terminal_outbox_reserves_capacity_before_admission_and_recovers_on_drain
         .expect("third terminal retained after recovery");
     assert_eq!(third_terminal.owner(), &third_owner);
 }
+
+#[test]
+fn engine_credential_capture_binds_actual_session_and_application_target() {
+    use super::{BrowserApplication, EngineCredentialFacts};
+    use ferric_browser_config::Config;
+    let facts = || EngineCredentialFacts {
+        security_origin: "https://login.example.com".into(),
+        profile_generation: 1,
+        page_generation: 2,
+        document_generation: 3,
+        host_generation: 4,
+        presentation_generation: 5,
+        main_frame: true,
+        secure_context: true,
+        permissions_policy_allowed: true,
+        foreground: true,
+    };
+    let (mut app, window, tab) =
+        BrowserApplication::bootstrap(Config::default(), PrivacyKind::Ephemeral, "same").unwrap();
+    assert!(app.capture_credential_document(tab, &facts()).is_err());
+    app.activate_profile(super::profile::ProfileActivation {
+        name: "same".into(),
+        id: None,
+        privacy: PrivacyKind::Ephemeral,
+        roots: None,
+        lock: None,
+        contexts: None,
+        storage_path: None,
+    })
+    .unwrap();
+    let lease = app.capture_credential_document(tab, &facts()).unwrap();
+    assert_eq!(lease.profile_instance(), app.profile_instance_id().unwrap());
+    assert_eq!(lease.window(), window);
+    assert_eq!(lease.tab(), tab);
+    assert_eq!(lease.document(), app.capture_target(tab).unwrap().document);
+    assert_eq!(
+        lease.target_generation(),
+        app.capture_target(tab).unwrap().generation
+    );
+    assert_eq!(lease.engine_document_generation(), 3);
+    assert_eq!(lease.host_generation(), 4);
+    assert_eq!(lease.presentation_generation(), 5);
+    let mut moved = facts();
+    moved.presentation_generation += 1;
+    let moved_lease = app.capture_credential_document(tab, &moved).unwrap();
+    assert_eq!(lease.host_generation(), moved_lease.host_generation());
+    assert_ne!(
+        lease, moved_lease,
+        "moving the same logical page revokes its old credential presentation"
+    );
+    assert_eq!(lease.privacy(), PrivacyKind::Ephemeral);
+    for bad in 0..8 {
+        let mut input = facts();
+        match bad {
+            0 => input.main_frame = false,
+            1 => input.secure_context = false,
+            2 => input.permissions_policy_allowed = false,
+            3 => input.foreground = false,
+            4 => input.document_generation = 0,
+            5 => input.host_generation = 0,
+            6 => input.presentation_generation = 0,
+            _ => input.security_origin = "https://login.example.com/path".into(),
+        }
+        assert!(app.capture_credential_document(tab, &input).is_err());
+    }
+    let mut actor = super::CredentialCeremonyState::new();
+    assert_eq!(
+        actor.admit_document(lease.clone(), options(None), 0, 1000),
+        Err(super::CeremonyAdmissionError::Unqualified)
+    );
+    app.close_profile();
+    assert!(app.capture_credential_document(tab, &facts()).is_err());
+    app.activate_profile(super::profile::ProfileActivation {
+        name: "same".into(),
+        id: None,
+        privacy: PrivacyKind::Ephemeral,
+        roots: None,
+        lock: None,
+        contexts: None,
+        storage_path: None,
+    })
+    .unwrap();
+    assert_ne!(
+        app.capture_credential_document(tab, &facts())
+            .unwrap()
+            .profile_instance(),
+        lease.profile_instance()
+    );
+}

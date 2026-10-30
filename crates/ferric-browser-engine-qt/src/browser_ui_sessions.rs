@@ -2,9 +2,9 @@ use super::feature_state::SessionRestoreIntent;
 use super::{
     CatalogReadState, CleanLinkResult, ClosedTabDescriptor, ClosedTabSnapshot, ContextMember,
     CxxQtType, Event, FeedbackLane, FeedbackState, JourneyEdgeKind, PendingExternalNavigation, Pin,
-    QString, QStringList, StorageRequest, ValidatedUrl, configured_undo_limit, current_target,
-    elapsed_ms, is_bounded_untrusted_text, link_preview_presentation, qobject, restore_entry_line,
-    sanitize_untrusted_title,
+    QString, QStringList, StorageRequest, Uuid, ValidatedUrl, configured_undo_limit,
+    current_target, elapsed_ms, is_bounded_untrusted_text, link_preview_presentation, qobject,
+    restore_entry_line, sanitize_untrusted_title,
 };
 
 impl qobject::BrowserUi {
@@ -422,6 +422,25 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("No recovery window"));
             return QString::default();
         };
+        let page_windows = self.as_ref().in_page_window_mode();
+        if page_windows
+            && entries.iter().any(|entry| {
+                entry.context.as_ref().is_some_and(|name| {
+                    let owner = self.as_ref();
+                    let rust = owner.rust();
+                    !rust.contexts.as_ref().is_some_and(|contexts| {
+                        contexts.contexts().iter().any(|context| {
+                            context.name == *name && context.profile == rust.profile_name
+                        })
+                    })
+                })
+            })
+        {
+            self.set_status_text(QString::from(
+                "A saved context is no longer available in this profile. Restore was cancelled.",
+            ));
+            return QString::default();
+        }
         let existing_tabs = self.as_ref().rust().tab_ids.clone();
         let first_restored_index = if append { existing_tabs.len() } else { 0 };
         let selected_tab = if append {
@@ -514,6 +533,57 @@ impl qobject::BrowserUi {
             this.checkpoint.dirty = false;
             this.checkpoint.dirty_since_ms = None;
             this.checkpoint.restore_pending = None;
+        }
+        if page_windows {
+            // Fresh runtime groups keep repeated session loads independent.
+            let mut groups = std::collections::HashMap::new();
+            let metadata = restored_tabs[first_restored_index..]
+                .iter()
+                .zip(&entries)
+                .map(|(tab, entry)| {
+                    let group = groups
+                        .entry(entry.group)
+                        .or_insert_with(|| Uuid::new_v4().to_string())
+                        .clone();
+                    (
+                        *tab,
+                        super::browser_ui_page_sessions::RestoredPageWindow {
+                            group,
+                            context: entry.context.clone(),
+                        },
+                    )
+                })
+                .collect::<Vec<_>>();
+            {
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                if !append {
+                    this.restored_page_windows.clear();
+                }
+                this.restored_page_windows.extend(metadata);
+                if !append {
+                    this.page_window_group =
+                        this.restored_page_windows[&selected_tab].group.clone();
+                }
+            }
+            if !append {
+                let context = entries[0].context.clone();
+                if self
+                    .as_mut()
+                    .reduce_event(Event::SetWindowContext { window, context })
+                    .is_err()
+                {
+                    self.set_status_text(QString::from("The saved context couldn't be restored"));
+                    return QString::default();
+                }
+                self.as_mut().sync_context_metadata();
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .restored_page_windows
+                    .remove(&selected_tab);
+            }
         }
         let restored_metadata = restored_tabs[first_restored_index..]
             .iter()

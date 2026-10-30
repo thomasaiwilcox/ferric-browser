@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QSet>
+#include <QString>
 #include <QtWebEngineCore/QWebEngineProfile>
 
 class FerricBrowserRequestInterceptor;
@@ -14,8 +15,18 @@ class FerricPublicProfileOwner final : public QObject {
   Q_OBJECT
 
 public:
+  struct Configuration {
+    // Empty names are exclusively in-memory. Persistent storage is supplied
+    // by the existing profile application policy, before any page is created.
+    QString storageName;
+    QString persistentStoragePath;
+    QString cachePath;
+  };
   explicit FerricPublicProfileOwner(
       FerricBrowserRequestInterceptor *interceptor, QObject *parent = nullptr);
+  FerricPublicProfileOwner(FerricBrowserRequestInterceptor *interceptor,
+                           const Configuration &configuration,
+                           QObject *parent = nullptr);
   ~FerricPublicProfileOwner() override;
 
   QWebEngineProfile *profile() const { return profile_; }

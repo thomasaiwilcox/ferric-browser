@@ -7,11 +7,13 @@
 #include <QWidget>
 
 class QQuickWidget;
+class QDialog;
 class QVBoxLayout;
 class QWebEngineProfile;
 class QWebEngineView;
 
 class FerricPublicPageOwner;
+class FerricCredentialBoundary;
 
 // A disposable Widgets presentation for a page whose profile/page owner has a
 // longer lifetime. Destroying this widget never closes the page owner.
@@ -30,17 +32,21 @@ public:
     ~FerricPublicPageHost() override;
 
     bool isReady() const;
+    FerricCredentialBoundary *prepareCredentialBoundary();
     // Only captured browser requests enter this surface; it is never published
     // to web content. Native incarnations are checked again at execution.
     Q_INVOKABLE bool executeCaptured(const QVariant &request);
     QVariant captureRequest(const QVariant &request) const;
-    bool applyNativeRequest(const QVariant &request);
+    Q_INVOKABLE bool applyNativeRequest(const QVariant &request);
     FerricPublicPageOwner *pageOwner() const;
     QWebEngineView *pageView() const;
     QQuickWidget *chromeView() const;
     QWidget *nativeDialogParent() const;
     QString hostToken() const;
     QString pageOwnerToken() const;
+
+signals:
+    void capturedCommandFinished(const QVariant &request, const QVariant &result);
 
 private:
     friend bool ferric_public_page_host_tokens_live(
@@ -50,9 +56,18 @@ private:
         bool attach);
 
     friend QVariant ferric_public_page_for_request(const QVariant &request);
+    QVariantMap ownerStamp(QVariantMap row) const;
+    QString credentialContextIdentity() const;
     bool requestIsCurrent(const QVariantMap &request) const;
     int currentTabIndex() const;
     void bindPageSignals();
+    bool executePageCommand(const QVariantMap &request);
+    bool confirmFormReload(const QVariantMap &request);
+    bool m_documentHasFormData = false;
+    QString m_engineLoadState = QStringLiteral("stopped");
+    QPointer<QDialog> m_formReloadDialog;
+    bool runCapturedScript(const QVariantMap &request, const QString &script, quint32 world);
+    quint64 m_findSerial = 0;
     QVariantMap m_navigationRequest;
     QString m_tabId;
     quint64 m_navigationDocument = 0;

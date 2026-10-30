@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QString>
+#include <QPointer>
 #include <QtQml/qqmlregistration.h>
 
 // Converts QML QObject references into checked, non-aliasing native owners.
@@ -16,4 +17,11 @@ class FerricPopupOwnerBridge : public QObject {
                                 const QString &token);
     Q_INVOKABLE bool inheritProfile(QObject *source, QObject *destination,
                                    const QString &profileName);
+    Q_INVOKABLE bool preparePageWindow(QObject *source, QObject *destination,
+                                      const QString &tabId);
+    Q_INVOKABLE bool commitPageWindow();
+    Q_INVOKABLE QString activatePreparedPage();
+  private:
+    QPointer<QObject> preparedSource_, preparedDestination_, preparedHost_, preparedProfile_;
+    bool preparedCommitted_ = false;
 };

@@ -8,14 +8,38 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 6.11.2 EXACT REQUIRED COMPONENTS
-    Core Gui Widgets Quick QuickControls2 QuickWidgets Network DBus WebEngineCore WebEngineQuick WebEngineWidgets Test)
+    Core Gui Widgets Quick QuickControls2 QuickWidgets Network DBus WebChannel WebEngineCore WebEngineQuick WebEngineWidgets Test)
 find_package(SQLite3 REQUIRED)
+find_program(FERRIC_TEST_OPENSSL openssl REQUIRED)
 find_package(KF6WindowSystem 6.28 REQUIRED)
 
 set(FERRIC_ENGINE_LIBRARY "" CACHE FILEPATH "Exact Cargo-built Ferric Qt engine archive")
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(quick_credential_surface_tests tst_quick_credential_surface.cpp
+        ../../src/quick_credential_owner.h ../../src/quick_credential_owner.cpp
+        ../../src/credential_boundary.h ../../src/credential_boundary.cpp)
+    target_include_directories(quick_credential_surface_tests PRIVATE ../../src)
+    target_link_libraries(quick_credential_surface_tests PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::Network
+        Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::WebChannel Qt6::Test)
+    target_compile_definitions(quick_credential_surface_tests PRIVATE
+        FERRIC_TEST_OPENSSL="${FERRIC_TEST_OPENSSL}"
+        FERRIC_CREDENTIAL_SCRIPTS="${CMAKE_CURRENT_LIST_DIR}/../../qml/scripts/credential")
+    add_test(NAME quick_credential_public_surface COMMAND quick_credential_surface_tests)
+    set_tests_properties(quick_credential_public_surface PROPERTIES TIMEOUT 90 LABELS "credential;wayland;qml")
+
+    add_executable(window_scene_tests tst_window_scene.cpp
+        ../../src/window_scene.h ../../src/window_scene.cpp)
+    target_include_directories(window_scene_tests PRIVATE ../../src)
+    target_link_libraries(window_scene_tests PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickControls2
+        Qt6::QuickWidgets Qt6::Test)
+    add_test(NAME public_window_shared_scene COMMAND window_scene_tests)
+    set_tests_properties(public_window_shared_scene PROPERTIES
+        TIMEOUT 60 LABELS "native;wayland;qml")
+
     add_executable(public_page_host_tests tst_public_page_host.cpp)
     target_link_libraries(public_page_host_tests PRIVATE
         Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickWidgets
@@ -36,14 +60,15 @@ if(BUILD_TESTING)
     if(NOT FERRIC_ENGINE_LIBRARY OR NOT EXISTS "${FERRIC_ENGINE_LIBRARY}")
         message(FATAL_ERROR "FERRIC_ENGINE_LIBRARY must name the exact Cargo-built engine archive")
     endif()
-    add_executable(public_page_owner_tests tst_public_page_owner.cpp)
+    add_executable(public_page_owner_tests tst_public_page_owner.cpp
+        ../../src/native_page_surface.h ../../src/native_page_surface.cpp)
     target_include_directories(public_page_owner_tests PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}/../../src")
     target_link_libraries(public_page_owner_tests PRIVATE
         "${FERRIC_ENGINE_LIBRARY}"
         SQLite::SQLite3
         Qt6::Quick Qt6::Widgets Qt6::QuickControls2 Qt6::QuickWidgets Qt6::DBus
-        Qt6::WebEngineWidgets KF6::WindowSystem
+        Qt6::WebEngineWidgets Qt6::WebChannel KF6::WindowSystem
         Qt6::Core Qt6::Gui Qt6::Network Qt6::WebEngineCore Qt6::WebEngineQuick
         Qt6::Test)
     add_test(NAME T014e1_public_page_owner COMMAND public_page_owner_tests)
@@ -57,7 +82,7 @@ if(BUILD_TESTING)
         KF6::WindowSystem
         Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickControls2
         Qt6::QuickWidgets Qt6::Network Qt6::DBus
-        Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::WebEngineWidgets Qt6::Test)
+        Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::WebEngineWidgets Qt6::WebChannel Qt6::Test)
     add_test(NAME T014e2q COMMAND static_qml_registration_tests)
     set_tests_properties(T014e2q PROPERTIES
         TIMEOUT 90 LABELS "component;qml")
@@ -65,6 +90,7 @@ if(BUILD_TESTING)
     add_executable(public_page_host_integration_tests
         tst_public_page_host_integration.cpp)
     get_target_property(_public_page_owner_links public_page_owner_tests LINK_LIBRARIES)
+    target_link_libraries(quick_credential_surface_tests PRIVATE ${_public_page_owner_links})
     target_link_libraries(public_page_host_integration_tests PRIVATE
         ${_public_page_owner_links}
         KF6::WindowSystem
@@ -72,6 +98,14 @@ if(BUILD_TESTING)
         Qt6::WebEngineWidgets)
     target_include_directories(public_page_host_integration_tests PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}/../../src")
+    target_compile_definitions(public_page_host_integration_tests PRIVATE FERRIC_TEST_OPENSSL="${FERRIC_TEST_OPENSSL}" FERRIC_TEST_CREDENTIAL_SHIM="${CMAKE_CURRENT_LIST_DIR}/../../qml/scripts/credential/shim.js")
+    add_test(NAME credential_shim_semantics COMMAND public_page_host_integration_tests credentialShimSemantics)
+    set_tests_properties(credential_shim_semantics PROPERTIES TIMEOUT 120 LABELS "application;credential;webengine")
+    add_test(NAME credential_production_boundary COMMAND public_page_host_integration_tests productionCredentialBoundaryAndChoice)
+    add_test(NAME credential_production_lifetime COMMAND public_page_host_integration_tests productionCredentialBoundaryInvalidation)
+    set_tests_properties(credential_production_boundary credential_production_lifetime PROPERTIES TIMEOUT 120 LABELS "application;credential;webengine")
+    add_test(NAME public_page_captured_commands COMMAND public_page_host_integration_tests capturedCommandsUseProductionDispatcher)
+    set_tests_properties(public_page_captured_commands PROPERTIES TIMEOUT 120 LABELS "application;webengine;qml")
     add_test(NAME public_page_captured_navigation COMMAND public_page_host_integration_tests
         capturedNavigationUsesProductionDispatcher)
     set_tests_properties(public_page_captured_navigation PROPERTIES TIMEOUT 90 LABELS "application;webengine;qml")
@@ -88,3 +122,6 @@ if(BUILD_TESTING)
         LABELS "native;wayland"
         TIMEOUT 45)
 endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/../EngineArchive.cmake")
+ferric_require_current_engine_archive("${FERRIC_ENGINE_LIBRARY}")

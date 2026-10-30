@@ -4,7 +4,6 @@ use super::{
     SessionRestoreSnapshot, StorageCommand, StorageCompletion, StorageOperation,
     StorageOperationError, StoreMode, SyncSender, WorkerMessage, clear_current_session_checkpoints,
     current_session_paths, delete_named_session, list_named_sessions, load_session,
-    save_session_atomic,
 };
 
 #[allow(clippy::needless_pass_by_value)]
@@ -81,12 +80,16 @@ pub(super) fn run_worker(
                     snapshot,
                 ))
             }
-            StorageCommand::SessionSave { path, snapshot } => {
-                StorageCompletion::SessionSave(storage_result(
-                    StorageOperation::SessionSave,
-                    save_session_atomic(&path, &snapshot).map_err(|error| error.to_string()),
-                ))
-            }
+            StorageCommand::SessionSave {
+                path,
+                snapshot,
+                order,
+            } => StorageCompletion::SessionSave(storage_result(
+                StorageOperation::SessionSave,
+                order
+                    .save(&path, &snapshot)
+                    .map_err(|error| error.to_string()),
+            )),
             StorageCommand::SessionCheckpointClear { root, profile_id } => {
                 StorageCompletion::SessionCheckpointClear(storage_result(
                     StorageOperation::SessionCheckpointClear,
@@ -514,6 +517,8 @@ mod recovery_tests {
             1,
             "now",
             vec![SnapshotWindowInput {
+                group: None,
+                context: None,
                 selected_tab: None,
                 workspace: None,
                 tabs: urls

@@ -173,3 +173,110 @@ isolated worlds and script injection; [QWebChannel](https://doc.qt.io/qt-6.11/qw
 documents that registered QObject properties and public methods are exposed to
 remote HTML clients; [QWebEngineWebAuthUxRequest](https://doc.qt.io/qt-6.11/qwebenginewebauthuxrequest.html)
 documents the narrower authenticator-interaction UX lifecycle.
+
+## Production receiver implementation — 29 October 2026
+
+The page-owned receiver is now being implemented in `credential_boundary.{h,cpp}`
+with a credential-only notification object in world 42. Channel messages carry
+no authoritative payload. Native code freshly challenges the actual main-frame
+mediator and binds its response to both native incarnation and captured Rust
+target identity. Provider choice is an owned native dialog; success completion
+requires a provider selection, while cancellation may terminate before selection.
+This implementation does not yet connect a real provider or qualify native
+authenticator fallback/activation. Independent review and physical qualification
+remain required before phone enablement.
+
+The bundled `qml/scripts/credential/qwebchannel.js` is copied verbatim from the
+qualified Qt 6.11.2 SDK, preserving its SPDX notice. Its SHA-256 is `bb21d1663083c3fefed95b895282d095aaa1f57f7697c0170ea79ffd205421b2`.
+The client and mediator are embedded by the existing browser-resource manifest.
+The general QML no-WebChannel guard remains in place.
+
+The MainWorld adapter in `qml/scripts/credential/shim.js` is a candidate installed
+only by the isolated native test fixture. It snapshots BufferSource views by
+byte offset/length, retains native request methods for fallback, reconstructs
+credential/response interfaces with weakly held records, and permits ordinary
+instance/prototype method overrides. Capability functions remain untouched.
+Conditional, platform-only, enterprise-attestation and policy-denied requests
+remain native. This candidate does not authorize helper launch or establish
+native activation/physical qualification. The actor/provider wiring remains
+pending independent review.
+
+### Scoped independent review — 29 October 2026
+
+The user-authorized independent reviewer closed the boundary/helper baseline
+review with no outstanding findings. The review found and prompted fixes for
+unbounded authenticator assertion retention, resident-key legacy-field
+precedence, a completion/probe race that stranded future requests, and admitted
+blob extensions whose results the library did not preserve. Assertions now have
+fixed count and cumulative CTAP-payload bounds; unsupported blob requests remain
+native and are rejected by the helper before transport.
+
+The reviewer independently reran 17 helper library and four binary tests, and
+578 upstream library tests passed with one existing ignored test. The scoped
+native Wayland run (`quick-review-r5`) passed six Qt cases with no skips,
+including actual renderer termination, distinct profile replacement, policy
+denial, channel replacement, skipped-choice rejection, chooser cancellation and
+probe/completion overlap. The external build directory retains source hashes,
+logs and owned-compositor cleanup receipts.
+
+This closes the baseline review prerequisite for integration. Native/Core
+binding, process-wide ceremony ownership, effective network admission, selected
+account delivery, native fallback and physical-device verification still need
+their integrated checks. It does not enable the production provider.
+
+
+### Production association foundation — 29 October 2026
+
+The independent reviewer closed the native/Core production-association and
+staged-window foundation review with no outstanding findings. The actual
+profile lifetime supplies a native-only current-view snapshot, including its
+Qt profile, actual window, owner Ui and incarnations. The adapter corroborates
+Core tab/index and registered prompt identity and replaces invalid bindings.
+Background documents receive the isolated mediator before navigation; enabling
+it in an existing HTTPS main document uses a guarded, operation-stamped bounded
+installation. Credential admission still requires the active Core tab and
+actual native foreground window.
+
+Request validity includes window context, configuration and installed-policy
+epochs. The actual profile interceptor has a nonwrapping generation and one
+native current owner per profile, confined to the application thread. A
+competing interceptor requires explicit detachment; historical owners cannot
+claim attachment or clear a successor. A sibling window's installed-policy
+change revokes an existing request even when its requesting Ui has not updated.
+
+Owned Wayland `quick-association-r8` passes twelve Qt cases with zero failures
+or skips. `page-association-r8` passes six production-association and thirteen
+window cases with zero failures/skips; cleanup receipts pass. The unique-profile
+fixture now keeps profile factories alive through view disposal. This closes
+foundation findings only. Provider/actor/MainWorld-shim wiring, effective direct
+network admission, account/result delivery, integrated regression/packaging and
+physical-device verification remain required before release.
+
+
+### Window/session integration checkpoint — 30 October 2026
+
+Independent review closed the scoped native command and session findings.
+Constructing an unadopted child view cannot overwrite its opener's prompt
+registration. Queued selection continuations retain the captured Core Target,
+profile/privacy/context/group scope and active-tab identity, checked after Qt
+selection/mode/repeat notifications. Native-owned errors report revoked work.
+IPC rejects context selectors for these selection commands, returns the actual
+Core WindowId and completes asynchronous operations on native receipts.
+
+Session snapshots aggregate actual normal-profile owners. Restore metadata is
+staging-only; a presented window's live context takes precedence. Shared path
+ordering is captured before independent worker backlogs and rejects delayed old
+writes while preserving valid durable generations. Schema 5 reads older files.
+
+Fresh-archive owned Wayland results are association 6/6, window 18/18 and Quick
+boundary 12/12, with zero failures/skips and clean teardown (`r23`). Actual IPC
+has four passing production cases; component tests pass 148 application and
+115 storage cases, with warnings-denied Clippy. Native CMake harnesses now check
+source freshness and track archive content to force relinking after Cargo
+promotes an older-timestamp archive. These checks caught and repaired a stale
+harness build; stale runs do not qualify new source.
+
+This is an engineering checkpoint. Broader window behavior, compositor
+integration, production actor/provider/MainWorld wiring, effective direct
+network admission, account/result delivery and physical qualification remain
+unfinished. No real credential or release approval is claimed.

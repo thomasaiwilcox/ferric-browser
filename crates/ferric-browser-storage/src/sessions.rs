@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-const SNAPSHOT_SCHEMA_VERSION: u32 = 4;
+const SNAPSHOT_SCHEMA_VERSION: u32 = 5;
 const MAX_WINDOWS: usize = 256;
 const MAX_TABS: usize = 5_000;
 const MAX_CLOSED_TABS: usize = 100;
@@ -43,6 +43,11 @@ pub struct SessionTab {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionWindow {
+    /// Logical page group, independent of native compositor membership.
+    #[serde(default)]
+    pub group: Option<Uuid>,
+    #[serde(default)]
+    pub context: Option<String>,
     pub selected_tab: Option<Uuid>,
     pub workspace: Option<String>,
     pub tabs: Vec<SessionTab>,
@@ -107,6 +112,8 @@ pub struct SnapshotTabInput {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SnapshotWindowInput {
+    pub group: Option<Uuid>,
+    pub context: Option<String>,
     pub selected_tab: Option<Uuid>,
     pub workspace: Option<String>,
     pub tabs: Vec<SnapshotTabInput>,
@@ -114,6 +121,8 @@ pub struct SnapshotWindowInput {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RestorePlanEntry {
+    pub group: Uuid,
+    pub context: Option<String>,
     pub tab_id: Uuid,
     pub selected: bool,
     pub url: Option<String>,
@@ -391,6 +400,8 @@ impl SessionSnapshot {
                     .selected_tab
                     .filter(|selected| tabs.iter().any(|tab| tab.id == *selected));
                 Ok(SessionWindow {
+                    group: window.group,
+                    context: window.context,
                     selected_tab,
                     workspace: window.workspace,
                     tabs,
@@ -421,19 +432,20 @@ impl SessionSnapshot {
         validate_snapshot(self)?;
         let mut entries = Vec::new();
         for window in &self.windows {
+            let group = window.group.unwrap_or_else(Uuid::new_v4);
             for tab in window
                 .tabs
                 .iter()
                 .filter(|tab| Some(tab.id) == window.selected_tab)
             {
-                entries.push(plan_entry(tab, true));
+                entries.push(plan_entry(tab, true, group, window.context.clone()));
             }
             for tab in window
                 .tabs
                 .iter()
                 .filter(|tab| Some(tab.id) != window.selected_tab)
             {
-                entries.push(plan_entry(tab, false));
+                entries.push(plan_entry(tab, false, group, window.context.clone()));
             }
         }
         Ok(entries)
@@ -449,6 +461,14 @@ impl SessionSnapshot {
 /// fails. The previous validated generation is retained beside the current
 /// file so a crash between replacement steps can fall back safely.
 pub fn save_session_atomic(
+    path: impl AsRef<Path>,
+    snapshot: &SessionSnapshot,
+) -> Result<(), SessionError> {
+    let path = path.as_ref();
+    crate::SessionSaveOrder::capture(path).save(path, snapshot)
+}
+
+pub(crate) fn save_session_atomic_unordered(
     path: impl AsRef<Path>,
     snapshot: &SessionSnapshot,
 ) -> Result<(), SessionError> {
@@ -561,7 +581,7 @@ fn load_session_generation(path: &Path) -> Result<SessionSnapshot, SessionError>
         })?;
     // Older formats have no recovery lineage; version 2 also lacks the
     // optional closed-tab presentation fields. Preserve the source generation.
-    if matches!(snapshot.schema_version, 2 | 3) {
+    if matches!(snapshot.schema_version, 2..=4) {
         snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION;
     }
     validate_snapshot(&snapshot)?;
@@ -636,8 +656,15 @@ fn safe_get_url(url: &str) -> bool {
     .any(|marker| lower.contains(marker))
 }
 
-fn plan_entry(tab: &SessionTab, selected: bool) -> RestorePlanEntry {
+fn plan_entry(
+    tab: &SessionTab,
+    selected: bool,
+    group: Uuid,
+    context: Option<String>,
+) -> RestorePlanEntry {
     RestorePlanEntry {
+        group,
+        context,
         tab_id: tab.id,
         selected,
         url: tab.safe_restore_url.clone(),
@@ -693,6 +720,15 @@ fn validate_snapshot(snapshot: &SessionSnapshot) -> Result<(), SessionError> {
         ));
     }
     for window in &snapshot.windows {
+        if window.group.is_some_and(|group| group.is_nil())
+            || window.context.as_ref().is_some_and(|name| {
+                name.is_empty() || name.len() > 128 || name.chars().any(char::is_control)
+            })
+        {
+            return Err(SessionError::Invalid(
+                "session group or context is invalid".into(),
+            ));
+        }
         if let Some(selected) = window.selected_tab
             && !window.tabs.iter().any(|tab| tab.id == selected)
         {
@@ -746,6 +782,65 @@ fn io_error(path: &Path, error: &io::Error) -> SessionError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn page_window_groups_contexts_and_selection_survive_durable_round_trip() {
+        let group = Uuid::new_v4();
+        let tab = Uuid::new_v4();
+        let snapshot = SessionSnapshot::new(
+            Uuid::new_v4(),
+            "page windows",
+            Uuid::new_v4(),
+            7,
+            "now",
+            vec![SnapshotWindowInput {
+                group: Some(group),
+                context: Some("research".into()),
+                selected_tab: Some(tab),
+                workspace: None,
+                tabs: vec![SnapshotTabInput {
+                    id: tab,
+                    url: "https://example.com/".into(),
+                    safety: RestoreSafety::SafeGet,
+                    private: false,
+                    pinned: true,
+                    muted: true,
+                    zoom: 1.25,
+                    scroll_position: Some((1.0, 42.0)),
+                }],
+            }],
+        )
+        .unwrap();
+        let directory =
+            std::env::temp_dir().join(format!("ferric-window-session-{}", Uuid::new_v4()));
+        let path = directory.join("windows.json");
+        save_session_atomic(&path, &snapshot).unwrap();
+        let loaded = load_session(&path).unwrap();
+        assert_eq!(loaded, snapshot);
+        let plan = loaded.restore_plan().unwrap();
+        assert_eq!(plan[0].group, group);
+        assert_eq!(plan[0].context.as_deref(), Some("research"));
+        assert!(plan[0].selected && plan[0].pinned && plan[0].muted);
+        assert_eq!(plan[0].scroll_position, Some((1.0, 42.0)));
+        // Schema 4 had no group/context fields. It remains readable and
+        // receives a fresh, window-local group only at restore planning.
+        let mut legacy = serde_json::to_value(&snapshot).unwrap();
+        legacy["schema_version"] = serde_json::json!(4);
+        legacy["windows"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("group");
+        legacy["windows"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("context");
+        std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let legacy = load_session(&path).unwrap();
+        assert_eq!(legacy.schema_version, SNAPSHOT_SCHEMA_VERSION);
+        assert_eq!(legacy.windows[0].context, None);
+        assert!(!legacy.restore_plan().unwrap()[0].group.is_nil());
+        fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn named_sessions_exclude_and_protect_recovery_checkpoints() {
@@ -817,6 +912,8 @@ mod tests {
             4,
             "2026-09-15T00:00:00Z",
             vec![SnapshotWindowInput {
+                group: None,
+                context: None,
                 selected_tab: Some(safe_id),
                 workspace: Some("3".into()),
                 tabs: vec![
@@ -859,6 +956,8 @@ mod tests {
             9,
             "now",
             vec![SnapshotWindowInput {
+                group: None,
+                context: None,
                 selected_tab: Some(second.id),
                 workspace: None,
                 tabs: vec![first.clone(), second.clone()],
@@ -914,6 +1013,8 @@ mod tests {
             1,
             "now",
             vec![SnapshotWindowInput {
+                group: None,
+                context: None,
                 selected_tab: Some(tab.id),
                 workspace: None,
                 tabs: vec![tab],
@@ -1118,6 +1219,8 @@ mod tests {
         ));
         snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION;
         snapshot.windows.push(SessionWindow {
+            group: None,
+            context: None,
             selected_tab: Some(Uuid::new_v4()),
             workspace: None,
             tabs: Vec::new(),

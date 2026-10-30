@@ -13,20 +13,17 @@ pub enum CredentialAdmissionError {
     InvalidRequest,
 }
 
-/// Browser-verified origin serialization. Its constructor is intentionally
-/// unavailable until the engine boundary is qualified.
+/// Browser-verified origin serialization, constructed only through the
+/// application capture boundary from trusted engine facts.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedOrigin {
     origin: String,
 }
 
 impl VerifiedOrigin {
-    /// Test-only origin parsing for synthetic policy fixtures. Parsing a string
-    /// does not establish engine provenance, so production code cannot call it.
-    #[cfg(test)]
-    pub(crate) fn synthetic_from_security_origin(
-        value: &str,
-    ) -> Result<Self, CredentialAdmissionError> {
+    /// Validates the engine's serialized security origin. Parsing alone does
+    /// not establish provenance; the private native challenge supplies that.
+    fn from_engine_security_origin(value: &str) -> Result<Self, CredentialAdmissionError> {
         let authority = value
             .strip_prefix("https://")
             .ok_or(CredentialAdmissionError::UnsupportedContext)?;
@@ -67,13 +64,19 @@ impl VerifiedOrigin {
         Ok(Self { origin })
     }
 
+    #[cfg(test)]
+    pub(crate) fn synthetic_from_security_origin(
+        value: &str,
+    ) -> Result<Self, CredentialAdmissionError> {
+        Self::from_engine_security_origin(value)
+    }
+
     #[must_use]
     pub fn origin(&self) -> &str {
         &self.origin
     }
 }
 
-#[cfg(test)]
 fn valid_host(host: &str) -> bool {
     !host.is_empty()
         && host.len() <= 253
@@ -92,8 +95,9 @@ fn valid_host(host: &str) -> bool {
 
 /// Browser-derived ownership for one ready top-level document.
 ///
-/// No production constructor is exposed until the engine boundary can prove
-/// the source of each fact. Tests use an explicit synthetic constructor.
+/// Production adapters capture this through the application, which supplies
+/// actual Rust ownership and live session identity. Tests also have an explicit
+/// synthetic constructor that cannot establish engine qualification.
 #[derive(Clone, Debug, Eq, PartialEq)]
 // Keep each browser-derived eligibility fact explicit; combining these facts
 // would make the captured lease less auditable at this security boundary.
@@ -101,6 +105,11 @@ fn valid_host(host: &str) -> bool {
 pub struct CredentialDocumentLease {
     origin: VerifiedOrigin,
     profile: ProfileId,
+    profile_instance: crate::ProfileInstanceId,
+    target_generation: u64,
+    engine_document_generation: u64,
+    host_generation: u64,
+    presentation_generation: u64,
     profile_generation: u64,
     window: WindowId,
     tab: TabId,
@@ -136,6 +145,11 @@ impl CredentialDocumentLease {
         Self {
             origin,
             profile,
+            profile_instance: crate::ProfileInstanceId::synthetic_for_profile(profile),
+            target_generation: 1,
+            engine_document_generation: renderer_generation,
+            host_generation: view_incarnation,
+            presentation_generation: view_incarnation,
             profile_generation,
             window,
             tab,
@@ -158,6 +172,9 @@ impl CredentialDocumentLease {
             || self.profile_generation == 0
             || self.renderer_generation == 0
             || self.view_incarnation == 0
+            || self.engine_document_generation == 0
+            || self.host_generation == 0
+            || self.presentation_generation == 0
         {
             Some(CredentialAdmissionError::UnsupportedContext)
         } else {
@@ -173,6 +190,31 @@ impl CredentialDocumentLease {
     #[must_use]
     pub const fn profile(&self) -> ProfileId {
         self.profile
+    }
+
+    #[must_use]
+    pub const fn profile_instance(&self) -> crate::ProfileInstanceId {
+        self.profile_instance
+    }
+
+    #[must_use]
+    pub const fn target_generation(&self) -> u64 {
+        self.target_generation
+    }
+
+    #[must_use]
+    pub const fn engine_document_generation(&self) -> u64 {
+        self.engine_document_generation
+    }
+
+    #[must_use]
+    pub const fn host_generation(&self) -> u64 {
+        self.host_generation
+    }
+
+    #[must_use]
+    pub const fn presentation_generation(&self) -> u64 {
+        self.presentation_generation
     }
 
     #[must_use]
@@ -365,4 +407,87 @@ pub(crate) fn bind_request_to_owner(
         requested_rp_id: request.requested_rp_id,
         status: RpValidationStatus::Pending,
     })
+}
+
+/// Facts from the private engine main-frame challenge. This is deliberately not
+/// deserializable. Adapters must construct it from the challenged isolated
+/// world and native owner, never from a page or `WebChannel` message. Application
+/// page/profile/window identity is captured separately from live Rust state.
+#[derive(Clone, Debug)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct EngineCredentialFacts {
+    pub security_origin: String,
+    pub profile_generation: u64,
+    pub page_generation: u64,
+    pub document_generation: u64,
+    pub host_generation: u64,
+    pub presentation_generation: u64,
+    pub main_frame: bool,
+    pub secure_context: bool,
+    pub permissions_policy_allowed: bool,
+    pub foreground: bool,
+}
+
+impl crate::BrowserApplication {
+    /// Captures a credential lease from current application ownership and
+    /// already-verified private engine facts. This does not enable a provider.
+    ///
+    /// # Errors
+    /// Rejects missing/closed ownership or unsupported engine/security facts.
+    pub fn capture_credential_document(
+        &self,
+        tab: TabId,
+        facts: &EngineCredentialFacts,
+    ) -> Result<CredentialDocumentLease, CredentialAdmissionError> {
+        let target = self
+            .capture_target(tab)
+            .ok_or(CredentialAdmissionError::UnsupportedContext)?;
+        let page = self
+            .tabs()
+            .get(&tab)
+            .ok_or(CredentialAdmissionError::UnsupportedContext)?;
+        let profile = self
+            .profiles()
+            .get(&page.profile)
+            .ok_or(CredentialAdmissionError::UnsupportedContext)?;
+        let session = self
+            .profile_instance_id()
+            .ok_or(CredentialAdmissionError::UnsupportedContext)?;
+        if self
+            .profile_snapshot()
+            .is_none_or(|active| active.privacy != profile.privacy)
+            || self
+                .windows()
+                .get(&page.window)
+                .is_none_or(|window| window.profile != page.profile)
+        {
+            return Err(CredentialAdmissionError::UnsupportedContext);
+        }
+        let lease = CredentialDocumentLease {
+            origin: VerifiedOrigin::from_engine_security_origin(&facts.security_origin)?,
+            profile: page.profile,
+            profile_instance: session,
+            target_generation: target.generation,
+            engine_document_generation: facts.document_generation,
+            host_generation: facts.host_generation,
+            presentation_generation: facts.presentation_generation,
+            profile_generation: facts.profile_generation,
+            window: page.window,
+            tab,
+            document: target.document,
+            // The native document fence advances on renderer loss as well as
+            // document replacement. It is intentionally conservative.
+            renderer_generation: facts.document_generation,
+            view_incarnation: facts.page_generation,
+            privacy: profile.privacy,
+            main_frame: facts.main_frame,
+            secure_context: facts.secure_context,
+            permissions_policy_allowed: facts.permissions_policy_allowed,
+            foreground: facts.foreground,
+        };
+        if let Some(error) = lease.admission_error() {
+            return Err(error);
+        }
+        Ok(lease)
+    }
 }

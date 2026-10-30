@@ -1,43 +1,63 @@
 # Window mode and phone passkeys
 
-Active implementation plan, authorized 29 October 2026. Supersedes everyday-v1 execution machinery; historical evidence and failures remain archived. Hot tabs are deferred. One combined release is required.
+Active implementation plan, authorized 29 October 2026. Hot tabs are deferred. The user requested continued implementation through completion, with one combined release. Work continues in `work/window-passkeys` at `/home/tom/Projects/ferric-everyday-work/worktrees/window-passkeys`.
 
-## Milestones
+## Current state
 
-- [x] Clean branch from product integration 7eb1c94; recover queue candidate 517eb9f including fixture repairs.
-- [x] Real captured navigation through the public page host, real lifecycle feedback and stale-request rejection.
-- [ ] Complete shared native backend: history/form reload, search/scripts/hints, input/chrome, services, popup and profile lifetime.
-- [ ] Early production credential-only isolated-world boundary and real native provider choice; independent security review before credentials.
-- [ ] Complete single-page window presentation, commands, exact Hyprland grouping, restoration and generic Wayland fallback.
-- [ ] Complete supervised phone helper, direct-policy admission, credential semantics and accessible owned chooser/QR/cancellation.
-- [ ] Final integrated regression/security/packaging qualification, physical iPhone/Android and native-key verification.
+The public native credential foundation is implemented and independently reviewed. Production installs its credential-only isolated-world boundary when phone passkeys are enabled. MainWorld interception, the process ceremony actor, provider execution and result delivery are still disconnected. No real credential or physical-phone result is claimed.
 
-## Implementation decisions
+Single-page windows use the existing Quick backend and preserve logical page identity, exact captured navigation, profile ownership, drafts and native popup handoff. Generic Wayland background windows remain unmapped until selected. Allocation failure keeps usable local views; expansion beyond twelve windows asks before allocation. First-page closure retires that page while preserving the application services needed by surviving windows.
 
-Reuse Rust policy/runtime, public QWebEnginePage owners, and shared QML workspaces. Maintain one request consumer and exact page/profile/host/document ownership. Do not mix live opener chains between backends. Keep internal presentation default and phone/grouping opt-in. Phone transport permits only effective policy-approved direct networking initially; unsupported proxy/offline/restrictive policies disable it before connection. Existing qualified SDK/download guards remain.
+The window command foundation now routes counted keyboard selection, next/previous, indices and stable page IDs through actual native owners, preserving profile/privacy/context/group scope. Interactive continuations run on the selected owner and recheck document and active-tab identity after synchronous Qt callbacks. Actual IPC rejects ignored context selectors and completes selection operations on the native handoff receipt. Persistent error notices report stale or failed commands. The reviewed fallback case with two live local views passes on the current static archive.
 
-Preserve native authentication, actual popup handoff and profile isolation. Unsupported/failed grouping leaves usable page windows. Session expansion above twelve windows requires confirmation. No hot-tab allocation or measurement is required; existing configuration groundwork is retained.
+Profile-wide saving and append restoration preserve groups, contexts, pin/mute/zoom/scroll metadata and drafts. New schema 5 reads older snapshots. Restored keeper metadata is retired after materialization so later context changes persist. Independent workers share capture-time, path-scoped write ordering; delayed old snapshots cannot overwrite newer aggregates. Independently configured owners join the same live checkpoint identity for the actual profile session.
 
-## Validation and release
+A native test build defect was found and fixed: a browser build could refresh dependency artifacts while leaving the top-level engine archive stale, and promoting the archive could preserve an older timestamp so CMake skipped relinking. Native application/public-host builds now check workspace implementation freshness and use an archive-content SHA link dependency. Both stale-input and same-timestamp content-change regressions pass. Build the engine archive explicitly with `cargo build -p ferric-browser-engine-qt --lib` before relinking native harnesses.
 
-Run focused tests per change, then workspace fmt/Clippy/tests, xtask check and engine/application/Wayland suites; test the separate helper workspace explicitly. Prove hostile frame/origin/message and document lifecycle rejection, helper bounds/network policy, native input/popup/first-host teardown, exact grouping/focus, sessions and private isolation. Physical iPhone, Android and native security key results must come from actual devices and independently verified RP results. Missing qualification remains pending and blocks the combined release. No publish/install over user browser.
+Remaining window work includes broader mutations/ordering, native-popup group inheritance, detach/give/undo, exact compositor grouping and complete session/close integration. The public CLI currently splits literal command chains into separate RPCs; full continuation semantics across those requests still need completion. No full window-mode milestone or combined release is claimed.
 
-Use ordinary Git review and actual test logs. No amendment transactions, file-count limits or attempt counters gate implementation. A61 drafts are preserved without further development.
+There is no implementation-pack approval gate, amendment transaction, file-count restriction, attempt counter or A61 migration requirement. The historical goal metadata remains paused; this authorized implementation work continues independently of that machinery.
 
-## Progress
+## Work to complete
 
-Branch: `work/window-passkeys`, worktree: `/home/tom/Projects/ferric-everyday-work/worktrees/window-passkeys`.
+- [x] Start from product integration `7eb1c94`, recovering queue candidate `517eb9f` and fixture repairs.
+- [x] Prove public native ownership, captured navigation, lifecycle feedback and stale-request rejection.
+- [x] Reuse Quick UI, services, profiles and popups; independently review isolated credential receiver, native/Core/profile association, installed-policy fencing and helper baseline.
+- [ ] Complete window commands across actual native owners, including group selection/counts/previous/index, keyboard/actions/IPC chains, pin/mute/order, detach/give and scoped closed-page undo.
+- [ ] Complete exact Hyprland grouping and focus using opaque mapping-time tags, PID/app ID corroboration, instance/stable-ID/address rechecks and guarded public Lua operations. Unknown or failed grouping must leave usable windows; never merge unrelated groups or change desktop configuration.
+- [ ] Complete aggregate sessions/checkpoints, one live checkpoint identity per actual profile session, ordered writes across independent workers, group/context/order/selection restoration, retained-page context changes, first/last-owner teardown and the existing expansion confirmation.
+- [ ] Connect the reviewed native facts to one process-wide ceremony actor, effective direct-network admission, supervised fixed-sibling helper, bounded result delivery, owned QR/account/cancel UI and production opt-in MainWorld shim. Preserve native authenticator fallback and immediate cancellation on close/quit/navigation/policy/profile/renderer changes.
+- [ ] Have the authorized independent reviewer inspect the integrated credential path and resolve findings before real credentials are connected.
+- [ ] Complete workspace/native/helper/security/packaging checks, independent RP verification and physical qualification. Update the plan and release evidence to the actual final results.
 
-29 October: captured navigation passes through the existing production queue consumer and shared EngineRequests dispatcher to the native owner. Actual page load/title events update Rust state. Native host/owner/document stamps and single-use request serials reject stale execution and replacement-page replay; retired native targets cannot fall through to a Quick view. This remains an experimental integration seam, not a completed browsing backend.
+## Architecture and safety decisions
 
-Validation on current source: pinned Qt 6.11.2 dev library builds; native host and test C++ syntax checks pass; Rust formatting and diff checks pass. Resource manifest matches all 118 current resources. The new navigation test passes offscreen and on an owned native Wayland compositor. Existing T014e2s transfer passes on that compositor (zero failures/skips). T014e1 owner suite passes offscreen. Build/test logs and reproducible SDK environment are in `/home/tom/Projects/ferric-everyday-work/builds/window-passkeys/`. All thirteen queue Rust tests passed. The request-envelope lifetime refinement now resolves native QObjects immediately before dispatch rather than retaining raw pointers; final native verification passed, including real reload, owner retirement, replacement and destroyed-host replay. The final library rebuild and component Clippy with warnings denied passed. Final Wayland navigation/transfer and offscreen owner suites passed on the refined implementation; every selected test passed without skips.
+Keep internal tabs as the default. Window presentation, phone passkeys and compositor grouping are opt-in. The public Widgets owner/scene remains an alternative prototype; completing a Widgets backend migration is not required. Reuse one captured engine-request consumer and the actual Quick profile/view/native-window lifetime registry.
 
-The helper also builds on its declared Rust 1.88.0 compiler: all 11 library and 4 binary tests pass, and all-target Clippy passes with warnings denied. This resolves the historical missing-toolchain qualification gap, while transport and physical qualification remain incomplete. A fresh fetch confirms upstream main remains e4aa108f9d63c99c3b3e977c2061d6d8dde48568.
+The notification-only channel in reserved world 42 supplies no page-controlled origin, owner, target or result destination. Native main-frame challenges, exact native presentation and actual Core/profile leases establish authority. Native provider choice owns focus. Installed interceptor ownership and nonwrapping policy generation revoke stale work, including changes from sibling windows. Queued document continuations must retain their original Core Target across asynchronous window selection.
 
-Next: finish the production credential-boundary proof early, then complete shared backend services/interaction, window presentation/grouping/restoration, helper transport/UI and final combined qualification. No full-feature or physical qualification is claimed.
+Phone transport initially permits only effective policy-approved direct networking. Proxy, offline, unsupported or restrictive routes disable phone admission before connection. The helper uses assigned pinned relays, checked public sockets, normal original-host TLS and Bluetooth proximity; no proxy bypass, redirect, replay, remembered-device or PIN storage. Preserve existing Qt authentication for unsupported requests and native provider choice.
 
-### Current checkpoint
+Keep durable session data normal-profile-only, safe to restore and bounded. Restore metadata describes unpresented pages; an actual presented window's current context takes precedence. Aggregate writes require capture-time ordering that survives per-owner queues and cannot let delayed old snapshots overwrite newer ones. Preserve prior valid generations on failures.
 
-Native request/lifetime code: `d8eac2b`. The first executable milestone is complete. The active branch is clean after checkpoint commits. No A61 migration or pack acceptance step is needed for subsequent implementation.
+## Evidence and remaining device work
 
-The combined release remains incomplete: production credential admission/provider choice, full native backend services/interaction, window-mode commands/grouping/restoration, real phone transport/UI, independent security review and physical qualification remain ahead. No new functional product blocker was established in this checkpoint. The next implementation is the production credential boundary, using current main-frame challenge and native ownership at admission/completion; retain the existing no-WebChannel guard until reviewed targeted production tests justify its narrow replacement.
+Logs and reproducible SDK configuration are under `/home/tom/Projects/ferric-everyday-work/builds/window-passkeys/`.
+
+- `cf0f901`: trusted native transfer preserves Core page identity; 172 Core tests passed.
+- `quick-association-r8`: 12 native credential cases passed, including early/late mediator installation, native/Core association, context and actual installed-policy cancellation, sibling policy changes, interceptor replacement, renderer loss and distinct profiles.
+- `page-association-r8`: 6 production association and 13 window cases passed. Independent scoped foundation review closed with no outstanding findings; session and private-bus cleanup passed.
+- `page-close-r9`: 16 Qt cases passed, including command close/cancel, first-page retirement and allocation fallback. Corresponding engine build and application link passed.
+- `page-selection-r23`: the full command scenario passes (3 Qt cases including setup/cleanup): counted native keyboard navigation, previous/index/stable-ID selection, correct-owner script continuation, queued navigation, synchronous navigation and active-tab reselection rejection, standalone-group exclusion and allocation fallback. The constructor registration defect is fixed: unadopted child views cannot overwrite opener registration.
+- `window-ipc-r21`: four actual production IPC cases pass, including context-selector rejection without mutation, peer Core WindowId resolution and native activation operation receipts. This is offscreen IPC coverage; native focus is covered separately.
+- `page-session-component-tests-r17`: all 148 application and 115 storage tests pass, including independent-worker ordering. Storage/application all-target Clippy and engine library Clippy (`r22`) pass with warnings denied.
+- `page-commands-r23` and `quick-page-commands-r23`: current-archive production association 6/6, window 18/18 and Quick boundary 12/12 pass with zero failures/skips. Both owned sessions exit cleanly and private-bus cleanup has no remaining processes. The independent reviewer closed the scoped window/session/continuation findings with no outstanding issues. Earlier failed/stale runs remain historical evidence and do not qualify changed code.
+- `storage-page-sessions-r11b`: all 11 session tests passed, including schema 5 group/context/selection round trip and schema 4 migration. Subsequent ordered-writer changes passed the full component suite above.
+- Helper baseline: 17 library + 4 binary tests, Rust 1.88 all-target Clippy, optimized build and disposable installation layout passed. 578 upstream tests passed (one existing ignored); advisory/license/source/provenance, PIN/caBLE and Noise-vector checks passed. Baseline independent review closed.
+- Independent HTTPS RP verifier: 12 tests passed, including counterless zero/zero semantics and nonzero replay rejection. This is fixture verification, not physical authentication.
+
+The user offered an iPhone and authorized a separate security reviewer. Android and a native security key remain unarranged. Physical tests require actual participation and independently verified RP results; synthetic/virtual fixtures cannot substitute for them. Missing device qualification blocks the combined release, not independent engineering progress.
+
+Use a separate disposable Qt profile for the exact `https://passkeys.ferric.test:8443` RP, supplying its exact-SAN fixture CA before profile creation and scoped loopback mapping. Do not alter global DNS/CA trust or bypass certificates. The phone does not need to browse or trust the RP fixture. Before scanning, explain that a real disposable phone passkey may sync, then arrange phone/provider deletion; RP cleanup cannot delete that credential.
+
+Final validation: workspace formatting, Clippy, tests and `xtask check`; focused production application/Wayland and credential lifecycle/hostile-input regressions; helper workspace and packaging checks; final integrated security review; actual device qualification. Do not push, publish or replace the user's installed browser.

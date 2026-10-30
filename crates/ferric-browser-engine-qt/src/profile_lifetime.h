@@ -9,6 +9,7 @@
 #include <QMetaObject>
 #include <QQmlEngine>
 #include <QSet>
+#include <optional>
 
 // Native ownership only. Profile policy and request presentation stay with
 // the existing runtime and its application-lived QML context.
@@ -41,6 +42,15 @@ class FerricProfileLifetime : public QObject {
     QObject *policyUi() const { return policyUi_; }
     int viewCount() const { return views_.size(); }
     int windowCount() const { return windows_.size(); }
+    // Native-only, corroborated ownership for credential adapters. No claimed
+    // Ui/profile/tab envelope is accepted through this API.
+    struct CurrentView {
+        QPointer<QObject> host, ui, profile;
+        quint64 incarnation = 0;
+        quint64 windowGeneration = 0;
+    };
+    std::optional<CurrentView> currentView(QQuickItem *view) const;
+    bool matchesCurrentView(QQuickItem *view, const CurrentView &expected) const;
   signals:
     void viewRetiring(QQuickItem *view);
     void policyUiChanged();
@@ -121,6 +131,7 @@ class FerricProfileLifetime : public QObject {
     QHash<QQuickItem *, View> views_;
     QHash<QString, PopupLease> popupLeases_;
     QPointer<QObject> policyUi_;
+    QPointer<QObject> ownedProfile_;
     QObject *policyUiKey_ = nullptr;
     bool consumed_ = false;
     bool drainQueued_ = false;

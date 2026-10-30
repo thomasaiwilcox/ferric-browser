@@ -1,11 +1,28 @@
 //! Generated Qt interface declarations, isolated from application implementation.
 #![allow(unsafe_code, clippy::too_many_arguments)]
 use crate::BrowserUiRust;
+pub(crate) use crate::browser_ui_credential_binding::{
+    CredentialLeaseCapture, capture_native_credential_lease, credential_context_identity,
+    credential_view_association_current,
+};
 pub(crate) use crate::browser_ui_credentials::CredentialEvents;
 pub(crate) use crate::browser_ui_credentials::create_credential_events;
 
 #[cxx_qt::bridge]
 pub(crate) mod qobject {
+    /// Only the private native main-frame receiver constructs these facts.
+    /// This value has no QML or WebChannel representation.
+    #[namespace = "ferric::credentials"]
+    struct NativeCredentialFacts {
+        origin: String,
+        profile_generation: u64,
+        page_generation: u64,
+        document_generation: u64,
+        host_generation: u64,
+        presentation_generation: u64,
+        foreground: bool,
+    }
+
     unsafe extern "C++" {
         include!("credential_process.h");
         include!("cxx-qt-lib/qstring.h");
@@ -89,6 +106,33 @@ pub(crate) mod qobject {
     }
 
     extern "Rust" {
+        #[namespace = "ferric::credentials"]
+        type CredentialLeaseCapture;
+        #[namespace = "ferric::credentials"]
+        fn credential_context_identity(ui: &BrowserUi, tab: &str) -> String;
+        #[namespace = "ferric::credentials"]
+        fn credential_view_association_current(
+            ui: &BrowserUi,
+            tab: &str,
+            index: i32,
+            view_identity: &str,
+        ) -> bool;
+        #[namespace = "ferric::credentials"]
+        fn capture_native_credential_lease(
+            ui: &BrowserUi,
+            tab: &str,
+            facts: &NativeCredentialFacts,
+        ) -> Box<CredentialLeaseCapture>;
+        #[namespace = "ferric::credentials"]
+        fn is_valid(self: &CredentialLeaseCapture) -> bool;
+        #[namespace = "ferric::credentials"]
+        fn is_current(
+            self: &CredentialLeaseCapture,
+            ui: &BrowserUi,
+            tab: &str,
+            facts: &NativeCredentialFacts,
+        ) -> bool;
+
         #[namespace = "ferric::credentials"]
         type CredentialEvents;
         fn create_credential_events(
@@ -375,6 +419,7 @@ pub(crate) mod qobject {
         #[qproperty(i32, feature_blocking_update_interval_hours)]
         #[qproperty(QString, feature_link_cleaning_update_source)]
         #[qproperty(QString, feature_link_cleaning_update_sha256)]
+        #[qproperty(bool, page_window_ordinary)]
         #[qproperty(QString, feature_tabs_presentation_requested)]
         #[qproperty(QString, feature_tabs_presentation_effective)]
         #[qproperty(QString, feature_tabs_presentation_status)]
@@ -1247,6 +1292,19 @@ pub(crate) mod qobject {
             destination: Pin<&mut BrowserUi>,
             profile_name: &QString,
         ) -> bool;
+
+        fn initialize_page_owner(
+            self: Pin<&mut BrowserUi>,
+            destination: Pin<&mut BrowserUi>,
+            tab_id: &QString,
+        ) -> bool;
+
+        fn commit_page_owner(self: Pin<&mut BrowserUi>, destination: Pin<&mut BrowserUi>) -> bool;
+
+        fn activate_prepared_page(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn retire_page_presentation(self: Pin<&mut BrowserUi>) -> bool;
 
         // Read-only comparison invoked through the checked native owner bridge.
         fn shares_permission_session(self: &BrowserUi, other: &BrowserUi) -> bool;

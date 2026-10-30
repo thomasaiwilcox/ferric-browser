@@ -24,6 +24,8 @@ struct Owner<H = CxxQtThread<qobject::BrowserUi>> {
     focused: u64,
     order: u64,
     context_catalog: Option<(u64, Arc<ContextCatalog>)>,
+    page_window: Option<super::browser_ui_page_windows::PageWindowSnapshot>,
+    page_session: Option<super::browser_ui_page_sessions::PageSessionOwner>,
 }
 
 struct Directory<H = CxxQtThread<qobject::BrowserUi>> {
@@ -49,6 +51,78 @@ impl<H> Default for Directory<H> {
 fn directory() -> &'static Mutex<Directory> {
     static DIRECTORY: OnceLock<Mutex<Directory>> = OnceLock::new();
     DIRECTORY.get_or_init(Default::default)
+}
+
+pub(super) fn page_window_owners(
+    scope: &super::browser_ui_page_windows::PageScope,
+) -> Vec<super::browser_ui_page_windows::PageWindowOwner> {
+    let Ok(directory) = directory().lock() else {
+        return Vec::new();
+    };
+    directory
+        .owners
+        .values()
+        .filter_map(|owner| {
+            let snapshot = owner
+                .page_window
+                .as_ref()
+                .filter(|snapshot| &snapshot.scope == scope)?;
+            let window = owner.window?;
+            Some(super::browser_ui_page_windows::PageWindowOwner {
+                snapshot: snapshot.clone(),
+                window,
+                token: owner.token.clone(),
+                order: owner.order,
+                focused: owner.focused,
+                thread: owner.thread.clone(),
+            })
+        })
+        .collect()
+}
+
+pub(super) fn page_session_windows(
+    token: &str,
+    current: super::browser_ui_page_sessions::PageSessionOwner,
+) -> Vec<super::SnapshotWindowInput> {
+    let Ok(directory) = directory().lock() else {
+        return Vec::new();
+    };
+    let mut owners = directory
+        .owners
+        .values()
+        .filter(|owner| owner.token != token)
+        .filter_map(|owner| {
+            owner
+                .page_session
+                .as_ref()
+                .filter(|data| data.profile == current.profile)
+                .map(|data| (owner.order, owner.focused, data.clone()))
+        })
+        .collect::<Vec<_>>();
+    let order = directory.owners.get(token).map_or(0, |owner| owner.order);
+    owners.push((order, u64::MAX, current));
+    drop(directory);
+    super::browser_ui_page_sessions::aggregate(owners)
+}
+
+pub(super) fn page_session_checkpoint(
+    profile: ferric_browser_application::ProfileInstanceId,
+    token: &str,
+) -> Option<super::browser_ui_page_sessions::LivePageCheckpoint> {
+    let directory = directory().lock().ok()?;
+    directory
+        .owners
+        .values()
+        .filter(|owner| owner.token != token)
+        .filter_map(|owner| {
+            owner
+                .page_session
+                .as_ref()
+                .filter(|session| session.profile == profile)
+                .map(|session| (owner.order, &session.checkpoint))
+        })
+        .min_by_key(|(order, _)| *order)
+        .map(|(_, checkpoint)| checkpoint.clone())
 }
 
 pub(super) fn has_window_target(selector: &str) -> bool {
@@ -462,6 +536,9 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn register_ipc_owner(mut self: Pin<&mut Self>) -> bool {
+        if self.as_ref().rust().page_window_preparing {
+            return false;
+        }
         if self.as_ref().rust().ipc_owner.is_some() {
             self.as_mut().refresh_ipc_owner();
             return true;
@@ -489,6 +566,8 @@ impl qobject::BrowserUi {
                 focused: 0,
                 order,
                 context_catalog: None,
+                page_window: None,
+                page_session: None,
             },
         );
         drop(directory);
@@ -498,6 +577,10 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn refresh_ipc_owner(self: Pin<&mut Self>) {
+        let page_window =
+            super::browser_ui_page_windows::PageWindowSnapshot::capture(self.as_ref().get_ref());
+        let page_session =
+            super::browser_ui_page_sessions::PageSessionOwner::capture(self.as_ref().get_ref());
         let profile_available = self.as_ref().get_ref().profile_available();
         let rust = self.as_ref().get_ref().rust();
         let Some(lease) = rust.ipc_owner.as_ref() else {
@@ -509,11 +592,16 @@ impl qobject::BrowserUi {
         let Some(owner) = directory.owners.get_mut(&lease.0) else {
             return;
         };
-        let window = (!rust.profile_bootstrap_pending && profile_available)
+        let window = (!rust.profile_bootstrap_pending
+            && !rust.page_window_preparing
+            && !rust.tab_ids.is_empty()
+            && profile_available)
             .then_some(rust.window)
             .flatten();
         let changed = owner.window != window;
         owner.window = window;
+        owner.page_window = page_window;
+        owner.page_session = page_session;
         // Admission and retention both change membership. Compare the catalog revision
         // so equal-size eviction cannot leave routing pointed at forgotten IDs.
         if changed || owner.operation_revision != rust.operation_revision() {
@@ -712,6 +800,8 @@ mod tests {
             focused,
             order,
             context_catalog: None,
+            page_window: None,
+            page_session: None,
         }
     }
 

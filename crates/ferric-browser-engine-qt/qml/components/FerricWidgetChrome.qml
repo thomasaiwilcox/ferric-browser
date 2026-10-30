@@ -5,6 +5,16 @@ Item {
 
     property var browserUi: null
     readonly property var runtimeController: FerricRuntimeController { host: chrome }
+    readonly property var requestPump: Timer {
+        interval: 0
+        repeat: false
+        onTriggered: chrome.dispatchPendingEngineRequest()
+    }
+    readonly property var requestWakeup: Connections {
+        target: chrome.browserUi
+        function onRuntime_work_available() { chrome.requestPump.restart() }
+    }
+    Component.onCompleted: requestPump.start()
 
     function syncTabModel() {}
     function dispatchPendingEngineRequest() {

@@ -271,6 +271,7 @@ impl qobject::BrowserUi {
             .reduce_event(Event::TransferTabIn {
                 window,
                 transfer: TabTransfer {
+                    identity: None,
                     url,
                     title,
                     loading,
@@ -957,11 +958,17 @@ impl qobject::BrowserUi {
             row.get_or_default(&QString::from(key))
                 .value_or_default::<QString>()
         };
+        let reparent = text("kind").to_string() == "reparent-view";
+        let owner = text(if reparent {
+            "pageOwnerToken"
+        } else {
+            "nativeOwner"
+        });
         let tab = text("tabId");
         let generation = text("generation");
         if !self.request_target_current(&tab, &generation, &text("documentId"))
             || !self.page_host_owner_matches_target(
-                &text("nativeOwner"),
+                &owner,
                 &self.page_host_profile_id(),
                 &tab,
                 &generation,
@@ -973,6 +980,9 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn take_engine_request(mut self: Pin<&mut Self>) -> super::QVariant {
+        if self.as_ref().rust().page_window_preparing {
+            return super::QVariant::default();
+        }
         loop {
             let request = {
                 let mut rust = self.as_mut().rust_mut();
@@ -1072,6 +1082,32 @@ impl qobject::BrowserUi {
             .engine_navigation_kinds
             .remove(&target.tab)
             .is_some_and(|(owner, history)| owner == target && history)
+    }
+
+    /// A native load also retires document work that has not been projected
+    /// yet. Stamping only when dequeuing would otherwise attach old intent to
+    /// the replacement document. Logical page transfers remain page-owned.
+    pub(super) fn retire_native_document_work(mut self: Pin<&mut Self>, target: super::Target) {
+        let ui = self.as_ref().rust().window_token.to_string();
+        let native = PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+            bindings
+                .borrow()
+                .iter()
+                .any(|binding| binding.ui == ui && binding.tab == target.tab)
+        });
+        if native {
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_engine_actions
+                .retain(|request| {
+                    matches!(
+                        request,
+                        NativeRequest::ReparentView { .. } | NativeRequest::Presentation(_)
+                    ) || request.captured_target() != Some(target)
+                });
+        }
     }
 
     pub(super) fn note_navigation_started(mut self: Pin<&mut Self>, target: Target, url: &str) {

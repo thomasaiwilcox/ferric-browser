@@ -160,6 +160,14 @@ impl qobject::BrowserUi {
                         .pending_engine_action = Some(format!("command-prefill\t{prefill}"));
                     return;
                 }
+                if self.as_ref().in_page_window_mode()
+                    && super::browser_ui_page_windows::handles(&parsed)
+                {
+                    let _ = self
+                        .as_mut()
+                        .execute_counted_parsed_commands(vec![parsed], count);
+                    return;
+                }
                 if binding_uses_full_command_executor(&parsed) {
                     let _ = self.as_mut().execute_parsed_commands(vec![parsed]);
                     return;
@@ -526,6 +534,10 @@ impl qobject::BrowserUi {
             "stale" => {
                 OperationUpdate::failed(FailureKind::StaleTarget, "activation target changed")
             }
+            "failed" => OperationUpdate::failed(
+                FailureKind::Engine,
+                "page command failed before activation",
+            ),
             _ => return false,
         };
         self.as_mut()

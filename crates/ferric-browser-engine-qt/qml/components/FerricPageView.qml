@@ -10,7 +10,19 @@ WebEngineView {
                 property var promptIdentityUi: null
                 property int promptIdentityTabIndex: -1
                 function refreshPromptViewIdentity() {
-                    if (promptIdentityUi && promptIdentityTabIndex >= 0
+                    // Initial-property callbacks run before createObject has
+                    // supplied the final Ui/index. A not-yet-adopted child
+                    // must never overwrite its opener's registration.
+                    if (!resourceTracked) return
+                    if (viewRetired || !viewUi || tabIndex < 0 || stableTabId.length === 0) {
+                        if (promptIdentityUi && promptIdentityTabIndex >= 0)
+                            promptIdentityUi.unregister_prompt_view_identity(promptIdentityTabIndex, promptLeaseIdentity)
+                        promptIdentityUi = null
+                        promptIdentityTabIndex = -1
+                        return
+                    }
+                    if ((promptIdentityUi !== viewUi || promptIdentityTabIndex !== tabIndex)
+                            && promptIdentityUi && promptIdentityTabIndex >= 0
                             && promptIdentityUi.unregister_prompt_view_identity) {
                         promptIdentityUi.unregister_prompt_view_identity(
                             promptIdentityTabIndex, promptLeaseIdentity)
@@ -22,6 +34,7 @@ WebEngineView {
                         promptIdentityUi.register_prompt_view_identity(
                             promptIdentityTabIndex, promptLeaseIdentity)
                     }
+                    if (resourceTracked) factory.rootWindow.profileResourceRegistry.trackView(webView,viewHost,viewUi)
                 }
                 onTabIndexChanged: refreshPromptViewIdentity()
                 onViewUiChanged: {
@@ -81,7 +94,10 @@ WebEngineView {
                 }
                 property int tabIndex: -1
                 property string stableTabId: ""
-                onStableTabIdChanged: documentTitleOwnerTimer.restart()
+                onStableTabIdChanged: {
+                    documentTitleOwnerTimer.restart()
+                    if (resourceTracked) refreshPromptViewIdentity()
+                }
                 Timer {
                     id: documentTitleOwnerTimer
                     interval: 0
@@ -103,6 +119,7 @@ WebEngineView {
                 property bool viewTransientProfile: factory.rootWindow.temporaryProfile
                 property bool viewTransferred: false
                 property bool viewRetired: false
+                onViewRetiredChanged: { if (resourceTracked) refreshPromptViewIdentity() }
                 property var documentRequestOwner: ({})
                 property var documentTitleTarget: null
                 function publishPageTitle() {
@@ -467,8 +484,9 @@ WebEngineView {
                         return
                     }
                     var popupToken=viewUi.take_popup_journey_token(request.requestedUrl.toString())
-                    var popup = factory.popupFactory.createObject(null, {
+                    var popupProperties = {
                         popupRequest: request,
+                        popupOrdinaryPage: request.destination !== WebEngineView.NewViewInDialog,
                         popupJourneyToken: popupToken,
                         popupProfile: viewProfile,
                         popupOpenerUi: viewUi,
@@ -479,7 +497,15 @@ WebEngineView {
                         popupEphemeralInvocationToken: viewHost === factory.rootWindow ? factory.rootWindow.ephemeralInvocationToken : viewHost.windowEphemeralInvocationToken,
                         popupProfileName: viewHost === factory.rootWindow ? factory.rootWindow.profileName : viewHost.windowProfileName,
                         popupStorageBasePath: viewHost === factory.rootWindow ? factory.rootWindow.storageBasePath : viewHost.windowStorageBasePath
-                    })
+                    }
+                    if (viewUi.feature_tabs_presentation_effective === "windows") {
+                        if (request.destination === WebEngineView.NewViewInTab
+                                || request.destination === WebEngineView.NewViewInBackgroundTab)
+                            popupProperties.pageGroupId = viewHost.pageGroupId
+                        if (request.destination === WebEngineView.NewViewInBackgroundTab)
+                            popupProperties.windowInitialVisible = false
+                    }
+                    var popup = factory.popupFactory.createObject(null, popupProperties)
                     if (!popup || !popup.profileBootstrapComplete) {
                         viewUi.close_popup_tab(popupToken)
                         viewUi.status_text="The popup could not be opened. Try opening the link again."
