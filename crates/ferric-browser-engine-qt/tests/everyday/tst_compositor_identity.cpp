@@ -1,6 +1,7 @@
 #include <KWaylandExtras>
 
 #include <QGuiApplication>
+#include <QEvent>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSocketNotifier>
@@ -18,7 +19,20 @@
 namespace {
 
 class PaintedWindow final : public QRasterWindow {
+ public:
+  int focusIn = 0, focusOut = 0, activated = 0, deactivated = 0;
+
  protected:
+  bool event(QEvent *event) override {
+    switch (event->type()) {
+      case QEvent::FocusIn: ++focusIn; break;
+      case QEvent::FocusOut: ++focusOut; break;
+      case QEvent::WindowActivate: ++activated; break;
+      case QEvent::WindowDeactivate: ++deactivated; break;
+      default: break;
+    }
+    return QRasterWindow::event(event);
+  }
   void paintEvent(QPaintEvent *) override {
     QPainter painter(this);
     painter.fillRect(QRect(QPoint(0, 0), size()), QColor(38, 52, 67));
@@ -38,6 +52,8 @@ class Fixture final : public QObject {
 
  public:
   explicit Fixture(QObject *parent = nullptr) : QObject(parent) {
+    connect(qGuiApp, &QGuiApplication::focusWindowChanged, this,
+            [this](QWindow *) { ++m_focusChanges; });
     m_stdin = new QSocketNotifier(STDIN_FILENO, QSocketNotifier::Read, this);
     connect(m_stdin, &QSocketNotifier::activated, this,
             [this](QSocketDescriptor, QSocketNotifier::Type) { readCommands(); });
@@ -75,6 +91,8 @@ class Fixture final : public QObject {
         createWindow(command);
       } else if (operation == QStringLiteral("destroy")) {
         destroyWindow(command.value(QStringLiteral("key")).toString());
+      } else if (operation == QStringLiteral("focus-snapshot")) {
+        focusSnapshot(command.value(QStringLiteral("key")).toString());
       } else if (operation == QStringLiteral("exit")) {
         QGuiApplication::quit();
       } else {
@@ -125,7 +143,27 @@ class Fixture final : public QObject {
                {QStringLiteral("key"), key}});
   }
 
+  void focusSnapshot(const QString &key) {
+    const auto it = m_windows.find(key);
+    if (it == m_windows.end()) {
+      emitEvent({{QStringLiteral("event"), QStringLiteral("error")},
+                 {QStringLiteral("reason"), QStringLiteral("unknown-window")}});
+      return;
+    }
+    const auto *window = it->second.get();
+    emitEvent({{QStringLiteral("event"), QStringLiteral("focus-snapshot")},
+               {QStringLiteral("key"), key},
+               {QStringLiteral("active"), window->isActive()},
+               {QStringLiteral("focus_window"), qGuiApp->focusWindow() == window},
+               {QStringLiteral("focus_in"), window->focusIn},
+               {QStringLiteral("focus_out"), window->focusOut},
+               {QStringLiteral("activated"), window->activated},
+               {QStringLiteral("deactivated"), window->deactivated},
+               {QStringLiteral("native_focus_changes"), m_focusChanges}});
+  }
+
   QSocketNotifier *m_stdin = nullptr;
+  int m_focusChanges = 0;
   std::string m_input;
   std::map<QString, std::unique_ptr<PaintedWindow>> m_windows;
 };

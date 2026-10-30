@@ -105,6 +105,7 @@ pub(crate) struct ManagedRole {
     pub(crate) scope: Uuid,
     pub(crate) auto: bool,
     pub(crate) ready: bool,
+    pub(crate) order: usize,
 }
 
 #[derive(Clone)]
@@ -234,8 +235,10 @@ fn parse_group_reply(
         && key == expected.fresh
         && scope == expected.scope
         && expected.capabilities.len() < 128;
-    let existing = matches!(*kind, "added" | "unchanged" | "retired" | "forgotten")
-        && expected.capabilities.contains(&capability);
+    let existing = matches!(
+        *kind,
+        "added" | "unchanged" | "retired" | "forgotten" | "ordered" | "ordering"
+    ) && expected.capabilities.contains(&capability);
     if !created && !existing {
         return GroupOutcome::Uncertain.into();
     }
@@ -263,7 +266,7 @@ fn parse_group_reply(
         return GroupOutcome::Uncertain.into();
     };
     GroupReply {
-        outcome: if matches!(*kind, "forgotten" | "retired") {
+        outcome: if matches!(*kind, "forgotten" | "retired" | "ordering") {
             GroupOutcome::Deferred
         } else if *kind == "unchanged" {
             GroupOutcome::Unchanged
@@ -321,7 +324,9 @@ impl HyprlandAdapter {
             ]
             .iter()
             .any(Uuid::is_nil)
-            || roles.iter().any(|role| role.scope.is_nil())
+            || roles
+                .iter()
+                .any(|role| role.scope.is_nil() || !(1..=MAX_WINDOWS).contains(&role.order))
         {
             return Err(failure());
         }
@@ -364,7 +369,7 @@ impl HyprlandAdapter {
             .map(|role| {
                 let binding = &role.binding;
                 format!(
-                    "{{tag={},app={},pid={},stable={},address={},scope={},auto={},ready={}}}",
+                    "{{tag={},app={},pid={},stable={},address={},scope={},auto={},ready={},order={}}}",
                     lua_string_literal(&binding.identity.tag),
                     lua_string_literal(&binding.identity.app_id),
                     binding.identity.pid,
@@ -372,7 +377,8 @@ impl HyprlandAdapter {
                     lua_string_literal(&binding.address),
                     lua_string_literal(&role.scope.to_string()),
                     role.auto,
-                    role.ready
+                    role.ready,
+                    role.order
                 )
             })
             .collect::<Vec<_>>()

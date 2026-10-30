@@ -23,6 +23,7 @@ struct Owner {
     scope: Scope,
     scope_key: Uuid,
     page: TabId,
+    pinned: bool,
     native: NativeWindowIdentity,
     config: HyprlandConfig,
     thread: CxxQtThread<qobject::BrowserUi>,
@@ -50,6 +51,8 @@ fn owners() -> &'static Mutex<BTreeMap<String, Owner>> {
 struct Member {
     token: String,
     page: TabId,
+    pinned: bool,
+    order: usize,
     native: NativeWindowIdentity,
     scope: Scope,
     scope_key: Uuid,
@@ -82,17 +85,21 @@ fn admit(token: &str) -> Option<Admission> {
     }
     let members = owners
         .iter()
-        .map(|(token, owner)| Member {
-            token: token.clone(),
-            page: owner.page,
-            native: owner.native.clone(),
-            scope: owner.scope.clone(),
-            scope_key: owner.scope_key,
-            enabled: owner.config.enabled.clone(),
-            auto: automatic(&owner.config),
-            ready: owner.ready,
+        .map(|(token, owner)| {
+            Some(Member {
+                token: token.clone(),
+                page: owner.page,
+                pinned: owner.pinned,
+                order: crate::live_ipc_owners::page_window_rank(owner.page)?,
+                native: owner.native.clone(),
+                scope: owner.scope.clone(),
+                scope_key: owner.scope_key,
+                enabled: owner.config.enabled.clone(),
+                auto: automatic(&owner.config),
+                ready: owner.ready,
+            })
         })
-        .collect();
+        .collect::<Option<Vec<_>>>()?;
     Some(Admission {
         scope: source.scope.clone(),
         scope_key: source.scope_key,
@@ -135,6 +142,8 @@ fn run(job: Job) -> Result<GroupReply, String> {
     let bindings = adapter
         .resolve_native_windows(&identities)
         .map_err(|error| error.to_string())?;
+    let mut ordered = admission.members.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|member| (!member.pinned, member.order, &member.token));
     let roles = bindings
         .into_iter()
         .zip(&admission.members)
@@ -144,6 +153,11 @@ fn run(job: Job) -> Result<GroupReply, String> {
                 scope: member.scope_key,
                 auto: member.auto,
                 ready: member.ready,
+                order: ordered
+                    .iter()
+                    .position(|candidate| candidate.token == member.token)
+                    .expect("member belongs to admission")
+                    + 1,
             })
         })
         .collect::<Vec<_>>();
@@ -445,6 +459,7 @@ pub(crate) fn publish(ui: &qobject::BrowserUi) {
             scope: Scope::capture(rust)?,
             scope_key: Uuid::nil(),
             page: page.id,
+            pinned: page.pinned,
             native,
             config,
             thread: ui.qt_thread(),

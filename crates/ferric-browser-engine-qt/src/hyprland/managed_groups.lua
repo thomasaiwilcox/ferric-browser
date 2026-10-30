@@ -73,12 +73,14 @@ return function(requested, options)
         end
         return nil, nil
     end
-    local all, windows, admitted, tags, addresses = hl.get_windows(), {}, {}, {}, {}
+    local all, windows, admitted, tags, addresses, orders = hl.get_windows(), {}, {}, {}, {}, {}
     for i, request in ipairs(requested) do
-        if tags[request.tag] or addresses[request.address] or not token(request.scope)
+        if tags[request.tag] or addresses[request.address] or orders[request.order] or not token(request.scope)
             or type(request.auto) ~= 'boolean' or type(request.ready) ~= 'boolean'
+            or type(request.order) ~= 'number' or request.order % 1 ~= 0 or request.order < 1 or request.order > MAX_MEMBERS
             or request.pid ~= options.pid or request.app ~= options.app then return 'reject-request' end
         tags[request.tag], addresses[request.address] = true, true
+        orders[request.order] = true
         local found, matches = nil, 0
         for _, window in ipairs(all) do
             if window.xdg_tag == request.tag then found, matches = window, matches + 1 end
@@ -169,12 +171,49 @@ return function(requested, options)
                 target = window break
             end
         end
-        if not target then return receipt('unchanged', key, entry) end
+        if not target then
+            local desired = existing.members
+            -- Same proven live group; every member's current role has just
+            -- passed same-birth-scope / Auto admission, including on-map peers.
+            entry.seeds = desired
+            table.sort(desired, function(left,right)
+                return admitted[left.stable_id].role.order < admitted[right.stable_id].role.order
+            end)
+            local function ordered()
+                for index, member in ipairs(existing.members) do if member ~= desired[index] then return false end end
+                return true
+            end
+            if ordered() then return receipt('unchanged', key, entry) end
+            -- Public move_window operates on the globally active group's
+            -- current member. Never activate another member just to sort.
+            if not active or not same(active.group, existing) or existing.current ~= active then return receipt('ordering', key, entry) end
+            local desired_index = nil
+            for index, member in ipairs(desired) do if member == active then desired_index = index break end end
+            local before = existing.current_index
+            if before == desired_index then return receipt('ordering', key, entry) end
+            local forward = before < desired_index
+            for _ = 1, math.abs(before - desired_index) do
+                local previous = existing.current_index
+                hl.dispatch(hl.dsp.group.move_window({forward=forward}))
+                local members, failure = checked(existing)
+                if failure or hl.get_active_window() ~= active or existing.current ~= active
+                    or existing.current_index ~= previous + (forward and 1 or -1) then return 'uncertain-order' end
+                entry.seeds = members
+            end
+            return receipt(ordered() and 'ordered' or 'ordering', key, entry)
+        end
         if existing.size >= MAX_MEMBERS then return 'reject-membership' end
         if active and same(active.group, existing) then return 'defer-active' end
-        local before_current, before_index, before_size = existing.current, existing.current_index, existing.size
-        existing:add(target, before_size + 1)
-        hl.dispatch(hl.dsp.group.active({window=before_current,index=before_index}))
+        local before_current, before_size = existing.current, existing.size
+        local insert_at = 1
+        for _, member in ipairs(existing.members) do
+            if admitted[member.stable_id].role.order < admitted[target.stable_id].role.order then insert_at = insert_at + 1 end
+        end
+        existing:add(target, insert_at)
+        local restore_index = nil
+        for index, member in ipairs(existing.members) do if member == before_current then restore_index = index break end end
+        if not restore_index then return 'uncertain-add-current' end
+        hl.dispatch(hl.dsp.group.active({window=before_current,index=restore_index}))
         local members, failure = checked(existing)
         if failure or not same(target.group, existing) or existing.size ~= before_size + 1
             or existing.current ~= before_current or hl.get_active_window() ~= active then return 'uncertain-add' end

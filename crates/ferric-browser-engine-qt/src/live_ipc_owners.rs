@@ -214,6 +214,11 @@ pub(super) fn swap_page_order(
     })
 }
 
+pub(super) fn page_window_rank(page: crate::TabId) -> Option<usize> {
+    let rank = directory().lock().ok()?.page_order.rank(page);
+    (rank != usize::MAX).then_some(rank)
+}
+
 pub(super) fn page_window_owners(
     scope: &super::browser_ui_page_windows::PageScope,
 ) -> Vec<super::browser_ui_page_windows::PageWindowOwner> {

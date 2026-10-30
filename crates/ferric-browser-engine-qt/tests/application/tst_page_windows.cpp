@@ -68,7 +68,7 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-native-grouping", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-native-grouping", "window-grouping-order", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -202,7 +202,7 @@ void ApplicationTests::pageWindowPresentation()
     }
     pageReceiver = "testWindow.tabViewAt(0)";
     QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
-    if (scenario == "window-grouping-stale" || scenario == "window-grouping-profile" || scenario == "window-grouping-delay" || scenario == "window-grouping-stale-create") {
+    if (scenario == "window-grouping-stale" || scenario == "window-grouping-profile" || scenario == "window-grouping-delay" || scenario == "window-grouping-stale-create" || scenario == "window-grouping-order-stale") {
         // This owned mock exercises GUI admission/lifecycle and stalled IPC.
         // Native Lua effects are qualified separately on the real compositor.
         QTemporaryDir runtime;
@@ -280,7 +280,21 @@ void ApplicationTests::pageWindowPresentation()
                             output += QByteArray::number(index) + "|ok|" + QByteArray::number(100 + index)
                                 + "|0x" + QByteArray::number(4096 + index, 16);
                         }
-                        if (scenario == "window-grouping-delay" && !injected) {
+                        if (scenario == "window-grouping-order-stale") {
+                            if (!injected) {
+                                injected = true;
+                                fixtureOk = command("tab-move " + sourceId + " right ;; jseval --world page window.nativeOrderAdmissionChanged=1");
+                                evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+                                // Actual Core movement is already queued on
+                                // this GUI thread. Queue the read-only reply
+                                // behind it, within the socket's deadline.
+                                QMetaObject::invokeMethod(&server, [socket, output] {
+                                    socket->write(output); socket->disconnectFromServer();
+                                }, Qt::QueuedConnection);
+                            }
+                            // Hold any fresh retry so the assertion below
+                            // measures only the original stale admission.
+                        } else if (scenario == "window-grouping-delay" && !injected) {
                             injected = true;
                             // Flush a complete resolution/EOF, then keep the GUI
                             // callback queued past the prepared send's deadline.
@@ -295,7 +309,11 @@ void ApplicationTests::pageWindowPresentation()
         QVERIFY(evaluate(entry + ".ui.execute_command('set --temp hyprland.page_grouping=auto')").toBool());
         QTRY_VERIFY_WITH_TIMEOUT(injected, 10000);
         QVERIFY(fixtureOk);
-        if (scenario == "window-grouping-stale") {
+        if (scenario == "window-grouping-order-stale") {
+            QTRY_VERIFY_WITH_TIMEOUT(emptyConnections > 0, 10000);
+            QTRY_COMPARE(page("window.nativeOrderAdmissionChanged").toInt(), 1);
+            QCOMPARE(writes, 0);
+        } else if (scenario == "window-grouping-stale") {
             QTRY_COMPARE(evaluate("testWindow.browserUi.tab_count").toInt(), 2);
             QTRY_COMPARE(text("feature_page_grouping_status"), QStringLiteral("unavailable"));
             QTRY_VERIFY(evaluate("testWindow.browserUi.maintenance_delay_ms()").toInt() != 50);
@@ -327,7 +345,7 @@ void ApplicationTests::pageWindowPresentation()
         evaluate("testWindow.liveWindowEntries().forEach(function(e){e.ui.execute_command('set --temp hyprland.page_grouping=off')})");
         return;
     }
-    if (scenario == "window-native-grouping" || scenario == "window-grouping-unrelated-map" || scenario == "window-grouping-private-map" || scenario == "window-grouping-auto-off" || scenario == "window-grouping-detach" || scenario == "window-grouping-context") {
+    if (scenario == "window-native-grouping" || scenario == "window-grouping-order" || scenario == "window-grouping-unrelated-map" || scenario == "window-grouping-private-map" || scenario == "window-grouping-auto-off" || scenario == "window-grouping-detach" || scenario == "window-grouping-context") {
         const auto sourceTag = evaluate("testWindow.pageWindowTag").toString();
         const auto peerTag = evaluate(childHost + ".pageWindowTag").toString();
         const auto separate = "testWindow.liveWindowEntries().find(function(e){return e.host!==testWindow && e.host.pageWindowTag!==" + quoted(peerTag) + "})";
@@ -399,6 +417,34 @@ void ApplicationTests::pageWindowPresentation()
         QTRY_COMPARE(text("feature_page_grouping_status"), QStringLiteral("available"));
         QCOMPARE(QGuiApplication::focusWindow(), separateWindow);
         QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        if (scenario == "window-grouping-order") {
+            const auto nativeOrder = QStringLiteral(
+                "return (function() local s=nil for _,w in ipairs(hl.get_windows()) do "
+                "if w.pid==%1 and w.xdg_tag=='%2' then s=w end end "
+                "if not s or not s.group then return 'missing' end local out={} "
+                "for _,w in ipairs(s.group.members) do out[#out+1]=w.xdg_tag=='%2' and 'source' or w.xdg_tag=='%3' and 'peer' or 'unknown' end "
+                "return table.concat(out,',') end)()")
+                .arg(QCoreApplication::applicationPid()).arg(sourceTag,peerTag);
+            QTRY_COMPARE(queryLua(nativeOrder), QStringLiteral("source,peer"));
+            QVERIFY(evaluate("testWindow.activateBrowserWindow(" + childHost + "," + entry + ".ui)").toBool());
+            QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+            const auto peerPage = evaluate(entry + ".ui.tab_id_for_index(0)").toString();
+            QPointer<QObject> peerView(evaluate(childHost + ".activeView").value<QObject *>());
+            QSignalSpy focusChanges(qGuiApp, &QGuiApplication::focusWindowChanged);
+            for (const auto &direction : {QStringLiteral("left"),QStringLiteral("right")}) {
+                QVERIFY(evaluate(entry + ".ui.execute_command(" + quoted("tab-move " + peerPage + " " + direction) + ")").toBool());
+                evaluate("testWindow.completeBrowserKeyAction(" + entry + ".ui," + childHost + ")");
+                QTRY_COMPARE_WITH_TIMEOUT(queryLua(nativeOrder), direction == "left" ? QStringLiteral("peer,source") : QStringLiteral("source,peer"), 15000);
+                QCOMPARE(QGuiApplication::focusWindow(), childWindow);
+                QCOMPARE(focusChanges.size(), 0);
+            }
+            QVERIFY(evaluate(entry + ".ui.set_tab_pinned(0,true)").toInt() >= 0);
+            QTRY_COMPARE_WITH_TIMEOUT(queryLua(nativeOrder), QStringLiteral("peer,source"), 15000);
+            QCOMPARE(QGuiApplication::focusWindow(), childWindow);
+            QCOMPARE(focusChanges.size(), 0);
+            QCOMPARE(evaluate(childHost + ".activeView").value<QObject *>(), peerView.data());
+            QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        }
         if (scenario == "window-grouping-auto-off" || scenario == "window-grouping-detach" || scenario == "window-grouping-context") {
             const auto peerView = evaluate(childHost + ".activeView").value<QObject *>();
             const auto peerPage = evaluate(entry + ".ui.tab_id_for_index(0)").toString();
