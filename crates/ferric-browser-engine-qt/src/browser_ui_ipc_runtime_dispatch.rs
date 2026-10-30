@@ -36,6 +36,41 @@ impl qobject::BrowserUi {
             return self.execute_page_window_ipc_chain(expanded, route, operation_id);
         }
         let command = expanded.into_iter().next().expect("one expanded command");
+        if self.as_ref().in_page_window_mode()
+            && (matches!(
+                command.name.as_str(),
+                "repeat" | "macro-play" | "command-execute"
+            ) || (command.name == "action" && crate::parse_action_invocation(&command).is_ok()))
+        {
+            let wrapper = command.clone();
+            let mut result = self.execute_page_workflow(
+                vec![crate::RepeatableCommand {
+                    command,
+                    count: 1,
+                    route: Some(route.clone()),
+                }],
+                operation_id,
+                &mut None,
+            )?;
+            if wrapper.name == "action" {
+                let (_, id) =
+                    crate::parse_action_invocation(&wrapper).map_err(PublicError::engine)?;
+                // A registered subject/verb may have taken precedence.
+                if result.get("action_id").is_none() {
+                    result["action_id"] = Value::String(id);
+                }
+            } else if wrapper.name == "command-execute" {
+                let mut outer = serde_json::json!({"status":"accepted", "action":"execute",
+                    "command_id":wrapper.arguments[0], "result":result});
+                for field in ["operation_id", "pending"] {
+                    if let Some(value) = outer["result"].get(field).cloned() {
+                        outer[field] = value;
+                    }
+                }
+                result = outer;
+            }
+            return Ok(result);
+        }
         if let Some(result) = self.as_mut().dispatch_support_command(&command, route) {
             return result;
         }

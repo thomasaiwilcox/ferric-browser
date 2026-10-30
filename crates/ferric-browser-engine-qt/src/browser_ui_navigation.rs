@@ -196,7 +196,7 @@ impl qobject::BrowserUi {
                 source,
                 super::CommandSource::Ui | super::CommandSource::Keyboard
             )
-            || self.as_ref().rust().recording_macro.is_some()
+            || crate::page_window_macros::recording_register(self.as_ref().rust()).is_some()
         {
             self.set_status_text(QString::from(
                 "Pointer click requires a direct local UI or keyboard command",

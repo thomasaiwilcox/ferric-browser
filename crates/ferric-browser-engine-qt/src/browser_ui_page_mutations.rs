@@ -298,6 +298,10 @@ impl qobject::BrowserUi {
                             .as_mut()
                             .execute_routed_ipc_chain_with_handoff(commands, None, &mut handoff)
                             .is_ok(),
+                        PageContinuation::Recorded { commands, .. } => issuer
+                            .as_mut()
+                            .execute_page_recorded_commands(commands, None, &mut handoff)
+                            .is_ok(),
                     };
                     issuer.as_mut().runtime_work_available();
                     if let Some(receipt) = handoff {

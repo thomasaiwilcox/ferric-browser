@@ -140,6 +140,10 @@ pub(super) enum PageContinuation {
         commands: Vec<(ParsedCommand, super::IpcRoute)>,
         route: super::IpcRoute,
     },
+    Recorded {
+        commands: Vec<super::RepeatableCommand>,
+        invocation: super::RepeatableCommand,
+    },
 }
 
 impl PageContinuation {
@@ -147,6 +151,7 @@ impl PageContinuation {
         match self {
             Self::Interactive { commands, .. } => !commands.is_empty(),
             Self::Ipc { commands, .. } => !commands.is_empty(),
+            Self::Recorded { commands, .. } => !commands.is_empty(),
         }
     }
 }
@@ -358,16 +363,6 @@ pub(super) fn is_command_workflow(command: &ParsedCommand) -> bool {
         command.name.as_str(),
         "repeat" | "macro-play" | "action" | "command-execute"
     )
-}
-
-pub(super) fn validate_chain_workflows(
-    commands: &[ParsedCommand],
-    handed_off: bool,
-) -> Result<(), String> {
-    if (handed_off || commands.len() > 1) && commands.iter().any(is_command_workflow) {
-        return Err("Repeat, macro playback and command wrappers cannot run in a window-selection chain yet. Run them separately.".into());
-    }
-    Ok(())
 }
 
 fn select_index(
@@ -611,7 +606,10 @@ impl qobject::BrowserUi {
                     ui.as_mut().set_core_mode(super::Mode::Normal);
                     match continuation {
                         PageContinuation::Interactive { commands, count } => {
-                            if !same_owner {
+                            if !same_owner
+                                && crate::page_window_undo::Scope::capture(ui.as_ref().rust())
+                                    .is_none()
+                            {
                                 ui.as_mut().note_repeatable_invocation(
                                     &repeat_command,
                                     None,
@@ -637,7 +635,10 @@ impl qobject::BrowserUi {
                             }
                         }
                         PageContinuation::Ipc { commands, route } => {
-                            if !same_owner {
+                            if !same_owner
+                                && crate::page_window_undo::Scope::capture(ui.as_ref().rust())
+                                    .is_none()
+                            {
                                 ui.as_mut().note_repeatable_invocation(
                                     &repeat_command,
                                     Some(&route),
@@ -661,6 +662,33 @@ impl qobject::BrowserUi {
                                     .set_status_text(QString::from(error.user_message()));
                                 succeeded = false;
                             }
+                        }
+                        PageContinuation::Recorded {
+                            commands,
+                            invocation,
+                        } => {
+                            if !same_owner
+                                && crate::page_window_undo::Scope::capture(ui.as_ref().rust())
+                                    .is_none()
+                            {
+                                ui.as_mut().note_repeatable_invocation(
+                                    &repeat_command,
+                                    invocation.route.as_ref(),
+                                    invocation.count,
+                                );
+                            }
+                            selected = commands.is_empty()
+                                || continuation_current(
+                                    ui.as_ref().get_ref(),
+                                    &scope,
+                                    &target.owner.snapshot.group,
+                                    target_document,
+                                );
+                            succeeded = selected
+                                && ui
+                                    .as_mut()
+                                    .execute_page_recorded_commands(commands, None, &mut handoff)
+                                    .is_ok();
                         }
                     }
                     ui.as_mut().runtime_work_available();
@@ -753,21 +781,23 @@ impl qobject::BrowserUi {
             }
         }
         let mut result = serde_json::json!({"status":"accepted"});
-        if self.as_ref().in_page_window_mode() {
-            validate_chain_workflows(
-                &expanded
-                    .iter()
-                    .map(|(command, _)| command.clone())
-                    .collect::<Vec<_>>(),
-                handoff.is_some(),
-            )
-            .map_err(|error| {
-                super::PublicError::new(
-                    ferric_browser_ipc::ErrorCode::Unsupported,
-                    error.clone(),
-                    error,
-                )
-            })?;
+        if self.as_ref().in_page_window_mode()
+            && expanded
+                .iter()
+                .any(|(command, _)| is_command_workflow(command))
+        {
+            return self.execute_page_workflow(
+                expanded
+                    .into_iter()
+                    .map(|(command, route)| crate::RepeatableCommand {
+                        command,
+                        count: 1,
+                        route: Some(route),
+                    })
+                    .collect(),
+                operation_id,
+                handoff,
+            );
         }
         let mut operations = Vec::new();
         for (index, (command, route)) in expanded.iter().enumerate() {

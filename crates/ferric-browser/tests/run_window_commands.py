@@ -36,6 +36,14 @@ def main():
         config = root / 'config.toml'
         config.write_text("schema_version=3\n[tabs]\npresentation='windows'\n")
         (root / 'contexts.toml').write_text("schema_version=3\n[[contexts]]\nname='defined'\nlabel='Defined'\nprofile='default'\n")
+        script_root = root / 'profile' / 'config' / 'userscripts'
+        script_marker = root / 'script-context.json'
+        script_body = "cat > \"$1\"; printf '%s' '{\"type\":\"message\",\"text\":\"Owned collision action ran\"}'"
+        script_argv = ['-c', script_body, 'fixture', str(script_marker)]
+        manifest = ('schema_version=1\nname="window_collision"\nexecutable="/bin/sh"\nargv='
+                    + json.dumps(script_argv) + '\ncontext_fields=["tab_id","url"]\nallowed_results=["message"]\n'
+                    + '[[actions]]\nid="userscript.window_collision.next"\nsubject="tab"\nverb="next"\nlabel="Owned collision action"\nrequired_fields=["tab_id"]\n')
+        script_path = script_root / 'window_collision.toml'
         prefix = [str(args.browser.resolve()), '--basedir', str(root / 'profile'),
                   '--config', str(config), '--instance', 'owned-window-commands']
 
@@ -115,6 +123,14 @@ def main():
                                      env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
             first = wait(lambda: complete_tabs(1))[0]
             source = first['window_id']
+            script_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            script_path.write_text(manifest)
+            script_path.chmod(0o600)
+            hint_manifest = manifest.replace('window_collision', 'window_hint_only').replace('subject="tab"', 'subject="link"').replace('verb="next"', 'verb="owned-hint"').replace('["tab_id","url"]', '["hint_url"]').replace('["tab_id"]', '["hint_url"]')
+            hint_path = script_root / 'window_hint_only.toml'
+            hint_path.write_text(hint_manifest)
+            hint_path.chmod(0o600)
+            wait(lambda: any(action['id'] == 'userscript.window_hint_only.next' for action in raw_request({'command': 'action-list', 'arguments': {}, 'context': {'window': source, 'source': 'cli'}}).get('result', {}).get('actions', [])))
             cli('command', '--window', source, '--', 'tab-open ' + base + '/child')
             current = wait(lambda: complete_tabs(2))
             child = next(tab for tab in current if tab['id'] != first['id'])
@@ -163,6 +179,12 @@ def main():
             assert rejected.get('error', {}).get('code') == 'E_DENIED', rejected
             assert sorted((tab['id'], tab['url'], tab['pinned']) for tab in tabs()) == before
             facts['cases'].append('local-only continuation rejects before any mutation with the denied category')
+            rejected = raw_request({'command': 'tab-pin', 'arguments': {'id': child['id'], 'state': 'on'},
+                                    'context': {'window': source, 'source': 'cli'},
+                                    'continuation': [{'command': 'action', 'arguments': {'subject': 'link', 'verb': 'owned-hint', 'url': base + '/child'}}]})
+            assert rejected.get('error', {}).get('code') == 'E_DENIED', rejected
+            assert sorted((tab['id'], tab['url'], tab['pinned']) for tab in tabs()) == before
+            facts['cases'].append('hint-only registered action denies the whole chain before the preceding page mutation')
             multi = raw_request({'command': 'tab-focus', 'arguments': {'id': child['id']},
                                  'context': {'window': source, 'source': 'cli'},
                                  'continuation': [
@@ -186,11 +208,62 @@ def main():
             before = sorted((tab['id'], tab['title'], tab['url']) for tab in tabs())
             rejected = raw_request({'command': 'tab-next', 'arguments': {},
                                     'context': {'window': source, 'source': 'cli'},
-                                    'continuation': [{'command': 'repeat', 'arguments': {}},
+                                    'continuation': [{'command': 'command-execute', 'arguments': {'id': 'unknown'}},
                                                      {'command': 'jseval', 'arguments': {'world': 'page', 'script': 'document.title=99999'}}]})
-            assert rejected.get('error', {}).get('code') == 'E_UNSUPPORTED', rejected
+            assert rejected.get('error'), rejected
             assert sorted((tab['id'], tab['title'], tab['url']) for tab in tabs()) == before
-            facts['cases'].append('unsupported nested workflow rejects before selection or document mutation')
+            facts['cases'].append('invalid nested command wrapper rejects before selection or document mutation')
+            cli('command', '--window', source, '--', 'macro-record a')
+            for issuing_window in (source, child['window_id']):
+                recorded = raw_request({'command': 'tab-next', 'arguments': {},
+                                        'context': {'window': issuing_window, 'source': 'cli'}})
+                assert not recorded.get('error'), recorded
+                operation_id = recorded['result']['operation_id']
+                assert wait(completed_handoff)['status'] == 'completed'
+            cli('command', '--window', child['window_id'], '--', 'macro-stop')
+            for command, arguments in [('repeat', {'count': 2}), ('macro-play', {'register': 'a'})]:
+                replay = raw_request({'command': command, 'arguments': arguments,
+                                      'context': {'window': source, 'source': 'cli'}})
+                assert not replay.get('error'), replay
+                operation_id = replay['result']['operation_id']
+                terminal = wait(completed_handoff)
+                assert terminal['status'] == 'completed', terminal
+                assert terminal['detail'] in ('activated', 'activation outcome unknown'), terminal
+                assert sorted((tab['id'], tab['title'], tab['url']) for tab in tabs()) == before
+            facts['cases'].append('recording follows peer owners and counted repeat/macro playback finish their original operation after both hops')
+            previous_id = next(row['id'] for row in cli('query', 'switcher', 'tab-prev', '--scope', 'commands', '--limit', '20', '--format', 'json')['results'] if row['label'] == 'tab-prev')
+            wrappers = [('repeat', {}, first['id']),
+                        ('macro-play', {'register': 'a'}, child['id']),
+                        ('action', {'subject': 'tab', 'verb': 'previous'}, first['id']),
+                        ('command-execute', {'id': previous_id}, first['id'])]
+            for index, (command, arguments, target_id) in enumerate(wrappers):
+                marker = str(91000 + index)
+                nested = raw_request({'command': 'tab-next', 'arguments': {},
+                                      'context': {'window': source, 'source': 'cli'},
+                                      'continuation': [{'command': command, 'arguments': arguments},
+                                                       {'command': 'jseval', 'arguments': {'world': 'page', 'script': 'document.title=' + marker}}]})
+                assert not nested.get('error'), nested
+                operation_id = nested['result']['operation_id']
+                wait(lambda: next((tab for tab in tabs() if tab['id'] == target_id and tab['title'] == marker), None))
+                assert wait(completed_handoff)['status'] == 'completed'
+            facts['cases'].append('repeat, macro, action and stable command wrappers continue on their selected owner with one receipt')
+            for command, arguments in [('action', {'subject': 'tab', 'verb': 'previous'}), ('command-execute', {'id': previous_id})]:
+                standalone_wrapper = raw_request({'command': command, 'arguments': arguments, 'context': {'window': source, 'source': 'cli'}})
+                assert not standalone_wrapper.get('error'), standalone_wrapper
+                value = standalone_wrapper['result']
+                assert value['pending'] is True, value
+                if command == 'action':
+                    assert value['action_id'] == 'browser.tab.previous', value
+                else:
+                    assert value['action'] == 'execute' and value['command_id'] == previous_id, value
+                    assert value['result']['action'] == 'focus' and value['result']['pending'] is True, value
+                operation_id = value['operation_id']
+                assert wait(completed_handoff)['status'] == 'completed'
+            facts['cases'].append('standalone action and command wrappers retain metadata and their pending operation receipt')
+            # Restore the markers used by the independent mutation assertions.
+            cli('command', '--window', source, '--', 'jseval --world page document.title=12348')
+            cli('command', '--window', child['window_id'], '--', 'jseval --world page document.title=12345')
+            wait(lambda: next((tab for tab in tabs() if tab['id'] == child['id'] and tab['title'] == '12345'), None))
             pinned = raw_request({'command': 'tab-pin', 'arguments': {'id': child['id'], 'state': 'on'},
                                   'context': {'window': source, 'source': 'cli'}})
             assert not pinned.get('error'), pinned
@@ -247,6 +320,24 @@ def main():
             wait(lambda: next((tab for tab in tabs() if tab['id'] == first['id'] and tab['title'] == '34568'), None))
             assert next(tab for tab in tabs() if tab['id'] == child['id'])['title'] == '23457'
             facts['cases'].append('page movement cannot cross the pinned partition')
+            collision = raw_request({'command': 'action', 'arguments': {'subject': 'tab', 'verb': 'next'},
+                                     'context': {'window': source, 'source': 'cli'}})
+            assert not collision.get('error'), collision
+            assert collision['result']['action_id'] == 'userscript.window_collision.next', collision
+            wait(lambda: script_marker.exists() and script_marker.stat().st_size > 0)
+            assert json.loads(script_marker.read_text())['context']['tab_id'] == first['id']
+            script_marker.unlink()
+            collision = raw_request({'command': 'tab-focus', 'arguments': {'id': child['id']},
+                                     'context': {'window': source, 'source': 'cli'},
+                                     'continuation': [{'command': 'action', 'arguments': {'subject': 'tab', 'verb': 'next'}},
+                                                      {'command': 'jseval', 'arguments': {'world': 'page', 'script': 'document.title=45678'}}]})
+            assert not collision.get('error'), collision
+            operation_id = collision['result']['operation_id']
+            wait(lambda: next((tab for tab in tabs() if tab['id'] == child['id'] and tab['title'] == '45678'), None))
+            assert wait(completed_handoff)['status'] == 'completed'
+            wait(lambda: script_marker.exists() and script_marker.stat().st_size > 0)
+            assert json.loads(script_marker.read_text())['context']['tab_id'] == child['id']
+            facts['cases'].append('registered action collisions execute their script on the captured owner without recursive wrapper expansion')
             facts['success'] = True
         finally:
             if owner is not None:

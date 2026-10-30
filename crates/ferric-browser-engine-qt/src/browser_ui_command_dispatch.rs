@@ -42,13 +42,28 @@ impl qobject::BrowserUi {
             return false;
         }
         if self.as_ref().in_page_window_mode()
-            && let Err(error) = super::browser_ui_page_windows::validate_chain_workflows(
-                &commands,
-                handoff.is_some(),
-            )
+            && commands
+                .iter()
+                .any(super::browser_ui_page_windows::is_command_workflow)
         {
-            self.set_status_text(QString::from(error));
-            return false;
+            return match self.as_mut().execute_page_workflow(
+                commands
+                    .into_iter()
+                    .map(|command| crate::RepeatableCommand {
+                        command,
+                        count,
+                        route: None,
+                    })
+                    .collect(),
+                None,
+                handoff,
+            ) {
+                Ok(_) => true,
+                Err(error) => {
+                    self.set_status_text(QString::from(error.user_message()));
+                    false
+                }
+            };
         }
         let command_count = commands.len();
         for (command_index, mut command) in commands.iter().cloned().enumerate() {

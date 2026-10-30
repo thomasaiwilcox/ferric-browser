@@ -78,7 +78,7 @@ impl qobject::BrowserUi {
             let rust = pinned.rust();
             !rust.hint_pointer_mode
                 && !rust.hint_pointer_pending
-                && rust.recording_macro.is_none()
+                && crate::page_window_macros::recording_register(rust).is_none()
                 && rust.macro_depth == 0
                 && current_target(rust.state.as_ref(), rust.tab).is_some()
         };

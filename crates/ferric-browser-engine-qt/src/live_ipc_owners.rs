@@ -117,6 +117,32 @@ pub(super) fn page_undo_changed(scope: &crate::page_window_undo::Scope) {
     }
 }
 
+pub(super) fn page_macros_changed(scope: &crate::page_window_undo::Scope) {
+    let Ok(directory) = directory().lock() else {
+        return;
+    };
+    let threads = directory
+        .owners
+        .values()
+        .filter(|owner| {
+            owner.page_window.as_ref().is_some_and(|window| {
+                window.scope.matches_undo(scope) && window.group == scope.group
+            })
+        })
+        .map(|owner| owner.thread.clone())
+        .collect::<Vec<_>>();
+    drop(directory);
+    for thread in threads {
+        let scope = scope.clone();
+        let _ = thread.queue(move |mut ui| {
+            if crate::page_window_undo::Scope::capture(ui.as_ref().rust()).as_ref() == Some(&scope)
+            {
+                ui.as_mut().sync_macro_status_text();
+            }
+        });
+    }
+}
+
 pub(super) fn restore_closed_page_order(
     scope: &crate::page_window_undo::Scope,
     tab: ferric_browser_core::TabId,
@@ -289,6 +315,7 @@ pub(super) struct OwnerLease(String);
 impl Drop for OwnerLease {
     fn drop(&mut self) {
         crate::page_window_undo::release(&self.0);
+        crate::page_window_macros::release(&self.0);
         if let Ok(mut directory) = directory().lock() {
             directory.owners.remove(&self.0);
             directory.generation = directory.generation.saturating_add(1);
@@ -735,6 +762,11 @@ impl qobject::BrowserUi {
             return;
         };
         crate::page_window_undo::register(rust);
+        if crate::page_window_macros::register(rust) {
+            let _ = self.as_ref().get_ref().qt_thread().queue(|mut ui| {
+                ui.as_mut().sync_macro_status_text();
+            });
+        }
         let Ok(mut directory) = directory().lock() else {
             return;
         };

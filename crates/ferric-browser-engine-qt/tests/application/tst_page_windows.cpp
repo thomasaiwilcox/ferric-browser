@@ -554,29 +554,50 @@ void ApplicationTests::pageWindowPresentation()
         QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
         QTRY_COMPARE(QGuiApplication::focusWindow(), window);
         if (scenario == "window-chain-workflows") {
-            for (const auto &workflow : {"repeat", "macro-play a", "action browser.tab.next", "command-execute browser.tab.next"}) {
-                QVERIFY(!command(QString("tab-next ;; %1 ;; jseval --world page window.wrongWorkflowPage=1").arg(workflow)));
-                QVERIFY(text("status_text").contains("cannot run"));
-            }
+            QVERIFY(!command("tab-next ;; command-execute unknown ;; jseval --world page window.wrongWorkflowPage=1"));
             QVERIFY(command("macro-record a"));
-            for (int index = 0; index < 2; ++index) {
-                QVERIFY(command("tab-next"));
-                evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
-                QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
-                QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
-                QTRY_COMPARE(QGuiApplication::focusWindow(), window);
-            }
-            QVERIFY(command("macro-stop"));
-            QVERIFY(!command("repeat --count 2"));
-            QVERIFY(text("status_text").contains("cannot run"));
-            QVERIFY(!command("macro-play a"));
-            QVERIFY(text("status_text").contains("cannot run"));
+            QVERIFY(command("tab-next"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+            QVERIFY(evaluate(entry + ".ui.macro_status_text").toString().contains("recording macro @a (1)"));
+            QVERIFY(evaluate(entry + ".ui.execute_command('tab-next')").toBool());
+            evaluate("testWindow.completeBrowserKeyAction(" + entry + ".ui," + childHost + ")");
+            QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+            QVERIFY(evaluate(entry + ".ui.execute_command('macro-stop')").toBool());
+            QTRY_VERIFY(text("macro_status_text").contains("@a:2"));
+            QVERIFY(evaluate(entry + ".ui.macro_status_text").toString().contains("@a:2"));
+            QVERIFY(command("repeat --count 2"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
             QTest::qWait(250);
             QCOMPARE(QGuiApplication::focusWindow(), window);
+            QVERIFY(command("macro-play a"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTest::qWait(250);
+            QCOMPARE(QGuiApplication::focusWindow(), window);
+            QVERIFY(evaluate("testWindow.browserUi.switcher_query('tab-prev','commands')").toBool());
+            const auto previousCommand = evaluate("(function(){var ui=testWindow.browserUi;for(var i=0;i<ui.switcher_result_labels.length;++i)if(ui.switcher_result_labels[i]==='tab-prev')return ui.switcher_result_ids[i];return ''})()").toString();
+            QVERIFY(!previousCommand.isEmpty());
+            int marker = 0;
+            for (const auto &workflow : {QString("repeat"), QString("macro-play a"), QString("action tab previous"), QString("command-execute ") + previousCommand}) {
+                QVERIFY(command(QString("tab-next ;; %1 ;; jseval --world page window.nestedWorkflow=%2").arg(workflow).arg(++marker)));
+                evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+                const bool child = workflow == "macro-play a";
+                pageReceiver = child ? childHost + ".activeView" : "testWindow.activeWebView()";
+                QTRY_COMPARE(page("window.nestedWorkflow").toInt(), marker);
+                QTRY_COMPARE(QGuiApplication::focusWindow(), child ? childWindow : window);
+            }
+            QVERIFY(evaluate(entry + ".ui.assign_window_context('changed')").toBool());
+            QTRY_VERIFY(evaluate(entry + ".ui.macro_status_text").toString().isEmpty());
+            QVERIFY(!evaluate(entry + ".ui.execute_command('macro-play a')").toBool());
+            QVERIFY(text("macro_status_text").contains("@a:2"));
             for (const auto &receiver : {QString("testWindow.activeWebView()"), childHost + ".activeView"}) {
                 pageReceiver = receiver;
                 QVERIFY(page("typeof window.wrongWorkflowPage === 'undefined'").toBool());
             }
+            QVERIFY(evaluate("testWindow.browserUi.switcher_query('target-search','commands')").toBool());
+            const auto searchCommand = evaluate("(function(){var ui=testWindow.browserUi;for(var i=0;i<ui.switcher_result_labels.length;++i)if(ui.switcher_result_labels[i]==='target-search')return ui.switcher_result_ids[i];return ''})()").toString();
+            QVERIFY(!searchCommand.isEmpty());
+            QVERIFY(command("command-execute " + searchCommand));
         } else if (scenario == "window-chain-multi-hop") {
             QVERIFY(command("tab-next ;; tab-prev ;; jseval --world page window.multiHop=1 ;; jseval --world page window.multiHop+=1 ;; jseval --world page window.multiHop+=1"));
             evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");

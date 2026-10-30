@@ -300,12 +300,7 @@ impl qobject::BrowserUi {
             }
 
             let command = if prefix == "q" {
-                let recording = self
-                    .as_ref()
-                    .rust()
-                    .recording_macro
-                    .as_ref()
-                    .map(|(register, _)| register.clone());
+                let recording = crate::page_window_macros::recording_register(self.as_ref().rust());
                 if recording.as_deref() == Some(key) {
                     ParsedCommand {
                         name: "macro-stop".into(),

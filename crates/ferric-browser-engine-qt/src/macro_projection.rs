@@ -7,14 +7,15 @@ use crate::{
 use serde_json::{Value, json};
 
 pub(super) fn state_value(rust: &BrowserUiRust) -> Value {
-    let recording = rust.recording_macro.as_ref().map(|(register, commands)| {
+    let state = crate::page_window_macros::snapshot(rust);
+    let recording = state.recording.as_ref().map(|(register, commands)| {
         json!({
             "register": register,
             "command_count": commands.len()
         })
     });
-    let registers = rust
-        .macro_registers
+    let registers = state
+        .registers
         .iter()
         .map(|(register, commands)| {
             json!({
@@ -45,12 +46,13 @@ pub(super) fn state_value(rust: &BrowserUiRust) -> Value {
 /// the Rust boundary owns how macro state is interpreted, while QML only renders
 /// the value alongside the normal browser status text.
 pub(super) fn status_text(rust: &BrowserUiRust) -> String {
-    if let Some((register, commands)) = rust.recording_macro.as_ref() {
+    let state = crate::page_window_macros::snapshot(rust);
+    if let Some((register, commands)) = state.recording.as_ref() {
         return format!(" · recording macro @{register} ({})", commands.len());
     }
 
-    let labels = rust
-        .macro_registers
+    let labels = state
+        .registers
         .iter()
         .map(|(register, commands)| format!("@{register}:{}", commands.len()))
         .collect::<Vec<_>>();
