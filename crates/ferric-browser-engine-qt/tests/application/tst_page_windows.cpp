@@ -12,6 +12,12 @@
 #include <QJsonArray>
 #include <QTemporaryDir>
 #include <QFileInfo>
+#include <QProcess>
+#include <QLocalServer>
+#include <QLocalSocket>
+#include <QRegularExpression>
+#include <QScopeGuard>
+#include <QThread>
 
 namespace {
 QQuickItem *findVisible(QQuickItem *parent, const QString &name) {
@@ -62,7 +68,7 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-native-grouping", "window-grouping-unrelated-map", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -79,6 +85,15 @@ void ApplicationTests::pageWindowPresentation()
     QVERIFY(!evaluate("testWindow.tabStripVisible").toBool());
     QVERIFY(!evaluate("testWindow.pageWindowTag").toString().isEmpty());
     QVERIFY(evaluate("testWindow.pageWindowTagRequested").toBool());
+
+    QObject ownedFocusTrace;
+    if (scenario == "window-native-grouping") {
+        QObject::connect(qGuiApp, &QGuiApplication::focusWindowChanged, &ownedFocusTrace, [&](QWindow *focused) {
+            qInfo() << "owned focus" << (focused == window ? "source" : focused ? "peer-or-owned-popup" : "none")
+                    << "prepared foreground" << (focused && focused->property("windowPreparedPageActivateRequested").toBool());
+        });
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+    }
 
     if (scenario == "expansion-cancel") {
         evaluate("for(var i=0;i<12;++i)testWindow.browserUi.new_tab(); testWindow.syncTabModel()");
@@ -187,6 +202,182 @@ void ApplicationTests::pageWindowPresentation()
     }
     pageReceiver = "testWindow.tabViewAt(0)";
     QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+    if (scenario == "window-grouping-stale" || scenario == "window-grouping-profile" || scenario == "window-grouping-delay") {
+        // This owned mock exercises GUI admission/lifecycle and stalled IPC.
+        // Native Lua effects are qualified separately on the real compositor.
+        QTemporaryDir runtime;
+        QVERIFY(runtime.isValid());
+        const auto oldRuntime = qgetenv("XDG_RUNTIME_DIR");
+        const auto oldInstance = qgetenv("HYPRLAND_INSTANCE_SIGNATURE");
+        const auto restoreEnvironment = qScopeGuard([&] {
+            qputenv("XDG_RUNTIME_DIR", oldRuntime);
+            qputenv("HYPRLAND_INSTANCE_SIGNATURE", oldInstance);
+        });
+        const auto instance = QStringLiteral("ferric-owned-mock");
+        const auto directory = runtime.path() + "/hypr/" + instance;
+        QVERIFY(QDir().mkpath(directory));
+        QLocalServer server;
+        QVERIFY(server.listen(directory + "/.socket.sock"));
+        qputenv("XDG_RUNTIME_DIR", runtime.path().toUtf8());
+        qputenv("HYPRLAND_INSTANCE_SIGNATURE", instance.toUtf8());
+        bool injected = false, fixtureOk = true;
+        int writes = 0, emptyConnections = 0;
+        QPointer<QLocalSocket> heldReply;
+        QObject::connect(&server, &QLocalServer::newConnection, &server, [&] {
+            while (auto *socket = server.nextPendingConnection()) {
+                QObject::connect(socket, &QLocalSocket::disconnected, &server, [&, socket] {
+                    if (socket->property("ownedRequest").toByteArray().isEmpty()) ++emptyConnections;
+                });
+                QObject::connect(socket, &QLocalSocket::readyRead, &server, [&, socket] {
+                    auto input = socket->property("ownedRequest").toByteArray() + socket->readAll();
+                    socket->setProperty("ownedRequest", input);
+                    if (socket->property("handled").toBool()) return;
+                    if (input.size() > 65536) { fixtureOk = false; socket->close(); return; }
+                    if (input != "j/version" && !input.endsWith("end)()")) return;
+                    socket->setProperty("handled", true);
+                    auto reply = [socket](const QByteArray &output) { socket->write(output); socket->disconnectFromServer(); };
+                    if (input == "j/version") {
+                        reply("{\"tag\":\"v0.56.2\",\"commit\":\"efb50993780079460b0cbed1363e2166a2de1d9f\"}");
+                    } else if (input.contains("local ok,result=pcall")) {
+                        ++writes;
+                        if (scenario == "window-grouping-profile" && !injected) {
+                            injected = true;
+                            fixtureOk = command("open --target private-window " + initial + "?during-owned-ipc=yes");
+                            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+                            heldReply = socket; // Deliberately stall the worker, never the GUI.
+                        } else reply("defer-active");
+                    } else {
+                        if (scenario == "window-grouping-stale" && !injected) {
+                            injected = true;
+                            evaluate("testWindow.browserWindowComponentObject = null");
+                            fixtureOk = command("open --target tab-bg " + initial + "?owned-stale-fallback=yes");
+                            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+                        }
+                        QByteArray output;
+                        auto tags = QRegularExpression(QStringLiteral("ferric-page-[a-f0-9-]{36}")).globalMatch(QString::fromUtf8(input));
+                        int index = 0;
+                        while (tags.hasNext()) {
+                            tags.next();
+                            if (index) output += '\n';
+                            ++index;
+                            output += QByteArray::number(index) + "|ok|" + QByteArray::number(100 + index)
+                                + "|0x" + QByteArray::number(4096 + index, 16);
+                        }
+                        if (scenario == "window-grouping-delay" && !injected) {
+                            injected = true;
+                            // Flush a complete resolution/EOF, then keep the GUI
+                            // callback queued past the prepared send's deadline.
+                            socket->write(output); socket->flush(); socket->close();
+                            QThread::msleep(1200);
+                        } else reply(output);
+                    }
+                });
+            }
+        });
+        QVERIFY(command("set --temp hyprland.page_grouping=auto"));
+        QVERIFY(evaluate(entry + ".ui.execute_command('set --temp hyprland.page_grouping=auto')").toBool());
+        QTRY_VERIFY_WITH_TIMEOUT(injected, 10000);
+        QVERIFY(fixtureOk);
+        if (scenario == "window-grouping-stale") {
+            QTRY_COMPARE(evaluate("testWindow.browserUi.tab_count").toInt(), 2);
+            QTRY_COMPARE(text("feature_page_grouping_status"), QStringLiteral("unavailable"));
+            QTRY_VERIFY(evaluate("testWindow.browserUi.maintenance_delay_ms()").toInt() != 50);
+            QCOMPARE(writes, 0);
+        } else if (scenario == "window-grouping-delay") {
+            QTRY_VERIFY(emptyConnections > 0);
+            // A fresh retry succeeds after the expired callback sends zero
+            // bytes, proving the coordinator did not become inhibited.
+            QTRY_VERIFY_WITH_TIMEOUT(writes > 0, 10000);
+            QTRY_COMPARE(text("feature_page_grouping_status"), QStringLiteral("waiting"));
+        } else {
+            QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 3);
+            const auto originalPeerTag = evaluate(childHost + ".pageWindowTag").toString();
+            const auto privateEntry = "testWindow.liveWindowEntries().find(function(e){return e.host!==testWindow && e.host.pageWindowTag!==" + quoted(originalPeerTag) + "})";
+            QTRY_VERIFY(evaluate("!!(" + privateEntry + ")").toBool());
+            QTRY_VERIFY(evaluate(privateEntry + ".host.profileBootstrapComplete && !!" + privateEntry + ".host.activeView").toBool());
+            QVERIFY(evaluate(privateEntry + ".host.activeView.profile.offTheRecord").toBool());
+            const auto profile = evaluate(privateEntry + ".ui.page_host_profile_id()").toString();
+            QVERIFY(!profile.isEmpty());
+            QVERIFY(profile != evaluate("testWindow.browserUi.page_host_profile_id()").toString());
+            QVERIFY(writes > 0);
+            if (heldReply && heldReply->state() == QLocalSocket::ConnectedState) { heldReply->write("defer-active"); heldReply->disconnectFromServer(); }
+        }
+        // Retire the mock's permission before restoring the real instance.
+        evaluate("testWindow.liveWindowEntries().forEach(function(e){e.ui.execute_command('set --temp hyprland.page_grouping=off')})");
+        return;
+    }
+    if (scenario == "window-native-grouping" || scenario == "window-grouping-unrelated-map") {
+        const auto sourceTag = evaluate("testWindow.pageWindowTag").toString();
+        const auto peerTag = evaluate(childHost + ".pageWindowTag").toString();
+        const auto separate = "testWindow.liveWindowEntries().find(function(e){return e.host!==testWindow && e.host.pageWindowTag!==" + quoted(peerTag) + "})";
+        QQuickWindow *separateWindow = nullptr;
+        auto mapSeparate = [&]() {
+            if (!evaluate(entry + ".ui.execute_command(" + quoted("open --target window " + initial + "?independent-native-window=yes") + ")").toBool()) return false;
+            evaluate("testWindow.completeBrowserKeyAction(" + entry + ".ui," + childHost + ")");
+            if (!QTest::qWaitFor([&] { return evaluate("testWindow.liveWindowEntries().length").toInt() == 3
+                    && evaluate("!!(" + separate + ") && " + separate + ".host.profileBootstrapComplete").toBool(); }, 10000)) return false;
+            separateWindow = qobject_cast<QQuickWindow *>(evaluate(separate + ".host").value<QObject *>());
+            return separateWindow && QTest::qWaitFor([&] { return QGuiApplication::focusWindow() == separateWindow; });
+        };
+        // Map the sentinel first to isolate existing-window placement from
+        // compositor on-map policy. The other row exercises that policy.
+        if (scenario == "window-native-grouping") QVERIFY(mapSeparate());
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(" + childHost + "," + entry + ".ui)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+        QVERIFY(command("set --temp hyprland.page_grouping=auto"));
+        QVERIFY(evaluate(entry + ".ui.execute_command('set --temp hyprland.page_grouping=auto')").toBool());
+        auto queryLua = [](const QString &code) {
+            QProcess query;
+            query.start(QStringLiteral("hyprctl"), {QStringLiteral("repl"), code});
+            if (!query.waitForFinished(3000) || query.exitCode() != 0) return QStringLiteral("query failed");
+            return QString::fromUtf8(query.readAllStandardOutput()).trimmed();
+        };
+        auto groupState = [&]() {
+            return queryLua(QStringLiteral(
+                "return (function() local s,t=nil,nil for _,w in ipairs(hl.get_windows()) do "
+                "if w.pid==%1 and w.xdg_tag=='%2' then s=w end "
+                "if w.pid==%1 and w.xdg_tag=='%3' then t=w end end "
+                "if not s or not t then return 'missing' end local a=hl.get_active_window() "
+                "if not s.group or s.group~=t.group then return 'waiting|'..(a==t and 'peer' or a==s and 'source' or 'other-or-none')..'|'..tostring(t.group and t.group.size or 0) end "
+                "local c=s.group.current "
+                "return tostring(s.group.size)..'|'..(a==t and 'peer' or a==s and 'source' or 'other-or-none')..'|'..(c==t and 'peer' or c==s and 'source' or 'other') end)()")
+                .arg(QCoreApplication::applicationPid()).arg(sourceTag, peerTag));
+        };
+        QTRY_COMPARE_WITH_TIMEOUT(groupState(), QStringLiteral("waiting|peer|1"), 15000);
+        QTRY_COMPARE(text("feature_page_grouping_status"), QStringLiteral("waiting"));
+        QCOMPARE(QGuiApplication::focusWindow(), childWindow);
+        QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), sourceView.data());
+        QCOMPARE(evaluate("testWindow.browserUi.tab_id_for_index(0)").toString(), sourceId);
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        if (scenario == "window-grouping-unrelated-map") {
+            QVERIFY(mapSeparate());
+            const auto separateTag = evaluate(separate + ".host.pageWindowTag").toString();
+            const auto members = QStringLiteral(
+                "return (function() local p=nil for _,w in ipairs(hl.get_windows()) do "
+                "if w.pid==%1 and w.xdg_tag=='%2' then p=w end end "
+                "if not p or not p.group then return 'missing' end local s,t,n=false,false,false "
+                "for _,w in ipairs(p.group.members) do s=s or w.xdg_tag=='%3' t=t or w.xdg_tag=='%2' n=n or w.xdg_tag=='%4' end "
+                "return tostring(p.group.size)..'|'..tostring(t)..'|'..tostring(n)..'|'..tostring(s) end)()")
+                .arg(QCoreApplication::applicationPid()).arg(peerTag, sourceTag, separateTag);
+            // The compositor's default on-map policy inserted this unrelated
+            // window. Our adapter must refuse that mixed group, never add the
+            // original source to it, and keep the Core scopes independent.
+            QTRY_COMPARE(queryLua(members), QStringLiteral("2|true|true|false"));
+            QTRY_COMPARE(text("feature_page_grouping_status"), QStringLiteral("unavailable"));
+            QVERIFY(evaluate(separate + ".host.pageGroupId!==testWindow.pageGroupId").toBool());
+            const auto independentPage = evaluate(separate + ".ui.tab_id_for_index(0)").toString();
+            QVERIFY(!command("tab-pin " + independentPage + " on"));
+            QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+            return;
+        }
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(" + separate + ".host," + separate + ".ui)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), separateWindow);
+        QTRY_COMPARE_WITH_TIMEOUT(groupState(), QStringLiteral("2|other-or-none|peer"), 15000);
+        QTRY_COMPARE(text("feature_page_grouping_status"), QStringLiteral("available"));
+        QCOMPARE(QGuiApplication::focusWindow(), separateWindow);
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        return;
+    }
     if (scenario == "window-native-identity") {
         QTemporaryDir reportDirectory;
         QVERIFY(reportDirectory.isValid());

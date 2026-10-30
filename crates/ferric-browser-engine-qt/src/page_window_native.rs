@@ -10,14 +10,7 @@ pub(super) struct NativeWindowIdentity {
 
 impl NativeWindowIdentity {
     pub(super) fn capture(ui: &crate::qobject::BrowserUi) -> Option<Self> {
-        let values = crate::qobject::ferric_browser_native_page_window_identity(ui)
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
-        let [tag, app_id] = values.as_slice() else {
-            return None;
-        };
-        Self::checked(tag, app_id, std::process::id())
+        NativeWindowPresentation::capture(ui).map(|presentation| presentation.identity)
     }
 
     pub(super) fn checked(tag: &str, app_id: &str, pid: u32) -> Option<Self> {
@@ -37,6 +30,39 @@ impl NativeWindowIdentity {
             tag: tag.into(),
             app_id: app_id.into(),
             pid,
+        })
+    }
+}
+
+pub(crate) struct NativeWindowPresentation {
+    pub(crate) identity: NativeWindowIdentity,
+    pub(crate) foreground: bool,
+    pub(crate) active: bool,
+}
+
+impl NativeWindowPresentation {
+    pub(crate) fn capture(ui: &crate::qobject::BrowserUi) -> Option<Self> {
+        let values = crate::qobject::ferric_browser_native_page_window_identity(ui)
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        let [tag, app_id, foreground, active] = values.as_slice() else {
+            return None;
+        };
+        let foreground = match foreground.as_str() {
+            "foreground" => true,
+            "background" => false,
+            _ => return None,
+        };
+        let active = match active.as_str() {
+            "active" => true,
+            "inactive" => false,
+            _ => return None,
+        };
+        Some(Self {
+            identity: NativeWindowIdentity::checked(tag, app_id, std::process::id())?,
+            foreground,
+            active,
         })
     }
 }

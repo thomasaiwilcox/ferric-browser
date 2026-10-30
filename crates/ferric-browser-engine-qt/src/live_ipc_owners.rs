@@ -314,6 +314,7 @@ pub(super) struct OwnerLease(String);
 
 impl Drop for OwnerLease {
     fn drop(&mut self) {
+        crate::page_group_runtime::release(&self.0);
         crate::page_window_undo::release(&self.0);
         crate::page_window_macros::release(&self.0);
         if let Ok(mut directory) = directory().lock() {
@@ -752,6 +753,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn refresh_ipc_owner(self: Pin<&mut Self>) {
+        crate::page_group_runtime::publish(self.as_ref().get_ref());
         let page_window =
             super::browser_ui_page_windows::PageWindowSnapshot::capture(self.as_ref().get_ref());
         let page_session =
@@ -826,6 +828,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn set_ipc_window_active(self: Pin<&mut Self>, active: bool) {
+        crate::page_group_runtime::publish(self.as_ref().get_ref());
         let rust = self.as_ref().get_ref().rust();
         let Some(lease) = rust.ipc_owner.as_ref() else {
             return;

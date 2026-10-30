@@ -360,6 +360,7 @@ impl qobject::BrowserUi {
         if let Some(scope) = &closed.scope {
             crate::page_window_undo::remove(closed.id, scope);
         }
+        self.as_mut().refresh_ipc_owner();
         self.set_status_text(QString::from("Closed tab reopened"));
         true
     }

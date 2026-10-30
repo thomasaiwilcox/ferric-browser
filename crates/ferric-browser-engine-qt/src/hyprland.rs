@@ -5,14 +5,16 @@
 //! the user has enabled workspace routing.
 
 mod page_groups;
+mod queued_send;
+mod unix_deadline;
+pub(crate) use page_groups::GroupOutcome;
+pub(crate) use queued_send::QueuedSend;
 
 use ferric_browser_config::{HyprlandConfig, TriState};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt, fs,
-    io::{self, Read, Write},
     os::unix::fs::FileTypeExt,
-    os::unix::net::UnixStream,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -20,8 +22,6 @@ use std::{
 pub const FERRIC_BROWSER_DESKTOP_ID: &str = "io.github.ferricbrowser.FerricBrowser";
 
 const IO_TIMEOUT: Duration = Duration::from_millis(500);
-const MAX_CONNECT_ATTEMPTS: usize = 3;
-const CONNECT_BACKOFF: Duration = Duration::from_millis(20);
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_SIGNATURE_BYTES: usize = 128;
 const MAX_WORKSPACE_BYTES: usize = 128;
@@ -306,33 +306,11 @@ impl HyprlandAdapter {
                 "Hyprland instance is not discoverable".into(),
             ));
         };
-        let mut stream = connect_with_backoff(path).map_err(|error| {
-            HyprlandError::Io(format!("Hyprland IPC connection failed: {error}"))
-        })?;
-        stream
-            .set_read_timeout(Some(IO_TIMEOUT))
-            .and_then(|()| stream.set_write_timeout(Some(IO_TIMEOUT)))
-            .map_err(|error| HyprlandError::Io(format!("Hyprland IPC setup failed: {error}")))?;
-        stream
-            .write_all(command.as_bytes())
-            .and_then(|()| stream.shutdown(std::net::Shutdown::Write))
-            .map_err(|error| HyprlandError::Io(format!("Hyprland IPC write failed: {error}")))?;
-        let mut response = Vec::new();
-        let mut buffer = [0_u8; 4096];
-        loop {
-            let read = stream
-                .read(&mut buffer)
-                .map_err(|error| HyprlandError::Io(format!("Hyprland IPC read failed: {error}")))?;
-            if read == 0 {
-                break;
-            }
-            if response.len().saturating_add(read) > MAX_RESPONSE_BYTES {
-                return Err(HyprlandError::Protocol(
-                    "Hyprland IPC response is too large".into(),
-                ));
-            }
-            response.extend_from_slice(&buffer[..read]);
-        }
+        let response =
+            unix_deadline::request(path, command.as_bytes(), MAX_RESPONSE_BYTES, IO_TIMEOUT)
+                .map_err(|error| {
+                    HyprlandError::Io(format!("Hyprland IPC request failed: {error}"))
+                })?;
         String::from_utf8(response).map_err(|error| {
             HyprlandError::Protocol(format!("Hyprland IPC response was not UTF-8: {error}"))
         })
@@ -475,39 +453,7 @@ fn bounded_hyprland_request(
     command: &[u8],
     maximum: usize,
 ) -> Result<Vec<u8>, std::io::Error> {
-    use std::io::{Read, Write};
-    use std::os::unix::net::UnixStream;
-    use std::time::Duration;
-
-    let mut stream = UnixStream::connect(path)?;
-    stream.set_read_timeout(Some(Duration::from_millis(250)))?;
-    stream.write_all(command)?;
-    let mut output = Vec::new();
-    let mut chunk = [0_u8; 8192];
-    loop {
-        match stream.read(&mut chunk) {
-            Ok(0) => break,
-            Ok(count) => {
-                if output.len().saturating_add(count) > maximum {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Hyprland response exceeded its bound",
-                    ));
-                }
-                output.extend_from_slice(&chunk[..count]);
-            }
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) =>
-            {
-                break;
-            }
-            Err(error) => return Err(error),
-        }
-    }
-    Ok(output)
+    unix_deadline::request(path, command, maximum, Duration::from_millis(250))
 }
 
 #[cfg(test)]
@@ -560,31 +506,6 @@ fn parse_version_prefix(value: &str) -> Option<(u32, u32)> {
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next()?.parse().ok()?;
     Some((major, minor))
-}
-
-fn connect_with_backoff(path: &Path) -> io::Result<UnixStream> {
-    let mut last_error = None;
-    for attempt in 0..MAX_CONNECT_ATTEMPTS {
-        match UnixStream::connect(path) {
-            Ok(stream) => return Ok(stream),
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    io::ErrorKind::NotFound
-                        | io::ErrorKind::ConnectionRefused
-                        | io::ErrorKind::ConnectionAborted
-                        | io::ErrorKind::TimedOut
-                ) =>
-            {
-                last_error = Some(error);
-                if attempt + 1 < MAX_CONNECT_ATTEMPTS {
-                    std::thread::sleep(CONNECT_BACKOFF * (attempt as u32 + 1));
-                }
-            }
-            Err(error) => return Err(error),
-        }
-    }
-    Err(last_error.unwrap_or_else(|| io::Error::other("Hyprland IPC connection failed")))
 }
 
 fn parse_browser_client(client: RawClient) -> Option<BrowserClient> {
@@ -663,7 +584,13 @@ fn lua_string_literal(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, os::unix::net::UnixListener, sync::mpsc, thread};
+    use std::{
+        fs,
+        io::{Read, Write},
+        os::unix::net::UnixListener,
+        sync::mpsc,
+        thread,
+    };
     use uuid::Uuid;
 
     fn socket_pair() -> (PathBuf, PathBuf, PathBuf) {

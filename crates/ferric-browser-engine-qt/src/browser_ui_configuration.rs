@@ -633,6 +633,8 @@ impl qobject::BrowserUi {
                 "persistence": persistence_name,
             }),
         );
+        drop(rust);
+        crate::page_group_runtime::publish(self.as_ref().get_ref());
         Ok(active_config)
     }
 

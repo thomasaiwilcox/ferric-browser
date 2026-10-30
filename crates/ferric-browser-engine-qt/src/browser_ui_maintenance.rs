@@ -123,10 +123,11 @@ impl qobject::BrowserUi {
     pub(super) fn maintenance_delay_ms(self: Pin<&mut Self>) -> i32 {
         let binding = self.as_ref();
         let rust = binding.rust();
-        let worker_pending = rust
-            .state
-            .as_ref()
-            .is_some_and(super::BrowserApplication::configuration_write_pending)
+        let worker_pending = crate::page_group_runtime::is_pending()
+            || rust
+                .state
+                .as_ref()
+                .is_some_and(super::BrowserApplication::configuration_write_pending)
             || rust.configuration_io.pending_context_reload.is_some()
             || rust
                 .configuration_io
@@ -220,7 +221,8 @@ impl qobject::BrowserUi {
             });
             return i32::try_from(500_u64.saturating_sub(elapsed).max(1)).unwrap_or(500);
         }
-        if rust.configuration_io.config_watch.is_watching()
+        if crate::page_group_runtime::is_enabled()
+            || rust.configuration_io.config_watch.is_watching()
             || rust.configuration_io.theme_watch.is_watching()
             || rust.state.as_ref().is_some_and(|state| {
                 state

@@ -13,6 +13,7 @@ use super::{
 
 impl qobject::BrowserUi {
     pub(super) fn poll_config(mut self: Pin<&mut Self>) {
+        crate::page_group_runtime::poll(self.as_mut());
         self.as_mut().poll_configuration_publication();
         self.as_mut().poll_peer_configuration();
         self.as_mut().expire_selector_validation();

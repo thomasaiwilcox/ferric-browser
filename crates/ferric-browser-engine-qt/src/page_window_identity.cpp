@@ -68,7 +68,8 @@ void FerricPageWindowIdentity::setWindow(QWindow *window)
 
 QStringList ferric_browser_native_page_window_identity(const BrowserUi &ui)
 {
-    if (!qGuiApp || QThread::currentThread() != ui.thread()
+    if (!qGuiApp || QThread::currentThread() != qGuiApp->thread()
+        || QThread::currentThread() != ui.thread()
         || QGuiApplication::platformName() != QStringLiteral("wayland")) return {};
     const QObject *parent = &ui;
     const QWindow *window = nullptr;
@@ -96,5 +97,11 @@ QStringList ferric_browser_native_page_window_identity(const BrowserUi &ui)
     auto appId = QGuiApplication::desktopFileName();
     if (appId.isEmpty()) appId = QCoreApplication::applicationName();
     if (appId.endsWith(QStringLiteral(".desktop"))) appId.chop(8);
-    return {identities[0]->tag(), appId};
+    const bool foreground = window->property("windowPreparedPageActivateRequested").toBool()
+        || (!window->property("windowPreparedPageMode").toBool()
+            && window->property("windowInitialVisible").toBool());
+    const bool active = window->isActive() && QGuiApplication::focusWindow() == window;
+    return {identities[0]->tag(), appId,
+            foreground ? QStringLiteral("foreground") : QStringLiteral("background"),
+            active ? QStringLiteral("active") : QStringLiteral("inactive")};
 }

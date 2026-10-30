@@ -7,6 +7,15 @@ use std::collections::HashSet;
 pub(super) const QUALIFIED_COMMIT: &str = "efb50993780079460b0cbed1363e2166a2de1d9f";
 const MAX_WINDOWS: usize = 64;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum GroupOutcome {
+    Changed,
+    Unchanged,
+    Deferred,
+    Rejected,
+    Uncertain,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct BoundWindow {
     pub(crate) identity: NativeWindowIdentity,
@@ -76,7 +85,116 @@ fn parse_resolved(
         .collect()
 }
 
+pub(crate) struct PreparedGroupWrite {
+    request: super::unix_deadline::PreparedRequest,
+    command: String,
+}
+
+pub(crate) struct PendingGroupReply(super::unix_deadline::PendingResponse);
+
+impl PreparedGroupWrite {
+    pub(crate) fn deadline(&self) -> std::time::Instant {
+        self.request.deadline()
+    }
+    /// GUI-only, immediately after final admission. No waits or callbacks.
+    pub(crate) fn dispatch(self) -> Result<PendingGroupReply, GroupOutcome> {
+        self.request
+            .dispatch(self.command.as_bytes())
+            .map(PendingGroupReply)
+            .map_err(|error| match error {
+                super::unix_deadline::DispatchError::NotSent(_) => GroupOutcome::Deferred,
+                super::unix_deadline::DispatchError::PossiblySent(_) => GroupOutcome::Uncertain,
+            })
+    }
+}
+
+impl PendingGroupReply {
+    pub(crate) fn finish(self) -> GroupOutcome {
+        let response = match self.0.finish(128).and_then(|bytes| {
+            String::from_utf8(bytes)
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        }) {
+            Ok(response) => response,
+            Err(_) => return GroupOutcome::Uncertain,
+        };
+        match response.trim() {
+            "created" | "added" => GroupOutcome::Changed,
+            "unchanged" => GroupOutcome::Unchanged,
+            "defer-active" | "defer-group" | "defer-separate-groups" => GroupOutcome::Deferred,
+            "reject-request"
+            | "reject-identity"
+            | "reject-membership"
+            | "reject-locked"
+            | "reject-target-group" => GroupOutcome::Rejected,
+            _ => GroupOutcome::Uncertain,
+        }
+    }
+}
+
 impl HyprlandAdapter {
+    /// Prepare off the GUI thread. Its final nonblocking send must immediately
+    /// follow fresh GUI-owned Core admission. Lua repeats native checks in the
+    /// same compositor operation as the write. An uncertain result must inhibit
+    /// subsequent writes, rather than trying an alternate route.
+    pub(crate) fn prepare_native_group(
+        &self,
+        bindings: &[BoundWindow],
+    ) -> Result<PreparedGroupWrite, HyprlandError> {
+        if self.enabled == TriState::Off {
+            return Err(HyprlandError::Disabled);
+        }
+        if bindings.is_empty() || bindings.len() > MAX_WINDOWS {
+            return Err(failure());
+        }
+        let instance = self
+            .request_socket
+            .as_ref()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.file_name())
+            .and_then(|s| s.to_str())
+            .ok_or_else(failure)?;
+        if bindings.iter().any(|binding| binding.instance != instance) {
+            return Err(failure());
+        }
+        // Validate handles again before interpolation, including numeric address
+        // aliases. BoundWindow is never deserialized or supplied by QML/IPC.
+        let identities = bindings
+            .iter()
+            .map(|b| b.identity.clone())
+            .collect::<Vec<_>>();
+        let handles = bindings
+            .iter()
+            .enumerate()
+            .map(|(i, b)| format!("{}|ok|{}|{}", i + 1, b.stable_id, b.address))
+            .collect::<Vec<_>>()
+            .join("\n");
+        parse_resolved(&handles, &identities, instance)?;
+        let requests = bindings
+            .iter()
+            .map(|binding| {
+                format!(
+                    "{{tag={},app={},pid={},stable={},address={}}}",
+                    lua_string_literal(&binding.identity.tag),
+                    lua_string_literal(&binding.identity.app_id),
+                    binding.identity.pid,
+                    lua_string_literal(&binding.stable_id.to_string()),
+                    lua_string_literal(&binding.address)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let transaction = include_str!("page_group_transaction.lua");
+        let command = format!(
+            "/repl return (function() local apply=(function()\n{transaction}\nend)() \
+            local ok,result=pcall(apply,{{{requests}}},'reconcile',1,1) \
+            if not ok then return 'uncertain-lua-error' end return result end)()"
+        );
+        let path = self.request_socket.as_deref().ok_or_else(failure)?;
+        let request = super::unix_deadline::PreparedRequest::connect(path, super::IO_TIMEOUT)
+            .map_err(|error| HyprlandError::Io(error.to_string()))?;
+        Ok(PreparedGroupWrite { request, command })
+    }
+
     /// This method is read-only. Its owned scalar result may be used by a
     /// worker, but must be revalidated inside every subsequent Lua mutation.
     pub(crate) fn resolve_native_windows(
