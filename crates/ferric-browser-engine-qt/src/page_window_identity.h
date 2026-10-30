@@ -1,8 +1,10 @@
-#pragma once
+#ifndef FERRIC_PAGE_WINDOW_IDENTITY_H
+#define FERRIC_PAGE_WINDOW_IDENTITY_H
 
 #include <QObject>
 #include <QPointer>
 #include <QString>
+#include <QStringList>
 #include <QWindow>
 #include <QtQml/qqmlregistration.h>
 
@@ -31,3 +33,8 @@ private:
     bool prepared_ = false;
     bool tagRequested_ = false;
 };
+
+class BrowserUi;
+// Private CXX read of the actual native owner and its mapping-time marker.
+QStringList ferric_browser_native_page_window_identity(const BrowserUi &ui);
+#endif

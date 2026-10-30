@@ -43,6 +43,7 @@ pub(crate) mod qobject {
         include!("cxx-qt-lib/core/qvector/qvector_QByteArray.h");
         include!("gui_application.h");
         include!("public_page_host.h");
+        include!("page_window_identity.h");
         include!("url_display.h");
         type QString = cxx_qt_lib::QString;
         type QByteArray = cxx_qt_lib::QByteArray;
@@ -51,6 +52,8 @@ pub(crate) mod qobject {
         type QUrl = cxx_qt_lib::QUrl;
         type QGuiApplication = cxx_qt_lib::QGuiApplication;
         type QVector_QByteArray = cxx_qt_lib::QVector<cxx_qt_lib::QByteArray>;
+
+        fn ferric_browser_native_page_window_identity(ui: &BrowserUi) -> QStringList;
 
         fn ferric_public_page_for_request(request: &QVariant) -> QVariant;
 

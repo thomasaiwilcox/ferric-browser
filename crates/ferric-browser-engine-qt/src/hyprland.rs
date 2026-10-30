@@ -4,6 +4,8 @@
 //! discovers the current instance sockets and sends bounded IPC requests when
 //! the user has enabled workspace routing.
 
+mod page_groups;
+
 use ferric_browser_config::{HyprlandConfig, TriState};
 use serde::{Deserialize, Serialize};
 use std::{

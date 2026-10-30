@@ -10,6 +10,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QTemporaryDir>
+#include <QFileInfo>
 
 namespace {
 QQuickItem *findVisible(QQuickItem *parent, const QString &name) {
@@ -60,7 +62,7 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -185,6 +187,35 @@ void ApplicationTests::pageWindowPresentation()
     }
     pageReceiver = "testWindow.tabViewAt(0)";
     QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+    if (scenario == "window-native-identity") {
+        QTemporaryDir reportDirectory;
+        QVERIFY(reportDirectory.isValid());
+        int reportIndex = 0;
+        for (const auto &ui : {QString("testWindow.browserUi"), entry + ".ui"}) {
+            QVERIFY(evaluate(ui + ".request_diagnostics()").toBool());
+            QTRY_VERIFY(!evaluate(ui + ".diagnostics_pending").toBool());
+            QVERIFY2(evaluate(ui + ".diagnostics_available").toBool(), qPrintable(evaluate(ui + ".diagnostics_error").toString()));
+            // The preview is bounded text and may deliberately end mid-JSON.
+            const auto path = reportDirectory.filePath(QString("identity-%1.json").arg(++reportIndex));
+            QVERIFY(evaluate(ui + ".export_diagnostics(" + quoted(path) + ")").toBool());
+            QTRY_VERIFY(QFileInfo(path).size() > 0);
+            QFile savedReport(path);
+            QVERIFY(savedReport.open(QIODevice::ReadOnly));
+            QJsonParseError parseError;
+            const auto report = QJsonDocument::fromJson(savedReport.readAll(), &parseError).object();
+            QVERIFY2(parseError.error == QJsonParseError::NoError, qPrintable(parseError.errorString()));
+            const auto native = report["native_page_window"].toObject();
+            const auto host = ui == "testWindow.browserUi" ? QString("testWindow") : childHost;
+            QCOMPARE(native["tag"].toString(), evaluate(host + ".pageWindowTag").toString());
+            QCOMPARE(native["pid"].toInt(), QCoreApplication::applicationPid());
+            QVERIFY(!native["app_id"].toString().isEmpty());
+            const auto binding = report["native_page_window_binding"].toObject();
+            QVERIFY2(binding["status"].toString() == "available", QJsonDocument(binding).toJson(QJsonDocument::Compact).constData());
+            QVERIFY(binding["native_owner_matched"].toBool());
+            QVERIFY(binding["stable_id"].toInteger() > 0);
+        }
+        return;
+    }
     if (scenario.startsWith("window-regroup")) {
         const auto childId = evaluate(entry + ".ui.tab_id_for_index(0)").toString();
         const auto peerWindowId = evaluate(entry + ".ui.core_window_id").toString();

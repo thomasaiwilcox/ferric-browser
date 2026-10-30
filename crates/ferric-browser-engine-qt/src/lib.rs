@@ -193,6 +193,7 @@ mod operation_policy;
 mod operation_projection;
 mod page_document_identity;
 mod page_window_macros;
+mod page_window_native;
 mod page_window_order;
 mod page_window_undo;
 mod page_workflow_expansion;

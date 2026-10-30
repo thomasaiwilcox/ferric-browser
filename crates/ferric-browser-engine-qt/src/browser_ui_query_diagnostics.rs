@@ -189,6 +189,8 @@ impl qobject::BrowserUi {
             .snapshot(self.rust().profile_bootstrap_pending);
         result["private_state"] = serde_json::json!("memory-only");
         result["macros"] = macro_state_value(self.rust());
+        let native_window = crate::page_window_native::NativeWindowIdentity::capture(self);
+        result["native_page_window"] = serde_json::to_value(&native_window).unwrap_or(Value::Null);
         result["action_audit"] = serde_json::json!({
             "status": "available",
             "records": &self.rust().action_audit,
@@ -255,6 +257,7 @@ impl qobject::BrowserUi {
             profile: self.rust().profile_id,
             config: self.rust().config.clone(),
             private: private_profile,
+            native_window,
         }
     }
 
