@@ -10,7 +10,7 @@ if(DEFINED FERRIC_ARCHIVE_TO_CHECK)
         set(base "${FERRIC_SOURCE_ROOT}/crates/${crate}")
         list(APPEND inputs "${base}/Cargo.toml" "${base}/build.rs")
         file(GLOB_RECURSE sources LIST_DIRECTORIES FALSE
-            "${base}/src/*.rs" "${base}/src/*.cpp" "${base}/src/*.h" "${base}/src/*.hpp")
+            "${base}/src/*.rs" "${base}/src/*.cpp" "${base}/src/*.h" "${base}/src/*.hpp" "${base}/src/*.lua")
         list(APPEND inputs ${sources})
     endforeach()
     file(GLOB_RECURSE resources LIST_DIRECTORIES FALSE

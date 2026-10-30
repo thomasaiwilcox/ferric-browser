@@ -1,20 +1,27 @@
 //! One bounded compositor worker over actual, ready native/Core page owners.
-use crate::hyprland::{GroupOutcome, HyprlandAdapter, QueuedSend};
+use crate::hyprland::{
+    GroupOutcome, GroupReply, HyprlandAdapter, ManagedCapability, ManagedRequest, ManagedRole,
+    QueuedSend,
+};
 use crate::page_window_native::{NativeWindowIdentity, NativeWindowPresentation};
 use crate::page_window_undo::Scope;
-use crate::{CxxQtType, Pin, TabId, qobject};
+use crate::{CxxQtType, Pin, TabId, Uuid, qobject};
 use cxx_qt::{CxxQtThread, Threading};
 use ferric_browser_config::{HyprlandConfig, PageGroupingPolicy, TriState};
 use ferric_browser_runtime::worker::{Poll, SingleFlightWorker};
 use std::{
     collections::BTreeMap,
-    sync::{Mutex, OnceLock},
+    sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 #[derive(Clone)]
 struct Owner {
     scope: Scope,
+    scope_key: Uuid,
     page: TabId,
     native: NativeWindowIdentity,
     config: HyprlandConfig,
@@ -23,43 +30,72 @@ struct Owner {
     ready: bool,
 }
 
+static RETAIN_ROLES: AtomicBool = AtomicBool::new(false);
+
+fn automatic(config: &HyprlandConfig) -> bool {
+    config.enabled != TriState::Off && config.page_grouping == PageGroupingPolicy::Auto
+}
+
+fn process_key() -> Uuid {
+    static KEY: OnceLock<Uuid> = OnceLock::new();
+    *KEY.get_or_init(Uuid::new_v4)
+}
+
 fn owners() -> &'static Mutex<BTreeMap<String, Owner>> {
     static OWNERS: OnceLock<Mutex<BTreeMap<String, Owner>>> = OnceLock::new();
     OWNERS.get_or_init(Default::default)
 }
 
+#[derive(Clone, Eq, PartialEq)]
+struct Member {
+    token: String,
+    page: TabId,
+    native: NativeWindowIdentity,
+    scope: Scope,
+    scope_key: Uuid,
+    enabled: TriState,
+    auto: bool,
+    ready: bool,
+}
+
 #[derive(Clone)]
 struct Admission {
     scope: Scope,
-    members: Vec<(String, TabId, NativeWindowIdentity, TriState)>,
+    scope_key: Uuid,
+    members: Vec<Member>,
     token: String,
     thread: CxxQtThread<qobject::BrowserUi>,
     config: HyprlandConfig,
 }
 
+#[derive(Clone)]
+struct Job {
+    admission: Admission,
+    managed: ManagedRequest,
+}
+
 fn admit(token: &str) -> Option<Admission> {
     let owners = owners().lock().ok()?;
     let source = owners.get(token)?;
-    if owners
-        .values()
-        .any(|owner| owner.scope == source.scope && !owner.ready)
-    {
+    if !source.ready || owners.len() > 64 {
         return None;
     }
     let members = owners
         .iter()
-        .filter(|(_, owner)| owner.scope == source.scope)
-        .map(|(token, owner)| {
-            (
-                token.clone(),
-                owner.page,
-                owner.native.clone(),
-                owner.config.enabled.clone(),
-            )
+        .map(|(token, owner)| Member {
+            token: token.clone(),
+            page: owner.page,
+            native: owner.native.clone(),
+            scope: owner.scope.clone(),
+            scope_key: owner.scope_key,
+            enabled: owner.config.enabled.clone(),
+            auto: automatic(&owner.config),
+            ready: owner.ready,
         })
-        .collect::<Vec<_>>();
-    (members.len() <= 64).then(|| Admission {
+        .collect();
+    Some(Admission {
         scope: source.scope.clone(),
+        scope_key: source.scope_key,
         token: token.into(),
         thread: source.thread.clone(),
         members,
@@ -70,39 +106,62 @@ fn admit(token: &str) -> Option<Admission> {
 fn current_matches(expected: &Admission) -> bool {
     admit(&expected.token).is_some_and(|current| {
         current.scope == expected.scope
+            && current.scope_key == expected.scope_key
             && current.members == expected.members
-            && current.config.enabled == expected.config.enabled
+            && current.config == expected.config
     })
 }
 
-fn run(admission: Admission) -> Result<GroupOutcome, String> {
-    if admission.members.len() < 2 {
-        return Ok(GroupOutcome::Deferred);
+fn run(job: Job) -> Result<GroupReply, String> {
+    let Job {
+        admission,
+        mut managed,
+    } = job;
+    if admission.members.len() < 2 && managed.capabilities.is_empty() {
+        return Ok(GroupOutcome::Deferred.into());
     }
-    let adapter = HyprlandAdapter::from_config(&admission.config);
+    // Auto-off retains only the exact retirement authority from a previously
+    // created group. Each role's independent Auto flag still fences all adds.
+    let mut config = admission.config.clone();
+    if !managed.capabilities.is_empty() {
+        config.enabled = TriState::On;
+    }
+    let adapter = HyprlandAdapter::from_config(&config);
     let identities = admission
         .members
         .iter()
-        .map(|(_, _, native, _)| native.clone())
+        .map(|member| member.native.clone())
         .collect::<Vec<_>>();
     let bindings = adapter
         .resolve_native_windows(&identities)
         .map_err(|error| error.to_string())?;
-    let mapped = bindings.into_iter().flatten().collect::<Vec<_>>();
-    if mapped.len() < 2 {
-        return Ok(GroupOutcome::Deferred);
-    }
+    let roles = bindings
+        .into_iter()
+        .zip(&admission.members)
+        .filter_map(|(binding, member)| {
+            binding.map(|binding| ManagedRole {
+                binding,
+                scope: member.scope_key,
+                auto: member.auto,
+                ready: member.ready,
+            })
+        })
+        .collect::<Vec<_>>();
+    let Some(first) = roles.first() else {
+        return Ok(GroupOutcome::Deferred.into());
+    };
+    managed.restrict_to_instance(&first.binding.instance);
     let write = adapter
-        .prepare_native_group(&mapped)
+        .prepare_native_group(&roles, managed)
         .map_err(|error| error.to_string())?;
     let deadline = write.deadline();
     let (sender, receiver) = std::sync::mpsc::sync_channel(1);
     let thread = admission.thread.clone();
     let queued = std::sync::Arc::new(QueuedSend::default());
     let gui_queued = queued.clone();
-    // This GUI callback is the authorization/commit point. Native reads and
-    // publication happen first; after the final scalar comparison, one
-    // nonblocking send runs without any Qt callback or event processing.
+    // All roles (including removal-only, independent and private owners) are
+    // compared immediately before one nonblocking send. No callbacks follow
+    // the final scalar comparison; native identity repeats inside the Lua op.
     if thread
         .queue(move |ui| {
             publish(ui.as_ref().get_ref());
@@ -111,8 +170,8 @@ fn run(admission: Admission) -> Result<GroupOutcome, String> {
             let expected_page = admission
                 .members
                 .iter()
-                .find(|(token, _, _, _)| token == &admission.token)
-                .map(|(_, page, _, _)| *page);
+                .find(|member| member.token == admission.token)
+                .map(|member| member.page);
             let source_current = rust.window_token.to_string() == admission.token
                 && Scope::capture(rust).as_ref() == Some(&admission.scope)
                 && expected_page.is_some_and(|page| {
@@ -136,16 +195,19 @@ fn run(admission: Admission) -> Result<GroupOutcome, String> {
         })
         .is_err()
     {
-        return Ok(GroupOutcome::Deferred);
+        return Ok(GroupOutcome::Deferred.into());
     }
     match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
         Ok(Ok(reply)) => Ok(reply.finish()),
-        Ok(Err(outcome)) => Ok(outcome),
-        // Cancel a callback that never crossed its GUI commit point. Once it
-        // started committing, a missing handoff cannot prove zero bytes.
-        Err(_) if queued.cancel_or_prove_not_sent() => Ok(GroupOutcome::Deferred),
-        Err(_) => Ok(GroupOutcome::Uncertain),
+        Ok(Err(outcome)) => Ok(outcome.into()),
+        Err(_) if queued.cancel_or_prove_not_sent() => Ok(GroupOutcome::Deferred.into()),
+        Err(_) => Ok(GroupOutcome::Uncertain.into()),
     }
+}
+
+struct Lease {
+    capability: ManagedCapability,
+    witnesses: Vec<NativeWindowIdentity>,
 }
 
 struct Attempt {
@@ -155,8 +217,10 @@ struct Attempt {
 }
 
 struct Coordinator {
-    worker: SingleFlightWorker<Admission, Result<GroupOutcome, String>>,
-    pending: Option<Admission>,
+    worker: SingleFlightWorker<Job, Result<GroupReply, String>>,
+    pending: Option<Job>,
+    epoch: Uuid,
+    leases: Vec<Lease>,
     inhibited: bool,
     attempts: Vec<Attempt>,
 }
@@ -167,6 +231,8 @@ impl Coordinator {
             worker: SingleFlightWorker::spawn("ferric-native-page-groups", run)
                 .map_err(|e| e.to_string())?,
             pending: None,
+            epoch: Uuid::new_v4(),
+            leases: Vec::new(),
             inhibited: false,
             attempts: Vec::new(),
         })
@@ -175,36 +241,67 @@ impl Coordinator {
     fn drain(&mut self) {
         let completed = match self.worker.poll() {
             Poll::Ready(result) => Some(result),
-            Poll::Stopped => Some(Ok(GroupOutcome::Uncertain)),
+            Poll::Stopped => Some(Ok(GroupOutcome::Uncertain.into())),
             Poll::Pending => None,
         };
-        if let Some(outcome) = completed
+        if let Some(result) = completed
             && let Some(pending) = self.pending.take()
         {
+            let mut outcome = result.map(|reply| {
+                // A definite success retains retirement-only authority even
+                // when Core scope changed while the reply was in flight. Its
+                // birth scope is immutable; it never becomes Available stale.
+                if let Some(receipt) = reply.receipt {
+                    self.leases
+                        .retain(|lease| lease.capability.key != receipt.capability.key);
+                    if !receipt.members.is_empty() {
+                        self.leases.push(Lease {
+                            capability: receipt.capability,
+                            witnesses: receipt.members,
+                        });
+                    }
+                }
+                reply.outcome
+            });
             let uncertain = outcome == Ok(GroupOutcome::Uncertain);
             if uncertain {
                 self.inhibited = true;
             }
-            let outcome = if !uncertain && !current_matches(&pending) {
-                Ok(GroupOutcome::Deferred)
-            } else {
-                outcome
-            };
-            let scope = pending.scope;
+            if !uncertain && !current_matches(&pending.admission) {
+                outcome = Ok(GroupOutcome::Deferred);
+            }
             let delay = if matches!(outcome, Err(_) | Ok(GroupOutcome::Rejected)) {
                 Duration::from_secs(30)
             } else {
                 Duration::from_secs(1)
             };
-            if let Some(attempt) = self.attempts.iter_mut().find(|entry| entry.scope == scope) {
+            if let Some(attempt) = self
+                .attempts
+                .iter_mut()
+                .find(|entry| entry.scope == pending.admission.scope)
+            {
                 attempt.next = Instant::now() + delay;
                 attempt.outcome = outcome;
             }
         }
-        // A later opt-in begins with fresh admission after every owner has
-        // retired permission and the old worker result has been drained.
-        if self.pending.is_none() && owners().lock().is_ok_and(|owners| owners.is_empty()) {
-            self.inhibited = false;
+        if let Ok(mut owners) = owners().lock() {
+            self.leases.retain(|lease| {
+                owners
+                    .values()
+                    .any(|owner| lease.witnesses.contains(&owner.native))
+            });
+            RETAIN_ROLES.store(
+                self.pending.is_some() || !self.leases.is_empty(),
+                Ordering::Release,
+            );
+            if self.pending.is_none()
+                && self.leases.is_empty()
+                && !owners.values().any(|owner| automatic(&owner.config))
+            {
+                owners.clear();
+                self.inhibited = false;
+                self.epoch = Uuid::new_v4();
+            }
         }
     }
 
@@ -219,6 +316,9 @@ impl Coordinator {
         self.attempts
             .retain(|attempt| live.contains(&attempt.scope));
         let admission = admit(token)?;
+        if !automatic(&admission.config) && self.leases.is_empty() {
+            return None;
+        }
         if self.inhibited {
             return Some(Ok(GroupOutcome::Uncertain));
         }
@@ -232,16 +332,29 @@ impl Coordinator {
         });
         if due && self.pending.is_none() && (existing.is_some() || self.attempts.len() < 128) {
             let scope = admission.scope.clone();
-            let pending = admission.clone();
-            if self.worker.submit(admission).is_ok() {
+            let job = Job {
+                managed: ManagedRequest::new(
+                    process_key(),
+                    self.epoch,
+                    admission.scope_key,
+                    self.leases
+                        .iter()
+                        .map(|lease| lease.capability.clone())
+                        .collect(),
+                ),
+                admission,
+            };
+            let pending = job.clone();
+            if self.worker.submit(job).is_ok() {
                 if !self.attempts.iter().any(|attempt| attempt.scope == scope) {
                     self.attempts.push(Attempt {
-                        scope: scope.clone(),
+                        scope,
                         next: Instant::now(),
                         outcome: Ok(GroupOutcome::Deferred),
                     });
                 }
                 self.pending = Some(pending);
+                RETAIN_ROLES.store(true, Ordering::Release);
             }
         }
         result
@@ -260,7 +373,10 @@ pub(crate) fn is_pending() -> bool {
 }
 
 pub(crate) fn is_enabled() -> bool {
-    owners().lock().is_ok_and(|owners| !owners.is_empty())
+    RETAIN_ROLES.load(Ordering::Acquire)
+        || owners()
+            .lock()
+            .is_ok_and(|owners| owners.values().any(|owner| automatic(&owner.config)))
 }
 
 pub(crate) fn release(token: &str) {
@@ -299,7 +415,7 @@ pub(crate) fn publish(ui: &qobject::BrowserUi) {
             .get("hyprland")
             .cloned()
             .and_then(|value| serde_json::from_value::<HyprlandConfig>(value).ok())?;
-        if config.enabled == TriState::Off || config.page_grouping != PageGroupingPolicy::Auto {
+        if !automatic(&config) && !RETAIN_ROLES.load(Ordering::Acquire) {
             return None;
         }
         let presentation = NativeWindowPresentation::capture(ui)?;
@@ -327,6 +443,7 @@ pub(crate) fn publish(ui: &qobject::BrowserUi) {
             });
         Some(Owner {
             scope: Scope::capture(rust)?,
+            scope_key: Uuid::nil(),
             page: page.id,
             native,
             config,
@@ -335,12 +452,16 @@ pub(crate) fn publish(ui: &qobject::BrowserUi) {
             ready: !presentation.foreground || seen_active,
         })
     })();
-    let Some(owner) = captured else {
+    let Some(mut owner) = captured else {
         release(&token);
         return;
     };
     if let Ok(mut owners) = owners().lock() {
         if owners.len() < 128 || owners.contains_key(&token) {
+            owner.scope_key = owners
+                .values()
+                .find(|previous| previous.scope == owner.scope)
+                .map_or_else(Uuid::new_v4, |previous| previous.scope_key);
             owners.insert(token, owner);
         }
     }
@@ -370,17 +491,17 @@ pub(crate) fn poll(mut ui: Pin<&mut qobject::BrowserUi>) {
             None
         }
     };
-    if !eligible {
-        let requested = ui
-            .as_ref()
-            .rust()
-            .config
-            .get("hyprland")
-            .cloned()
-            .and_then(|value| serde_json::from_value::<HyprlandConfig>(value).ok())
-            .is_some_and(|config| {
-                config.enabled != TriState::Off && config.page_grouping == PageGroupingPolicy::Auto
-            });
+    let requested = ui
+        .as_ref()
+        .rust()
+        .config
+        .get("hyprland")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<HyprlandConfig>(value).ok())
+        .is_some_and(|config| {
+            config.enabled != TriState::Off && config.page_grouping == PageGroupingPolicy::Auto
+        });
+    if !eligible || !requested {
         if requested {
             ui.as_mut()
                 .set_feature_page_grouping_status(crate::QString::from("unavailable"));

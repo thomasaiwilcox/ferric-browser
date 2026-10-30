@@ -7,7 +7,9 @@
 mod page_groups;
 mod queued_send;
 mod unix_deadline;
-pub(crate) use page_groups::GroupOutcome;
+pub(crate) use page_groups::{
+    GroupOutcome, GroupReply, ManagedCapability, ManagedRequest, ManagedRole,
+};
 pub(crate) use queued_send::QueuedSend;
 
 use ferric_browser_config::{HyprlandConfig, TriState};
