@@ -7,6 +7,8 @@
 #include <QQmlProperty>
 #include <QQuickWindow>
 #include <QMetaMethod>
+#include <QCoreApplication>
+#include <QEvent>
 #include <QThread>
 #include <QWebChannel>
 #include <QWebEngineLoadingInfo>
@@ -68,6 +70,8 @@ FerricQuickCredentialOwner::FerricQuickCredentialOwner(QQuickItem *view)
         if (!QQmlProperty(view, QString::fromLatin1(name)).connectNotifySignal(this, slot)) return;
     }
     connect(profile_, &QObject::destroyed, this, &FerricQuickCredentialOwner::retire);
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit,
+            this, &FerricQuickCredentialOwner::presentationChanged);
     connect(view, &QQuickItem::windowChanged, this, [this] { watchWindow(); presentationChanged(); });
     connect(view, &QQuickItem::parentChanged, this, &FerricQuickCredentialOwner::presentationChanged);
     connect(view, &QQuickItem::visibleChanged, this, &FerricQuickCredentialOwner::presentationChanged);
@@ -152,13 +156,31 @@ void FerricQuickCredentialOwner::presentationChanged()
 }
 void FerricQuickCredentialOwner::watchWindow()
 {
+    if (window_) window_->removeEventFilter(this);
     for (const auto &connection : std::as_const(windowConnections_)) disconnect(connection);
     windowConnections_.clear();
     window_ = view_ ? view_->window() : nullptr;
     if (window_) {
+        window_->installEventFilter(this);
         windowConnections_.append(connect(window_, &QWindow::visibleChanged, this, &FerricQuickCredentialOwner::presentationChanged));
         windowConnections_.append(connect(window_, &QObject::destroyed, this, &FerricQuickCredentialOwner::presentationChanged));
     }
+}
+
+bool FerricQuickCredentialOwner::eventFilter(QObject *watched, QEvent *event)
+{
+    // Revoke before QML's unsaved-work/last-window guard can reject the close.
+    // A cancelled close leaves the document usable for a fresh request.
+    if (watched == window_ && event->type() == QEvent::Close) {
+        const QPointer<FerricQuickCredentialOwner> self(this);
+        const QPointer<QObject> host(watched);
+        presentationChanged();
+        // Provider cancellation may synchronously destroy this adapter or its
+        // host. Qt must not deliver the Close event to a deleted receiver.
+        if (!self || !host) return true;
+        return false;
+    }
+    return QObject::eventFilter(watched, event);
 }
 
 QWebChannel *FerricQuickCredentialOwner::createChannel(QObject *parent)

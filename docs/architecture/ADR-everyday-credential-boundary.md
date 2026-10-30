@@ -280,3 +280,30 @@ This is an engineering checkpoint. Broader window behavior, compositor
 integration, production actor/provider/MainWorld wiring, effective direct
 network admission, account/result delivery and physical qualification remain
 unfinished. No real credential or release approval is claimed.
+
+### Native chain and cancellation review — 30 October 2026
+
+Actual Qt foreground/background tab requests inherit their opener's logical
+Rust group; native windows and dialogs retain independent grouping. Literal CLI
+chains use one bounded typed envelope, decoded completely before execution.
+One process-local receipt follows direct selection hops, preserving the captured
+document and original issuer. Only the terminal owner queues focus/completion;
+discarding a queued target callback fails the original operation. Nested repeat,
+macro and dynamic command/action executors remain explicitly unavailable in
+window-mode chains until they can preserve this receipt. Recorded multi-selection
+playback is also rejected before effects. This is a documented parity gap.
+
+Close attempts revoke credentials before QML close guards run. Cancellation may
+delete the native adapter or host synchronously; guarded event filtering consumes
+that event rather than forwarding it to a deleted receiver. Linux helper startup
+arms parent-death SIGKILL and checks the captured parent PID before exec. A real
+exec'd fixture verifies the armed signal and process termination after owner death.
+
+Independent review closed the reported synchronous-close teardown and multi-hop
+focus/completion findings, including the nested-workflow bypass. Evidence:
+`page-chain-supervision-r32` passes association 6/6, window 26/26 and supervisor/
+parent-death 3/3 each; `quick-close-r28` passes 15/15; `window-ipc-r31` passes ten
+production cases. Native sessions/private buses clean up, and engine/browser
+Clippy passes with warnings denied. Provider/MainWorld wiring, broader window
+workflow parity and physical qualification remain required; no real credential
+or combined-release approval is claimed.

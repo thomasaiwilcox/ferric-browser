@@ -71,6 +71,8 @@ def main():
                 if value:
                     return value
                 time.sleep(0.05)
+            facts['diagnostic_operations'] = cli('query', 'operations', '--format', 'json')
+            facts['diagnostic_tabs'] = tabs()
             raise AssertionError('owned IPC state did not reach the expected result')
 
         def tabs():
@@ -139,6 +141,56 @@ def main():
             assert terminal['status'] == 'completed', terminal
             assert terminal['detail'] in ('activated', 'activation outcome unknown'), terminal
             facts['cases'].append('operation completion comes from native activation receipt')
+            # Literal CLI chains must cross native owners in one admission.
+            # Independent requests would execute this script back on source.
+            cli('command', '--window', source, '--',
+                'tab-focus ' + child['id'] + ' ;; jseval --world page document.title=12345')
+            changed = wait(lambda: next((tab for tab in tabs()
+                                        if tab['id'] == child['id'] and tab['title'] == '12345'), None))
+            assert changed['window_id'] == child['window_id']
+            assert next(tab for tab in tabs() if tab['id'] == first['id'])['url'] == first['url']
+            facts['cases'].append('literal CLI continuation executes on the selected native owner')
+            before = sorted((tab['id'], tab['url'], tab['pinned']) for tab in tabs())
+            rejected = raw_request({'command': 'tab-pin', 'arguments': {},
+                                    'context': {'window': source, 'source': 'cli'},
+                                    'continuation': [{'command': 'reload', 'arguments': {'unexpected': True}}]})
+            assert rejected.get('error'), rejected
+            assert sorted((tab['id'], tab['url'], tab['pinned']) for tab in tabs()) == before
+            facts['cases'].append('invalid continuation rejects the complete envelope before its first mutation')
+            rejected = raw_request({'command': 'tab-pin', 'arguments': {},
+                                    'context': {'window': source, 'source': 'cli'},
+                                    'continuation': [{'command': 'target-search', 'arguments': {}}]})
+            assert rejected.get('error', {}).get('code') == 'E_DENIED', rejected
+            assert sorted((tab['id'], tab['url'], tab['pinned']) for tab in tabs()) == before
+            facts['cases'].append('local-only continuation rejects before any mutation with the denied category')
+            multi = raw_request({'command': 'tab-focus', 'arguments': {'id': child['id']},
+                                 'context': {'window': source, 'source': 'cli'},
+                                 'continuation': [
+                                     {'command': 'tab-focus', 'arguments': {'id': first['id']}},
+                                     *[{'command': 'jseval', 'arguments': {'world': 'page', 'script': script}}
+                                       for script in ('window.multiHop=1', 'window.multiHop+=1', 'document.title=12348')]]})
+            assert not multi.get('error'), multi
+            operation_id = multi['result']['operation_id']
+            wait(lambda: next((tab for tab in tabs() if tab['id'] == first['id'] and tab['title'] == '12348'), None))
+            terminal = wait(completed_handoff)
+            assert terminal['status'] == 'completed', terminal
+            facts['cases'].append('one original operation completes after a multi-hop continuation reaches its final owner')
+            failed = raw_request({'command': 'tab-focus', 'arguments': {'id': child['id']},
+                                  'context': {'window': source, 'source': 'cli'},
+                                  'continuation': [{'command': 'tab-select', 'arguments': {'selector': '999999'}}]})
+            assert not failed.get('error'), failed
+            operation_id = failed['result']['operation_id']
+            terminal = wait(completed_handoff)
+            assert terminal['status'] == 'failed', terminal
+            facts['cases'].append('later selection failure fails the original operation')
+            before = sorted((tab['id'], tab['title'], tab['url']) for tab in tabs())
+            rejected = raw_request({'command': 'tab-next', 'arguments': {},
+                                    'context': {'window': source, 'source': 'cli'},
+                                    'continuation': [{'command': 'repeat', 'arguments': {}},
+                                                     {'command': 'jseval', 'arguments': {'world': 'page', 'script': 'document.title=99999'}}]})
+            assert rejected.get('error', {}).get('code') == 'E_UNSUPPORTED', rejected
+            assert sorted((tab['id'], tab['title'], tab['url']) for tab in tabs()) == before
+            facts['cases'].append('unsupported nested workflow rejects before selection or document mutation')
             facts['success'] = True
         finally:
             if owner is not None:

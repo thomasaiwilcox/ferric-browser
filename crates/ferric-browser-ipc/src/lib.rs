@@ -15,7 +15,9 @@ mod command_schema;
 
 pub use command_codec::encode_command;
 pub use command_envelope::{CommandContext, CommandEnvelope, decode_command_envelope};
-pub use command_invocation::{CommandInvocation, decode_command_invocation};
+pub use command_invocation::{
+    CommandInvocation, decode_command_chain, decode_command_invocation, encode_command_chain,
+};
 pub use command_schema::{command_argument_names, validate_command_argument_fields};
 
 use std::{

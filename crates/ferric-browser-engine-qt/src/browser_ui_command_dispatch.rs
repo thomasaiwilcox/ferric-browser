@@ -15,11 +15,20 @@ impl qobject::BrowserUi {
         self.execute_counted_parsed_commands(commands, 1)
     }
 
-    #[allow(clippy::too_many_lines)]
     pub(super) fn execute_counted_parsed_commands(
+        self: Pin<&mut Self>,
+        commands: Vec<ParsedCommand>,
+        count: u32,
+    ) -> bool {
+        self.execute_counted_parsed_commands_with_handoff(commands, count, &mut None)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub(super) fn execute_counted_parsed_commands_with_handoff(
         mut self: Pin<&mut Self>,
         commands: Vec<ParsedCommand>,
         count: u32,
+        handoff: &mut Option<super::browser_ui_page_windows::PageHandoff>,
     ) -> bool {
         let registry = self.as_ref().rust().registry.clone();
         let commands = match registry.expand_chain(commands) {
@@ -30,6 +39,15 @@ impl qobject::BrowserUi {
             }
         };
         if self.as_mut().reject_generic_pointer_hint_chain(&commands) {
+            return false;
+        }
+        if self.as_ref().in_page_window_mode()
+            && let Err(error) = super::browser_ui_page_windows::validate_chain_workflows(
+                &commands,
+                handoff.is_some(),
+            )
+        {
+            self.set_status_text(QString::from(error));
             return false;
         }
         let command_count = commands.len();
@@ -56,13 +74,15 @@ impl qobject::BrowserUi {
                     commands: commands[command_index + 1..].to_vec(),
                     count,
                 };
-                return match self.as_mut().execute_page_window_selection(
+                return match self.as_mut().execute_page_window_selection_with_handoff(
                     &command,
                     count,
                     continuation,
                     None,
+                    handoff.clone(),
                 ) {
                     Ok(_) => {
+                        handoff.take();
                         self.as_mut()
                             .note_repeatable_invocation(&command, None, count);
                         true

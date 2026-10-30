@@ -143,6 +143,22 @@ requested routing values, and open target. Valid-command failures include the
 same envelope inside error details while continuing to omit command arguments,
 URLs, titles, page content, and credentials.
 
+`command.execute` also accepts an optional `continuation` array containing up
+to 63 further typed command envelopes. Nested continuations are rejected. The
+complete envelope is decoded before the first command executes; commands then
+execute in order, without rollback of earlier effects after a runtime failure.
+The CLI sends a literal `;;` chain as one request. Each step retains its own
+profile, context and open-target policy. In window presentation, selecting a
+page transfers the remaining commands to its actual native owner, retaining
+the captured document and rechecking it after Qt selection callbacks. Window
+selectors within that continuation follow the newly selected owner. Command
+admission does not claim that asynchronous page work has finished.
+In window presentation, multi-command chains currently reject repeat/macro
+playback and dynamic action/command wrappers before execution. Their nested
+executors still need the same handoff semantics; this restriction avoids
+running a following document command on an intermediate owner. Repeated
+multi-selection playback is likewise unavailable until that work is complete.
+
 ## Limitations
 
 The remaining V1 method surface is now limited to richer binding/config

@@ -15,6 +15,9 @@ target_link_libraries(everyday_T061a_helper_supervisor_component PRIVATE
 add_test(NAME everyday_T061a_helper_supervisor_component
     COMMAND $<TARGET_FILE:everyday_T061a_helper_supervisor_component> helperSupervisor)
 set_tests_properties(everyday_T061a_helper_supervisor_component PROPERTIES TIMEOUT 45)
+add_test(NAME credential_helper_parent_death
+    COMMAND $<TARGET_FILE:everyday_T061a_helper_supervisor_component> browserDeathTerminatesTheHelper)
+set_tests_properties(credential_helper_parent_death PROPERTIES TIMEOUT 20)
 
 add_executable(credential_boundary_tests tst_credential_boundary.cpp)
 target_link_libraries(credential_boundary_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}"

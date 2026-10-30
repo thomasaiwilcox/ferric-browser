@@ -31,7 +31,7 @@ bool clickCloseDecision(QQuickWindow *host, bool proceed) {
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -199,6 +199,103 @@ void ApplicationTests::pageWindowPresentation()
         QVERIFY(changed.hasNext()); QFile keeper(changed.next()); QVERIFY(keeper.open(QIODevice::ReadOnly));
         const auto keeperGroups = QJsonDocument::fromJson(keeper.readAll()).object()["windows"].toArray();
         QCOMPARE(keeperGroups[0].toObject()["context"].toString(), QStringLiteral("changed"));
+        return;
+    }
+    if (scenario.startsWith("popup-")) {
+        // Keep two existing group members: profile-wide fallback would mask a
+        // missing native popup group if the opener were the only member.
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        pageReceiver = "testWindow.activeWebView()";
+        page("window.popupGroupMessage='';window.addEventListener('message',e=>window.popupGroupMessage=e.data);true");
+        if (scenario == "popup-dialog")
+            page("document.getElementById('blank').onclick=function(e){e.preventDefault();window.open('/popup.html','dialog','popup=1,width=400,height=300')};true");
+        const auto point = page("(()=>{const r=document.getElementById('blank').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()").toList();
+        QCOMPARE(point.size(), 2);
+        auto *viewItem = qobject_cast<QQuickItem *>(sourceView.data());
+        QVERIFY(viewItem);
+        const auto modifiers = scenario == "popup-window" ? Qt::ShiftModifier
+            : scenario == "popup-background" ? Qt::ControlModifier : Qt::NoModifier;
+        QTest::mouseClick(window, Qt::LeftButton, modifiers,
+            viewItem->mapToScene(QPointF(point[0].toDouble(), point[1].toDouble())).toPoint());
+        QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(), 1);
+        const auto popup = QStringLiteral("testWindow.popupWindowRegistry[0]");
+        auto *popupWindow = qobject_cast<QQuickWindow *>(evaluate(popup + ".host").value<QObject *>());
+        QVERIFY(popupWindow);
+        QTRY_VERIFY(evaluate(popup + ".host.profileBootstrapComplete && !!" + popup + ".host.activeView").toBool());
+        QCOMPARE(evaluate(popup + ".host.windowOrdinaryPage").toBool(), scenario != "popup-dialog");
+        if (scenario == "popup-background") QVERIFY(!popupWindow->isVisible());
+        pageReceiver = popup + ".host.activeView";
+        QTRY_COMPARE(page("location.pathname").toString(), QStringLiteral("/popup.html"));
+        const bool keepsOpener = scenario == "popup-tab-group" || scenario == "popup-dialog";
+        QCOMPARE(page("!!window.opener").toBool(), keepsOpener);
+        page("if(window.opener)window.opener.postMessage('popup-group-verified','*');window.popupGroupDraft=19");
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        QVERIFY(command("tab-select last"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(QGuiApplication::focusWindow(), scenario == "popup-dialog" || scenario == "popup-window" ? childWindow : popupWindow);
+        pageReceiver = "testWindow.activeWebView()";
+        if (keepsOpener) QTRY_COMPARE(page("window.popupGroupMessage").toString(), QStringLiteral("popup-group-verified"));
+        QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), sourceView.data());
+        pageReceiver = popup + ".host.activeView";
+        QCOMPARE(page("window.popupGroupDraft").toInt(), 19);
+        return;
+    }
+    if (scenario.startsWith("window-chain-")) {
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        if (scenario == "window-chain-workflows") {
+            for (const auto &workflow : {"repeat", "macro-play a", "action browser.tab.next", "command-execute browser.tab.next"}) {
+                QVERIFY(!command(QString("tab-next ;; %1 ;; jseval --world page window.wrongWorkflowPage=1").arg(workflow)));
+                QVERIFY(text("status_text").contains("cannot run"));
+            }
+            QVERIFY(command("macro-record a"));
+            for (int index = 0; index < 2; ++index) {
+                QVERIFY(command("tab-next"));
+                evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+                QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+                QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+                QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+            }
+            QVERIFY(command("macro-stop"));
+            QVERIFY(!command("repeat --count 2"));
+            QVERIFY(text("status_text").contains("cannot run"));
+            QVERIFY(!command("macro-play a"));
+            QVERIFY(text("status_text").contains("cannot run"));
+            QTest::qWait(250);
+            QCOMPARE(QGuiApplication::focusWindow(), window);
+            for (const auto &receiver : {QString("testWindow.activeWebView()"), childHost + ".activeView"}) {
+                pageReceiver = receiver;
+                QVERIFY(page("typeof window.wrongWorkflowPage === 'undefined'").toBool());
+            }
+        } else if (scenario == "window-chain-multi-hop") {
+            QVERIFY(command("tab-next ;; tab-prev ;; jseval --world page window.multiHop=1 ;; jseval --world page window.multiHop+=1 ;; jseval --world page window.multiHop+=1"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            pageReceiver = "testWindow.activeWebView()";
+            QTRY_COMPARE(page("window.multiHop").toInt(), 3);
+            // Allow both native selection receipts to drain; an older hop
+            // must never reclaim focus after the final owner.
+            QTest::qWait(250);
+            QCOMPARE(QGuiApplication::focusWindow(), window);
+            pageReceiver = childHost + ".activeView";
+            QVERIFY(page("typeof window.multiHop === 'undefined'").toBool());
+        } else {
+            evaluate("testWindow.commandNoticeVisible=false;testWindow.commandNoticeText=''");
+            QVERIFY(command(scenario == "window-chain-discard" ? "tab-next ;; jseval --world page window.discardedHop=1" : "tab-next ;; tab-select 999999"));
+            if (scenario == "window-chain-discard") {
+                // Destruction discards the queued CxxQtThread callback. Its
+                // receipt still owes the original owner a terminal failure.
+                delete childWindow;
+            }
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_VERIFY(evaluate("testWindow.commandNoticeVisible && testWindow.commandNoticeError").toBool());
+            QTest::qWait(250);
+            QCOMPARE(QGuiApplication::focusWindow(), window);
+            pageReceiver = "testWindow.activeWebView()";
+            QVERIFY(page("typeof window.discardedHop === 'undefined'").toBool());
+        }
         return;
     }
     if (scenario == "window-selection") {

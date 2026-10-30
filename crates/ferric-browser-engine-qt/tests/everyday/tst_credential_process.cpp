@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QPointer>
 #include <QProcess>
+#include <QScopeGuard>
 #include <QtTest>
 
 #include <cerrno>
@@ -13,6 +14,10 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <unistd.h>
+#endif
+#ifdef Q_OS_LINUX
+#include <sys/prctl.h>
+#include <sys/wait.h>
 #endif
 
 namespace ferric::credentials {
@@ -90,6 +95,16 @@ int helperMain(const QString &mode) {
     for (;;)
       ::pause();
   }
+  if (mode == QStringLiteral("parent-death-hang")) {
+#ifdef Q_OS_LINUX
+    int signal = 0;
+    if (::prctl(PR_GET_PDEATHSIG, &signal) != 0 || signal != SIGKILL) return 10;
+    std::fputs("armed\n", stdout);
+    std::fflush(stdout);
+    for (;;) ::pause();
+#endif
+    return 11;
+  }
   if (mode == QStringLiteral("frame-hang")) {
     std::fputs("progress\n", stdout);
     std::fflush(stdout);
@@ -136,6 +151,52 @@ bool processIsGone(qint64 pid) {
 class CredentialProcessTests final : public QObject {
   Q_OBJECT
 private slots:
+  void browserDeathTerminatesTheHelper() {
+#ifdef Q_OS_LINUX
+    int previousSubreaper = 0;
+    QCOMPARE(::prctl(PR_GET_CHILD_SUBREAPER, &previousSubreaper), 0);
+    QCOMPARE(::prctl(PR_SET_CHILD_SUBREAPER, 1), 0);
+    QProcess owner;
+    qint64 helper = 0;
+    bool reaped = false;
+    const auto cleanup = qScopeGuard([&] {
+      if (owner.state() != QProcess::NotRunning) {
+        owner.kill();
+        owner.waitForFinished(5000);
+      }
+      if (helper > 0 && !reaped) {
+        ::kill(static_cast<pid_t>(helper), SIGKILL);
+        ::waitpid(static_cast<pid_t>(helper), nullptr, 0);
+      }
+      ::prctl(PR_SET_CHILD_SUBREAPER, previousSubreaper);
+    });
+    owner.start(QCoreApplication::applicationFilePath(), {"--fixture-owner"});
+    QVERIFY(owner.waitForStarted(5000));
+    QTRY_VERIFY_WITH_TIMEOUT(owner.canReadLine(), 5000);
+    bool valid = false;
+    helper = owner.readLine().trimmed().toLongLong(&valid);
+    QVERIFY(valid && helper > 1);
+    QVERIFY(!processIsGone(helper));
+    owner.kill();
+    QVERIFY(owner.waitForFinished(5000));
+    int status = 0;
+    QTRY_VERIFY_WITH_TIMEOUT(([&] {
+      reaped = ::waitpid(static_cast<pid_t>(helper), &status, WNOHANG) == helper;
+      return reaped || processIsGone(helper);
+    })(), 5000);
+    if (reaped) {
+      QVERIFY(WIFSIGNALED(status));
+      QCOMPARE(WTERMSIG(status), SIGKILL);
+    } else {
+      // Qt's process reaper can reap the adopted child first. Its own armed
+      // frame proved SIGKILL was configured before the owner was killed.
+      helper = 0;
+    }
+#else
+    QSKIP("Linux parent-death supervision");
+#endif
+  }
+
   void helperSupervisor() {
     using Failure = CredentialProcess::Failure;
     CredentialProcess supervisor;
@@ -341,6 +402,17 @@ int main(int argc, char **argv) {
   const QStringList arguments = app.arguments();
   if (arguments.size() == 3 && arguments.at(1) == "--fixture-helper")
     return helperMain(arguments.at(2));
+  if (arguments.size() == 2 && arguments.at(1) == "--fixture-owner") {
+    CredentialProcess supervisor;
+    supervisor.setEvents({{}, [&](quint64, const QByteArray &frame) {
+      if (frame == "armed") {
+        std::printf("%lld\n", static_cast<long long>(CredentialProcessTestAccess::childPid(supervisor)));
+        std::fflush(stdout);
+      }
+    }, {}});
+    if (!CredentialProcessTestAccess::startMode(supervisor, "{\"fixture\":true}\n", "parent-death-hang")) return 9;
+    return app.exec();
+  }
   CredentialProcessTests tests;
   return QTest::qExec(&tests, argc, argv);
 }

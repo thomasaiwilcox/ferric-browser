@@ -407,10 +407,11 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         mut destination: Pin<&mut Self>,
         token: &QString,
+        join_page_group: bool,
     ) -> bool {
-        if let Err(error) = self
-            .as_mut()
-            .try_handoff_popup_owner(destination.as_mut(), token)
+        if let Err(error) =
+            self.as_mut()
+                .try_handoff_popup_owner(destination.as_mut(), token, join_page_group)
         {
             self.set_status_text(QString::from(format!("Could not open the popup: {error}")));
             return false;
@@ -422,6 +423,7 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         mut destination: Pin<&mut Self>,
         token: &QString,
+        join_page_group: bool,
     ) -> Result<(), String> {
         let token = token.to_string();
         let source = self.as_ref();
@@ -457,6 +459,19 @@ impl qobject::BrowserUi {
         if source_state.capture_target(target.tab) != Some(target) {
             return Err("the popup page has changed".into());
         }
+        // The native bridge reads the destination from the actual Qt popup
+        // request. Capture the logical group before profile initialization
+        // emits Qt callbacks; explicit windows and dialogs stay independent.
+        let page_group = (join_page_group
+            && source_state.configuration().tabs.presentation
+                == ferric_browser_config::TabsPresentation::Windows)
+            .then(|| {
+                if source.page_window_group.is_empty() {
+                    source.window_token.to_string()
+                } else {
+                    source.page_window_group.clone()
+                }
+            });
         let transfer = TabTransfer {
             identity: None,
             url: tab_state.url.clone(),
@@ -470,6 +485,14 @@ impl qobject::BrowserUi {
             .as_ref()
             .get_ref()
             .inherit_owner_profile(destination.as_mut(), Some(transfer))?;
+        if let Some(group) = page_group {
+            destination
+                .as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .page_window_group = group;
+        }
         destination
             .as_mut()
             .rust_mut()

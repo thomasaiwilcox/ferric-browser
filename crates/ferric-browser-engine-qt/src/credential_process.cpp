@@ -17,6 +17,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 #endif
+#ifdef Q_OS_LINUX
+#include <sys/prctl.h>
+#endif
 
 namespace ferric::credentials {
 namespace {
@@ -229,6 +232,15 @@ quint64 CredentialProcess::startWithPolicy(const QByteArray &request,
   parameters.flags |= QProcess::UnixProcessFlag::CreateNewSession;
   parameters.flags |= QProcess::UnixProcessFlag::CloseFileDescriptors;
   run->process.setUnixProcessParameters(parameters);
+#endif
+#ifdef Q_OS_LINUX
+  // A browser crash cannot leave a live authenticator ceremony behind. Arm
+  // this in the child before exec and close the parent-death race explicitly.
+  const auto browserPid = ::getpid();
+  run->process.setChildProcessModifier([browserPid] {
+    if (::prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || ::getppid() != browserPid)
+      ::_exit(127);
+  });
 #endif
   run->deadline.setSingleShot(true);
   run->grace.setSingleShot(true);

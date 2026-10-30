@@ -25,12 +25,88 @@ pub fn decode_command_invocation(params: &Value) -> Result<CommandInvocation, St
     Ok(CommandInvocation { envelope, command })
 }
 
+/// Encodes one bounded sequence for a single `command.execute` admission.
+/// Each continuation retains its typed arguments and routing metadata.
+///
+/// # Errors
+///
+/// Rejects empty, oversized, nested or malformed command sequences.
+pub fn encode_command_chain(mut commands: Vec<Value>) -> Result<Value, String> {
+    if commands.is_empty() || commands.len() > 64 {
+        return Err("a command chain must contain from 1 to 64 commands".into());
+    }
+    for command in &commands {
+        decode_command_invocation(command)?;
+    }
+    let mut first = commands.remove(0);
+    if !commands.is_empty() {
+        first["continuation"] = Value::Array(commands);
+    }
+    Ok(first)
+}
+
+/// Decodes the complete sequence before any command can mutate browser state.
+/// Single-command envelopes keep their existing shape. Continuations cannot
+/// contain further continuations.
+///
+/// # Errors
+///
+/// Rejects malformed commands and sequences longer than 64 commands.
+pub fn decode_command_chain(params: &Value) -> Result<Vec<CommandInvocation>, String> {
+    let mut first = params.clone();
+    let continuation = first
+        .as_object_mut()
+        .ok_or("command.execute params must be an object")?
+        .remove("continuation");
+    let continuation = match continuation {
+        None => &[][..],
+        Some(Value::Array(ref commands)) if commands.len() < 64 => commands.as_slice(),
+        _ => return Err("command continuation must be an array of at most 63 commands".into()),
+    };
+    std::iter::once(&first)
+        .chain(continuation)
+        .map(decode_command_invocation)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::decode_command_invocation;
     use crate::encode_command;
     use ferric_browser_core::{CommandRegistry, ParseInput, parse_chain};
     use serde_json::json;
+
+    #[test]
+    fn chains_preserve_routes_and_validate_every_command_before_execution() {
+        let commands = vec![
+            json!({"command":"tab-next", "context":{"window":"active", "source":"cli"}}),
+            json!({"command":"open", "arguments":{"input":"https://example.test"},
+                "context":{"profile":"work", "context":"Research", "source":"cli"}}),
+        ];
+        let chain = super::encode_command_chain(commands.clone()).unwrap();
+        let decoded = super::decode_command_chain(&chain).unwrap();
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded[1].envelope.context.profile.as_deref(), Some("work"));
+        assert_eq!(
+            decoded[1].envelope.context.context.as_deref(),
+            Some("Research")
+        );
+        assert_eq!(chain["continuation"][0], commands[1]);
+        let mut malformed = chain.clone();
+        malformed["continuation"][0]["arguments"]["unexpected"] = json!(true);
+        assert!(super::decode_command_chain(&malformed).is_err());
+        malformed = chain.clone();
+        malformed["continuation"][0]["continuation"] = json!([]);
+        assert!(super::decode_command_chain(&malformed).is_err());
+        malformed = chain;
+        malformed["continuation"] = json!("reload");
+        assert!(super::decode_command_chain(&malformed).is_err());
+        let command = json!({"command":"reload"});
+        assert!(super::encode_command_chain(Vec::new()).is_err());
+        assert!(super::encode_command_chain(vec![command.clone(); 65]).is_err());
+        let largest = super::encode_command_chain(vec![command; 64]).unwrap();
+        assert_eq!(super::decode_command_chain(&largest).unwrap().len(), 64);
+    }
 
     #[test]
     fn search_next_preserves_omitted_and_explicit_directions() {

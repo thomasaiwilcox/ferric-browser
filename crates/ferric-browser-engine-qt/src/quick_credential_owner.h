@@ -26,6 +26,8 @@ public:
     QWebEngineFrame mainFrame() const;
     QWindow *presentationWindow() const;
     FerricCredentialBoundary *prepareBoundary(std::function<QString()> contextIdentity);
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
 signals:
     void authorityInvalidated();
 private slots:

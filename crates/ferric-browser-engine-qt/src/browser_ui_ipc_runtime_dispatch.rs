@@ -33,7 +33,7 @@ impl qobject::BrowserUi {
             },
         )?;
         if expanded.len() != 1 {
-            return self.execute_page_window_ipc_chain(expanded, route);
+            return self.execute_page_window_ipc_chain(expanded, route, operation_id);
         }
         let command = expanded.into_iter().next().expect("one expanded command");
         if let Some(result) = self.as_mut().dispatch_support_command(&command, route) {

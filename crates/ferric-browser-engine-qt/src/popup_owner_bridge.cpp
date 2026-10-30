@@ -3,6 +3,7 @@
 #include <QThread>
 #include <QWindow>
 #include <QJSValue>
+#include <QWebEngineNewWindowRequest>
 
 namespace {
 QObject *objectProperty(QObject *object, const char *name) {
@@ -33,7 +34,12 @@ bool FerricPopupOwnerBridge::initialize(QObject *source, QObject *destination,
         return false;
     auto *opener = qobject_cast<BrowserUi *>(source);
     auto *popup = qobject_cast<BrowserUi *>(destination);
-    return opener && popup && opener->handoff_popup_owner(*popup, token);
+    auto *host = hostWindow(this);
+    auto *request = qobject_cast<QWebEngineNewWindowRequest *>(objectProperty(host, "windowPopupRequest"));
+    const auto joinGroup = request && (request->destination() == QWebEngineNewWindowRequest::InNewTab
+        || request->destination() == QWebEngineNewWindowRequest::InNewBackgroundTab);
+    return opener && popup && host && hostUi(host) == popup && request
+        && opener->handoff_popup_owner(*popup, token, joinGroup);
 }
 
 bool FerricPopupOwnerBridge::inheritProfile(QObject *source, QObject *destination,

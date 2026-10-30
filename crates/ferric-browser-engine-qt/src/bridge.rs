@@ -1285,6 +1285,7 @@ pub(crate) mod qobject {
             self: Pin<&mut BrowserUi>,
             destination: Pin<&mut BrowserUi>,
             token: &QString,
+            join_page_group: bool,
         ) -> bool;
 
         fn initialize_window_owner(

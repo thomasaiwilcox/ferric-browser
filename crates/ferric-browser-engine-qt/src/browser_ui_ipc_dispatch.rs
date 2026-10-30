@@ -2,7 +2,7 @@ use super::{
     ActionRegistry, CxxQtType, Pin, Request, Response, Uuid, Value, action_failure_category,
     ipc_action_failure, ipc_action_failure_with_context, ipc_command_context, ipc_command_count,
     ipc_command_failure_with_context, ipc_failure, is_mutating_ipc_method,
-    parse_external_action_id, qobject, typed_ipc_action, typed_ipc_command,
+    parse_external_action_id, qobject, typed_ipc_action,
 };
 use crate::{FailureKind, OperationUpdate};
 
@@ -17,15 +17,17 @@ impl qobject::BrowserUi {
         }
         match request.method.as_str() {
             "command.execute" => {
-                let (command, route) = match typed_ipc_command(&request.params) {
-                    Ok(command) => command,
-                    Err(error) => {
-                        return Response::failure(
-                            request.id.clone(),
-                            error.into_public().into_protocol_error(),
-                        );
-                    }
-                };
+                let commands =
+                    match crate::ipc_command_decoder::typed_ipc_command_chain(&request.params) {
+                        Ok(command) => command,
+                        Err(error) => {
+                            return Response::failure(
+                                request.id.clone(),
+                                error.into_public().into_protocol_error(),
+                            );
+                        }
+                    };
+                let (command, route) = commands[0].clone();
                 let operation_id = format!("op-{}", Uuid::new_v4());
                 if let Err(error) = self
                     .as_mut()
@@ -43,11 +45,17 @@ impl qobject::BrowserUi {
                     &operation_id,
                     count,
                 );
-                match self.as_mut().execute_ipc_command_with_operation(
-                    command,
-                    &route,
-                    Some(&operation_id),
-                ) {
+                let execution = if commands.len() == 1 {
+                    self.as_mut().execute_ipc_command_with_operation(
+                        command,
+                        &route,
+                        Some(&operation_id),
+                    )
+                } else {
+                    self.as_mut()
+                        .execute_routed_ipc_chain(commands, Some(&operation_id))
+                };
+                match execution {
                     Ok(mut result) => {
                         // An asynchronous provider already owns the operation.
                         // Return that identity instead of leaving a second,

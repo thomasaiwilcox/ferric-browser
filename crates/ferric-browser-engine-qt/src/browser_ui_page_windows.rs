@@ -4,6 +4,42 @@
 use super::{CxxQtType, ParsedCommand, Pin, PrivacyKind, QString, TabId, qobject};
 use cxx_qt::{CxxQtThread, Threading};
 use ferric_browser_application::ProfileInstanceId;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+
+#[derive(Clone)]
+pub(super) struct PageHandoff(Arc<PageHandoffState>);
+
+struct PageHandoffState {
+    thread: CxxQtThread<qobject::BrowserUi>,
+    scope: PageScope,
+    group: String,
+    page: TabId,
+    operation: Option<String>,
+    finished: AtomicBool,
+}
+
+impl Drop for PageHandoffState {
+    fn drop(&mut self) {
+        if self.finished.load(Ordering::Acquire) {
+            return;
+        }
+        // Qt discards queued callbacks when their receiver is destroyed.
+        // The last receipt still reports failure to the original issuer.
+        let operation = self.operation.clone();
+        let _ = self.thread.queue(move |mut ui| {
+            ui.as_mut().page_window_command_failed(
+                "Page selection failed because a window closed. Try again.",
+            );
+            if let Some(operation) = operation {
+                ui.as_mut()
+                    .complete_window_focus(&QString::from(operation), &QString::from("failed"));
+            }
+        });
+    }
+}
 
 pub(super) enum PageContinuation {
     Interactive {
@@ -11,7 +47,7 @@ pub(super) enum PageContinuation {
         count: u32,
     },
     Ipc {
-        commands: Vec<ParsedCommand>,
+        commands: Vec<(ParsedCommand, super::IpcRoute)>,
         route: super::IpcRoute,
     },
 }
@@ -19,7 +55,8 @@ pub(super) enum PageContinuation {
 impl PageContinuation {
     fn has_commands(&self) -> bool {
         match self {
-            Self::Interactive { commands, .. } | Self::Ipc { commands, .. } => !commands.is_empty(),
+            Self::Interactive { commands, .. } => !commands.is_empty(),
+            Self::Ipc { commands, .. } => !commands.is_empty(),
         }
     }
 }
@@ -192,6 +229,23 @@ pub(super) fn handles(command: &ParsedCommand) -> bool {
     )
 }
 
+pub(super) fn is_command_workflow(command: &ParsedCommand) -> bool {
+    matches!(
+        command.name.as_str(),
+        "repeat" | "macro-play" | "action" | "command-execute"
+    )
+}
+
+pub(super) fn validate_chain_workflows(
+    commands: &[ParsedCommand],
+    handed_off: bool,
+) -> Result<(), String> {
+    if (handed_off || commands.len() > 1) && commands.iter().any(is_command_workflow) {
+        return Err("Repeat, macro playback and command wrappers cannot run in a window-selection chain yet. Run them separately.".into());
+    }
+    Ok(())
+}
+
 fn select_index(
     command: &ParsedCommand,
     count: u32,
@@ -259,11 +313,28 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn execute_page_window_ipc_selection(
+        self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        route: &super::IpcRoute,
+        commands: Vec<(ParsedCommand, super::IpcRoute)>,
+        operation_id: Option<&str>,
+    ) -> Result<super::Value, super::PublicError> {
+        self.execute_page_window_ipc_selection_with_handoff(
+            command,
+            route,
+            commands,
+            operation_id,
+            &mut None,
+        )
+    }
+
+    fn execute_page_window_ipc_selection_with_handoff(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
         route: &super::IpcRoute,
-        commands: Vec<ParsedCommand>,
+        commands: Vec<(ParsedCommand, super::IpcRoute)>,
         operation_id: Option<&str>,
+        handoff: &mut Option<PageHandoff>,
     ) -> Result<super::Value, super::PublicError> {
         if route.context.is_some() {
             return Err("context routing is not valid for page selection".into());
@@ -281,7 +352,14 @@ impl qobject::BrowserUi {
             .map_err(|error| error.to_string())?;
         let mut continuation_route = route.clone();
         continuation_route.selector = super::DispatchTarget::Active;
-        let result = self.as_mut().execute_page_window_selection(
+        let commands = commands
+            .into_iter()
+            .map(|(command, mut route)| {
+                route.selector = super::DispatchTarget::Active;
+                (command, route)
+            })
+            .collect();
+        let result = self.as_mut().execute_page_window_selection_with_handoff(
             command,
             1,
             PageContinuation::Ipc {
@@ -289,18 +367,21 @@ impl qobject::BrowserUi {
                 route: continuation_route,
             },
             operation_id,
+            handoff.clone(),
         )?;
+        handoff.take();
         self.as_mut()
             .note_repeatable_invocation(command, Some(route), 1);
         Ok(result)
     }
 
-    pub(super) fn execute_page_window_selection(
+    pub(super) fn execute_page_window_selection_with_handoff(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
         count: u32,
         continuation: PageContinuation,
         operation_id: Option<&str>,
+        handoff: Option<PageHandoff>,
     ) -> Result<super::Value, String> {
         let source = PageWindowSnapshot::capture_checked(self.as_ref().get_ref())?;
         let current = self.as_ref().rust().tab.ok_or("No active page")?;
@@ -334,23 +415,34 @@ impl qobject::BrowserUi {
         let same_owner = source_token == target_token;
         let scope = source.scope;
         let group = source.group;
-        let source_thread = self.as_ref().get_ref().qt_thread();
-        let operation = if let Some(id) = operation_id {
-            Some(
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .start_native_handoff(Some(id))?,
-            )
-        } else {
-            None
+        let handoff = match handoff {
+            Some(handoff) => handoff,
+            None => {
+                let operation = operation_id
+                    .map(|id| {
+                        self.as_mut()
+                            .rust_mut()
+                            .as_mut()
+                            .get_mut()
+                            .start_native_handoff(Some(id))
+                    })
+                    .transpose()?;
+                PageHandoff(Arc::new(PageHandoffState {
+                    thread: self.as_ref().get_ref().qt_thread(),
+                    scope: scope.clone(),
+                    group: group.clone(),
+                    page: current,
+                    operation,
+                    finished: AtomicBool::new(false),
+                }))
+            }
         };
         let repeat_command = command.clone();
         target
             .owner
             .thread
             .queue(move |mut ui| {
+                let mut handoff = Some(handoff);
                 let source_current = super::live_ipc_owners::page_window_owners(&scope)
                     .iter()
                     .any(|owner| {
@@ -401,7 +493,11 @@ impl qobject::BrowserUi {
                                     target_document,
                                 );
                                 succeeded = selected
-                                    && ui.as_mut().execute_counted_parsed_commands(commands, count);
+                                    && ui.as_mut().execute_counted_parsed_commands_with_handoff(
+                                        commands,
+                                        count,
+                                        &mut handoff,
+                                    );
                             }
                         }
                         PageContinuation::Ipc { commands, route } => {
@@ -421,8 +517,9 @@ impl qobject::BrowserUi {
                                 );
                             if !selected {
                                 succeeded = false;
-                            } else if let Err(error) =
-                                ui.as_mut().execute_page_window_ipc_chain(commands, &route)
+                            } else if let Err(error) = ui
+                                .as_mut()
+                                .execute_routed_ipc_chain_with_handoff(commands, None, &mut handoff)
                             {
                                 ui.as_mut()
                                     .set_status_text(QString::from(error.user_message()));
@@ -432,20 +529,28 @@ impl qobject::BrowserUi {
                     }
                     ui.as_mut().runtime_work_available();
                 }
-                let _ = source_thread.queue(move |mut source_ui| {
+                // A later selection now owns this same receipt. Only its
+                // terminal owner can focus or finish the original operation.
+                let Some(handoff) = handoff else {
+                    return;
+                };
+                let root = handoff.0;
+                let thread = root.thread.clone();
+                let _ = thread.queue(move |mut source_ui| {
+                    root.finished.store(true, Ordering::Release);
                     let source_current = PageWindowSnapshot::capture(source_ui.as_ref().get_ref())
                         .is_some_and(|snapshot| {
-                            snapshot.scope == scope
-                                && snapshot.group == group
-                                && snapshot.pages.iter().any(|page| page.id == current)
+                            snapshot.scope == root.scope
+                                && snapshot.group == root.group
+                                && snapshot.pages.iter().any(|page| page.id == root.page)
                         });
                     if !selected || !source_current {
                         source_ui.as_mut().page_window_command_failed(
                             "Page selection failed because the window changed. Try again.",
                         );
-                        if let Some(operation) = operation {
+                        if let Some(operation) = &root.operation {
                             source_ui.as_mut().complete_window_focus(
-                                &QString::from(operation),
+                                &QString::from(operation.as_str()),
                                 &QString::from("stale"),
                             );
                         }
@@ -455,9 +560,9 @@ impl qobject::BrowserUi {
                         source_ui.as_mut().page_window_command_failed(
                             "The command failed in the selected page. Try again.",
                         );
-                        if let Some(operation) = operation {
+                        if let Some(operation) = &root.operation {
                             source_ui.as_mut().complete_window_focus(
-                                &QString::from(operation),
+                                &QString::from(operation.as_str()),
                                 &QString::from("failed"),
                             );
                         }
@@ -466,7 +571,9 @@ impl qobject::BrowserUi {
                     source_ui.as_mut().queue_pending_engine_action();
                     let action = format!(
                         "window-focus\t{target_token}{}",
-                        operation.map_or_else(String::new, |id| format!("\t{id}"))
+                        root.operation
+                            .as_deref()
+                            .map_or_else(String::new, |id| format!("\t{id}"))
                     );
                     source_ui
                         .as_mut()
@@ -495,19 +602,94 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn execute_page_window_ipc_chain(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         commands: Vec<ParsedCommand>,
         route: &super::IpcRoute,
+        operation_id: Option<&str>,
     ) -> Result<super::Value, super::PublicError> {
+        self.execute_routed_ipc_chain(
+            commands
+                .into_iter()
+                .map(|command| (command, route.clone()))
+                .collect(),
+            operation_id,
+        )
+    }
+
+    pub(super) fn execute_routed_ipc_chain(
+        self: Pin<&mut Self>,
+        commands: Vec<(ParsedCommand, super::IpcRoute)>,
+        operation_id: Option<&str>,
+    ) -> Result<super::Value, super::PublicError> {
+        self.execute_routed_ipc_chain_with_handoff(commands, operation_id, &mut None)
+    }
+
+    fn execute_routed_ipc_chain_with_handoff(
+        mut self: Pin<&mut Self>,
+        commands: Vec<(ParsedCommand, super::IpcRoute)>,
+        operation_id: Option<&str>,
+        handoff: &mut Option<PageHandoff>,
+    ) -> Result<super::Value, super::PublicError> {
+        // Expand and check the entire external chain before its first effect.
+        // Each step keeps its own open/profile/context policy; only the active
+        // native owner changes after a page-selection continuation.
+        let mut expanded = Vec::new();
+        for (command, route) in commands {
+            let commands = self
+                .as_ref()
+                .rust()
+                .registry
+                .expand_command(command)
+                .map_err(|error| {
+                    super::PublicError::new(
+                        ferric_browser_ipc::ErrorCode::InvalidArgument,
+                        "The command couldn't be expanded. Check its definition.",
+                        error.to_string(),
+                    )
+                })?;
+            super::browser_ui_hint_pointer::reject_external_hint_interaction_chain(&commands)
+                .map_err(|error| {
+                    super::PublicError::new(
+                        ferric_browser_ipc::ErrorCode::Denied,
+                        "Use hints from the browser window.",
+                        error,
+                    )
+                })?;
+            expanded.extend(commands.into_iter().map(|command| (command, route.clone())));
+            if expanded.len() > 64 {
+                return Err(super::PublicError::new(
+                    ferric_browser_ipc::ErrorCode::InvalidArgument,
+                    "A command chain can contain at most 64 commands.",
+                    "expanded command chain exceeds 64 commands",
+                ));
+            }
+        }
         let mut result = serde_json::json!({"status":"accepted"});
+        if self.as_ref().in_page_window_mode() {
+            validate_chain_workflows(
+                &expanded
+                    .iter()
+                    .map(|(command, _)| command.clone())
+                    .collect::<Vec<_>>(),
+                handoff.is_some(),
+            )
+            .map_err(|error| {
+                super::PublicError::new(
+                    ferric_browser_ipc::ErrorCode::Unsupported,
+                    error.clone(),
+                    error,
+                )
+            })?;
+        }
         let mut operations = Vec::new();
-        for (index, command) in commands.iter().enumerate() {
+        for (index, (command, route)) in expanded.iter().enumerate() {
             if self.as_ref().in_page_window_mode() && handles(command) {
-                return self.execute_page_window_ipc_selection(
+                return self.execute_page_window_ipc_selection_with_handoff(
                     command,
                     route,
-                    commands[index + 1..].to_vec(),
-                    None,
+                    expanded[index + 1..].to_vec(),
+                    operation_id,
+                    handoff,
                 );
             }
             result =

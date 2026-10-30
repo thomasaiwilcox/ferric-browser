@@ -44,3 +44,16 @@ pub(super) fn typed_ipc_command(
     let route = typed_ipc_route(&invocation.envelope).map_err(IpcCommandError::from)?;
     Ok((invocation.command, route))
 }
+
+pub(super) fn typed_ipc_command_chain(
+    params: &Value,
+) -> Result<Vec<(ParsedCommand, IpcRoute)>, IpcCommandError> {
+    ferric_browser_ipc::decode_command_chain(params)
+        .map_err(IpcCommandError::from)?
+        .into_iter()
+        .map(|invocation| {
+            let route = typed_ipc_route(&invocation.envelope).map_err(IpcCommandError::from)?;
+            Ok((invocation.command, route))
+        })
+        .collect()
+}

@@ -8,6 +8,7 @@
 #include "popup_owner_bridge.h"
 
 #include <QApplication>
+#include <QCloseEvent>
 #include <QDialog>
 #include <QPushButton>
 #include <QSignalSpy>
@@ -220,6 +221,58 @@ bool isOwnedProcess(qint64 pid)
 class QuickCredentialSurfaceTests final : public QObject {
     Q_OBJECT
 private slots:
+    void closeCancellationCanDestroyTheOwner_data()
+    {
+        QTest::addColumn<bool>("destroyHost");
+        QTest::newRow("view-owner") << false;
+        QTest::newRow("whole-host") << true;
+    }
+
+    void closeCancellationCanDestroyTheOwner()
+    {
+        QFETCH(bool, destroyHost);
+        OwnedQuickCase fixture;
+        QVERIFY(fixture.open());
+        QVERIFY(fixture.request());
+        const QPointer<FerricQuickCredentialOwner> owner(fixture.owner);
+        const QPointer<QQuickWindow> host(fixture.window);
+        bool cancelled = false;
+        connect(fixture.boundary, &FerricCredentialBoundary::cancelled, fixture.window, [&] {
+            cancelled = true;
+            if (destroyHost) fixture.root.reset();
+            else delete fixture.view;
+        });
+        QCloseEvent close;
+        QVERIFY(QCoreApplication::sendEvent(fixture.window, &close));
+        QVERIFY(cancelled);
+        QVERIFY(owner.isNull());
+        QCOMPARE(host.isNull(), destroyHost);
+        if (host) QVERIFY(host->isVisible());
+    }
+
+    void closeAttemptRevokesEvenWhenTheWindowRemainsOpen()
+    {
+        OwnedQuickCase fixture;
+        QVERIFY(fixture.open());
+        QQmlComponent closing(&fixture.engine);
+        closing.setData("import QtQuick; Connections { property var host; target: host; function onClosing(event) { event.accepted = false } }", QUrl());
+        std::unique_ptr<QObject> guard(closing.create());
+        QVERIFY2(guard, qPrintable(closing.errorString()));
+        QVERIFY(guard->setProperty("host", QVariant::fromValue(static_cast<QObject *>(fixture.window))));
+        QVERIFY(fixture.request());
+        const auto captured = fixture.owner->captureOperation();
+        QSignalSpy cancelled(fixture.boundary, &FerricCredentialBoundary::cancelled);
+        QVERIFY(!fixture.window->close());
+        QVERIFY(fixture.window->isVisible());
+        QCOMPARE(cancelled.count(), 1);
+        QVERIFY(!fixture.owner->isCurrent(captured));
+        QVERIFY(!fixture.boundary->request());
+        QVERIFY(!fixture.boundary->complete("{\"error\":\"AbortError\"}"));
+        // Rejecting the close keeps a usable page, with a fresh ceremony.
+        QVERIFY(fixture.request());
+        QVERIFY(fixture.boundary->request());
+    }
+
     void nativeCaptureBindsTheActualApplicationTabAndProfileSession()
     {
         OwnedQuickCase fixture;

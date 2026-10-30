@@ -164,6 +164,16 @@ impl qobject::BrowserUi {
         commands: Vec<RepeatableCommand>,
     ) -> bool {
         let chained = commands.len() > 1;
+        if chained
+            && self.as_ref().in_page_window_mode()
+            && commands.iter().any(|recorded| {
+                super::browser_ui_page_windows::handles(&recorded.command)
+                    || super::browser_ui_page_windows::is_command_workflow(&recorded.command)
+            })
+        {
+            self.set_status_text(QString::from("Repeated page selection and macros containing page selection cannot run as a window chain yet. Run the selection separately."));
+            return false;
+        }
         for (index, recorded) in commands.into_iter().enumerate() {
             if index > 0 {
                 self.as_mut().queue_pending_engine_action();
