@@ -35,6 +35,140 @@ pub(super) fn reusable_undo_fallback(rust: &BrowserUiRust) -> Option<Target> {
 }
 
 impl qobject::BrowserUi {
+    pub(super) fn closed_page_descriptors(
+        &self,
+        all_contexts: bool,
+    ) -> Vec<super::ClosedTabDescriptor> {
+        if self.in_page_window_mode() {
+            crate::page_window_undo::list(self.rust(), all_contexts)
+        } else {
+            self.rust().closed_tabs.clone()
+        }
+    }
+
+    pub(super) fn capture_closed_page(
+        &self,
+        tab: super::TabId,
+    ) -> Option<super::ClosedTabDescriptor> {
+        let rust = self.rust();
+        let state = rust.state.as_ref()?;
+        let page = state.tabs().get(&tab)?;
+        if !rust.tab_ids.contains(&tab)
+            || !matches!(
+                page.existence,
+                ExistenceState::Live | ExistenceState::Closing
+            )
+        {
+            return None;
+        }
+        let profile = state.profiles().get(&page.profile)?;
+        let scope = crate::page_window_undo::Scope::capture_page(rust, tab);
+        let group_index = scope.as_ref().map_or_else(
+            || {
+                state.windows().get(&page.window).map(|window| {
+                    window
+                        .tabs
+                        .iter()
+                        .take_while(|id| **id != tab)
+                        .filter(|id| {
+                            state.tabs().get(*id).is_some_and(|other| {
+                                other.pinned == page.pinned
+                                    && other.existence == ExistenceState::Live
+                            })
+                        })
+                        .count()
+                })
+            },
+            |scope| {
+                let ranks = super::live_ipc_owners::page_order_ranks(&rust.tab_ids);
+                let rank = ranks.get(&tab).copied().unwrap_or(usize::MAX);
+                let staged = rust
+                    .restored_page_windows
+                    .iter()
+                    .filter(|(other, metadata)| {
+                        **other != tab
+                            && !rust.interaction.prompt_view_identities.contains_key(other)
+                            && metadata.group == scope.group
+                            && metadata.context == scope.context
+                            && state.tabs().get(other).is_some_and(|other| {
+                                other.pinned == page.pinned
+                                    && other.existence == ExistenceState::Live
+                            })
+                            && ranks.get(other).copied().unwrap_or(usize::MAX) < rank
+                    })
+                    .count();
+                Some(
+                    super::live_ipc_owners::page_group_position(scope, tab, page.pinned)
+                        .saturating_add(staged),
+                )
+            },
+        );
+        Some(super::ClosedTabDescriptor {
+            id: super::Uuid::new_v4(),
+            url: page
+                .url
+                .as_deref()
+                .map_or_else(|| "about:blank".into(), super::safe_ipc_url),
+            title: page.title.clone(),
+            profile: profile.label.clone(),
+            private: profile.privacy.is_transient(),
+            closed_at: super::unix_timestamp(),
+            group_index,
+            pinned: page.pinned,
+            muted: page.muted,
+            zoom_hundredths: ((page.zoom * 100.0).round() as u32).clamp(25, 500),
+            scope,
+        })
+    }
+
+    pub(super) fn remember_closed_page(
+        mut self: Pin<&mut Self>,
+        tab: super::TabId,
+        closed: super::ClosedTabDescriptor,
+    ) {
+        let limit = super::configured_undo_limit(&self.as_ref().rust().config);
+        if closed.scope.is_some() {
+            crate::page_window_undo::record(Some(tab), closed, limit);
+        } else {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.closed_tabs.insert(0, closed);
+            this.closed_tabs.truncate(limit);
+        }
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        this.library.switcher_cache = None;
+        this.checkpoint
+            .mark_dirty(super::elapsed_ms(this.binding_clock));
+    }
+
+    pub(super) fn record_page_window_close(mut self: Pin<&mut Self>) {
+        if crate::page_window_undo::Scope::capture(self.as_ref().rust()).is_none() {
+            return;
+        }
+        let closed = self
+            .as_ref()
+            .rust()
+            .tab_ids
+            .iter()
+            .filter_map(|tab| {
+                self.as_ref()
+                    .get_ref()
+                    .capture_closed_page(*tab)
+                    .map(|closed| (*tab, closed))
+            })
+            .collect::<Vec<_>>();
+        for (tab, closed) in closed {
+            self.as_mut().remember_closed_page(tab, closed);
+        }
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .page_window_closing = true;
+        self.as_mut().refresh_ipc_owner();
+    }
+
     pub(super) fn report_undo_fallback(mut self: Pin<&mut Self>, id: &QString, ready: bool) {
         let Some(target) = self.as_ref().rust().undo_fallback else {
             return;
@@ -55,8 +189,8 @@ impl qobject::BrowserUi {
     pub(super) fn reopen_closed_tab(mut self: Pin<&mut Self>, id: &str) -> bool {
         let Some(closed) = self
             .as_ref()
-            .rust()
-            .closed_tabs
+            .get_ref()
+            .closed_page_descriptors(false)
             .iter()
             .find(|closed| closed.id.to_string() == id)
             .cloned()
@@ -66,12 +200,25 @@ impl qobject::BrowserUi {
             ));
             return false;
         };
+        if !super::url_safety::is_safe_tab_descriptor(&closed.url) {
+            return false;
+        }
         let Some(window) = self.as_ref().rust().window else {
             return false;
         };
         let Ok(url) = ValidatedUrl::parse(closed.url.clone()) else {
             self.set_status_text(QString::from("Closed tab URL is no longer safe to reopen"));
             return false;
+        };
+        // Core/Qt property publication can re-enter command handling. Reserve
+        // this descriptor before the first effect; a failed reopen releases it.
+        let _claim = if let Some(scope) = &closed.scope {
+            let Some(claim) = crate::page_window_undo::claim(closed.id, scope) else {
+                return false;
+            };
+            Some(claim)
+        } else {
+            None
         };
         let reused = reusable_undo_fallback(self.as_ref().rust()).is_some();
         if reused {
@@ -123,7 +270,9 @@ impl qobject::BrowserUi {
                 return false;
             }
         }
-        if let Some(group_index) = closed.group_index {
+        if closed.scope.is_none()
+            && let Some(group_index) = closed.group_index
+        {
             let group_start = if closed.pinned {
                 0
             } else {
@@ -155,6 +304,35 @@ impl qobject::BrowserUi {
         else {
             return false;
         };
+        if let Some(scope) = &closed.scope {
+            if reused {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .page_window_group
+                    .clone_from(&scope.group);
+            } else {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .restored_page_windows
+                    .insert(
+                        tab,
+                        super::browser_ui_page_sessions::RestoredPageWindow {
+                            group: scope.group.clone(),
+                            context: scope.context.clone(),
+                        },
+                    );
+            }
+            super::live_ipc_owners::restore_closed_page_order(
+                scope,
+                tab,
+                closed.pinned,
+                closed.group_index.unwrap_or(usize::MAX),
+            );
+        }
         // A reused native view already exists. Apply its restored zoom before
         // navigation, using the new document target captured by StartNavigation.
         if reused
@@ -178,6 +356,9 @@ impl qobject::BrowserUi {
                 .get_mut()
                 .closed_tabs
                 .retain(|candidate| candidate.id != closed.id);
+        }
+        if let Some(scope) = &closed.scope {
+            crate::page_window_undo::remove(closed.id, scope);
         }
         self.set_status_text(QString::from("Closed tab reopened"));
         true

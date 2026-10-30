@@ -47,6 +47,9 @@ impl PageSessionOwner {
         let mut groups: Vec<(String, SnapshotWindowInput)> = Vec::new();
         let mut page_ids = Vec::new();
         for id in &window.tabs {
+            if rust.page_window_closing {
+                break;
+            }
             let page = state.tabs().get(id)?;
             if page.existence != ExistenceState::Live || page.profile != window.profile {
                 continue;
@@ -73,10 +76,11 @@ impl PageSessionOwner {
                 .iter()
                 .position(|(key, data)| *key == group && data.context == context)
                 .unwrap_or_else(|| {
+                    let durable_group = Uuid::parse_str(&group).unwrap_or_else(|_| Uuid::new_v4());
                     groups.push((
                         group,
                         SnapshotWindowInput {
-                            group: Some(Uuid::new_v4()),
+                            group: Some(durable_group),
                             context,
                             selected_tab: None,
                             workspace: None,
@@ -101,7 +105,7 @@ impl PageSessionOwner {
                 scroll_position: rust.navigation.scroll_positions.get(id).copied(),
             });
         }
-        (!groups.is_empty()).then_some(Self {
+        (!groups.is_empty() || rust.page_window_closing).then_some(Self {
             profile: state.profile_instance_id()?,
             groups,
             checkpoint: LivePageCheckpoint {

@@ -37,6 +37,7 @@ qt_modules = [
   "Quick",
   "QuickControls2",
   "QuickWidgets",
+  "WaylandClient",
   "WebChannel",
   "WebEngineCore",
   "WebEngineQuick",

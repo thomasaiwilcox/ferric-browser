@@ -378,34 +378,64 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         closed_tabs: Vec<ClosedTabSnapshot>,
     ) {
-        let restored = closed_tabs
+        let source_scope = crate::page_window_undo::Scope::capture(self.as_ref().rust());
+        let limit = configured_undo_limit(&self.as_ref().rust().config);
+        let mut restored = Vec::new();
+        for closed in closed_tabs
             .into_iter()
             .filter(|closed| super::url_safety::is_safe_tab_descriptor(&closed.url))
-            .map(|closed| ClosedTabDescriptor {
+            .take(limit)
+        {
+            let scope = if let Some(mut scope) = source_scope.clone() {
+                scope.context = closed.context;
+                if let Some(group) = closed.group {
+                    scope.group = self
+                        .as_mut()
+                        .rust_mut()
+                        .as_mut()
+                        .get_mut()
+                        .restored_page_group_ids
+                        .entry(group)
+                        .or_insert_with(|| Uuid::new_v4().to_string())
+                        .clone();
+                }
+                Some(scope)
+            } else {
+                None
+            };
+            restored.push(ClosedTabDescriptor {
                 id: closed.id,
                 url: closed.url,
                 title: closed.title,
                 profile: self.as_ref().rust().profile_name.clone(),
-                private: false,
+                private: scope
+                    .as_ref()
+                    .is_some_and(|scope| scope.privacy.is_transient()),
                 closed_at: closed.closed_at,
                 group_index: closed.group_index,
                 pinned: closed.pinned,
                 muted: closed.muted,
                 zoom_hundredths: closed.zoom_hundredths,
-            })
-            .take(configured_undo_limit(&self.as_ref().rust().config))
-            .collect::<Vec<_>>();
-        let mut rust = self.as_mut().rust_mut();
-        let this = rust.as_mut().get_mut();
-        let mut seen = this
-            .closed_tabs
-            .iter()
-            .map(|tab| tab.id)
-            .collect::<super::BTreeSet<_>>();
-        this.closed_tabs
-            .extend(restored.into_iter().filter(|tab| seen.insert(tab.id)));
-        this.closed_tabs
-            .truncate(configured_undo_limit(&this.config));
+                scope,
+            });
+        }
+        if source_scope.is_some() {
+            // Keep the saved newest-first order while prepending into the live store.
+            for closed in restored.into_iter().rev() {
+                crate::page_window_undo::record(None, closed, limit);
+            }
+        } else {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            let mut seen = this
+                .closed_tabs
+                .iter()
+                .map(|tab| tab.id)
+                .collect::<super::BTreeSet<_>>();
+            this.closed_tabs
+                .extend(restored.into_iter().filter(|tab| seen.insert(tab.id)));
+            this.closed_tabs.truncate(limit);
+        }
     }
 
     #[allow(clippy::too_many_lines)]
@@ -568,7 +598,9 @@ impl qobject::BrowserUi {
                 let this = rust.as_mut().get_mut();
                 if !append {
                     this.restored_page_windows.clear();
+                    this.restored_page_group_ids.clear();
                 }
+                this.restored_page_group_ids.extend(groups);
                 this.restored_page_windows.extend(metadata);
                 if !append {
                     this.page_window_group =

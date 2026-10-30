@@ -158,6 +158,15 @@ pub(super) struct PageScope {
     context: Option<String>,
 }
 
+impl PageScope {
+    pub(super) fn matches_undo_profile(&self, scope: &crate::page_window_undo::Scope) -> bool {
+        self.profile == scope.profile && self.privacy == scope.privacy
+    }
+    pub(super) fn matches_undo(&self, scope: &crate::page_window_undo::Scope) -> bool {
+        self.matches_undo_profile(scope) && self.context == scope.context
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct PresentedPage {
     pub(super) id: TabId,
@@ -188,6 +197,7 @@ impl PageWindowSnapshot {
             .ok_or("The browser state is unavailable")?;
         if !rust.page_window_ordinary
             || !rust.view_alive
+            || rust.page_window_closing
             || rust.page_window_preparing
             || rust.profile_bootstrap_pending
             || rust.ipc_shutdown_gate

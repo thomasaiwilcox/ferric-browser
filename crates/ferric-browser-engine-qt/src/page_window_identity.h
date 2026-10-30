@@ -14,12 +14,14 @@ class FerricPageWindowIdentity : public QObject {
     Q_PROPERTY(QWindow *targetWindow READ window WRITE setWindow NOTIFY windowChanged)
     Q_PROPERTY(QString tag READ tag CONSTANT)
     Q_PROPERTY(bool prepared READ prepared NOTIFY preparedChanged)
+    Q_PROPERTY(bool tagRequested READ tagRequested NOTIFY preparedChanged)
 public:
     explicit FerricPageWindowIdentity(QObject *parent = nullptr);
     QWindow *window() const;
     void setWindow(QWindow *window);
     QString tag() const;
     bool prepared() const;
+    bool tagRequested() const;
 signals:
     void windowChanged();
     void preparedChanged();
@@ -27,4 +29,5 @@ private:
     QPointer<QWindow> window_;
     QString tag_;
     bool prepared_ = false;
+    bool tagRequested_ = false;
 };

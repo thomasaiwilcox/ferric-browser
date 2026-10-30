@@ -1825,6 +1825,9 @@ pub(crate) mod qobject {
         fn view_closed(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
+        fn record_page_window_close(self: Pin<&mut BrowserUi>);
+
+        #[qinvokable]
         fn release_transient_resources(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]

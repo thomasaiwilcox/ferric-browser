@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-const SNAPSHOT_SCHEMA_VERSION: u32 = 5;
+const SNAPSHOT_SCHEMA_VERSION: u32 = 6;
 const MAX_WINDOWS: usize = 256;
 const MAX_TABS: usize = 5_000;
 const MAX_CLOSED_TABS: usize = 100;
@@ -65,6 +65,10 @@ pub struct ClosedTabSnapshot {
     pub url: String,
     pub title: String,
     pub closed_at: i64,
+    #[serde(default)]
+    pub context: Option<String>,
+    #[serde(default)]
+    pub group: Option<Uuid>,
     /// Position among tabs with the same pinned state; absent in version 2.
     #[serde(default)]
     pub group_index: Option<usize>,
@@ -599,7 +603,7 @@ fn load_session_generation(path: &Path) -> Result<SessionSnapshot, SessionError>
         })?;
     // Older formats have no recovery lineage; version 2 also lacks the
     // optional closed-tab presentation fields. Preserve the source generation.
-    if matches!(snapshot.schema_version, 2..=4) {
+    if matches!(snapshot.schema_version, 2..=5) {
         snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION;
     }
     validate_snapshot(&snapshot)?;
@@ -771,7 +775,11 @@ fn validate_snapshot(snapshot: &SessionSnapshot) -> Result<(), SessionError> {
         }
     }
     for closed in &snapshot.closed_tabs {
-        if closed.group_index.is_some_and(|index| index > MAX_TABS)
+        if closed.group.is_some_and(|group| group.is_nil())
+            || closed.context.as_ref().is_some_and(|name| {
+                name.is_empty() || name.len() > 128 || name.chars().any(char::is_control)
+            })
+            || closed.group_index.is_some_and(|index| index > MAX_TABS)
             || !(25..=500).contains(&closed.zoom_hundredths)
         {
             return Err(SessionError::Invalid(
@@ -1029,6 +1037,8 @@ mod tests {
         )
         .expect("snapshot");
         snapshot.closed_tabs.push(ClosedTabSnapshot {
+            context: Some("work".into()),
+            group: Some(Uuid::new_v4()),
             id: Uuid::new_v4(),
             url: "https://closed.test/".into(),
             title: "Closed tab".into(),
@@ -1179,6 +1189,8 @@ mod tests {
         assert_eq!(
             loaded.closed_tabs,
             vec![ClosedTabSnapshot {
+                context: None,
+                group: None,
                 id: closed_id,
                 url: "https://closed.test/".into(),
                 title: "Closed".into(),
@@ -1197,6 +1209,43 @@ mod tests {
         assert_eq!(load_session(&path).unwrap(), loaded);
         fs::remove_file(&path).unwrap();
         fs::remove_file(previous_generation_path(&path)).unwrap();
+    }
+
+    #[test]
+    fn version_five_closed_tabs_upgrade_without_inventing_context_or_group() {
+        let path = std::env::temp_dir().join(format!("ferric-session-v5-{}.json", Uuid::new_v4()));
+        let snapshot =
+            SessionSnapshot::new(Uuid::new_v4(), "legacy", Uuid::new_v4(), 1, "now", vec![])
+                .unwrap();
+        let mut value = serde_json::to_value(snapshot).unwrap();
+        value["schema_version"] = 5.into();
+        value["closed_tabs"] = serde_json::json!([{
+            "id": Uuid::new_v4(), "url":"https://closed.test/", "title":"Closed", "closed_at":42,
+            "group_index":0, "pinned":false, "muted":true, "zoom_hundredths":125
+        }]);
+        let original = serde_json::to_vec(&value).unwrap();
+        fs::write(&path, &original).unwrap();
+        let loaded = load_session(&path).unwrap();
+        assert_eq!(loaded.schema_version, SNAPSHOT_SCHEMA_VERSION);
+        assert_eq!(loaded.closed_tabs[0].context, None);
+        assert_eq!(loaded.closed_tabs[0].group, None);
+        assert!(loaded.closed_tabs[0].muted);
+        assert_eq!(fs::read(&path).unwrap(), original);
+        for invalid in [
+            serde_json::json!(""),
+            serde_json::json!("x".repeat(129)),
+            serde_json::json!("bad\ncontext"),
+        ] {
+            let mut candidate = loaded.clone();
+            candidate.closed_tabs[0].context = serde_json::from_value(invalid).unwrap();
+            assert!(save_session_atomic(&path, &candidate).is_err());
+            assert_eq!(fs::read(&path).unwrap(), original);
+        }
+        let mut invalid = loaded;
+        invalid.closed_tabs[0].group = Some(Uuid::nil());
+        assert!(save_session_atomic(&path, &invalid).is_err());
+        assert_eq!(fs::read(&path).unwrap(), original);
+        fs::remove_file(path).unwrap();
     }
 
     #[test]
@@ -1245,6 +1294,8 @@ mod tests {
         )
         .unwrap();
         snapshot.closed_tabs.push(ClosedTabSnapshot {
+            context: None,
+            group: None,
             id: Uuid::new_v4(),
             url: "https://closed.test/".into(),
             title: "Closed".into(),

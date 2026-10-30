@@ -150,6 +150,8 @@ fn worker_lists_named_sessions_off_thread() {
     )
     .expect("snapshot");
     snapshot.closed_tabs.push(crate::ClosedTabSnapshot {
+        context: None,
+        group: None,
         id: uuid::Uuid::new_v4(),
         url: "https://closed.example.test/".into(),
         title: "Closed worker tab".into(),

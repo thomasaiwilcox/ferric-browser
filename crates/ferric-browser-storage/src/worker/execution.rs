@@ -556,6 +556,8 @@ mod recovery_tests {
         old.closed_tabs = [2_u128, 1]
             .into_iter()
             .map(|id| crate::ClosedTabSnapshot {
+                context: None,
+                group: None,
                 id: Uuid::from_u128(id),
                 url: format!("https://example.test/closed-{id}"),
                 title: String::new(),

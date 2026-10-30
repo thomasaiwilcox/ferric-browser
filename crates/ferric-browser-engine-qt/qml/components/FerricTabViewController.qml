@@ -134,7 +134,15 @@ Item {
                 }
             } else if (modelIndex < tabs.count
                        && String(tabs.get(modelIndex).tabId || "").length === 0) {
+                // A startup row has no live page identity yet. Initialize its
+                // settings from the adopted Core page before creating a view;
+                // prepared restores may carry settings unlike the placeholder.
+                var adopted = {}
+                try { adopted = JSON.parse(browserUi.tab_transfer_payload(wantedId)) } catch (error) {}
                 tabs.setProperty(modelIndex, "tabId", wantedId)
+                tabs.setProperty(modelIndex, "pinned", adopted.pinned === true)
+                tabs.setProperty(modelIndex, "muted", adopted.muted === true)
+                tabs.setProperty(modelIndex, "zoom", Number(adopted.zoom_hundredths || 100) / 100)
             } else {
                 // Native descriptors must be present before constructing the
                 // view: committing a placeholder can overwrite a queued undo

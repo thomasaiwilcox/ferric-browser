@@ -18,9 +18,14 @@ QQuickItem *findVisible(QQuickItem *parent, const QString &name) {
     return nullptr;
 }
 bool clickCloseDecision(QQuickWindow *host, bool proceed) {
+    QPointer<QQuickWindow> ownedHost(host);
+    if (!ownedHost || !ownedHost->isVisible()) return true;
     QSignalSpy frame(host, &QQuickWindow::frameSwapped);
     host->requestUpdate();
-    if (!QTest::qWaitFor([&] { return !frame.isEmpty(); })) return false;
+    if (!QTest::qWaitFor([&] { return !ownedHost || !ownedHost->isVisible() || !frame.isEmpty(); })) return false;
+    // A completed close can hide the host during the frame wait. It needs no
+    // second decision; callers still verify final close/cancel outcomes.
+    if (!ownedHost || !ownedHost->isVisible()) return true;
     auto *button = findVisible(host->contentItem(), proceed ? "shutdownProceedButton" : "shutdownKeepButton");
     if (!button) return false;
     QTest::mouseClick(host, Qt::LeftButton, Qt::NoModifier, button->mapToScene(button->boundingRect().center()).toPoint());
@@ -31,7 +36,7 @@ bool clickCloseDecision(QQuickWindow *host, bool proceed) {
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-order", "window-order-fallback", "window-order-fallback-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -47,6 +52,7 @@ void ApplicationTests::pageWindowPresentation()
     page("window.pageWindowDraft = 'unfinished work'");
     QVERIFY(!evaluate("testWindow.tabStripVisible").toBool());
     QVERIFY(!evaluate("testWindow.pageWindowTag").toString().isEmpty());
+    QVERIFY(evaluate("testWindow.pageWindowTagRequested").toBool());
 
     if (scenario == "expansion-cancel") {
         evaluate("for(var i=0;i<12;++i)testWindow.browserUi.new_tab(); testWindow.syncTabModel()");
@@ -63,7 +69,7 @@ void ApplicationTests::pageWindowPresentation()
     }
 
     if (scenario == "factory-failure") evaluate("testWindow.browserWindowComponentObject = null");
-    auto destination = initial + (scenario == "session-aggregate" || scenario.startsWith("window-order") ? "?page-window=yes" : "?page-window=yes&token=preserve-exact-intent#section");
+    auto destination = initial + (scenario == "session-aggregate" || (scenario.startsWith("window-order") || scenario.startsWith("window-undo")) ? "?page-window=yes" : "?page-window=yes&token=preserve-exact-intent#section");
     const auto target = scenario == "background" ? QStringLiteral("tab-bg")
         : scenario == "standalone" ? QStringLiteral("window")
         : scenario == "private" ? QStringLiteral("private-window") : QStringLiteral("tab");
@@ -155,6 +161,130 @@ void ApplicationTests::pageWindowPresentation()
     }
     pageReceiver = "testWindow.tabViewAt(0)";
     QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+    if (scenario.startsWith("window-undo")) {
+        const bool expiry = scenario == "window-undo-private-expiry" || scenario == "window-undo-private-root-last";
+        const bool primary = scenario == "window-undo-primary" || scenario == "window-undo-private-expiry";
+        const auto closingHost = primary ? QStringLiteral("testWindow") : childHost;
+        const auto closingUi = primary ? QStringLiteral("testWindow.browserUi") : entry + ".ui";
+        engine->rootContext()->setContextProperty("undoSurvivorHost", evaluate(primary ? childHost : QStringLiteral("testWindow")).value<QObject *>());
+        engine->rootContext()->setContextProperty("undoSurvivorUi", evaluate(primary ? entry + ".ui" : QStringLiteral("testWindow.browserUi")).value<QObject *>());
+        const auto survivorHost = QStringLiteral("undoSurvivorHost");
+        const auto survivorUi = QStringLiteral("undoSurvivorUi");
+        auto *survivorWindow = primary ? childWindow : window;
+        QPointer<QObject> survivorView(evaluate(survivorHost + (primary ? ".activeView" : ".activeWebView()")).value<QObject *>());
+        QPointer<QObject> retiredView(evaluate(closingHost + (primary ? ".activeWebView()" : ".activeView")).value<QObject *>());
+        pageReceiver = survivorHost + (primary ? ".activeView" : ".activeWebView()");
+        page("window.undoSurvivorDraft=71");
+        QVERIFY(evaluate(closingUi + ".set_tab_pinned(0,true)>=0").toBool());
+        QVERIFY(evaluate(closingUi + ".set_tab_muted(0,true)").toBool());
+        QVERIFY(evaluate(closingUi + ".execute_command('zoom 1.4')").toBool());
+        evaluate(closingHost + (primary ? ".completeBrowserKeyAction(testWindow.browserUi,testWindow)" : ".applySwitcherEngineAction()"));
+        QTRY_COMPARE(evaluate(closingHost + (primary ? ".activeWebView()" : ".activeView") + ".zoomFactor").toDouble(), 1.4);
+        if (scenario == "window-undo-context") QVERIFY(evaluate(closingUi + ".assign_window_context('changed')").toBool());
+        if (scenario == "window-undo-context") {
+            // Capture and queue a checkpoint with both live pages. Closing in
+            // another context must replace it automatically after acceptance.
+            QVERIFY(evaluate(survivorUi + ".flush_durable_state()").toBool());
+            QDirIterator checkpoints(evaluate("testWindow.storageBasePath").toString(), {"current*.json"}, QDir::Files, QDirIterator::Subdirectories);
+            QVERIFY(checkpoints.hasNext());
+            savedSelection = checkpoints.next();
+        }
+        if (expiry) {
+            QVERIFY(command("open --target private-window " + destination + "-foreign"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 3);
+            QTRY_VERIFY(evaluate("testWindow.liveWindowEntries().every(function(e){return e.host===testWindow ? !!e.host.activeWebView() : e.host.profileBootstrapComplete && !!e.host.activeView})").toBool());
+            QVERIFY(evaluate("testWindow.liveWindowEntries().some(function(e){return e.ui.page_host_profile_id()!==undoSurvivorUi.page_host_profile_id()})").toBool());
+        }
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(" + closingHost + "," + closingUi + ")").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), primary ? window : childWindow);
+        evaluate(closingHost + ".close()");
+        QTRY_VERIFY(evaluate(closingHost + (primary ? ".shutdownConfirmationVisible" : ".windowCloseConfirmationVisible")).toBool());
+        QVERIFY(clickCloseDecision(primary ? window : childWindow, scenario != "window-undo-cancel"));
+        if (scenario == "window-undo-cancel") {
+            QTRY_VERIFY(!evaluate(childHost + ".windowCloseConfirmationVisible").toBool());
+            QVERIFY(retiredView && childWindow->isVisible());
+            QVERIFY(!evaluate(survivorUi + ".execute_command('tab-undo')").toBool());
+            QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 2);
+            return;
+        }
+        QPointer<QQuickWindow> closingGuard(primary ? window : childWindow);
+        QTRY_VERIFY(!closingGuard || !closingGuard->isVisible() || evaluate(closingHost + (primary ? ".shutdownPagePromptVisible" : ".windowShutdownPagePromptVisible")).toBool());
+        if (closingGuard && closingGuard->isVisible() && evaluate(closingHost + (primary ? ".shutdownPagePromptVisible" : ".windowShutdownPagePromptVisible")).toBool())
+            QVERIFY(clickCloseDecision(closingGuard, true));
+        QTRY_VERIFY(retiredView.isNull());
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), expiry ? 2 : 1);
+        if (expiry) {
+            QVERIFY(evaluate("testWindow.activateBrowserWindow(" + survivorHost + "," + survivorUi + ")").toBool());
+            QTRY_COMPARE(QGuiApplication::focusWindow(), survivorWindow);
+            evaluate(survivorHost + ".close()");
+            QTRY_VERIFY(evaluate(survivorHost + (primary ? ".windowCloseConfirmationVisible" : ".shutdownConfirmationVisible")).toBool());
+            QVERIFY(clickCloseDecision(survivorWindow, true));
+            QPointer<QQuickWindow> survivorGuard(survivorWindow);
+            QTRY_VERIFY(!survivorGuard || !survivorGuard->isVisible() || evaluate(survivorHost + (primary ? ".windowShutdownPagePromptVisible" : ".shutdownPagePromptVisible")).toBool());
+            if (survivorGuard && survivorGuard->isVisible() && evaluate(survivorHost + (primary ? ".windowShutdownPagePromptVisible" : ".shutdownPagePromptVisible")).toBool())
+                QVERIFY(clickCloseDecision(survivorGuard, true));
+            QTRY_VERIFY(survivorView.isNull());
+            QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 1);
+            QVERIFY(!command("tab-undo"));
+            QVERIFY(!evaluate("testWindow.liveWindowEntries()[0].ui.execute_command('tab-undo')").toBool());
+            return;
+        }
+        if (scenario == "window-undo-context") {
+            const auto checkpoint = [&]() {
+                QFile file(savedSelection.toString());
+                if (!file.open(QIODevice::ReadOnly)) return QJsonObject();
+                return QJsonDocument::fromJson(file.readAll()).object();
+            };
+            QTRY_VERIFY(checkpoint()["windows"].toArray().size() == 1 && checkpoint()["closed_tabs"].toArray().size() == 1);
+            QCOMPARE(checkpoint()["closed_tabs"].toArray()[0].toObject()["context"].toString(), QStringLiteral("changed"));
+            QVERIFY(!evaluate(survivorUi + ".execute_command('tab-undo')").toBool());
+            QVERIFY(evaluate(survivorUi + ".assign_window_context('changed')").toBool());
+        }
+        if (scenario == "window-undo-peer" || scenario == "window-undo-context") {
+            QVERIFY(evaluate(survivorUi + ".save_named_session('closed-page-window')").toBool());
+            QTRY_COMPARE(evaluate(survivorUi + ".session_save_state").toString(), QStringLiteral("succeeded"));
+            QDirIterator files(evaluate("testWindow.storageBasePath").toString(), {"closed-page-window.json"}, QDir::Files, QDirIterator::Subdirectories);
+            QVERIFY(files.hasNext()); QFile saved(files.next()); QVERIFY(saved.open(QIODevice::ReadOnly));
+            const auto snapshot = QJsonDocument::fromJson(saved.readAll()).object();
+            QCOMPARE(snapshot["schema_version"].toInt(), 6);
+            QCOMPARE(snapshot["windows"].toArray().size(), 1);
+            const auto closed = snapshot["closed_tabs"].toArray();
+            QCOMPARE(closed.size(), 1);
+            QVERIFY(!closed[0].toObject()["group"].toString().isEmpty());
+            QCOMPARE(closed[0].toObject()["context"].toString(), scenario == "window-undo-context" ? QStringLiteral("changed") : QString());
+        }
+        QPointer<QObject> reentrantUndo;
+        if (scenario == "window-undo-peer") {
+            savedSelection = QVariant();
+            reentrantUndo = evaluate("Qt.createQmlObject('import QtQuick; Connections { property bool armed:true; target:undoSurvivorUi; function onTab_countChanged(){if(armed && target.tab_count>1){armed=false; testProbe.savedSelection=target.execute_command(\"tab-undo\");}} }',testWindow)").value<QObject *>();
+            QVERIFY(reentrantUndo);
+        }
+        QVERIFY(evaluate(survivorUi + ".execute_command('tab-undo')").toBool());
+        evaluate(primary ? survivorHost + ".applySwitcherEngineAction()" : "testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        if (reentrantUndo) {
+            QTRY_VERIFY(!reentrantUndo->property("armed").toBool());
+            QVERIFY(!savedSelection.toBool());
+            delete reentrantUndo.data();
+        }
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 2);
+        const auto reopened = QStringLiteral("testWindow.liveWindowEntries().filter(function(e){return e.host!==") + survivorHost + "})[0]";
+        QTRY_VERIFY(evaluate("!!" + reopened + ".host.activeView").toBool());
+        pageReceiver = reopened + ".host.activeView";
+        QTRY_COMPARE(page("location.href").toString(), primary ? initial : destination);
+        QVERIFY(evaluate(reopened + ".ui.tab_pinned_at(0)").toBool());
+        QVERIFY(evaluate(reopened + ".ui.tab_muted_at(0)").toBool());
+        QCOMPARE(evaluate("JSON.parse(" + reopened + ".ui.tab_transfer_payload(" + reopened + ".ui.tab_id_for_index(0))).zoom_hundredths").toInt(), 140);
+        QTRY_VERIFY2(qAbs(evaluate(reopened + ".host.activeView.zoomFactor").toDouble() - 1.4) < 0.00001,
+            qPrintable(evaluate("JSON.stringify({model:" + reopened + ".host.activeView.viewModel.zoom, settings:" + reopened + ".host.activeView.effectiveSiteSettings})").toString()));
+        QVERIFY(page("typeof window.pageWindowDraft === 'undefined'").toBool());
+        QVERIFY(!evaluate(survivorUi + ".execute_command('tab-undo')").toBool());
+        QVERIFY(survivorView);
+        pageReceiver = survivorHost + (primary ? ".activeView" : ".activeWebView()");
+        QCOMPARE(page("window.undoSurvivorDraft").toInt(), 71);
+        QVERIFY(survivorWindow->isVisible());
+        return;
+    }
     if (scenario == "session-aggregate") {
         QVERIFY(evaluate(entry + ".ui.assign_window_context('changed')").toBool());
         QVERIFY(evaluate(entry + ".ui.set_tab_muted(0,true)").toBool());
@@ -164,7 +294,7 @@ void ApplicationTests::pageWindowPresentation()
         QDirIterator files(evaluate("testWindow.storageBasePath").toString(), {"all-page-windows.json"}, QDir::Files, QDirIterator::Subdirectories);
         QVERIFY(files.hasNext()); QFile saved(files.next()); QVERIFY(saved.open(QIODevice::ReadOnly));
         const auto snapshot = QJsonDocument::fromJson(saved.readAll()).object();
-        QCOMPARE(snapshot["schema_version"].toInt(), 5);
+        QCOMPARE(snapshot["schema_version"].toInt(), 6);
         const auto groups = snapshot["windows"].toArray();
         QCOMPARE(groups.size(), 2);
         QSet<QString> addresses;

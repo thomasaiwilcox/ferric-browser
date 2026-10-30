@@ -61,6 +61,90 @@ pub(super) fn forget_page_order(pages: &[ferric_browser_core::TabId]) {
     }
 }
 
+pub(super) fn page_group_position(
+    scope: &crate::page_window_undo::Scope,
+    tab: ferric_browser_core::TabId,
+    pinned: bool,
+) -> usize {
+    let Ok(directory) = directory().lock() else {
+        return 0;
+    };
+    let rank = directory.page_order.rank(tab);
+    directory
+        .owners
+        .values()
+        .filter_map(|owner| owner.page_window.as_ref())
+        .filter(|snapshot| snapshot.scope.matches_undo(scope) && snapshot.group == scope.group)
+        .flat_map(|snapshot| &snapshot.pages)
+        .filter(|page| {
+            page.id != tab && page.pinned == pinned && directory.page_order.rank(page.id) < rank
+        })
+        .count()
+}
+
+pub(super) fn page_undo_changed(scope: &crate::page_window_undo::Scope) {
+    let Ok(directory) = directory().lock() else {
+        return;
+    };
+    let threads = directory
+        .owners
+        .values()
+        .filter(|owner| {
+            owner
+                .page_window
+                .as_ref()
+                .is_some_and(|window| window.scope.matches_undo_profile(scope))
+        })
+        .map(|owner| owner.thread.clone())
+        .collect::<Vec<_>>();
+    drop(directory);
+    for thread in threads {
+        let scope = scope.clone();
+        let _ = thread.queue(move |mut ui| {
+            if crate::page_window_undo::Scope::capture(ui.as_ref().rust())
+                .is_none_or(|current| !current.same_profile(&scope))
+            {
+                return;
+            }
+            let mut rust = ui.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.library.switcher_cache = None;
+            this.checkpoint
+                .mark_dirty(super::elapsed_ms(this.binding_clock));
+            drop(rust);
+            ui.as_mut().runtime_work_available();
+        });
+    }
+}
+
+pub(super) fn restore_closed_page_order(
+    scope: &crate::page_window_undo::Scope,
+    tab: ferric_browser_core::TabId,
+    pinned: bool,
+    index: usize,
+) {
+    let Ok(mut directory) = directory().lock() else {
+        return;
+    };
+    let mut pages = directory
+        .owners
+        .values()
+        .filter_map(|owner| owner.page_window.as_ref())
+        .filter(|snapshot| snapshot.scope.matches_undo(scope) && snapshot.group == scope.group)
+        .flat_map(|snapshot| {
+            snapshot
+                .pages
+                .iter()
+                .filter(|page| page.id != tab && page.pinned == pinned)
+                .map(|page| page.id)
+        })
+        .collect::<Vec<_>>();
+    pages.sort_by_key(|page| directory.page_order.rank(*page));
+    pages.insert(index.min(pages.len()), tab);
+    directory.page_order.restore(&pages);
+    directory.generation = directory.generation.saturating_add(1);
+}
+
 pub(super) fn reserve_page_order(pages: &[ferric_browser_core::TabId]) {
     if let Ok(mut directory) = directory().lock() {
         directory.page_order.observe(pages.iter().copied());
@@ -204,6 +288,7 @@ pub(super) struct OwnerLease(String);
 
 impl Drop for OwnerLease {
     fn drop(&mut self) {
+        crate::page_window_undo::release(&self.0);
         if let Ok(mut directory) = directory().lock() {
             directory.owners.remove(&self.0);
             directory.generation = directory.generation.saturating_add(1);
@@ -649,6 +734,7 @@ impl qobject::BrowserUi {
         let Some(lease) = rust.ipc_owner.as_ref() else {
             return;
         };
+        crate::page_window_undo::register(rust);
         let Ok(mut directory) = directory().lock() else {
             return;
         };

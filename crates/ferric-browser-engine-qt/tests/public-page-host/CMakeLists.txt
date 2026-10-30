@@ -7,7 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 6.11.2 EXACT REQUIRED COMPONENTS
+find_package(Qt6 6.11.2 EXACT REQUIRED COMPONENTS WaylandClient
     Core Gui Widgets Quick QuickControls2 QuickWidgets Network DBus WebChannel WebEngineCore WebEngineQuick WebEngineWidgets Test)
 find_package(SQLite3 REQUIRED)
 find_program(FERRIC_TEST_OPENSSL openssl REQUIRED)
@@ -23,7 +23,7 @@ if(BUILD_TESTING)
     target_include_directories(quick_credential_surface_tests PRIVATE ../../src)
     target_link_libraries(quick_credential_surface_tests PRIVATE
         Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::Network
-        Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::WebChannel Qt6::Test)
+        Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::WaylandClient Qt6::WebChannel Qt6::Test)
     target_compile_definitions(quick_credential_surface_tests PRIVATE
         FERRIC_TEST_OPENSSL="${FERRIC_TEST_OPENSSL}"
         FERRIC_CREDENTIAL_SCRIPTS="${CMAKE_CURRENT_LIST_DIR}/../../qml/scripts/credential")
@@ -68,7 +68,7 @@ if(BUILD_TESTING)
         "${FERRIC_ENGINE_LIBRARY}"
         SQLite::SQLite3
         Qt6::Quick Qt6::Widgets Qt6::QuickControls2 Qt6::QuickWidgets Qt6::DBus
-        Qt6::WebEngineWidgets Qt6::WebChannel KF6::WindowSystem
+        Qt6::WebEngineWidgets Qt6::WaylandClient Qt6::WebChannel KF6::WindowSystem
         Qt6::Core Qt6::Gui Qt6::Network Qt6::WebEngineCore Qt6::WebEngineQuick
         Qt6::Test)
     add_test(NAME T014e1_public_page_owner COMMAND public_page_owner_tests)
@@ -82,7 +82,7 @@ if(BUILD_TESTING)
         KF6::WindowSystem
         Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickControls2
         Qt6::QuickWidgets Qt6::Network Qt6::DBus
-        Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::WebEngineWidgets Qt6::WebChannel Qt6::Test)
+        Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::WebEngineWidgets Qt6::WaylandClient Qt6::WebChannel Qt6::Test)
     add_test(NAME T014e2q COMMAND static_qml_registration_tests)
     set_tests_properties(T014e2q PROPERTIES
         TIMEOUT 90 LABELS "component;qml")

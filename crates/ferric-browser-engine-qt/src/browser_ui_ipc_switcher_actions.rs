@@ -74,8 +74,8 @@ impl qobject::BrowserUi {
                 .map(|profile| profile.privacy.is_transient())
                 .ok_or_else(|| "switcher target is stale or unsupported".to_owned())?,
             "closed" => binding
-                .rust()
-                .closed_tabs
+                .get_ref()
+                .closed_page_descriptors(false)
                 .iter()
                 .find(|closed| closed.id.to_string() == id)
                 .map(|closed| closed.private)

@@ -1,3 +1,5 @@
+> **Historical execution pack.** Continue [the active window-mode and phone-passkey plan](../WINDOW_PASSKEYS_PLAN.md). Hot tabs are deferred; the old worker/amendment/attempt framework below does not control current work.
+
 # Ferric Everyday Features — Luna execution pack
 
 ## Outcome

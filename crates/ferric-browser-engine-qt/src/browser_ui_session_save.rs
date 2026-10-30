@@ -74,8 +74,8 @@ impl qobject::BrowserUi {
         ) else {
             return None;
         };
-        snapshot.closed_tabs = rust
-            .closed_tabs
+        snapshot.closed_tabs = self
+            .closed_page_descriptors(true)
             .iter()
             .filter(|closed| {
                 !closed.private && super::url_safety::is_safe_tab_descriptor(&closed.url)
@@ -86,6 +86,14 @@ impl qobject::BrowserUi {
                 url: closed.url.clone(),
                 title: closed.title.clone(),
                 closed_at: closed.closed_at,
+                context: closed
+                    .scope
+                    .as_ref()
+                    .and_then(|scope| scope.context.clone()),
+                group: closed
+                    .scope
+                    .as_ref()
+                    .and_then(|scope| Uuid::parse_str(&scope.group).ok()),
                 group_index: closed.group_index,
                 pinned: closed.pinned,
                 muted: closed.muted,

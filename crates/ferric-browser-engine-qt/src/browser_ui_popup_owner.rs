@@ -385,6 +385,7 @@ impl qobject::BrowserUi {
         }
         let tabs = self.as_ref().rust().tab_ids.clone();
         for tab in tabs {
+            let closed = self.as_ref().get_ref().capture_closed_page(tab);
             if self
                 .as_mut()
                 .reduce_event(Event::TransferTabOut { tab })
@@ -392,9 +393,18 @@ impl qobject::BrowserUi {
             {
                 return false;
             }
+            if let Some(closed) = closed {
+                self.as_mut().remember_closed_page(tab, closed);
+            }
             super::live_ipc_owners::forget_page_order(&[tab]);
         }
         self.as_mut().sync_tab_order_from_core();
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .page_window_closing = true;
+        self.as_mut().refresh_ipc_owner();
         self.as_mut()
             .rust_mut()
             .as_mut()

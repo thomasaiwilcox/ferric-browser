@@ -282,6 +282,9 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             super::live_ipc_owners::forget_page_order(&this.tab_ids);
+            this.page_window_closing = false;
+            this.restored_page_windows.clear();
+            this.restored_page_group_ids.clear();
             this.state = Some(state);
             this.context_catalog_revision = context_catalog_revision;
             this.navigation.journey_durable_ids.borrow_mut().clear();

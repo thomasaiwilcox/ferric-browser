@@ -528,7 +528,7 @@ void ApplicationTests::productPolishTabRecoveryCheckpoint() {
     QVERIFY(checkpoint.open(QIODevice::ReadOnly));
     auto snapshot = QJsonDocument::fromJson(checkpoint.readAll()).object();
     checkpoint.close();
-    QCOMPARE(snapshot.value("schema_version").toInt(), 4);
+    QCOMPARE(snapshot.value("schema_version").toInt(), 6);
     auto closed = snapshot.value("closed_tabs").toArray();
     QCOMPARE(closed.size(), 1);
     const auto settings = closed[0].toObject();

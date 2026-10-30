@@ -5,13 +5,13 @@ if(NOT TARGET application_tests)
 endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-find_package(Qt6 REQUIRED COMPONENTS Core DBus Gui Test WebChannel)
+find_package(Qt6 REQUIRED COMPONENTS WaylandClient Core DBus Gui Test WebChannel)
 find_program(FERRIC_TEST_OPENSSL openssl REQUIRED)
 get_target_property(_ferric_application_test_links application_tests LINK_LIBRARIES)
 
 add_executable(everyday_T061a_helper_supervisor_component tst_credential_process.cpp)
 target_link_libraries(everyday_T061a_helper_supervisor_component PRIVATE
-    "${FERRIC_ENGINE_LIBRARY}" Qt6::Core Qt6::Test)
+    "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::Core Qt6::Test)
 add_test(NAME everyday_T061a_helper_supervisor_component
     COMMAND $<TARGET_FILE:everyday_T061a_helper_supervisor_component> helperSupervisor)
 set_tests_properties(everyday_T061a_helper_supervisor_component PROPERTIES TIMEOUT 45)
@@ -22,7 +22,7 @@ set_tests_properties(credential_helper_parent_death PROPERTIES TIMEOUT 20)
 add_executable(credential_boundary_tests tst_credential_boundary.cpp)
 target_link_libraries(credential_boundary_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}"
     ${_ferric_application_test_links} Qt6::DBus Qt6::Quick Qt6::WebEngineQuick
-    Qt6::Network Qt6::WebChannel Qt6::Test)
+    Qt6::Network Qt6::WaylandClient Qt6::WebChannel Qt6::Test)
 target_compile_definitions(credential_boundary_tests PRIVATE
     FERRIC_CREDENTIAL_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
     FERRIC_TEST_OPENSSL="${FERRIC_TEST_OPENSSL}")

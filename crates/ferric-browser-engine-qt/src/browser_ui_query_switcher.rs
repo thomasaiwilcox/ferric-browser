@@ -379,7 +379,7 @@ impl qobject::BrowserUi {
             }
         }
         if scope == "all" || scope == "closed" {
-            for closed in &self.rust().closed_tabs {
+            for closed in &self.closed_page_descriptors(false) {
                 add(
                     "closed",
                     closed.id.to_string(),

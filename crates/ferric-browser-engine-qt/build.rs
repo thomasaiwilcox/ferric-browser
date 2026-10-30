@@ -114,6 +114,7 @@ fn main() {
         .cpp_files(NATIVE_SOURCES)
         .qrc(&qrc_path)
         .qt_module("Gui")
+        .qt_module("WaylandClient")
         .qt_module("Quick")
         .qt_module("QuickControls2")
         .qt_module("Widgets")

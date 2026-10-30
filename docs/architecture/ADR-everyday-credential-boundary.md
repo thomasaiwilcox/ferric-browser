@@ -339,3 +339,42 @@ close cleanly. Core 174/174, storage 117/117 and three focused engine order/clea
 unit tests pass. Workspace formatting and warnings-denied engine/Core/storage/
 runtime/application Clippy pass (`r41`/`r42`). Detach/give, close/undo, nested
 workflows, compositor integration and production credential/device work remain.
+
+### Scoped window Undo and optional tagging — 30 October 2026
+
+Closed-page recovery now survives an ordinary window's retirement in a bounded
+process store keyed to actual ProfileInstanceId, privacy and context. Its current
+group is preferred; staged unpresented pages retain their saved context/group.
+Only approved closes record safe descriptors. Private/ephemeral records disappear
+when their final ordinary owner closes, even if the empty primary Ui remains as
+an application service controller. Unowned transient records cannot be reinserted
+by the record-after-transfer path. Normal records are bounded to 100 per profile
+and 1000 process-wide, and persist only through normal-profile snapshots.
+
+A profile-scoped reservation precedes reopen effects and Qt property publication.
+It prevents duplicate reentrant consumption and releases on early return; dropping
+it cannot resurrect erased private records. Shared record/remove/import changes
+invalidate peer caches and checkpoints across all contexts in the actual profile,
+with session rechecks on delivery. Schema 6 preserves closed context/group and
+reads 2–5. Reopen creates a fresh document with saved settings and position, not
+saved DOM state. Empty startup model rows adopt Core pin/mute/zoom before views
+are created, preserving actual native zoom through prepared-window restoration.
+
+Extended recovery tests exposed an independent portability crash: KF 6.28's
+xdg-toplevel tag callback dereferences an unavailable manager on a compositor
+without that global. The application now observes the actual Qt connection using
+public QWaylandClientExtension before installing that callback. Observation scans
+Qt's existing globals, binds no protocol resource and adds no blocking round trip
+([Qt 6.11.2 source](https://raw.githubusercontent.com/qt/qtbase/v6.11.2/src/plugins/platforms/wayland/global/qwaylandclientextension.cpp)).
+Identity preparation and tag-request admission are distinct. Unsupported servers
+keep usable untagged windows. Admission is not proof of observed compositor binding
+or grouping; those still require exact native correlation and separate validation.
+
+Independent scoped source review closed. Current evidence: association 6/6,
+window 38/38, session recovery 10/10 and last-tab undo 41/41 (`r55`); tab recovery
+44/44 (`r58`, correcting an old schema-4 assertion to 6); checkpoint recovery 4/4
+(`r57`); production IPC 17 cases (`r56`). Native sessions/private buses close
+cleanly. Engine units pass 562 with one existing opt-in performance test ignored;
+five Undo units and storage 118/118 pass. Engine/storage warnings-denied Clippy
+and workspace formatting pass. Broader window commands/workflows, compositor
+grouping and integrated credential/provider/device work remain unfinished.

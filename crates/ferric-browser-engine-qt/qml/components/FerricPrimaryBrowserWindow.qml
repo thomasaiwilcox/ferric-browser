@@ -97,6 +97,7 @@ ApplicationWindow {
     visible: primaryPageIdentity.prepared
     FerricPageWindowIdentity { id: primaryPageIdentity; targetWindow: window }
     readonly property string pageWindowTag: primaryPageIdentity.tag
+    readonly property bool pageWindowTagRequested: primaryPageIdentity.tagRequested
     property string pageGroupId: primaryPageIdentity.tag
     readonly property var pageWindowCoordinator: FerricPageWindowCoordinator { rootWindow: window }
     readonly property string windowPrivacyLabel: primaryPrivacyHeader.label

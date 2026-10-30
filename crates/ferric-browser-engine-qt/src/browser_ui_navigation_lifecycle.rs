@@ -1,9 +1,9 @@
 use super::{
-    ClosedTabDescriptor, ConfigWatch, CxxQtType, Event, Ordering, Pin, ProfilePersistence, QString,
-    TabId, Uuid, ValidatedUrl, canonical_engine_url, cleanup_editor_artifact,
-    cleanup_print_artifact, cleanup_staged_downloads, configured_undo_limit, current_target,
-    discard_config_edit, discard_editor_request, finish_pending_selection_operation, fs,
-    journey_transition_after_load, qobject, safe_ipc_url, sanitize_untrusted_title, unix_timestamp,
+    ConfigWatch, CxxQtType, Event, Ordering, Pin, ProfilePersistence, QString, TabId, ValidatedUrl,
+    canonical_engine_url, cleanup_editor_artifact, cleanup_print_artifact,
+    cleanup_staged_downloads, current_target, discard_config_edit, discard_editor_request,
+    finish_pending_selection_operation, fs, journey_transition_after_load, qobject, safe_ipc_url,
+    sanitize_untrusted_title,
 };
 use crate::{FailureKind, OperationUpdate};
 
@@ -862,41 +862,7 @@ impl qobject::BrowserUi {
                 this.navigation.engine_navigation_kinds.clear();
             }
         }
-        let closed = {
-            let binding = self.as_ref();
-            let state = binding.rust().state.as_ref();
-            state.and_then(|state| {
-                let tab_state = state.tabs().get(&tab)?;
-                let profile = state.profiles().get(&tab_state.profile)?;
-                Some(ClosedTabDescriptor {
-                    id: Uuid::new_v4(),
-                    url: tab_state
-                        .url
-                        .as_deref()
-                        .map_or_else(|| "about:blank".into(), safe_ipc_url),
-                    title: tab_state.title.clone(),
-                    profile: profile.label.clone(),
-                    private: profile.privacy.is_transient(),
-                    closed_at: unix_timestamp(),
-                    group_index: state.windows().get(&tab_state.window).map(|window| {
-                        window
-                            .tabs
-                            .iter()
-                            .take_while(|id| **id != tab)
-                            .filter(|id| {
-                                state.tabs().get(*id).is_some_and(|candidate| {
-                                    candidate.pinned == tab_state.pinned
-                                        && candidate.existence == super::ExistenceState::Live
-                                })
-                            })
-                            .count()
-                    }),
-                    pinned: tab_state.pinned,
-                    muted: tab_state.muted,
-                    zoom_hundredths: ((tab_state.zoom * 100.0).round() as u32).clamp(25, 500),
-                })
-            })
-        };
+        let closed = self.as_ref().get_ref().capture_closed_page(tab);
         let creates_fallback = self.as_ref().rust().state.as_ref().is_some_and(|state| {
             state.tabs().get(&tab).is_some_and(|closing| {
                 Some(closing.window) == self.as_ref().rust().window
@@ -917,11 +883,7 @@ impl qobject::BrowserUi {
         }
         super::live_ipc_owners::forget_page_order(&[tab]);
         if let Some(closed) = closed {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.closed_tabs.insert(0, closed);
-            this.closed_tabs
-                .truncate(configured_undo_limit(&this.config));
+            self.as_mut().remember_closed_page(tab, closed);
         }
         let tab_count = {
             let mut rust = self.as_mut().rust_mut();

@@ -191,6 +191,7 @@ mod operation_policy;
 mod operation_projection;
 mod page_document_identity;
 mod page_window_order;
+mod page_window_undo;
 mod presentation_text;
 mod process_output;
 mod profile_management;
@@ -560,9 +561,11 @@ pub struct BrowserUiRust {
     // Prepared page windows are unpublished and cannot consume document work.
     page_window_preparing: bool,
     page_window_ordinary: bool,
+    page_window_closing: bool,
     page_window_group: String,
     restored_page_windows:
         std::collections::HashMap<TabId, browser_ui_page_sessions::RestoredPageWindow>,
+    restored_page_group_ids: std::collections::HashMap<Uuid, String>,
     credential_policy_epoch: u64,
     prepared_page_window: Option<browser_ui_popup_owner::PreparedPageWindow>,
     pending_print: Option<PathBuf>,
@@ -1039,6 +1042,7 @@ struct ClosedTabDescriptor {
     pinned: bool,
     muted: bool,
     zoom_hundredths: u32,
+    scope: Option<page_window_undo::Scope>,
 }
 
 #[derive(Clone, Debug)]

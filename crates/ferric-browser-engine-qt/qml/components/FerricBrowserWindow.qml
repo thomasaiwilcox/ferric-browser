@@ -24,6 +24,7 @@ ApplicationWindow {
     property bool windowInitialVisible: true
     FerricPageWindowIdentity { id: secondaryPageIdentity; targetWindow: secondaryWindow }
     readonly property string pageWindowTag: secondaryPageIdentity.tag
+    readonly property bool pageWindowTagRequested: secondaryPageIdentity.tagRequested
     property string pageGroupId: secondaryPageIdentity.tag
     property bool windowPreparedPageMode: false
     property var windowPreparedPageSourceUi: null
@@ -2060,6 +2061,8 @@ function onContext_workspaceChanged() {
 
     function releaseWindowResources() {
         if (secondaryWindow.runtimeReleased) return
+        if (secondaryWindow.windowShutdownApproved && !rootWindow.applicationShutdownInProgress)
+            secondaryUi.record_page_window_close()
         secondaryWindow.runtimeReleased = true
         secondaryWindow.bindingHelpVisible = false
         secondaryDownloads.shutdown()

@@ -229,7 +229,7 @@ void ApplicationTests::init() {
     const bool identityTemporary = testName == "productPolishPrivacyIdentity" && dataTag.endsWith("-temporary");
     const bool recoveryTemporary = (testName == "productPolishTabRecovery" || testName == "productPolishLastTabUndo")
         && dataTag.startsWith("temporary-");
-    const bool windowContext = testName == "pageWindowPresentation" && (dataTag == "activation-context" || dataTag == "session-aggregate" || dataTag == "window-mutations" || dataTag == "window-order");
+    const bool windowContext = testName == "pageWindowPresentation" && (dataTag == "activation-context" || dataTag == "session-aggregate" || dataTag == "window-mutations" || dataTag == "window-order" || dataTag == "window-undo-peer" || dataTag == "window-undo-context");
     const bool durable = windowContext || !identityPrivate && !identityTemporary && !recoveryTemporary && (testName.startsWith("durablePersistence")
                          || testName == "selectorValidationRejectsWholeCandidate"
                          || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary"
@@ -335,6 +335,8 @@ void ApplicationTests::init() {
     QVERIFY(window);
     engine->rootContext()->setContextProperty("testWindow", window);
     engine->rootContext()->setContextProperty("testProbe", this);
+    if (qEnvironmentVariable("FERRIC_PORTAL_TEST_BUS") == "isolated")
+        QVERIFY(!evaluate("testWindow.pageWindowTagRequested").toBool());
     QTRY_VERIFY_WITH_TIMEOUT(
         evaluate("testWindow.activeWebView() !== null").toBool(), 10000);
     QTRY_VERIFY_WITH_TIMEOUT(
