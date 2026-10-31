@@ -117,6 +117,12 @@ QtObject {
         return true
     }
 
+    function destroyPreparedChild(child) {
+        // A destroyed QObject can leave a truthy wrapper in a pending record.
+        // Only live QML-created objects still provide the destruction method.
+        if (child && typeof child.destroy === "function") child.destroy()
+    }
+
     function idsFor(ui) {
         var ids = []
         for (var i = 0; i < ui.tab_count; ++i) ids.push(ui.tab_id_for_index(i))
@@ -148,7 +154,7 @@ QtObject {
             var controller = pending.controller
             if (!controller || !controller.ready || idsFor(controller.browserUi).indexOf(id) < 0) {
                 delete pendingPages[id]
-                child.destroy()
+                destroyPreparedChild(child)
                 recheckLastWindow()
                 return
             }
@@ -164,7 +170,7 @@ QtObject {
             if (!pending || pending.child !== child) continue
             pending.child = null
             pending.failed = true
-            child.destroy()
+            destroyPreparedChild(child)
             recheckLastWindow()
             if (pending.controller && pending.controller.ready) {
                 pending.controller.syncTabModel()
@@ -261,7 +267,7 @@ QtObject {
             if (prepared && (!sameTarget(prepared.target, target)
                     || prepared.context !== String(ui.context_name)
                     || prepared.profile !== ui.page_host_profile_id())) {
-                if (prepared.child) prepared.child.destroy()
+                destroyPreparedChild(prepared.child)
                 delete pendingPages[id]
                 prepared = null
             }
@@ -312,7 +318,7 @@ QtObject {
                     || child.windowUi.page_host_profile_id() !== ui.page_host_profile_id()
                     || !child.commitPreparedPage()) {
                 delete pendingPages[id]
-                if (child) child.destroy()
+                destroyPreparedChild(child)
                 ui.status_text = "The page window couldn't open. The page is kept in this window."
                 break
             }

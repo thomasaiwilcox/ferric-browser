@@ -56,6 +56,8 @@ ApplicationWindow {
     property string windowPreparedPageId: ""
     property bool windowPreparedPageAccepted: false
     property bool windowPreparedPageAdmitted: false
+    property bool windowPreparedPagePublished: false
+    onWindowPreparedPagePublishedChanged: if (windowPreparedPagePublished) secondaryProfileBootstrapTimer.restart()
     property bool windowPreparedPageCommitted: false
     property bool windowPreparedPageActivateRequested: false
     property var windowPreparedPageFocusSource: null
@@ -2046,6 +2048,7 @@ function onContext_workspaceChanged() {
 
     function completeProfileBootstrap() {
         if (runtimeReleased || profileBootstrapComplete || !secondaryUi.profile_available()
+                || (windowPreparedPageMode && !windowPreparedPagePublished)
                 || (!windowPopup && secondaryUi.profile_bootstrap_pending)) return
         if (windowLivePageMode && !windowLivePageAccepted) {
             rootWindow.profileResourceRegistry.activateWindow(secondaryWindow)

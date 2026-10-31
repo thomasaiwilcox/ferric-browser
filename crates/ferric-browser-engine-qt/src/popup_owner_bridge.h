@@ -27,6 +27,7 @@ class FerricPopupOwnerBridge : public QObject {
   private:
     struct LivePreparation;
     std::shared_ptr<LivePreparation> live_;
-    QPointer<QObject> preparedSource_, preparedDestination_, preparedHost_, preparedProfile_;
+    struct PreparedWindow;
+    std::shared_ptr<PreparedWindow> prepared_;
     bool preparedCommitted_ = false;
 };
