@@ -40,8 +40,9 @@ pub use view_requests::{
 };
 mod operations;
 pub use operations::{
-    OperationCatalog, OperationCompletion, OperationFailure, OperationRecord, OperationState,
-    OperationUpdate,
+    NativeOperationOutcome, NativeOperationReceipt, NativeOperationRegistry,
+    NativeOperationReporter, NativeOperationScope, OperationCatalog, OperationCompletion,
+    OperationFailure, OperationRecord, OperationState, OperationUpdate, ScopedOperationCompletion,
 };
 
 mod configuration_write;
