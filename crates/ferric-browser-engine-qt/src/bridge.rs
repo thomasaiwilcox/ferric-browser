@@ -8,6 +8,9 @@ pub(crate) use crate::browser_ui_credential_binding::{
 pub(crate) use crate::browser_ui_credentials::CredentialEvents;
 pub(crate) use crate::browser_ui_credentials::create_credential_events;
 pub(crate) use crate::credential_actor::{CredentialActor, new_credential_actor};
+pub(crate) use crate::page_window_focus::{
+    page_focus_intent_current, supersede_page_focus, validate_page_focus,
+};
 
 #[cxx_qt::bridge]
 pub(crate) mod qobject {
@@ -54,6 +57,7 @@ pub(crate) mod qobject {
         type QVector_QByteArray = cxx_qt_lib::QVector<cxx_qt_lib::QByteArray>;
 
         fn ferric_browser_native_page_window_identity(ui: &BrowserUi) -> QStringList;
+        fn ferric_browser_page_window_marker(ui: &BrowserUi) -> QString;
 
         fn ferric_public_page_for_request(request: &QVariant) -> QVariant;
 
@@ -122,6 +126,18 @@ pub(crate) mod qobject {
     }
 
     extern "Rust" {
+        #[namespace = "ferric::page_windows"]
+        fn supersede_page_focus() -> QString;
+        #[namespace = "ferric::page_windows"]
+        fn page_focus_intent_current(intent: &QString) -> bool;
+        #[namespace = "ferric::page_windows"]
+        fn validate_page_focus(
+            issuer: &BrowserUi,
+            target: &BrowserUi,
+            nonce: &QString,
+            marker: &QString,
+            phase: u8,
+        ) -> bool;
         #[namespace = "ferric::credentials"]
         type CredentialActor;
         #[namespace = "ferric::credentials"]

@@ -486,10 +486,10 @@ fn scaling_uses_qt_logical_units_and_bounds_large_font_overlays() {
 #[test]
 fn activation_uses_qt_request_and_reports_unknown_compositor_outcomes() {
     let qml = QML_SOURCE;
-    assert!(qml.contains("hostWindow.requestActivate()"));
+    assert!(qml.contains("state.host.requestActivate()"));
     assert!(qml.contains("activationOutcomeTimer"));
     assert!(qml.contains("Window activation outcome unknown"));
-    assert!(qml.contains("hostWindow.active"));
+    assert!(qml.contains("state.host.active"));
     assert!(!qml.contains("xdotool"));
     assert!(!qml.contains("wmctrl"));
 }

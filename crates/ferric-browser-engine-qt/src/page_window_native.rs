@@ -1,6 +1,21 @@
 //! Mapping-time identity read from the actual Qt window, never presentation data.
 use serde::Serialize;
 
+/// Actual mapping-time host witness, including platforms without xdg tagging.
+/// It is never deserialized or supplied by QML/document data.
+#[derive(Clone)]
+pub(crate) struct NativePageHost {
+    pub(crate) tag: String,
+}
+
+impl NativePageHost {
+    pub(crate) fn capture(ui: &crate::qobject::BrowserUi) -> Option<Self> {
+        let tag = crate::qobject::ferric_browser_page_window_marker(ui).to_string();
+        let uuid = crate::Uuid::parse_str(tag.strip_prefix("ferric-page-")?).ok()?;
+        (!uuid.is_nil() && tag == format!("ferric-page-{uuid}")).then_some(Self { tag })
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(super) struct NativeWindowIdentity {
     pub(super) tag: String,

@@ -25,6 +25,12 @@ ApplicationWindow {
     FerricPageWindowIdentity { id: secondaryPageIdentity; targetWindow: secondaryWindow }
     readonly property string pageWindowTag: secondaryPageIdentity.tag
     readonly property bool pageWindowTagRequested: secondaryPageIdentity.tagRequested
+    function requestPageWindowFocus(issuer, target, nonce) {
+        return secondaryPageIdentity ? secondaryPageIdentity.activatePage(issuer, target, nonce) : "stale"
+    }
+    function pageWindowFocusStatus(issuer, target, nonce) {
+        return secondaryPageIdentity ? secondaryPageIdentity.pageFocusStatus(issuer, target, nonce) : "stale"
+    }
     property string pageGroupId: secondaryPageIdentity.tag
     property bool windowPreparedPageMode: false
     property var windowPreparedPageSourceUi: null

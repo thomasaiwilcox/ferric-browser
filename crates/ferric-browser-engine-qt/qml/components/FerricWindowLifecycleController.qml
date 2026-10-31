@@ -18,6 +18,7 @@ import "../scripts/KeyboardPresentation.js" as KeyboardPresentation
 QtObject {
     required property var host
     readonly property var window: host
+    property int activationDepth: 0
 
     function statusBarVisibleForMode(mode) {
         return ChromePresentation.statusBarVisible(window.statusbarMode, mode)
@@ -922,6 +923,124 @@ QtObject {
         return window.runtime_windowRegistryController.ephemeralTokenForUi(ui)
     }
 
+    function activationCurrent(state) {
+        return state && !state.finished && window.pendingActivation === state
+            && window.pageFocusIntentCurrent(state.intent)
+    }
+
+    function cancelPendingActivation(ui, operationId) {
+        var prior = window.pendingActivation
+        if (!prior) return
+        var unfinished = !prior.finished
+        prior.finished = true
+        window.activationOutcomeTimer.stop()
+        window.pendingActivation = null
+        if (unfinished && prior.ui && prior.operation.length > 0
+                && (prior.ui !== ui || prior.operation !== operationId))
+            prior.ui.complete_window_focus(prior.operation, "unknown")
+    }
+
+    function finishWindowActivation(state, receipt) {
+        if (!state || state.finished) return
+        if (!activationCurrent(state)) receipt = "unknown"
+        // Mark first: publishing retirement or delivering a receipt may
+        // synchronously start another activation from a different issuer.
+        state.finished = true
+        if (window.pendingActivation === state) {
+            window.activationOutcomeTimer.stop()
+            window.pendingActivation = null
+        }
+        var ui = state.ui
+        if (ui && state.operation.length > 0)
+            ui.complete_window_focus(state.operation, receipt === "activated" ? "activated" : receipt === "stale" ? "stale" : "unknown")
+        if (!window.pageFocusIntentCurrent(state.intent)) return
+        window.activationStatus = receipt === "activated" ? "activated" : "unknown"
+        if (!window.pageFocusIntentCurrent(state.intent) || !ui) return
+        ui.status_text = receipt === "activated" ? "Window activated" : receipt === "stale"
+            ? "Page focus request changed" : "Window activation outcome unknown; compositor may deny focus"
+        if (receipt === "stale" && window.pageFocusIntentCurrent(state.intent))
+            window.showCommandNotice("Page focus request changed. Try again.", true)
+        if (receipt === "activated" && window.pageFocusIntentCurrent(state.intent)
+                && state.workspace.length > 0 && state.host && state.host.active
+                && String(ui.context_workspace) === state.workspace)
+            ui.hyprland_route_workspace(state.workspace)
+    }
+
+    function publishActivation(state) {
+        if (!window.pageFocusIntentCurrent(state.intent)) { finishWindowActivation(state, "unknown"); return false }
+        cancelPendingActivation(state.ui, state.operation)
+        if (!window.pageFocusIntentCurrent(state.intent)) {
+            finishWindowActivation(state, "unknown")
+            return false
+        }
+        window.pendingActivation = state
+        if (!activationCurrent(state)) {
+            finishWindowActivation(state, "unknown")
+            return false
+        }
+        return true
+    }
+
+    function waitForActivation(state) {
+        if (!activationCurrent(state)) { finishWindowActivation(state, "unknown"); return }
+        window.activationStatus = "requested"
+        if (!activationCurrent(state)) { finishWindowActivation(state, "unknown"); return }
+        state.ui.status_text = "Window activation requested; waiting for compositor"
+        if (activationCurrent(state)) window.activationOutcomeTimer.restart()
+        else finishWindowActivation(state, "unknown")
+    }
+
+    function dispatchActivation(state) {
+        if (!activationCurrent(state)) { finishWindowActivation(state, "unknown"); return false }
+        if (activationDepth > 0) {
+            state.queued = true
+            window.activationStatus = "requested"
+            if (!activationCurrent(state)) return false
+            state.ui.status_text = "Window activation queued"
+            if (activationCurrent(state)) window.activationOutcomeTimer.restart()
+            return true
+        }
+        state.queued = false
+        window.activationOutcomeTimer.stop()
+        activationDepth += 1
+        try {
+            if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+            if (state.nonce.length > 0) {
+                var admission = state.host.requestPageWindowFocus(state.ui,state.targetUi,state.nonce)
+                if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+                var receipt = admission === "requested" ? state.host.pageWindowFocusStatus(state.ui,state.targetUi,state.nonce) : "stale"
+                if (receipt === "requested") waitForActivation(state)
+                else finishWindowActivation(state,receipt)
+            } else {
+                state.host.show()
+                if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+                state.host.raise()
+                if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+                state.host.requestActivate()
+                if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+                if (state.host.active) finishWindowActivation(state,"activated")
+                else waitForActivation(state)
+            }
+            return true
+        } catch (error) { finishWindowActivation(state,"unknown"); return false }
+        finally {
+            activationDepth -= 1
+            // show() may have started another intent before its own map commit.
+            // Drain only after the OUTERMOST native batch returns. No spinning
+            // callLater loop while a nested/modal event loop keeps it active.
+            if (activationDepth === 0) {
+                var next = window.pendingActivation
+                if (activationCurrent(next) && next.queued && !next.scheduled) {
+                    next.scheduled = true
+                    Qt.callLater(function() {
+                        next.scheduled = false
+                        if (activationCurrent(next)) dispatchActivation(next)
+                    })
+                }
+            }
+        }
+    }
+
     function executeWindowFocusAction(sourceUi, action) {
         var parts = action.split("\t")
         var target = parts.length >= 2 ? parts[1] : ""
@@ -932,43 +1051,25 @@ QtObject {
             if (operationId.length > 0) sourceUi.complete_window_focus(operationId, "stale")
             return
         }
+        var nonce = parts.length >= 4 ? parts[3] : ""
+        if (nonce.length > 0) {
+            var state = {host:entry.host,ui:sourceUi,targetUi:entry.ui,operation:operationId,
+                         nonce:nonce,intent:parts.length >= 5 ? parts[4] : "",workspace:"",finished:false}
+            if (publishActivation(state)) dispatchActivation(state)
+            return
+        }
         // The issuing UI owns the operation, even when another window receives focus.
         if (window.activateBrowserWindow(entry.host, sourceUi, operationId) && entry.host.active)
             sourceUi.status_text = "Window focused"
     }
 
-    function activateBrowserWindow(hostWindow, targetUi, operationId) {
-        if (!hostWindow) {
-            return false
-        }
+    function activateBrowserWindow(hostWindow, targetUi, operationId, requestedWorkspace) {
+        if (!hostWindow) return false
         var ui = targetUi || window.browserUi
         var focusOperationId = String(operationId || "")
-        try {
-            hostWindow.show()
-            hostWindow.raise()
-            hostWindow.requestActivate()
-            if (hostWindow.active) {
-                window.activationStatus = "activated"
-                if (focusOperationId.length > 0) {
-                    ui.complete_window_focus(focusOperationId, "activated")
-                }
-            } else {
-                window.activationStatus = "requested"
-                window.pendingActivationHost = hostWindow
-                window.pendingActivationUi = ui
-                window.pendingActivationOperationId = focusOperationId
-                ui.status_text = "Window activation requested; waiting for compositor"
-                window.activationOutcomeTimer.restart()
-            }
-            return true
-        } catch (error) {
-            window.activationStatus = "unknown"
-            ui.status_text = "Window activation outcome unknown"
-            if (focusOperationId.length > 0) {
-                ui.complete_window_focus(focusOperationId, "unknown")
-            }
-            return false
-        }
+        var state = {host:hostWindow,ui:ui,targetUi:null,operation:focusOperationId,nonce:"",
+                     intent:window.supersedePageWindowFocus(),workspace:String(requestedWorkspace || ""),finished:false}
+        return publishActivation(state) && dispatchActivation(state)
     }
 
     function focusNotificationOrigin(profileScope, origin) {
@@ -1213,17 +1314,14 @@ QtObject {
                 continue
             }
             if (!entry.host || entry.host.active !== true) {
-                window.pendingWorkspaceRouteHost = entry.host
-                window.pendingWorkspaceRouteUi = ui
-                window.pendingWorkspaceRoute = String(ui.context_workspace)
                 ui.status_text = "Workspace routing pending until the browser window is active"
-                window.activateBrowserWindow(entry.host, ui)
+                window.activateBrowserWindow(entry.host, ui, "", String(ui.context_workspace))
                 return false
             }
             var workspace = String(ui.context_workspace)
-            window.pendingWorkspaceRouteHost = null
-            window.pendingWorkspaceRouteUi = null
-            window.pendingWorkspaceRoute = ""
+            var intent = window.supersedePageWindowFocus()
+            cancelPendingActivation(ui, "")
+            if (!window.pageFocusIntentCurrent(intent) || !entry.host.active || String(ui.context_workspace) !== workspace) return false
             return ui.hyprland_route_workspace(workspace)
         }
         ui.status_text = "Workspace routing denied for an unregistered browser window"

@@ -68,7 +68,7 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-native-grouping", "window-grouping-order", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -202,6 +202,140 @@ void ApplicationTests::pageWindowPresentation()
     }
     pageReceiver = "testWindow.tabViewAt(0)";
     QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+    if (scenario == "window-focus-publication") {
+        // Exercise production pending-state publication/receipts using owned
+        // inert hosts, so callbacks can supersede synchronously and exactly.
+        const auto result=evaluate(QStringLiteral(R"JS((function(){
+            var a=Qt.createQmlObject('import QtQml; QtObject { property bool active:false; function show(){} function raise(){} function requestActivate(){} }',testWindow);
+            var b=Qt.createQmlObject('import QtQml; QtObject { property bool active:false; function show(){} function raise(){} function requestActivate(){} }',testWindow);
+            var ui=Qt.createQmlObject('import QtQml; QtObject { property string context_workspace:""; property string status_text:""; property var receipts:({}); property var results:({}); function complete_window_focus(id,status){var counts=Object.assign({},receipts);counts[id]=(counts[id]||0)+1;receipts=counts;var values=Object.assign({},results);values[id]=status;results=values} function hyprland_route_workspace(workspace){return true} }',testWindow);
+            var hook=Qt.createQmlObject('import QtQml; Connections { target:testWindow; property var newerHost:null; property var newerUi:null; property string watch:"publish"; property bool injected:false; function onPendingActivationChanged(){if(injected)return;var state=target.pendingActivation;if((watch==="publish" && state && state.operation==="old") || (watch==="clear" && !state)){injected=true;target.activateBrowserWindow(newerHost,newerUi,watch==="publish"?"new":"clear-new")}} }',testWindow);
+            hook.newerHost=b;hook.newerUi=ui;
+            testWindow.activateBrowserWindow(a,ui,"old");
+            if(!hook.injected || !testWindow.pendingActivation || testWindow.pendingActivation.operation!=="new" || !testWindow.activationOutcomeTimerObject.running)return "new publication lost";
+            if(ui.receipts.old!==1 || ui.results.old!=="unknown")return "old publication receipt lost or duplicated";
+            b.active=true;testWindow.activationOutcomeTimerObject.triggered();
+            if(testWindow.pendingActivation!==null || ui.receipts.new!==1 || ui.results.new!=="activated" || ui.receipts.old!==1)return "new publication receipt lost or duplicated";
+            a.active=false;b.active=false;
+            testWindow.activateBrowserWindow(a,ui,"clear-old");
+            hook.watch="clear";hook.newerHost=a;hook.injected=false;
+            testWindow.activateBrowserWindow(b,ui,"middle");
+            if(!hook.injected || !testWindow.pendingActivation || testWindow.pendingActivation.operation!=="clear-new" || !testWindow.activationOutcomeTimerObject.running)return "new cancellation publication lost";
+            a.active=true;testWindow.activationOutcomeTimerObject.triggered();
+            if(testWindow.pendingActivation!==null || ui.receipts["clear-old"]!==1 || ui.receipts.middle!==1 || ui.receipts["clear-new"]!==1 || ui.results["clear-new"]!=="activated")return "cancellation receipt lost or duplicated";
+            hook.destroy();
+            var nested=Qt.createQmlObject('import QtQml; QtObject { property bool active:false; property var queuedHost:null; property var queuedUi:null; function show(){testWindow.activateBrowserWindow(queuedHost,queuedUi,"queued-expire");testWindow.activationOutcomeTimerObject.triggered()} function raise(){} function requestActivate(){} }',testWindow);
+            var queued=Qt.createQmlObject('import QtQml; QtObject { property bool active:false; property int requests:0; function show(){} function raise(){} function requestActivate(){requests++} }',testWindow);
+            nested.queuedHost=queued;nested.queuedUi=ui;
+            testWindow.activateBrowserWindow(nested,ui,"outer-expire");
+            if(testWindow.pendingActivation!==null || queued.requests!==0 || ui.receipts["queued-expire"]!==1 || ui.receipts["outer-expire"]!==1)return "queued expiry lost, duplicated or dispatched";
+            a.destroy();b.destroy();ui.destroy();nested.destroy();queued.destroy();
+            return "passed";
+        })())JS")).toString();
+        QCOMPARE(result,QStringLiteral("passed"));
+        return;
+    }
+    if (scenario == "window-focus-route") {
+        const auto result = evaluate(QStringLiteral(R"JS((function(){
+            var hostA=Qt.createQmlObject('import QtQml; QtObject { property bool active:false; function show(){} function raise(){} function requestActivate(){} }',testWindow);
+            var hostB=Qt.createQmlObject('import QtQml; QtObject { property bool active:false; function show(){} function raise(){} function requestActivate(){} }',testWindow);
+            var ui=Qt.createQmlObject('import QtQml; QtObject { property string context_workspace:"test-workspace"; property string status_text:""; property int routed:0; function complete_window_focus(id,status){} function hyprland_route_workspace(workspace){routed++;return true} }',testWindow);
+            testWindow.activateBrowserWindow(hostA,ui,"","test-workspace");
+            if(testWindow.pendingWorkspaceRoute!=="test-workspace" || testWindow.pendingWorkspaceRouteIntent!==testWindow.pendingActivationIntent)return "new route lost";
+            testWindow.activateBrowserWindow(hostB,ui);
+            if(testWindow.pendingWorkspaceRoute.length!==0)return "superseded route retained";
+            testWindow.activateBrowserWindow(hostA,ui);
+            hostA.active=true;
+            testWindow.activationOutcomeTimerObject.triggered();
+            if(ui.routed!==0)return "old route resurrected";
+            hostA.active=false;
+            testWindow.activateBrowserWindow(hostA,ui,"","test-workspace");
+            hostA.active=true;
+            testWindow.activationOutcomeTimerObject.triggered();
+            if(ui.routed!==1 || testWindow.pendingWorkspaceRoute.length!==0)return "new matching route failed";
+            hostA.active=false;
+            testWindow.activateBrowserWindow(hostA,ui,"","test-workspace");
+            testWindow.supersedePageWindowFocus();
+            hostA.active=true;
+            testWindow.activationOutcomeTimerObject.triggered();
+            if(ui.routed!==1 || testWindow.pendingWorkspaceRoute.length!==0)return "old generation routed";
+            testWindow.activationOutcomeTimerObject.stop();
+            hostA.destroy();hostB.destroy();ui.destroy();
+            return "passed";
+        })())JS")).toString();
+        QCOMPARE(result,QStringLiteral("passed"));
+        return;
+    }
+    if (scenario == "window-focus-lease" || scenario == "window-focus-stale" || scenario == "window-focus-expired" || scenario == "window-focus-reentrant") {
+        QString newerHost, newerIssuer;
+        QQuickWindow *newerWindow = nullptr;
+        if (scenario == "window-focus-reentrant") {
+            for (int index=0;index<2;++index) {
+                QVERIFY(command("open --target window " + initial + "?focus-newer=" + QString::number(index)));
+                evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+                QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),3+index);
+            }
+            const auto extra = "testWindow.liveWindowEntries().filter(function(e){return e.host!==testWindow && e.host!==" + childHost + "})";
+            QTRY_VERIFY(evaluate(extra + ".every(function(e){return e.host.profileBootstrapComplete && !!e.host.activeView})").toBool());
+            newerIssuer = extra + "[0].ui";
+            newerHost = extra + "[1].host";
+            newerWindow = qobject_cast<QQuickWindow *>(evaluate(newerHost).value<QObject *>());
+            QVERIFY(newerWindow);
+            childWindow->hide();
+            QTRY_VERIFY(!childWindow->isVisible());
+        }
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(),window);
+        QVERIFY(command("tab-next"));
+        QString focusAction;
+        // Drive only queued Core callbacks. The QML maintenance timer must not
+        // consume the private native action before this boundary regression.
+        for (int turn=0;turn<20 && focusAction.isEmpty();++turn) {
+            QCoreApplication::sendPostedEvents(nullptr,QEvent::MetaCall);
+            const auto candidate = evaluate("testWindow.browserUi.take_engine_action()").toString();
+            if (candidate.startsWith("window-focus\t")) focusAction=candidate;
+            else QVERIFY2(candidate.isEmpty(),qPrintable(candidate));
+        }
+        QVERIFY2(!focusAction.isEmpty(),"queued focus lease action was not produced");
+        const auto fields = focusAction.split('\t');
+        QCOMPARE(fields.size(),5);
+        const auto request = childHost + ".requestPageWindowFocus(testWindow.browserUi," + entry + ".ui," + quoted(fields[3]) + ")";
+        const auto status = childHost + ".pageWindowFocusStatus(testWindow.browserUi," + entry + ".ui," + quoted(fields[3]) + ")";
+        if (scenario == "window-focus-stale") {
+            QVERIFY(evaluate(entry + ".ui.assign_window_context('changed')").toBool());
+            QCOMPARE(evaluate(request).toString(),QStringLiteral("stale"));
+            QCOMPARE(QGuiApplication::focusWindow(),window);
+        } else if (scenario == "window-focus-expired") {
+            QTest::qWait(2100);
+            QCOMPARE(evaluate(request).toString(),QStringLiteral("stale"));
+            QCOMPARE(QGuiApplication::focusWindow(),window);
+        } else if (scenario == "window-focus-reentrant") {
+            bool injected=false, newerAccepted=false;
+            QObject guard;
+            QObject::connect(childWindow,&QWindow::visibleChanged,&guard,[&](bool visible) {
+                if (!visible || injected) return;
+                injected=true;
+                newerAccepted=evaluate("testWindow.activateBrowserWindow("+newerHost+","+newerIssuer+")").toBool();
+            });
+            // Exercise the production dispatcher so the newer request is
+            // serialized after this older show/map call has unwound.
+            evaluate("testWindow.executeWindowFocusAction(testWindow.browserUi," + quoted(focusAction) + ")");
+            QVERIFY(injected && newerAccepted);
+            QTRY_COMPARE(QGuiApplication::focusWindow(),newerWindow);
+            QCOMPARE(evaluate(status).toString(),QStringLiteral("stale"));
+        } else {
+            QCOMPARE(evaluate("testWindow.requestPageWindowFocus(testWindow.browserUi," + entry + ".ui," + quoted(fields[3]) + ")").toString(),QStringLiteral("stale"));
+            QCOMPARE(QGuiApplication::focusWindow(),window);
+            QCOMPARE(evaluate(request).toString(),QStringLiteral("requested"));
+            QTRY_COMPARE(QGuiApplication::focusWindow(),childWindow);
+            QTRY_COMPARE(evaluate(status).toString(),QStringLiteral("activated"));
+            // The same valid Core owners cannot replay a consumed capability.
+            QCOMPARE(evaluate(request).toString(),QStringLiteral("stale"));
+        }
+        QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(),sourceView.data());
+        QCOMPARE(page("window.pageWindowDraft").toString(),QStringLiteral("unfinished work"));
+        return;
+    }
     if (scenario == "window-grouping-stale" || scenario == "window-grouping-profile" || scenario == "window-grouping-delay" || scenario == "window-grouping-stale-create" || scenario == "window-grouping-order-stale") {
         // This owned mock exercises GUI admission/lifecycle and stalled IPC.
         // Native Lua effects are qualified separately on the real compositor.
@@ -345,7 +479,7 @@ void ApplicationTests::pageWindowPresentation()
         evaluate("testWindow.liveWindowEntries().forEach(function(e){e.ui.execute_command('set --temp hyprland.page_grouping=off')})");
         return;
     }
-    if (scenario == "window-native-grouping" || scenario == "window-grouping-order" || scenario == "window-grouping-unrelated-map" || scenario == "window-grouping-private-map" || scenario == "window-grouping-auto-off" || scenario == "window-grouping-detach" || scenario == "window-grouping-context") {
+    if (scenario == "window-native-grouping" || scenario == "window-grouping-order" || scenario == "window-grouping-focus" || scenario == "window-grouping-unrelated-map" || scenario == "window-grouping-private-map" || scenario == "window-grouping-auto-off" || scenario == "window-grouping-detach" || scenario == "window-grouping-context") {
         const auto sourceTag = evaluate("testWindow.pageWindowTag").toString();
         const auto peerTag = evaluate(childHost + ".pageWindowTag").toString();
         const auto separate = "testWindow.liveWindowEntries().find(function(e){return e.host!==testWindow && e.host.pageWindowTag!==" + quoted(peerTag) + "})";
@@ -417,6 +551,29 @@ void ApplicationTests::pageWindowPresentation()
         QTRY_COMPARE(text("feature_page_grouping_status"), QStringLiteral("available"));
         QCOMPARE(QGuiApplication::focusWindow(), separateWindow);
         QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        if (scenario == "window-grouping-focus") {
+            const auto peerView = evaluate(childHost + ".activeView").value<QObject *>();
+            const auto peerPage = evaluate(entry + ".ui.tab_id_for_index(0)").toString();
+            QVERIFY(evaluate("testWindow.activateBrowserWindow(" + childHost + "," + entry + ".ui)").toBool());
+            QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+            QVERIFY(evaluate(entry + ".ui.execute_command('tab-next ;; jseval --world page window.nativeGroupFocus=1')").toBool());
+            evaluate("testWindow.completeBrowserKeyAction(" + entry + ".ui," + childHost + ")");
+            pageReceiver = "testWindow.activeWebView()";
+            QTRY_COMPARE(page("window.nativeGroupFocus").toInt(), 1);
+            QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+            QTRY_COMPARE(groupState(), QStringLiteral("2|source|source"));
+            QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), sourceView.data());
+            QVERIFY(command("tab-next ;; jseval --world page window.nativeGroupFocus=2"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            pageReceiver = childHost + ".activeView";
+            QTRY_COMPARE(page("window.nativeGroupFocus").toInt(), 2);
+            QTRY_COMPARE(QGuiApplication::focusWindow(), childWindow);
+            QTRY_COMPARE(groupState(), QStringLiteral("2|peer|peer"));
+            QCOMPARE(evaluate(childHost + ".activeView").value<QObject *>(), peerView);
+            QCOMPARE(evaluate(entry + ".ui.tab_id_for_index(0)").toString(), peerPage);
+            pageReceiver = "testWindow.activeWebView()";
+            QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        }
         if (scenario == "window-grouping-order") {
             const auto nativeOrder = QStringLiteral(
                 "return (function() local s=nil for _,w in ipairs(hl.get_windows()) do "

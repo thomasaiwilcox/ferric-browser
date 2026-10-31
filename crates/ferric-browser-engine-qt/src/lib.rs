@@ -193,6 +193,7 @@ mod operation_policy;
 mod operation_projection;
 mod page_document_identity;
 mod page_group_runtime;
+mod page_window_focus;
 mod page_window_macros;
 mod page_window_native;
 mod page_window_order;
@@ -569,6 +570,7 @@ pub struct BrowserUiRust {
     page_window_ordinary: bool,
     page_window_closing: bool,
     page_window_group: String,
+    page_window_focus_lease: Option<page_window_focus::Lease>,
     restored_page_windows:
         std::collections::HashMap<TabId, browser_ui_page_sessions::RestoredPageWindow>,
     restored_page_group_ids: std::collections::HashMap<Uuid, String>,

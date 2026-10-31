@@ -24,6 +24,10 @@ public:
     QString tag() const;
     bool prepared() const;
     bool tagRequested() const;
+    Q_INVOKABLE QString supersedePageFocus();
+    Q_INVOKABLE bool focusIntentCurrent(const QString &intent) const;
+    Q_INVOKABLE QString activatePage(QObject *issuer, QObject *target, const QString &nonce);
+    Q_INVOKABLE QString pageFocusStatus(QObject *issuer, QObject *target, const QString &nonce) const;
 signals:
     void windowChanged();
     void preparedChanged();
@@ -37,4 +41,5 @@ private:
 class BrowserUi;
 // Private CXX read of the actual native owner and its mapping-time marker.
 QStringList ferric_browser_native_page_window_identity(const BrowserUi &ui);
+QString ferric_browser_page_window_marker(const BrowserUi &ui);
 #endif

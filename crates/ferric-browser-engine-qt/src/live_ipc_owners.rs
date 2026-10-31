@@ -25,6 +25,7 @@ struct Owner<H = CxxQtThread<qobject::BrowserUi>> {
     order: u64,
     context_catalog: Option<(u64, Arc<ContextCatalog>)>,
     page_window: Option<super::browser_ui_page_windows::PageWindowSnapshot>,
+    native_marker: Option<crate::page_window_native::NativePageHost>,
     page_session: Option<super::browser_ui_page_sessions::PageSessionOwner>,
 }
 
@@ -239,6 +240,7 @@ pub(super) fn page_window_owners(
             }
             let window = owner.window?;
             Some(super::browser_ui_page_windows::PageWindowOwner {
+                native_marker: owner.native_marker.clone(),
                 snapshot,
                 window,
                 token: owner.token.clone(),
@@ -748,6 +750,7 @@ impl qobject::BrowserUi {
                 order,
                 context_catalog: None,
                 page_window: None,
+                native_marker: None,
                 page_session: None,
             },
         );
@@ -759,6 +762,12 @@ impl qobject::BrowserUi {
 
     pub(super) fn refresh_ipc_owner(self: Pin<&mut Self>) {
         crate::page_group_runtime::publish(self.as_ref().get_ref());
+        let native_marker = self
+            .as_ref()
+            .rust()
+            .page_window_ordinary
+            .then(|| crate::page_window_native::NativePageHost::capture(self.as_ref().get_ref()))
+            .flatten();
         let page_window =
             super::browser_ui_page_windows::PageWindowSnapshot::capture(self.as_ref().get_ref());
         let page_session =
@@ -794,6 +803,7 @@ impl qobject::BrowserUi {
         let changed = owner.window != window;
         owner.window = window;
         owner.page_window = page_window;
+        owner.native_marker = native_marker;
         owner.page_session = page_session;
         // Admission and retention both change membership. Compare the catalog revision
         // so equal-size eviction cannot leave routing pointed at forgotten IDs.
@@ -995,6 +1005,7 @@ mod tests {
             order,
             context_catalog: None,
             page_window: None,
+            native_marker: None,
             page_session: None,
         }
     }

@@ -6,7 +6,7 @@ use cxx_qt::{CxxQtThread, Threading};
 use ferric_browser_application::ProfileInstanceId;
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 #[derive(Clone)]
@@ -20,6 +20,8 @@ struct PageHandoffState {
     operation: Option<String>,
     finished: AtomicBool,
     focus_requested: AtomicBool,
+    admitted_focus_generation: u64,
+    focus_generation: AtomicU64,
 }
 
 impl Drop for PageHandoffState {
@@ -130,13 +132,43 @@ impl PageHandoff {
                 }
                 return;
             }
+            let generation = root.focus_generation.load(Ordering::Acquire);
+            if !crate::page_window_focus::current(generation) {
+                if let Some(operation) = &root.operation {
+                    source_ui.as_mut().complete_window_focus(
+                        &QString::from(operation),
+                        &QString::from("unknown"),
+                    );
+                }
+                return;
+            }
+            let Some(lease) = crate::page_window_focus::prepare(
+                source_ui.as_ref().get_ref(),
+                &target_token,
+                generation,
+            ) else {
+                source_ui
+                    .as_mut()
+                    .page_window_command_failed("Page focus target changed. Try again.");
+                if let Some(operation) = &root.operation {
+                    source_ui
+                        .as_mut()
+                        .complete_window_focus(&QString::from(operation), &QString::from("stale"));
+                }
+                return;
+            };
+            let nonce = lease.nonce();
             source_ui.as_mut().queue_pending_engine_action();
             let action = format!(
-                "window-focus\t{target_token}{}",
-                root.operation
-                    .as_deref()
-                    .map_or_else(String::new, |id| format!("\t{id}"))
+                "window-focus\t{target_token}\t{}\t{nonce}\t{generation}",
+                root.operation.as_deref().unwrap_or_default()
             );
+            source_ui
+                .as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .page_window_focus_lease = Some(lease);
             source_ui
                 .as_mut()
                 .rust_mut()
@@ -204,6 +236,7 @@ pub(super) struct PageWindowSnapshot {
     pub(super) pages: Vec<PresentedPage>,
     pub(super) reserved: Vec<TabId>,
     pub(super) previous: Option<TabId>,
+    pub(super) selected: Option<TabId>,
 }
 
 impl PageWindowSnapshot {
@@ -281,12 +314,14 @@ impl PageWindowSnapshot {
                 })
                 .collect(),
             previous: window.previous_tab,
+            selected: window.active_tab,
         })
     }
 }
 
 #[derive(Clone)]
 pub(super) struct PageWindowOwner {
+    pub(super) native_marker: Option<crate::page_window_native::NativePageHost>,
     pub(super) snapshot: PageWindowSnapshot,
     pub(super) token: String,
     pub(super) window: super::WindowId,
@@ -463,6 +498,8 @@ impl qobject::BrowserUi {
             operation,
             finished: AtomicBool::new(false),
             focus_requested: AtomicBool::new(false),
+            admitted_focus_generation: crate::page_window_focus::generation(),
+            focus_generation: AtomicU64::new(0),
         })))
     }
 
@@ -577,7 +614,14 @@ impl qobject::BrowserUi {
         let handoff = self
             .as_mut()
             .prepare_page_handoff(handoff, &source, operation_id)?;
-        handoff.0.focus_requested.store(true, Ordering::Release);
+        if !handoff.0.focus_requested.swap(true, Ordering::AcqRel) {
+            let generation =
+                crate::page_window_focus::reserve_after(handoff.0.admitted_focus_generation);
+            handoff
+                .0
+                .focus_generation
+                .store(generation, Ordering::Release);
+        }
         let scope = source.scope;
         let group = source.group;
         let repeat_command = command.clone();

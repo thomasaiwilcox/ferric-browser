@@ -98,6 +98,14 @@ ApplicationWindow {
     FerricPageWindowIdentity { id: primaryPageIdentity; targetWindow: window }
     readonly property string pageWindowTag: primaryPageIdentity.tag
     readonly property bool pageWindowTagRequested: primaryPageIdentity.tagRequested
+    function supersedePageWindowFocus() { return primaryPageIdentity.supersedePageFocus() }
+    function pageFocusIntentCurrent(intent) { return primaryPageIdentity.focusIntentCurrent(intent) }
+    function requestPageWindowFocus(issuer, target, nonce) {
+        return primaryPageIdentity ? primaryPageIdentity.activatePage(issuer, target, nonce) : "stale"
+    }
+    function pageWindowFocusStatus(issuer, target, nonce) {
+        return primaryPageIdentity ? primaryPageIdentity.pageFocusStatus(issuer, target, nonce) : "stale"
+    }
     property string pageGroupId: primaryPageIdentity.tag
     readonly property var pageWindowCoordinator: FerricPageWindowCoordinator { rootWindow: window }
     readonly property string windowPrivacyLabel: primaryPrivacyHeader.label
@@ -216,12 +224,17 @@ ApplicationWindow {
     property string journeyExportPreviewText: ""
     property string ephemeralInvocationToken: ""
     property string activationStatus: "unknown"
-    property var pendingActivationHost: null
-    property var pendingActivationUi: null
-    property string pendingActivationOperationId: ""
-    property var pendingWorkspaceRouteHost: null
-    property var pendingWorkspaceRouteUi: null
-    property string pendingWorkspaceRoute: ""
+    property var pendingActivation: null
+    readonly property var pendingActivationHost: pendingActivation ? pendingActivation.host : null
+    readonly property var pendingActivationUi: pendingActivation ? pendingActivation.ui : null
+    readonly property string pendingActivationOperationId: pendingActivation ? pendingActivation.operation : ""
+    readonly property string pendingActivationNonce: pendingActivation ? pendingActivation.nonce : ""
+    readonly property string pendingActivationIntent: pendingActivation ? pendingActivation.intent : ""
+    readonly property var pendingActivationTargetUi: pendingActivation ? pendingActivation.targetUi : null
+    readonly property var pendingWorkspaceRouteHost: pendingActivation && pendingActivation.workspace.length > 0 ? pendingActivation.host : null
+    readonly property var pendingWorkspaceRouteUi: pendingActivation && pendingActivation.workspace.length > 0 ? pendingActivation.ui : null
+    readonly property string pendingWorkspaceRoute: pendingActivation ? pendingActivation.workspace : ""
+    readonly property string pendingWorkspaceRouteIntent: pendingActivation && pendingActivation.workspace.length > 0 ? pendingActivation.intent : ""
     readonly property real chromePadding: Math.max(4, Math.ceil(chromeFontMetrics.height * 0.25))
     readonly property real statusBarHeight: Math.ceil(
         chromeFontMetrics.height + (chromePadding * 2))
@@ -436,8 +449,9 @@ ApplicationWindow {
     function ephemeralTokenForUi(ui) { return runtimeBase.ephemeralTokenForUi(ui) }
 
     function executeWindowFocusAction(sourceUi, action) { return runtimeBase.executeWindowFocusAction(sourceUi, action) }
+    function finishWindowActivation(state, receipt) { return runtimeBase.finishWindowActivation(state, receipt) }
 
-    function activateBrowserWindow(hostWindow, targetUi, operationId) { return runtimeBase.activateBrowserWindow(hostWindow, targetUi, operationId) }
+    function activateBrowserWindow(hostWindow, targetUi, operationId, workspace) { return runtimeBase.activateBrowserWindow(hostWindow, targetUi, operationId, workspace) }
 
     function focusNotificationOrigin(profileScope, origin) { return runtimeBase.focusNotificationOrigin(profileScope, origin) }
 
@@ -1343,46 +1357,14 @@ ApplicationWindow {
         interval: 250
         repeat: false
         onTriggered: {
-            var host = window.pendingActivationHost
-            var ui = window.pendingActivationUi || browserUi
-            var operationId = window.pendingActivationOperationId
-            if (!host || !ui) {
-                window.activationStatus = "unknown"
-                return
+            var state = window.pendingActivation
+            if (!state || state.finished) return
+            var receipt = "unknown"
+            if (!state.queued && window.pageFocusIntentCurrent(state.intent) && state.host && state.ui) {
+                receipt = state.nonce.length > 0 ? state.host.pageWindowFocusStatus(state.ui, state.targetUi, state.nonce)
+                    : state.host.active ? "activated" : "unknown"
             }
-            if (host.active) {
-                window.activationStatus = "activated"
-                if (operationId.length > 0) {
-                    ui.complete_window_focus(operationId, "activated")
-                }
-                ui.status_text = "Window activated"
-                var workspaceHost = window.pendingWorkspaceRouteHost
-                var workspaceUi = window.pendingWorkspaceRouteUi
-                var workspace = window.pendingWorkspaceRoute
-                if (workspaceHost === host && workspaceUi === ui && workspace.length > 0) {
-                    window.pendingWorkspaceRouteHost = null
-                    window.pendingWorkspaceRouteUi = null
-                    window.pendingWorkspaceRoute = ""
-                    if (!ui.hyprland_route_workspace(workspace)) {
-                        ui.status_text = "Workspace routing was denied by the compositor"
-                    }
-                }
-            } else {
-                window.activationStatus = "unknown"
-                ui.status_text = "Window activation outcome unknown; compositor may deny focus"
-                if (operationId.length > 0) {
-                    ui.complete_window_focus(operationId, "unknown")
-                }
-                if (window.pendingWorkspaceRouteHost === host) {
-                    window.pendingWorkspaceRouteHost = null
-                    window.pendingWorkspaceRouteUi = null
-                    window.pendingWorkspaceRoute = ""
-                    ui.status_text = "Workspace routing denied because window activation was denied"
-                }
-            }
-            window.pendingActivationHost = null
-            window.pendingActivationUi = null
-            window.pendingActivationOperationId = ""
+            window.finishWindowActivation(state, receipt === "requested" ? "unknown" : receipt)
         }
     }
 

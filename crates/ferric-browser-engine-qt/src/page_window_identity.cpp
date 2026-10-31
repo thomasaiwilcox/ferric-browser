@@ -1,5 +1,6 @@
 #include "page_window_identity.h"
 #include "ferric-browser-engine-qt/src/bridge.cxxqt.h"
+#include "ferric-browser-engine-qt/src/bridge.cxx.h"
 
 #include <KWaylandExtras>
 #include <QGuiApplication>
@@ -66,15 +67,19 @@ void FerricPageWindowIdentity::setWindow(QWindow *window)
     emit preparedChanged();
 }
 
-QStringList ferric_browser_native_page_window_identity(const BrowserUi &ui)
-{
+namespace {
+struct Host {
+    QPointer<QWindow> window;
+    QPointer<FerricPageWindowIdentity> marker;
+};
+Host actualHost(const BrowserUi &ui) {
     if (!qGuiApp || QThread::currentThread() != qGuiApp->thread()
-        || QThread::currentThread() != ui.thread()
-        || QGuiApplication::platformName() != QStringLiteral("wayland")) return {};
+        || QThread::currentThread() != ui.thread()) return {};
+    QPointer<BrowserUi> guardedUi(const_cast<BrowserUi *>(&ui));
     const QObject *parent = &ui;
-    const QWindow *window = nullptr;
+    QPointer<QWindow> window;
     while (parent && !window) {
-        window = qobject_cast<const QWindow *>(parent);
+        window = qobject_cast<QWindow *>(const_cast<QObject *>(parent));
         if (!window) {
             if (const auto *item = qobject_cast<const QQuickItem *>(parent)) window = item->window();
         }
@@ -86,14 +91,76 @@ QStringList ferric_browser_native_page_window_identity(const BrowserUi &ui)
         return value.value<QJSValue>().toQObject();
     };
     auto *owner = object(window->property("windowUi"));
+    if (!guardedUi || !window) return {};
     if (!owner) owner = object(window->property("browserUi"));
-    if (owner != &ui) return {};
+    if (!guardedUi || !window || owner != guardedUi) return {};
     QList<FerricPageWindowIdentity *> identities;
     for (auto *identity : window->findChildren<FerricPageWindowIdentity *>()) {
         if (identity->window() == window) identities.push_back(identity);
     }
-    if (identities.size() != 1
-        || !identities[0]->prepared() || !identities[0]->tagRequested()) return {};
+    if (identities.size() != 1 || !identities[0]->prepared()) return {};
+    return {window, identities[0]};
+}
+}
+
+QString ferric_browser_page_window_marker(const BrowserUi &ui) {
+    const auto host = actualHost(ui);
+    return host.marker ? host.marker->tag() : QString();
+}
+
+QString FerricPageWindowIdentity::supersedePageFocus() {
+    if (!qGuiApp || QThread::currentThread() != qGuiApp->thread()) return {};
+    return ferric::page_windows::supersede_page_focus();
+}
+
+bool FerricPageWindowIdentity::focusIntentCurrent(const QString &intent) const {
+    return qGuiApp && QThread::currentThread() == qGuiApp->thread()
+        && ferric::page_windows::page_focus_intent_current(intent);
+}
+
+QString FerricPageWindowIdentity::activatePage(QObject *issuerObject, QObject *targetObject, const QString &nonce) {
+    QPointer<FerricPageWindowIdentity> self(this);
+    QPointer<BrowserUi> issuer(qobject_cast<BrowserUi *>(issuerObject));
+    QPointer<BrowserUi> target(qobject_cast<BrowserUi *>(targetObject));
+    QPointer<QWindow> native(window_);
+    auto current = [&](uint8_t phase) {
+        if (!self || !issuer || !target || !native || !qGuiApp
+            || QThread::currentThread() != qGuiApp->thread() || issuer->thread() != QThread::currentThread()) return false;
+        const auto host = actualHost(*target);
+        if (!self || !issuer || !target || !host.marker || !host.window
+            || host.marker != self || host.window != native) return false;
+        // This final comparison is pure Rust/Core. No QObject call follows it
+        // before the corresponding real native window operation.
+        return ferric::page_windows::validate_page_focus(*issuer, *target, nonce, self->tag(), phase);
+    };
+    if (!current(0) || !current(1)) return QStringLiteral("stale");
+    native->show();
+    if (!current(2)) return QStringLiteral("stale");
+    native->raise();
+    if (!current(2)) return QStringLiteral("stale");
+    native->requestActivate();
+    return self && issuer && target && native ? QStringLiteral("requested") : QStringLiteral("stale");
+}
+
+QString FerricPageWindowIdentity::pageFocusStatus(QObject *issuerObject, QObject *targetObject, const QString &nonce) const {
+    QPointer<const FerricPageWindowIdentity> self(this);
+    QPointer<BrowserUi> issuer(qobject_cast<BrowserUi *>(issuerObject));
+    QPointer<BrowserUi> target(qobject_cast<BrowserUi *>(targetObject));
+    if (!issuer || !target || !qGuiApp || QThread::currentThread() != qGuiApp->thread()
+        || issuer->thread() != QThread::currentThread()) return QStringLiteral("stale");
+    const auto host = actualHost(*target);
+    if (!self || !issuer || !target || !host.marker || !host.window || host.marker.data() != self.data()
+        || !ferric::page_windows::validate_page_focus(*issuer, *target, nonce, self->tag(), 2)) return QStringLiteral("stale");
+    return host.window->isActive() && QGuiApplication::focusWindow() == host.window
+        ? QStringLiteral("activated") : QStringLiteral("requested");
+}
+
+QStringList ferric_browser_native_page_window_identity(const BrowserUi &ui)
+{
+    if (QGuiApplication::platformName() != QStringLiteral("wayland")) return {};
+    const auto host = actualHost(ui);
+    if (!host.marker || !host.window || !host.marker->tagRequested()) return {};
+    const auto window = host.window;
     auto appId = QGuiApplication::desktopFileName();
     if (appId.isEmpty()) appId = QCoreApplication::applicationName();
     if (appId.endsWith(QStringLiteral(".desktop"))) appId.chop(8);
@@ -101,7 +168,7 @@ QStringList ferric_browser_native_page_window_identity(const BrowserUi &ui)
         || (!window->property("windowPreparedPageMode").toBool()
             && window->property("windowInitialVisible").toBool());
     const bool active = window->isActive() && QGuiApplication::focusWindow() == window;
-    return {identities[0]->tag(), appId,
+    return {host.marker->tag(), appId,
             foreground ? QStringLiteral("foreground") : QStringLiteral("background"),
             active ? QStringLiteral("active") : QStringLiteral("inactive")};
 }
