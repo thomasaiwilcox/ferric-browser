@@ -20,6 +20,14 @@ pub(super) struct PreparedPageWindow {
     destination_window: super::WindowId,
     url: super::ValidatedUrl,
     committed: bool,
+    effects: Option<Vec<super::RuntimeEffect>>,
+}
+
+pub(super) struct PreparedPageRelease {
+    window: super::WindowId,
+    owner: QString,
+    profile: ferric_browser_application::ProfileInstanceId,
+    effects: Vec<super::RuntimeEffect>,
 }
 
 impl qobject::BrowserUi {
@@ -177,6 +185,7 @@ impl qobject::BrowserUi {
             destination_window,
             url,
             committed: false,
+            effects: None,
         });
         Ok(())
     }
@@ -311,10 +320,165 @@ impl qobject::BrowserUi {
             .get_mut()
             .restored_page_windows
             .remove(&tab);
-        self.as_mut().observe_runtime_effects(released);
-        destination.as_mut().observe_runtime_effects(imported);
+        {
+            let mut rust = destination.as_mut().rust_mut();
+            rust.as_mut()
+                .get_mut()
+                .prepared_page_window
+                .as_mut()
+                .expect("committed")
+                .effects = Some(imported);
+        }
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let source = rust.as_mut().get_mut();
+            source.prepared_page_releases.insert(
+                tab,
+                PreparedPageRelease {
+                    window: source.window.expect("validated source window"),
+                    owner: source.window_token.clone(),
+                    profile: source
+                        .state
+                        .as_ref()
+                        .and_then(super::BrowserApplication::profile_instance_id)
+                        .expect("validated profile"),
+                    effects: released,
+                },
+            );
+        }
+        // The native caller blocks both Ui signals. Set current projections
+        // before returning to the materializer, without publishing either owner.
         self.as_mut().sync_tab_order_from_core();
         destination.as_mut().sync_tab_order_from_core();
+        true
+    }
+
+    pub(super) fn publish_prepared_page_source(mut self: Pin<&mut Self>, tab_id: &QString) -> bool {
+        let Some(tab) = super::TabId::from_display(&tab_id.to_string()) else {
+            return false;
+        };
+        let Some(released) = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .prepared_page_releases
+            .remove(&tab)
+        else {
+            return false;
+        };
+        let current = !self.as_ref().rust().profile_bootstrap_pending
+            && !self.as_ref().rust().ipc_shutdown_gate
+            && self.as_ref().rust().window == Some(released.window)
+            && self.as_ref().rust().window_token == released.owner
+            && self
+                .as_ref()
+                .rust()
+                .state
+                .as_ref()
+                .and_then(super::BrowserApplication::profile_instance_id)
+                == Some(released.profile);
+        if !current {
+            return false;
+        }
+        self.as_mut().observe_runtime_effects(released.effects);
+        self.as_mut().sync_tab_order_from_core();
+        true
+    }
+
+    pub(super) fn publish_prepared_page_owner(mut self: Pin<&mut Self>) -> bool {
+        let current = {
+            let binding = self.as_ref();
+            let rust = binding.rust();
+            !rust.profile_bootstrap_pending
+                && !rust.ipc_shutdown_gate
+                && rust.view_alive
+                && rust.prepared_page_window.as_ref().is_some_and(|prepared| {
+                    rust.window == Some(prepared.destination_window)
+                        && rust.state.as_ref().is_some_and(|state| {
+                            state
+                                .profile_instance_id()
+                                .map(|id| id.to_string())
+                                .as_deref()
+                                == Some(&prepared.profile_instance)
+                                && state.capture_target(prepared.source_target.tab)
+                                    == Some(prepared.source_target)
+                                && state
+                                    .tabs()
+                                    .get(&prepared.source_target.tab)
+                                    .is_some_and(|page| page.window == prepared.destination_window)
+                                && state
+                                    .windows()
+                                    .get(&prepared.destination_window)
+                                    .is_some_and(|window| window.context == prepared.context)
+                        })
+                        && rust.page_window_group == prepared.group
+                })
+        };
+        if !current {
+            return false;
+        }
+        let effects = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .prepared_page_window
+            .as_mut()
+            .filter(|prepared| prepared.committed)
+            .and_then(|prepared| prepared.effects.take());
+        let Some(effects) = effects else {
+            return false;
+        };
+        self.as_mut().observe_runtime_effects(effects);
+        self.as_mut().sync_tab_order_from_core();
+        true
+    }
+
+    // Recovery publishes current projections, never old observations or a
+    // replacement document authority. The original navigation intent is retired.
+    pub(super) fn recover_prepared_page_owner(mut self: Pin<&mut Self>) -> bool {
+        let valid = {
+            let binding = self.as_ref();
+            let rust = binding.rust();
+            !rust.profile_bootstrap_pending
+                && !rust.ipc_shutdown_gate
+                && rust.view_alive
+                && rust.prepared_page_window.as_ref().is_some_and(|prepared| {
+                    prepared.committed
+                        && rust.window == Some(prepared.destination_window)
+                        && rust.state.as_ref().is_some_and(|state| {
+                            state.shutdown() == ferric_browser_core::ShutdownState::Running
+                                && state
+                                    .profile_instance_id()
+                                    .map(|id| id.to_string())
+                                    .as_deref()
+                                    == Some(&prepared.profile_instance)
+                                && state.tabs().get(&prepared.source_target.tab).is_some_and(
+                                    |page| {
+                                        page.window == prepared.destination_window
+                                            && page.existence == ExistenceState::Live
+                                    },
+                                )
+                        })
+                })
+        };
+        if !valid {
+            return false;
+        }
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .prepared_page_window = None;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.library.switcher_cache = None;
+            this.checkpoint
+                .mark_dirty(super::elapsed_ms(this.binding_clock));
+        }
+        self.as_mut().sync_tab_order_from_core();
         true
     }
 

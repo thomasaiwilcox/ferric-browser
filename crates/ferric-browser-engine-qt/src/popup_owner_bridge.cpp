@@ -32,8 +32,11 @@ bool publishPreparedProperties(QPointer<BrowserUi> child);
 
 struct FerricPopupOwnerBridge::PreparedWindow {
     QPointer<BrowserUi> source, destination;
-    QPointer<QObject> sourceHost, host, profile;
+    QPointer<QObject> sourceHost, host, profile, root;
+    QString tab;
     bool published = false;
+    bool corePublished = false;
+    bool failed = false;
 };
 
 bool FerricPopupOwnerBridge::initialize(QObject *source, QObject *destination,
@@ -80,6 +83,8 @@ bool FerricPopupOwnerBridge::preparePageWindow(QObject *source, QObject *destina
     state->source = qobject_cast<BrowserUi *>(source);
     state->destination = qobject_cast<BrowserUi *>(destination);
     state->host = hostWindow(this);
+    state->tab = tabId;
+    state->root = objectProperty(state->host,"rootWindow");
     auto alive = [&] { return self && state->source && state->destination && state->host; };
     if (!alive() || prepared_ || source == destination
         || source->thread() != QThread::currentThread()
@@ -117,19 +122,86 @@ bool FerricPopupOwnerBridge::preparePageWindow(QObject *source, QObject *destina
     return true;
 }
 
+void FerricPopupOwnerBridge::failPreparedPublication(const std::shared_ptr<PreparedWindow> &state) {
+    if (!state || state->failed) return;
+    state->failed = true;
+    if (state->root) QMetaObject::invokeMethod(state->root,"failPreparedPagePublication",Qt::DirectConnection,
+        Q_ARG(QVariant,QVariant(state->tab)));
+}
+
 bool FerricPopupOwnerBridge::commitPageWindow() {
     const auto state = prepared_;
-    auto *host = hostWindow(this);
-    auto *source = state ? state->source.data() : nullptr;
-    auto *destination = state ? state->destination.data() : nullptr;
-    if (!state || !state->published || preparedCommitted_ || !host || !source || !destination || !state->sourceHost || !state->profile
-        || hostUi(host) != destination || hostUi(state->sourceHost) != source
-        || source->thread() != QThread::currentThread() || destination->thread() != QThread::currentThread()
-        || hostProfile(state->sourceHost) != state->profile || hostProfile(host) != state->profile
-        || state->sourceHost->property("runtimeReleased").toBool()
-        || host->property("runtimeReleased").toBool() || objectProperty(host, "activeView")) return false;
-    preparedCommitted_ = source->commit_page_owner(*destination);
-    return preparedCommitted_;
+    const QPointer<FerricPopupOwnerBridge> self(this);
+    auto alive = [&] { return self && state && state->source && state->destination
+        && state->sourceHost && state->host && state->profile; };
+    if (!alive() || !state->published || preparedCommitted_
+        || hostUi(state->host) != state->destination || !alive()
+        || hostUi(state->sourceHost) != state->source || !alive()
+        || state->source->thread() != QThread::currentThread()
+        || state->destination->thread() != QThread::currentThread()
+        || hostProfile(state->sourceHost) != state->profile || !alive()
+        || hostProfile(state->host) != state->profile || !alive()
+        || state->sourceHost->property("runtimeReleased").toBool() || !alive()
+        || state->host->property("runtimeReleased").toBool() || !alive()
+        || objectProperty(state->host,"activeView") || !alive()) return false;
+    bool committed = false;
+    {
+        QSignalBlocker sourceNotifications(state->source), destinationNotifications(state->destination);
+        committed = state->source->commit_page_owner(*state->destination);
+        if (!state->destination) destinationNotifications.dismiss();
+        if (!state->source) sourceNotifications.dismiss();
+    }
+    if (!committed) return false;
+    if (!self || !state->destination || !state->host) return true;
+    self->preparedCommitted_ = true;
+    QTimer::singleShot(15000,QCoreApplication::instance(),[state] {
+        // The coordinator ignores already registered records and keeps a valid
+        // visible owner on a registration retry; only this preparation is named.
+        failPreparedPublication(state);
+    });
+    // Neither Core owner notifies while Rust holds both references. Publication
+    // is independently guarded, so source retirement cannot erase the child.
+    QTimer::singleShot(0,QCoreApplication::instance(),[self,state] {
+        if (state->source) {
+            bool changed = false;
+            {
+                QSignalBlocker notifications(state->source);
+                changed = state->source->publish_prepared_page_source(state->tab);
+                if (!state->source) notifications.dismiss();
+            }
+            if (changed && state->source) publishPreparedProperties(state->source);
+            if (state->source) state->source->runtime_work_available();
+        }
+        if (!self || !state->destination || !state->host || !state->profile) {
+            failPreparedPublication(state); return;
+        }
+        bool published = false;
+        {
+            QSignalBlocker notifications(state->destination);
+            published = state->destination->publish_prepared_page_owner();
+            if (!state->destination) notifications.dismiss();
+        }
+        if (!published && self && state->destination && state->host && state->profile
+            && hostUi(state->host) == state->destination && state->destination && state->host
+            && hostProfile(state->host) == state->profile && state->destination && state->host) {
+            {
+                QSignalBlocker notifications(state->destination);
+                published = state->destination->recover_prepared_page_owner();
+                if (!state->destination) notifications.dismiss();
+            }
+            if (published && self && state->host) {
+                self->preparedCommitted_ = false;
+            }
+        }
+        if (!published || !state->destination || !publishPreparedProperties(state->destination)
+            || !self || !state->destination || !state->host || !state->profile) {
+            failPreparedPublication(state); return;
+        }
+        state->corePublished = true;
+        state->host->setProperty("windowPreparedPageCorePublished",true);
+        if (state->destination) state->destination->runtime_work_available();
+    });
+    return true;
 }
 
 QString FerricPopupOwnerBridge::activatePreparedPage() {
@@ -137,7 +209,7 @@ QString FerricPopupOwnerBridge::activatePreparedPage() {
     auto *host = hostWindow(this);
     auto *destination = state ? state->destination.data() : nullptr;
     auto *view = objectProperty(host, "activeView");
-    if (!state || !state->published || !preparedCommitted_) return QStringLiteral("Page opening cancelled because this window changed. Open the page again.");
+    if (!state || !state->published || !state->corePublished || !preparedCommitted_) return QStringLiteral("Page opening cancelled because this window changed. Open the page again.");
     preparedCommitted_ = false;
     if (!host || !destination || !view || !state->profile
         || destination->thread() != QThread::currentThread() || hostUi(host) != destination

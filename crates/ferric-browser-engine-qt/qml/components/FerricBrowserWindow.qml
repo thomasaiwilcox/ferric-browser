@@ -59,6 +59,18 @@ ApplicationWindow {
     property bool windowPreparedPagePublished: false
     onWindowPreparedPagePublishedChanged: if (windowPreparedPagePublished) secondaryProfileBootstrapTimer.restart()
     property bool windowPreparedPageCommitted: false
+    property bool windowPreparedPageCorePublished: false
+    property bool windowPreparedOwnerRegistered: false
+    property bool windowPreparedNavigationStarted: false
+    Timer {
+        interval: 1000
+        repeat: true
+        running: secondaryWindow.windowPreparedPageCommitted && secondaryWindow.windowPreparedPageCorePublished
+                 && secondaryWindow.profileBootstrapComplete && !secondaryWindow.windowPreparedOwnerRegistered
+                 && !secondaryWindow.runtimeReleased
+        onTriggered: if (secondaryWindow.registerWindowOwner()) secondaryWindow.finishPreparedPageNavigation()
+    }
+    onWindowPreparedPageCorePublishedChanged: if (windowPreparedPageCorePublished) preparedPageCommitTimer.restart()
     property bool windowPreparedPageActivateRequested: false
     property var windowPreparedPageFocusSource: null
     Timer {
@@ -2010,11 +2022,17 @@ function onContext_workspaceChanged() {
     }
 
     function registerWindowOwner() {
+        if (windowPreparedPageMode && windowPreparedPageCommitted && !windowPreparedPageCorePublished) return false
         if (windowPopup)
             return rootWindow.registerPopupWindow(secondaryWindow,secondaryUi,activeView)
-        return rootWindow.registerBrowserWindow(
+        var registered = rootWindow.registerBrowserWindow(
                     secondaryWindow, secondaryUi, activeView,windowWebEngineProfile,
                     windowProfileName,windowEphemeralInvocationToken,windowEphemeralProfile)
+        if (windowPreparedPageMode && windowPreparedPageCommitted) {
+            windowPreparedOwnerRegistered = registered
+            if (registered) rootWindow.pageWindowCoordinator.completePreparedPage(secondaryWindow)
+        }
+        return registered
     }
 
     function clearPendingTransfer() {
@@ -2046,9 +2064,28 @@ function onContext_workspaceChanged() {
         }
     }
 
+    function finishPreparedPageNavigation() {
+        if (windowPreparedNavigationStarted || !windowPreparedOwnerRegistered || runtimeReleased) return
+            if (secondaryTabs.count !== 1 || !secondaryWindow.activeView
+                    || secondaryWindow.activeView.profile !== windowSharedProfile) return
+            secondaryTabs.setProperty(0, "scrollX", windowPreparedScrollX)
+            secondaryTabs.setProperty(0, "scrollY", windowPreparedScrollY)
+            // Release the private single-use intent only after the committed
+            // Core identity and its actual shared-profile view both exist.
+            windowPreparedNavigationStarted = true
+            var preparationError = popupOwnerBridge.activatePreparedPage()
+            if (preparationError.length > 0) {
+                secondaryUi.status_text = preparationError
+                secondaryWindow.showCommandNotice(preparationError, true)
+            }
+            secondaryWindow.applySwitcherEngineAction()
+            windowPreparedPageAccepted = true
+    }
+
     function completeProfileBootstrap() {
         if (runtimeReleased || profileBootstrapComplete || !secondaryUi.profile_available()
-                || (windowPreparedPageMode && !windowPreparedPagePublished)
+                || (windowPreparedPageMode && (!windowPreparedPagePublished
+                    || (windowPreparedPageCommitted && !windowPreparedPageCorePublished)))
                 || (!windowPopup && secondaryUi.profile_bootstrap_pending)) return
         if (windowLivePageMode && !windowLivePageAccepted) {
             rootWindow.profileResourceRegistry.activateWindow(secondaryWindow)
@@ -2100,19 +2137,7 @@ function onContext_workspaceChanged() {
             return
         }
         if (windowPreparedPageMode) {
-            if (secondaryTabs.count !== 1 || !secondaryWindow.activeView
-                    || secondaryWindow.activeView.profile !== windowSharedProfile) return
-            secondaryTabs.setProperty(0, "scrollX", windowPreparedScrollX)
-            secondaryTabs.setProperty(0, "scrollY", windowPreparedScrollY)
-            // Release the private single-use intent only after the committed
-            // Core identity and its actual shared-profile view both exist.
-            var preparationError = popupOwnerBridge.activatePreparedPage()
-            if (preparationError.length > 0) {
-                secondaryUi.status_text = preparationError
-                secondaryWindow.showCommandNotice(preparationError, true)
-            }
-            secondaryWindow.applySwitcherEngineAction()
-            windowPreparedPageAccepted = true
+            finishPreparedPageNavigation()
             return
         }
         if (secondaryWindow.windowTransferMode) {
@@ -2206,6 +2231,7 @@ function onContext_workspaceChanged() {
         if (secondaryWindow.windowShutdownApproved && !rootWindow.applicationShutdownInProgress)
             secondaryUi.record_page_window_close()
         secondaryWindow.runtimeReleased = true
+        if (windowPreparedPageMode) rootWindow.pageWindowCoordinator.releasePreparedPage(secondaryWindow)
         secondaryWindow.bindingHelpVisible = false
         secondaryDownloads.shutdown()
         secondaryDevTools.close()

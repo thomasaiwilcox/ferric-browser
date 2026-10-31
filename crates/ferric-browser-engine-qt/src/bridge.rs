@@ -1378,6 +1378,9 @@ pub(crate) mod qobject {
         ) -> bool;
 
         fn commit_page_owner(self: Pin<&mut BrowserUi>, destination: Pin<&mut BrowserUi>) -> bool;
+        fn publish_prepared_page_source(self: Pin<&mut BrowserUi>, tab_id: &QString) -> bool;
+        fn publish_prepared_page_owner(self: Pin<&mut BrowserUi>) -> bool;
+        fn recover_prepared_page_owner(self: Pin<&mut BrowserUi>) -> bool;
 
         fn initialize_live_page_owner(
             self: Pin<&mut BrowserUi>,

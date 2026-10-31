@@ -124,7 +124,7 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-close-focus-reentrant", "window-close-root-probe", "window-close-cancel", "window-close-partial", "window-close-tail", "window-close-retired", "window-close-stale", "window-close-fallback", "window-close-fallback-role", "window-close-pinned", "window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-setup-error", "preparation-setup-destroy", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-close-focus-reentrant", "window-close-root-probe", "window-close-cancel", "window-close-partial", "window-close-tail", "window-close-retired", "window-close-stale", "window-close-fallback", "window-close-fallback-role", "window-close-pinned", "window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-registration-retry", "preparation-source-retire", "preparation-publish-destroy", "preparation-publish-navigation", "preparation-publish-profile", "preparation-setup-error", "preparation-setup-destroy", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -165,6 +165,29 @@ void ApplicationTests::pageWindowPresentation()
         return;
     }
 
+    if (scenario == "preparation-registration-retry") {
+        auto *retryFactory=new QQmlComponent(engine.get(),engine.get());
+        retryFactory->setData(R"QML(import QtQuick
+import "qrc:/qt/qml/io/github/ferricbrowser/qml/components" as Ferric
+Ferric.FerricBrowserWindow {
+    rootWindow:testWindow
+    property bool testAllowRegistration:false
+    property int testRegistrationAttempts:0
+    function registerWindowOwner() {
+        testRegistrationAttempts++
+        if (!testAllowRegistration) return false
+        var registered=rootWindow.registerBrowserWindow(this,windowUi,activeView,windowWebEngineProfile,
+            windowProfileName,windowEphemeralInvocationToken,windowEphemeralProfile)
+        windowPreparedOwnerRegistered=registered
+        if (registered) rootWindow.pageWindowCoordinator.completePreparedPage(this)
+        return registered
+    }
+})QML",QUrl("qrc:/prepared-registration-retry.qml"));
+        QVERIFY2(retryFactory->isReady(),qPrintable(retryFactory->errorString()));
+        engine->rootContext()->setContextProperty("testRetryFactory",retryFactory);
+        engine->rootContext()->setContextProperty("savedWindowFactory",evaluate("testWindow.browserWindowComponentObject").value<QObject *>());
+        evaluate("testWindow.browserWindowComponentObject=testRetryFactory");
+    }
     if (scenario == "preparation-setup-destroy" || scenario == "preparation-setup-error") {
         setProperty("rejectPreparedSetup",scenario=="preparation-setup-error");
         setupWindowDestroyed=false;
@@ -189,6 +212,84 @@ void ApplicationTests::pageWindowPresentation()
         QVERIFY(staged);
         engine->rootContext()->setContextProperty("testPreparedPage", staged);
         QVERIFY(evaluate("Qt.createQmlObject('import QtQuick; Connections { target: testPreparedPage; function onWindowPreparedPageCommittedChanged() { if (target.windowPreparedPageCommitted) testProbe.savedSelection = target.windowUi.assign_window_context(\"changed\") } }', testWindow)").value<QObject *>());
+    }
+    if (scenario == "preparation-registration-retry") {
+        QPointer<QObject> staged(evaluate("Object.values(testWindow.pageWindowCoordinator.pendingPages)[0].child").value<QObject *>());
+        QVERIFY(staged);
+        engine->rootContext()->setContextProperty("testPreparedPage",staged.data());
+        QTRY_VERIFY(evaluate("testPreparedPage.profileBootstrapComplete && !!testPreparedPage.activeView && testPreparedPage.testRegistrationAttempts>=1").toBool());
+        QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),1);
+        evaluate("testPreparedPage.hide()");
+        QVERIFY(evaluate("testWindow.retirePrimaryPage()").toBool());
+        QVERIFY(evaluate("testWindow.pageWindowCoordinator.hasPendingWindows()").toBool());
+        // Exercise the real monotonic watchdog while the valid exclusive page
+        // is the last owner. It must become accessible and retain retry state.
+        QTRY_VERIFY_WITH_TIMEOUT(evaluate("testPreparedPage.windowUi.status_text.indexOf('registration is still pending')>=0").toBool(),18000);
+        QVERIFY(staged);
+        QVERIFY(evaluate("testPreparedPage.visible").toBool());
+        QVERIFY(evaluate("testWindow.pageWindowCoordinator.hasPendingWindows()").toBool());
+        QVERIFY(!evaluate("testWindow.applicationShutdownInProgress").toBool());
+        evaluate("testPreparedPage.testAllowRegistration=true");
+        QTRY_VERIFY(evaluate("testPreparedPage.windowPreparedOwnerRegistered && !testWindow.pageWindowCoordinator.hasPendingWindows()").toBool());
+        pageReceiver="testPreparedPage.activeView";
+        QTRY_COMPARE(page("location.href").toString(),destination);
+        QCOMPARE(evaluate("testPreparedPage.windowUi.tab_id_for_index(0)").toString(),requestedId);
+        evaluate("testWindow.primaryPageRetired=false;testPreparedPage.windowShutdownApproved=true;testPreparedPage.close();testPreparedPage.destroy();testWindow.browserWindowComponentObject=savedWindowFactory");
+        QTRY_VERIFY(staged.isNull());
+        return;
+    }
+    if (scenario == "preparation-source-retire" || scenario.startsWith("preparation-publish-")) {
+        QPointer<QObject> staged(evaluate("Object.values(testWindow.pageWindowCoordinator.pendingPages)[0].child").value<QObject *>());
+        QVERIFY(staged);
+        engine->rootContext()->setContextProperty("testPreparedPage",staged.data());
+        QPointer<QObject> sourceUi(evaluate("testWindow.browserUi").value<QObject *>());
+        QMetaObject::Connection destruction;
+        QPointer<QObject> hook;
+        if (scenario == "preparation-publish-destroy") {
+            setupWindow=staged;
+            setupWindowDestroyed=false;
+            const int index=sourceUi->metaObject()->indexOfProperty("tab_count");
+            const auto receiver=metaObject()->method(metaObject()->indexOfSlot("destroySetupWindow()"));
+            destruction=QObject::connect(sourceUi,sourceUi->metaObject()->property(index).notifySignal(),this,receiver,Qt::DirectConnection);
+        } else {
+            const auto body=scenario=="preparation-source-retire" ? QStringLiteral("testWindow.retirePrimaryPage()")
+                : scenario=="preparation-publish-profile" ? QStringLiteral("testPreparedPage.windowUi.configure_profile(false,true,\"Replacement\",\"replacement\",testWindow.storageBasePath)")
+                : QStringLiteral("testPreparedPage.windowUi.navigate(%1)").arg(quoted(initial+"?publication-navigation=yes"));
+            const auto code=QStringLiteral("Qt.createQmlObject(%1,testWindow)").arg(quoted(
+                "import QtQml; Connections { target:testWindow.browserUi; property bool injected:false; function onTab_countChanged(){if(!injected && target.tab_count===1 && testPreparedPage.windowPreparedPageCommitted){injected=true;"+body+"}} }"));
+            hook=evaluate(code).value<QObject *>();
+            QVERIFY(hook);
+        }
+        const auto disconnect=qScopeGuard([&]{QObject::disconnect(destruction);if(hook)delete hook.data();});
+        if (scenario=="preparation-publish-destroy") {
+            QTRY_VERIFY(setupWindowDestroyed && staged.isNull());
+            QTRY_VERIFY(evaluate("Object.keys(testWindow.pageWindowCoordinator.pendingPages).length===0 && !testWindow.pageWindowCoordinator.hasPendingWindows()").toBool());
+            QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),1);
+            QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(),sourceView.data());
+            QCOMPARE(page("window.pageWindowDraft").toString(),QStringLiteral("unfinished work"));
+            return;
+        }
+        QTRY_VERIFY(hook->property("injected").toBool());
+        if (scenario=="preparation-publish-profile") {
+            QTRY_VERIFY(!evaluate("testWindow.pageWindowCoordinator.hasPendingWindows()").toBool());
+            QVERIFY(staged);
+            QTRY_VERIFY(evaluate("testPreparedPage.windowUi.page_host_profile_id()!==testWindow.browserUi.page_host_profile_id()").toBool());
+            QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),1);
+            evaluate("testPreparedPage.windowShutdownApproved=true;testPreparedPage.close();testPreparedPage.destroy()");
+            QTRY_VERIFY(staged.isNull());
+            return;
+        }
+        QTRY_VERIFY(evaluate("testPreparedPage.profileBootstrapComplete && !!testPreparedPage.activeView").toBool());
+        QTRY_VERIFY(!evaluate("testWindow.pageWindowCoordinator.hasPendingWindows()").toBool());
+        QVERIFY(!evaluate("testWindow.applicationShutdownInProgress").toBool());
+        pageReceiver="testPreparedPage.activeView";
+        QTRY_COMPARE(page("location.href").toString(),scenario=="preparation-publish-navigation"?initial+"?publication-navigation=yes":destination);
+        QCOMPARE(evaluate("testPreparedPage.windowUi.tab_id_for_index(0)").toString(),requestedId);
+        if (scenario=="preparation-source-retire") {
+            QVERIFY(evaluate("testWindow.primaryPageRetired").toBool());
+            QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),1);
+        } else QVERIFY(evaluate("testPreparedPage.commandNoticeVisible && testPreparedPage.commandNoticeError").toBool());
+        return;
     }
     if (scenario == "preparation-setup-error") {
         setProperty("rejectPreparedSetup",false);

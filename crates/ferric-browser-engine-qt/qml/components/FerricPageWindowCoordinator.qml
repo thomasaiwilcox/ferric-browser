@@ -46,7 +46,9 @@ QtObject {
         }
         for (var id in pendingPages) {
             var prepared = pendingPages[id]
-            if (prepared && !prepared.failed && prepared.child && !prepared.child.runtimeReleased) return true
+            if (prepared && prepared.committed) return true
+            if (prepared && !prepared.failed && prepared.child
+                    && typeof prepared.child.destroy === "function" && !prepared.child.runtimeReleased) return true
         }
         return false
     }
@@ -147,10 +149,64 @@ QtObject {
                 && left.generation === right.generation && left.documentId === right.documentId
     }
 
+    function retireCommittedPreparedPage(id, pending) {
+        // Let the exclusive child finish releasing its Ui/reporter first.
+        Qt.callLater(function() {
+            if (pendingPages[id] === pending) delete pendingPages[id]
+            recheckLastWindow()
+        })
+    }
+
+    function releasePreparedPage(child) {
+        for (var id in pendingPages) {
+            var pending = pendingPages[id]
+            if (pending && pending.committed && pending.child === child) {
+                retireCommittedPreparedPage(id,pending)
+                return
+            }
+        }
+    }
+
+    function failCommittedPreparedPage(id) {
+        var pending = pendingPages[id]
+        if (!pending || !pending.committed) return
+        var child = pending.child
+        var original = child && typeof child.destroy === "function" && !child.runtimeReleased
+                && child.windowPreparedPageMode && child.windowPreparedPageId === id
+                && child.windowUi && !child.windowUi.profile_bootstrap_pending
+                && child.windowUi.page_host_profile_id() === pending.profile
+                && child.windowUi.core_window_id === pending.destinationWindow
+        if (original && child.windowPreparedPageCorePublished && child.activeView
+                && child.activeView.stableTabId === id
+                && child.activeView.profile === child.windowWebEngineProfile
+                && child.activeView.ownsTab()) {
+            child.windowUi.status_text = "The page was kept; window registration is still pending"
+            if (!rootWindow.liveWindowEntries().some(function(entry) {
+                    return entry.host && entry.host !== child && entry.host.visible
+                })) child.show()
+            return
+        }
+        if (original && child.windowUi.tab_count === 1 && child.windowUi.tab_id_for_index(0) === id
+                && typeof child.rejectPopupAdmission === "function") child.rejectPopupAdmission()
+        retireCommittedPreparedPage(id,pending)
+    }
+
+    function completePreparedPage(child) {
+        for (var id in pendingPages) {
+            var pending = pendingPages[id]
+            if (pending && pending.child === child && pending.committed) {
+                delete pendingPages[id]
+                recheckLastWindow()
+                return
+            }
+        }
+    }
+
     function resumePreparedPage(child) {
         for (var id in pendingPages) {
             var pending = pendingPages[id]
             if (!pending || pending.child !== child) continue
+            if (pending.committed) return
             var controller = pending.controller
             if (!controller || !controller.ready || idsFor(controller.browserUi).indexOf(id) < 0) {
                 delete pendingPages[id]
@@ -322,7 +378,10 @@ QtObject {
                 ui.status_text = "The page window couldn't open. The page is kept in this window."
                 break
             }
-            delete pendingPages[id]
+            pendingPages[id] = { child:child, controller:controller, target:target,
+                context:String(ui.context_name), profile:ui.page_host_profile_id(),
+                foreground:(prepared ? prepared.foreground : id === selected),
+                destinationWindow:child.windowUi.core_window_id, committed:true, failed:false }
             child.windowPreparedPageActivateRequested = (prepared ? prepared.foreground : id === selected)
                     && id === selected && source.host.active
             child.windowPreparedPageCommitted = true

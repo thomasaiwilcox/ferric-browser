@@ -73,6 +73,7 @@ impl Default for BrowserUiRust {
             restored_page_group_ids: std::collections::HashMap::new(),
             credential_policy_epoch: 1,
             prepared_page_window: None,
+            prepared_page_releases: std::collections::HashMap::new(),
             live_page_move: None,
             prepared_live_page: None,
             pending_print: None,
