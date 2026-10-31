@@ -109,8 +109,17 @@ impl Default for IdSource {
 }
 
 impl IdSource {
-    pub(crate) fn reserve_transferred_page(&mut self, tab: TabId, document: DocumentId) -> bool {
-        let Some(next) = tab.raw().max(document.raw()).checked_add(1) else {
+    pub(crate) fn reserve_transferred_page(
+        &mut self,
+        tab: TabId,
+        document: DocumentId,
+        journey: Option<JourneyNodeId>,
+    ) -> bool {
+        let highest = tab
+            .raw()
+            .max(document.raw())
+            .max(journey.map_or(0, JourneyNodeId::raw));
+        let Some(next) = highest.checked_add(1) else {
             return false;
         };
         match &mut self.allocation {
