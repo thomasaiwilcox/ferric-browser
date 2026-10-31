@@ -133,7 +133,7 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"creation-publish-destroy", "creation-focus-reentrant", "creation-encoded", "creation-failed", "creation-open-route", "creation-open-background", "creation-foreground", "creation-background", "creation-fallback", "creation-background-fallback", "creation-recorded", "creation-stale", "creation-blank", "creation-start", "window-close-focus-reentrant", "window-close-root-probe", "window-close-cancel", "window-close-partial", "window-close-tail", "window-close-retired", "window-close-stale", "window-close-fallback", "window-close-fallback-role", "window-close-pinned", "window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-registration-retry", "preparation-source-retire", "preparation-publish-destroy", "preparation-publish-navigation", "preparation-publish-profile", "preparation-setup-error", "preparation-setup-destroy", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"session-peer-order", "session-peer-queued-get", "session-live-stopped", "session-queued-get", "session-prepared-gap", "session-prepared-destroy", "creation-publish-destroy", "creation-focus-reentrant", "creation-encoded", "creation-failed", "creation-open-route", "creation-open-background", "creation-foreground", "creation-background", "creation-fallback", "creation-background-fallback", "creation-recorded", "creation-stale", "creation-blank", "creation-start", "window-close-focus-reentrant", "window-close-root-probe", "window-close-cancel", "window-close-partial", "window-close-tail", "window-close-retired", "window-close-stale", "window-close-fallback", "window-close-fallback-role", "window-close-pinned", "window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-registration-retry", "preparation-source-retire", "preparation-publish-destroy", "preparation-publish-navigation", "preparation-publish-profile", "preparation-setup-error", "preparation-setup-destroy", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -158,6 +158,116 @@ void ApplicationTests::pageWindowPresentation()
                     << "prepared foreground" << (focused && focused->property("windowPreparedPageActivateRequested").toBool());
         });
         QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+    }
+
+    auto sessionUrls=[&](const QString &name) {
+        QDirIterator files(evaluate("testWindow.storageBasePath").toString(),{name+".json"},QDir::Files,QDirIterator::Subdirectories);
+        QStringList urls;
+        if (!files.hasNext()) return urls;
+        QFile saved(files.next());
+        if (!saved.open(QIODevice::ReadOnly)) return urls;
+        const auto snapshot=QJsonDocument::fromJson(saved.readAll()).object();
+        for (const auto &window:snapshot["windows"].toArray())
+            for (const auto &tab:window.toObject()["tabs"].toArray()) urls.append(tab.toObject()["safe_restore_url"].toString());
+        return urls;
+    };
+    if (scenario=="session-queued-get" || scenario=="session-peer-queued-get") {
+        const bool peer=scenario=="session-peer-queued-get";
+        const auto destination=initial+"?queued-get=yes";
+        const QString name=peer ? "peer-queued-get-proof" : "queued-get-proof";
+        QString issuing="testWindow.browserUi";
+        if (peer) {
+            QVERIFY(command("tab-open "+initial+"?peer"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+            issuing="testWindow.liveWindowEntries().find(function(e){return e.ui!==testWindow.browserUi}).ui";
+            QTRY_COMPARE(evaluate(issuing+".load_state").toString(),QStringLiteral("complete"));
+        }
+        const auto result=evaluate("(function(){var ui="+issuing+";var owner=testWindow.browserUi;var opened=ui.execute_command("
+            +quoted("tab-open "+destination+" ;; jseval --world page window.cancelledSessionTail=1")
+            +");"+(peer ? "var saved=owner.save_named_session("+quoted(name)+");var gated=ui.begin_shutdown_gate();"
+                : "var gated=ui.begin_shutdown_gate();var saved=owner.save_named_session("+quoted(name)+");")
+            +"var flushed=owner.flush_durable_state();ui.end_shutdown_gate();return opened&&gated&&saved&&flushed})()").toBool();
+        QVERIFY2(result,qPrintable(text("status_text")));
+        QTRY_COMPARE(text("session_save_state"),QStringLiteral("succeeded"));
+        const auto urls=sessionUrls(name);
+        QCOMPARE(urls.size(),peer ? 3 : 2);
+        QVERIFY(urls.contains(initial));
+        QVERIFY(urls.contains(destination));
+        if (peer) QVERIFY(urls.contains(initial+"?peer"));
+        QVERIFY(!page("typeof window.cancelledSessionTail !== 'undefined'").toBool());
+        return;
+    }
+
+    if (scenario=="session-peer-order") {
+        const auto firstPeer=initial+"?peer-a";
+        const auto secondPeer=initial+"?peer-b";
+        QVERIFY(command("tab-open "+firstPeer));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+        QTRY_VERIFY(evaluate("testWindow.liveWindowEntries().every(function(e){return e.ui.load_state==='complete'})").toBool());
+        QVERIFY(command("tab-open "+secondPeer));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),3);
+        QTRY_VERIFY(evaluate("testWindow.liveWindowEntries().every(function(e){return e.ui.load_state==='complete'})").toBool());
+        const auto createdFirst=initial+"?created-first";
+        const auto createdSecond=initial+"?created-second";
+        const auto result=evaluate("(function(){var entries=testWindow.liveWindowEntries();var a=entries.find(function(e){return e.ui.current_url.indexOf('?peer-a')>=0}).ui;"
+            "var b=entries.find(function(e){return e.ui.current_url.indexOf('?peer-b')>=0}).ui;var root=testWindow.browserUi;"
+            "var first=b.execute_command("+quoted("tab-open "+createdFirst)+");var second=a.execute_command("+quoted("tab-open "+createdSecond)+");"
+            "var saved=root.save_named_session('peer-order-proof');a.begin_shutdown_gate();b.begin_shutdown_gate();"
+            "var flushed=root.flush_durable_state();a.end_shutdown_gate();b.end_shutdown_gate();return first&&second&&saved&&flushed})()").toBool();
+        QVERIFY2(result,qPrintable(text("status_text")));
+        QTRY_COMPARE(text("session_save_state"),QStringLiteral("succeeded"));
+        QCOMPARE(sessionUrls("peer-order-proof"),(QStringList{initial,firstPeer,secondPeer,createdFirst,createdSecond}));
+        return;
+    }
+
+    if (scenario=="session-live-stopped") {
+        QTcpServer heldServer;
+        QVERIFY(heldServer.listen(QHostAddress::LocalHost,0));
+        int requests=0;
+        connect(&heldServer,&QTcpServer::newConnection,this,[&] {
+            while (auto *socket=heldServer.nextPendingConnection()) {
+                connect(socket,&QTcpSocket::readyRead,socket,[&,socket] {
+                    if (!socket->readAll().contains("\r\n\r\n")) return;
+                    requests++;
+                    socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 100000\r\nConnection: close\r\n\r\n<!doctype html><title>Stopped first GET</title><body>Held document");
+                });
+            }
+        });
+        const auto destination=QString("http://127.0.0.1:%1/stopped-get").arg(heldServer.serverPort());
+        engine->rootContext()->setContextProperty("savedWindowFactory",evaluate("testWindow.browserWindowComponentObject").value<QObject *>());
+        evaluate("testWindow.browserWindowComponentObject=null");
+        QVERIFY(command("tab-open "+destination));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(evaluate("testWindow.tabViews.length").toInt(),2);
+        QTRY_COMPARE(requests,1);
+        QPointer<QObject> stopped(evaluate("testWindow.tabViewAt(1)").value<QObject *>());
+        QVERIFY(stopped);
+        QVERIFY(stopped->property("loading").toBool());
+        QVERIFY(command("stop"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_VERIFY(!stopped->property("loading").toBool());
+        QCOMPARE(text("load_state"),QStringLiteral("cancelled"));
+        evaluate("testWindow.browserWindowComponentObject=savedWindowFactory");
+        const auto stoppedId=evaluate("testWindow.browserUi.tab_id_for_index(1)").toString();
+        // The native stop acknowledgement can follow the loading property.
+        // Move only after the browser has retired that captured request work.
+        QTRY_VERIFY(!evaluate("testWindow.browserUi.tab_has_active_operations("+quoted(stoppedId)+")").toBool());
+        QVERIFY(command("tab-detach"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+        QTRY_COMPARE(evaluate("testWindow.browserUi.tab_count").toInt(),1);
+        const QString moved="testWindow.liveWindowEntries().find(function(e){return e.ui!==testWindow.browserUi})";
+        QCOMPARE(evaluate(moved+".host.activeView").value<QObject *>(),stopped.data());
+        QVERIFY(evaluate("testWindow.browserUi.save_named_session('stopped-transfer-proof')").toBool());
+        QTRY_COMPARE(text("session_save_state"),QStringLiteral("succeeded"));
+        const auto urls=sessionUrls("stopped-transfer-proof");
+        QCOMPARE(urls.size(),2);
+        QVERIFY(urls.contains(initial) && urls.contains(destination));
+        QCOMPARE(requests,1);
+        return;
     }
 
     if (scenario == "expansion-cancel") {
@@ -304,7 +414,7 @@ void ApplicationTests::pageWindowPresentation()
         return;
     }
 
-    if (scenario == "preparation-registration-retry") {
+    if (scenario == "preparation-registration-retry" || scenario.startsWith("session-prepared-")) {
         auto *retryFactory=new QQmlComponent(engine.get(),engine.get());
         retryFactory->setData(R"QML(import QtQuick
 import "qrc:/qt/qml/io/github/ferricbrowser/qml/components" as Ferric
@@ -334,7 +444,7 @@ Ferric.FerricBrowserWindow {
         evaluate("testWindow.browserWindowComponentObject=testProbe");
     }
     if (scenario == "factory-failure") evaluate("testWindow.browserWindowComponentObject = null");
-    auto destination = initial + (scenario == "session-aggregate" || (scenario.startsWith("window-order") || scenario.startsWith("window-undo")) ? "?page-window=yes" : "?page-window=yes&token=preserve-exact-intent#section");
+    auto destination = initial + (scenario.startsWith("session-") || (scenario.startsWith("window-order") || scenario.startsWith("window-undo")) ? "?page-window=yes" : "?page-window=yes&token=preserve-exact-intent#section");
     const auto target = scenario == "background" ? QStringLiteral("tab-bg")
         : scenario == "standalone" ? QStringLiteral("window")
         : scenario == "private" ? QStringLiteral("private-window") : QStringLiteral("tab");
@@ -347,6 +457,43 @@ Ferric.FerricBrowserWindow {
     const auto requestedId = savedSelection.toString();
     QVERIFY(opened);
     evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+    if (scenario.startsWith("session-prepared-")) {
+        QPointer<QObject> staged;
+        QTRY_VERIFY((staged=evaluate("Object.values(testWindow.pageWindowCoordinator.pendingPages)[0] ? Object.values(testWindow.pageWindowCoordinator.pendingPages)[0].child : null").value<QObject *>()));
+        engine->rootContext()->setContextProperty("testSessionChild",staged.data());
+        auto cleanupStaged=qScopeGuard([&] {
+            if (staged) {
+                staged->setProperty("windowShutdownApproved",true);
+                evaluate("testSessionChild.close();testSessionChild.destroy()");
+                (void)QTest::qWaitFor([&] { return !staged; });
+            }
+        });
+        QTRY_VERIFY(evaluate("testSessionChild.windowPreparedPageCommitted && testSessionChild.windowPreparedPageCorePublished && testSessionChild.profileBootstrapComplete && !!testSessionChild.activeView && testSessionChild.testRegistrationAttempts>0").toBool());
+        QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),1);
+        QVERIFY(evaluate("testWindow.browserUi.save_named_session('prepared-gap-proof')").toBool());
+        QTRY_COMPARE(text("session_save_state"),QStringLiteral("succeeded"));
+        auto urls=sessionUrls("prepared-gap-proof");
+        QCOMPARE(urls.size(),2);
+        QVERIFY(urls.contains(initial) && urls.contains(destination));
+        if (scenario=="session-prepared-gap") {
+            evaluate("testSessionChild.testAllowRegistration=true");
+            QTRY_VERIFY(evaluate("testSessionChild.windowPreparedOwnerRegistered").toBool());
+            QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+            QVERIFY(evaluate("testWindow.browserUi.save_named_session('prepared-promotion-proof')").toBool());
+            QTRY_COMPARE(text("session_save_state"),QStringLiteral("succeeded"));
+            urls=sessionUrls("prepared-promotion-proof");
+            QCOMPARE(urls.size(),2);
+            QVERIFY(urls.contains(initial) && urls.contains(destination));
+        }
+        staged->setProperty("windowShutdownApproved",true);
+        evaluate("testSessionChild.close();testSessionChild.destroy()");
+        QTRY_VERIFY(!staged);
+        QVERIFY(evaluate("testWindow.browserUi.save_named_session('prepared-retirement-proof')").toBool());
+        QTRY_COMPARE(text("session_save_state"),QStringLiteral("succeeded"));
+        urls=sessionUrls("prepared-retirement-proof");
+        QCOMPARE(urls,QStringList{initial});
+        return;
+    }
     if (scenario == "activation-context") {
         auto *staged = evaluate("Object.values(testWindow.pageWindowCoordinator.pendingPages)[0].child").value<QObject *>();
         QVERIFY(staged);

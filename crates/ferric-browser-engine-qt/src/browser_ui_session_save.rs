@@ -36,7 +36,8 @@ impl qobject::BrowserUi {
             .filter_map(|tab_id| {
                 let durable_id = tab_ids.get(tab_id).copied()?;
                 let tab = state.tabs().get(tab_id)?;
-                let url = tab.url.clone().unwrap_or_else(|| "about:blank".into());
+                let url = crate::browser_ui_page_get::session_url(rust, *tab_id)
+                    .unwrap_or_else(|| "about:blank".into());
                 Some(SnapshotTabInput {
                     id: durable_id,
                     url,

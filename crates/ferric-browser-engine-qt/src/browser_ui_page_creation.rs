@@ -217,6 +217,8 @@ impl qobject::BrowserUi {
                 return Err(error.to_string());
             }
         };
+        crate::browser_ui_page_get::observe(self.as_mut().rust_mut().as_mut().get_mut(), &effects);
+        crate::live_ipc_owners::commit_owner_session(self.as_ref().get_ref());
         let created = effects.iter().find_map(|effect| match effect {
             crate::RuntimeEffect::Engine(crate::EngineEffect::Navigate { target, url })
                 if !source.reserved.contains(&target.tab) =>

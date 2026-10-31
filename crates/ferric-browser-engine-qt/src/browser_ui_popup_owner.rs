@@ -351,6 +351,7 @@ impl qobject::BrowserUi {
         // before returning to the materializer, without publishing either owner.
         self.as_mut().sync_tab_order_from_core();
         destination.as_mut().sync_tab_order_from_core();
+        super::live_ipc_owners::commit_page_sessions(self.as_ref().get_ref(), destination.as_mut());
         true
     }
 

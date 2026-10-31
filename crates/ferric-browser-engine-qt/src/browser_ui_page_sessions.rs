@@ -28,11 +28,22 @@ pub(super) struct PageSessionOwner {
 
 impl PageSessionOwner {
     pub(super) fn capture(ui: &qobject::BrowserUi) -> Option<Self> {
+        Self::capture_owned(ui, false)
+    }
+
+    // The callback-free native commit supplies actual Core ownership before
+    // a live child's exclusive native staging has finished. This publishes
+    // session metadata only, never routing or document authority.
+    pub(super) fn capture_committed(ui: &qobject::BrowserUi) -> Option<Self> {
+        Self::capture_owned(ui, true)
+    }
+
+    fn capture_owned(ui: &qobject::BrowserUi, committed: bool) -> Option<Self> {
         let rust = ui.rust();
         let state = rust.state.as_ref()?;
         if !rust.page_window_ordinary
             || !rust.view_alive
-            || rust.page_window_preparing
+            || rust.page_window_preparing && !committed
             || rust.profile_bootstrap_pending
             || state.configuration().tabs.presentation
                 != ferric_browser_config::TabsPresentation::Windows
@@ -96,7 +107,8 @@ impl PageSessionOwner {
             }
             groups[index].1.tabs.push(SnapshotTabInput {
                 id: durable_id,
-                url: page.url.clone().unwrap_or_else(|| "about:blank".into()),
+                url: crate::browser_ui_page_get::session_url(rust, *id)
+                    .unwrap_or_else(|| "about:blank".into()),
                 safety: RestoreSafety::SafeGet,
                 private: false,
                 pinned: page.pinned,

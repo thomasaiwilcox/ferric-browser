@@ -385,7 +385,7 @@ impl qobject::BrowserUi {
             .as_ref()
             .expect("validated");
         let (child_window, anchor) = (prepared.window, prepared.anchor.clone());
-        handoff.transfer_anchor(&snapshot, &token, window, anchor, || {
+        let committed = handoff.transfer_anchor(&snapshot, &token, window, anchor, || {
             let imported = destination
                 .as_mut()
                 .rust_mut()
@@ -417,6 +417,7 @@ impl qobject::BrowserUi {
             let source = source.as_mut().get_mut();
             let mut child = destination.as_mut().rust_mut();
             let child = child.as_mut().get_mut();
+            crate::browser_ui_page_get::transfer(source, child, tab);
             if let Some(history) = source.navigation.content_histories.remove(&tab) {
                 child.navigation.content_histories.insert(tab, history);
             }
@@ -496,7 +497,14 @@ impl qobject::BrowserUi {
             prepared.effects = Some(imported);
             prepared.completion = Some(completion);
             true
-        })
+        });
+        if committed {
+            crate::live_ipc_owners::commit_page_sessions(
+                self.as_ref().get_ref(),
+                destination.as_mut(),
+            );
+        }
+        committed
     }
 
     // Native completion has already removed exclusive staging. This publishes

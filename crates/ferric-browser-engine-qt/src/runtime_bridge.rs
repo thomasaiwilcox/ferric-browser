@@ -86,6 +86,7 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         effects: Vec<RuntimeEffect>,
     ) -> Vec<Effect> {
+        crate::browser_ui_page_get::observe(self.as_mut().rust_mut().as_mut().get_mut(), &effects);
         let accepted = !effects.iter().any(|effect| {
             matches!(
                 effect,

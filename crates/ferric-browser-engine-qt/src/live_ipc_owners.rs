@@ -32,6 +32,7 @@ struct Owner<H = CxxQtThread<qobject::BrowserUi>> {
 struct Directory<H = CxxQtThread<qobject::BrowserUi>> {
     owners: BTreeMap<String, Owner<H>>,
     page_order: crate::page_window_order::PageOrder,
+    pending_sessions: BTreeMap<String, PendingSession>,
     clock: u64,
     generation: u64,
     controller: Option<String>,
@@ -43,6 +44,7 @@ impl<H> Default for Directory<H> {
         Self {
             owners: BTreeMap::new(),
             page_order: crate::page_window_order::PageOrder::default(),
+            pending_sessions: BTreeMap::new(),
             clock: 0,
             generation: 0,
             controller: None,
@@ -54,6 +56,173 @@ impl<H> Default for Directory<H> {
 fn directory() -> &'static Mutex<Directory> {
     static DIRECTORY: OnceLock<Mutex<Directory>> = OnceLock::new();
     DIRECTORY.get_or_init(Default::default)
+}
+
+struct PendingSession {
+    nonce: crate::Uuid,
+    window: crate::WindowId,
+    profile: ferric_browser_application::ProfileInstanceId,
+    order: u64,
+    snapshot: super::browser_ui_page_sessions::PageSessionOwner,
+}
+
+// Session metadata grants no owner selection, IPC route or document authority.
+// The actual Ui owns this lease and exact-nonce retirement cannot remove a
+// replacement snapshot created by a later lifecycle.
+pub(super) struct PendingSessionLease {
+    token: String,
+    nonce: crate::Uuid,
+    window: crate::WindowId,
+    profile: ferric_browser_application::ProfileInstanceId,
+}
+impl PendingSessionLease {
+    fn matches(&self, rust: &crate::BrowserUiRust) -> bool {
+        rust.window == Some(self.window)
+            && rust
+                .state
+                .as_ref()
+                .and_then(crate::BrowserApplication::profile_instance_id)
+                == Some(self.profile)
+    }
+}
+impl Drop for PendingSessionLease {
+    fn drop(&mut self) {
+        if let Ok(mut directory) = directory().lock()
+            && directory
+                .pending_sessions
+                .get(&self.token)
+                .is_some_and(|entry| entry.nonce == self.nonce)
+        {
+            directory.pending_sessions.remove(&self.token);
+        }
+    }
+}
+
+pub(super) fn commit_page_sessions(
+    source: &qobject::BrowserUi,
+    mut destination: Pin<&mut qobject::BrowserUi>,
+) {
+    let source_snapshot =
+        super::browser_ui_page_sessions::PageSessionOwner::capture_committed(source);
+    let destination_snapshot = super::browser_ui_page_sessions::PageSessionOwner::capture_committed(
+        destination.as_ref().get_ref(),
+    );
+    let source_token = source.rust().window_token.to_string();
+    let token = destination.as_ref().rust().window_token.to_string();
+    let destination_window = destination.as_ref().rust().window;
+    let source_window = source.rust().window;
+    let lease = if let Ok(mut directory) = directory().lock() {
+        if let Some(owner) = directory.owners.get_mut(&source_token) {
+            owner.page_session = source_snapshot.clone();
+        }
+        if let Some(entry) = directory.pending_sessions.get_mut(&source_token) {
+            if let Some(snapshot) = source_snapshot.filter(|snapshot| {
+                entry.profile == snapshot.profile && Some(entry.window) == source_window
+            }) {
+                entry.snapshot = snapshot;
+            } else {
+                directory.pending_sessions.remove(&source_token);
+            }
+        }
+        if let Some(owner) = directory.owners.get_mut(&token) {
+            owner.page_session = destination_snapshot;
+            None
+        } else if let Some(snapshot) = destination_snapshot {
+            directory.clock = directory.clock.saturating_add(1);
+            let order = directory.clock;
+            let nonce = crate::Uuid::new_v4();
+            let window = destination_window.expect("committed snapshot window");
+            let profile = snapshot.profile;
+            directory
+                .page_order
+                .observe(snapshot.page_ids.iter().map(|(_, tab)| *tab));
+            directory.pending_sessions.insert(
+                token.clone(),
+                PendingSession {
+                    nonce,
+                    window,
+                    profile,
+                    order,
+                    snapshot,
+                },
+            );
+            Some(PendingSessionLease {
+                token,
+                nonce,
+                window,
+                profile,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    destination
+        .as_mut()
+        .rust_mut()
+        .as_mut()
+        .get_mut()
+        .pending_page_session = lease;
+}
+
+fn refresh_pending_session(
+    rust: &crate::BrowserUiRust,
+    snapshot: Option<super::browser_ui_page_sessions::PageSessionOwner>,
+) {
+    let Some(lease) = &rust.pending_page_session else {
+        return;
+    };
+    if let Ok(mut directory) = directory().lock()
+        && directory
+            .pending_sessions
+            .get(&lease.token)
+            .is_some_and(|entry| entry.nonce == lease.nonce)
+    {
+        if let Some(snapshot) = snapshot.filter(|snapshot| {
+            lease.matches(rust)
+                && snapshot.profile == lease.profile
+                && directory
+                    .pending_sessions
+                    .get(&lease.token)
+                    .is_some_and(|entry| {
+                        entry.window == lease.window && entry.profile == lease.profile
+                    })
+        }) {
+            directory
+                .page_order
+                .observe(snapshot.page_ids.iter().map(|(_, tab)| *tab));
+            directory
+                .pending_sessions
+                .get_mut(&lease.token)
+                .expect("matched lease")
+                .snapshot = snapshot;
+        } else {
+            directory.pending_sessions.remove(&lease.token);
+        }
+    }
+}
+
+// A private Core creation is already part of the process session even before
+// Qt publishes its model. Other owners may capture that aggregate immediately.
+pub(super) fn commit_owner_session(ui: &qobject::BrowserUi) {
+    let snapshot = super::browser_ui_page_sessions::PageSessionOwner::capture(ui);
+    let rust = ui.rust();
+    let token = rust.window_token.to_string();
+    if rust.ipc_owner.is_none() {
+        refresh_pending_session(rust, snapshot);
+        return;
+    }
+    if let Ok(mut directory) = directory().lock() {
+        if let Some(snapshot) = &snapshot {
+            directory
+                .page_order
+                .observe(snapshot.page_ids.iter().map(|(_, tab)| *tab));
+        }
+        if let Some(owner) = directory.owners.get_mut(&token) {
+            owner.page_session = snapshot;
+        }
+    }
 }
 
 pub(super) fn forget_page_order(pages: &[ferric_browser_core::TabId]) {
@@ -274,6 +443,20 @@ pub(super) fn page_session_windows(
                 .map(|data| (owner.order, owner.focused, data.clone()))
         })
         .collect::<Vec<_>>();
+    owners.extend(
+        directory
+            .pending_sessions
+            .iter()
+            .filter(|(pending_token, entry)| {
+                pending_token.as_str() != token
+                    && entry.snapshot.profile == current.profile
+                    && directory
+                        .owners
+                        .get(*pending_token)
+                        .is_none_or(|owner| owner.page_session.is_none())
+            })
+            .map(|(_, entry)| (entry.order, 0, entry.snapshot.clone())),
+    );
     let order = directory.owners.get(token).map_or(0, |owner| owner.order);
     owners.push((order, u64::MAX, current));
     let positions = owners
@@ -301,6 +484,15 @@ pub(super) fn page_session_checkpoint(
                 .filter(|session| session.profile == profile)
                 .map(|session| (owner.order, &session.checkpoint))
         })
+        .chain(
+            directory
+                .pending_sessions
+                .iter()
+                .filter(|(pending_token, entry)| {
+                    pending_token.as_str() != token && entry.snapshot.profile == profile
+                })
+                .map(|(_, entry)| (entry.order, &entry.snapshot.checkpoint)),
+        )
         .min_by_key(|(order, _)| *order)
         .map(|(_, checkpoint)| checkpoint.clone())
 }
@@ -785,11 +977,24 @@ impl qobject::BrowserUi {
             .flatten();
         let page_window =
             super::browser_ui_page_windows::PageWindowSnapshot::capture(self.as_ref().get_ref());
-        let page_session =
-            super::browser_ui_page_sessions::PageSessionOwner::capture(self.as_ref().get_ref());
+        let committed_session_owner = {
+            let binding = self.as_ref();
+            let rust = binding.rust();
+            rust.pending_page_session
+                .as_ref()
+                .is_some_and(|lease| lease.matches(rust))
+        };
+        let page_session = if committed_session_owner {
+            super::browser_ui_page_sessions::PageSessionOwner::capture_committed(
+                self.as_ref().get_ref(),
+            )
+        } else {
+            super::browser_ui_page_sessions::PageSessionOwner::capture(self.as_ref().get_ref())
+        };
         let profile_available = self.as_ref().get_ref().profile_available();
         let rust = self.as_ref().get_ref().rust();
         let Some(lease) = rust.ipc_owner.as_ref() else {
+            refresh_pending_session(rust, page_session);
             return;
         };
         crate::page_window_undo::register(rust);
@@ -828,6 +1033,14 @@ impl qobject::BrowserUi {
                 .map(|record| record.id.clone())
                 .collect();
             owner.operation_revision = rust.operation_revision();
+        }
+        if let Some(pending) = &rust.pending_page_session
+            && directory
+                .pending_sessions
+                .get(&pending.token)
+                .is_some_and(|entry| entry.nonce == pending.nonce)
+        {
+            directory.pending_sessions.remove(&pending.token);
         }
         if changed {
             directory.generation = directory.generation.saturating_add(1);
