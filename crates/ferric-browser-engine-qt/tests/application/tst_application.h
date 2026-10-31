@@ -5,6 +5,7 @@
 #include <QTcpServer>
 #include <QTemporaryDir>
 #include <QVariant>
+#include <QPointer>
 #include <memory>
 
 // Production policy stays in the linked engine; this object only drives and
@@ -21,6 +22,8 @@ class ApplicationTests final : public QObject {
     QHash<QByteArray, QByteArray> frameFixtures;
     QVariant scriptResult;
     bool scriptDone = false;
+    QPointer<QObject> setupWindow;
+    bool setupWindowDestroyed = false;
     int frameCallbackCount = 0;
     QString pageReceiver = "testWindow.activeWebView()";
     QVariant evaluate(const QString &source);
@@ -42,6 +45,9 @@ class ApplicationTests final : public QObject {
   public:
     Q_INVOKABLE void accept(const QVariant &value);
     Q_INVOKABLE void frameOperationComplete(const QVariant &value);
+    Q_INVOKABLE QObject *createObject(QObject *parent, const QVariantMap &properties);
+  public slots:
+    void destroySetupWindow();
   private slots:
     void credentialViewAssociation_data();
     void credentialViewAssociation();

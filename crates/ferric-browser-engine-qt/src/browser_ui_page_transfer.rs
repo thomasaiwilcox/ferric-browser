@@ -101,6 +101,12 @@ impl PageRollbackProof {
     }
 }
 
+fn same_page_set(current: &[crate::TabId], captured: &[crate::TabId]) -> bool {
+    // Both lists originate in Core, which guarantees unique page IDs. Permit
+    // reordering without accepting an extra, removed or substituted page.
+    current.len() == captured.len() && current.iter().all(|id| captured.contains(id))
+}
+
 fn source_current(ui: &qobject::BrowserUi, pending: &LivePageMove) -> bool {
     let rust = ui.rust();
     let Some(state) = rust.state.as_ref() else {
@@ -117,13 +123,13 @@ fn source_current(ui: &qobject::BrowserUi, pending: &LivePageMove) -> bool {
         && rust.window == Some(pending.window)
         && rust.tab == Some(pending.target.tab)
         && rust.tab_ids.len() > 1
-        && rust.tab_ids.contains(&pending.target.tab)
+        && same_page_set(&rust.tab_ids, &pending.source.reserved)
         && state.shutdown() == ferric_browser_core::ShutdownState::Running
         && state.capture_target(pending.target.tab) == Some(pending.target)
-        && state
-            .windows()
-            .get(&pending.window)
-            .is_some_and(|window| window.active_tab == Some(pending.target.tab))
+        && state.windows().get(&pending.window).is_some_and(|window| {
+            window.active_tab == Some(pending.target.tab)
+                && same_page_set(&window.tabs, &pending.source.reserved)
+        })
         && scope.is_some_and(|scope| {
             pending.source.scope.matches_undo(&scope) && scope.group == pending.source.group
         })

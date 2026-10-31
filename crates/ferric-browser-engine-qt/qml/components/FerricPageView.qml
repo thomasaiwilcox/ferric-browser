@@ -25,10 +25,12 @@ WebEngineView {
                     }
                     return { ui:viewUi, host:viewHost, tabs:viewTabs, index:tabIndex }
                 }
-                function refreshDocumentOwnerAfterTransfer() {
-                    if (!ownsTab() || loading || viewUi.load_state !== "complete") return
+                function refreshDocumentOwnerAfterTransfer(target) {
+                    if (!target || !ownsTab() || loading) return
                     if (nativeUrl.length === 0 && nativeContent.engineDocumentReady) {
-                        documentTitleTarget = viewUi.navigation_target_for_index(tabIndex)
+                        // The transferred document owns its captured Target;
+                        // a newly queued navigation must never donate authority.
+                        documentTitleTarget = target
                         publishPageTitle()
                     }
                     synchronizeContentHistory()
@@ -185,9 +187,6 @@ WebEngineView {
                 }
                 Connections {
                     target: viewUi
-                    function onLoad_stateChanged() {
-                        if (!webView.viewTransferPending) webView.refreshDocumentOwnerAfterTransfer()
-                    }
                     function onSite_experiment_kindChanged() {
                         webView.refreshEffectiveSiteSettings()
                     }

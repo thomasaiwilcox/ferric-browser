@@ -58,7 +58,7 @@ Item {
         if (valid) {
             view.viewTransferPending = false
             view.refreshPromptViewIdentity()
-            view.refreshDocumentOwnerAfterTransfer()
+            view.refreshDocumentOwnerAfterTransfer(saved.target)
             view.visible = true
             view.synchronizeContentHistory()
         } else {

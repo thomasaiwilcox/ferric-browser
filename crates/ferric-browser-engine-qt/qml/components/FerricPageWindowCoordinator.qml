@@ -17,7 +17,7 @@ QtObject {
         onTriggered: {
             for (var nonce in coordinator.pendingMoves) {
                 var pending = coordinator.pendingMoves[nonce]
-                if (Date.now() >= pending.expires) coordinator.failLivePage(nonce)
+                if (!pending.child || !pending.ui || Date.now() >= pending.expires) coordinator.failLivePage(nonce)
             }
         }
     }
@@ -52,7 +52,7 @@ QtObject {
     function resumeLivePage(child) {
         var nonce = child ? child.windowLivePageNonce : ""
         var pending = pendingMoves[nonce]
-        if (!pending || pending.child !== child) return
+        if (!pending || pending.child !== child || !child.windowLivePagePublished) return
         if (Date.now() >= pending.expires || !child.commitLivePage()) { failLivePage(nonce); return }
         var remaining = Object.assign({},pendingMoves)
         delete remaining[nonce]
@@ -88,7 +88,7 @@ QtObject {
         pendingMoves = updated
         // Readiness can be synchronous; the child also schedules an owned
         // zero-delay callback after asynchronous policy bootstrap.
-        if (child.windowLivePageAccepted) Qt.callLater(function() { coordinator.resumeLivePage(child) })
+        if (child.windowLivePageAccepted && child.windowLivePagePublished) Qt.callLater(function() { coordinator.resumeLivePage(child) })
         return true
     }
 

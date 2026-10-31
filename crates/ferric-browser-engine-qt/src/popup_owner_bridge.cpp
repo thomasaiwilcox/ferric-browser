@@ -120,12 +120,15 @@ QString FerricPopupOwnerBridge::activatePreparedPage() {
 #include <QMetaProperty>
 #include <QSignalBlocker>
 #include <QQuickWindow>
+#include <QCoreApplication>
+#include <QTimer>
 
 struct FerricPopupOwnerBridge::LivePreparation {
     QPointer<BrowserUi> source, destination;
     QPointer<QObject> sourceHost, host, profile;
     QString nonce;
     bool consumed = false;
+    bool published = false;
 };
 
 namespace {
@@ -183,7 +186,21 @@ bool FerricPopupOwnerBridge::prepareLivePageWindow(QObject *source, QObject *des
     }
     if (!alive() || !initialized) return false;
     self->live_ = state;
-    return publishPreparedProperties(state->destination) && alive();
+    // Component.onCompleted is a QML signal handler. Qt aborts if one of its
+    // notifications deletes that handler's window synchronously. Publish only
+    // after construction unwinds, still outside every direct Rust reference.
+    QTimer::singleShot(0,QCoreApplication::instance(),[self,state] {
+        auto current = [&] { return self && state->source && state->sourceHost
+            && state->destination && state->host && state->profile; };
+        if (!current() || !publishPreparedProperties(state->destination) || !current()) {
+            if (state->source) state->source->cancel_live_page_move(state->nonce);
+            if (state->host) QMetaObject::invokeMethod(state->host,"rejectPopupAdmission",Qt::DirectConnection);
+            return;
+        }
+        state->published = true;
+        state->host->setProperty("windowLivePagePublished",true);
+    });
+    return true;
 }
 
 bool FerricPopupOwnerBridge::commitLivePageWindow() {
@@ -191,7 +208,7 @@ bool FerricPopupOwnerBridge::commitLivePageWindow() {
     const QPointer<FerricPopupOwnerBridge> self(this);
     auto alive = [&] { return self && state && state->source && state->destination
         && state->sourceHost && state->host && state->profile; };
-    if (!alive() || state->consumed) return false;
+    if (!alive() || !state->published || state->consumed) return false;
     state->consumed = true;
     if (state->source->thread() != QThread::currentThread() || state->destination->thread() != QThread::currentThread()) return false;
     const QPointer<QQuickItem> view(qobject_cast<QQuickItem *>(objectProperty(state->sourceHost, "activeView")));

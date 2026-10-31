@@ -37,6 +37,7 @@ ApplicationWindow {
     property var windowLivePageSourceUi: null
     property var windowLivePageSourceHost: null
     property bool windowLivePageAccepted: false
+    property bool windowLivePagePublished: false
     property bool windowLiveRegistrationPending: false
     Timer {
         interval: 250
@@ -47,7 +48,7 @@ ApplicationWindow {
     property var windowLivePageStaging: null
     Timer {
         interval: 0
-        running: secondaryWindow.windowLivePageAccepted
+        running: secondaryWindow.windowLivePageAccepted && secondaryWindow.windowLivePagePublished
         onTriggered: rootWindow.pageWindowCoordinator.resumeLivePage(secondaryWindow)
     }
     property bool windowPreparedPageMode: false
@@ -1486,7 +1487,7 @@ function onContext_workspaceChanged() {
         view.liveTransferSource = null
         view.viewTransferPending = false
         view.refreshPromptViewIdentity()
-        view.refreshDocumentOwnerAfterTransfer()
+        view.refreshDocumentOwnerAfterTransfer(saved.target)
         secondaryTabController.transferInProgress = false
         if (saved.controller) saved.controller.transferInProgress = false
         windowLivePageStaging = null
