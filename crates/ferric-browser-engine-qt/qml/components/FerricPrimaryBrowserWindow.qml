@@ -100,6 +100,15 @@ ApplicationWindow {
     readonly property bool pageWindowTagRequested: primaryPageIdentity.tagRequested
     function supersedePageWindowFocus() { return primaryPageIdentity.supersedePageFocus() }
     function pageFocusIntentCurrent(intent) { return primaryPageIdentity.focusIntentCurrent(intent) }
+    function currentPageFocusIntent() { return primaryPageIdentity.currentPageFocus() }
+    function presentIdlePageSurvivor(entry) { return runtimeBase.presentIdlePageSurvivor(entry) }
+    function captureShutdownViewProof(host) { return runtimeBase.captureShutdownViewProof(host) }
+    function shutdownViewProofCurrent(host, proof) { return runtimeBase.shutdownViewProofCurrent(host,proof) }
+    property var shutdownPageViewProof: []
+    onShutdownPagePromptVisibleChanged: if (shutdownPagePromptVisible && applicationShutdownInProgress)
+        window.activateBrowserWindow(window,browserUi)
+    onApplicationShutdownForcePromptVisibleChanged: if (applicationShutdownForcePromptVisible && applicationShutdownInProgress)
+        window.activateBrowserWindow(window,browserUi)
     function requestPageWindowFocus(issuer, target, nonce) {
         return primaryPageIdentity ? primaryPageIdentity.activatePage(issuer, target, nonce) : "stale"
     }
@@ -159,7 +168,7 @@ ApplicationWindow {
     property alias focusReturnStack: focusOverlayController.focusReturnStack
     property alias modeFocusReturnTarget: focusOverlayController.modeFocusReturnTarget
     property alias modeFocusCaptured: focusOverlayController.modeFocusCaptured
-    readonly property bool browserKeyFocusActive: !window.browserChromeInputActive
+    readonly property bool browserKeyFocusActive: !window.applicationShutdownInProgress && !window.browserChromeInputActive
     property color backgroundColor: "#1e1e2e"
     property color surfaceColor: "#313244"
     property color panelColor: "#181825"
@@ -207,6 +216,8 @@ ApplicationWindow {
     readonly property real chromeOpacity: 1.0
     property var browserWindowRegistry: []
     property var popupWindowRegistry: []
+    property bool applicationShutdownCommitStarted: false
+    property bool applicationShutdownRootPrepared: false
     property bool applicationShutdownInProgress: false
     property bool applicationShutdownForcePromptVisible: false
     property var attachedDevToolsView: null
@@ -3477,6 +3488,7 @@ GridLayout {
         dialogHeight: 190 * window.chromeScale
         onKeepRequested: {
             window.pageCloseController.cancel()
+            window.abortApplicationShutdown()
             window.shutdownPromptVisible = false
             browserUi.status_text = "Shutdown cancelled"
         }
@@ -3498,6 +3510,7 @@ GridLayout {
         dialogHeight: 220 * window.chromeScale
         onKeepRequested: {
             window.pageCloseController.cancel()
+            window.abortApplicationShutdown()
             window.shutdownPageProbeGeneration += 1
             window.shutdownPagePromptVisible = false
             browserUi.status_text = "Shutdown cancelled"

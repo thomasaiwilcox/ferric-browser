@@ -5,6 +5,9 @@ import io.github.ferricbrowser 1.0
 WebEngineView {
     id: webView
     property var factory: null
+    enabled: !!factory && !factory.rootWindow.applicationShutdownInProgress
+    readonly property bool awaitingPreparedNavigation: !!(viewHost && viewHost.windowPreparedPageMode
+        && !viewHost.windowPreparedNavigationStarted)
 
                 readonly property string promptLeaseIdentity: factory.primaryUi.new_prompt_view_identity()
                 property var promptIdentityUi: null
@@ -107,10 +110,12 @@ WebEngineView {
                 Timer {
                     id: initializeContentTimer
                     interval: 0
-                    onTriggered: if (webView.ownsTab() && webView.viewModel.loaded && !webView.contentInitialized)
+                    onTriggered: if (webView.ownsTab() && webView.viewModel.loaded && !webView.contentInitialized
+                            && !webView.awaitingPreparedNavigation)
                         webView.setContentUrl(webView.modelContentUrl || "about:blank", false)
                 }
                 onModelContentUrlChanged: {
+                    if (awaitingPreparedNavigation) return
                     if (!contentInitialized) { initializeContentTimer.restart(); return }
                     if (!viewTransferPending && modelContentUrl.length > 0 && (modelContentUrl === "rb://start" || modelContentUrl === "rb://blank" || nativeUrl.length > 0)) setContentUrl(modelContentUrl, false)
                 }

@@ -84,7 +84,8 @@ impl PageRollbackProof {
         rust.view_alive
             && !rust.profile_bootstrap_pending
             && !rust.page_window_closing
-            && !rust.ipc_shutdown_gate
+            // Admission is gated during Quit; this immutable unchanged-owner
+            // proof may still restore an already staged view before close.
             && rust.window == Some(proof.window)
             && rust.window_token.to_string() == proof.token
             && rust.tab_ids.contains(&proof.target.tab)

@@ -44,6 +44,10 @@ TestCase {
             property bool initialPinned: false
             property bool initialMuted: false
             property real initialZoom: -1
+            property var promptAssociation: null
+            function refreshPromptViewIdentity() {
+                promptAssociation={ui:viewUi,index:tabIndex,id:stableTabId}
+            }
             Component.onCompleted: {
                 initialPinned = viewModel.pinned
                 initialMuted = viewModel.muted
@@ -100,6 +104,9 @@ TestCase {
             compare(view.stableTabId,owner.ids[i]);compare(view.tabIndex,i)
             compare(view.viewUi,owner);compare(view.viewHost,test)
             compare(view.viewTabs,state.tabs)
+            compare(view.promptAssociation.ui,owner)
+            compare(view.promptAssociation.index,i)
+            compare(view.promptAssociation.id,owner.ids[i])
         }
     }
     function test_recovered_settings_are_present_before_view_creation() {
@@ -194,6 +201,8 @@ TestCase {
         compare(state.controller.tabViews[0],second);compare(state.controller.tabViews[1],first)
         tryCompare(second,"visible",true);compare(first.visible,false)
         compare(first.tabIndex,1);compare(first.viewModel.tabId,"tabid-1")
+        compare(first.promptAssociation.index,1);compare(first.promptAssociation.id,"tabid-1")
+        compare(second.promptAssociation.index,0);compare(second.promptAssociation.id,"tabid-2")
         owner.ids=["tabid-1"]
         state.controller.syncTabModel()
         compare(state.controller.tabViews.length,1);compare(state.controller.tabViews[0],first)
@@ -213,6 +222,11 @@ TestCase {
         owner.ids=["tabid-3","tabid-4","tabid-5"]
         owner.active_tab_index=1
         owner.pinned=({"tabid-3":true});owner.muted=({"tabid-4":true})
+        owner.descriptors=({
+            "tabid-3":{url:"https://one.test/",pinned:true,zoom_hundredths:125},
+            "tabid-4":{url:"https://two.test/",muted:true,zoom_hundredths:150},
+            "tabid-5":{url:"https://three.test/",zoom_hundredths:100}
+        })
         owner.pending="replace\nhttps://one.test/\ttrue\tfalse\t1.25\t10\t20\nhttps://two.test/\tfalse\ttrue\t1.5\t30\t40\nhttps://three.test/\tfalse\tfalse\t1\t0\t0"
         state.controller.syncTabModel()
         compare(state.controller.tabViews.length,3)

@@ -361,6 +361,11 @@ impl qobject::BrowserUi {
 
     // Called only under the native publisher's signal blocker.
     pub(super) fn publish_page_creation(mut self: Pin<&mut Self>) -> bool {
+        // Quit cancels the tail, not the accepted initial navigation. Keep the
+        // original fenced publication available if another owner cancels Quit.
+        if self.as_ref().rust().ipc_shutdown_gate {
+            return false;
+        }
         let publication = self
             .as_mut()
             .rust_mut()
@@ -406,6 +411,9 @@ impl qobject::BrowserUi {
                 fail(pending, NativeOperationOutcome::Stale);
             }
             self.as_mut().sync_tab_order_from_core();
+        }
+        if !self.as_ref().rust().page_creation_publications.is_empty() {
+            qobject::ferric_queue_page_creation_publication(self.as_ref().get_ref());
         }
         true
     }

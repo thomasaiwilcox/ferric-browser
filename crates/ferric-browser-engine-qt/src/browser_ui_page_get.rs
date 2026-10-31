@@ -47,6 +47,9 @@ pub(super) fn observe(rust: &mut BrowserUiRust, effects: &[RuntimeEffect]) {
 }
 
 pub(super) fn session_url(rust: &BrowserUiRust, tab: TabId) -> Option<String> {
+    if let Some(url) = crate::browser_ui_popup_owner::prepared_session_url(rust, tab) {
+        return Some(url);
+    }
     let state = rust.state.as_ref()?;
     let page = state.tabs().get(&tab)?;
     if let Some(url) = &page.url {

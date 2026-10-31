@@ -2170,7 +2170,8 @@ fn native_window_close_requires_a_user_decision_before_shutdown_checks() {
     assert!(secondary.contains("promptVisible: secondaryWindow.windowCloseConfirmationVisible"));
 
     assert!(root.contains("host.continueQuitRequest()"));
-    assert!(root.contains("popup.continueQuitRequest()"));
+    assert!(root.contains("window.popupWindowRegistry || []"));
+    assert!(root.contains("starting[j].host.continueQuitRequest()"));
 }
 
 #[test]

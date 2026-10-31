@@ -25,6 +25,7 @@ public:
     bool prepared() const;
     bool tagRequested() const;
     Q_INVOKABLE QString supersedePageFocus();
+    Q_INVOKABLE QString currentPageFocus() const;
     Q_INVOKABLE bool focusIntentCurrent(const QString &intent) const;
     Q_INVOKABLE QString activatePage(QObject *issuer, QObject *target, const QString &nonce);
     Q_INVOKABLE QString pageFocusStatus(QObject *issuer, QObject *target, const QString &nonce) const;

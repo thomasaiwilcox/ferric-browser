@@ -13,8 +13,13 @@ TestCase {
     QtObject {
         id: web
         property int tabIndex: 0
+        property string stableTabId: "tab-a"
         property bool ownerValid: true
         function ownsTab() { return ownerValid && tabIndex >= 0 }
+        function lifecycleOwner() { return {ui:viewUi,host:viewHost,tabs:provisionalTabs,index:tabIndex} }
+        function ownsLifecycleTab() {
+            return ownsTab() && !!viewUi && viewUi.tab_id_for_index(tabIndex) === stableTabId
+        }
         property var history: ({ backItems: backItems, forwardItems: forwardItems })
         property url url: "https://a.test"
         property string title: "Example"

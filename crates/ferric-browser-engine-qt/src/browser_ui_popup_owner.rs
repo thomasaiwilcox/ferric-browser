@@ -30,6 +30,33 @@ pub(super) struct PreparedPageRelease {
     effects: Vec<super::RuntimeEffect>,
 }
 
+// The first native presentation can expose its blank placeholder before the
+// exclusive prepared navigation starts. This is session metadata, not a new
+// navigation or script authority; activation still consumes its original proof.
+pub(super) fn prepared_session_url(
+    rust: &super::BrowserUiRust,
+    tab: super::TabId,
+) -> Option<String> {
+    let prepared = rust.prepared_page_window.as_ref()?;
+    let state = rust.state.as_ref()?;
+    let page = state.tabs().get(&tab)?;
+    (prepared.committed
+        && prepared.source_target.tab == tab
+        && rust.window == Some(prepared.destination_window)
+        && page.window == prepared.destination_window
+        && state
+            .profile_instance_id()
+            .map(|id| id.to_string())
+            .as_deref()
+            == Some(&prepared.profile_instance)
+        && state.capture_target(tab) == Some(prepared.source_target)
+        && page
+            .url
+            .as_deref()
+            .is_none_or(|url| matches!(url, "about:blank" | "rb://blank")))
+    .then(|| prepared.url.to_string())
+}
+
 impl qobject::BrowserUi {
     // Prepare a new window from a Core page before its first engine view is
     // allocated. The source is retained until QML confirms the destination is
@@ -547,6 +574,10 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn retire_page_presentation(mut self: Pin<&mut Self>) -> bool {
+        if self.as_ref().rust().shutdown_pages.is_some() && !self.as_ref().shutdown_pages_current()
+        {
+            return false;
+        }
         if !crate::browser_ui_page_close::allows_close(self.as_ref().get_ref(), None) {
             return false;
         }

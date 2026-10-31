@@ -16,6 +16,14 @@ use crate::{mark_forced_shutdown, qobject};
 
 impl qobject::BrowserUi {
     pub(super) fn request_shutdown(mut self: Pin<&mut Self>) -> bool {
+        if (self.as_ref().rust().ipc_shutdown_gate || self.as_ref().rust().shutdown_pages.is_some())
+            && !self.as_ref().shutdown_pages_current()
+        {
+            self.set_status_text(QString::from(
+                "Pages changed during shutdown. Review them before quitting.",
+            ));
+            return false;
+        }
         if !crate::browser_ui_page_close::allows_close(self.as_ref().get_ref(), None) {
             return false;
         }
@@ -31,6 +39,50 @@ impl qobject::BrowserUi {
         }
     }
 
+    pub(super) fn capture_shutdown_pages(mut self: Pin<&mut Self>) -> bool {
+        let proof =
+            crate::browser_ui_shutdown_pages::ShutdownPages::capture(self.as_ref().get_ref());
+        let captured = proof.is_some();
+        self.as_mut().rust_mut().as_mut().get_mut().shutdown_pages = proof;
+        captured
+    }
+
+    pub(super) fn shutdown_pages_current(&self) -> bool {
+        self.rust()
+            .shutdown_pages
+            .as_ref()
+            .is_some_and(|proof| proof.current(self))
+    }
+
+    #[allow(clippy::unused_self)]
+    pub(super) fn page_close_commits_pending(&self) -> bool {
+        crate::browser_ui_page_close::commits_pending()
+    }
+
+    pub(super) fn begin_shutdown_session_snapshot(mut self: Pin<&mut Self>) -> bool {
+        if self.as_ref().rust().shutdown_session_lease.is_some() {
+            return true;
+        }
+        let Some(lease) = crate::live_ipc_owners::begin_session_shutdown(self.as_ref().get_ref())
+        else {
+            return false;
+        };
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .shutdown_session_lease = Some(lease);
+        true
+    }
+
+    pub(super) fn abort_shutdown_session_snapshot(mut self: Pin<&mut Self>) {
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .shutdown_session_lease = None;
+    }
+
     pub(super) fn begin_shutdown_gate(mut self: Pin<&mut Self>) -> bool {
         if self.as_ref().rust().ipc_shutdown_gate {
             return true;
@@ -41,6 +93,12 @@ impl qobject::BrowserUi {
             .get_mut()
             .ipc_shutdown_gate = true;
         self.as_mut().cancel_page_creations();
+        crate::browser_ui_page_close::cancel_for_shutdown();
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .page_close_intent = None;
         self.as_mut().refresh_ipc_owner();
         self.set_status_text(QString::from("Shutdown gate active"));
         true
@@ -52,7 +110,11 @@ impl qobject::BrowserUi {
             .as_mut()
             .get_mut()
             .ipc_shutdown_gate = false;
+        self.as_mut().rust_mut().as_mut().get_mut().shutdown_pages = None;
         self.as_mut().refresh_ipc_owner();
+        if !self.as_ref().rust().page_creation_publications.is_empty() {
+            crate::qobject::ferric_queue_page_creation_publication(self.as_ref().get_ref());
+        }
     }
 
     pub(super) fn force_quit(self: Pin<&mut Self>) {

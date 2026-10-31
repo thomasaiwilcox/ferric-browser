@@ -117,6 +117,10 @@ bool FerricPageWindowIdentity::focusIntentCurrent(const QString &intent) const {
     return qGuiApp && QThread::currentThread() == qGuiApp->thread()
         && ferric::page_windows::page_focus_intent_current(intent);
 }
+QString FerricPageWindowIdentity::currentPageFocus() const {
+    if (!qGuiApp || QThread::currentThread() != qGuiApp->thread()) return {};
+    return ferric::page_windows::current_page_focus();
+}
 
 QString FerricPageWindowIdentity::activatePage(QObject *issuerObject, QObject *targetObject, const QString &nonce) {
     QPointer<FerricPageWindowIdentity> self(this);

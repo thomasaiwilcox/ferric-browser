@@ -39,6 +39,9 @@ pub(crate) fn supersede_page_focus() -> QString {
         value.to_string()
     })
 }
+pub(crate) fn current_page_focus() -> QString {
+    QString::from(generation().to_string())
+}
 
 pub(crate) fn page_focus_intent_current(intent: &QString) -> bool {
     let intent = intent.to_string();

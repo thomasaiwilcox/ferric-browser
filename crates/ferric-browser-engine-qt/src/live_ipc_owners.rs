@@ -421,51 +421,117 @@ pub(super) fn page_window_owners(
         .collect()
 }
 
-pub(super) fn page_session_windows(
-    token: &str,
-    current: super::browser_ui_page_sessions::PageSessionOwner,
-) -> Vec<super::SnapshotWindowInput> {
-    let Ok(mut directory) = directory().lock() else {
-        return Vec::new();
-    };
-    directory
-        .page_order
-        .observe(current.page_ids.iter().map(|(_, tab)| *tab));
+fn session_owners<H>(
+    directory: &Directory<H>,
+    current: Option<(String, super::browser_ui_page_sessions::PageSessionOwner)>,
+) -> Vec<super::browser_ui_shutdown_sessions::ShutdownOwner> {
+    use super::browser_ui_shutdown_sessions::ShutdownOwner;
+    let current_token = current.as_ref().map(|(token, _)| token.as_str());
     let mut owners = directory
         .owners
         .values()
-        .filter(|owner| owner.token != token)
+        .filter(|owner| Some(owner.token.as_str()) != current_token)
         .filter_map(|owner| {
-            owner
-                .page_session
-                .as_ref()
-                .filter(|data| data.profile == current.profile)
-                .map(|data| (owner.order, owner.focused, data.clone()))
+            owner.page_session.as_ref().map(|snapshot| {
+                (
+                    owner.token.clone(),
+                    owner.order,
+                    owner.focused,
+                    snapshot.clone(),
+                )
+            })
         })
         .collect::<Vec<_>>();
     owners.extend(
         directory
             .pending_sessions
             .iter()
-            .filter(|(pending_token, entry)| {
-                pending_token.as_str() != token
-                    && entry.snapshot.profile == current.profile
+            .filter(|(token, _)| {
+                Some(token.as_str()) != current_token
                     && directory
                         .owners
-                        .get(*pending_token)
+                        .get(*token)
                         .is_none_or(|owner| owner.page_session.is_none())
             })
-            .map(|(_, entry)| (entry.order, 0, entry.snapshot.clone())),
+            .map(|(token, entry)| (token.clone(), entry.order, 0, entry.snapshot.clone())),
     );
-    let order = directory.owners.get(token).map_or(0, |owner| owner.order);
-    owners.push((order, u64::MAX, current));
+    if let Some((token, snapshot)) = current {
+        let (order, focused) = directory
+            .owners
+            .get(&token)
+            .map_or((0, 0), |owner| (owner.order, owner.focused));
+        owners.push((token, order, focused, snapshot));
+    }
+    owners
+        .into_iter()
+        .map(|(token, order, focused, snapshot)| ShutdownOwner {
+            token,
+            order,
+            focused,
+            ranks: snapshot
+                .page_ids
+                .iter()
+                .map(|(_, tab)| (*tab, directory.page_order.rank(*tab)))
+                .collect(),
+            snapshot,
+        })
+        .collect()
+}
+
+pub(super) fn begin_session_shutdown(
+    ui: &qobject::BrowserUi,
+) -> Option<super::browser_ui_shutdown_sessions::ShutdownSessionLease> {
+    let snapshot = super::browser_ui_page_sessions::PageSessionOwner::capture_committed(ui);
+    let token = ui.rust().window_token.to_string();
+    let owners = {
+        let directory = directory().lock().ok()?;
+        session_owners(&directory, snapshot.map(|snapshot| (token, snapshot)))
+    };
+    super::browser_ui_shutdown_sessions::begin(owners)
+}
+
+pub(super) fn page_session_windows(
+    token: &str,
+    current: super::browser_ui_page_sessions::PageSessionOwner,
+) -> Vec<super::SnapshotWindowInput> {
+    let profile = current.profile;
+    let owners = {
+        let Ok(mut directory) = directory().lock() else {
+            return Vec::new();
+        };
+        directory
+            .page_order
+            .observe(current.page_ids.iter().map(|(_, tab)| *tab));
+        session_owners(&directory, Some((token.to_owned(), current)))
+            .into_iter()
+            .filter(|owner| owner.snapshot.profile == profile)
+            .collect()
+    };
+    let (frozen, mut owners) = super::browser_ui_shutdown_sessions::merge(profile, owners);
+    if !frozen {
+        for owner in &mut owners {
+            if owner.token == token {
+                owner.focused = u64::MAX;
+            }
+        }
+    }
     let positions = owners
         .iter()
-        .flat_map(|(_, _, owner)| &owner.page_ids)
-        .map(|(id, tab)| (*id, directory.page_order.rank(*tab)))
+        .flat_map(|owner| {
+            owner
+                .snapshot
+                .page_ids
+                .iter()
+                .map(|(id, tab)| (*id, owner.ranks.get(tab).copied().unwrap_or(usize::MAX)))
+        })
         .collect();
-    drop(directory);
-    super::browser_ui_page_sessions::aggregate(owners, &positions)
+    super::browser_ui_page_sessions::aggregate(
+        owners
+            .into_iter()
+            .map(|owner| (owner.order, owner.focused, owner.snapshot))
+            .collect(),
+        &positions,
+    )
 }
 
 pub(super) fn page_session_checkpoint(

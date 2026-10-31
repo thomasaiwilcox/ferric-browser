@@ -204,6 +204,7 @@ ApplicationWindow {
     function refreshDownloads() { secondaryDownloads.refresh() }
     function syncTabModel() { secondaryTabController.syncTabModel() }
     readonly property bool browserKeyFocusActive:
+        !rootWindow.applicationShutdownInProgress &&
         secondaryWindow.profileBootstrapComplete
         && !secondaryWindow.modalInputScope.activeSurface
         && !secondaryWindow.inputBarActive
@@ -251,6 +252,15 @@ ApplicationWindow {
     property bool bindingHelpCreated: false
     property string bindingHelpSearch: ""
     property bool windowShutdownApproved: false
+    property bool windowApplicationQuitPrepared: false
+    property var windowShutdownPageViewProof: []
+    onWindowShutdownPagePromptVisibleChanged: if (windowShutdownPagePromptVisible && rootWindow.applicationShutdownInProgress)
+        rootWindow.activateBrowserWindow(secondaryWindow,secondaryUi)
+    onWindowShutdownPromptVisibleChanged: if (windowShutdownPromptVisible && rootWindow.applicationShutdownInProgress)
+        rootWindow.activateBrowserWindow(secondaryWindow,secondaryUi)
+    onWindowShutdownStoragePromptVisibleChanged: if (windowShutdownStoragePromptVisible && rootWindow.applicationShutdownInProgress)
+        rootWindow.activateBrowserWindow(secondaryWindow,secondaryUi)
+    property bool runtimeReleaseComplete: false
     property bool windowCloseConfirmationVisible: false
     property bool windowShutdownPromptVisible: false
     property bool windowShutdownPagePromptVisible: false
@@ -358,6 +368,14 @@ ApplicationWindow {
     }
 
     Timer {
+        id: secondaryShutdownPresentationTimer
+        interval: 100
+        repeat: false
+        onTriggered: if (rootWindow.applicationShutdownInProgress && !secondaryWindow.runtimeReleased)
+            secondaryWindow.checkPageStateBeforeQuit()
+    }
+
+    Timer {
         id: secondaryShutdownPageProbeTimer
         interval: 2500
         repeat: false
@@ -404,7 +422,23 @@ ApplicationWindow {
         return false
     }
 
+    function rejectChangedQuit() {
+        secondaryWindow.pageCloseController.cancel()
+        secondaryWindow.cancelPageStateProbe()
+        windowCloseConfirmationVisible=false
+        windowShutdownPromptVisible=false
+        windowShutdownStoragePromptVisible=false
+        windowShutdownPageViewProof=[]
+        rootWindow.abortApplicationShutdown()
+        secondaryUi.status_text="Pages changed. Review them before closing."
+    }
+
     function checkPageStateBeforeQuit() {
+        if (!secondaryUi.capture_shutdown_pages()) {
+            rejectChangedQuit()
+            return
+        }
+        windowShutdownPageViewProof=rootWindow.captureShutdownViewProof(secondaryWindow)
         var generation = ++secondaryWindow.windowShutdownPageProbeGeneration
         secondaryShutdownPageProbeTimer.restart()
         var candidates = []
@@ -422,6 +456,14 @@ ApplicationWindow {
                 secondaryShutdownPageProbeTimer.stop()
                 if (result.state === "clean") secondaryWindow.finalizeQuit()
                 else {
+                    if (rootWindow.applicationShutdownInProgress && !secondaryWindow.visible) {
+                        // No decision has been approved for this owner yet.
+                        // Let first mapping settle, then probe its current view
+                        // before presenting an unknown/dirty-state decision.
+                        rootWindow.activateBrowserWindow(secondaryWindow,secondaryUi)
+                        secondaryShutdownPresentationTimer.restart()
+                        return
+                    }
                     secondaryWindow.windowShutdownPagePromptReason = result.reason
                     secondaryWindow.windowShutdownPagePromptVisible = true
                 }
@@ -431,6 +473,7 @@ ApplicationWindow {
     function cancelPageStateProbe() {
         secondaryWindow.windowShutdownPageProbeGeneration += 1
         secondaryShutdownPageProbeTimer.stop()
+        secondaryShutdownPresentationTimer.stop()
         secondaryWindow.windowShutdownPagePromptVisible = false
     }
 
@@ -456,8 +499,27 @@ ApplicationWindow {
     }
 
     function finalizeQuit() {
-        if (!secondaryUi.flush_durable_state()) {
+        if (!secondaryUi.shutdown_pages_current()
+                || !rootWindow.shutdownViewProofCurrent(secondaryWindow,windowShutdownPageViewProof)) {
+            rejectChangedQuit()
+            return
+        }
+        if (rootWindow.applicationShutdownInProgress && !rootWindow.applicationShutdownCommitStarted) {
+            if (!secondaryUi.flush_durable_state()) {
+                secondaryWindow.windowShutdownStoragePromptVisible=true
+                return
+            }
+            windowApplicationQuitPrepared=true
+            rootWindow.advanceApplicationShutdown()
+            return
+        }
+        if (!rootWindow.applicationShutdownCommitStarted && !secondaryUi.flush_durable_state()) {
             secondaryWindow.windowShutdownStoragePromptVisible = true
+            return
+        }
+        if (!secondaryUi.shutdown_pages_current()
+                || !rootWindow.shutdownViewProofCurrent(secondaryWindow,windowShutdownPageViewProof)) {
+            rejectChangedQuit()
             return
         }
         if (!secondaryWindow.pageCloseController.authorizeWindowClose()) return
@@ -2033,6 +2095,7 @@ function onContext_workspaceChanged() {
             windowPreparedOwnerRegistered = registered
             if (registered) rootWindow.pageWindowCoordinator.completePreparedPage(secondaryWindow)
         }
+        if (registered && windowLivePageMode) rootWindow.pageWindowCoordinator.completeLivePage(secondaryWindow)
         return registered
     }
 
@@ -2065,10 +2128,12 @@ function onContext_workspaceChanged() {
         }
     }
 
+    function livePageCoreCommitted() { return popupOwnerBridge.livePageCoreCommitted() }
     function createdPagePresentationIntent() { return popupOwnerBridge.createdPagePresentationIntent() }
     function presentCreatedPage() { return popupOwnerBridge.presentCreatedPage() }
 
     function finishPreparedPageNavigation() {
+        if (rootWindow.pageWindowCoordinator.stopping) return
         if (windowPreparedNavigationStarted || !windowPreparedOwnerRegistered || runtimeReleased) return
             if (secondaryTabs.count !== 1 || !secondaryWindow.activeView
                     || secondaryWindow.activeView.profile !== windowSharedProfile) return
@@ -2232,10 +2297,12 @@ function onContext_workspaceChanged() {
 
     function releaseWindowResources() {
         if (secondaryWindow.runtimeReleased) return
-        if (secondaryWindow.windowShutdownApproved && !rootWindow.applicationShutdownInProgress)
+        if (secondaryWindow.windowShutdownApproved
+                && (!rootWindow.applicationShutdownInProgress || secondaryWindow.pageCloseController.armed))
             secondaryUi.record_page_window_close()
         secondaryWindow.runtimeReleased = true
         if (windowPreparedPageMode) rootWindow.pageWindowCoordinator.releasePreparedPage(secondaryWindow)
+        if (windowLivePageMode) rootWindow.pageWindowCoordinator.releaseLivePage(secondaryWindow)
         secondaryWindow.bindingHelpVisible = false
         secondaryDownloads.shutdown()
         secondaryDevTools.close()
@@ -2246,6 +2313,7 @@ function onContext_workspaceChanged() {
         secondaryRuntimeWorkTimer.stop()
         bookmarkTransferTimer.stop()
         secondaryShutdownPageProbeTimer.stop()
+        secondaryShutdownPresentationTimer.stop()
         secondaryCommandNoticeTimer.stop()
         secondaryTabSwitchTimer.stop()
         var views = tabViews.slice(0)
@@ -2291,6 +2359,8 @@ function onContext_workspaceChanged() {
         secondaryUi.view_closed()
         secondaryWindow.pageCloseController.released()
         secondaryUi.release_transient_resources()
+        runtimeReleaseComplete=true
+        windowShutdownPageViewProof=[]
         if (rootWindow.primaryPageRetired && !rootWindow.applicationShutdownInProgress
                 && rootWindow.liveWindowEntries().length === 0
                 && !rootWindow.pageWindowCoordinator.hasPendingWindows()

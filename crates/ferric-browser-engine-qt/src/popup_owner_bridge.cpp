@@ -274,6 +274,7 @@ struct FerricPopupOwnerBridge::LivePreparation {
     QPointer<QObject> sourceHost, host, profile;
     QString nonce;
     bool consumed = false;
+    bool coreCommitted = false;
     bool published = false;
 };
 
@@ -364,6 +365,10 @@ bool FerricPopupOwnerBridge::prepareLivePageWindow(QObject *source, QObject *des
     return true;
 }
 
+bool FerricPopupOwnerBridge::livePageCoreCommitted() const {
+    return live_ && live_->coreCommitted;
+}
+
 bool FerricPopupOwnerBridge::commitLivePageWindow() {
     const auto state = live_;
     const QPointer<FerricPopupOwnerBridge> self(this);
@@ -408,6 +413,7 @@ bool FerricPopupOwnerBridge::commitLivePageWindow() {
         if (state->sourceHost && state->source && view) invokeView(state->sourceHost, "finishStagedLiveRollback", view);
         return false;
     }
+    state->coreCommitted = true;
     // The destination now owns the receipt and continuation. Source retirement
     // is independent after commit and must never reject this surviving page.
     auto destinationAlive = [&] { return state->destination && state->host && state->profile && view && lifetime; };

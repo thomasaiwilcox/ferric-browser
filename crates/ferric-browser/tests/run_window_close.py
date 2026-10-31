@@ -27,6 +27,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     facts = {'passed': False, 'cases': [], 'keys': [], 'browser_reaped': False}
     owner = None
+    keyboard = None
     streams = []
     admitted_operations = set()
     received_operations = set()
@@ -156,6 +157,16 @@ def main():
                     return payload
 
         try:
+            # The first harmless key makes this the seat's active keyboard.
+            # No client exists yet; Y/N are predeclared behind an hour-long
+            # sleep and never emitted by wtype. The fixture reaps it first.
+            result = subprocess.run(['/usr/bin/hyprctl', '--instance', instance, 'clients', '-j'],
+                                    env=env, text=True, capture_output=True, timeout=5)
+            assert result.returncode == 0 and json.loads(result.stdout) == [], result.stdout
+            keyboard = subprocess.Popen(['/usr/bin/wtype', '-k', 'F35', '-s', '3600000', 'YNyn'], env=env,
+                                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log)
+            time.sleep(0.2)
+            assert keyboard.poll() is None, 'owned virtual keyboard exited early'
             owner = subprocess.Popen(prefix + ['--software-rendering', '--userscripts-off', 'open', base + '/root'], env=env,
                                      stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
             wait(lambda: list((root / 'profile').rglob('browser.sock')))
@@ -235,6 +246,14 @@ def main():
                     owner.wait(timeout=5)
             facts['browser_reaped'] = owner is None or owner.poll() is not None
             facts['browser_returncode'] = None if owner is None else owner.returncode
+            if keyboard is not None:
+                keyboard.terminate()
+                try:
+                    keyboard.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    keyboard.kill()
+                    keyboard.wait(timeout=3)
+                facts['keyboard_reaped'] = keyboard.poll() is not None
             server.shutdown()
             server.server_close()
             log.close()

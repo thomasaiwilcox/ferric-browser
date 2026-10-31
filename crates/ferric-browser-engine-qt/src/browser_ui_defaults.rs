@@ -69,6 +69,8 @@ impl Default for BrowserUiRust {
             page_window_group: String::new(),
             page_window_focus_lease: None,
             accepted_page_gets: std::collections::HashMap::new(),
+            shutdown_session_lease: None,
+            shutdown_pages: None,
             pending_page_session: None,
             page_creation_publications: std::collections::VecDeque::new(),
             page_creations: std::collections::HashMap::new(),

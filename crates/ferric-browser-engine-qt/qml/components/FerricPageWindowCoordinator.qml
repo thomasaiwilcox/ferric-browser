@@ -6,6 +6,9 @@ QtObject {
     id: coordinator
     required property var rootWindow
     property bool splitting: false
+    property bool stopping: false
+    property int moveDispatchDepth: 0
+    property var retiringChildren: []
     property var pendingExpansion: null
     property var expansionPrompt: null
     property var pendingPages: ({})
@@ -39,6 +42,69 @@ QtObject {
         }
     }
 
+    function liveChild(child) {
+        return !!child && typeof child.destroy === "function"
+    }
+    function retainRetiringChild(child) {
+        if (liveChild(child) && retiringChildren.indexOf(child)<0)
+            retiringChildren=retiringChildren.concat([child])
+    }
+    function shutdownOwners() {
+        var result=[]
+        function add(child) {
+            if (liveChild(child) && !child.runtimeReleased && result.indexOf(child)<0) result.push(child)
+        }
+        for (var id in pendingPages) {
+            var page=pendingPages[id]
+            if (page && page.committed) add(page.child)
+        }
+        for (var nonce in pendingMoves) {
+            var move=pendingMoves[nonce]
+            if (move && liveChild(move.child) && move.child.livePageCoreCommitted()) add(move.child)
+        }
+        return result
+    }
+    function stopForApplicationShutdown() {
+        stopping=true
+        pendingExpansion=null
+        if (expansionPrompt) { expansionPrompt.close(); expansionPrompt.destroy(); expansionPrompt=null }
+        var pages=Object.keys(pendingPages)
+        var publicationPending=false
+        for (var i=0;i<pages.length;++i) {
+            var page=pendingPages[pages[i]]
+            if (page && page.committed && liveChild(page.child) && !page.child.runtimeReleased
+                    && (!page.child.windowPreparedPageCorePublished || !page.child.profileBootstrapComplete
+                        || !page.child.activeView)) publicationPending=true
+            if (page && !page.committed && !page.failed && liveChild(page.child)) {
+                retainRetiringChild(page.child)
+                failPreparedPage(page.child)
+            }
+        }
+        var moves=Object.keys(pendingMoves)
+        for (var j=0;j<moves.length;++j) failLivePage(moves[j])
+        retiringChildren=retiringChildren.filter(liveChild)
+        return !splitting && moveDispatchDepth===0 && retiringChildren.length===0 && !publicationPending
+    }
+    function resumeAfterAbortedShutdown() {
+        stopping=false
+        retiringChildren=retiringChildren.filter(liveChild)
+        var owners=shutdownOwners()
+        for (var i=0;i<owners.length;++i)
+            if (owners[i].windowPreparedPageMode) owners[i].finishPreparedPageNavigation()
+    }
+    function completeLivePage(child) {
+        var nonce=child ? child.windowLivePageNonce : ""
+        var pending=pendingMoves[nonce]
+        if (!pending || pending.child!==child) return
+        var remaining=Object.assign({},pendingMoves)
+        delete remaining[nonce]
+        pendingMoves=remaining
+        recheckLastWindow()
+    }
+    function releaseLivePage(child) {
+        Qt.callLater(function() { coordinator.completeLivePage(child) })
+    }
+
     function hasPendingWindows() {
         for (var nonce in pendingMoves) {
             var moving = pendingMoves[nonce]
@@ -54,6 +120,13 @@ QtObject {
     }
     function recheckLastWindow() {
         Qt.callLater(function() {
+            if (coordinator.rootWindow && coordinator.rootWindow.primaryPageRetired
+                    && !coordinator.rootWindow.runtimeDisposing && !coordinator.rootWindow.applicationShutdownInProgress
+                    && !coordinator.rootWindow.browserUi.page_closes_pending()) {
+                var entries=coordinator.rootWindow.liveWindowEntries()
+                if (entries.length>0 && !entries.some(function(entry) { return entry.host && entry.host.visible }))
+                    coordinator.rootWindow.presentIdlePageSurvivor(entries[0])
+            }
             if (coordinator.rootWindow && !coordinator.rootWindow.runtimeDisposing
                     && coordinator.rootWindow.primaryPageRetired
                     && !coordinator.rootWindow.applicationShutdownInProgress
@@ -68,6 +141,10 @@ QtObject {
         var pending = pendingMoves[nonce]
         if (!pending) return
         var child = pending.child
+        // A definite Core commit is never an allocation rollback. Keep this
+        // owner visible to shutdown until actual registration or native release.
+        if (liveChild(child) && child.livePageCoreCommitted()) return
+        if (stopping) retainRetiringChild(child)
         var remaining = Object.assign({},pendingMoves)
         delete remaining[nonce]
         pendingMoves = remaining
@@ -76,18 +153,31 @@ QtObject {
         recheckLastWindow()
     }
     function resumeLivePage(child) {
-        var nonce = child ? child.windowLivePageNonce : ""
-        var pending = pendingMoves[nonce]
-        if (!pending || pending.child !== child || !child.windowLivePagePublished) return
-        if (Date.now() >= pending.expires || !child.commitLivePage()) { failLivePage(nonce); return }
-        var remaining = Object.assign({},pendingMoves)
-        delete remaining[nonce]
-        pendingMoves = remaining
+        var nonce=child ? child.windowLivePageNonce : ""
+        var pending=pendingMoves[nonce]
+        if (!pending || pending.child!==child || !child.windowLivePagePublished) return
+        if (stopping && !child.livePageCoreCommitted()) { failLivePage(nonce); return }
+        if (child.livePageCoreCommitted()) return
+        var committed=false
+        moveDispatchDepth+=1
+        try {
+            if (!stopping && Date.now()<pending.expires) committed=child.commitLivePage()
+        } finally {
+            moveDispatchDepth-=1
+        }
+        if (!committed) { failLivePage(nonce); return }
+        // registerWindowOwner promotes/removes this exact pending record. A
+        // committed registration retry remains an owned shutdown participant.
+        var entry=rootWindow.browserWindowEntryForUi(child.windowUi)
+        if (entry && entry.host===child) completeLivePage(child)
         recheckLastWindow()
     }
     function executeLivePageMove(ui, host, action) {
         var fields = action.split("\t")
-        if (fields.length !== 3 || !ui || !host || host.runtimeReleased) return false
+        if (stopping || fields.length !== 3 || !ui || !host || host.runtimeReleased) {
+            if (ui && fields.length===3) ui.cancel_live_page_move(fields[1])
+            return false
+        }
         var nonce = fields[1]
         var source = rootWindow.browserWindowEntryForUi(ui)
         if (!source || source.host !== host || !rootWindow.browserWindowFactory) {
@@ -122,7 +212,10 @@ QtObject {
     function destroyPreparedChild(child) {
         // A destroyed QObject can leave a truthy wrapper in a pending record.
         // Only live QML-created objects still provide the destruction method.
-        if (child && typeof child.destroy === "function") child.destroy()
+        if (child && typeof child.destroy === "function") {
+            if (stopping) retainRetiringChild(child)
+            child.destroy()
+        }
     }
 
     function idsFor(ui) {
@@ -171,6 +264,9 @@ QtObject {
         var pending = pendingPages[id]
         if (!pending || !pending.committed) return
         var child = pending.child
+        // A gate pauses admission; it cannot turn a definite ownership commit
+        // into allocation failure while another owner can still cancel Quit.
+        if (stopping && liveChild(child) && !child.runtimeReleased) return
         var original = child && typeof child.destroy === "function" && !child.runtimeReleased
                 && child.windowPreparedPageMode && child.windowPreparedPageId === id
                 && child.windowUi && !child.windowUi.profile_bootstrap_pending
@@ -269,8 +365,8 @@ QtObject {
 
     function prepare(controller) {
         var ui = controller.browserUi
-        if (splitting) return false
         if (ui.feature_tabs_presentation_effective !== "windows" || ui.tab_count <= 1) return true
+        if (stopping || splitting) return false
         var ids = idsFor(ui)
         var live = controller.tabViews.filter(function(view) {
             return view && !view.viewRetired && ids.indexOf(view.stableTabId) >= 0
@@ -368,7 +464,7 @@ QtObject {
                 splitting = false
                 return false
             }
-            if (!child || !child.windowPreparedPageAccepted
+            if (stopping || !child || !child.windowPreparedPageAccepted
                     || !sameTarget(targetFor(ui, id), target)
                     || child.windowWebEngineProfile !== controller.profile
                     || child.windowUi.page_host_profile_id() !== ui.page_host_profile_id()

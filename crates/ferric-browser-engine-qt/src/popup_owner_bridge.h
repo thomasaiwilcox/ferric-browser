@@ -27,6 +27,7 @@ class FerricPopupOwnerBridge : public QObject {
     Q_INVOKABLE bool presentCreatedPage();
     Q_INVOKABLE bool prepareLivePageWindow(QObject *source, QObject *destination, const QString &nonce);
     Q_INVOKABLE bool commitLivePageWindow();
+    Q_INVOKABLE bool livePageCoreCommitted() const;
   private:
     struct LivePreparation;
     std::shared_ptr<LivePreparation> live_;

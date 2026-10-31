@@ -18,6 +18,7 @@ struct Plan {
     handoff: Option<PageHandoff>,
     expires: Instant,
     focus_generation: u64,
+    approved_current: bool,
 }
 type SharedPlan = Arc<Mutex<Plan>>;
 fn plans() -> &'static Mutex<HashMap<String, SharedPlan>> {
@@ -29,6 +30,13 @@ fn lookup(nonce: &str) -> Option<SharedPlan> {
 }
 pub(super) fn pending() -> bool {
     plans().lock().is_ok_and(|plans| !plans.is_empty())
+}
+pub(super) fn commits_pending() -> bool {
+    plans().lock().is_ok_and(|plans| {
+        plans
+            .values()
+            .any(|plan| plan.lock().is_ok_and(|plan| plan.approved_current))
+    })
 }
 pub(super) fn expire() {
     let expired = plans()
@@ -62,6 +70,16 @@ pub(super) fn expire() {
         .unwrap_or_default();
     for nonce in expired {
         stop(&nonce, NativeOperationOutcome::Stale);
+    }
+}
+
+pub(super) fn cancel_for_shutdown() {
+    let nonces = plans()
+        .lock()
+        .map(|plans| plans.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    for nonce in nonces {
+        stop(&nonce, NativeOperationOutcome::Rejected);
     }
 }
 
@@ -490,6 +508,7 @@ impl qobject::BrowserUi {
                 handoff: Some(handoff),
                 expires: Instant::now() + Duration::from_secs(300),
                 focus_generation: crate::page_window_focus::generation(),
+                approved_current: false,
             })),
         );
         drop(registry);
@@ -553,6 +572,11 @@ impl qobject::BrowserUi {
             .as_mut()
             .expect("matched")
             .approved = true;
+        if let Some(plan) = lookup(&nonce.to_string())
+            && let Ok(mut plan) = plan.lock()
+        {
+            plan.approved_current = true;
+        }
         true
     }
     pub(super) fn cancel_page_close(mut self: Pin<&mut Self>, nonce: &QString) {
@@ -617,6 +641,7 @@ impl qobject::BrowserUi {
                 return;
             }
             plan.closed.push(intent.target.page.id);
+            plan.approved_current = false;
         }
         advance(&intent.nonce);
     }

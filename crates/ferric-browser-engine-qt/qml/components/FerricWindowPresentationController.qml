@@ -297,7 +297,24 @@ QtObject {
         return BrowserScripts.shutdownPageProbe()
     }
 
+    function rejectChangedQuit() {
+        window.pageCloseController.cancel()
+        window.shutdownPageProbeGeneration+=1
+        window.shutdownPageProbeTimer.stop()
+        window.shutdownConfirmationVisible=false
+        window.shutdownPromptVisible=false
+        window.shutdownPagePromptVisible=false
+        window.shutdownPageViewProof=[]
+        window.abortApplicationShutdown()
+        window.browserUi.status_text="Pages changed. Review them before closing."
+    }
+
     function checkPageStateBeforeQuit() {
+        if (!window.browserUi.capture_shutdown_pages()) {
+            rejectChangedQuit()
+            return
+        }
+        window.shutdownPageViewProof=window.captureShutdownViewProof(window)
         var generation = ++window.shutdownPageProbeGeneration
         window.shutdownPageProbeTimer.restart()
         var candidates = []
@@ -346,11 +363,27 @@ QtObject {
     }
 
     function finalizeQuit() {
+        if (!window.browserUi.shutdown_pages_current()
+                || !window.shutdownViewProofCurrent(window,window.shutdownPageViewProof)) {
+            rejectChangedQuit()
+            return
+        }
+        if (window.applicationShutdownInProgress) {
+            window.shutdownPagePromptVisible=false
+            window.applicationShutdownRootPrepared=true
+            window.advanceApplicationShutdown()
+            return
+        }
         if (window.pageCloseController.armed) {
             if (!window.browserUi.flush_durable_state() || !window.pageCloseController.authorizeWindowClose()) {
                 window.pageCloseController.cancel()
                 return
             }
+        }
+        if (!window.browserUi.shutdown_pages_current()
+                || !window.shutdownViewProofCurrent(window,window.shutdownPageViewProof)) {
+            rejectChangedQuit()
+            return
         }
         window.shutdownPageProbeTimer.stop()
         window.shutdownPromptVisible = false

@@ -123,6 +123,8 @@ mod browser_ui_scope_handoff;
 mod browser_ui_selector_config;
 mod browser_ui_session_save;
 mod browser_ui_sessions;
+mod browser_ui_shutdown_pages;
+mod browser_ui_shutdown_sessions;
 mod browser_ui_site;
 mod browser_ui_spatial;
 mod browser_ui_start_page;
@@ -577,6 +579,8 @@ pub struct BrowserUiRust {
     page_window_group: String,
     page_window_focus_lease: Option<page_window_focus::Lease>,
     accepted_page_gets: std::collections::HashMap<TabId, browser_ui_page_get::AcceptedPageGet>,
+    shutdown_session_lease: Option<browser_ui_shutdown_sessions::ShutdownSessionLease>,
+    shutdown_pages: Option<browser_ui_shutdown_pages::ShutdownPages>,
     pending_page_session: Option<live_ipc_owners::PendingSessionLease>,
     page_creation_publications:
         std::collections::VecDeque<browser_ui_page_creation::CreationPublication>,

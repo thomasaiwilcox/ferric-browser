@@ -27,6 +27,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     facts = {'passed': False, 'cases': [], 'keys': [], 'browser_reaped': False}
     owner = None
+    keyboard = None
     streams = []
     admitted_operations = set()
     received_operations = set()
@@ -163,6 +164,16 @@ def main():
                     return payload
 
         try:
+            # The first harmless key makes this the seat's active keyboard.
+            # No client exists yet; Y/N are predeclared behind an hour-long
+            # sleep and never emitted by wtype. The fixture reaps it first.
+            result = subprocess.run(['/usr/bin/hyprctl', '--instance', instance, 'clients', '-j'],
+                                    env=env, text=True, capture_output=True, timeout=5)
+            assert result.returncode == 0 and json.loads(result.stdout) == [], result.stdout
+            keyboard = subprocess.Popen(['/usr/bin/wtype', '-k', 'F35', '-s', '3600000', 'YNyn'], env=env,
+                                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log)
+            time.sleep(0.2)
+            assert keyboard.poll() is None, 'owned virtual keyboard exited early'
             owner = subprocess.Popen(prefix + ['--software-rendering', '--userscripts-off', 'open', base + '/root'], env=env,
                                      stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
             wait(lambda: list((root / 'profile').rglob('browser.sock')))
@@ -238,9 +249,46 @@ def main():
             # This also verifies final completion drain after creation work.
             current = tabs()
             operation = close(first['window_id'], count=len(current))
-            for row in [row for row in current if row['id'] != first['id']] + [next(row for row in current if row['id'] == first['id'])]:
-                decision(row['title'], 'Y')
-                time.sleep(0.15)
+            remaining = {row['id']: row for row in current}
+            stable_active = [None, 0.0]
+            def presented_target():
+                result = subprocess.run(['/usr/bin/hyprctl', '--instance', instance, 'activewindow', '-j'],
+                                        env=env, text=True, capture_output=True, timeout=5)
+                assert result.returncode == 0, result.stderr
+                active = json.loads(result.stdout)
+                matches = [row for row in remaining.values() if row['title'] in active.get('title', '')]
+                if active.get('pid') != owner.pid or len(matches) != 1:
+                    stable_active[0] = None
+                    return None
+                address = active['address']
+                assert re.fullmatch('0x[0-9a-fA-F]+', address)
+                if stable_active[0] != address:
+                    stable_active[:] = [address, time.monotonic()]
+                    return None
+                if time.monotonic() - stable_active[1] < 0.35:
+                    return None
+                return matches[0], active
+            while remaining:
+                row, active = wait(presented_target)
+                address = active['address']
+                result = subprocess.run(['/usr/bin/hyprctl', '--instance', instance, 'eval',
+                    f'hl.dispatch(hl.dsp.send_shortcut({{mods="",key="Y",window="address:{address}"}}))'],
+                    env=env, text=True, capture_output=True, timeout=5)
+                assert result.returncode == 0 and 'error' not in result.stdout.lower(), (result.stdout, result.stderr)
+                before = set(remaining)
+                if len(remaining) > 1:
+                    def released_target():
+                        rows = tabs()
+                        return rows if row['id'] not in {item['id'] for item in rows} else None
+                    after = wait(released_target)
+                    after_ids = {item['id'] for item in after}
+                    assert before - after_ids == {row['id']}, (before, after_ids)
+                else:
+                    after_ids = set()  # Final actual release is proved by the terminal receipt below.
+                facts.setdefault('close_progress', []).append({'tab_id': row['id'], 'address': address,
+                    'before': sorted(before), 'after': sorted(after_ids)})
+                del remaining[row['id']]
+                stable_active[0] = None
             assert terminal(subscription, operation, first['window_id'])['status'] == 'completed'
             assert owner.wait(timeout=15) == 0
             subscription.settimeout(2)
@@ -267,6 +315,14 @@ def main():
                     owner.wait(timeout=5)
             facts['browser_reaped'] = owner is None or owner.poll() is not None
             facts['browser_returncode'] = None if owner is None else owner.returncode
+            if keyboard is not None:
+                keyboard.terminate()
+                try:
+                    keyboard.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    keyboard.kill()
+                    keyboard.wait(timeout=3)
+                facts['keyboard_reaped'] = keyboard.poll() is not None
             server.shutdown()
             server.server_close()
             log.close()

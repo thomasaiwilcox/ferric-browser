@@ -9,7 +9,7 @@ pub(crate) use crate::browser_ui_credentials::CredentialEvents;
 pub(crate) use crate::browser_ui_credentials::create_credential_events;
 pub(crate) use crate::credential_actor::{CredentialActor, new_credential_actor};
 pub(crate) use crate::page_window_focus::{
-    page_focus_intent_current, supersede_page_focus, validate_page_focus,
+    current_page_focus, page_focus_intent_current, supersede_page_focus, validate_page_focus,
 };
 
 pub(crate) use crate::browser_ui_page_transfer::{PageRollbackProof, capture_page_rollback};
@@ -139,6 +139,8 @@ pub(crate) mod qobject {
 
         #[namespace = "ferric::page_windows"]
         fn supersede_page_focus() -> QString;
+        #[namespace = "ferric::page_windows"]
+        fn current_page_focus() -> QString;
         #[namespace = "ferric::page_windows"]
         fn page_focus_intent_current(intent: &QString) -> bool;
         #[namespace = "ferric::page_windows"]
@@ -1202,6 +1204,17 @@ pub(crate) mod qobject {
         #[qinvokable]
         fn request_shutdown(self: Pin<&mut BrowserUi>) -> bool;
 
+        #[qinvokable]
+        fn capture_shutdown_pages(self: Pin<&mut BrowserUi>) -> bool;
+        #[qinvokable]
+        fn shutdown_pages_current(&self) -> bool;
+        #[qinvokable]
+        fn page_close_commits_pending(&self) -> bool;
+
+        #[qinvokable]
+        fn begin_shutdown_session_snapshot(self: Pin<&mut BrowserUi>) -> bool;
+        #[qinvokable]
+        fn abort_shutdown_session_snapshot(self: Pin<&mut BrowserUi>);
         #[qinvokable]
         fn begin_shutdown_gate(self: Pin<&mut BrowserUi>) -> bool;
 

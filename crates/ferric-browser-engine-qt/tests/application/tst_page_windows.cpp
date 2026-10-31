@@ -133,7 +133,7 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"session-peer-order", "session-peer-queued-get", "session-live-stopped", "session-queued-get", "session-prepared-gap", "session-prepared-destroy", "creation-publish-destroy", "creation-focus-reentrant", "creation-encoded", "creation-failed", "creation-open-route", "creation-open-background", "creation-foreground", "creation-background", "creation-fallback", "creation-background-fallback", "creation-recorded", "creation-stale", "creation-blank", "creation-start", "window-close-focus-reentrant", "window-close-root-probe", "window-close-cancel", "window-close-partial", "window-close-tail", "window-close-retired", "window-close-stale", "window-close-fallback", "window-close-fallback-role", "window-close-pinned", "window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-registration-retry", "preparation-source-retire", "preparation-publish-destroy", "preparation-publish-navigation", "preparation-publish-profile", "preparation-setup-error", "preparation-setup-destroy", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"session-quit-approved-close", "session-quit-publication-cancel", "session-quit-stale-root", "session-quit-stale-peer", "session-quit-queued-root", "session-quit-queued-peer", "session-hidden-survivor", "session-hidden-survivor-reentrant", "session-quit-peers", "session-quit-cancel", "session-quit-prepared", "session-quit-live", "session-quit-rollback", "session-peer-order", "session-peer-queued-get", "session-live-stopped", "session-queued-get", "session-prepared-gap", "session-prepared-destroy", "creation-publish-destroy", "creation-focus-reentrant", "creation-encoded", "creation-failed", "creation-open-route", "creation-open-background", "creation-foreground", "creation-background", "creation-fallback", "creation-background-fallback", "creation-recorded", "creation-stale", "creation-blank", "creation-start", "window-close-focus-reentrant", "window-close-root-probe", "window-close-cancel", "window-close-partial", "window-close-tail", "window-close-retired", "window-close-stale", "window-close-native-facts", "window-close-fallback", "window-close-fallback-role", "window-close-pinned", "window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-registration-retry", "preparation-source-retire", "preparation-publish-destroy", "preparation-publish-navigation", "preparation-publish-profile", "preparation-setup-error", "preparation-setup-destroy", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -171,6 +171,279 @@ void ApplicationTests::pageWindowPresentation()
             for (const auto &tab:window.toObject()["tabs"].toArray()) urls.append(tab.toObject()["safe_restore_url"].toString());
         return urls;
     };
+    if (scenario.startsWith("session-hidden-survivor")) {
+        const auto destination=initial+"?hidden-survivor";
+        QVERIFY(command("open --target tab-bg "+destination));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+        QTRY_VERIFY(evaluate("testWindow.liveWindowEntries().every(function(e){return e.ui.load_state==='complete'})").toBool());
+        auto *child=evaluate("testWindow.liveWindowEntries().find(function(e){return e.host!==testWindow}).host").value<QObject *>();
+        engine->rootContext()->setContextProperty("testHiddenChild",child);
+        QPointer<QObject> view(evaluate("testHiddenChild.activeView").value<QObject *>());
+        QVERIFY(!child->property("visible").toBool());
+        QPointer<QObject> hook;
+        if(scenario.endsWith("-reentrant")) {
+            QVERIFY(command("open --target tab-bg "+initial+"?newer-survivor"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),3);
+            auto *other=evaluate("testWindow.liveWindowEntries().find(function(e){return e.host!==testWindow && e.host!==testHiddenChild}).host").value<QObject *>();
+            engine->rootContext()->setContextProperty("testHiddenOther",other);
+            hook=evaluate(R"JS(Qt.createQmlObject('import QtQuick; Connections { property bool injected:false; target:testHiddenChild; function onVisibleChanged(){if(!injected && target.visible){injected=true;testWindow.activateBrowserWindow(testHiddenOther,testHiddenOther.windowUi)}} }',testWindow))JS").value<QObject *>();
+            QVERIFY(hook);
+        }
+        QVERIFY(evaluate("testWindow.retirePrimaryPage()").toBool());
+        QTRY_VERIFY(child->property("visible").toBool());
+        if(hook) {
+            QTRY_VERIFY(hook->property("injected").toBool());
+            QTRY_COMPARE(QGuiApplication::focusWindow(),qobject_cast<QQuickWindow *>(evaluate("testHiddenOther").value<QObject *>()));
+            delete hook.data();
+        }
+        pageReceiver="testHiddenChild.activeView";
+        QCOMPARE(evaluate(pageReceiver).value<QObject *>(),view.data());
+        QCOMPARE(page("location.href").toString(),destination);
+        QVERIFY(!evaluate("testWindow.applicationShutdownInProgress").toBool());
+        return;
+    }
+    if (scenario.startsWith("session-quit-")) {
+        // The general fixture intentionally has a rich-text editor and hence
+        // an unknown dirty-state result. Clean-Quit rows use a plain document.
+        QVERIFY(page("document.getElementById('editor').remove();true").toBool());
+        QObject::disconnect(engine.get(),SIGNAL(quit()),nullptr,nullptr);
+        QSignalSpy quit(engine.get(),&QQmlEngine::quit);
+        const bool publication=scenario=="session-quit-publication-cancel";
+        const bool prepared=scenario=="session-quit-prepared" || publication;
+        const bool live=scenario=="session-quit-live";
+        const bool rollback=scenario=="session-quit-rollback";
+        const bool staleRoot=scenario=="session-quit-stale-root";
+        const bool stalePeer=scenario=="session-quit-stale-peer";
+        const bool queuedRoot=scenario=="session-quit-queued-root";
+        const bool queuedPeer=scenario=="session-quit-queued-peer";
+        const bool cancel=scenario=="session-quit-cancel" || staleRoot || stalePeer || queuedRoot || queuedPeer;
+        const auto destination=initial+"?quit-peer";
+        engine->rootContext()->setContextProperty("savedWindowFactory",evaluate("testWindow.browserWindowComponentObject").value<QObject *>());
+        QPointer<QObject> held;
+        auto cleanupHeld=qScopeGuard([&] {
+            if (held) {
+                held->setProperty("windowShutdownApproved",true);
+                evaluate("testQuitChild.close();testQuitChild.destroy()");
+                (void)QTest::qWaitFor([&] { return !held; });
+            }
+        });
+        if (prepared || live) {
+            engine->rootContext()->setContextProperty("testQuitDuringPublication",publication);
+            auto *factory=new QQmlComponent(engine.get(),engine.get());
+            factory->setData(R"QML(import QtQuick
+import "qrc:/qt/qml/io/github/ferricbrowser/qml/components" as Ferric
+Ferric.FerricBrowserWindow {
+    rootWindow:testWindow
+    property bool testAllowRegistration:false
+    property int testRegistrationAttempts:0
+    onWindowPreparedPageCommittedChanged: if(windowPreparedPageCommitted && testQuitDuringPublication) rootWindow.beginApplicationShutdown()
+    function registerWindowOwner() {
+        testRegistrationAttempts++
+        if(!testAllowRegistration)return false
+        var registered=rootWindow.registerBrowserWindow(this,windowUi,activeView,windowWebEngineProfile,
+            windowProfileName,windowEphemeralInvocationToken,windowEphemeralProfile)
+        if(windowPreparedPageMode)windowPreparedOwnerRegistered=registered
+        if(registered){
+            if(windowPreparedPageMode)rootWindow.pageWindowCoordinator.completePreparedPage(this)
+            if(windowLivePageMode)rootWindow.pageWindowCoordinator.completeLivePage(this)
+        }
+        return registered
+    }
+})QML",QUrl("qrc:/quit-registration-gap.qml"));
+            QVERIFY2(factory->isReady(),qPrintable(factory->errorString()));
+            engine->rootContext()->setContextProperty("testQuitFactory",factory);
+            evaluate("testWindow.browserWindowComponentObject=testQuitFactory");
+        }
+        if (live || rollback) {
+            evaluate("testWindow.browserWindowComponentObject=null");
+            QVERIFY(command("tab-open "+destination));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_COMPARE(evaluate("testWindow.tabViews.length").toInt(),2);
+            pageReceiver="testWindow.tabViewAt(1)";
+            QTRY_COMPARE(page("location.href").toString(),destination);
+            QTRY_VERIFY(!evaluate("testWindow.browserUi.tab_has_active_operations(testWindow.browserUi.tab_id_for_index(1))").toBool());
+            QPointer<QObject> moving(evaluate(pageReceiver).value<QObject *>());
+            engine->rootContext()->setContextProperty("testQuitMovingView",moving.data());
+            QPointer<QObject> injection;
+            if (rollback) {
+                page("var input=document.createElement('input');input.id='quitDraft';input.value='keep this draft';document.body.appendChild(input);true");
+                injection=evaluate(R"JS(Qt.createQmlObject('import QtQuick; Connections { property bool injected:false; target:testQuitMovingView; function onViewHostChanged(){if(!injected && target.viewHost!==testWindow){injected=true;testWindow.beginApplicationShutdown()}} }',testWindow))JS").value<QObject *>();
+                QVERIFY(injection);
+            }
+            evaluate(live ? "testWindow.browserWindowComponentObject=testQuitFactory" : "testWindow.browserWindowComponentObject=savedWindowFactory");
+            QVERIFY(command("tab-detach"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            if (rollback) {
+                QTRY_VERIFY(injection->property("injected").toBool());
+                QTRY_VERIFY(evaluate("testWindow.pageWindowCoordinator.stopForApplicationShutdown()").toBool());
+                QCOMPARE(evaluate("testWindow.tabViewAt(1)").value<QObject *>(),moving.data());
+                QCOMPARE(page("document.getElementById('quitDraft').value").toString(),QStringLiteral("keep this draft"));
+                QCOMPARE(evaluate("testWindow.tabViews.length").toInt(),2);
+                QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),1);
+                QCOMPARE(quit.count(),0);
+                evaluate("testWindow.abortApplicationShutdown()");
+                QVERIFY(command("tab-mute"));
+                delete injection.data();
+                return;
+            }
+            QTRY_VERIFY((held=evaluate("Object.values(testWindow.pageWindowCoordinator.pendingMoves)[0] ? Object.values(testWindow.pageWindowCoordinator.pendingMoves)[0].child : null").value<QObject *>()));
+            engine->rootContext()->setContextProperty("testQuitChild",held.data());
+            QTRY_VERIFY(evaluate("testQuitChild.livePageCoreCommitted() && testQuitChild.testRegistrationAttempts>0").toBool());
+            QCOMPARE(evaluate("testQuitChild.activeView").value<QObject *>(),moving.data());
+        } else {
+            if(publication) QVERIFY(page("var input=document.createElement('input');input.value='root draft';document.body.appendChild(input);true").toBool());
+            QVERIFY(command("tab-open "+destination));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            if (prepared) {
+                QTRY_VERIFY((held=evaluate("Object.values(testWindow.pageWindowCoordinator.pendingPages)[0] ? Object.values(testWindow.pageWindowCoordinator.pendingPages)[0].child : null").value<QObject *>()));
+                engine->rootContext()->setContextProperty("testQuitChild",held.data());
+                QTRY_VERIFY(evaluate("testQuitChild.windowPreparedPageCommitted && testQuitChild.windowPreparedPageCorePublished && testQuitChild.testRegistrationAttempts>0").toBool());
+            } else {
+                QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+                QTRY_VERIFY(evaluate("testWindow.liveWindowEntries().every(function(e){return e.ui.load_state==='complete'})").toBool());
+                held=evaluate("testWindow.liveWindowEntries().find(function(e){return e.ui!==testWindow.browserUi}).host").value<QObject *>();
+                engine->rootContext()->setContextProperty("testQuitChild",held.data());
+            }
+        }
+        QPointer<QObject> peerView;
+        QTRY_VERIFY((peerView=evaluate("testQuitChild.activeView").value<QObject *>()));
+        const auto peerId=evaluate("testQuitChild.windowUi.tab_id_for_index(0)").toString();
+        engine->rootContext()->setContextProperty("testQuitRetainedView",peerView.data());
+        if(!prepared) {
+            pageReceiver="testQuitRetainedView";
+            QVERIFY(page("document.getElementById('editor').remove();true").toBool());
+        }
+        if(scenario=="session-quit-approved-close") {
+            QPointer<QObject> hook=evaluate(R"JS(Qt.createQmlObject('import QtQuick; Connections { property bool injected:false; property bool retained:false; target:testQuitChild.windowUi; function onStatus_textChanged(){if(!injected && target.status_text==="Shutdown requested"){injected=true;testWindow.beginApplicationShutdown();retained=testWindow.browserUi.page_close_commits_pending()}} }',testWindow))JS").value<QObject *>();
+            QVERIFY(hook);
+            QVERIFY(evaluate("testQuitChild.windowUi.execute_secondary_interactive_command('tab-close')").toBool());
+            evaluate("testQuitChild.applySwitcherEngineAction()");
+            QTRY_VERIFY(evaluate("testQuitChild.windowCloseConfirmationVisible").toBool());
+            QVERIFY(clickCloseDecision(qobject_cast<QQuickWindow *>(held.data()),true));
+            (void)QTest::qWaitFor([&] { return quit.count()>0
+                || evaluate("testWindow.applicationShutdownForcePromptVisible || testQuitChild.windowShutdownPagePromptVisible").toBool(); },8000);
+            qInfo()<<"Approved-close Quit"<<hook->property("injected")<<hook->property("retained")
+                <<evaluate("JSON.stringify({running:testWindow.applicationShutdownInProgress,stage:testWindow.applicationShutdownStage,rootReady:testWindow.applicationShutdownRootPrepared,peerReady:testQuitChild.windowApplicationQuitPrepared,peerPrompt:testQuitChild.windowShutdownPagePromptVisible,peerReason:testQuitChild.windowShutdownPagePromptReason,committing:testWindow.browserUi.page_close_commits_pending(),pending:testWindow.browserUi.page_closes_pending()})");
+            QCOMPARE(quit.count(),1);
+            QVERIFY(hook->property("injected").toBool() && hook->property("retained").toBool());
+            QTRY_VERIFY(!peerView);
+            QVERIFY(!evaluate("testWindow.browserUi.page_close_commits_pending() || testWindow.browserUi.page_closes_pending()").toBool());
+            QDirIterator files(evaluate("testWindow.storageBasePath").toString(),{"current*.json"},QDir::Files,QDirIterator::Subdirectories);
+            QVERIFY(files.hasNext());
+            QFile saved(files.next()); QVERIFY(saved.open(QIODevice::ReadOnly));
+            QCOMPARE(QJsonDocument::fromJson(saved.readAll()).object()["closed_tabs"].toArray().size(),1);
+            delete hook.data();
+            return;
+        }
+        if(publication) {
+            QTRY_VERIFY(evaluate("testWindow.shutdownPagePromptVisible").toBool());
+            QTRY_VERIFY(evaluate("testQuitChild.windowShutdownPagePromptVisible || testQuitChild.windowApplicationQuitPrepared").toBool());
+            QVERIFY(peerView);
+            QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+            QTRY_COMPARE(QGuiApplication::focusWindow(),window);
+            QVERIFY(clickCloseDecision(window,false));
+            QTRY_VERIFY(!evaluate("testWindow.applicationShutdownInProgress").toBool());
+            held->setProperty("testAllowRegistration",true);
+            pageReceiver="testQuitChild.activeView";
+            QTRY_COMPARE(page("location.href").toString(),destination);
+            QCOMPARE(evaluate(pageReceiver).value<QObject *>(),peerView.data());
+            return;
+        }
+        if (cancel) {
+            pageReceiver="testQuitRetainedView";
+            QVERIFY(page("var input=document.createElement('input');input.id='quitDraft';input.value='keep this draft';document.body.appendChild(input);true").toBool());
+        }
+        QVERIFY(evaluate("testQuitChild.windowUi.set_tab_muted(0,true)").toBool());
+        QVERIFY(evaluate("testQuitChild.windowUi.set_tab_pinned(0,true)>=0").toBool());
+        QPointer<QObject> otherView;
+        if(stalePeer) {
+            QVERIFY(command("tab-open "+initial+"?quit-clean-peer"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),3);
+            QTRY_VERIFY(evaluate("testWindow.liveWindowEntries().every(function(e){return e.ui.load_state==='complete'})").toBool());
+            auto *other=evaluate("testWindow.liveWindowEntries().find(function(e){return e.host!==testWindow && e.host!==testQuitChild}).host").value<QObject *>();
+            engine->rootContext()->setContextProperty("testQuitOther",other);
+            otherView=evaluate("testQuitOther.activeView").value<QObject *>();
+            pageReceiver="testQuitOther.activeView";
+            QVERIFY(page("document.getElementById('editor').remove();true").toBool());
+            pageReceiver="testQuitRetainedView";
+        }
+        const auto queued=initial+"?quit-queued";
+        if(queuedRoot || queuedPeer) {
+            QVERIFY(evaluate("(function(){var ui="+QString(queuedPeer ? "testQuitChild.windowUi" : "testWindow.browserUi")
+                +";var opened=ui.execute_command("+quoted("tab-open "+queued+" ;; jseval --world page window.quitCancelledTail=1")
+                +");testWindow.beginApplicationShutdown();return opened})()").toBool());
+        } else evaluate("testWindow.beginApplicationShutdown()");
+        if (cancel) {
+            QTRY_VERIFY(evaluate("testQuitChild.windowShutdownPagePromptVisible").toBool());
+            QVERIFY(peerView);
+            QCOMPARE(quit.count(),0);
+            if(staleRoot || stalePeer) {
+                QTRY_VERIFY(evaluate("testWindow.applicationShutdownRootPrepared").toBool());
+                if(stalePeer) QTRY_VERIFY(evaluate("testQuitOther.windowApplicationQuitPrepared").toBool());
+                const QString changed=stalePeer ? "testQuitOther.activeView" : "testWindow.activeWebView()";
+                evaluate(changed+".url="+quoted(initial+"?quit-replacement"));
+                const QString ui=stalePeer ? "testQuitOther.windowUi" : "testWindow.browserUi";
+                QTRY_COMPARE(evaluate(ui+".current_url").toString(),initial+"?quit-replacement");
+                QVERIFY(clickCloseDecision(qobject_cast<QQuickWindow *>(held.data()),true));
+            } else QVERIFY(clickCloseDecision(qobject_cast<QQuickWindow *>(held.data()),false));
+            QTRY_VERIFY(!evaluate("testWindow.applicationShutdownInProgress").toBool());
+            QVERIFY(peerView);
+            QCOMPARE(evaluate("testQuitChild.tabViewAt(testQuitChild.windowUi.tab_index_for_id("+quoted(peerId)+"))").value<QObject *>(),peerView.data());
+            QCOMPARE(page("document.getElementById('quitDraft').value").toString(),QStringLiteral("keep this draft"));
+            if(staleRoot || stalePeer) { QCOMPARE(quit.count(),0); if(stalePeer) QVERIFY(otherView); return; }
+            if(queuedRoot || queuedPeer) {
+                QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),3);
+                const QString created="testWindow.liveWindowEntries().find(function(e){return e.ui.current_url==="+quoted(queued)+"})";
+                QTRY_VERIFY(evaluate(created+" && "+created+".ui.load_state==='complete'").toBool());
+                pageReceiver=created+".host.activeView";
+                QVERIFY(page("typeof window.quitCancelledTail==='undefined'").toBool());
+                QCOMPARE(quit.count(),0);
+                return;
+            }
+            QVERIFY(evaluate("testQuitChild.windowUi.execute_command('tab-mute')").toBool());
+            // Closing the peer after abort must not retain a ghost Quit snapshot.
+            held->setProperty("windowShutdownApproved",true);
+            evaluate("testQuitChild.close();testQuitChild.destroy()");
+            QTRY_VERIFY(!held);
+            QVERIFY(evaluate("testWindow.browserUi.save_named_session('quit-abort-proof')").toBool());
+            QTRY_COMPARE(text("session_save_state"),QStringLiteral("succeeded"));
+            QCOMPARE(sessionUrls("quit-abort-proof"),QStringList{initial});
+            return;
+        }
+        if(prepared) {
+            (void)QTest::qWaitFor([&] { return quit.count()>0 || !evaluate("testWindow.applicationShutdownInProgress").toBool()
+                || evaluate("testWindow.applicationShutdownForcePromptVisible || (testQuitChild.windowShutdownPagePromptVisible && testQuitChild.visible)").toBool(); },8000);
+            qInfo()<<"Prepared state"<<evaluate("JSON.stringify({running:testWindow.applicationShutdownInProgress,stage:testWindow.applicationShutdownStage,status:testWindow.browserUi.status_text,rootReady:testWindow.applicationShutdownRootPrepared,peerReady:testQuitChild.windowApplicationQuitPrepared,peerPrompt:testQuitChild.windowShutdownPagePromptVisible,prepared:testQuitChild.windowPreparedPageCommitted,published:testQuitChild.windowPreparedPageCorePublished,navigated:testQuitChild.windowPreparedNavigationStarted,initialized:testQuitChild.activeView && testQuitChild.activeView.contentInitialized,url:testQuitChild.activeView && String(testQuitChild.activeView.url),nativeUrl:testQuitChild.activeView && testQuitChild.activeView.nativeUrl,loading:testQuitChild.activeView && testQuitChild.activeView.loading})");
+            if(quit.count()==0 && evaluate("testQuitChild.windowShutdownPagePromptVisible").toBool())
+                QVERIFY(clickCloseDecision(qobject_cast<QQuickWindow *>(held.data()),true));
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(quit.count()>0 || !evaluate("testWindow.applicationShutdownInProgress").toBool()
+            || evaluate("testWindow.applicationShutdownForcePromptVisible || testWindow.shutdownPagePromptVisible || testQuitChild.windowShutdownPagePromptVisible").toBool(),15000);
+        qInfo()<<"Quit final state"<<evaluate("JSON.stringify({stage:testWindow.applicationShutdownStage,rootReady:testWindow.applicationShutdownRootPrepared,peerReady:testQuitChild.windowApplicationQuitPrepared,rootReason:testWindow.shutdownPagePromptReason,peerReason:testQuitChild.windowShutdownPagePromptReason,status:testWindow.browserUi.status_text})");
+        QCOMPARE(quit.count(),1);
+        QTRY_VERIFY(!peerView);
+        QVERIFY(evaluate("testWindow.shutdownApproved && !testWindow.applicationShutdownForcePromptVisible").toBool());
+        // Deliberately flush after every peer has released its routing lease.
+        // It must still save the complete approved aggregate.
+        QVERIFY(evaluate("testWindow.browserUi.flush_durable_state()").toBool());
+        QDirIterator files(evaluate("testWindow.storageBasePath").toString(),{"current*.json"},QDir::Files,QDirIterator::Subdirectories);
+        QVERIFY(files.hasNext());
+        QFile saved(files.next()); QVERIFY(saved.open(QIODevice::ReadOnly));
+        const auto snapshot=QJsonDocument::fromJson(saved.readAll()).object();
+        QJsonArray tabs;
+        for (const auto &entry:snapshot["windows"].toArray())
+            for (const auto &tab:entry.toObject()["tabs"].toArray()) tabs.append(tab);
+        QCOMPARE(tabs.size(),2);
+        QStringList urls;
+        for (const auto &tab:tabs) urls.append(tab.toObject()["safe_restore_url"].toString());
+        QVERIFY(urls.contains(initial) && urls.contains(destination));
+        const auto peer=tabs[urls.indexOf(destination)].toObject();
+        QVERIFY(peer["pinned"].toBool() && peer["muted"].toBool());
+        return;
+    }
     if (scenario=="session-queued-get" || scenario=="session-peer-queued-get") {
         const bool peer=scenario=="session-peer-queued-get";
         const auto destination=initial+"?queued-get=yes";
@@ -787,6 +1060,23 @@ Ferric.FerricBrowserWindow {
             QVERIFY(page("typeof window.afterPageClose === 'undefined'").toBool());
             return;
         }
+        if (scenario == "window-close-native-facts") {
+            QVERIFY(clickCloseDecision(childWindow,true));
+            QTRY_VERIFY(evaluate("closePeerHost.windowShutdownPagePromptVisible").toBool());
+            const auto changed=initial+"?native-close-changed";
+            const auto result=evaluate("(function(){var before=closePeerUi.navigation_target_for_index(0);"
+                "closePeerHost.activeView.setContentUrl("+quoted(changed)+",false);"
+                "var after=closePeerUi.navigation_target_for_index(0);closePeerHost.finalizeQuit();"
+                "return {same:before.tabId===after.tabId && before.generation===after.generation && before.documentId===after.documentId,"
+                "cancelled:!closePeerHost.pageCloseController.armed,visible:closePeerHost.windowShutdownPagePromptVisible}})()").toMap();
+            QVERIFY(result["same"].toBool());
+            QVERIFY(result["cancelled"].toBool());
+            QVERIFY(!result["visible"].toBool());
+            QTRY_VERIFY(!evaluate("testWindow.browserUi.page_closes_pending()").toBool());
+            QVERIFY(sourceView && peerView);
+            QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+            return;
+        }
         QVERIFY(clickCloseDecision(childWindow,true));
         QTRY_VERIFY(peerView.isNull() || evaluate("closePeerHost.windowShutdownPagePromptVisible").toBool());
         if (peerView) QVERIFY(clickCloseDecision(childWindow,true));
@@ -930,10 +1220,10 @@ Ferric.FerricBrowserWindow {
         if (scenario == "window-live-rollback" || scenario == "window-live-cancel" || scenario == "window-live-identity" || scenario == "window-live-extra-page" || scenario == "window-live-reorder") {
             const auto effect = scenario == "window-live-cancel" ? QStringLiteral("testWindow.browserUi.cancel_live_page_move(target.viewHost.windowLivePageNonce)")
                 : scenario == "window-live-identity" ? QStringLiteral("target.stableTabId=testWindow.browserUi.tab_id_for_index(1)")
-                : scenario == "window-live-extra-page" ? QString("testWindow.browserUi.execute_command(\"open --target tab-bg %1?during-move-extra=yes\")").arg(initial)
+                : scenario == "window-live-extra-page" ? QString("addedIndex=testWindow.browserUi.new_tab();addedId=testWindow.browserUi.tab_id_for_index(addedIndex);coreCount=testWindow.browserUi.tab_count;restoredSelection=testWindow.browserUi.select_tab(testWindow.browserUi.tab_index_for_id(%1))").arg(quoted(sourceId))
                 : scenario == "window-live-reorder" ? QStringLiteral("testWindow.browserUi.set_tab_pinned(1,true)")
                 : QStringLiteral("target.url=target.url.toString()+\"#during-move\"");
-            injection = evaluate(QString(R"JS(Qt.createQmlObject('import QtQuick; Connections { property bool injected:false; target:testMovingView; function onViewHostChanged(){ if(!injected && target.viewHost!==testWindow){injected=true;%1} } }',testWindow))JS").arg(effect)).value<QObject *>();
+            injection = evaluate(QString(R"JS(Qt.createQmlObject('import QtQuick; Connections { property bool injected:false; property int addedIndex:-1; property string addedId:""; property int coreCount:0; property bool restoredSelection:false; target:testMovingView; function onViewHostChanged(){ if(!injected && target.viewHost!==testWindow){injected=true;%1} } }',testWindow))JS").arg(effect)).value<QObject *>();
             QVERIFY(injection);
         }
         if (scenario == "window-live-completion-nav") {
@@ -969,6 +1259,12 @@ Ferric.FerricBrowserWindow {
         QVERIFY(command(moving+" ;; jseval --world page window.liveMoveContinuation=83"));
         evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
         if (injection) QTRY_VERIFY(injection->property("injected").toBool());
+        if (scenario == "window-live-extra-page") {
+            QVERIFY(injection->property("addedIndex").toInt() >= 0);
+            QVERIFY(!injection->property("addedId").toString().isEmpty());
+            QCOMPARE(injection->property("coreCount").toInt(),3);
+            QVERIFY(injection->property("restoredSelection").toBool());
+        }
         if (scenario == "window-live-rollback" || scenario == "window-live-cancel" || scenario == "window-live-identity" || scenario == "window-live-extra-page" || scenario == "window-live-setup-destroy") {
             QTRY_VERIFY(evaluate("testWindow.commandNoticeVisible && testWindow.commandNoticeError").toBool());
             QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
