@@ -1884,6 +1884,9 @@ pub(crate) mod qobject {
         fn refresh_operations(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
+        fn native_operation_profile_drained(self: Pin<&mut BrowserUi>, profile: &QString);
+
+        #[qinvokable]
         fn enter_caret(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]

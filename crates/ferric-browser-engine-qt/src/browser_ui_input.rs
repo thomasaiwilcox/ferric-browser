@@ -522,6 +522,17 @@ impl qobject::BrowserUi {
         if operation_id.is_empty() || operation_id.len() > 128 {
             return false;
         }
+        if let Some(reporter) = self
+            .as_ref()
+            .rust()
+            .page_window_focus_lease
+            .as_ref()
+            .and_then(|lease| lease.reporter.as_ref())
+            .filter(|reporter| reporter.id() == operation_id)
+        {
+            return crate::page_window_operations::focus_outcome(&outcome.to_string())
+                .is_some_and(|outcome| reporter.finish(outcome));
+        }
         let outcome = outcome.to_string();
         let status = match outcome.as_str() {
             "activated" => OperationUpdate::completed("activated"),

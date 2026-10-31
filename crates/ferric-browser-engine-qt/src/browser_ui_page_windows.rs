@@ -18,6 +18,7 @@ struct PageHandoffState {
     group: Mutex<String>,
     page: TabId,
     operation: Option<String>,
+    reporter: Option<ferric_browser_application::NativeOperationReporter>,
     finished: AtomicBool,
     focus_requested: AtomicBool,
     admitted_focus_generation: u64,
@@ -31,20 +32,10 @@ impl Drop for PageHandoffState {
         }
         // Qt discards queued callbacks when their receiver is destroyed.
         // The last receipt still reports failure to the original issuer.
-        let operation = self.operation.clone();
         let _ = self.thread.queue(move |mut ui| {
             ui.as_mut().page_window_command_failed(
                 "Page command failed because a window closed. Try again.",
             );
-            if let Some(operation) = operation {
-                ui.as_mut().rust_mut().as_mut().get_mut().set_operation(
-                    operation,
-                    crate::OperationUpdate::failed(
-                        crate::FailureKind::Engine,
-                        "page window closed",
-                    ),
-                );
-            }
         });
     }
 }
@@ -66,9 +57,11 @@ impl PageHandoff {
 
     pub(super) fn finish(self, selected: bool, succeeded: bool, target_token: String) {
         let root = self.0;
+        if root.finished.swap(true, Ordering::AcqRel) {
+            return;
+        }
         let thread = root.thread.clone();
         let _ = thread.queue(move |mut source_ui| {
-            root.finished.store(true, Ordering::Release);
             let source_current = PageWindowSnapshot::capture(source_ui.as_ref().get_ref())
                 .is_some_and(|snapshot| {
                     snapshot.scope == root.scope
@@ -82,19 +75,9 @@ impl PageHandoff {
                 source_ui.as_mut().page_window_command_failed(
                     "Page command failed because the window changed. Try again.",
                 );
-                if let Some(operation) = &root.operation {
-                    source_ui
-                        .as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .set_operation(
-                            operation.clone(),
-                            crate::OperationUpdate::failed(
-                                crate::FailureKind::StaleTarget,
-                                "page command target changed",
-                            ),
-                        );
+                if let Some(reporter) = &root.reporter {
+                    let _ =
+                        reporter.finish(ferric_browser_application::NativeOperationOutcome::Stale);
                 }
                 return;
             }
@@ -102,47 +85,29 @@ impl PageHandoff {
                 source_ui.as_mut().page_window_command_failed(
                     "The command failed in the requested page. Try again.",
                 );
-                if let Some(operation) = &root.operation {
-                    source_ui
-                        .as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .set_operation(
-                            operation.clone(),
-                            crate::OperationUpdate::failed(
-                                crate::FailureKind::Engine,
-                                "page command failed",
-                            ),
-                        );
+                if let Some(reporter) = &root.reporter {
+                    let _ =
+                        reporter.finish(ferric_browser_application::NativeOperationOutcome::Failed);
                 }
                 return;
             }
             if !root.focus_requested.load(Ordering::Acquire) {
-                if let Some(operation) = &root.operation {
-                    source_ui
-                        .as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .set_operation(
-                            operation.clone(),
-                            crate::OperationUpdate::completed("page state updated"),
-                        );
+                if let Some(reporter) = &root.reporter {
+                    let _ = reporter
+                        .finish(ferric_browser_application::NativeOperationOutcome::Applied);
                 }
                 return;
             }
             let generation = root.focus_generation.load(Ordering::Acquire);
             if !crate::page_window_focus::current(generation) {
-                if let Some(operation) = &root.operation {
-                    source_ui.as_mut().complete_window_focus(
-                        &QString::from(operation),
-                        &QString::from("unknown"),
+                if let Some(reporter) = &root.reporter {
+                    let _ = reporter.finish(
+                        ferric_browser_application::NativeOperationOutcome::ActivationUnknown,
                     );
                 }
                 return;
             }
-            let Some(lease) = crate::page_window_focus::prepare(
+            let Some(mut lease) = crate::page_window_focus::prepare(
                 source_ui.as_ref().get_ref(),
                 &target_token,
                 generation,
@@ -150,13 +115,13 @@ impl PageHandoff {
                 source_ui
                     .as_mut()
                     .page_window_command_failed("Page focus target changed. Try again.");
-                if let Some(operation) = &root.operation {
-                    source_ui
-                        .as_mut()
-                        .complete_window_focus(&QString::from(operation), &QString::from("stale"));
+                if let Some(reporter) = &root.reporter {
+                    let _ =
+                        reporter.finish(ferric_browser_application::NativeOperationOutcome::Stale);
                 }
                 return;
             };
+            lease.reporter = root.reporter.clone();
             let nonce = lease.nonce();
             source_ui.as_mut().queue_pending_engine_action();
             let action = format!(
@@ -478,24 +443,26 @@ impl qobject::BrowserUi {
         operation_id: Option<&str>,
     ) -> Result<PageHandoff, String> {
         if let Some(incoming) = incoming {
+            if incoming.0.finished.load(Ordering::Acquire) {
+                return Err("The page command has already finished".into());
+            }
             return Ok(incoming);
         }
         let page = self.as_ref().rust().tab.ok_or("No active page")?;
-        let operation = operation_id
+        let reporter = operation_id
             .map(|id| {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .start_native_handoff(Some(id))
+                let mut rust = self.as_mut().rust_mut();
+                crate::page_window_operations::begin(rust.as_mut().get_mut(), id)
             })
             .transpose()?;
+        let operation = reporter.as_ref().map(|reporter| reporter.id().to_owned());
         Ok(PageHandoff(Arc::new(PageHandoffState {
             thread: self.as_ref().get_ref().qt_thread(),
             scope: source.scope.clone(),
             group: Mutex::new(source.group.clone()),
             page,
             operation,
+            reporter,
             finished: AtomicBool::new(false),
             focus_requested: AtomicBool::new(false),
             admitted_focus_generation: crate::page_window_focus::generation(),

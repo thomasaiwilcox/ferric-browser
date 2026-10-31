@@ -517,6 +517,7 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.config = active_config.clone();
+            crate::page_window_operations::update_policy(this);
             this.configuration_io.active_selector_fingerprint = fingerprint;
             this.configuration_io.selector_config_revision = this
                 .configuration_io

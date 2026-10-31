@@ -108,6 +108,15 @@ pub struct ScopedOperationCompletion {
 struct Ledger {
     active: usize,
     completions: VecDeque<PendingCompletion>,
+    wake: Option<Wake>,
+}
+
+#[derive(Clone)]
+struct Wake(Arc<dyn Fn() + Send + Sync>);
+impl std::fmt::Debug for Wake {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("native operation wake")
+    }
 }
 
 #[derive(Debug)]
@@ -183,6 +192,12 @@ impl NativeOperationState {
                 },
             },
         });
+        let wake = ledger.wake.clone();
+        drop(ledger);
+        drop(record);
+        if let Some(wake) = wake {
+            wake.0();
+        }
         true
     }
 }
@@ -226,6 +241,20 @@ pub struct NativeOperationRegistry {
 }
 
 impl NativeOperationRegistry {
+    /// Installs the process controller's asynchronous wake. No callback is
+    /// invoked while the record or notification ledger is locked.
+    pub fn install_waker(&mut self, wake: Arc<dyn Fn() + Send + Sync>) {
+        if let Ok(mut ledger) = self.ledger.lock() {
+            ledger.wake = Some(Wake(wake));
+        }
+    }
+
+    #[must_use]
+    pub fn completions_pending(&self) -> bool {
+        self.ledger
+            .lock()
+            .is_ok_and(|ledger| !ledger.completions.is_empty())
+    }
     /// Explicit typed native-handoff admission; generic `begin_commit` does not
     /// move a record here. The original catalog and this scope must match.
     ///
@@ -330,6 +359,29 @@ impl NativeOperationRegistry {
                     .collect()
             },
         )
+    }
+
+    /// Called only after native lifetime proof that the final actual transient
+    /// profile owner drained. Pending effects have an unknown outcome; only
+    /// fixed terminal receipts remain for the adapter's short delivery grace.
+    pub fn retire_transient_profile(&mut self, profile: ProfileInstanceId) {
+        for state in self
+            .records
+            .values()
+            .filter(|state| state.scope.profile == profile && state.scope.privacy.is_transient())
+        {
+            state.finish(NativeOperationOutcome::OwnerLost);
+        }
+    }
+
+    /// End the adapter's bounded receipt grace after native transient teardown.
+    /// Active records are retained; this never evicts in-flight authority.
+    pub fn forget_transient_profile(&mut self, profile: ProfileInstanceId) {
+        self.records.retain(|_, state| {
+            state.scope.profile != profile
+                || !state.scope.privacy.is_transient()
+                || state.is_active()
+        });
     }
 
     fn prune_terminal(&mut self) {
@@ -689,5 +741,77 @@ mod tests {
         );
         assert!(receipt.record.stderr.is_none());
         assert_eq!(receipt.scope.privacy(), PrivacyKind::Private);
+    }
+
+    #[test]
+    fn transient_retirement_ends_pending_authority_and_forgets_only_its_receipts() {
+        let mut registry = NativeOperationRegistry::default();
+        let mut source = OperationCatalog::default();
+        let private = scope(&source, 1, PrivacyKind::Private);
+        let normal = scope(&source, 1, PrivacyKind::Normal);
+        let other = scope(&source, 2, PrivacyKind::Private);
+        let mut reporters = Vec::new();
+        for (id, scope) in [("private", private), ("normal", normal), ("other", other)] {
+            source.admit(id.into()).unwrap();
+            reporters.push(registry.begin_handoff(&mut source, scope, id).unwrap());
+        }
+        registry.retire_transient_profile(private.profile());
+        assert_eq!(
+            registry.get("private").unwrap().record.state,
+            OperationState::Failed
+        );
+        assert_eq!(
+            registry.get("normal").unwrap().record.state,
+            OperationState::Running
+        );
+        assert_eq!(
+            registry.get("other").unwrap().record.state,
+            OperationState::Running
+        );
+        assert!(!reporters[0].finish(NativeOperationOutcome::Applied));
+        registry.forget_transient_profile(private.profile());
+        assert!(registry.get("private").is_none());
+        assert!(registry.get("normal").is_some());
+        assert!(registry.get("other").is_some());
+        assert_eq!(registry.drain_completions().len(), 1);
+    }
+
+    #[test]
+    fn terminal_and_lost_reporter_wakes_are_delivered_after_source_and_locks_are_gone() {
+        let mut source = OperationCatalog::default();
+        let owner = scope(&source, 1, PrivacyKind::Normal);
+        source.admit("native".into()).unwrap();
+        let mut registry = NativeOperationRegistry::default();
+        let reporter = registry
+            .begin_handoff(&mut source, owner, "native")
+            .unwrap();
+        let state = Arc::downgrade(registry.records.get("native").unwrap());
+        let ledger = Arc::downgrade(&registry.ledger);
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let observed = Arc::clone(&count);
+        registry.install_waker(Arc::new(move || {
+            // These reads would deadlock if the notification ran under locks.
+            assert!(
+                state
+                    .upgrade()
+                    .unwrap()
+                    .receipt()
+                    .unwrap()
+                    .record
+                    .state
+                    .is_terminal()
+            );
+            assert_eq!(
+                ledger.upgrade().unwrap().lock().unwrap().completions.len(),
+                1
+            );
+            observed.fetch_add(1, Ordering::AcqRel);
+        }));
+        drop(source);
+        drop(reporter);
+        assert_eq!(count.load(Ordering::Acquire), 1);
+        assert!(registry.completions_pending());
+        assert_eq!(registry.drain_completions().len(), 1);
+        assert!(!registry.completions_pending());
     }
 }

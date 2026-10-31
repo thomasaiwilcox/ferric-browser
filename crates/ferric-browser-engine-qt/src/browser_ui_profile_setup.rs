@@ -431,6 +431,7 @@ impl qobject::BrowserUi {
             this.config_revision = this.config_revision.wrapping_add(1);
             this.policy_revision = this.policy_revision.wrapping_add(1);
             this.config = config;
+            crate::page_window_operations::update_policy(this);
             this.base_config = base_config;
             this.learning_mode = this
                 .config

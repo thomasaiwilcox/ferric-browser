@@ -21,12 +21,16 @@ QtObject {
     readonly property alias credentialIntegration: credentialAdapter
     readonly property var policyUi: lifetime.policyUi
     property bool usable: false
+    property string nativeOperationProfileId: ""
     property var policySnapshot: ({enabled:false,blockedHosts:[],exceptionHosts:[],blockedRuleHosts:[],blockedRuleListIds:[],exceptionRuleHosts:[],exceptionRuleListIds:[],bypassSites:[],securityDenyHosts:[],adblockEngineHandle:0})
 
     property FerricProfileLifetime nativeLifetime: FerricProfileLifetime {
         id: lifetime
         onViewRetiring: function(view) { resources.retireView(view) }
-        onDrained: resources.rootWindow.profileResourceRegistry.release(resources)
+        onDrained: {
+            resources.rootWindow.browserUi.native_operation_profile_drained(resources.nativeOperationProfileId)
+            resources.rootWindow.profileResourceRegistry.release(resources)
+        }
     }
     property FerricCredentialIntegration nativeCredentials: FerricCredentialIntegration {
         id: credentialAdapter
@@ -80,10 +84,18 @@ QtObject {
         profile.spellCheckLanguages=rootWindow.spellcheckLanguages(ui)
         profile.isPushServiceEnabled=rootWindow.pushServiceEnabled(ui,transientProfile)
     }
-    onPolicyUiChanged: refreshPolicy()
+    onPolicyUiChanged: {
+        if (policyUi && !policyUi.profile_bootstrap_pending)
+            nativeOperationProfileId = policyUi.page_host_profile_id()
+        refreshPolicy()
+    }
     property Connections policyConnection: Connections {
         target: resources.policyUi
-        function onProfile_bootstrap_pendingChanged() { resources.refreshPolicy() }
+        function onProfile_bootstrap_pendingChanged() {
+            if (resources.policyUi && !resources.policyUi.profile_bootstrap_pending)
+                resources.nativeOperationProfileId = resources.policyUi.page_host_profile_id()
+            resources.refreshPolicy()
+        }
         function onBlocking_policy_readyChanged() { resources.refreshPolicy() }
         function onBlocking_enabledChanged() { resources.refreshPolicy() }
         function onBlocking_hostsChanged() { resources.refreshPolicy() }

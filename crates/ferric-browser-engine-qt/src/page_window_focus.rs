@@ -77,6 +77,7 @@ impl Owner {
 }
 
 pub(crate) struct Lease {
+    pub(crate) reporter: Option<ferric_browser_application::NativeOperationReporter>,
     nonce: Uuid,
     generation: u64,
     issuer: Owner,
@@ -84,6 +85,16 @@ pub(crate) struct Lease {
     target_marker: crate::page_window_native::NativePageHost,
     expires: Instant,
     used: AtomicBool,
+}
+
+pub(super) fn expire_reporter(rust: &crate::BrowserUiRust) {
+    if let Some(lease) = &rust.page_window_focus_lease
+        && Instant::now() > lease.expires
+        && let Some(reporter) = &lease.reporter
+    {
+        let _ =
+            reporter.finish(ferric_browser_application::NativeOperationOutcome::ActivationUnknown);
+    }
 }
 
 pub(crate) fn prepare(ui: &qobject::BrowserUi, token: &str, generation: u64) -> Option<Lease> {
@@ -102,6 +113,7 @@ pub(crate) fn prepare(ui: &qobject::BrowserUi, token: &str, generation: u64) -> 
         .find(|page| Some(page.id) == owner.snapshot.selected)?
         .target;
     Some(Lease {
+        reporter: None,
         nonce: Uuid::new_v4(),
         generation,
         target: Owner {

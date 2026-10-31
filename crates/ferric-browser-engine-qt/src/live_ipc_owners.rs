@@ -400,6 +400,7 @@ struct QueryCollection {
     generation: u64,
     sequence: u64,
     responses: Vec<(u64, Response)>,
+    windows: Vec<WindowId>,
 }
 
 struct QueryPart {
@@ -462,11 +463,23 @@ impl QueryPart {
                     result["live_registry"] = Value::Array(registry);
                 }
                 if collection.key == "operations" {
-                    match super::operation_projection::page_operations(
-                        result["operations"].as_array().cloned().unwrap_or_default(),
+                    let rows = crate::page_window_operations::rows(
                         &collection.request.params,
-                        collection.sequence,
-                    ) {
+                        None,
+                        &collection.windows,
+                    )
+                    .map(|native| {
+                        let mut rows = result["operations"].as_array().cloned().unwrap_or_default();
+                        rows.extend(native);
+                        rows
+                    });
+                    match rows.and_then(|rows| {
+                        super::operation_projection::page_operations(
+                            rows,
+                            &collection.request.params,
+                            collection.sequence,
+                        )
+                    }) {
                         Ok(page) => Response::success(collection.request.id.clone(), page),
                         Err(error) => {
                             failure(&collection.request, ErrorCode::InvalidArgument, &error)
@@ -516,6 +529,7 @@ fn collect_query(pending: PendingRequest, key: &'static str, owners: Vec<Owner>,
         remaining: owners.len(),
         generation,
         sequence: super::ipc_transport::current_sequence(),
+        windows: owners.iter().filter_map(|owner| owner.window).collect(),
         responses: Vec::new(),
     }));
     for owner in owners {
@@ -761,6 +775,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn refresh_ipc_owner(self: Pin<&mut Self>) {
+        crate::page_window_operations::update_policy(self.as_ref().rust());
         crate::page_group_runtime::publish(self.as_ref().get_ref());
         let native_marker = self
             .as_ref()
@@ -904,6 +919,59 @@ impl qobject::BrowserUi {
                 return;
             }
         };
+        let native_id = request
+            .params
+            .get("operation_id")
+            .and_then(Value::as_str)
+            .filter(|_| {
+                matches!(
+                    request.method.as_str(),
+                    "operations.query" | "operations.cancel"
+                )
+            })
+            .filter(|id| crate::page_window_operations::contains(id));
+        if let Some(id) = native_id {
+            let response = if request.method == "operations.cancel" {
+                match crate::page_window_operations::cancel(id) {
+                    Ok(()) => Response::success(
+                        request.id.clone(),
+                        json!({"operation_id":id,"status":"cancelled"}),
+                    ),
+                    Err(error) => {
+                        Response::failure(request.id.clone(), error.into_protocol_error())
+                    }
+                }
+            } else if request.method == "operations.query" {
+                let window = selector.and_then(WindowId::from_display).or_else(|| {
+                    selector.and_then(|selector| {
+                        directory().lock().ok()?.selected(Some(selector))?.window
+                    })
+                });
+                let result = if selector.is_some() && window.is_none() {
+                    Err("The requested window is unavailable".to_owned())
+                } else {
+                    crate::page_window_operations::rows(&request.params, window, &[]).and_then(
+                        |rows| {
+                            crate::operation_projection::page_operations(
+                                rows,
+                                &request.params,
+                                super::ipc_transport::current_sequence(),
+                            )
+                        },
+                    )
+                };
+                match result {
+                    Ok(value) => Response::success(request.id.clone(), value),
+                    Err(error) => failure(&request, ErrorCode::InvalidArgument, &error),
+                }
+            } else {
+                // Operation IDs on other methods do not select a receiver.
+                self.as_mut().deliver_pending_ipc(pending, &request);
+                return;
+            };
+            let _ = pending.respond(&response);
+            return;
+        }
         if let Some(key) = query_key(&request) {
             let snapshot = directory().lock().ok().map(|directory| {
                 (
@@ -945,6 +1013,27 @@ impl qobject::BrowserUi {
             }
         });
         let Some(owner) = selected else {
+            if request.method == "operations.query" {
+                let window = selector.and_then(WindowId::from_display);
+                if (selector.is_none() || window.is_some())
+                    && crate::page_window_operations::available(window)
+                {
+                    let result = crate::page_window_operations::rows(&request.params, window, &[])
+                        .and_then(|rows| {
+                            crate::operation_projection::page_operations(
+                                rows,
+                                &request.params,
+                                super::ipc_transport::current_sequence(),
+                            )
+                        });
+                    let response = match result {
+                        Ok(value) => Response::success(request.id.clone(), value),
+                        Err(error) => failure(&request, ErrorCode::InvalidArgument, &error),
+                    };
+                    let _ = pending.respond(&response);
+                    return;
+                }
+            }
             let _ = pending.respond(&missing_owner(&request, selector));
             return;
         };
@@ -1206,6 +1295,7 @@ mod tests {
                 generation: directory().lock().unwrap().generation,
                 sequence: 41,
                 responses: Vec::new(),
+                windows: Vec::new(),
             }));
             let first = QueryPart {
                 collection: Arc::clone(&collection),

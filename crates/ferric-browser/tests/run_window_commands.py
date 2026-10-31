@@ -143,12 +143,55 @@ def main():
             assert 'page selection' in rejected['error'].get('details', {}).get('diagnostic_context', '').lower(), rejected
             assert sorted((tab['id'], tab['url'], tab['window_id'], tab.get('context_name')) for tab in tabs()) == before
             facts['cases'].append('IPC context selection rejects without mutation')
+            subscription = socket.socket(socket.AF_UNIX)
+            subscription.settimeout(5)
+            subscription.connect(str(next(root.rglob('browser.sock'))))
+            def read_subscription():
+                def exact(size):
+                    data = bytearray()
+                    while len(data) < size:
+                        block = subscription.recv(size - len(data))
+                        assert block, 'subscription ended'
+                        data.extend(block)
+                    return bytes(data)
+                length, = struct.unpack('>I', exact(4))
+                assert 0 < length <= 1024 * 1024
+                return json.loads(exact(length))
+            def subscribe_request(method, params):
+                payload = json.dumps({'id':method,'method':method,'params':params}).encode()
+                subscription.sendall(struct.pack('>I',len(payload))+payload)
+                response = read_subscription()
+                assert not response.get('error'), response
+                return response
+            subscribe_request('hello', {'protocol_major':3,'protocol_minor':0,'client':'native-receipt-subscription'})
+            subscribe_request('events.subscribe', {'event_types':['operation.completed']})
+            subscription_started = time.monotonic()
             focused = raw_request({'command': 'tab-focus', 'arguments': {'id': child['id']},
                                    'context': {'window': source, 'source': 'cli'}})
             assert not focused.get('error'), focused
             assert focused['result']['window_id'] == child['window_id'], focused
             facts['cases'].append('stable page ID resolves actual peer owner')
             operation_id = focused['result']['operation_id']
+            subscription_events = []
+            while True:
+                notification = read_subscription()
+                if notification.get('event_type') == 'operation.completed' and notification.get('payload',{}).get('operation_id') == operation_id:
+                    subscription_events.append(notification)
+                    break
+            event = subscription_events[0]['payload']
+            assert event['window_id'] == source, event
+            assert event['window_id'] != child['window_id'], event
+            assert event['status'] == 'completed', event
+            facts['subscription_latency_ms'] = round((time.monotonic()-subscription_started)*1000)
+            subscription.settimeout(0.3)
+            try:
+                while True:
+                    duplicate = read_subscription()
+                    assert duplicate.get('payload',{}).get('operation_id') != operation_id, duplicate
+            except socket.timeout:
+                pass
+            subscription.close()
+            facts['cases'].append('native terminal notification is pushed once with original issuer scope before any query or manual refresh')
 
             def completed_handoff():
                 records = cli('query', 'operations', operation_id, '--format', 'json')['operations']

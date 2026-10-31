@@ -11,6 +11,10 @@ use crate::{FailureKind, OperationUpdate};
 
 impl qobject::BrowserUi {
     pub(super) fn refresh_operations(mut self: Pin<&mut Self>) {
+        {
+            let mut rust = self.as_mut().rust_mut();
+            crate::page_window_operations::publish(rust.as_mut().get_mut());
+        }
         let completions = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -99,7 +103,7 @@ impl qobject::BrowserUi {
         let qt_thread = self.as_ref().get_ref().qt_thread();
         let wake_queued = Arc::new(AtomicBool::new(false));
         let callback_queued = Arc::clone(&wake_queued);
-        install_pending_request_waker(Arc::new(move || {
+        let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             if callback_queued
                 .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
                 .is_err()
@@ -117,7 +121,9 @@ impl qobject::BrowserUi {
             {
                 failed.store(false, Ordering::Release);
             }
-        }));
+        });
+        install_pending_request_waker(Arc::clone(&wake));
+        crate::page_window_operations::install_waker(wake);
     }
 
     pub(super) fn maintenance_delay_ms(self: Pin<&mut Self>) -> i32 {
@@ -200,39 +206,48 @@ impl qobject::BrowserUi {
             || !rust.library.session_saves.is_empty()
             || rust.library.session_checkpoint_clear_pending
             || rust.library.storage_flush_pending;
-        if worker_pending
-            || operation_pending
-            || rust.diagnostics_pending
-            || !rust.diagnostic_work.pending_diagnostic_requests.is_empty()
-        {
-            return 50;
-        }
-        if rust.active_site_experiment.is_some()
-            || rust.macro_key_started_ms.is_some()
-            || !rust.binding_overlay.is_empty()
-        {
-            return 100;
-        }
-        // Private or unavailable profiles have no checkpoint destination.
-        // Keep the draft dirty, but don't spin while there is nowhere to save.
-        if rust.checkpoint.dirty && rust.session_path.is_some() {
-            let elapsed = rust.checkpoint.dirty_since_ms.map_or(0, |since| {
-                elapsed_ms(rust.binding_clock).saturating_sub(since)
-            });
-            return i32::try_from(500_u64.saturating_sub(elapsed).max(1)).unwrap_or(500);
-        }
-        if crate::page_group_runtime::is_enabled()
-            || rust.configuration_io.config_watch.is_watching()
-            || rust.configuration_io.theme_watch.is_watching()
-            || rust.state.as_ref().is_some_and(|state| {
-                state
-                    .profile_snapshot()
-                    .is_some_and(|profile| profile.durable)
-            })
-        {
-            return 1_000;
-        }
-        -1
+        let local_delay = (|| {
+            if worker_pending
+                || operation_pending
+                || rust.diagnostics_pending
+                || !rust.diagnostic_work.pending_diagnostic_requests.is_empty()
+            {
+                return 50;
+            }
+            if rust.active_site_experiment.is_some()
+                || rust.macro_key_started_ms.is_some()
+                || !rust.binding_overlay.is_empty()
+            {
+                return 100;
+            }
+            // Private or unavailable profiles have no checkpoint destination.
+            // Keep the draft dirty, but don't spin while there is nowhere to save.
+            if rust.checkpoint.dirty && rust.session_path.is_some() {
+                let elapsed = rust.checkpoint.dirty_since_ms.map_or(0, |since| {
+                    elapsed_ms(rust.binding_clock).saturating_sub(since)
+                });
+                return i32::try_from(500_u64.saturating_sub(elapsed).max(1)).unwrap_or(500);
+            }
+            if crate::page_group_runtime::is_enabled()
+                || rust.configuration_io.config_watch.is_watching()
+                || rust.configuration_io.theme_watch.is_watching()
+                || rust.state.as_ref().is_some_and(|state| {
+                    state
+                        .profile_snapshot()
+                        .is_some_and(|profile| profile.durable)
+                })
+            {
+                return 1_000;
+            }
+            -1
+        })();
+        crate::page_window_operations::maintenance_delay_ms().map_or(local_delay, |process_delay| {
+            if local_delay < 0 {
+                process_delay
+            } else {
+                process_delay.min(local_delay)
+            }
+        })
     }
 
     pub(super) fn poll_ipc(mut self: Pin<&mut Self>) {
