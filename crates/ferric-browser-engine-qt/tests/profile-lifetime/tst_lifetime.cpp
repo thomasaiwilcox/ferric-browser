@@ -17,6 +17,40 @@
 #include <atomic>
 #include <thread>
 #include <QUrl>
+#include <functional>
+#include <utility>
+
+// Deliberately reentrant getters exercise deletion inside QObject::property.
+class TransferTestView : public QQuickItem {
+    Q_OBJECT
+    Q_PROPERTY(QObject *profile READ profile CONSTANT)
+    Q_PROPERTY(QObject *viewHost READ viewHost)
+    Q_PROPERTY(QObject *viewUi READ viewUi)
+    Q_PROPERTY(bool viewRetired READ viewRetired)
+    Q_PROPERTY(bool loading READ loading NOTIFY changed)
+    Q_PROPERTY(QUrl url READ url NOTIFY changed)
+    Q_PROPERTY(int renderProcessPid READ renderProcessPid NOTIFY changed)
+    Q_PROPERTY(int lifecycleState READ lifecycleState NOTIFY changed)
+  public:
+    QPointer<QObject> profileObject, hostObject, uiObject;
+    mutable QString attackProperty;
+    mutable std::function<void()> attack;
+    void read(const QString &name) const {
+        if (attackProperty != name || !attack) return;
+        auto callback = std::exchange(attack, {});
+        callback();
+    }
+    QObject *profile() const { const auto value = profileObject; read("profile"); return value; }
+    QObject *viewHost() const { const auto value = hostObject; read("viewHost"); return value; }
+    QObject *viewUi() const { const auto value = uiObject; read("viewUi"); return value; }
+    bool viewRetired() const { read("viewRetired"); return false; }
+    bool loading() const { read("loading"); return false; }
+    QUrl url() const { return QUrl("https://example.test/live"); }
+    int renderProcessPid() const { return 17; }
+    int lifecycleState() const { return 0; }
+  signals:
+    void changed();
+};
 
 static bool retain(FerricProfileLifetime &lifetime, QObject *host,
                    QObject *ui) {
@@ -207,6 +241,10 @@ class LifetimeTests : public QObject {
         QCOMPARE(lifetime.windowCount(), 0);
     }
     void popupDelegateLifetime();
+    void nativeViewTransfer_data();
+    void nativeViewTransfer();
+    void nativeViewTransferReentrancy_data();
+    void nativeViewTransferReentrancy();
 
   private:
     void serveFixtureRequests();
@@ -229,6 +267,175 @@ class LifetimeTests : public QObject {
     QString abortedPopupLeaseId_;
     int abortedDelegateCountAfterOpenIn_ = -1;
 };
+
+void LifetimeTests::nativeViewTransferReentrancy_data() {
+    QTest::addColumn<QString>("scenario");
+    for (const auto *row : {"begin-profile-delete-lifetime", "begin-loading-delete-view", "begin-signal-delete-lifetime",
+                           "associate-delete-view", "associate-delete-lifetime", "associate-delete-handle",
+                           "cancel-delete-view", "cancel-delete-lifetime", "cancel-delete-handle", "destroyed-key-reuse",
+                           "current-reparent", "begin-reparent", "associate-reparent", "cancel-reparent"})
+        QTest::newRow(row) << QString::fromLatin1(row);
+}
+
+void LifetimeTests::nativeViewTransferReentrancy() {
+    QFETCH(QString, scenario);
+    QQmlEngine engine;
+    auto lifetime = std::make_unique<FerricProfileLifetime>();
+    QQuickWindow source, destination;
+    QObject sourceUi, destinationUi;
+    auto *profile = new QObject;
+    QVERIFY(lifetime->ownProfile(new QObject, profile));
+    QVERIFY(retain(*lifetime, &source, &sourceUi));
+    QVERIFY(retain(*lifetime, &destination, &destinationUi));
+    auto initialize = [&](TransferTestView *view) {
+        QQmlEngine::setContextForObject(view, engine.rootContext());
+        view->setParentItem(source.contentItem());
+        view->profileObject = profile;
+        view->hostObject = &source;
+        view->uiObject = &sourceUi;
+        return lifetime->adoptView(view, &source, &sourceUi);
+    };
+    void *storage = ::operator new(sizeof(TransferTestView));
+    auto *raw = new (storage) TransferTestView;
+    QPointer<TransferTestView> view(raw);
+    QVERIFY(initialize(raw));
+    QVERIFY(lifetime->currentView(view));
+    std::unique_ptr<FerricProfileLifetime::ViewTransfer> transfer;
+    if (scenario == "current-reparent" || scenario == "begin-reparent") {
+        view->attackProperty = scenario == "current-reparent" ? "profile" : "loading";
+        view->attack = [&] { view->setParentItem(destination.contentItem()); };
+        if (scenario == "current-reparent") QVERIFY(!lifetime->currentView(view));
+        else QVERIFY(!lifetime->beginViewTransfer(view, &destination, &destinationUi));
+        QVERIFY(view);
+        view->setParentItem(source.contentItem());
+        QVERIFY(lifetime->currentView(view));
+        return;
+    }
+    if (scenario.startsWith("begin-")) {
+        if (scenario == "begin-signal-delete-lifetime") {
+            connect(lifetime.get(), &FerricProfileLifetime::credentialTransportChanged, &source, [&] { lifetime.reset(); });
+        } else {
+            view->attackProperty = scenario.contains("profile") ? "profile" : "loading";
+            view->attack = [&] { if (scenario.endsWith("lifetime")) lifetime.reset(); else delete view.data(); };
+        }
+        QVERIFY(!lifetime->beginViewTransfer(view, &destination, &destinationUi));
+        return;
+    }
+    transfer = lifetime->beginViewTransfer(view, &destination, &destinationUi);
+    QVERIFY(transfer);
+    if (scenario == "destroyed-key-reuse") {
+        raw->~TransferTestView();
+        QVERIFY(view.isNull());
+        transfer.reset();
+        auto *replacement = new (storage) TransferTestView;
+        QVERIFY(initialize(replacement));
+        QVERIFY(lifetime->currentView(replacement));
+        lifetime->releaseView(replacement);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCOMPARE(lifetime->viewCount(), 0);
+        return;
+    }
+    view->attackProperty = "profile";
+    view->attack = [&] {
+        if (scenario.endsWith("reparent")) view->setParentItem(scenario.startsWith("associate") ? source.contentItem() : destination.contentItem());
+        else if (scenario.endsWith("lifetime")) lifetime.reset();
+        else if (scenario.endsWith("view")) delete view.data();
+        else transfer.reset();
+    };
+    if (scenario.startsWith("associate")) {
+        view->setParentItem(destination.contentItem());
+        view->hostObject = &destination;
+        view->uiObject = &destinationUi;
+        QVERIFY(!lifetime->associateViewTransfer(*transfer));
+    } else {
+        QVERIFY(!lifetime->cancelViewTransfer(*transfer, true));
+    }
+    transfer.reset();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QVERIFY(view.isNull());
+}
+
+void LifetimeTests::nativeViewTransfer_data() {
+        QTest::addColumn<QString>("scenario");
+        for (const auto *row : {"commit", "rollback", "associated-rollback", "navigation", "loading",
+                               "renderer", "lifecycle", "source-retire", "destination-retire", "abandoned"})
+            QTest::newRow(row) << QString::fromLatin1(row);
+    }
+void LifetimeTests::nativeViewTransfer() {
+        QFETCH(QString, scenario);
+        QQmlEngine engine;
+        FerricProfileLifetime lifetime;
+        QQuickWindow source, destination;
+        QObject sourceUi, destinationUi;
+        auto *profile = new QObject;
+        QVERIFY(lifetime.ownProfile(new QObject, profile));
+        QVERIFY(retain(lifetime, &source, &sourceUi));
+        QVERIFY(retain(lifetime, &destination, &destinationUi));
+        QQmlComponent component(&engine);
+        component.setData(R"QML(import QtQuick
+            Item {
+                property var profile
+                property var viewHost
+                property var viewUi
+                property bool viewRetired: false
+                property bool loading: false
+                property url url: "https://example.test/live"
+                property int renderProcessPid: 17
+                property int lifecycleState: 0
+            })QML", QUrl("file:///native-transfer.qml"));
+        QPointer<QQuickItem> view(qobject_cast<QQuickItem *>(component.create()));
+        QVERIFY2(view, qPrintable(component.errorString()));
+        view->setParentItem(source.contentItem());
+        view->setProperty("profile", QVariant::fromValue(profile));
+        view->setProperty("viewHost", QVariant::fromValue<QObject *>(&source));
+        view->setProperty("viewUi", QVariant::fromValue(&sourceUi));
+        QVERIFY(lifetime.adoptView(view, &source, &sourceUi));
+        const auto original = lifetime.currentView(view);
+        QVERIFY(original);
+        auto transfer = lifetime.beginViewTransfer(view, &destination, &destinationUi);
+        QVERIFY(transfer);
+        QVERIFY(!lifetime.currentView(view));
+        QCOMPARE(lifetime.ownerUi(view), nullptr);
+        QVERIFY(!lifetime.adoptView(view, &destination, &destinationUi));
+        QVERIFY(!lifetime.beginViewTransfer(view, &destination, &destinationUi));
+        if (scenario == "navigation") view->setProperty("url", QUrl("https://example.test/new"));
+        if (scenario == "loading") view->setProperty("loading", true);
+        if (scenario == "renderer") view->setProperty("renderProcessPid", 18);
+        if (scenario == "lifecycle") view->setProperty("lifecycleState", 1);
+        if (scenario == "source-retire") lifetime.releaseWindow(&source);
+        if (scenario == "destination-retire") lifetime.releaseWindow(&destination);
+        const bool invalid = scenario == "navigation" || scenario == "loading" || scenario == "renderer"
+            || scenario == "lifecycle" || scenario.endsWith("retire");
+        if (scenario != "rollback") {
+            view->setParentItem(destination.contentItem());
+            view->setProperty("viewHost", QVariant::fromValue<QObject *>(&destination));
+            view->setProperty("viewUi", QVariant::fromValue(&destinationUi));
+            QCOMPARE(lifetime.associateViewTransfer(*transfer), !invalid);
+        }
+        if (scenario == "commit") {
+            QVERIFY(lifetime.completeViewTransfer(*transfer));
+            QVERIFY(lifetime.currentView(view));
+            QCOMPARE(lifetime.ownerUi(view), &destinationUi);
+            QVERIFY(!lifetime.matchesCurrentView(view, *original));
+            lifetime.releaseWindow(&source);
+            QVERIFY(view);
+            QCOMPARE(lifetime.ownerUi(view), &destinationUi);
+        } else if (scenario == "abandoned" || scenario == "source-retire") {
+            transfer.reset();
+            QCOMPARE(lifetime.ownerUi(view), nullptr);
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            QVERIFY(view.isNull());
+        } else {
+            view->setParentItem(source.contentItem());
+            view->setProperty("viewHost", QVariant::fromValue<QObject *>(&source));
+            view->setProperty("viewUi", QVariant::fromValue(&sourceUi));
+            QVERIFY(lifetime.cancelViewTransfer(*transfer, true));
+            QVERIFY(lifetime.currentView(view));
+            QCOMPARE(lifetime.ownerUi(view), &sourceUi);
+            QVERIFY(!lifetime.matchesCurrentView(view, *original));
+        }
+    }
+
 
 void LifetimeTests::serveFixtureRequests() {
     fixtureUrl_ = QStringLiteral("http://127.0.0.1:%1/page0.html")

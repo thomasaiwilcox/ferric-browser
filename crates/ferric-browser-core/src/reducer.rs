@@ -62,11 +62,20 @@ pub struct TabTransfer {
 /// Non-deserializable identity captured from an actual source page. Native
 /// orchestration must verify its live owner/profile and commit source release
 /// before publishing or navigating the imported destination.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TabTransferIdentity {
     tab: TabId,
     generation: u64,
     document: DocumentId,
+    presented: Option<PresentedTransferState>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PresentedTransferState {
+    renderer: RendererState,
+    resources: ResourceLifecycle,
+    search: Option<SearchState>,
+    zoom_bits: u64,
 }
 
 impl TabTransferIdentity {
@@ -76,7 +85,40 @@ impl TabTransferIdentity {
             tab: page.id,
             generation: page.generation,
             document: page.document,
+            presented: None,
         }
+    }
+}
+
+impl TabTransfer {
+    /// Capture a live page for a native view transfer. The adapter must prove
+    /// the actual view/profile association and revalidate the source before
+    /// committing both runtimes without callbacks. This has no wire format.
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // finite, positive and bounded above
+    pub fn capture_presented(page: &crate::TabState) -> Option<Self> {
+        if page.existence != ExistenceState::Live
+            || !page.zoom.is_finite()
+            || !(0.25..=5.0).contains(&page.zoom)
+        {
+            return None;
+        }
+        let mut identity = TabTransferIdentity::capture(page);
+        identity.presented = Some(PresentedTransferState {
+            renderer: page.renderer,
+            resources: page.resources,
+            search: page.search.clone(),
+            zoom_bits: page.zoom.to_bits(),
+        });
+        Some(Self {
+            identity: Some(identity),
+            url: page.url.clone(),
+            title: page.title.clone(),
+            loading: page.loading,
+            pinned: page.pinned,
+            muted: page.muted,
+            zoom_hundredths: ((page.zoom * 100.0).round() as u32).clamp(25, 500),
+        })
     }
 }
 
@@ -815,6 +857,7 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                             && tab.loading == LoadingState::Idle
                     })
                 });
+            let mut presented = None;
             let tab = if let Some(identity) = transfer.identity {
                 let placeholder = reusable_tab.ok_or(ReduceError::InvalidActivation)?;
                 let untouched = state.tabs.get(&placeholder).is_some_and(|page| {
@@ -842,6 +885,7 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                 page.generation = identity.generation;
                 page.document = identity.document;
                 page.url.clone_from(&transfer.url);
+                presented = identity.presented;
                 state.tabs.insert(identity.tab, page);
                 let destination = state
                     .windows
@@ -868,6 +912,12 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
             tab_state.pinned = transfer.pinned;
             tab_state.muted = transfer.muted;
             tab_state.zoom = f64::from(transfer.zoom_hundredths) / 100.0;
+            if let Some(presented) = presented {
+                tab_state.renderer = presented.renderer;
+                tab_state.resources = presented.resources;
+                tab_state.search = presented.search;
+                tab_state.zoom = f64::from_bits(presented.zoom_bits);
+            }
             if transfer.pinned {
                 let pinned_ids = state
                     .tabs
@@ -2817,6 +2867,44 @@ mod tests {
         reduce(&mut state, Event::OpenTab { window }).unwrap();
         assert!(state.windows[&window].active_tab.unwrap().raw() > page.document.raw());
         assert_ne!(state.capture_target(page.id), Some(target));
+    }
+
+    #[test]
+    fn presented_transfer_preserves_all_page_state_except_destination_owner() {
+        let (mut state, profile, window, tab, _) = setup();
+        let mut page = state.tabs[&tab].clone();
+        page.id = TabId::from_raw(1000);
+        page.document = DocumentId::from_raw(2000);
+        page.generation = 19;
+        page.window = WindowId::from_raw(8000);
+        page.profile = ProfileId::from_raw(9000);
+        page.url = Some("https://example.test/live".into());
+        page.title = "Live page".into();
+        page.loading = LoadingState::Complete;
+        page.resources = ResourceLifecycle::Frozen;
+        page.renderer = RendererState::Terminated;
+        page.search = Some(SearchState {
+            query: "retained query".into(),
+            backward: true,
+            case: SearchCase::Sensitive,
+        });
+        page.pinned = true;
+        page.muted = true;
+        page.zoom = 1.234_567;
+        let transfer = TabTransfer::capture_presented(&page).unwrap();
+        let effects = reduce(&mut state, Event::TransferTabIn { window, transfer }).unwrap();
+        page.window = window;
+        page.profile = profile;
+        assert_eq!(state.tabs[&page.id], page);
+        assert!(!state.tabs.contains_key(&tab));
+        assert!(state.validate().is_ok());
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::Engine(_)))
+        );
+        page.existence = ExistenceState::Closing;
+        assert!(TabTransfer::capture_presented(&page).is_none());
     }
 
     #[test]

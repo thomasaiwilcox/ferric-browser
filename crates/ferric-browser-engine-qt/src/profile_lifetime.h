@@ -11,6 +11,7 @@
 #include <QQmlEngine>
 #include <QSet>
 #include <optional>
+#include <memory>
 class FerricProfileTls;
 
 // Native ownership only. Profile policy and request presentation stay with
@@ -21,6 +22,7 @@ class FerricProfileLifetime : public QObject {
     Q_PROPERTY(QObject *policyUi READ policyUi NOTIFY policyUiChanged)
     Q_PROPERTY(int viewCount READ viewCount NOTIFY consumersChanged)
     Q_PROPERTY(int windowCount READ windowCount NOTIFY consumersChanged)
+    struct ViewTransferState;
   public:
     using QObject::QObject;
     ~FerricProfileLifetime() override;
@@ -55,6 +57,29 @@ class FerricProfileLifetime : public QObject {
     bool matchesCurrentView(QQuickItem *view, const CurrentView &expected) const;
     QString credentialTlsIdentity(QQuickItem *view) const;
     bool credentialTlsEligible(QQuickItem *view, const QUrl &origin) const;
+    // Native-only exclusive staging. A moving view is unavailable to popup,
+    // credential and ordinary adoption consumers until the transaction ends.
+    class ViewTransfer {
+      public:
+        ~ViewTransfer();
+        ViewTransfer(const ViewTransfer &) = delete;
+        ViewTransfer &operator=(const ViewTransfer &) = delete;
+      private:
+        friend class FerricProfileLifetime;
+        ViewTransfer() = default;
+        std::shared_ptr<ViewTransferState> state;
+    };
+    std::unique_ptr<ViewTransfer> beginViewTransfer(QQuickItem *view,
+                                                  QObject *destinationHost,
+                                                  QObject *destinationUi);
+    // Last native proof and association change. Call private Rust Core commit
+    // immediately afterwards in the SAME native entry point, with no QML hop.
+    bool associateViewTransfer(ViewTransfer &transfer);
+    bool completeViewTransfer(ViewTransfer &transfer);
+    // Restoration is permitted only after the caller proves the original
+    // Core Target, then restores its actual view routing/scene. It mints a new
+    // incarnation; old credential/prompt leases are never resurrected.
+    bool cancelViewTransfer(ViewTransfer &transfer, bool restoreSource);
   signals:
     void viewRetiring(QQuickItem *view);
     void policyUiChanged();
@@ -73,6 +98,17 @@ class FerricProfileLifetime : public QObject {
         QMetaObject::Connection uiDestroyed;
         bool ready = false;
         quint64 generation = 0;
+    };
+    struct ViewTransferState {
+        QQuickItem *key = nullptr; // equality/cleanup only, never dereferenced
+        QPointer<FerricProfileLifetime> lifetime;
+        QPointer<QQuickItem> view;
+        CurrentView source;
+        QPointer<QObject> destinationHost, destinationUi;
+        quint64 destinationGeneration = 0;
+        quint64 stagedIncarnation = 0;
+        QList<QMetaObject::Connection> watches;
+        bool invalid = false, retire = false, associated = false, ended = false;
     };
     struct View {
         QPointer<QQuickItem> item;
@@ -117,6 +153,7 @@ class FerricProfileLifetime : public QObject {
     };
   private slots:
     void onRetiredViewStateChanged();
+    void invalidateViewTransfer();
 
   private:
     void refresh();
@@ -133,9 +170,13 @@ class FerricProfileLifetime : public QObject {
     int outgoingPopupLeaseCount(QQuickItem *view) const;
     void removePopupLease(PopupLease &lease);
     bool popupLeaseIsCurrent(const PopupLease &lease) const;
+    bool transferWindowsCurrent(const ViewTransferState &transfer) const;
+    void removeViewTransfer(ViewTransferState &transfer);
+    bool cancelViewTransfer(const std::shared_ptr<ViewTransferState> &transfer, bool restoreSource);
     QList<Window> windows_;
     QHash<QQuickItem *, View> views_;
     QHash<QString, PopupLease> popupLeases_;
+    QHash<QQuickItem *, std::shared_ptr<ViewTransferState>> viewTransfers_;
     QPointer<QObject> policyUi_;
     QPointer<QObject> ownedProfile_;
     QObject *policyUiKey_ = nullptr;

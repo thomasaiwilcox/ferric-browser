@@ -7,6 +7,8 @@
 #include <QTimer>
 #include <QVariant>
 #include <QQuickWindow>
+#include <QJSValue>
+#include <limits>
 
 #include <algorithm>
 #include <utility>
@@ -19,6 +21,12 @@ namespace {
 constexpr auto kDelegateClassName =
     "QtWebEngineCore::RenderWidgetHostViewQtDelegateItem";
 constexpr int kDiscardedLifecycleState = 2;
+QObject *objectProperty(QObject *object, const char *name) {
+    if (!object) return nullptr;
+    const auto value = object->property(name);
+    if (auto *result = value.value<QObject *>()) return result;
+    return value.value<QJSValue>().toQObject();
+}
 }
 
 FerricProfileLifetime::~FerricProfileLifetime() {
@@ -113,13 +121,15 @@ bool FerricProfileLifetime::credentialTlsEligible(QQuickItem *view, const QUrl &
 
 std::optional<FerricProfileLifetime::CurrentView>
 FerricProfileLifetime::currentView(QQuickItem *view) const {
+    const QPointer<const FerricProfileLifetime> self(this);
+    const QPointer<QQuickItem> guarded(view);
     QObject *profile = nullptr;
-    if (!isCurrentView(view, &profile, nullptr) || !ownedProfile_
+    if (!isCurrentView(view, &profile, nullptr) || !self || !guarded || !ownedProfile_
         || profile != ownedProfile_ || !ownedProfile_->parent()
         || ownedProfile_->parent()->parent() != this) return std::nullopt;
-    const auto &entry = views_[view];
-    return CurrentView{entry.host, entry.ui, profile, entry.incarnation,
-                       entry.windowGeneration};
+    const auto entry = views_.value(view);
+    if (!entry.item || entry.retiring || viewTransfers_.contains(view)) return std::nullopt;
+    return CurrentView{entry.host, entry.ui, profile, entry.incarnation, entry.windowGeneration};
 }
 
 bool FerricProfileLifetime::matchesCurrentView(QQuickItem *view,
@@ -163,7 +173,8 @@ bool FerricProfileLifetime::activateWindow(QObject *host) {
 
 bool FerricProfileLifetime::adoptView(QQuickItem *view, QObject *host,
                                       QObject *ui) {
-    if (drained_ || shuttingDown_ || !view || view->thread() != thread())
+    if (drained_ || shuttingDown_ || !view || view->thread() != thread()
+        || viewTransfers_.contains(view))
         return false;
     auto owner = std::find_if(
         windows_.begin(), windows_.end(), [host, ui](const Window &entry) {
@@ -248,10 +259,12 @@ bool FerricProfileLifetime::adoptView(QQuickItem *view, QObject *host,
 bool FerricProfileLifetime::isCurrentView(QQuickItem *view,
                                           QObject **profile,
                                           QQmlEngine **engine) const {
+    const QPointer<const FerricProfileLifetime> self(this);
+    const QPointer<QQuickItem> guarded(view);
     if (!view || view->thread() != thread() || QThread::currentThread() != thread())
         return false;
     const auto it = views_.constFind(view);
-    if (it == views_.cend() || it->retiring || !it->item || !it->host ||
+    if (it == views_.cend() || viewTransfers_.contains(view) || it->retiring || !it->item || !it->host ||
         !it->ui)
         return false;
     auto *hostWindow = qobject_cast<QQuickWindow *>(it->host.data());
@@ -265,11 +278,19 @@ bool FerricProfileLifetime::isCurrentView(QQuickItem *view,
         });
     if (owner == windows_.cend())
         return false;
+    const CurrentView expected{it->host, it->ui, {}, it->incarnation, it->windowGeneration};
     const QVariant profileValue = view->property("profile");
+    if (!self || !guarded) return false;
     QObject *viewProfile = profileValue.value<QObject *>();
     QQmlContext *context = QQmlEngine::contextForObject(view);
     QQmlEngine *viewEngine = context ? context->engine() : nullptr;
     if (!viewProfile || !viewEngine || viewEngine->thread() != thread())
+        return false;
+    const auto current = views_.constFind(view);
+    if (current == views_.cend() || current->retiring || viewTransfers_.contains(view)
+        || current->host != expected.host || current->ui != expected.ui
+        || current->incarnation != expected.incarnation || current->windowGeneration != expected.windowGeneration
+        || guarded->window() != qobject_cast<QQuickWindow *>(expected.host.data()))
         return false;
     if (profile)
         *profile = viewProfile;
@@ -370,6 +391,7 @@ int FerricProfileLifetime::popupOpenerLeaseDelegateCount(
 }
 
 QObject *FerricProfileLifetime::ownerUi(QQuickItem *view) const {
+    if (viewTransfers_.contains(view)) return nullptr;
     const auto it = views_.constFind(view);
     if (it == views_.cend() || it->retiring || !it->item || !it->host ||
         !it->ui)
@@ -637,6 +659,11 @@ void FerricProfileLifetime::maybeDeleteRetiredView(QQuickItem *view) {
 }
 
 void FerricProfileLifetime::releaseView(QQuickItem *view) {
+    if (auto transfer = viewTransfers_.value(view)) {
+        transfer->invalid = true;
+        transfer->retire = true;
+        return;
+    }
     auto it = views_.find(view);
     if (it == views_.end() || it->retiring)
         return;
@@ -671,6 +698,197 @@ void FerricProfileLifetime::releaseView(QQuickItem *view) {
     }
     maybeDeleteRetiredView(view);
     refresh();
+}
+
+FerricProfileLifetime::ViewTransfer::~ViewTransfer() {
+    // The state is pinned independently of this caller-owned handle. A callback
+    // may delete the adapter/handle while a native transaction method runs.
+    const auto pinned = state;
+    if (pinned && pinned->lifetime && !pinned->ended)
+        pinned->lifetime->cancelViewTransfer(pinned, false);
+}
+
+bool FerricProfileLifetime::transferWindowsCurrent(const ViewTransferState &transfer) const {
+    if (transfer.ended || transfer.invalid || drained_ || shuttingDown_
+        || !transfer.view || !transfer.source.host || !transfer.source.ui
+        || !transfer.source.profile || transfer.source.profile != ownedProfile_
+        || !transfer.destinationHost || !transfer.destinationUi
+        || viewTransfers_.value(transfer.key).get() != &transfer) return false;
+    auto has = [this](QObject *host, QObject *ui, quint64 generation) {
+        return std::any_of(windows_.cbegin(), windows_.cend(), [&](const Window &entry) {
+            return entry.host == host && entry.ui == ui && entry.ready
+                && entry.generation == generation;
+        });
+    };
+    return has(transfer.source.host, transfer.source.ui, transfer.source.windowGeneration)
+        && has(transfer.destinationHost, transfer.destinationUi, transfer.destinationGeneration);
+}
+
+std::unique_ptr<FerricProfileLifetime::ViewTransfer>
+FerricProfileLifetime::beginViewTransfer(QQuickItem *item, QObject *host, QObject *ui) {
+    const QPointer<FerricProfileLifetime> self(this);
+    const QPointer<QQuickItem> view(item);
+    const QPointer<QObject> destinationHost(host), destinationUi(ui);
+    auto alive = [&] { return self && view && destinationHost && destinationUi; };
+    if (!alive() || QThread::currentThread() != thread()
+        || host->thread() != thread() || ui->thread() != thread()
+        || viewTransfers_.contains(item)) return {};
+    const auto source = currentView(view);
+    if (!alive() || !source || source->host == host || source->ui == ui) return {};
+    const auto sourceHost = objectProperty(view, "viewHost");
+    if (!alive() || sourceHost != source->host) return {};
+    const auto sourceUi = objectProperty(view, "viewUi");
+    if (!alive() || sourceUi != source->ui) return {};
+    const auto loading = view->property("loading").toBool();
+    if (!alive() || loading) return {};
+    const auto retired = view->property("viewRetired").toBool();
+    if (!alive() || retired) return {};
+    // Recheck the raw registry after all callback-capable property evaluation.
+    const auto entry = views_.constFind(item);
+    if (entry == views_.cend() || entry->retiring || entry->incarnation != source->incarnation
+        || entry->windowGeneration != source->windowGeneration || entry->host != source->host
+        || entry->ui != source->ui || viewTransfers_.contains(item)
+        || view->window() != qobject_cast<QQuickWindow *>(source->host.data())) return {};
+    const auto destination = std::find_if(windows_.cbegin(), windows_.cend(), [&](const Window &owner) {
+        return owner.host == host && owner.ui == ui && owner.ready;
+    });
+    if (destination == windows_.cend()) return {};
+    for (const auto &lease : std::as_const(popupLeases_))
+        if (lease.source == view || lease.target == view) return {};
+    for (const char *name : {"url", "loading", "renderProcessPid", "lifecycleState", "profile"})
+        if (view->metaObject()->indexOfProperty(name) < 0) return {};
+    auto transfer = std::unique_ptr<ViewTransfer>(new ViewTransfer);
+    const auto state = std::make_shared<ViewTransferState>();
+    transfer->state = state;
+    state->key = item;
+    state->lifetime = this;
+    state->view = view;
+    state->source = *source;
+    state->destinationHost = host;
+    state->destinationUi = ui;
+    state->destinationGeneration = destination->generation;
+    const auto slot = metaObject()->method(metaObject()->indexOfSlot("invalidateViewTransfer()"));
+    for (const char *name : {"url", "loading", "renderProcessPid", "lifecycleState", "profile"}) {
+        const auto property = view->metaObject()->property(view->metaObject()->indexOfProperty(name));
+        if (property.hasNotifySignal())
+            state->watches.append(connect(view, property.notifySignal(), this, slot));
+    }
+    viewTransfers_.insert(item, state);
+    emit credentialTransportChanged();
+    if (!self || !self->transferWindowsCurrent(*state)) return {};
+    return transfer;
+}
+
+void FerricProfileLifetime::invalidateViewTransfer() {
+    auto *view = qobject_cast<QQuickItem *>(sender());
+    if (auto transfer = viewTransfers_.value(view)) transfer->invalid = true;
+}
+
+bool FerricProfileLifetime::associateViewTransfer(ViewTransfer &handle) {
+    const auto transfer = handle.state;
+    const QPointer<FerricProfileLifetime> self(this);
+    if (!transfer || QThread::currentThread() != thread() || transfer->associated
+        || !transferWindowsCurrent(*transfer)) return false;
+    const QPointer<QQuickItem> view = transfer->view;
+    auto current = [&] { return self && view && self->transferWindowsCurrent(*transfer); };
+    if (view->window() != qobject_cast<QQuickWindow *>(transfer->destinationHost.data())) return false;
+    const auto host = objectProperty(view, "viewHost");
+    if (!current() || host != transfer->destinationHost) return false;
+    const auto ui = objectProperty(view, "viewUi");
+    if (!current() || ui != transfer->destinationUi) return false;
+    const auto profile = objectProperty(view, "profile");
+    if (!current() || profile != transfer->source.profile) return false;
+    const auto loading = view->property("loading").toBool();
+    if (!current() || loading) return false;
+    const auto retired = view->property("viewRetired").toBool();
+    if (!current() || retired || nextGeneration_ == std::numeric_limits<quint64>::max()
+        || view->window() != qobject_cast<QQuickWindow *>(transfer->destinationHost.data())) return false;
+    // No QObject access follows this scalar/native comparison, before the
+    // caller's private Rust Core commit in the same native entry point.
+    auto entry = views_.find(transfer->key);
+    if (entry == views_.end() || entry->retiring || entry->incarnation != transfer->source.incarnation
+        || entry->windowGeneration != transfer->source.windowGeneration
+        || entry->host != transfer->source.host || entry->ui != transfer->source.ui) return false;
+    entry->hostKey = transfer->destinationHost;
+    entry->host = transfer->destinationHost;
+    entry->ui = transfer->destinationUi;
+    entry->windowGeneration = transfer->destinationGeneration;
+    entry->incarnation = ++nextGeneration_;
+    transfer->stagedIncarnation = entry->incarnation;
+    transfer->associated = true;
+    return true;
+}
+
+void FerricProfileLifetime::removeViewTransfer(ViewTransferState &transfer) {
+    for (const auto &watch : std::as_const(transfer.watches)) disconnect(watch);
+    transfer.watches.clear();
+    if (viewTransfers_.value(transfer.key).get() == &transfer) viewTransfers_.remove(transfer.key);
+    transfer.ended = true;
+}
+
+bool FerricProfileLifetime::completeViewTransfer(ViewTransfer &handle) {
+    const auto transfer = handle.state;
+    if (!transfer || !transfer->associated || !transferWindowsCurrent(*transfer)) return false;
+    const auto entry = views_.constFind(transfer->key);
+    if (entry == views_.cend() || entry->retiring || entry->incarnation != transfer->stagedIncarnation) return false;
+    const QPointer<FerricProfileLifetime> self(this);
+    const QPointer<QQuickItem> view = transfer->view;
+    removeViewTransfer(*transfer);
+    if (self->tls_ && view) self->tls_->observeView(view);
+    if (self) emit self->credentialTransportChanged();
+    return self && view;
+}
+
+bool FerricProfileLifetime::cancelViewTransfer(ViewTransfer &handle, bool restoreSource) {
+    const auto transfer = handle.state;
+    return cancelViewTransfer(transfer, restoreSource);
+}
+
+bool FerricProfileLifetime::cancelViewTransfer(const std::shared_ptr<ViewTransferState> &transfer, bool restoreSource) {
+    // Pin by value across property/signal callbacks, even if the handle is freed.
+    const auto pinned = transfer;
+    const QPointer<FerricProfileLifetime> self(this);
+    if (!pinned || pinned->ended || pinned->lifetime != this) return false;
+    const QPointer<QQuickItem> view = pinned->view;
+    auto sourceCurrent = [&] {
+        if (!self || !view || pinned->ended || self->viewTransfers_.value(pinned->key) != pinned) return false;
+        return std::any_of(self->windows_.cbegin(), self->windows_.cend(), [&](const Window &owner) {
+            return owner.host && owner.host == pinned->source.host && owner.ui && owner.ui == pinned->source.ui
+                && owner.ready && owner.generation == pinned->source.windowGeneration;
+        });
+    };
+    bool routed = restoreSource && sourceCurrent()
+        && view->window() == qobject_cast<QQuickWindow *>(pinned->source.host.data());
+    if (routed) {
+        const auto host = objectProperty(view, "viewHost");
+        routed = sourceCurrent() && host == pinned->source.host;
+    }
+    if (routed) {
+        const auto ui = objectProperty(view, "viewUi");
+        routed = sourceCurrent() && ui == pinned->source.ui;
+    }
+    if (routed) {
+        const auto profile = objectProperty(view, "profile");
+        routed = sourceCurrent() && profile == pinned->source.profile;
+    }
+    if (!self || pinned->ended) return false;
+    auto entry = views_.find(pinned->key);
+    const bool restored = routed && sourceCurrent()
+        && view->window() == qobject_cast<QQuickWindow *>(pinned->source.host.data())
+        && !pinned->retire && !shuttingDown_
+        && nextGeneration_ != std::numeric_limits<quint64>::max()
+        && entry != views_.end() && !entry->retiring
+        && entry->incarnation == (pinned->associated ? pinned->stagedIncarnation : pinned->source.incarnation);
+    if (restored) {
+        entry->hostKey = pinned->source.host;
+        entry->host = pinned->source.host;
+        entry->ui = pinned->source.ui;
+        entry->windowGeneration = pinned->source.windowGeneration;
+        entry->incarnation = ++nextGeneration_;
+    }
+    removeViewTransfer(*pinned);
+    if (!restored && view) releaseView(view);
+    return restored;
 }
 
 void FerricProfileLifetime::shutdown() {

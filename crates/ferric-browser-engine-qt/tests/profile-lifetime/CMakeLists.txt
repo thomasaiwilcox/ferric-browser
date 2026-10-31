@@ -17,7 +17,9 @@ add_test(NAME profile_lifetime COMMAND profile_lifetime_tests
     pendingFinalReleaseCanAcceptANewConsumer
     retiredViewCannotBeResurrectedBeforeDeferredDeletion
     destroyingTrackerCancelsConsumerCallbacks
-    destroyedUiPublishesTheClearedPolicyOwner)
+    destroyedUiPublishesTheClearedPolicyOwner
+    nativeViewTransfer
+    nativeViewTransferReentrancy)
 set_tests_properties(profile_lifetime PROPERTIES TIMEOUT 30
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=;QT_QUICK_BACKEND=software")
 add_test(NAME everyday_T014c_popup_delegate_lifetime
