@@ -13,6 +13,7 @@ Item {
     required property var interceptor
     required property bool transientProfile
     property bool ready: true
+    property bool transferInProgress: false
     property var pageWindowCoordinator: null
     property var tabViews: []
     property string tabIdentitySignature: ""
@@ -22,6 +23,51 @@ Item {
 
     onReadyChanged: {
         if (ready) syncTabModel()
+    }
+
+    function restoreStagedLiveView(view) {
+        var saved = view ? view.liveTransferSource : null
+        if (!saved || saved.ui !== browserUi || saved.host !== browserHost || !saved.target) return false
+        var index = browserUi.tab_index_for_id(saved.target.tabId)
+        if (index < 0 || browserHost.runtimeReleased) return false
+        var stagedHost = view.viewHost
+        if (stagedHost && stagedHost !== browserHost && stagedHost.tabViewControllerObject)
+            stagedHost.tabViewControllerObject.tabViews = stagedHost.tabViewControllerObject.tabViews.filter(function(candidate) { return candidate !== view })
+        view.visible = false
+        view.stableTabId = saved.target.tabId
+        view.viewUi = browserUi
+        view.viewHost = browserHost
+        view.viewTabs = tabs
+        view.tabIndex = index
+        view.viewModel = tabs.get(index)
+        view.parent = viewParent
+        if (tabViews.indexOf(view) < 0)
+            tabViews = tabViews.slice(0,index).concat([view],tabViews.slice(index))
+        return true
+    }
+    function finishStagedLiveRollback(view) {
+        var saved = view ? view.liveTransferSource : null
+        if (!saved || saved.ui !== browserUi || saved.host !== browserHost) return false
+        var index = browserUi.tab_index_for_id(saved.target.tabId)
+        var target = index >= 0 ? browserUi.navigation_target_for_index(index) : null
+        var valid = !view.viewRetired && browserHost.runtimeReleased !== true
+            && browserUi.page_host_profile_id() === saved.profileId
+            && String(browserUi.context_name) === saved.context
+            && pageWindowCoordinator.sameTarget(target,saved.target)
+        view.liveTransferSource = null
+        if (valid) {
+            view.viewTransferPending = false
+            view.refreshPromptViewIdentity()
+            view.refreshDocumentOwnerAfterTransfer()
+            view.visible = true
+            view.synchronizeContentHistory()
+        } else {
+            var resources = view.factory.rootWindow.profileResourceRegistry.forProfile(view.profile)
+            if (resources) resources.lifetime.releaseView(view)
+        }
+        transferInProgress = false
+        syncTabModel()
+        return valid
     }
 
     function refreshMetadata() {
@@ -72,7 +118,7 @@ Item {
     function syncTabModel() {
         // Profile bootstrap replaces the provisional reducer identities. Do
         // not create renderers or consume restore data until their owner is ready.
-        if (!ready || !viewFactory || !viewParent) return false
+        if (!ready || transferInProgress || !viewFactory || !viewParent) return false
         var pending = browserUi.take_session_restore_values()
         if (pending.length > 0) {
             restoreInProgress = true

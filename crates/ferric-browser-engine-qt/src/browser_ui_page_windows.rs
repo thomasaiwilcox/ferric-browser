@@ -14,9 +14,7 @@ pub(super) struct PageHandoff(Arc<PageHandoffState>);
 
 struct PageHandoffState {
     thread: CxxQtThread<qobject::BrowserUi>,
-    scope: PageScope,
-    group: Mutex<String>,
-    page: TabId,
+    anchor: Mutex<PageAnchor>,
     operation: Option<String>,
     reporter: Option<ferric_browser_application::NativeOperationReporter>,
     finished: AtomicBool,
@@ -40,37 +38,118 @@ impl Drop for PageHandoffState {
     }
 }
 
+#[derive(Clone)]
+pub(super) struct PageAnchor {
+    thread: CxxQtThread<qobject::BrowserUi>,
+    scope: PageScope,
+    group: String,
+    page: TabId,
+    token: String,
+    window: super::WindowId,
+}
+
+impl PageAnchor {
+    pub(super) fn prepared(
+        ui: &qobject::BrowserUi,
+        scope: PageScope,
+        group: String,
+        page: TabId,
+    ) -> Option<Self> {
+        Some(Self {
+            thread: ui.qt_thread(),
+            scope,
+            group,
+            page,
+            token: ui.rust().window_token.to_string(),
+            window: ui.rust().window?,
+        })
+    }
+
+    fn current(&self, ui: &qobject::BrowserUi) -> bool {
+        ui.rust().window_token.to_string() == self.token
+            && ui.rust().window == Some(self.window)
+            && PageWindowSnapshot::capture(ui).is_some_and(|snapshot| {
+                snapshot.scope == self.scope
+                    && snapshot.group == self.group
+                    && snapshot.pages.iter().any(|page| page.id == self.page)
+            })
+    }
+}
+
 impl PageHandoff {
     pub(super) fn authorize_regroup(&self, source: &PageWindowSnapshot, group: &str) -> bool {
-        if !source.pages.iter().any(|page| page.id == self.0.page) {
-            return true;
-        }
-        let Ok(mut current) = self.0.group.lock() else {
+        let Ok(mut anchor) = self.0.anchor.lock() else {
             return false;
         };
-        if self.0.scope != source.scope || *current != source.group {
+        if !source.pages.iter().any(|page| page.id == anchor.page) {
+            return true;
+        }
+        if anchor.scope != source.scope || anchor.group != source.group {
             return false;
         }
-        *current = group.into();
+        anchor.group = group.into();
         true
     }
 
-    pub(super) fn finish(self, selected: bool, succeeded: bool, target_token: String) {
+    pub(super) fn owner_lost(self) {
+        if !self.0.finished.swap(true, Ordering::AcqRel)
+            && let Some(reporter) = &self.0.reporter
+        {
+            let _ = reporter.finish(ferric_browser_application::NativeOperationOutcome::OwnerLost);
+        }
+    }
+
+    pub(super) fn request_focus(&self) {
+        if !self.0.focus_requested.swap(true, Ordering::AcqRel) {
+            let generation =
+                crate::page_window_focus::reserve_after(self.0.admitted_focus_generation);
+            self.0.focus_generation.store(generation, Ordering::Release);
+        }
+    }
+
+    // Called only around the native consumer's final callback-free Core commit.
+    // The original reporter is immutable; only its live page anchor can move.
+    pub(super) fn transfer_anchor(
+        &self,
+        source: &PageWindowSnapshot,
+        token: &str,
+        window: super::WindowId,
+        destination: PageAnchor,
+        commit: impl FnOnce() -> bool,
+    ) -> bool {
+        let Ok(mut anchor) = self.0.anchor.lock() else {
+            return false;
+        };
+        let moving_anchor = anchor.page == destination.page;
+        if moving_anchor
+            && (anchor.scope != source.scope
+                || anchor.group != source.group
+                || anchor.token != token
+                || anchor.window != window)
+        {
+            return false;
+        }
+        if !commit() {
+            return false;
+        }
+        if moving_anchor {
+            *anchor = destination;
+        }
+        true
+    }
+
+    pub(super) fn finish(self, selected: bool, succeeded: bool, target: &qobject::BrowserUi) {
+        let destination = crate::page_window_focus::Destination::capture(target);
         let root = self.0;
         if root.finished.swap(true, Ordering::AcqRel) {
             return;
         }
-        let thread = root.thread.clone();
+        let Ok(anchor) = root.anchor.lock().map(|anchor| anchor.clone()) else {
+            return;
+        };
+        let thread = anchor.thread.clone();
         let _ = thread.queue(move |mut source_ui| {
-            let source_current = PageWindowSnapshot::capture(source_ui.as_ref().get_ref())
-                .is_some_and(|snapshot| {
-                    snapshot.scope == root.scope
-                        && root
-                            .group
-                            .lock()
-                            .is_ok_and(|group| snapshot.group == *group)
-                        && snapshot.pages.iter().any(|page| page.id == root.page)
-                });
+            let source_current = anchor.current(source_ui.as_ref().get_ref());
             if !selected || !source_current {
                 source_ui.as_mut().page_window_command_failed(
                     "Page command failed because the window changed. Try again.",
@@ -107,9 +186,17 @@ impl PageHandoff {
                 }
                 return;
             }
+            let Some(destination) = destination else {
+                if let Some(reporter) = &root.reporter {
+                    let _ =
+                        reporter.finish(ferric_browser_application::NativeOperationOutcome::Stale);
+                }
+                return;
+            };
+            let target_token = destination.token();
             let Some(mut lease) = crate::page_window_focus::prepare(
                 source_ui.as_ref().get_ref(),
-                &target_token,
+                &destination,
                 generation,
             ) else {
                 source_ui
@@ -458,9 +545,14 @@ impl qobject::BrowserUi {
         let operation = reporter.as_ref().map(|reporter| reporter.id().to_owned());
         Ok(PageHandoff(Arc::new(PageHandoffState {
             thread: self.as_ref().get_ref().qt_thread(),
-            scope: source.scope.clone(),
-            group: Mutex::new(source.group.clone()),
-            page,
+            anchor: Mutex::new(PageAnchor {
+                thread: self.as_ref().get_ref().qt_thread(),
+                scope: source.scope.clone(),
+                group: source.group.clone(),
+                page,
+                token: self.as_ref().rust().window_token.to_string(),
+                window: self.as_ref().rust().window.ok_or("No issuing window")?,
+            }),
             operation,
             reporter,
             finished: AtomicBool::new(false),
@@ -581,14 +673,7 @@ impl qobject::BrowserUi {
         let handoff = self
             .as_mut()
             .prepare_page_handoff(handoff, &source, operation_id)?;
-        if !handoff.0.focus_requested.swap(true, Ordering::AcqRel) {
-            let generation =
-                crate::page_window_focus::reserve_after(handoff.0.admitted_focus_generation);
-            handoff
-                .0
-                .focus_generation
-                .store(generation, Ordering::Release);
-        }
+        handoff.request_focus();
         let scope = source.scope;
         let group = source.group;
         let repeat_command = command.clone();
@@ -721,7 +806,7 @@ impl qobject::BrowserUi {
                 let Some(handoff) = handoff else {
                     return;
                 };
-                handoff.finish(selected, succeeded, target_token);
+                handoff.finish(selected, succeeded, ui.as_ref().get_ref());
             })
             .map_err(|_| "The requested page window is no longer available".to_owned())?;
         Ok(

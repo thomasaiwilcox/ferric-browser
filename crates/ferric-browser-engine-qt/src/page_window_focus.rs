@@ -97,31 +97,51 @@ pub(super) fn expire_reporter(rust: &crate::BrowserUiRust) {
     }
 }
 
-pub(crate) fn prepare(ui: &qobject::BrowserUi, token: &str, generation: u64) -> Option<Lease> {
+/// Captured only from the actual terminal Core owner of a trusted command.
+/// Its group can differ after Detach/Give; renderer claims cannot construct it.
+pub(super) struct Destination(Owner);
+
+impl Destination {
+    pub(super) fn capture(ui: &qobject::BrowserUi) -> Option<Self> {
+        Owner::capture(ui).map(Self)
+    }
+    pub(super) fn token(&self) -> &str {
+        &self.0.token
+    }
+}
+
+pub(super) fn prepare(
+    ui: &qobject::BrowserUi,
+    destination: &Destination,
+    generation: u64,
+) -> Option<Lease> {
     if !current(generation) {
         return None;
     }
     let issuer = Owner::capture(ui)?;
+    let target = &destination.0;
+    if !issuer.scope.same_profile(&target.scope) || issuer.scope.context != target.scope.context {
+        return None;
+    }
     let source = PageWindowSnapshot::capture(ui)?;
     let owner = crate::live_ipc_owners::page_window_owners(&source.scope)
         .into_iter()
-        .find(|owner| owner.token == token && owner.snapshot.group == source.group)?;
-    let selected = owner
-        .snapshot
-        .pages
-        .iter()
-        .find(|page| Some(page.id) == owner.snapshot.selected)?
-        .target;
+        .find(|owner| {
+            owner.token == target.token
+                && owner.window == target.window
+                && owner.snapshot.group == target.scope.group
+                && owner.snapshot.selected == Some(target.selected.tab)
+                && owner
+                    .snapshot
+                    .pages
+                    .iter()
+                    .any(|page| page.target == target.selected)
+        })?;
     Some(Lease {
         reporter: None,
         nonce: Uuid::new_v4(),
         generation,
-        target: Owner {
-            token: token.into(),
-            window: owner.window,
-            scope: issuer.scope.clone(),
-            selected,
-        },
+        target: target.clone(),
         target_marker: owner.native_marker?,
         issuer,
         expires: Instant::now() + Duration::from_secs(2),

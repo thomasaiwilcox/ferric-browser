@@ -565,7 +565,7 @@ impl qobject::BrowserUi {
 
     // Both ordinary same-profile windows and popups retain validated profile
     // resources. Only popup admission transfers an existing logical tab.
-    fn inherit_owner_profile(
+    pub(super) fn inherit_owner_profile(
         &self,
         mut destination: Pin<&mut Self>,
         transfer: Option<TabTransfer>,
@@ -596,7 +596,7 @@ impl qobject::BrowserUi {
             .profiles()
             .get(&source_window.profile)
             .ok_or("the source profile is unavailable")?;
-        let (runtime, window, tab) = bootstrap_runtime(profile.privacy, &profile.label)
+        let (runtime, window, _) = bootstrap_runtime(profile.privacy, &profile.label)
             .ok_or("the window could not start")?;
         let mut state = source_state
             .inherit_profile(runtime)
@@ -627,6 +627,11 @@ impl qobject::BrowserUi {
                 }))
                 .map_err(|error| error.to_string())?;
         }
+        let tab = state
+            .windows()
+            .get(&window)
+            .and_then(|window| window.active_tab)
+            .ok_or("the window page could not start")?;
         let target = state
             .capture_target(tab)
             .ok_or("the window page could not start")?;
@@ -639,24 +644,35 @@ impl qobject::BrowserUi {
             window,
             tab,
         };
+        // Setters can synchronously notify QML. Own every source value before
+        // the first notification; no source Rust borrow survives reentry.
+        let config_json = source.config_json.clone();
+        let config_base_json = source.config_base_json.clone();
+        let cli_overrides_json = source.cli_overrides_json.clone();
+        let profile_overrides_json = source.profile_overrides_json.clone();
+        let config_path = source.config_path.clone();
+        let contexts_json = source.contexts_json.clone();
+        let temporary_overrides = source.temporary_overrides.clone();
+        let private_start_state = source.private_start_state.clone();
+        let session = (source_state.configuration().tabs.presentation
+            == ferric_browser_config::TabsPresentation::Windows)
+            .then(|| {
+                (
+                    source.session_id,
+                    source.session_path.clone(),
+                    source.recovered_session_ids.clone(),
+                )
+            });
+        destination.as_mut().set_config_json(config_json);
+        destination.as_mut().set_config_base_json(config_base_json);
         destination
             .as_mut()
-            .set_config_json(source.config_json.clone());
+            .set_cli_overrides_json(cli_overrides_json);
         destination
             .as_mut()
-            .set_config_base_json(source.config_base_json.clone());
-        destination
-            .as_mut()
-            .set_cli_overrides_json(source.cli_overrides_json.clone());
-        destination
-            .as_mut()
-            .set_profile_overrides_json(source.profile_overrides_json.clone());
-        destination
-            .as_mut()
-            .set_config_path(source.config_path.clone());
-        destination
-            .as_mut()
-            .set_contexts_json(source.contexts_json.clone());
+            .set_profile_overrides_json(profile_overrides_json);
+        destination.as_mut().set_config_path(config_path);
+        destination.as_mut().set_contexts_json(contexts_json);
         destination.as_mut().set_profile_bootstrap_pending(true);
         destination
             .as_mut()
@@ -664,14 +680,12 @@ impl qobject::BrowserUi {
         {
             let mut rust = destination.as_mut().rust_mut();
             let child = rust.as_mut().get_mut();
-            child.temporary_overrides = source.temporary_overrides.clone();
-            child.private_start_state = source.private_start_state.clone();
-            if source_state.configuration().tabs.presentation
-                == ferric_browser_config::TabsPresentation::Windows
-            {
-                child.session_id = source.session_id;
-                child.session_path = source.session_path.clone();
-                child.recovered_session_ids = source.recovered_session_ids.clone();
+            child.temporary_overrides = temporary_overrides;
+            child.private_start_state = private_start_state;
+            if let Some((id, path, recovered)) = session {
+                child.session_id = id;
+                child.session_path = path;
+                child.recovered_session_ids = recovered;
                 child.recovery_paths.clear();
             }
         }

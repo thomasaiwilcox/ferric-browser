@@ -2,6 +2,7 @@
 #include <QObject>
 #include <QString>
 #include <QPointer>
+#include <memory>
 #include <QtQml/qqmlregistration.h>
 
 // Converts QML QObject references into checked, non-aliasing native owners.
@@ -21,7 +22,11 @@ class FerricPopupOwnerBridge : public QObject {
                                       const QString &tabId);
     Q_INVOKABLE bool commitPageWindow();
     Q_INVOKABLE QString activatePreparedPage();
+    Q_INVOKABLE bool prepareLivePageWindow(QObject *source, QObject *destination, const QString &nonce);
+    Q_INVOKABLE bool commitLivePageWindow();
   private:
+    struct LivePreparation;
+    std::shared_ptr<LivePreparation> live_;
     QPointer<QObject> preparedSource_, preparedDestination_, preparedHost_, preparedProfile_;
     bool preparedCommitted_ = false;
 };

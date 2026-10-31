@@ -725,7 +725,7 @@ bool FerricProfileLifetime::transferWindowsCurrent(const ViewTransferState &tran
 }
 
 std::unique_ptr<FerricProfileLifetime::ViewTransfer>
-FerricProfileLifetime::beginViewTransfer(QQuickItem *item, QObject *host, QObject *ui) {
+FerricProfileLifetime::beginViewTransfer(QQuickItem *item, QObject *host, QObject *ui, const std::function<bool()> &sourceProof) {
     const QPointer<FerricProfileLifetime> self(this);
     const QPointer<QQuickItem> view(item);
     const QPointer<QObject> destinationHost(host), destinationUi(ui);
@@ -773,15 +773,46 @@ FerricProfileLifetime::beginViewTransfer(QQuickItem *item, QObject *host, QObjec
         if (property.hasNotifySignal())
             state->watches.append(connect(view, property.notifySignal(), this, slot));
     }
+    for (const char *name : {"stableTabId", "promptLeaseIdentity"}) {
+        const int index = view->metaObject()->indexOfProperty(name);
+        if (index >= 0) {
+            const auto property = view->metaObject()->property(index);
+            if (property.hasNotifySignal()) state->watches.append(connect(view, property.notifySignal(), this, slot));
+        }
+    }
     viewTransfers_.insert(item, state);
     emit credentialTransportChanged();
-    if (!self || !self->transferWindowsCurrent(*state)) return {};
+    if (!self) return {};
+    if (!self->transferWindowsCurrent(*state)) {
+        self->cancelViewTransfer(*transfer, true, sourceProof ? sourceProof : [] { return false; });
+        return {};
+    }
     return transfer;
 }
 
 void FerricProfileLifetime::invalidateViewTransfer() {
     auto *view = qobject_cast<QQuickItem *>(sender());
     if (auto transfer = viewTransfers_.value(view)) transfer->invalid = true;
+}
+
+bool FerricProfileLifetime::pinViewTransferIdentity(ViewTransfer &handle, const QString &tab, const QString &prompt, int index) {
+    const auto transfer = handle.state;
+    const QPointer<FerricProfileLifetime> self(this);
+    if (!transfer || !transferWindowsCurrent(*transfer)) return false;
+    const QPointer<QQuickItem> view = transfer->view;
+    const auto slot = metaObject()->method(metaObject()->indexOfSlot("invalidateViewTransfer()"));
+    const int propertyIndex = view->metaObject()->indexOfProperty("tabIndex");
+    if (propertyIndex < 0) return false;
+    const auto property = view->metaObject()->property(propertyIndex);
+    if (!property.hasNotifySignal()) return false;
+    transfer->watches.append(connect(view, property.notifySignal(), this, slot));
+    auto current = [&] { return self && view && self->transferWindowsCurrent(*transfer); };
+    const auto actualTab = view->property("stableTabId").toString();
+    if (!current() || actualTab != tab) return false;
+    const auto actualPrompt = view->property("promptLeaseIdentity").toString();
+    if (!current() || actualPrompt != prompt) return false;
+    const auto actualIndex = view->property("tabIndex").toInt();
+    return current() && actualIndex == index;
 }
 
 bool FerricProfileLifetime::associateViewTransfer(ViewTransfer &handle) {
@@ -839,12 +870,12 @@ bool FerricProfileLifetime::completeViewTransfer(ViewTransfer &handle) {
     return self && view;
 }
 
-bool FerricProfileLifetime::cancelViewTransfer(ViewTransfer &handle, bool restoreSource) {
+bool FerricProfileLifetime::cancelViewTransfer(ViewTransfer &handle, bool restoreSource, const std::function<bool()> &sourceProof) {
     const auto transfer = handle.state;
-    return cancelViewTransfer(transfer, restoreSource);
+    return cancelViewTransfer(transfer, restoreSource, sourceProof);
 }
 
-bool FerricProfileLifetime::cancelViewTransfer(const std::shared_ptr<ViewTransferState> &transfer, bool restoreSource) {
+bool FerricProfileLifetime::cancelViewTransfer(const std::shared_ptr<ViewTransferState> &transfer, bool restoreSource, const std::function<bool()> &sourceProof) {
     // Pin by value across property/signal callbacks, even if the handle is freed.
     const auto pinned = transfer;
     const QPointer<FerricProfileLifetime> self(this);
@@ -873,7 +904,10 @@ bool FerricProfileLifetime::cancelViewTransfer(const std::shared_ptr<ViewTransfe
     }
     if (!self || pinned->ended) return false;
     auto entry = views_.find(pinned->key);
-    const bool restored = routed && sourceCurrent()
+    // The consumer supplies a pure Core comparison after the last property
+    // evaluation; no QML callback can slip between that proof and routing.
+    const bool proven = routed && (!sourceProof || sourceProof());
+    const bool restored = proven && sourceCurrent()
         && view->window() == qobject_cast<QQuickWindow *>(pinned->source.host.data())
         && !pinned->retire && !shuttingDown_
         && nextGeneration_ != std::numeric_limits<quint64>::max()
@@ -888,7 +922,9 @@ bool FerricProfileLifetime::cancelViewTransfer(const std::shared_ptr<ViewTransfe
     }
     removeViewTransfer(*pinned);
     if (!restored && view) releaseView(view);
-    return restored;
+    if (restored && self && self->tls_ && view) self->tls_->observeView(view);
+    if (restored && self) emit self->credentialTransportChanged();
+    return restored && self && view;
 }
 
 void FerricProfileLifetime::shutdown() {

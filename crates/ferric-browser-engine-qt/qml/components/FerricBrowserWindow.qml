@@ -32,6 +32,24 @@ ApplicationWindow {
         return secondaryPageIdentity ? secondaryPageIdentity.pageFocusStatus(issuer, target, nonce) : "stale"
     }
     property string pageGroupId: secondaryPageIdentity.tag
+    property bool windowLivePageMode: false
+    property string windowLivePageNonce: ""
+    property var windowLivePageSourceUi: null
+    property var windowLivePageSourceHost: null
+    property bool windowLivePageAccepted: false
+    property bool windowLiveRegistrationPending: false
+    Timer {
+        interval: 250
+        repeat: true
+        running: secondaryWindow.windowLiveRegistrationPending && !secondaryWindow.runtimeReleased
+        onTriggered: if (secondaryWindow.registerWindowOwner()) secondaryWindow.windowLiveRegistrationPending=false
+    }
+    property var windowLivePageStaging: null
+    Timer {
+        interval: 0
+        running: secondaryWindow.windowLivePageAccepted
+        onTriggered: rootWindow.pageWindowCoordinator.resumeLivePage(secondaryWindow)
+    }
     property bool windowPreparedPageMode: false
     property var windowPreparedPageSourceUi: null
     property string windowPreparedPageId: ""
@@ -111,6 +129,9 @@ ApplicationWindow {
     property string windowPopupToken: ""
     FerricPopupOwnerBridge { id: popupOwnerBridge }
     function commitPreparedPage() { return popupOwnerBridge.commitPageWindow() }
+    function commitLivePage() { return popupOwnerBridge.commitLivePageWindow() }
+    function restoreStagedLiveView(view) { return secondaryTabController.restoreStagedLiveView(view) }
+    function finishStagedLiveRollback(view) { return secondaryTabController.finishStagedLiveRollback(view) }
     property var windowTransferView: null
     property var windowTransferSourceUi: null
     property var windowTransferSourceHost: null
@@ -160,6 +181,7 @@ ApplicationWindow {
     readonly property alias hintWorkspace: secondaryHintWorkspace
     readonly property bool rapidHintConfirmationVisible: secondaryHintWorkspace.rapidHintConfirmationVisible
     readonly property alias tabsModel: secondaryTabs
+    readonly property alias tabViewControllerObject: secondaryTabController
     property alias tabViews: secondaryTabController.tabViews
     function tabViewAt(index) { return index >= 0 && index < tabViews.length ? tabViews[index] : null }
     function activeWebView() { return activeView }
@@ -957,6 +979,10 @@ function onContext_workspaceChanged() {
             secondaryWindow.showCommandNotice(action.split("\t").slice(1).join("\t"), true)
             return
         }
+        if (action.indexOf("window-live-transfer\t") === 0) {
+            rootWindow.pageWindowCoordinator.executeLivePageMove(secondaryUi,secondaryWindow,action)
+            return
+        }
         if (action.indexOf("window-focus\t") === 0) {
             rootWindow.executeWindowFocusAction(secondaryUi, action)
             return
@@ -1402,6 +1428,81 @@ function onContext_workspaceChanged() {
         }
     }
 
+    // Staging never releases the native view or replaces either Core state.
+    // The native bridge owns the exclusive lease and final commit/rollback.
+    function stageLivePageView(view) {
+        var source = windowLivePageSourceHost
+        var ui = windowLivePageSourceUi
+        if (!view || !source || !ui || source.runtimeReleased || runtimeReleased
+                || source.activeView !== view || view.viewUi !== ui || view.viewHost !== source
+                || view.profile !== windowSharedProfile || windowLivePageStaging) return false
+        var controller = source.tabViewControllerObject
+        var index = ui.tab_index_for_id(view.stableTabId)
+        if (!controller || controller.transferInProgress || index < 0
+                || controller.tabViews[index] !== view) return false
+        var model = controller.tabs.get(index)
+        var row = { tabId:view.stableTabId, url:String(model.url), title:String(model.title),
+            loaded:!!model.loaded, pinned:!!model.pinned, muted:!!model.muted,
+            zoom:Number(model.zoom), scrollX:Number(model.scrollX === undefined ? -1 : model.scrollX),
+            scrollY:Number(model.scrollY === undefined ? -1 : model.scrollY),
+            suspended:!!model.suspended, discarded:!!model.discarded }
+        windowLivePageStaging = { source:source, ui:ui, controller:controller, index:index,
+            target:ui.navigation_target_for_index(index), profileId:ui.page_host_profile_id(), view:view }
+        controller.transferInProgress = true
+        secondaryTabController.transferInProgress = true
+        view.viewTransferPending = true
+        view.liveTransferSource = { ui:ui, host:source, tabs:controller.tabs, index:index,
+            target:windowLivePageStaging.target, profileId:ui.page_host_profile_id(), context:String(ui.context_name) }
+        view.visible = false
+        view.detachPromptIdentityForTransfer()
+        rootWindow.cancelScriptsForView(view)
+        rootWindow.clearPageDialogForView(view)
+        rootWindow.clearClientCertificateForView(view)
+        rootWindow.clearCertificateErrorForView(view)
+        rootWindow.clearWebAuthForView(view)
+        rootWindow.clearContextMenuForView(view)
+        rootWindow.clearDesktopMediaForView(view)
+        rootWindow.clearSiteDataClearForView(view)
+        if (source.clearFileDialogForView) source.clearFileDialogForView(view)
+        if (source.devToolsWorkspace) source.devToolsWorkspace.close()
+        controller.tabViews = controller.tabViews.filter(function(candidate) { return candidate !== view })
+        secondaryTabs.clear()
+        secondaryTabs.append(row)
+        secondaryTabController.tabViews = [view]
+        view.viewUi = secondaryUi
+        view.viewHost = secondaryWindow
+        view.viewTabs = secondaryTabs
+        view.tabIndex = 0
+        view.viewModel = secondaryTabs.get(0)
+        view.parent = secondaryViews
+        return true
+    }
+    function abandonEmptyLivePage(view) { rejectPopupAdmission(); return true }
+    function finishLivePageView(view) {
+        var saved = windowLivePageStaging
+        if (!saved || saved.view !== view || view.viewRetired || view.viewUi !== secondaryUi
+                || secondaryUi.tab_id_for_index(0) !== view.stableTabId) return false
+        profileBootstrapComplete = true
+        view.liveTransferSource = null
+        view.viewTransferPending = false
+        view.refreshPromptViewIdentity()
+        view.refreshDocumentOwnerAfterTransfer()
+        secondaryTabController.transferInProgress = false
+        if (saved.controller) saved.controller.transferInProgress = false
+        windowLivePageStaging = null
+        view.visible = true
+        var registered = registerWindowOwner()
+        if (!registered) {
+            windowLiveRegistrationPending = true
+            secondaryUi.status_text = "The page moved, but window registration failed. Retrying."
+            showCommandNotice(secondaryUi.status_text,true)
+            // Preserve the already committed document as a usable visible
+            // window while registration retries. Its continuation fails.
+            windowInitialVisible = true
+        }
+        return registered
+    }
+
     property int detachedTabIndex: -1
     function detachActiveViewForTransfer(sourceTabId) {
         var index = secondaryUi.tab_index_for_id(sourceTabId)
@@ -1816,6 +1917,15 @@ function onContext_workspaceChanged() {
             secondaryWindow.completeProfileBootstrap()
             return
         }
+        if (secondaryWindow.windowLivePageMode) {
+            if (!popupOwnerBridge.prepareLivePageWindow(windowLivePageSourceUi, secondaryUi, windowLivePageNonce)) {
+                secondaryWindow.rejectPopupAdmission()
+                return
+            }
+            if (secondaryUi.profile_bootstrap_pending) secondaryProfileBootstrapTimer.start()
+            else secondaryWindow.completeProfileBootstrap()
+            return
+        }
         if (secondaryWindow.windowPreparedPageMode) {
             if (!popupOwnerBridge.preparePageWindow(windowPreparedPageSourceUi, secondaryUi, windowPreparedPageId)) {
                 secondaryWindow.rejectPopupAdmission()
@@ -1919,6 +2029,11 @@ function onContext_workspaceChanged() {
     function completeProfileBootstrap() {
         if (runtimeReleased || profileBootstrapComplete || !secondaryUi.profile_available()
                 || (!windowPopup && secondaryUi.profile_bootstrap_pending)) return
+        if (windowLivePageMode && !windowLivePageAccepted) {
+            rootWindow.profileResourceRegistry.activateWindow(secondaryWindow)
+            windowLivePageAccepted = true
+            return
+        }
         if (windowPreparedPageMode && !windowPreparedPageCommitted) {
             // A prepared window owns no engine document, prompt or published
             // IPC owner until the source releases the unpresented page.

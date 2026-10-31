@@ -12,6 +12,8 @@ pub(crate) use crate::page_window_focus::{
     page_focus_intent_current, supersede_page_focus, validate_page_focus,
 };
 
+pub(crate) use crate::browser_ui_page_transfer::{PageRollbackProof, capture_page_rollback};
+
 #[cxx_qt::bridge]
 pub(crate) mod qobject {
     #[namespace = "ferric::credentials"]
@@ -126,6 +128,13 @@ pub(crate) mod qobject {
     }
 
     extern "Rust" {
+        #[namespace = "ferric::page_windows"]
+        type PageRollbackProof;
+        #[namespace = "ferric::page_windows"]
+        fn capture_page_rollback(source: &BrowserUi, nonce: &QString) -> Box<PageRollbackProof>;
+        #[namespace = "ferric::page_windows"]
+        fn source_current(self: &PageRollbackProof, source: &BrowserUi) -> bool;
+
         #[namespace = "ferric::page_windows"]
         fn supersede_page_focus() -> QString;
         #[namespace = "ferric::page_windows"]
@@ -1369,6 +1378,35 @@ pub(crate) mod qobject {
         ) -> bool;
 
         fn commit_page_owner(self: Pin<&mut BrowserUi>, destination: Pin<&mut BrowserUi>) -> bool;
+
+        fn initialize_live_page_owner(
+            self: Pin<&mut BrowserUi>,
+            destination: Pin<&mut BrowserUi>,
+            nonce: &QString,
+        ) -> bool;
+        fn validate_live_page_owner(
+            self: &BrowserUi,
+            destination: &BrowserUi,
+            nonce: &QString,
+            tab: &QString,
+            prompt: &QString,
+            index: i32,
+        ) -> bool;
+        fn commit_live_page_owner(
+            self: Pin<&mut BrowserUi>,
+            destination: Pin<&mut BrowserUi>,
+            nonce: &QString,
+        ) -> bool;
+        fn ready_live_page_owner(self: Pin<&mut BrowserUi>, nonce: &QString) -> bool;
+        fn publish_live_page_owner(
+            self: Pin<&mut BrowserUi>,
+            nonce: &QString,
+            continue_commands: bool,
+        ) -> bool;
+        fn publish_live_page_source(self: Pin<&mut BrowserUi>, nonce: &QString);
+        fn fail_live_page_owner(self: Pin<&mut BrowserUi>, nonce: &QString);
+        #[qinvokable]
+        fn cancel_live_page_move(self: Pin<&mut BrowserUi>, nonce: &QString);
 
         fn activate_prepared_page(self: Pin<&mut BrowserUi>) -> QString;
 

@@ -72,6 +72,8 @@ impl Default for BrowserUiRust {
             restored_page_group_ids: std::collections::HashMap::new(),
             credential_policy_epoch: 1,
             prepared_page_window: None,
+            live_page_move: None,
+            prepared_live_page: None,
             pending_print: None,
             pending_print_private: false,
             pending_history_clear: None,

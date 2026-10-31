@@ -9,11 +9,40 @@ WebEngineView {
                 readonly property string promptLeaseIdentity: factory.primaryUi.new_prompt_view_identity()
                 property var promptIdentityUi: null
                 property int promptIdentityTabIndex: -1
+                property bool viewTransferPending: false
+                property var liveTransferSource: null
+                function detachPromptIdentityForTransfer() {
+                    if (promptIdentityUi && promptIdentityTabIndex >= 0)
+                        promptIdentityUi.unregister_prompt_view_identity(promptIdentityTabIndex,promptLeaseIdentity)
+                    promptIdentityUi = null
+                    promptIdentityTabIndex = -1
+                }
+                function lifecycleOwner() {
+                    var saved = liveTransferSource
+                    if (viewTransferPending && saved && saved.ui) {
+                        var index = saved.ui.tab_index_for_id(stableTabId)
+                        if (index >= 0) return { ui:saved.ui, host:saved.host, tabs:saved.tabs, index:index }
+                    }
+                    return { ui:viewUi, host:viewHost, tabs:viewTabs, index:tabIndex }
+                }
+                function refreshDocumentOwnerAfterTransfer() {
+                    if (!ownsTab() || loading || viewUi.load_state !== "complete") return
+                    if (nativeUrl.length === 0 && nativeContent.engineDocumentReady) {
+                        documentTitleTarget = viewUi.navigation_target_for_index(tabIndex)
+                        publishPageTitle()
+                    }
+                    synchronizeContentHistory()
+                }
+                function ownsLifecycleTab() {
+                    var owner = lifecycleOwner()
+                    return !viewRetired && owner.ui && owner.index >= 0
+                        && owner.ui.tab_id_for_index(owner.index) === stableTabId
+                }
                 function refreshPromptViewIdentity() {
                     // Initial-property callbacks run before createObject has
                     // supplied the final Ui/index. A not-yet-adopted child
                     // must never overwrite its opener's registration.
-                    if (!resourceTracked) return
+                    if (!resourceTracked || viewTransferPending) return
                     if (viewRetired || !viewUi || tabIndex < 0 || stableTabId.length === 0) {
                         if (promptIdentityUi && promptIdentityTabIndex >= 0)
                             promptIdentityUi.unregister_prompt_view_identity(promptIdentityTabIndex, promptLeaseIdentity)
@@ -81,7 +110,7 @@ WebEngineView {
                 }
                 onModelContentUrlChanged: {
                     if (!contentInitialized) { initializeContentTimer.restart(); return }
-                    if (modelContentUrl.length > 0 && (modelContentUrl === "rb://start" || modelContentUrl === "rb://blank" || nativeUrl.length > 0)) setContentUrl(modelContentUrl, false)
+                    if (!viewTransferPending && modelContentUrl.length > 0 && (modelContentUrl === "rb://start" || modelContentUrl === "rb://blank" || nativeUrl.length > 0)) setContentUrl(modelContentUrl, false)
                 }
                 FerricNativeTabContent {
                     id: nativeContent
@@ -130,7 +159,7 @@ WebEngineView {
                             target.documentId, title)
                 }
                 function ownsTab() {
-                    return !viewRetired && !!viewUi && tabIndex >= 0 && stableTabId.length > 0
+                    return !viewRetired && !viewTransferPending && !!viewUi && tabIndex >= 0 && stableTabId.length > 0
                         && viewUi.tab_id_for_index(tabIndex) === stableTabId
                 }
                 property var pageUserScriptNames: []
@@ -156,6 +185,9 @@ WebEngineView {
                 }
                 Connections {
                     target: viewUi
+                    function onLoad_stateChanged() {
+                        if (!webView.viewTransferPending) webView.refreshDocumentOwnerAfterTransfer()
+                    }
                     function onSite_experiment_kindChanged() {
                         webView.refreshEffectiveSiteSettings()
                     }
@@ -238,8 +270,14 @@ WebEngineView {
                         request.navigationType === WebEngineView.ReloadNavigation)
                 }
                 onUrlChanged: {
+                    var lifecycle = lifecycleOwner()
+                    var viewUi = lifecycle.ui
+                    var viewHost = lifecycle.host
+                    var viewTabs = lifecycle.tabs
+                    var tabIndex = lifecycle.index
+
                     if (nativeUrl.length > 0) return
-                    if (!ownsTab()) return
+                    if (!ownsLifecycleTab()) return
                     nativeContent.noteSameDocument(url.toString())
                     refreshEffectiveSiteSettings()
                     if (!viewModel.loaded) {
@@ -258,8 +296,14 @@ WebEngineView {
                     }
                 }
                 onTitleChanged: {
+                    var lifecycle = lifecycleOwner()
+                    var viewUi = lifecycle.ui
+                    var viewHost = lifecycle.host
+                    var viewTabs = lifecycle.tabs
+                    var tabIndex = lifecycle.index
+
                     if (nativeUrl.length > 0) return
-                    if (!ownsTab()) return
+                    if (!ownsLifecycleTab()) return
                     publishPageTitle()
                     if (viewModel.loaded && viewTabs && tabIndex >= 0) {
                         viewTabs.setProperty(tabIndex, "title", viewUi.display_page_title(title) || "New tab")
@@ -269,6 +313,12 @@ WebEngineView {
                     }
                 }
                 onLoadingChanged: function(loadRequest) {
+                    var lifecycle = lifecycleOwner()
+                    var viewUi = lifecycle.ui
+                    var viewHost = lifecycle.host
+                    var viewTabs = lifecycle.tabs
+                    var tabIndex = lifecycle.index
+
                     var stage = loadRequest.status === WebEngineView.LoadStartedStatus ? "started"
                         : loadRequest.status === WebEngineView.LoadStoppedStatus ? "stopped"
                         : loadRequest.status === WebEngineView.LoadSucceededStatus ? "succeeded"
@@ -279,7 +329,7 @@ WebEngineView {
                         documentRequestOwner = ({})
                         documentTitleTarget = null
                     }
-                    if (!viewModel.loaded || nativeUrl.length > 0 || !ownsTab()) return
+                    if (!viewModel.loaded || nativeUrl.length > 0 || !ownsLifecycleTab()) return
                     if (loadRequest.status === WebEngineView.LoadStartedStatus) {
                         nativeContent.engineLoadState = "loading"
                         viewUi.invalidate_native_prompt_leases()
@@ -448,9 +498,12 @@ WebEngineView {
                     }
                 }
                 onRenderProcessTerminated: function(terminationStatus, exitCode) {
+                    var lifecycle = lifecycleOwner()
+                    if (!ownsLifecycleTab()) return
+
                     if (nativeUrl.length > 0) return
                     factory.rootWindow.handleRendererProcessTerminated(
-                        viewUi, webView, viewHost, tabIndex,
+                        lifecycle.ui, webView, lifecycle.host, lifecycle.index,
                         terminationStatus, exitCode)
                 }
                 Component.onDestruction: {

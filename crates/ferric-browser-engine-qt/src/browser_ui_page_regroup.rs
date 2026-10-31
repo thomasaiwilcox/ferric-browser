@@ -1,4 +1,4 @@
-//! Detach/give change a single-page window's logical group without moving its view.
+//! Detach/give preserve actual live pages while changing their logical group.
 use crate::browser_ui_page_windows::{
     PageContinuation, PageHandoff, PageWindowSnapshot, continuation_current,
 };
@@ -63,12 +63,19 @@ impl qobject::BrowserUi {
             .validate(command, self.as_ref().rust().core_mode)
             .map_err(|error| error.to_string())?;
         let source = PageWindowSnapshot::capture_checked(self.as_ref().get_ref())?;
-        if source.pages.len() != 1
-            || !single_page_owner(self.as_ref().get_ref(), source.pages[0].id)
-        {
-            return Err("This window contains several live pages. Detach and Give currently require one page per window.".into());
+        let document = source
+            .pages
+            .iter()
+            .find(|page| Some(page.id) == source.selected)
+            .ok_or("Select a registered live page")?
+            .target;
+        let singleton =
+            source.pages.len() == 1 && single_page_owner(self.as_ref().get_ref(), document.tab);
+        if !singleton && source.pages.len() != source.reserved.len() {
+            return Err(
+                "Wait for the other pages to finish opening before moving this page".into(),
+            );
         }
-        let document = source.pages[0].target;
         self.as_mut().refresh_ipc_owner();
         let owners = crate::live_ipc_owners::page_window_owners(&source.scope);
         let destination = match (command.name.as_str(), command.arguments.as_slice()) {
@@ -107,8 +114,19 @@ impl qobject::BrowserUi {
         let handoff = self
             .as_mut()
             .prepare_page_handoff(incoming.clone(), &source, operation)?;
+        if !singleton {
+            let result = self.as_mut().begin_live_page_regroup(
+                source,
+                document,
+                group,
+                destination,
+                continuation,
+                handoff,
+            )?;
+            incoming.take();
+            return Ok(result);
+        }
         let thread = self.as_ref().get_ref().qt_thread();
-        let token = self.as_ref().rust().window_token.to_string();
         let mut result = serde_json::json!({"status":"accepted", "action":command.name, "pending":true,
             "preserves_live_state":true, "tab_id":document.tab.to_string(), "group":group});
         if let Some(destination) = &destination {
@@ -203,7 +221,7 @@ impl qobject::BrowserUi {
                     };
                 ui.as_mut().runtime_work_available();
                 if let Some(handoff) = handoff {
-                    handoff.finish(valid, succeeded, token);
+                    handoff.finish(valid, succeeded, ui.as_ref().get_ref());
                 }
             });
         };

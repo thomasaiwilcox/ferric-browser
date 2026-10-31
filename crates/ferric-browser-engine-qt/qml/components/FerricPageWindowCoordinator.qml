@@ -9,6 +9,18 @@ QtObject {
     property var pendingExpansion: null
     property var expansionPrompt: null
     property var pendingPages: ({})
+    property var pendingMoves: ({})
+    property Timer moveDeadline: Timer {
+        interval: 1000
+        repeat: true
+        running: Object.keys(coordinator.pendingMoves).length > 0
+        onTriggered: {
+            for (var nonce in coordinator.pendingMoves) {
+                var pending = coordinator.pendingMoves[nonce]
+                if (Date.now() >= pending.expires) coordinator.failLivePage(nonce)
+            }
+        }
+    }
     readonly property int automaticWindowLimit: 12
 
     property Component promptFactory: Component {
@@ -25,6 +37,59 @@ QtObject {
             ]
             onActionRequested: function(action) { coordinator.resolveExpansion(action === "confirm") }
         }
+    }
+
+    function failLivePage(nonce) {
+        var pending = pendingMoves[nonce]
+        if (!pending) return
+        var child = pending.child
+        var remaining = Object.assign({},pendingMoves)
+        delete remaining[nonce]
+        pendingMoves = remaining
+        if (pending.ui) pending.ui.cancel_live_page_move(nonce)
+        if (child && typeof child.rejectPopupAdmission === "function") child.rejectPopupAdmission()
+    }
+    function resumeLivePage(child) {
+        var nonce = child ? child.windowLivePageNonce : ""
+        var pending = pendingMoves[nonce]
+        if (!pending || pending.child !== child) return
+        if (Date.now() >= pending.expires || !child.commitLivePage()) { failLivePage(nonce); return }
+        var remaining = Object.assign({},pendingMoves)
+        delete remaining[nonce]
+        pendingMoves = remaining
+    }
+    function executeLivePageMove(ui, host, action) {
+        var fields = action.split("\t")
+        if (fields.length !== 3 || !ui || !host || host.runtimeReleased) return false
+        var nonce = fields[1]
+        var source = rootWindow.browserWindowEntryForUi(ui)
+        if (!source || source.host !== host || !rootWindow.browserWindowFactory) {
+            ui.cancel_live_page_move(nonce)
+            return false
+        }
+        var controller = host.tabViewControllerObject
+        if (!controller || !host.activeView || host.activeView.stableTabId !== fields[2]) {
+            ui.cancel_live_page_move(nonce)
+            return false
+        }
+        var child = rootWindow.browserWindowFactory.createObject(null, {
+            windowProfileName:source.profileName,
+            windowProfileLabel:host === rootWindow ? rootWindow.profileLabel : host.windowProfileLabel,
+            windowStorageBasePath:host === rootWindow ? rootWindow.storageBasePath : host.windowStorageBasePath,
+            windowPrivateProfile:source.privateProfile, windowEphemeralProfile:source.ephemeralProfile,
+            windowEphemeralInvocationToken:source.ephemeralInvocationToken,
+            windowSharedProfile:controller.profile, windowSharedRequestInterceptor:controller.interceptor,
+            windowInitialVisible:false, windowLivePageMode:true, windowLivePageNonce:nonce,
+            windowLivePageSourceUi:ui, windowLivePageSourceHost:host
+        })
+        if (!child || child.runtimeReleased) { ui.cancel_live_page_move(nonce); return false }
+        var updated = Object.assign({},pendingMoves)
+        updated[nonce] = { child:child, ui:ui, expires:Date.now()+15000 }
+        pendingMoves = updated
+        // Readiness can be synchronous; the child also schedules an owned
+        // zero-delay callback after asynchronous policy bootstrap.
+        if (child.windowLivePageAccepted) Qt.callLater(function() { coordinator.resumeLivePage(child) })
+        return true
     }
 
     function idsFor(ui) {

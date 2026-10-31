@@ -12,6 +12,7 @@
 #include <QSet>
 #include <optional>
 #include <memory>
+#include <functional>
 class FerricProfileTls;
 
 // Native ownership only. Profile policy and request presentation stay with
@@ -71,15 +72,18 @@ class FerricProfileLifetime : public QObject {
     };
     std::unique_ptr<ViewTransfer> beginViewTransfer(QQuickItem *view,
                                                   QObject *destinationHost,
-                                                  QObject *destinationUi);
+                                                  QObject *destinationUi,
+                                                  const std::function<bool()> &sourceProof = {});
     // Last native proof and association change. Call private Rust Core commit
     // immediately afterwards in the SAME native entry point, with no QML hop.
+    bool pinViewTransferIdentity(ViewTransfer &transfer, const QString &tab, const QString &prompt, int index);
     bool associateViewTransfer(ViewTransfer &transfer);
     bool completeViewTransfer(ViewTransfer &transfer);
     // Restoration is permitted only after the caller proves the original
     // Core Target, then restores its actual view routing/scene. It mints a new
     // incarnation; old credential/prompt leases are never resurrected.
-    bool cancelViewTransfer(ViewTransfer &transfer, bool restoreSource);
+    bool cancelViewTransfer(ViewTransfer &transfer, bool restoreSource,
+                            const std::function<bool()> &sourceProof = {});
   signals:
     void viewRetiring(QQuickItem *view);
     void policyUiChanged();
@@ -172,7 +176,8 @@ class FerricProfileLifetime : public QObject {
     bool popupLeaseIsCurrent(const PopupLease &lease) const;
     bool transferWindowsCurrent(const ViewTransferState &transfer) const;
     void removeViewTransfer(ViewTransferState &transfer);
-    bool cancelViewTransfer(const std::shared_ptr<ViewTransferState> &transfer, bool restoreSource);
+    bool cancelViewTransfer(const std::shared_ptr<ViewTransferState> &transfer, bool restoreSource,
+                            const std::function<bool()> &sourceProof = {});
     QList<Window> windows_;
     QHash<QQuickItem *, View> views_;
     QHash<QString, PopupLease> popupLeases_;

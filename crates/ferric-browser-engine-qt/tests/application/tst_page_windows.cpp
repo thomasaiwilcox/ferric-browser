@@ -2,6 +2,7 @@
 #include "owned_browser_keyboard.h"
 #include <QQuickItem>
 #include <QQmlContext>
+#include <QQmlComponent>
 #include <QGuiApplication>
 #include <QPointer>
 #include <QtTest>
@@ -68,7 +69,7 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-reorder", "window-live-source-close", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -233,6 +234,176 @@ void ApplicationTests::pageWindowPresentation()
             return "passed";
         })())JS")).toString();
         QCOMPARE(result,QStringLiteral("passed"));
+        return;
+    }
+    if (scenario == "window-regroup-peer-focus") {
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(), window);
+        QVERIFY(command("tab-next ;; tab-detach ;; jseval --world page window.peerDetached=19"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        pageReceiver = childHost + ".activeView";
+        QTRY_COMPARE(page("window.peerDetached").toInt(),19);
+        QTRY_COMPARE(QGuiApplication::focusWindow(),childWindow);
+        QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(),sourceView.data());
+        pageReceiver = "testWindow.activeWebView()";
+        QCOMPARE(page("window.pageWindowDraft").toString(),QStringLiteral("unfinished work"));
+        return;
+    }
+    if (scenario == "window-live-source-close") {
+        engine->rootContext()->setContextProperty("oldLiveHost",evaluate(childHost).value<QObject *>());
+        engine->rootContext()->setContextProperty("oldLiveUi",evaluate(entry+".ui").value<QObject *>());
+        QPointer<QObject> movedView(evaluate("oldLiveHost.activeView").value<QObject *>());
+        QVERIFY(movedView);
+        const auto id=evaluate("oldLiveUi.tab_id_for_index(0)").toString();
+        engine->rootContext()->setContextProperty("savedWindowFactory",evaluate("testWindow.browserWindowComponentObject").value<QObject *>());
+        evaluate("testWindow.browserWindowComponentObject=null");
+        QVERIFY(evaluate("oldLiveUi.execute_command("+quoted("open --target tab-bg "+initial+"?source-close-retained=yes")+")").toBool());
+        evaluate("oldLiveHost.applySwitcherEngineAction()");
+        QTRY_COMPARE(evaluate("oldLiveHost.tabViews.length").toInt(),2);
+        pageReceiver="oldLiveHost.tabViewAt(1)";
+        QTRY_COMPARE(page("location.href").toString(),initial+"?source-close-retained=yes");
+        evaluate("testWindow.browserWindowComponentObject=savedWindowFactory");
+        pageReceiver="oldLiveHost.tabViewAt(0)";
+        page("window.sourceCloseDraft=97");
+        auto *lifetime = evaluate("testWindow.profileResourceRegistry.forProfile(oldLiveHost.tabViewAt(0).profile).lifetime").value<QObject *>();
+        QVERIFY(lifetime);
+        engine->rootContext()->setContextProperty("testMovingLifetime",lifetime);
+        const auto injection = QString(R"JS(Qt.createQmlObject('import QtQuick; Connections { property bool closed:false; target:testMovingLifetime; function onCredentialTransportChanged(){if(!closed && oldLiveUi && oldLiveUi.tab_index_for_id("%1")<0){closed=true;oldLiveHost.windowShutdownApproved=true;oldLiveHost.close()}} }',testWindow))JS").arg(id);
+        QPointer<QObject> hook(evaluate(injection).value<QObject *>());
+        QVERIFY(hook);
+        QVERIFY(evaluate("oldLiveUi.execute_secondary_interactive_command('tab-detach ;; jseval --world page window.sourceCloseContinuation=101')").toBool());
+        evaluate("oldLiveHost.applySwitcherEngineAction()");
+        const auto moved=QString("testWindow.liveWindowEntries().find(function(e){return e.ui.tab_index_for_id(%1)>=0})").arg(quoted(id));
+        QTRY_VERIFY(evaluate(moved+" && "+moved+".host.profileBootstrapComplete").toBool());
+        pageReceiver=moved+".host.activeView";
+        QTRY_COMPARE(page("window.sourceCloseContinuation").toInt(),101);
+        QCOMPARE(page("window.sourceCloseDraft").toInt(),97);
+        QCOMPARE(evaluate(pageReceiver).value<QObject *>(),movedView.data());
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+        QVERIFY(evaluate("testWindow.browserUi.flush_durable_state()").toBool());
+        delete hook.data();
+        return;
+    }
+    if (scenario.startsWith("window-live-")) {
+        // Allocation failure deliberately leaves two real, loaded views in
+        // the source. The trusted move must use the selected existing view.
+        engine->rootContext()->setContextProperty("savedWindowFactory",evaluate("testWindow.browserWindowComponentObject").value<QObject *>());
+        evaluate("testWindow.browserWindowComponentObject=null");
+        QVERIFY(command("open --target tab-bg " + initial + "?retained-live=yes"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        QTRY_COMPARE(evaluate("testWindow.tabViews.length").toInt(),2);
+        QTRY_COMPARE(evaluate("testWindow.browserUi.tab_count").toInt(),2);
+        pageReceiver = "testWindow.tabViewAt(1)";
+        QTRY_COMPARE(page("location.href").toString(),initial+"?retained-live=yes");
+        QPointer<QObject> retainedView(evaluate("testWindow.tabViewAt(1)").value<QObject *>());
+        evaluate("testWindow.browserWindowComponentObject=savedWindowFactory");
+        QVERIFY(evaluate("testWindow.browserUi.select_tab(0)").toBool());
+        pageReceiver = "testWindow.tabViewAt(0)";
+        page("window.liveMoveDraft=73;document.body.insertAdjacentHTML('beforeend','<input id=liveMoveInput>');document.getElementById('liveMoveInput').value='unsaved text'");
+        QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+        QTRY_COMPARE(QGuiApplication::focusWindow(),window);
+        evaluate("testWindow.commandNoticeVisible=false;testWindow.commandNoticeText=''");
+        QString historyBefore;
+        int engineHistoryBefore=-1;
+        if (scenario == "window-live-detach" || scenario == "window-live-give" || scenario == "window-live-reorder") {
+            page("history.pushState({liveMove:1},'',location.pathname+location.search+'#live-move-state')");
+            evaluate("testWindow.tabViewAt(0).synchronizeContentHistory()");
+            QTRY_VERIFY(evaluate("testWindow.browserUi.content_history_export(0).indexOf('#live-move-state')>=0").toBool());
+            QTRY_VERIFY(!evaluate("testWindow.browserUi.tab_has_active_operations("+quoted(sourceId)+")").toBool());
+            historyBefore=evaluate("testWindow.browserUi.content_history_export(0)").toString();
+            engineHistoryBefore=evaluate("testWindow.tabViewAt(0).engineHistoryIndex").toInt();
+        }
+        engine->rootContext()->setContextProperty("testMovingView",sourceView.data());
+        QPointer<QObject> injection;
+        if (scenario == "window-live-rollback" || scenario == "window-live-cancel" || scenario == "window-live-identity" || scenario == "window-live-reorder") {
+            const auto effect = scenario == "window-live-cancel" ? QStringLiteral("testWindow.browserUi.cancel_live_page_move(target.viewHost.windowLivePageNonce)")
+                : scenario == "window-live-identity" ? QStringLiteral("target.stableTabId=testWindow.browserUi.tab_id_for_index(1)")
+                : scenario == "window-live-reorder" ? QStringLiteral("testWindow.browserUi.set_tab_pinned(1,true)")
+                : QStringLiteral("target.url=target.url.toString()+\"#during-move\"");
+            injection = evaluate(QString(R"JS(Qt.createQmlObject('import QtQuick; Connections { property bool injected:false; target:testMovingView; function onViewHostChanged(){ if(!injected && target.viewHost!==testWindow){injected=true;%1} } }',testWindow))JS").arg(effect)).value<QObject *>();
+            QVERIFY(injection);
+        }
+        if (scenario == "window-live-completion-nav") {
+            engine->rootContext()->setContextProperty("testMovingLifetime",evaluate("testWindow.profileResourceRegistry.forProfile(testMovingView.profile).lifetime").value<QObject *>());
+            injection=evaluate(QString(R"JS(Qt.createQmlObject('import QtQuick; Connections { property bool injected:false; target:testMovingLifetime; function onCredentialTransportChanged(){if(!injected && testMovingView && testMovingView.viewUi!==testWindow.browserUi && testWindow.browserUi.tab_index_for_id("%1")<0){injected=true;testMovingView.viewUi.navigate_without_context_route("%2")}} }',testWindow))JS").arg(sourceId,initial+"?completion-navigation=yes")).value<QObject *>();
+            QVERIFY(injection);
+        }
+        if (scenario == "window-live-registration-retry") {
+            auto *retryFactory=new QQmlComponent(engine.get(),engine.get());
+            retryFactory->setData(R"QML(import QtQuick
+import "qrc:/qt/qml/io/github/ferricbrowser/qml/components" as Ferric
+Ferric.FerricBrowserWindow {
+    rootWindow:testWindow
+    property int testRegistrationAttempts:0
+    function registerWindowOwner() {
+        testRegistrationAttempts++
+        if (testRegistrationAttempts < 3) return false
+        return rootWindow.registerBrowserWindow(this,windowUi,activeView,windowWebEngineProfile,
+            windowProfileName,windowEphemeralInvocationToken,windowEphemeralProfile)
+    }
+})QML",QUrl("qrc:/live-transfer-retry.qml"));
+            QVERIFY2(retryFactory->isReady(),qPrintable(retryFactory->errorString()));
+            engine->rootContext()->setContextProperty("testRetryFactory",retryFactory);
+            evaluate("testWindow.browserWindowComponentObject=testRetryFactory");
+        }
+        const auto moving = scenario == "window-live-give"
+            ? "tab-give " + evaluate(entry + ".ui.core_window_id").toString()
+            : QStringLiteral("tab-detach");
+        QVERIFY(command(moving+" ;; jseval --world page window.liveMoveContinuation=83"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        if (injection) QTRY_VERIFY(injection->property("injected").toBool());
+        if (scenario == "window-live-rollback" || scenario == "window-live-cancel" || scenario == "window-live-identity") {
+            QTRY_VERIFY(evaluate("testWindow.commandNoticeVisible && testWindow.commandNoticeError").toBool());
+            QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+            QCOMPARE(evaluate("testWindow.tabViewAt(0)").value<QObject *>(),sourceView.data());
+            QCOMPARE(page("window.liveMoveDraft").toInt(),73);
+            QCOMPARE(page("document.getElementById('liveMoveInput').value").toString(),QStringLiteral("unsaved text"));
+            QVERIFY(page("typeof window.liveMoveContinuation==='undefined'").toBool());
+            if (scenario == "window-live-rollback") QTRY_VERIFY(page("location.hash==='#during-move'").toBool());
+            delete injection.data();
+            return;
+        }
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),3);
+        const auto moved = QString("testWindow.liveWindowEntries().find(function(e){return e.ui.tab_index_for_id(%1)>=0})").arg(quoted(sourceId));
+        QTRY_VERIFY(evaluate(moved+" && "+moved+".host.profileBootstrapComplete").toBool());
+        auto *movedWindow=qobject_cast<QQuickWindow *>(evaluate(moved+".host").value<QObject *>());
+        QVERIFY(movedWindow);
+        pageReceiver=moved+".host.activeView";
+        if (scenario == "window-live-completion-nav" || scenario == "window-live-registration-retry") {
+            QCOMPARE(evaluate(pageReceiver).value<QObject *>(),sourceView.data());
+            if (scenario == "window-live-completion-nav") QTRY_COMPARE(page("location.href").toString(),initial+"?completion-navigation=yes");
+            else {
+                QCOMPARE(page("window.liveMoveDraft").toInt(),73);
+                QCOMPARE(page("document.getElementById('liveMoveInput').value").toString(),QStringLiteral("unsaved text"));
+                QVERIFY(evaluate(moved+".host.testRegistrationAttempts>=3 && !"+moved+".host.windowLiveRegistrationPending").toBool());
+            }
+            QVERIFY(page("typeof window.liveMoveContinuation==='undefined'").toBool());
+            QVERIFY(evaluate(moved+".ui.flush_durable_state()").toBool());
+            if (scenario == "window-live-registration-retry") {
+                // This test-only component has an engine creation context,
+                // unlike the production root-owned window factory. Retire it
+                // explicitly before engine teardown deletes its root window.
+                QPointer<QObject> retiring(evaluate(moved+".host").value<QObject *>());
+                evaluate("(function(){var retryHost="+moved+".host;retryHost.windowShutdownApproved=true;retryHost.close();retryHost.destroy()})()");
+                QTRY_VERIFY(retiring.isNull());
+                evaluate("testWindow.browserWindowComponentObject=savedWindowFactory");
+            }
+            delete injection.data();
+            return;
+        }
+        QTRY_COMPARE(page("window.liveMoveContinuation").toInt(),83);
+        QCOMPARE(evaluate(pageReceiver).value<QObject *>(),sourceView.data());
+        QCOMPARE(page("window.liveMoveDraft").toInt(),73);
+        QCOMPARE(page("document.getElementById('liveMoveInput').value").toString(),QStringLiteral("unsaved text"));
+        QTRY_COMPARE(QGuiApplication::focusWindow(),movedWindow);
+        QCOMPARE(evaluate(moved+".ui.content_history_export(0)").toString(),historyBefore);
+        QCOMPARE(evaluate(pageReceiver+".engineHistoryIndex").toInt(),engineHistoryBefore);
+        page("document.title='Moved live document'");
+        QTRY_COMPARE(evaluate(moved+".ui.page_title").toString(),QStringLiteral("Moved live document"));
+        QTRY_COMPARE(evaluate("testWindow.browserUi.tab_count").toInt(),1);
+        QCOMPARE(evaluate("testWindow.tabViewAt(0)").value<QObject *>(),retainedView.data());
+        QVERIFY(evaluate(moved+".ui.flush_durable_state()").toBool());
+        delete injection.data();
         return;
     }
     if (scenario == "window-focus-route") {

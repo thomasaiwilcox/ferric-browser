@@ -96,6 +96,7 @@ mod browser_ui_operations;
 mod browser_ui_page_mutations;
 mod browser_ui_page_regroup;
 mod browser_ui_page_sessions;
+mod browser_ui_page_transfer;
 mod browser_ui_page_windows;
 mod browser_ui_page_workflows;
 mod browser_ui_persistence;
@@ -577,6 +578,8 @@ pub struct BrowserUiRust {
     restored_page_group_ids: std::collections::HashMap<Uuid, String>,
     credential_policy_epoch: u64,
     prepared_page_window: Option<browser_ui_popup_owner::PreparedPageWindow>,
+    live_page_move: Option<Box<browser_ui_page_transfer::LivePageMove>>,
+    prepared_live_page: Option<Box<browser_ui_page_transfer::PreparedLivePage>>,
     pending_print: Option<PathBuf>,
     pending_history_clear: Option<(Option<i64>, Option<String>)>,
     tab_ids: Vec<TabId>,

@@ -249,7 +249,7 @@ impl qobject::BrowserUi {
                                 .any(|page| page.id == id && page.target.generation == generation)
                     });
                 if !valid {
-                    receipt.finish(false, false, target_token);
+                    receipt.finish(false, false, ui.as_ref().get_ref());
                     return;
                 }
                 let applied = if normalized.name == "tab-move" {
@@ -260,7 +260,7 @@ impl qobject::BrowserUi {
                         .map(|_| ())
                 };
                 if applied.is_err() {
-                    receipt.finish(true, false, target_token);
+                    receipt.finish(true, false, ui.as_ref().get_ref());
                     return;
                 }
                 ui.as_mut().runtime_work_available();
@@ -282,7 +282,7 @@ impl qobject::BrowserUi {
                             source_target,
                         );
                     if !source_current || !document_current {
-                        receipt.finish(false, false, source_token);
+                        receipt.finish(false, false, issuer.as_ref().get_ref());
                         return;
                     }
                     let mut handoff = Some(receipt);
@@ -305,7 +305,7 @@ impl qobject::BrowserUi {
                     };
                     issuer.as_mut().runtime_work_available();
                     if let Some(receipt) = handoff {
-                        receipt.finish(true, succeeded, source_token);
+                        receipt.finish(true, succeeded, issuer.as_ref().get_ref());
                     }
                 });
             })

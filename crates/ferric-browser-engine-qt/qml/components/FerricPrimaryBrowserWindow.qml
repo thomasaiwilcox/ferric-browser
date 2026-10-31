@@ -3314,6 +3314,9 @@ GridLayout {
 
     function executePendingEngineAction() { return runtimeSurface.executePendingEngineAction() }
 
+    function restoreStagedLiveView(view) { return primaryTabController.restoreStagedLiveView(view) }
+    function finishStagedLiveRollback(view) { return primaryTabController.finishStagedLiveRollback(view) }
+    readonly property var activeView: activeWebView()
     function activeWebView() { return runtimeSurface.activeWebView() }
 
     function updateActiveTabUrl() { return runtimeSurface.updateActiveTabUrl() }

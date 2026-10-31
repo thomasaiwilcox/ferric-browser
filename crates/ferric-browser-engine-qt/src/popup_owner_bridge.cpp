@@ -114,3 +114,137 @@ QString FerricPopupOwnerBridge::activatePreparedPage() {
         || host->property("runtimeReleased").toBool()) return QStringLiteral("Page opening cancelled because this window changed. Open the page again.");
     return destination->activate_prepared_page();
 }
+
+#include "profile_lifetime.h"
+#include "ferric-browser-engine-qt/src/bridge.cxx.h"
+#include <QMetaProperty>
+#include <QSignalBlocker>
+#include <QQuickWindow>
+
+struct FerricPopupOwnerBridge::LivePreparation {
+    QPointer<BrowserUi> source, destination;
+    QPointer<QObject> sourceHost, host, profile;
+    QString nonce;
+    bool consumed = false;
+};
+
+namespace {
+// Bootstrap a dormant child without notifying QML while Rust owns direct
+// references. Publish the settled values only after those references unwind.
+// Every notification is followed by a fresh QObject liveness check.
+bool publishPreparedProperties(QPointer<BrowserUi> child) {
+    if (!child) return false;
+    const auto *meta = child->metaObject();
+    QList<QMetaMethod> notifications;
+    for (int index = QObject::staticMetaObject.propertyCount(); index < meta->propertyCount(); ++index) {
+        const auto signal = meta->property(index).notifySignal();
+        if (signal.isValid() && signal.parameterCount() == 0 && !notifications.contains(signal)) notifications.append(signal);
+    }
+    for (const auto &signal : notifications) {
+        if (!child) return false;
+        signal.invoke(child, Qt::DirectConnection);
+    }
+    return child;
+}
+bool invokeView(QObject *host, const char *method, QQuickItem *view) {
+    QVariant result;
+    return host && QMetaObject::invokeMethod(host, method, Qt::DirectConnection,
+        Q_RETURN_ARG(QVariant, result), Q_ARG(QVariant, QVariant::fromValue(static_cast<QObject *>(view))))
+        && result.toBool();
+}
+}
+
+bool FerricPopupOwnerBridge::prepareLivePageWindow(QObject *source, QObject *destination, const QString &nonce) {
+    const QPointer<FerricPopupOwnerBridge> self(this);
+    const auto state = std::make_shared<LivePreparation>();
+    state->source = qobject_cast<BrowserUi *>(source);
+    state->destination = qobject_cast<BrowserUi *>(destination);
+    state->host = hostWindow(this);
+    state->nonce = nonce;
+    auto alive = [&] { return self && state->source && state->destination && state->host; };
+    if (!alive() || live_ || source == destination || source->thread() != QThread::currentThread()
+        || destination->thread() != QThread::currentThread()) return false;
+    state->sourceHost = objectProperty(state->host, "windowLivePageSourceHost");
+    if (!alive() || !qobject_cast<QQuickWindow *>(state->sourceHost.data())) return false;
+    auto *sourceUi = hostUi(state->sourceHost);
+    if (!alive() || !state->sourceHost || sourceUi != source) return false;
+    auto *destinationUi = hostUi(state->host);
+    if (!alive() || destinationUi != destination) return false;
+    state->profile = hostProfile(state->sourceHost);
+    if (!alive() || !state->sourceHost || !state->profile) return false;
+    auto *profile = hostProfile(state->host);
+    if (!alive() || profile != state->profile) return false;
+    auto *view = objectProperty(state->host, "activeView");
+    if (!alive() || view) return false;
+    bool initialized = false;
+    {
+        const QSignalBlocker noNotifications(state->destination);
+        initialized = state->source->initialize_live_page_owner(*state->destination, nonce);
+    }
+    if (!alive() || !initialized) return false;
+    self->live_ = state;
+    return publishPreparedProperties(state->destination) && alive();
+}
+
+bool FerricPopupOwnerBridge::commitLivePageWindow() {
+    const auto state = live_;
+    const QPointer<FerricPopupOwnerBridge> self(this);
+    auto alive = [&] { return self && state && state->source && state->destination
+        && state->sourceHost && state->host && state->profile; };
+    if (!alive() || state->consumed) return false;
+    state->consumed = true;
+    if (state->source->thread() != QThread::currentThread() || state->destination->thread() != QThread::currentThread()) return false;
+    const QPointer<QQuickItem> view(qobject_cast<QQuickItem *>(objectProperty(state->sourceHost, "activeView")));
+    if (!alive() || !view) return false;
+    const QPointer<FerricProfileLifetime> lifetime(qobject_cast<FerricProfileLifetime *>(view->parent()));
+    if (!lifetime) return false;
+    const auto current = lifetime->currentView(view);
+    if (!alive() || !view || !lifetime || !current || current->host != state->sourceHost
+        || current->ui != state->source || current->profile != state->profile) return false;
+    const auto tab = view->property("stableTabId").toString();
+    if (!alive() || !view || !lifetime) return false;
+    const auto prompt = view->property("promptLeaseIdentity").toString();
+    if (!alive() || !view || !lifetime) return false;
+    const auto index = view->property("tabIndex").toInt();
+    if (!alive() || !view || !lifetime
+        || !state->source->validate_live_page_owner(*state->destination, state->nonce, tab, prompt, index)) return false;
+    const auto rollback = ferric::page_windows::capture_page_rollback(*state->source,state->nonce);
+    auto transfer = lifetime->beginViewTransfer(view, state->host, state->destination, [&] {
+        return state->source && rollback->source_current(*state->source);
+    });
+    if (!view || !lifetime || !transfer) return false;
+    const bool staged = alive() && invokeView(state->host, "stageLivePageView", view);
+    bool committed = false;
+    if (staged && alive() && view && lifetime
+        && lifetime->pinViewTransferIdentity(*transfer,tab,prompt,0)
+        && alive() && view && lifetime && lifetime->associateViewTransfer(*transfer)) {
+        // Pure Rust validation/import/release immediately follows final native
+        // association. No property read or QML callback belongs in this gap.
+        if (alive() && view && lifetime) committed = state->source->commit_live_page_owner(*state->destination, state->nonce);
+    }
+    if (!committed) {
+        if (state->sourceHost && state->source && view) invokeView(state->sourceHost, "restoreStagedLiveView", view);
+        if (lifetime) lifetime->cancelViewTransfer(*transfer, state->sourceHost && state->source && view, [&] {
+            return state->source && rollback->source_current(*state->source);
+        });
+        if (state->sourceHost && state->source && view) invokeView(state->sourceHost, "finishStagedLiveRollback", view);
+        return false;
+    }
+    // The destination now owns the receipt and continuation. Source retirement
+    // is independent after commit and must never reject this surviving page.
+    auto destinationAlive = [&] { return state->destination && state->host && state->profile && view && lifetime; };
+    const bool nativeCompleted = lifetime && lifetime->completeViewTransfer(*transfer);
+    if (state->source) state->source->publish_live_page_source(state->nonce);
+    if (!destinationAlive() || !nativeCompleted
+        || !state->destination->ready_live_page_owner(state->nonce)) {
+        if (state->destination) state->destination->fail_live_page_owner(state->nonce);
+        if (state->host) invokeView(state->host,"abandonEmptyLivePage",view);
+        return true;
+    }
+    const bool registered = invokeView(state->host, "finishLivePageView", view);
+    if (!destinationAlive()) return true;
+    if (!state->destination->publish_live_page_owner(state->nonce,registered)) {
+        state->destination->fail_live_page_owner(state->nonce);
+    }
+    return true;
+}
