@@ -99,7 +99,7 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -279,7 +279,7 @@ void ApplicationTests::pageWindowPresentation()
         QCOMPARE(page("window.pageWindowDraft").toString(),QStringLiteral("unfinished work"));
         return;
     }
-    if (scenario == "window-live-source-close") {
+    if (scenario == "window-live-source-close" || scenario == "window-live-source-close-last") {
         engine->rootContext()->setContextProperty("oldLiveHost",evaluate(childHost).value<QObject *>());
         engine->rootContext()->setContextProperty("oldLiveUi",evaluate(entry+".ui").value<QObject *>());
         QPointer<QObject> movedView(evaluate("oldLiveHost.activeView").value<QObject *>());
@@ -295,6 +295,12 @@ void ApplicationTests::pageWindowPresentation()
         evaluate("testWindow.browserWindowComponentObject=savedWindowFactory");
         pageReceiver="oldLiveHost.tabViewAt(0)";
         page("window.sourceCloseDraft=97");
+        const bool lastSource=scenario=="window-live-source-close-last";
+        if (lastSource) {
+            QVERIFY(evaluate("testWindow.retirePrimaryPage()").toBool());
+            QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),1);
+            QVERIFY(!evaluate("testWindow.applicationShutdownInProgress").toBool());
+        }
         auto *lifetime = evaluate("testWindow.profileResourceRegistry.forProfile(oldLiveHost.tabViewAt(0).profile).lifetime").value<QObject *>();
         QVERIFY(lifetime);
         engine->rootContext()->setContextProperty("testMovingLifetime",lifetime);
@@ -309,7 +315,8 @@ void ApplicationTests::pageWindowPresentation()
         QTRY_COMPARE(page("window.sourceCloseContinuation").toInt(),101);
         QCOMPARE(page("window.sourceCloseDraft").toInt(),97);
         QCOMPARE(evaluate(pageReceiver).value<QObject *>(),movedView.data());
-        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),lastSource ? 1 : 2);
+        QVERIFY(!evaluate("testWindow.applicationShutdownInProgress").toBool());
         QVERIFY(evaluate("testWindow.browserUi.flush_durable_state()").toBool());
         delete hook.data();
         return;

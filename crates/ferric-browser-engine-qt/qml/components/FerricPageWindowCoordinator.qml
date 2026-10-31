@@ -39,6 +39,28 @@ QtObject {
         }
     }
 
+    function hasPendingWindows() {
+        for (var nonce in pendingMoves) {
+            var moving = pendingMoves[nonce]
+            if (moving && moving.child && !moving.child.runtimeReleased) return true
+        }
+        for (var id in pendingPages) {
+            var prepared = pendingPages[id]
+            if (prepared && !prepared.failed && prepared.child && !prepared.child.runtimeReleased) return true
+        }
+        return false
+    }
+    function recheckLastWindow() {
+        Qt.callLater(function() {
+            if (coordinator.rootWindow && !coordinator.rootWindow.runtimeDisposing
+                    && coordinator.rootWindow.primaryPageRetired
+                    && !coordinator.rootWindow.applicationShutdownInProgress
+                    && coordinator.rootWindow.liveWindowEntries().length === 0
+                    && !coordinator.hasPendingWindows())
+                coordinator.rootWindow.beginApplicationShutdown()
+        })
+    }
+
     function failLivePage(nonce) {
         var pending = pendingMoves[nonce]
         if (!pending) return
@@ -48,6 +70,7 @@ QtObject {
         pendingMoves = remaining
         if (pending.ui) pending.ui.cancel_live_page_move(nonce)
         if (child && typeof child.rejectPopupAdmission === "function") child.rejectPopupAdmission()
+        recheckLastWindow()
     }
     function resumeLivePage(child) {
         var nonce = child ? child.windowLivePageNonce : ""
@@ -57,6 +80,7 @@ QtObject {
         var remaining = Object.assign({},pendingMoves)
         delete remaining[nonce]
         pendingMoves = remaining
+        recheckLastWindow()
     }
     function executeLivePageMove(ui, host, action) {
         var fields = action.split("\t")
@@ -124,6 +148,7 @@ QtObject {
             if (!controller || !controller.ready || idsFor(controller.browserUi).indexOf(id) < 0) {
                 delete pendingPages[id]
                 child.destroy()
+                recheckLastWindow()
                 return
             }
             controller.syncTabModel()
@@ -139,6 +164,7 @@ QtObject {
             pending.child = null
             pending.failed = true
             child.destroy()
+            recheckLastWindow()
             if (pending.controller && pending.controller.ready) {
                 pending.controller.syncTabModel()
                 rootWindow.completeBrowserKeyAction(pending.controller.browserUi, pending.controller.browserHost)

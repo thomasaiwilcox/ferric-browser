@@ -351,7 +351,8 @@ QtObject {
         window.shutdownPagePromptVisible = false
         if (window.shutdownConfirmationCommand === ":window-close"
                 && window.browserUi.feature_tabs_presentation_effective === "windows"
-                && window.liveWindowEntries().some(function(entry) { return entry.host !== window })) {
+                && (window.liveWindowEntries().some(function(entry) { return entry.host !== window })
+                    || window.pageWindowCoordinator.hasPendingWindows())) {
             window.retirePrimaryPage()
             return
         }

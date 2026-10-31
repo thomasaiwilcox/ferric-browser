@@ -2241,7 +2241,8 @@ function onContext_workspaceChanged() {
         secondaryUi.view_closed()
         secondaryUi.release_transient_resources()
         if (rootWindow.primaryPageRetired && !rootWindow.applicationShutdownInProgress
-                && rootWindow.liveWindowEntries().length === 0)
+                && rootWindow.liveWindowEntries().length === 0
+                && !rootWindow.pageWindowCoordinator.hasPendingWindows())
             rootWindow.beginApplicationShutdown()
     }
     Component.onDestruction: {
