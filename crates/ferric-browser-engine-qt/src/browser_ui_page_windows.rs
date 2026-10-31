@@ -19,6 +19,7 @@ struct PageHandoffState {
     reporter: Option<ferric_browser_application::NativeOperationReporter>,
     finished: AtomicBool,
     focus_requested: AtomicBool,
+    terminal_focus_started: Arc<AtomicBool>,
     admitted_focus_generation: u64,
     focus_generation: AtomicU64,
 }
@@ -107,6 +108,87 @@ impl PageHandoff {
         true
     }
 
+    pub(super) fn can_create_from(&self, source: &PageWindowSnapshot) -> bool {
+        let Ok(anchor) = self.0.anchor.lock() else {
+            return false;
+        };
+        anchor.scope == source.scope
+            && anchor.group == source.group
+            && (source.pages.iter().any(|page| page.id == anchor.page)
+                || super::live_ipc_owners::page_window_owners(&anchor.scope)
+                    .iter()
+                    .any(|owner| {
+                        owner.token == anchor.token
+                            && owner.window == anchor.window
+                            && owner.snapshot.group == anchor.group
+                            && owner
+                                .snapshot
+                                .pages
+                                .iter()
+                                .any(|page| page.id == anchor.page)
+                    }))
+    }
+
+    // Only a privately dispatched new-page effect may mint this transition.
+    // It changes the live anchor while retaining the immutable original receipt.
+    pub(super) fn accept_created_anchor(
+        &self,
+        source: &PageWindowSnapshot,
+        destination: PageAnchor,
+    ) -> bool {
+        let Ok(mut anchor) = self.0.anchor.lock() else {
+            return false;
+        };
+        if anchor.scope != source.scope
+            || anchor.group != source.group
+            || destination.scope != source.scope
+            || destination.group != source.group
+            || source.reserved.contains(&destination.page)
+        {
+            return false;
+        }
+        let current = source.pages.iter().any(|page| page.id == anchor.page)
+            || super::live_ipc_owners::page_window_owners(&anchor.scope)
+                .iter()
+                .any(|owner| {
+                    owner.token == anchor.token
+                        && owner.window == anchor.window
+                        && owner.snapshot.group == anchor.group
+                        && owner
+                            .snapshot
+                            .pages
+                            .iter()
+                            .any(|page| page.id == anchor.page)
+                });
+        if !current {
+            return false;
+        }
+        *anchor = destination;
+        true
+    }
+
+    // Prepared-window Core commit moves this newly created identity without
+    // callbacks, before source or child can publish their ownership changes.
+    pub(super) fn move_created_anchor(
+        &self,
+        source: &qobject::BrowserUi,
+        destination: PageAnchor,
+    ) -> bool {
+        let Ok(mut anchor) = self.0.anchor.lock() else {
+            return false;
+        };
+        if anchor.page != destination.page
+            || anchor.scope != destination.scope
+            || anchor.group != destination.group
+            || anchor.token != source.rust().window_token.to_string()
+            || Some(anchor.window) != source.rust().window
+        {
+            return false;
+        }
+        *anchor = destination;
+        true
+    }
+
     pub(super) fn finish_close(self, outcome: ferric_browser_application::NativeOperationOutcome) {
         if !self.0.finished.swap(true, Ordering::AcqRel)
             && let Some(reporter) = &self.0.reporter
@@ -121,6 +203,14 @@ impl PageHandoff {
         {
             let _ = reporter.finish(ferric_browser_application::NativeOperationOutcome::OwnerLost);
         }
+    }
+
+    pub(super) fn terminal_focus_guard(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.0.terminal_focus_started)
+    }
+
+    pub(super) fn focus_generation(&self) -> u64 {
+        self.0.focus_generation.load(Ordering::Acquire)
     }
 
     pub(super) fn request_focus(&self) {
@@ -232,6 +322,7 @@ impl PageHandoff {
                 }
                 return;
             };
+            root.terminal_focus_started.store(true, Ordering::Release);
             lease.reporter = root.reporter.clone();
             let nonce = lease.nonce();
             source_ui.as_mut().queue_pending_engine_action();
@@ -289,6 +380,23 @@ pub(super) struct PageScope {
 }
 
 impl PageScope {
+    pub(super) fn matches_owner(&self, ui: &qobject::BrowserUi) -> bool {
+        let rust = ui.rust();
+        rust.state.as_ref().is_some_and(|state| {
+            state.profile_instance_id() == Some(self.profile)
+                && rust
+                    .window
+                    .and_then(|id| state.windows().get(&id))
+                    .is_some_and(|window| {
+                        window.context == self.context
+                            && state
+                                .profiles()
+                                .get(&window.profile)
+                                .is_some_and(|profile| profile.privacy == self.privacy)
+                    })
+        })
+    }
+
     pub(super) fn matches_undo_profile(&self, scope: &crate::page_window_undo::Scope) -> bool {
         self.profile == scope.profile && self.privacy == scope.privacy
     }
@@ -583,6 +691,7 @@ impl qobject::BrowserUi {
             reporter,
             finished: AtomicBool::new(false),
             focus_requested: AtomicBool::new(false),
+            terminal_focus_started: Arc::new(AtomicBool::new(false)),
             admitted_focus_generation: crate::page_window_focus::generation(),
             focus_generation: AtomicU64::new(0),
         })))
@@ -935,6 +1044,17 @@ impl qobject::BrowserUi {
         }
         let mut operations = Vec::new();
         for (index, (command, route)) in expanded.iter().enumerate() {
+            if self.as_ref().in_page_window_mode()
+                && super::browser_ui_page_creation::handles(command, Some(route))
+            {
+                return self.execute_page_window_ipc_creation(
+                    command,
+                    route,
+                    expanded[index + 1..].to_vec(),
+                    operation_id,
+                    handoff,
+                );
+            }
             if self.as_ref().in_page_window_mode() && command.name == "tab-close" {
                 return self.execute_page_window_ipc_close(
                     command,

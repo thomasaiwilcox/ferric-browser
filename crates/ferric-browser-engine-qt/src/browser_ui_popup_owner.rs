@@ -346,6 +346,7 @@ impl qobject::BrowserUi {
                 },
             );
         }
+        self.as_mut().move_page_creation(destination.as_mut(), tab);
         // The native caller blocks both Ui signals. Set current projections
         // before returning to the materializer, without publishing either owner.
         self.as_mut().sync_tab_order_from_core();
@@ -532,7 +533,11 @@ impl qobject::BrowserUi {
                 "Page opening cancelled because this window changed. Open the page again.",
             );
         }
-        if self.as_mut().navigate_url(&prepared.url).is_err() {
+        if self
+            .as_mut()
+            .navigate_prepared_page_url(prepared.source_target, &prepared.url)
+            .is_err()
+        {
             return QString::from(
                 "The page window is ready, but its navigation couldn't start. Open the page again.",
             );

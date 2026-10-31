@@ -40,6 +40,7 @@ impl qobject::BrowserUi {
             .as_mut()
             .get_mut()
             .ipc_shutdown_gate = true;
+        self.as_mut().cancel_page_creations();
         self.as_mut().refresh_ipc_owner();
         self.set_status_text(QString::from("Shutdown gate active"));
         true

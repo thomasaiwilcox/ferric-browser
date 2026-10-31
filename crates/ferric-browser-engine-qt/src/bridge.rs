@@ -49,6 +49,8 @@ pub(crate) mod qobject {
         include!("gui_application.h");
         include!("public_page_host.h");
         include!("page_window_identity.h");
+        include!("popup_owner_bridge.h");
+        fn ferric_queue_page_creation_publication(ui: &BrowserUi);
         include!("url_display.h");
         type QString = cxx_qt_lib::QString;
         type QByteArray = cxx_qt_lib::QByteArray;
@@ -1410,6 +1412,28 @@ pub(crate) mod qobject {
         fn fail_live_page_owner(self: Pin<&mut BrowserUi>, nonce: &QString);
         #[qinvokable]
         fn cancel_live_page_move(self: Pin<&mut BrowserUi>, nonce: &QString);
+
+        fn created_page_presentation_intent(self: &BrowserUi) -> QString;
+        fn take_created_page_presentation(self: Pin<&mut BrowserUi>) -> bool;
+        fn publish_page_creation(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn begin_page_creation_load(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            identity: &QString,
+            url: &QString,
+        ) -> QString;
+        #[qinvokable]
+        fn complete_page_creation_load(
+            self: Pin<&mut BrowserUi>,
+            receipt: &QString,
+            identity: &QString,
+            success: bool,
+        );
+
+        #[qinvokable]
+        fn page_creation_controls_focus(self: &BrowserUi) -> bool;
 
         fn activate_prepared_page(self: Pin<&mut BrowserUi>) -> QString;
 

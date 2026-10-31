@@ -110,6 +110,17 @@ impl qobject::BrowserUi {
             self.as_ref().validate_ipc_route_public(route)?;
             return self.execute_context_delete_command(&command);
         }
+        if self.as_ref().in_page_window_mode()
+            && super::browser_ui_page_creation::handles(&command, Some(route))
+        {
+            return self.execute_page_window_ipc_creation(
+                &command,
+                route,
+                Vec::new(),
+                operation_id,
+                &mut None,
+            );
+        }
         if self.as_ref().in_page_window_mode() && command.name == "tab-close" {
             return self.execute_page_window_ipc_close(
                 &command,
@@ -265,6 +276,18 @@ impl qobject::BrowserUi {
         route: &IpcRoute,
         operation_id: Option<&str>,
     ) -> Result<Value, String> {
+        if self.as_ref().in_page_window_mode() && route.context.is_none() && route.profile.is_none()
+        {
+            return self
+                .execute_page_window_ipc_creation(
+                    &command,
+                    route,
+                    Vec::new(),
+                    operation_id,
+                    &mut None,
+                )
+                .map_err(|error| error.to_string());
+        }
         let dispatch = {
             let binding = self.as_ref();
             let rust = binding.rust();

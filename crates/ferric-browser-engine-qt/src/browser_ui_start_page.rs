@@ -1034,6 +1034,7 @@ impl qobject::BrowserUi {
                         let _ = self
                             .as_mut()
                             .reduce_event(Event::CompleteNavigation { target });
+                        self.as_mut().page_creation_internal_ready(target, &url);
                     }
                 }
             }

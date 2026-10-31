@@ -78,7 +78,8 @@ ApplicationWindow {
         interval: 0
         onTriggered: {
             secondaryWindow.completeProfileBootstrap()
-            if (secondaryWindow.profileBootstrapComplete && secondaryWindow.windowPreparedPageActivateRequested
+            if (secondaryWindow.profileBootstrapComplete && !secondaryUi.page_creation_controls_focus()
+                    && secondaryWindow.windowPreparedPageActivateRequested
                     && secondaryWindow.windowPreparedPageFocusSource
                     && secondaryWindow.windowPreparedPageFocusSource.active)
                 rootWindow.activateBrowserWindow(secondaryWindow, secondaryUi)
@@ -2063,6 +2064,9 @@ function onContext_workspaceChanged() {
             secondaryWindow.completeProfileBootstrap()
         }
     }
+
+    function createdPagePresentationIntent() { return popupOwnerBridge.createdPagePresentationIntent() }
+    function presentCreatedPage() { return popupOwnerBridge.presentCreatedPage() }
 
     function finishPreparedPageNavigation() {
         if (windowPreparedNavigationStarted || !windowPreparedOwnerRegistered || runtimeReleased) return

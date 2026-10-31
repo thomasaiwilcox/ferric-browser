@@ -70,6 +70,42 @@ impl qobject::BrowserUi {
             if command_index > 0 {
                 self.as_mut().queue_pending_engine_action();
             }
+            if self.as_ref().in_page_window_mode() {
+                let creation = if command.name == "tab-open" {
+                    Some((command.clone(), None))
+                } else if command.name == "open" {
+                    match super::interactive_open_command(&command) {
+                        Ok(Some((parsed, mut route)))
+                            if super::browser_ui_page_creation::handles(&parsed, Some(&route)) =>
+                        {
+                            route.source = super::CommandSource::Ui;
+                            Some((parsed, Some(route)))
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                if let Some((creation, route)) = creation {
+                    return match self.as_mut().execute_page_window_creation(
+                        &creation,
+                        count,
+                        route.as_ref(),
+                        super::browser_ui_page_windows::PageContinuation::Interactive {
+                            commands: commands[command_index + 1..].to_vec(),
+                            count,
+                        },
+                        None,
+                        handoff,
+                    ) {
+                        Ok(_) => true,
+                        Err(error) => {
+                            self.set_status_text(QString::from(error));
+                            false
+                        }
+                    };
+                }
+            }
             match self
                 .as_mut()
                 .dispatch_workflow_command(&mut command, &registry)

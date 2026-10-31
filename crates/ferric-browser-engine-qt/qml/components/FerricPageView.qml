@@ -153,6 +153,8 @@ WebEngineView {
                 onViewRetiredChanged: { if (resourceTracked) refreshPromptViewIdentity() }
                 property var documentRequestOwner: ({})
                 property var documentTitleTarget: null
+                property string creationLoadReceipt: ""
+                property var creationLoadProfile: null
                 function publishPageTitle() {
                     var target = documentTitleTarget
                     if (!target || !ownsTab() || nativeUrl.length > 0 || loading
@@ -364,6 +366,9 @@ WebEngineView {
                         } else {
                             viewUi.navigation_started(loadRequest.url.toString())
                         }
+                        creationLoadProfile = webView.profile
+                        creationLoadReceipt = viewUi.begin_page_creation_load(tabIndex,
+                                promptLeaseIdentity, loadRequest.url.toString())
                     } else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
                         nativeContent.noteCommit(true)
                         if (viewTabs && tabIndex >= 0) {
@@ -389,6 +394,9 @@ WebEngineView {
                         } else {
                             viewUi.navigation_completed()
                         }
+                        viewUi.complete_page_creation_load(creationLoadReceipt, promptLeaseIdentity,
+                                creationLoadProfile === webView.profile && webView.profile === viewProfile)
+                        creationLoadReceipt = ""
                         documentTitleTarget = viewUi.navigation_target_for_index(tabIndex)
                         publishPageTitle()
                         if (viewUi === factory.primaryUi
@@ -400,8 +408,12 @@ WebEngineView {
                         }
                     } else if (loadRequest.status === WebEngineView.LoadStoppedStatus) {
                         nativeContent.noteStopped()
+                        viewUi.complete_page_creation_load(creationLoadReceipt, promptLeaseIdentity, false)
+                        creationLoadReceipt = ""
                     } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
                         nativeContent.noteCommit(false)
+                        viewUi.complete_page_creation_load(creationLoadReceipt, promptLeaseIdentity, false)
+                        creationLoadReceipt = ""
                         if (viewTabs && tabIndex >= 0) {
                             viewUi.navigation_failed_with_details(
                                 tabIndex,

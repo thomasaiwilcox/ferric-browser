@@ -174,6 +174,27 @@ impl qobject::BrowserUi {
             if index > 0 {
                 self.as_mut().queue_pending_engine_action();
             }
+            if crate::browser_ui_page_creation::handles(&step.command, step.route.as_ref()) {
+                let mut commands = expanded[index + 1..].to_vec();
+                for step in &mut commands {
+                    if let Some(route) = &mut step.route {
+                        route.selector = crate::DispatchTarget::Active;
+                    }
+                }
+                return self
+                    .execute_page_window_creation(
+                        &step.command,
+                        step.count,
+                        step.route.as_ref(),
+                        PageContinuation::Recorded {
+                            commands,
+                            invocation: step.clone(),
+                        },
+                        operation,
+                        handoff,
+                    )
+                    .map_err(Into::into);
+            }
             if step.command.name == "tab-close" {
                 if let Some(route) = &step.route {
                     if route.context.is_some()

@@ -126,11 +126,13 @@ impl qobject::BrowserUi {
         crate::page_window_operations::install_waker(wake);
     }
 
-    pub(super) fn maintenance_delay_ms(self: Pin<&mut Self>) -> i32 {
+    pub(super) fn maintenance_delay_ms(mut self: Pin<&mut Self>) -> i32 {
         crate::browser_ui_page_close::expire();
+        self.as_mut().poll_page_creations();
         let binding = self.as_ref();
         let rust = binding.rust();
-        let worker_pending = crate::browser_ui_page_close::pending()
+        let worker_pending = !rust.page_creations.is_empty()
+            || crate::browser_ui_page_close::pending()
             || crate::page_group_runtime::is_pending()
             || rust
                 .state

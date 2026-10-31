@@ -468,6 +468,7 @@ ApplicationWindow {
     function finishWindowActivation(state, receipt) { return runtimeBase.finishWindowActivation(state, receipt) }
 
     function failPreparedPagePublication(id) { return window.pageWindowCoordinator.failCommittedPreparedPage(id) }
+    function presentCreatedPageDecision(ui, host, intent) { return runtimeBase.presentCreatedPageDecision(ui,host,intent) }
     function presentPageCloseDecision(ui, host, nonce) { return runtimeBase.presentPageCloseDecision(ui,host,nonce) }
     function activateBrowserWindow(hostWindow, targetUi, operationId, workspace) { return runtimeBase.activateBrowserWindow(hostWindow, targetUi, operationId, workspace) }
 

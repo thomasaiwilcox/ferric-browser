@@ -94,6 +94,7 @@ mod browser_ui_navigation;
 mod browser_ui_navigation_lifecycle;
 mod browser_ui_operations;
 mod browser_ui_page_close;
+mod browser_ui_page_creation;
 mod browser_ui_page_mutations;
 mod browser_ui_page_regroup;
 mod browser_ui_page_sessions;
@@ -574,6 +575,12 @@ pub struct BrowserUiRust {
     page_window_closing: bool,
     page_window_group: String,
     page_window_focus_lease: Option<page_window_focus::Lease>,
+    page_creation_publications:
+        std::collections::VecDeque<browser_ui_page_creation::CreationPublication>,
+    page_creations:
+        std::collections::HashMap<TabId, Box<browser_ui_page_creation::PendingCreation>>,
+    page_creation_focus_owned: bool,
+    page_creation_presentation: Option<browser_ui_page_creation::CreationPresentation>,
     page_close_intent: Option<Box<browser_ui_page_close::CloseIntent>>,
     restored_page_windows:
         std::collections::HashMap<TabId, browser_ui_page_sessions::RestoredPageWindow>,

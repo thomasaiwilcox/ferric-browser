@@ -929,6 +929,8 @@ QtObject {
         return state && !state.finished && window.pendingActivation === state
             && window.pageFocusIntentCurrent(state.intent)
             && (!state.closeNonce || pageCloseActivationCurrent(state))
+            && (!state.creationPresentation || state.presentationConsumed
+                || state.host.createdPagePresentationIntent() === state.intent)
     }
 
     function pageCloseActivationCurrent(state) {
@@ -941,6 +943,14 @@ QtObject {
         var intent = ui ? ui.page_close_focus_intent(nonce) : ""
         if (!intent) return false
         var state = {host:host,ui:ui,targetUi:null,operation:"",nonce:"",closeNonce:nonce,
+                     intent:intent,workspace:"",finished:false}
+        return publishActivation(state) && dispatchActivation(state)
+    }
+
+    function presentCreatedPageDecision(ui, host, intent) {
+        if (!ui || !host || !intent) return false
+        var state = {host:host,ui:ui,targetUi:null,operation:"",nonce:"",
+                     creationPresentation:true,presentationConsumed:false,
                      intent:intent,workspace:"",finished:false}
         return publishActivation(state) && dispatchActivation(state)
     }
@@ -1022,7 +1032,12 @@ QtObject {
         activationDepth += 1
         try {
             if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
-            if (state.nonce.length > 0) {
+            if (state.creationPresentation) {
+                state.presentationConsumed = true
+                var presented = state.host.presentCreatedPage()
+                if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+                finishWindowActivation(state,presented && state.host.active ? "activated" : "unknown")
+            } else if (state.nonce.length > 0) {
                 var admission = state.host.requestPageWindowFocus(state.ui,state.targetUi,state.nonce)
                 if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
                 var receipt = admission === "requested" ? state.host.pageWindowFocusStatus(state.ui,state.targetUi,state.nonce) : "stale"

@@ -218,7 +218,47 @@ QString FerricPopupOwnerBridge::activatePreparedPage() {
         || objectProperty(view, "viewHost") != host
         || view->property("stableTabId").toString() != destination->tab_id_for_index(0)
         || host->property("runtimeReleased").toBool()) return QStringLiteral("Page opening cancelled because this window changed. Open the page again.");
-    return destination->activate_prepared_page();
+    QString result;
+    {
+        QSignalBlocker notifications(destination);
+        result = destination->activate_prepared_page();
+        if (!state->destination) notifications.dismiss();
+    }
+    QTimer::singleShot(0,QCoreApplication::instance(),[state] {
+        if (state->destination) publishPreparedProperties(state->destination);
+        if (state->root && state->destination && state->host) {
+            const auto intent=state->destination->created_page_presentation_intent();
+            if (!intent.isEmpty() && state->root && state->destination && state->host)
+                QMetaObject::invokeMethod(state->root,"presentCreatedPageDecision",Qt::DirectConnection,
+                    Q_ARG(QVariant,QVariant::fromValue(static_cast<QObject *>(state->destination.data()))),
+                    Q_ARG(QVariant,QVariant::fromValue(state->host.data())),Q_ARG(QVariant,intent));
+        }
+        if (state->destination) state->destination->runtime_work_available();
+    });
+    return result;
+}
+
+QString FerricPopupOwnerBridge::createdPagePresentationIntent() const {
+    const auto state=prepared_;
+    return state && state->destination ? state->destination->created_page_presentation_intent() : QString();
+}
+
+bool FerricPopupOwnerBridge::presentCreatedPage() {
+    const auto state=prepared_;
+    const QPointer<FerricPopupOwnerBridge> self(this);
+    const QPointer<QWindow> window(state ? qobject_cast<QWindow *>(state->host.data()) : nullptr);
+    auto alive=[&] { return self && state && state->destination && state->host && state->profile && window; };
+    if (!alive() || hostUi(state->host) != state->destination || !alive()
+        || hostProfile(state->host) != state->profile || !alive()) return false;
+    const QPointer<QObject> view(objectProperty(state->host,"activeView"));
+    if (!alive() || !view || objectProperty(view,"viewUi") != state->destination || !alive() || !view
+        || objectProperty(view,"viewHost") != state->host || !alive() || !view
+        || objectProperty(view,"profile") != state->profile || !alive() || !view
+        || !state->destination->take_created_page_presentation()) return false;
+    // The QML caller holds the shared activation batch across this real show.
+    // No Qt callback follows the final pure generation/Target consume first.
+    window->show();
+    return true;
 }
 
 #include "profile_lifetime.h"
@@ -261,6 +301,21 @@ bool invokeView(QObject *host, const char *method, QQuickItem *view) {
         Q_RETURN_ARG(QVariant, result), Q_ARG(QVariant, QVariant::fromValue(static_cast<QObject *>(view))))
         && result.toBool();
 }
+}
+
+void ferric_queue_page_creation_publication(const BrowserUi &ui) {
+    const QPointer<BrowserUi> owner(const_cast<BrowserUi *>(&ui));
+    QTimer::singleShot(0,QCoreApplication::instance(),[owner] {
+        if (!owner) return;
+        bool changed = false;
+        {
+            QSignalBlocker notifications(owner);
+            changed = owner->publish_page_creation();
+            if (!owner) notifications.dismiss();
+        }
+        if (changed && owner) publishPreparedProperties(owner);
+        if (owner) owner->runtime_work_available();
+    });
 }
 
 bool FerricPopupOwnerBridge::prepareLivePageWindow(QObject *source, QObject *destination, const QString &nonce) {

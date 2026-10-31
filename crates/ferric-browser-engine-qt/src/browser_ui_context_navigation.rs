@@ -578,6 +578,45 @@ impl qobject::BrowserUi {
         Ok(())
     }
 
+    // The prepared page has exactly one authorized initial navigation. Capture
+    // its actual new document before observers or the native view can run.
+    pub(super) fn navigate_prepared_page_url(
+        mut self: Pin<&mut Self>,
+        target: Target,
+        url: &ValidatedUrl,
+    ) -> Result<(), String> {
+        let effects = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .state
+            .as_mut()
+            .ok_or("Core state unavailable")?
+            .dispatch_runtime(super::RuntimeInput::EngineFact(Event::StartNavigation {
+                target,
+                url: url.clone(),
+            }))
+            .map_err(|error| error.to_string())?;
+        let next = effects
+            .iter()
+            .find_map(|effect| match effect {
+                super::RuntimeEffect::Engine(EngineEffect::Navigate { target, .. }) => {
+                    Some(*target)
+                }
+                _ => None,
+            })
+            .ok_or("Navigation ignored")?;
+        self.as_mut().bind_prepared_creation(target, next);
+        let effects = self.as_mut().observe_runtime_effects(effects);
+        self.as_mut().set_pending_engine_action(&effects);
+        let resolved = QString::from(url.as_str());
+        self.as_mut().set_initial_url(resolved.clone());
+        self.as_mut().update_current_url(resolved);
+        self.as_mut().set_load_state(QString::from("provisional"));
+        Ok(())
+    }
+
     pub(super) fn navigate(mut self: Pin<&mut Self>, input: &QString) {
         let requested = input.to_string();
         match resolve_input(&requested, &self.as_ref().navigation_context()) {

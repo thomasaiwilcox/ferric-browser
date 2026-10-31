@@ -65,7 +65,12 @@ QObject *ApplicationTests::createObject(QObject *parent, const QVariantMap &prop
     const auto value=setupWindow->property("windowUi");
     auto *ui=value.value<QObject *>();
     if (!ui) ui=value.value<QJSValue>().toQObject();
-    if (ui) {
+    if (property("creationReentry").toBool()) {
+        const QPointer<QQuickWindow> created(qobject_cast<QQuickWindow *>(setupWindow.data()));
+        if (created) connect(created,&QWindow::visibleChanged,this,[this,created](bool visible) {
+            if (visible && created) savedSelection=evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)");
+        });
+    } else if (ui) {
         const int index=ui->metaObject()->indexOfProperty("config_json");
         const auto receiver=metaObject()->method(metaObject()->indexOfSlot("destroySetupWindow()"));
         if (index>=0) QObject::connect(ui,ui->metaObject()->property(index).notifySignal(),this,receiver,Qt::DirectConnection);
@@ -93,8 +98,12 @@ QObject *ApplicationTests::createObject(QObject *parent, const QVariantMap &prop
 
 void ApplicationTests::destroySetupWindow()
 {
+    const QPointer<QObject> doomed=setupWindow;
+    // Destruction publishes release notifications too. Retire the injection
+    // first so a nested notification cannot delete the same window twice.
+    setupWindow.clear();
     setupWindowDestroyed=true;
-    delete setupWindow.data();
+    delete doomed.data();
 }
 
 void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
@@ -124,7 +133,7 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-close-focus-reentrant", "window-close-root-probe", "window-close-cancel", "window-close-partial", "window-close-tail", "window-close-retired", "window-close-stale", "window-close-fallback", "window-close-fallback-role", "window-close-pinned", "window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-registration-retry", "preparation-source-retire", "preparation-publish-destroy", "preparation-publish-navigation", "preparation-publish-profile", "preparation-setup-error", "preparation-setup-destroy", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"creation-publish-destroy", "creation-focus-reentrant", "creation-encoded", "creation-failed", "creation-open-route", "creation-open-background", "creation-foreground", "creation-background", "creation-fallback", "creation-background-fallback", "creation-recorded", "creation-stale", "creation-blank", "creation-start", "window-close-focus-reentrant", "window-close-root-probe", "window-close-cancel", "window-close-partial", "window-close-tail", "window-close-retired", "window-close-stale", "window-close-fallback", "window-close-fallback-role", "window-close-pinned", "window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-registration-retry", "preparation-source-retire", "preparation-publish-destroy", "preparation-publish-navigation", "preparation-publish-profile", "preparation-setup-error", "preparation-setup-destroy", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -162,6 +171,136 @@ void ApplicationTests::pageWindowPresentation()
         QCOMPARE(evaluate("testWindow.tabViews.length").toInt(), 1);
         QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), sourceView.data());
         QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+        return;
+    }
+
+    if (scenario=="creation-publish-destroy") {
+        QVERIFY(command("tab-open "+initial+"?issuer"));
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+        const QString issuer="testWindow.liveWindowEntries().find(function(e){return e.ui!==testWindow.browserUi}).host";
+        QTRY_COMPARE(evaluate(issuer+".windowUi.load_state").toString(),QStringLiteral("complete"));
+        QPointer<QObject> issuingHost(evaluate(issuer).value<QObject *>());
+        auto *issuingUi=evaluate(issuer+".windowUi").value<QObject *>();
+        QVERIFY(issuingHost && issuingUi);
+        engine->rootContext()->setContextProperty("testCreationIssuer",issuingHost.data());
+        setupWindow=issuingHost;
+        setupWindowDestroyed=false;
+        const int index=issuingUi->metaObject()->indexOfProperty("tab_count");
+        QVERIFY(index>=0);
+        const auto receiver=metaObject()->method(metaObject()->indexOfSlot("destroySetupWindow()"));
+        QObject::connect(issuingUi,issuingUi->metaObject()->property(index).notifySignal(),this,receiver,Qt::DirectConnection);
+        QVERIFY(evaluate("testCreationIssuer.windowUi.execute_command("+quoted("tab-open "+initial+"?doomed ;; jseval --world page window.wrongDestroyedTail=1")+")").toBool());
+        QTRY_VERIFY(setupWindowDestroyed);
+        QVERIFY(!issuingHost);
+        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),1);
+        QTRY_VERIFY(!evaluate("testWindow.pageWindowCoordinator.hasPendingWindows()").toBool());
+        QCOMPARE(page("window.pageWindowDraft").toString(),QStringLiteral("unfinished work"));
+        QVERIFY(!page("typeof window.wrongDestroyedTail !== 'undefined'").toBool());
+        return;
+    }
+
+    if (scenario.startsWith("creation-")) {
+        auto resetCreationReentry=qScopeGuard([&] { setProperty("creationReentry",false); });
+        if (scenario=="creation-focus-reentrant") {
+            setProperty("creationReentry",true);
+            engine->rootContext()->setContextProperty("savedWindowFactory",evaluate("testWindow.browserWindowComponentObject").value<QObject *>());
+            evaluate("testWindow.browserWindowComponentObject=testProbe");
+        }
+        const bool nativePage=scenario=="creation-blank" || scenario=="creation-start";
+        const bool background=scenario.contains("background");
+        const bool fallback=scenario.contains("fallback");
+        if (fallback) evaluate("testWindow.browserWindowComponentObject=null");
+        QTcpServer delayed;
+        QVERIFY(delayed.listen(QHostAddress::LocalHost,0));
+        QList<QPointer<QTcpSocket>> held;
+        bool release=false;
+        auto reply=[&](QTcpSocket *socket) {
+            const QByteArray body="<!doctype html><title>Created page</title><body>Created document</body>";
+            socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: "+QByteArray::number(body.size())+"\r\nConnection: close\r\n\r\n"+body);
+            socket->disconnectFromHost();
+        };
+        connect(&delayed,&QTcpServer::newConnection,this,[&] {
+            while (auto *socket=delayed.nextPendingConnection()) {
+                connect(socket,&QTcpSocket::readyRead,socket,[&,socket] {
+                    if (!socket->readAll().contains("\r\n\r\n")) return;
+                    if (release) reply(socket); else held.append(socket);
+                });
+            }
+        });
+        auto createdUrl=nativePage ? (scenario=="creation-blank" ? QStringLiteral("rb://blank") : QStringLiteral("rb://start"))
+            : QString("http://127.0.0.1:%1/created").arg(delayed.serverPort());
+        if (scenario=="creation-encoded") createdUrl += "/%41?value=%41%2Fkeep%26inside#%41";
+        auto opening=QString("tab-open %1%2 ;; %3")
+            .arg(background ? "--background " : "",createdUrl,
+                 nativePage ? "tab-pin" : "jseval --world page window.creationTail=109");
+        if (scenario.startsWith("creation-open-")) opening=QString("open --target %1 %2 ;; jseval --world page window.creationTail=109")
+            .arg(background ? "tab-bg" : "tab",createdUrl);
+        if (scenario=="creation-recorded") {
+            QVERIFY(command("action tab open "+createdUrl+" ;; jseval --world page window.creationTail=109"));
+        } else QVERIFY(command(opening));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        const QString createdHost=fallback ? "testWindow" : "testWindow.liveWindowEntries().find(function(e){return e.ui!==testWindow.browserUi}).host";
+        if (fallback) QTRY_COMPARE(evaluate("testWindow.tabViews.length").toInt(),2);
+        else QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+        const auto createdView=fallback ? "testWindow.tabViewAt(1)" : createdHost+".activeView";
+        QTRY_VERIFY(evaluate("!!"+createdView).toBool());
+        if (!nativePage) QTRY_VERIFY(!held.isEmpty());
+        const auto createdUi=fallback ? "testWindow.browserUi" : createdHost+".windowUi";
+        qInfo()<<"created owner"<<evaluate(createdUi+".status_text")
+               <<"load receipt"<<evaluate(createdView+".creationLoadReceipt");
+        if (nativePage) {
+            // Native blank/start pages deliberately reject web JavaScript.
+            // Their continuation operates on browser-owned page metadata.
+            QTRY_COMPARE(evaluate(createdView+".nativeUrl").toString(),createdUrl);
+            QTRY_VERIFY(evaluate(createdUi+".tab_pinned_at(0)").toBool());
+            QTRY_COMPARE(QGuiApplication::focusWindow(),qobject_cast<QQuickWindow *>(evaluate(createdHost).value<QObject *>()));
+            pageReceiver="testWindow.tabViewAt(0)";
+            QCOMPARE(page("window.pageWindowDraft").toString(),QStringLiteral("unfinished work"));
+            return;
+        }
+        if (scenario=="creation-failed") {
+            QTRY_VERIFY(evaluate(createdHost+".visible").toBool());
+            for (const auto &socket:held) if (socket) socket->abort();
+            pageReceiver=createdView;
+            QTRY_COMPARE(evaluate(createdHost+".windowUi.load_state").toString(),QStringLiteral("failed"));
+            QVERIFY(evaluate(createdHost+".visible").toBool());
+            QVERIFY(!page("typeof window.creationTail !== 'undefined'").toBool());
+            return;
+        }
+        if (!background && !fallback && !nativePage) QTRY_VERIFY(evaluate(createdHost+".visible").toBool());
+        if (background) {
+            pageReceiver="testWindow.tabViewAt(0)";
+            QTRY_COMPARE(page("window.creationTail").toInt(),109);
+            QCOMPARE(QGuiApplication::focusWindow(),window);
+            if (!fallback) QVERIFY(!evaluate(createdHost+".visible").toBool());
+            QVERIFY(evaluate(createdView+".loading").toBool());
+        } else if (!nativePage) {
+            pageReceiver=createdView;
+            QVERIFY(!page("typeof window.creationTail !== 'undefined'").toBool());
+        }
+        if (scenario=="creation-stale") {
+            QVERIFY(evaluate(createdHost+".windowUi.execute_command("+quoted("open "+createdUrl+"?replacement")+")").toBool());
+            evaluate("testWindow.completeBrowserKeyAction("+createdHost+".windowUi,"+createdHost+")");
+        }
+        release=true;
+        for (const auto &socket:held) if (socket) reply(socket);
+        pageReceiver=createdView;
+        QTRY_VERIFY(!evaluate(createdView+".loading").toBool());
+        if (scenario=="creation-stale") {
+            QTRY_COMPARE(page("location.href").toString(),createdUrl+"?replacement");
+            QTest::qWait(150);
+            QVERIFY(!page("typeof window.creationTail !== 'undefined'").toBool());
+        } else if (!background) {
+            QTRY_COMPARE(page("window.creationTail").toInt(),109);
+            if (scenario=="creation-focus-reentrant") {
+                QVERIFY(savedSelection.toBool());
+                QTRY_COMPARE(QGuiApplication::focusWindow(),window);
+            } else QTRY_COMPARE(QGuiApplication::focusWindow(),qobject_cast<QQuickWindow *>(evaluate(createdHost).value<QObject *>()));
+        } else {
+            QVERIFY(!page("typeof window.creationTail !== 'undefined'").toBool());
+        }
+        pageReceiver="testWindow.tabViewAt(0)";
+        QCOMPARE(page("window.pageWindowDraft").toString(),QStringLiteral("unfinished work"));
         return;
     }
 
@@ -203,6 +342,7 @@ Ferric.FerricBrowserWindow {
     QPointer<QObject> observed(evaluate("Qt.createQmlObject('import QtQuick; Connections { target: testWindow.browserUi; function onTab_countChanged() { if (target.tab_count === 2) testProbe.savedSelection = target.tab_id_for_index(1) } }', testWindow)").value<QObject *>());
     QVERIFY(observed);
     const bool opened = command("open --target " + target + " " + destination);
+    if (target=="tab" || target=="tab-bg") QTRY_VERIFY(!savedSelection.toString().isEmpty());
     delete observed.data();
     const auto requestedId = savedSelection.toString();
     QVERIFY(opened);
@@ -370,7 +510,9 @@ Ferric.FerricBrowserWindow {
         QCOMPARE(evaluate(entry + ".ui.tab_id_for_index(0)").toString(), requestedId);
         QCOMPARE(evaluate("testWindow.browserUi.tab_index_for_id(" + quoted(requestedId) + ")").toInt(), -1);
     }
-    if (scenario == "background" || scenario == "preparation-focus") {
+    if (scenario == "background" || scenario == "preparation-focus" || scenario == "activation-context") {
+        // A context change revokes the old creation/focus intent. A fresh
+        // explicit selection can still expose the usable retained window.
         QVERIFY(!childWindow->isVisible());
         QCOMPARE(QGuiApplication::focusWindow(), window);
         QVERIFY(evaluate("testWindow.activateBrowserWindow(" + childHost + "," + entry + ".ui)").toBool());

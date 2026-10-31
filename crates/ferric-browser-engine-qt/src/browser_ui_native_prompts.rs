@@ -199,7 +199,8 @@ impl qobject::BrowserUi {
                 .get_mut()
                 .interaction
                 .prompt_view_identities
-                .insert(tab, identity);
+                .insert(tab, identity.clone());
+            self.as_mut().bind_creation_view(tab, &identity);
         }
         self.as_mut().refresh_ipc_owner();
     }
