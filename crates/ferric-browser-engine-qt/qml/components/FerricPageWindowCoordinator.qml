@@ -56,7 +56,8 @@ QtObject {
                     && coordinator.rootWindow.primaryPageRetired
                     && !coordinator.rootWindow.applicationShutdownInProgress
                     && coordinator.rootWindow.liveWindowEntries().length === 0
-                    && !coordinator.hasPendingWindows())
+                    && !coordinator.hasPendingWindows()
+                    && !coordinator.rootWindow.browserUi.page_closes_pending())
                 coordinator.rootWindow.beginApplicationShutdown()
         })
     }

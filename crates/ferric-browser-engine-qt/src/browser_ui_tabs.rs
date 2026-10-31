@@ -427,6 +427,9 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn close_tab(mut self: Pin<&mut Self>, index: i32) -> bool {
+        if !crate::browser_ui_page_close::allows_close(self.as_ref().get_ref(), Some(index)) {
+            return false;
+        }
         let Some(target) = self.as_ref().get_ref().target_for_index(index) else {
             self.set_status_text(QString::from("Tab is no longer live"));
             return false;

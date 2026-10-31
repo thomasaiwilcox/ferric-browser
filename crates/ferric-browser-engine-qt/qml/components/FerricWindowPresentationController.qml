@@ -346,12 +346,19 @@ QtObject {
     }
 
     function finalizeQuit() {
+        if (window.pageCloseController.armed) {
+            if (!window.browserUi.flush_durable_state() || !window.pageCloseController.authorizeWindowClose()) {
+                window.pageCloseController.cancel()
+                return
+            }
+        }
         window.shutdownPageProbeTimer.stop()
         window.shutdownPromptVisible = false
         window.shutdownPagePromptVisible = false
         if (window.shutdownConfirmationCommand === ":window-close"
                 && window.browserUi.feature_tabs_presentation_effective === "windows"
-                && (window.liveWindowEntries().some(function(entry) { return entry.host !== window })
+                && (window.pageCloseController.armed
+                    || window.liveWindowEntries().some(function(entry) { return entry.host !== window })
                     || window.pageWindowCoordinator.hasPendingWindows())) {
             window.retirePrimaryPage()
             return

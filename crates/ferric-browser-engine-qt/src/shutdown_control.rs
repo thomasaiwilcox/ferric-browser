@@ -16,6 +16,9 @@ use crate::{mark_forced_shutdown, qobject};
 
 impl qobject::BrowserUi {
     pub(super) fn request_shutdown(mut self: Pin<&mut Self>) -> bool {
+        if !crate::browser_ui_page_close::allows_close(self.as_ref().get_ref(), None) {
+            return false;
+        }
         match self.as_mut().reduce_event(Event::RequestShutdown) {
             Ok(_) => {
                 self.set_status_text(QString::from("Shutdown requested"));

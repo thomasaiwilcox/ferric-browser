@@ -211,6 +211,10 @@ QtObject {
             window.showCommandNotice(action.split("\t").slice(1).join("\t"), true)
             return
         }
+        if (action.indexOf("window-page-close\t") === 0) {
+            window.pageCloseController.begin(action)
+            return
+        }
         if (action.indexOf("window-live-transfer\t") === 0) {
             window.pageWindowCoordinator.executeLivePageMove(window.browserUi,window,action)
             return

@@ -1413,6 +1413,19 @@ pub(crate) mod qobject {
         #[qinvokable]
         fn retire_page_presentation(self: Pin<&mut BrowserUi>) -> bool;
 
+        #[qinvokable]
+        fn page_close_index(self: &BrowserUi, nonce: &QString) -> i32;
+        #[qinvokable]
+        fn page_close_focus_intent(self: &BrowserUi, nonce: &QString) -> QString;
+        #[qinvokable]
+        fn authorize_page_close(self: Pin<&mut BrowserUi>, nonce: &QString) -> bool;
+        #[qinvokable]
+        fn cancel_page_close(self: Pin<&mut BrowserUi>, nonce: &QString);
+        #[qinvokable]
+        fn page_close_released(self: Pin<&mut BrowserUi>, nonce: &QString);
+        #[qinvokable]
+        fn page_closes_pending(self: &BrowserUi) -> bool;
+
         // Read-only comparison invoked through the checked native owner bridge.
         fn shares_permission_session(self: &BrowserUi, other: &BrowserUi) -> bool;
 

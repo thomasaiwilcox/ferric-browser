@@ -93,6 +93,7 @@ mod browser_ui_native_prompts;
 mod browser_ui_navigation;
 mod browser_ui_navigation_lifecycle;
 mod browser_ui_operations;
+mod browser_ui_page_close;
 mod browser_ui_page_mutations;
 mod browser_ui_page_regroup;
 mod browser_ui_page_sessions;
@@ -573,6 +574,7 @@ pub struct BrowserUiRust {
     page_window_closing: bool,
     page_window_group: String,
     page_window_focus_lease: Option<page_window_focus::Lease>,
+    page_close_intent: Option<Box<browser_ui_page_close::CloseIntent>>,
     restored_page_windows:
         std::collections::HashMap<TabId, browser_ui_page_sessions::RestoredPageWindow>,
     restored_page_group_ids: std::collections::HashMap<Uuid, String>,

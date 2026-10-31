@@ -68,6 +68,7 @@ impl Default for BrowserUiRust {
             page_window_closing: false,
             page_window_group: String::new(),
             page_window_focus_lease: None,
+            page_close_intent: None,
             restored_page_windows: std::collections::HashMap::new(),
             restored_page_group_ids: std::collections::HashMap::new(),
             credential_policy_epoch: 1,

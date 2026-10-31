@@ -78,6 +78,28 @@ impl qobject::BrowserUi {
                 CommandDispatchControl::Failed => return false,
                 CommandDispatchControl::Unhandled => {}
             }
+            if self.as_ref().in_page_window_mode() && command.name == "tab-close" {
+                return match self.as_mut().execute_page_window_close(
+                    &command,
+                    count,
+                    super::browser_ui_page_windows::PageContinuation::Interactive {
+                        commands: commands[command_index + 1..].to_vec(),
+                        count,
+                    },
+                    None,
+                    handoff,
+                ) {
+                    Ok(_) => {
+                        self.as_mut()
+                            .note_repeatable_invocation(&command, None, count);
+                        true
+                    }
+                    Err(error) => {
+                        self.set_status_text(QString::from(error));
+                        false
+                    }
+                };
+            }
             if self.as_ref().in_page_window_mode()
                 && super::browser_ui_page_regroup::handles(&command)
             {

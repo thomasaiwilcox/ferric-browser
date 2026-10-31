@@ -99,7 +99,7 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"window-close-focus-reentrant", "window-close-root-probe", "window-close-cancel", "window-close-partial", "window-close-tail", "window-close-retired", "window-close-stale", "window-close-fallback", "window-close-fallback-role", "window-close-pinned", "window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
@@ -233,6 +233,136 @@ void ApplicationTests::pageWindowPresentation()
     }
     pageReceiver = "testWindow.tabViewAt(0)";
     QCOMPARE(page("window.pageWindowDraft").toString(), QStringLiteral("unfinished work"));
+    if (scenario.startsWith("window-close-")) {
+        engine->rootContext()->setContextProperty("closePeerHost", childWindow);
+        engine->rootContext()->setContextProperty("closePeerUi", evaluate(entry + ".ui").value<QObject *>());
+        QPointer<QObject> peerView(evaluate(childHost + ".activeView").value<QObject *>());
+        if (scenario == "window-close-fallback" || scenario == "window-close-fallback-role") {
+            engine->rootContext()->setContextProperty("savedWindowFactory",evaluate("testWindow.browserWindowComponentObject").value<QObject *>());
+            evaluate("testWindow.browserWindowComponentObject = null");
+            QVERIFY(command("open --target tab " + destination + "-fallback"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_COMPARE(evaluate("testWindow.tabViews.length").toInt(), 2);
+            const auto closingId = evaluate("testWindow.browserUi.tab_id_for_index(1)").toString();
+            QPointer<QObject> closingView(evaluate("testWindow.tabViewAt(1)").value<QObject *>());
+            QVERIFY(command("tab-close --id " + closingId + " ;; jseval --world page window.afterPageClose=37"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_VERIFY(evaluate("testWindow.pageCloseController.confirmationVisible").toBool());
+            QVERIFY(evaluate("testWindow.browserChromeInputActive").toBool());
+            if (scenario == "window-close-fallback-role") {
+                // A real transfer removes the other local page while the close
+                // prompt is pending. Its old page-close approval cannot become
+                // authority to destroy the final page/window.
+                evaluate("testWindow.browserWindowComponentObject = savedWindowFactory");
+                QVERIFY(evaluate("testWindow.browserUi.select_tab(0)").toBool());
+                QVERIFY(command("tab-detach"));
+                evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+                QTRY_COMPARE(evaluate("testWindow.browserUi.tab_count").toInt(), 1);
+                evaluate("testWindow.pageCloseController.commit()");
+                QTRY_VERIFY(!evaluate("testWindow.browserUi.page_closes_pending()").toBool());
+                QVERIFY(closingView);
+                QVERIFY(window->isVisible());
+                QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), closingView.data());
+                QVERIFY(!evaluate("testWindow.shutdownConfirmationVisible").toBool());
+                return;
+            }
+            QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
+            QTRY_COMPARE(QGuiApplication::focusWindow(),window);
+            sendOwnedBrowserKey(window,Qt::Key_Y);
+            QTRY_VERIFY(closingView.isNull() || evaluate("testWindow.pageCloseController.dirtyVisible").toBool());
+            if (closingView) QVERIFY(clickCloseDecision(window, true));
+            QTRY_VERIFY(closingView.isNull());
+            QTRY_COMPARE(evaluate("testWindow.browserUi.tab_count").toInt(), 1);
+            pageReceiver = "testWindow.activeWebView()";
+            QTRY_COMPARE(page("window.afterPageClose").toInt(), 37);
+            QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), sourceView.data());
+            QVERIFY(peerView);
+            return;
+        }
+        if (scenario == "window-close-focus-reentrant") {
+            evaluate("closePeerHost.hide()");
+            QPointer<QObject> hook(evaluate("Qt.createQmlObject('import QtQml; Connections { target:closePeerHost; property bool injected:false; function onVisibleChanged(){if(target.visible && !injected){injected=true;testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)}} }',testWindow)").value<QObject *>());
+            QVERIFY(hook);
+            QVERIFY(command("tab-close --id " + requestedId + " ;; jseval --world page window.afterPageClose=37"));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_VERIFY(hook->property("injected").toBool());
+            QTRY_VERIFY(!evaluate("testWindow.browserUi.page_closes_pending()").toBool());
+            QTRY_COMPARE(QGuiApplication::focusWindow(),window);
+            QVERIFY(!evaluate("closePeerHost.windowCloseConfirmationVisible").toBool());
+            QVERIFY(peerView && sourceView);
+            QVERIFY(page("typeof window.afterPageClose === 'undefined'").toBool());
+            delete hook.data();
+            return;
+        }
+        if (scenario == "window-close-root-probe") {
+            QVERIFY(command("tab-close --id " + sourceId));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+            QTRY_VERIFY(evaluate("testWindow.shutdownConfirmationVisible").toBool());
+            // Retain the actual outstanding probe timer across a stale target
+            // cancellation. Its old timeout must never resurrect approval UI.
+            evaluate("testWindow.shutdownPageProbeTimerObject.restart()");
+            QVERIFY(evaluate("testWindow.browserUi.set_tab_pinned(0,true)>=0").toBool());
+            QTRY_VERIFY(!evaluate("testWindow.pageCloseController.armed").toBool());
+            QVERIFY(!evaluate("testWindow.shutdownPageProbeTimerObject.running").toBool());
+            QTest::qWait(2700);
+            QVERIFY(!evaluate("testWindow.shutdownPagePromptVisible || testWindow.shutdownConfirmationVisible").toBool());
+            QVERIFY(sourceView && peerView);
+            QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+            return;
+        }
+        if (scenario == "window-close-pinned") QVERIFY(evaluate("testWindow.browserUi.set_tab_pinned(0,true)>=0").toBool());
+        const bool bulk = scenario == "window-close-cancel" || scenario == "window-close-partial" || scenario == "window-close-pinned";
+        const auto closeCommand = (bulk ? QStringLiteral("tab-close --count 2") : QStringLiteral("tab-close --id ") + requestedId)
+            + " ;; jseval --world page window.afterPageClose=37";
+        // Closing the entire group cannot promise document work afterwards.
+        // Partial/cancel qualification is close-only, leaving no invented page.
+        const auto invocation = (scenario == "window-close-cancel" || scenario == "window-close-partial")
+            ? QStringLiteral("tab-close --count 2") : closeCommand;
+        if (scenario == "window-close-retired") {
+            QVERIFY(evaluate("closePeerUi.execute_command(" + quoted("tab-close ;; jseval --world page window.afterPageClose=37") + ")").toBool());
+            evaluate("testWindow.completeBrowserKeyAction(closePeerUi,closePeerHost)");
+        } else {
+            QVERIFY(command(invocation));
+            evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        }
+        QTRY_VERIFY(evaluate("closePeerHost.windowCloseConfirmationVisible").toBool());
+        if (scenario == "window-close-cancel") {
+            QVERIFY(clickCloseDecision(childWindow,false));
+            QTRY_VERIFY(!evaluate("testWindow.browserUi.page_closes_pending()").toBool());
+            QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
+            QVERIFY(peerView);
+            return;
+        }
+        if (scenario == "window-close-stale") {
+            QVERIFY(evaluate("closePeerUi.set_tab_pinned(0,true)>=0").toBool());
+            QTRY_VERIFY(!evaluate("closePeerHost.pageCloseController.armed").toBool());
+            QVERIFY(!evaluate("closePeerHost.windowCloseConfirmationVisible").toBool());
+            QVERIFY(peerView);
+            QVERIFY(childWindow->isVisible());
+            QVERIFY(page("typeof window.afterPageClose === 'undefined'").toBool());
+            return;
+        }
+        QVERIFY(clickCloseDecision(childWindow,true));
+        QTRY_VERIFY(peerView.isNull() || evaluate("closePeerHost.windowShutdownPagePromptVisible").toBool());
+        if (peerView) QVERIFY(clickCloseDecision(childWindow,true));
+        QTRY_VERIFY(peerView.isNull());
+        if (scenario == "window-close-partial") {
+            QTRY_VERIFY(evaluate("testWindow.shutdownConfirmationVisible").toBool());
+            QTRY_COMPARE(QGuiApplication::focusWindow(),window);
+            QVERIFY(clickCloseDecision(window,false));
+            QTRY_VERIFY(!evaluate("testWindow.browserUi.page_closes_pending()").toBool());
+            QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),1);
+            QVERIFY(sourceView);
+            QVERIFY(window->isVisible());
+            QVERIFY(!evaluate("testWindow.primaryPageRetired").toBool());
+        } else {
+            QTRY_COMPARE(page("window.afterPageClose").toInt(),37);
+            QTRY_COMPARE(QGuiApplication::focusWindow(),window);
+        }
+        QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(),sourceView.data());
+        QCOMPARE(page("window.pageWindowDraft").toString(),QStringLiteral("unfinished work"));
+        return;
+    }
     if (scenario == "window-focus-publication") {
         // Exercise production pending-state publication/receipts using owned
         // inert hosts, so callbacks can supersede synchronously and exactly.

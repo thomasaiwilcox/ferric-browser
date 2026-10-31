@@ -107,6 +107,22 @@ ApplicationWindow {
         return primaryPageIdentity ? primaryPageIdentity.pageFocusStatus(issuer, target, nonce) : "stale"
     }
     property string pageGroupId: primaryPageIdentity.tag
+    Timer {
+        interval: 100
+        repeat: true
+        running: window.primaryPageRetired && !window.applicationShutdownInProgress
+        onTriggered: {
+            window.browserUi.refresh_operations()
+            window.browserUi.poll_ipc()
+            window.pageWindowCoordinator.recheckLastWindow()
+        }
+    }
+    readonly property var pageCloseController: FerricPageCloseController {
+        parent: window.contentItem
+        host: window
+        ui: window.browserUi
+        rootWindow: window
+    }
     readonly property var pageWindowCoordinator: FerricPageWindowCoordinator { rootWindow: window }
     readonly property string windowPrivacyLabel: primaryPrivacyHeader.label
     title: "Ferric Browser"
@@ -451,6 +467,7 @@ ApplicationWindow {
     function executeWindowFocusAction(sourceUi, action) { return runtimeBase.executeWindowFocusAction(sourceUi, action) }
     function finishWindowActivation(state, receipt) { return runtimeBase.finishWindowActivation(state, receipt) }
 
+    function presentPageCloseDecision(ui, host, nonce) { return runtimeBase.presentPageCloseDecision(ui,host,nonce) }
     function activateBrowserWindow(hostWindow, targetUi, operationId, workspace) { return runtimeBase.activateBrowserWindow(hostWindow, targetUi, operationId, workspace) }
 
     function focusNotificationOrigin(profileScope, origin) { return runtimeBase.focusNotificationOrigin(profileScope, origin) }
@@ -820,6 +837,8 @@ ApplicationWindow {
         || window.profileManagerVisible
         || window.profileDeletePreviewVisible
         || window.downloadManagerVisible
+        || window.pageCloseController.confirmationVisible
+        || window.pageCloseController.dirtyVisible
         || window.shutdownConfirmationVisible
         || window.shutdownPromptVisible
         || window.shutdownPagePromptVisible
@@ -1717,6 +1736,8 @@ ApplicationWindow {
         })
         window.publishBrowserWindowRegistry()
         window.hide()
+        window.pageCloseController.released()
+        window.pageWindowCoordinator.recheckLastWindow()
         return true
     }
 
@@ -3433,6 +3454,7 @@ GridLayout {
                                ? "Quit Ferric Browser" : "Close browser window"
         dialogHeight: 220 * window.chromeScale
         onKeepRequested: {
+            window.pageCloseController.cancel()
             window.shutdownConfirmationVisible = false
             browserUi.status_text = "Shutdown cancelled"
         }
@@ -3452,6 +3474,7 @@ GridLayout {
         proceedLabel: "Cancel active work and quit"
         dialogHeight: 190 * window.chromeScale
         onKeepRequested: {
+            window.pageCloseController.cancel()
             window.shutdownPromptVisible = false
             browserUi.status_text = "Shutdown cancelled"
         }
@@ -3472,6 +3495,7 @@ GridLayout {
         proceedAccessibleName: "Close anyway despite page state"
         dialogHeight: 220 * window.chromeScale
         onKeepRequested: {
+            window.pageCloseController.cancel()
             window.shutdownPageProbeGeneration += 1
             window.shutdownPagePromptVisible = false
             browserUi.status_text = "Shutdown cancelled"

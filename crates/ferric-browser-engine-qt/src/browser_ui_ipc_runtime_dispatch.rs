@@ -110,6 +110,15 @@ impl qobject::BrowserUi {
             self.as_ref().validate_ipc_route_public(route)?;
             return self.execute_context_delete_command(&command);
         }
+        if self.as_ref().in_page_window_mode() && command.name == "tab-close" {
+            return self.execute_page_window_ipc_close(
+                &command,
+                route,
+                Vec::new(),
+                operation_id,
+                &mut None,
+            );
+        }
         let result =
             self.as_mut()
                 .execute_adapter_ipc_command(command.clone(), route, operation_id)?;

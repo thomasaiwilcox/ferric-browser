@@ -377,6 +377,9 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn retire_page_presentation(mut self: Pin<&mut Self>) -> bool {
+        if !crate::browser_ui_page_close::allows_close(self.as_ref().get_ref(), None) {
+            return false;
+        }
         if self.as_ref().rust().state.as_ref().is_none_or(|state| {
             state.configuration().tabs.presentation
                 != ferric_browser_config::TabsPresentation::Windows

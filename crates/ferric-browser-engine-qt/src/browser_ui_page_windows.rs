@@ -91,6 +91,30 @@ impl PageHandoff {
         true
     }
 
+    // Only the accepted-close broker calls this after actual release. The
+    // issuing receipt stays immutable; a pre-admitted survivor carries its tail.
+    pub(super) fn accept_closed_anchor(&self, closed: &[TabId], survivor: PageAnchor) -> bool {
+        let Ok(mut anchor) = self.0.anchor.lock() else {
+            return false;
+        };
+        if !closed.contains(&anchor.page) {
+            return true;
+        }
+        if anchor.scope != survivor.scope || anchor.group != survivor.group {
+            return false;
+        }
+        *anchor = survivor;
+        true
+    }
+
+    pub(super) fn finish_close(self, outcome: ferric_browser_application::NativeOperationOutcome) {
+        if !self.0.finished.swap(true, Ordering::AcqRel)
+            && let Some(reporter) = &self.0.reporter
+        {
+            let _ = reporter.finish(outcome);
+        }
+    }
+
     pub(super) fn owner_lost(self) {
         if !self.0.finished.swap(true, Ordering::AcqRel)
             && let Some(reporter) = &self.0.reporter
@@ -277,6 +301,7 @@ impl PageScope {
 pub(super) struct PresentedPage {
     pub(super) id: TabId,
     pub(super) pinned: bool,
+    pub(super) view_identity: String,
     pub(super) target: super::Target,
     pub(super) order: usize,
 }
@@ -332,6 +357,7 @@ impl PageWindowSnapshot {
                 .then_some(PresentedPage {
                     id: *id,
                     pinned: page.pinned,
+                    view_identity: rust.interaction.prompt_view_identities.get(id)?.clone(),
                     target: state.capture_target(*id)?,
                     order: usize::MAX,
                 })
@@ -909,6 +935,15 @@ impl qobject::BrowserUi {
         }
         let mut operations = Vec::new();
         for (index, (command, route)) in expanded.iter().enumerate() {
+            if self.as_ref().in_page_window_mode() && command.name == "tab-close" {
+                return self.execute_page_window_ipc_close(
+                    command,
+                    route,
+                    expanded[index + 1..].to_vec(),
+                    operation_id,
+                    handoff,
+                );
+            }
             if self.as_ref().in_page_window_mode()
                 && super::browser_ui_page_regroup::handles(command)
             {

@@ -52,6 +52,12 @@ fn wake_controller() {
     }
 }
 
+pub(super) fn completions_pending() -> bool {
+    store()
+        .lock()
+        .is_ok_and(|store| store.registry.completions_pending())
+}
+
 pub(super) fn maintenance_delay_ms() -> Option<i32> {
     let store = store().lock().ok()?;
     store.delay(Instant::now())

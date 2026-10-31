@@ -208,6 +208,8 @@ ApplicationWindow {
         && !secondaryManagers.active
         && !secondaryDownloads.active
         && !(activeView && activeView.nativeUrl === "rb://start" && activeView.startPage && activeView.startPage.inputActive)
+        && !pageCloseController.confirmationVisible
+        && !pageCloseController.dirtyVisible
         && !windowCloseConfirmationVisible
         && !windowShutdownPromptVisible
         && !windowShutdownPagePromptVisible
@@ -353,6 +355,12 @@ ApplicationWindow {
         }
     }
 
+    readonly property var pageCloseController: FerricPageCloseController {
+        parent: secondaryWindow.contentItem
+        host: secondaryWindow
+        ui: secondaryUi
+        rootWindow: secondaryWindow.rootWindow
+    }
     onClosing: function(close) {
         if (secondaryWindow.windowShutdownApproved) {
             secondaryWindow.releaseWindowResources()
@@ -437,6 +445,7 @@ ApplicationWindow {
             secondaryWindow.windowShutdownStoragePromptVisible = true
             return
         }
+        if (!secondaryWindow.pageCloseController.authorizeWindowClose()) return
         if (!secondaryUi.request_shutdown()) {
             return
         }
@@ -711,6 +720,7 @@ ApplicationWindow {
         proceedAccessibleName: "Close browser window"
         dialogHeight: 220 * rootWindow.chromeScale
         onKeepRequested: {
+            secondaryWindow.pageCloseController.cancel()
             secondaryWindow.windowCloseConfirmationVisible = false
             secondaryUi.status_text = "Window close cancelled"
         }
@@ -731,6 +741,7 @@ ApplicationWindow {
         proceedLabel: "Cancel and close"
         dialogHeight: 190 * rootWindow.chromeScale
         onKeepRequested: {
+            secondaryWindow.pageCloseController.cancel()
             secondaryWindow.windowShutdownPromptVisible = false
             rootWindow.abortApplicationShutdown()
             secondaryUi.status_text = "Shutdown cancelled"
@@ -754,6 +765,7 @@ ApplicationWindow {
         proceedAccessibleName: "Close anyway despite page state"
         dialogHeight: 220 * rootWindow.chromeScale
         onKeepRequested: {
+            secondaryWindow.pageCloseController.cancel()
             secondaryWindow.cancelPageStateProbe()
             rootWindow.abortApplicationShutdown()
             secondaryUi.status_text = "Shutdown cancelled"
@@ -778,6 +790,7 @@ ApplicationWindow {
         dialogHeight: 220 * rootWindow.chromeScale
         stackingOrder: 101
         onKeepRequested: {
+            secondaryWindow.pageCloseController.cancel()
             secondaryWindow.windowShutdownStoragePromptVisible = false
             rootWindow.abortApplicationShutdown()
             secondaryUi.status_text = "Shutdown cancelled; durable state was retained"
@@ -978,6 +991,10 @@ function onContext_workspaceChanged() {
         }
         if (action.indexOf("command-error\t") === 0) {
             secondaryWindow.showCommandNotice(action.split("\t").slice(1).join("\t"), true)
+            return
+        }
+        if (action.indexOf("window-page-close\t") === 0) {
+            secondaryWindow.pageCloseController.begin(action)
             return
         }
         if (action.indexOf("window-live-transfer\t") === 0) {
@@ -2239,10 +2256,12 @@ function onContext_workspaceChanged() {
         }
         rootWindow.profileResourceRegistry.releaseWindow(secondaryWindow)
         secondaryUi.view_closed()
+        secondaryWindow.pageCloseController.released()
         secondaryUi.release_transient_resources()
         if (rootWindow.primaryPageRetired && !rootWindow.applicationShutdownInProgress
                 && rootWindow.liveWindowEntries().length === 0
-                && !rootWindow.pageWindowCoordinator.hasPendingWindows())
+                && !rootWindow.pageWindowCoordinator.hasPendingWindows()
+                && !rootWindow.primaryBrowserUi.page_closes_pending())
             rootWindow.beginApplicationShutdown()
     }
     Component.onDestruction: {

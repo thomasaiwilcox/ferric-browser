@@ -819,6 +819,8 @@ QtObject {
                 || window.shutdownParticipantCount() > 0) {
             return
         }
+        window.browserUi.refresh_operations()
+        if (window.browserUi.page_closes_pending()) return
         window.applicationShutdownStage = "Saving browser data"
         if (!window.browserUi.flush_durable_state()) {
             window.applicationShutdownStage = "Browser data couldn't be saved"
@@ -926,6 +928,21 @@ QtObject {
     function activationCurrent(state) {
         return state && !state.finished && window.pendingActivation === state
             && window.pageFocusIntentCurrent(state.intent)
+            && (!state.closeNonce || pageCloseActivationCurrent(state))
+    }
+
+    function pageCloseActivationCurrent(state) {
+        var entry = state.ui ? window.browserWindowEntryForUi(state.ui) : null
+        return !!entry && entry.host === state.host
+                && state.ui.page_close_focus_intent(state.closeNonce) === state.intent
+    }
+
+    function presentPageCloseDecision(ui, host, nonce) {
+        var intent = ui ? ui.page_close_focus_intent(nonce) : ""
+        if (!intent) return false
+        var state = {host:host,ui:ui,targetUi:null,operation:"",nonce:"",closeNonce:nonce,
+                     intent:intent,workspace:"",finished:false}
+        return publishActivation(state) && dispatchActivation(state)
     }
 
     function cancelPendingActivation(ui, operationId) {

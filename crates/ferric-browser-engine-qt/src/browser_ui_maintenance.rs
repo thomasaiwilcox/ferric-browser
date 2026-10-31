@@ -127,9 +127,11 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn maintenance_delay_ms(self: Pin<&mut Self>) -> i32 {
+        crate::browser_ui_page_close::expire();
         let binding = self.as_ref();
         let rust = binding.rust();
-        let worker_pending = crate::page_group_runtime::is_pending()
+        let worker_pending = crate::browser_ui_page_close::pending()
+            || crate::page_group_runtime::is_pending()
             || rust
                 .state
                 .as_ref()

@@ -215,6 +215,7 @@ struct EventQueue {
 }
 
 struct EventQueueState {
+    writing: bool,
     messages: VecDeque<Vec<u8>>,
     bytes: usize,
     closed: bool,
@@ -224,6 +225,7 @@ impl EventQueue {
     fn new() -> Self {
         Self {
             state: Mutex::new(EventQueueState {
+                writing: false,
                 messages: VecDeque::new(),
                 bytes: 0,
                 closed: false,
@@ -279,11 +281,24 @@ impl EventQueue {
         }
     }
 
+    fn written(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            state.writing = false;
+        }
+    }
+
+    fn pending(&self) -> bool {
+        self.state
+            .lock()
+            .is_ok_and(|state| state.writing || !state.messages.is_empty())
+    }
+
     fn take(&self, active: &std::sync::atomic::AtomicBool) -> Option<Vec<u8>> {
         let mut state = self.state.lock().ok()?;
         loop {
             if let Some(payload) = state.messages.pop_front() {
                 state.bytes = state.bytes.saturating_sub(payload.len());
+                state.writing = true;
                 return Some(payload);
             }
             if state.closed || !active.load(std::sync::atomic::Ordering::Acquire) {
@@ -307,6 +322,9 @@ pub fn subscribe_event_stream(
     stream: UnixStream,
     event_types: Option<Vec<String>>,
 ) -> Result<(), String> {
+    stream
+        .set_write_timeout(Some(Duration::from_secs(1)))
+        .map_err(|error| format!("could not bound IPC event writes: {error}"))?;
     let queue = Arc::new(EventQueue::new());
     let active = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let registry = EVENT_SUBSCRIBERS.get_or_init(|| Mutex::new(Vec::new()));
@@ -324,7 +342,9 @@ pub fn subscribe_event_stream(
         .spawn(move || {
             let mut stream = stream;
             while let Some(payload) = writer_queue.take(&writer_active) {
-                if write_frame(&mut stream, &payload).is_err() {
+                let result = write_event_frame(&mut stream, &payload);
+                writer_queue.written();
+                if result.is_err() {
                     writer_active.store(false, std::sync::atomic::Ordering::Release);
                     writer_queue.close();
                     break;
@@ -374,6 +394,55 @@ pub fn publish_event(notification: &EventNotification) {
         }
         deliver_event_to_subscriber(subscriber, notification, &payload)
     });
+}
+
+// SO_SNDTIMEO alone bounds each syscall. Carry one absolute deadline through
+// partial writes so a slow reader cannot repeatedly renew its shutdown lease.
+fn write_event_frame(stream: &mut UnixStream, payload: &[u8]) -> io::Result<()> {
+    let length = u32::try_from(payload.len())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "event frame too large"))?;
+    let deadline = Instant::now() + Duration::from_secs(1);
+    for mut remaining in [&length.to_be_bytes()[..], payload] {
+        while !remaining.is_empty() {
+            let Some(timeout) = deadline
+                .checked_duration_since(Instant::now())
+                .filter(|timeout| !timeout.is_zero())
+            else {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "event frame deadline elapsed",
+                ));
+            };
+            stream.set_write_timeout(Some(timeout))?;
+            match stream.write(remaining) {
+                Ok(0) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::WriteZero,
+                        "event stream closed",
+                    ));
+                }
+                Ok(written) => remaining = &remaining[written..],
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => (),
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether an admitted subscriber notification is queued or being written.
+/// Shutdown can poll this without blocking the GUI thread. Event writes have
+/// a bounded socket timeout, including when a subscriber stops reading.
+#[must_use]
+pub fn event_writes_pending() -> bool {
+    EVENT_SUBSCRIBERS.get().is_some_and(|registry| {
+        registry.lock().is_ok_and(|registry| {
+            registry.iter().any(|subscriber| {
+                subscriber.active.load(std::sync::atomic::Ordering::Acquire)
+                    && subscriber.queue.pending()
+            })
+        })
+    })
 }
 
 fn deliver_event_to_subscriber(
@@ -1904,6 +1973,44 @@ mod tests {
         drop(client);
         drop(server);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn event_frame_deadline_bounds_a_backpressured_subscriber() {
+        let (mut writer, _reader) = UnixStream::pair().expect("owned socket pair");
+        writer.set_nonblocking(true).unwrap();
+        let filler = [0; 4096];
+        loop {
+            match writer.write(&filler) {
+                Ok(_) => (),
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                Err(error) => panic!("fill socket: {error}"),
+            }
+        }
+        writer.set_nonblocking(false).unwrap();
+        let started = Instant::now();
+        let error = write_event_frame(&mut writer, b"terminal receipt").unwrap_err();
+        assert!(matches!(
+            error.kind(),
+            io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+        ));
+        assert!(started.elapsed() < Duration::from_secs(3));
+    }
+
+    #[test]
+    fn event_queue_tracks_in_flight_writes_before_shutdown() {
+        let queue = EventQueue::new();
+        let active = std::sync::atomic::AtomicBool::new(true);
+        assert!(!queue.pending());
+        assert!(queue.push(vec![1]));
+        assert!(queue.pending());
+        assert_eq!(queue.take(&active), Some(vec![1]));
+        assert!(
+            queue.pending(),
+            "a dequeued event is still owned by the writer"
+        );
+        queue.written();
+        assert!(!queue.pending());
     }
 
     #[test]
