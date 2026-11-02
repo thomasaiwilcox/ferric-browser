@@ -430,8 +430,8 @@ mod tests {
         );
         assert_ne!(token, 0);
         assert_eq!(actor.admit(&lease, true, br"{}", 1), 0);
-        assert!(actor.helper_request(token + 1, true, 1).is_empty());
-        assert!(actor.helper_request(token, false, 1).is_empty());
+        assert_eq!(actor.helper_request(token + 1, true, 1), Vec::<u8>::new());
+        assert_eq!(actor.helper_request(token, false, 1), Vec::<u8>::new());
         assert!(!actor.helper_started(token, 1));
         let request: Value = serde_json::from_slice(&actor.helper_request(token, true, 1)).unwrap();
         assert_eq!(request["origin"], "https://login.example.com");
@@ -461,7 +461,7 @@ mod tests {
         let response: Value = serde_json::from_str(&actor.response(token, 0, 4)).unwrap();
         assert_eq!(response["credential"]["id"], "AQ");
         assert!(response["credential"].get("accounts").is_none());
-        assert!(actor.response(token, 1, 4).is_empty());
+        assert_eq!(actor.response(token, 1, 4), "");
         actor.finish(token + 1, 4, false);
         assert!(actor.current(token, 4));
         actor.finish(token, 4, true);
@@ -473,7 +473,7 @@ mod tests {
     fn native_actor_rejects_late_helper_exit_or_account_choice() {
         let mut actor = new_credential_actor();
         let token = actor.admit(&lease(), false, br#"{"timeout":10}"#, 1);
-        assert!(!actor.helper_request(token, true, 2).is_empty());
+        assert_ne!(actor.helper_request(token, true, 2), Vec::<u8>::new());
         assert!(actor.helper_started(token, 3));
         let response = result(
             token,
@@ -482,7 +482,7 @@ mod tests {
         );
         assert_eq!(actor.frame(token, &response, 4).kind, 3);
         assert_eq!(actor.account_label(token, 1), "Bob");
-        assert!(actor.response(token, 1, 11).is_empty());
+        assert_eq!(actor.response(token, 1, 11), "");
         assert!(!actor.current(token, 11));
         actor.finish(token, 12, false);
         assert_eq!(actor.state.queued_terminal_count(), 0);
@@ -510,7 +510,7 @@ mod tests {
                     .kind,
                 0
             );
-            assert!(actor.response(token, 0, 3).is_empty());
+            assert_eq!(actor.response(token, 0, 3), "");
         }
     }
 
@@ -561,7 +561,7 @@ mod tests {
                     serde_json::json!({"error":"InvalidStateError"})
                 );
             } else {
-                assert!(response.is_empty());
+                assert_eq!(response, "");
             }
         }
     }

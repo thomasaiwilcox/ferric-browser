@@ -1500,7 +1500,7 @@ mod page_order_cleanup_tests {
         let mut owner = BrowserUiRust::default();
         owner.tab_ids = pages.to_vec();
         owner.clear_owned_page_ids();
-        assert!(owner.tab_ids.is_empty());
+        assert_eq!(owner.tab_ids, Vec::new());
         for page in pages {
             assert_eq!(page_order_rank_for_test(page), usize::MAX);
         }

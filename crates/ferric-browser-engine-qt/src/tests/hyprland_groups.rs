@@ -192,11 +192,11 @@ fn socket_disconnect_and_reconnect_clear_stale_window_identity() {
         let (_stream, _) = listener.accept().expect("accept reconnect");
         std::thread::sleep(std::time::Duration::from_millis(100));
     });
-    assert!(
+    assert_eq!(
         session
             .read_events(Some(&socket_path))
-            .expect("reconnected stream")
-            .is_empty()
+            .expect("reconnected stream"),
+        Vec::new()
     );
     let after = session
         .cache

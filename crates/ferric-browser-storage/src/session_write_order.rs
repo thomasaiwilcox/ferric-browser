@@ -45,15 +45,23 @@ fn path_key(path: &Path) -> Option<PathBuf> {
     Some(key)
 }
 
+fn allocate_sequence(sequence: &AtomicU64) -> Option<u64> {
+    // Keep Rust 1.88 support without the deprecated fetch_update alias.
+    let mut current = sequence.load(Ordering::SeqCst);
+    loop {
+        let next = current.checked_add(1)?;
+        match sequence.compare_exchange_weak(current, next, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(previous) => return Some(previous),
+            Err(observed) => current = observed,
+        }
+    }
+}
+
 impl SessionSaveOrder {
     pub(crate) fn capture(path: &Path) -> Self {
         static SEQUENCE: AtomicU64 = AtomicU64::new(1);
         static PATHS: OnceLock<Mutex<HashMap<PathBuf, Weak<Mutex<u64>>>>> = OnceLock::new();
-        let sequence = SEQUENCE
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
-                value.checked_add(1)
-            })
-            .ok();
+        let sequence = allocate_sequence(&SEQUENCE);
         let key = path_key(path);
         let state = key.as_ref().and_then(|key| {
             let mut paths = PATHS.get_or_init(Default::default).lock().ok()?;
@@ -102,5 +110,45 @@ impl SessionSaveOrder {
         crate::sessions::save_session_atomic_unordered(path, snapshot)?;
         *latest = sequence;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{sync::Barrier, thread};
+
+    #[test]
+    fn exhausted_sequence_never_wraps_or_reuses_an_order() {
+        let sequence = AtomicU64::new(u64::MAX - 1);
+        assert_eq!(allocate_sequence(&sequence), Some(u64::MAX - 1));
+        assert_eq!(allocate_sequence(&sequence), None);
+        assert_eq!(allocate_sequence(&sequence), None);
+        assert_eq!(sequence.load(Ordering::SeqCst), u64::MAX);
+    }
+
+    #[test]
+    fn concurrent_captures_receive_distinct_orders() {
+        let sequence = AtomicU64::new(1);
+        let barrier = Barrier::new(8);
+        let mut orders = thread::scope(|scope| {
+            let workers: Vec<_> = (0..8)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        (0..64)
+                            .map(|_| allocate_sequence(&sequence).unwrap())
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+            workers
+                .into_iter()
+                .flat_map(|worker| worker.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        orders.sort_unstable();
+        assert_eq!(orders, (1..=512).collect::<Vec<_>>());
+        assert_eq!(sequence.load(Ordering::SeqCst), 513);
     }
 }

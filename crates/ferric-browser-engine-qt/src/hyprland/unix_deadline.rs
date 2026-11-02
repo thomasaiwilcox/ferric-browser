@@ -259,7 +259,7 @@ mod tests {
         let (mut stream, _) = server.accept().unwrap();
         let mut received = Vec::new();
         stream.read_to_end(&mut received).unwrap();
-        assert!(received.is_empty());
+        assert_eq!(received, Vec::<u8>::new());
         fs::remove_dir_all(root).unwrap();
     }
 

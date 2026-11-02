@@ -434,7 +434,10 @@ mod tests {
         let rows = store.rows(&json!({}), Some(window), &[]).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["window_id"], window.to_string());
-        assert!(store.rows(&json!({}), None, &[window]).unwrap().is_empty());
+        assert_eq!(
+            store.rows(&json!({}), None, &[window]).unwrap(),
+            Vec::<serde_json::Value>::new()
+        );
         drop(source);
         assert!(reporter.finish(NativeOperationOutcome::Applied));
         let rows = store
@@ -450,7 +453,10 @@ mod tests {
         let mut source = source(PrivacyKind::Private, false);
         let mut store = Store::default();
         let reporter = store.begin(&mut source, "native-private").unwrap();
-        assert!(store.rows(&json!({}), None, &[]).unwrap().is_empty());
+        assert_eq!(
+            store.rows(&json!({}), None, &[]).unwrap(),
+            Vec::<serde_json::Value>::new()
+        );
         assert!(
             store
                 .rows(&json!({"include_private":true}), None, &[])
@@ -458,7 +464,10 @@ mod tests {
         );
         drop(source);
         assert!(reporter.finish(NativeOperationOutcome::Applied));
-        assert!(store.rows(&json!({}), None, &[]).unwrap().is_empty());
+        assert_eq!(
+            store.rows(&json!({}), None, &[]).unwrap(),
+            Vec::<serde_json::Value>::new()
+        );
         assert!(
             store
                 .rows(&json!({"include_private":true}), None, &[])

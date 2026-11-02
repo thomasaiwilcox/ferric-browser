@@ -97,7 +97,7 @@ mod tests {
             [0, 1, 2, 3]
         );
         order.forget(&[page(1), page(2), page(3), page(4)]);
-        assert!(order.pages.is_empty());
+        assert_eq!(order.pages, Vec::new());
         assert!(order.ranks.is_empty());
     }
 }

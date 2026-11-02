@@ -481,7 +481,7 @@ mod tests {
         assert_eq!(completion.len(), 1);
         assert_eq!(completion[0].scope, original);
         assert_eq!(completion[0].completion.sequence, sequence);
-        assert!(registry.drain_completions().is_empty());
+        assert_eq!(registry.drain_completions(), Vec::new());
     }
 
     #[test]
@@ -603,7 +603,7 @@ mod tests {
             assert_eq!(catalog.get(case), Some(&before));
         }
         assert!(registry.records().next().is_none());
-        assert!(registry.drain_completions().is_empty());
+        assert_eq!(registry.drain_completions(), Vec::new());
     }
 
     #[test]

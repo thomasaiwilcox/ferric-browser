@@ -340,6 +340,6 @@ mod tests {
             arguments: Vec::new(),
         };
         preserve_remote_count(&mut single, 1);
-        assert!(single.arguments.is_empty());
+        assert_eq!(single.arguments, Vec::<String>::new());
     }
 }

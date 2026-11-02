@@ -560,7 +560,7 @@ mod tests {
             &expected,
             std::slice::from_ref(&binding),
         );
-        assert!(retired.receipt.unwrap().members.is_empty());
+        assert_eq!(retired.receipt.unwrap().members, Vec::new());
         for invalid in [
             format!("created|{key}|{}|41", Uuid::new_v4()),
             format!("added|{}|{scope}|41", Uuid::new_v4()),
@@ -603,7 +603,7 @@ mod tests {
             std::slice::from_ref(&binding),
         );
         assert_eq!(forgotten.outcome, GroupOutcome::Deferred);
-        assert!(forgotten.receipt.unwrap().members.is_empty());
+        assert_eq!(forgotten.receipt.unwrap().members, Vec::new());
         expected.capabilities[0].instance = "replacement".into();
         assert_eq!(
             parse_group_reply(&format!("added|{key}|{scope}|41"), &expected, &[binding]).outcome,
