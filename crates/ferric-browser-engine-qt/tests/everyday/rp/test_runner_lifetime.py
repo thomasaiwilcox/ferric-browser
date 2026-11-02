@@ -20,7 +20,8 @@ class RunnerTeardownTests(unittest.TestCase):
         class FakeRp:
             def __init__(self, *_args, **_kwargs):
                 self.httpd = types.SimpleNamespace(app=types.SimpleNamespace(
-                    verified_registrations=0, verified_assertions=0))
+                    verified_registrations=0, verified_assertions=0,
+                    verified_discoverable_assertions=0))
 
             def start(self):
                 return self

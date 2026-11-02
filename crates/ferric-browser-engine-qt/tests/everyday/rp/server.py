@@ -30,6 +30,7 @@ from fido2.webauthn import (
     AuthenticationResponse,
     PublicKeyCredentialRpEntity,
     PublicKeyCredentialUserEntity,
+    ResidentKeyRequirement,
     UserVerificationRequirement,
 )
 
@@ -121,20 +122,25 @@ class VerifierApplication:
             attestation=AttestationConveyancePreference.NONE,
             verify_origin=lambda observed: observed == self.origin,
         )
+        self.state_lock = threading.RLock()
         self.registration_states: dict[str, Any] = {}
         self.assertion_states: dict[str, Any] = {}
         self.credential = None
         self.signature_counter = 0
         self.account_id: str | None = None
+        self.user_handle: bytes | None = None
         self.verified_registrations = 0
         self.verified_assertions = 0
+        self.verified_discoverable_assertions = 0
 
     def clear_account(self) -> None:
-        self.registration_states.clear()
-        self.assertion_states.clear()
-        self.credential = None
-        self.signature_counter = 0
-        self.account_id = None
+        with self.state_lock:
+            self.registration_states.clear()
+            self.assertion_states.clear()
+            self.credential = None
+            self.signature_counter = 0
+            self.account_id = None
+            self.user_handle = None
 
 
 class _RequestHandler(http.server.BaseHTTPRequestHandler):
@@ -195,94 +201,103 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
         try:
             request = self._read_json()
-            if self.path == "/rp/register/begin":
-                if self.app.credential is not None:
-                    self._respond(409, {"error": "account_exists"})
-                    return
-                self.app.account_id = secrets.token_urlsafe(12)
-                user = PublicKeyCredentialUserEntity(
-                    id=secrets.token_bytes(32),
-                    name=self.app.account_id,
-                    display_name="Disposable test account",
-                )
-                options, state = self.app.verifier.register_begin(
-                    user,
-                    user_verification=UserVerificationRequirement.REQUIRED,
-                )
-                transaction = secrets.token_urlsafe(18)
-                self.app.registration_states[transaction] = state
-                self._respond(
-                    200,
-                    {"transaction": transaction, "publicKey": _json_value(options["publicKey"])},
-                )
-                return
-
-            if self.path == "/rp/register/complete":
-                transaction = request.get("transaction")
-                state = self.app.registration_states.pop(transaction, None)
-                if state is None:
-                    self._respond(400, {"error": "verification_failed"})
-                    return
-                auth_data = self.app.verifier.register_complete(state, request.get("credential"))
-                self.app.credential = auth_data.credential_data
-                self.app.signature_counter = auth_data.counter
-                self.app.verified_registrations += 1
-                self._respond(200, {"ok": True})
-                return
-
-            if self.path == "/rp/assertion/begin":
-                if self.app.credential is None:
-                    self._respond(409, {"error": "no_credential"})
-                    return
-                options, state = self.app.verifier.authenticate_begin(
-                    credentials=[self.app.credential],
-                    user_verification=UserVerificationRequirement.REQUIRED,
-                )
-                transaction = secrets.token_urlsafe(18)
-                self.app.assertion_states[transaction] = state
-                self._respond(
-                    200,
-                    {"transaction": transaction, "publicKey": _json_value(options["publicKey"])},
-                )
-                return
-
-            if self.path == "/rp/assertion/complete":
-                transaction = request.get("transaction")
-                state = self.app.assertion_states.pop(transaction, None)
-                if state is None or self.app.credential is None:
-                    self._respond(400, {"error": "verification_failed"})
-                    return
-                response = request.get("credential")
-                verified = self.app.verifier.authenticate_complete(
-                    state,
-                    [self.app.credential],
-                    response,
-                )
-                parsed = AuthenticationResponse.from_dict(response)
-                count = parsed.response.authenticator_data.counter
-                # python-fido2 validates signature, client data, RP hash, UP
-                # and required UV. Counter freshness is RP state policy here.
-                if verified.credential_id != self.app.credential.credential_id:
-                    raise ValueError("unexpected credential")
-                # WebAuthn §7.2: authenticators without counters keep both
-                # values at zero. Retain clone/replay rejection when either
-                # stored or received counter is nonzero.
-                if (count or self.app.signature_counter) and count <= self.app.signature_counter:
-                    raise ValueError("signature counter did not increase")
-                self.app.signature_counter = count
-                self.app.verified_assertions += 1
-                self._respond(200, {"ok": True})
-                return
-
-            if self.path == "/rp/cleanup":
-                self.app.clear_account()
-                self._respond(200, {"ok": True})
-                return
-
-            self._respond(404, {"error": "not_found"})
+            # The threaded HTTPS server shares one account/transaction store.
+            # Serialize verification and commit with cleanup, but keep socket
+            # reads and response writes outside the state lock.
+            with self.app.state_lock:
+                status, response = self._dispatch(request)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-            # Do not reflect library exception text or WebAuthn response data.
-            self._respond(400, {"error": "verification_failed"})
+            status, response = 400, {"error": "verification_failed"}
+        self._respond(status, response)
+
+    def _dispatch(self, request: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        if self.path == "/rp/register/begin":
+            if self.app.credential is not None:
+                return 409, {"error": "account_exists"}
+            account_id = secrets.token_urlsafe(12)
+            user = PublicKeyCredentialUserEntity(
+                id=secrets.token_bytes(32),
+                name=account_id,
+                display_name="Disposable test account",
+            )
+            options, state = self.app.verifier.register_begin(
+                user,
+                user_verification=UserVerificationRequirement.REQUIRED,
+                resident_key_requirement=ResidentKeyRequirement.REQUIRED,
+            )
+            transaction = secrets.token_urlsafe(18)
+            self.app.registration_states[transaction] = (state, user.id, account_id)
+            return 200, {"transaction": transaction, "publicKey": _json_value(options["publicKey"])}
+
+        if self.path == "/rp/register/complete":
+            if self.app.credential is not None:
+                return 409, {"error": "account_exists"}
+            transaction = request.get("transaction")
+            pending = self.app.registration_states.pop(transaction, None)
+            if pending is None:
+                return 400, {"error": "verification_failed"}
+            state, user_handle, account_id = pending
+            auth_data = self.app.verifier.register_complete(state, request.get("credential"))
+            self.app.credential = auth_data.credential_data
+            self.app.user_handle = user_handle
+            self.app.account_id = account_id
+            self.app.registration_states.clear()
+            self.app.signature_counter = auth_data.counter
+            self.app.verified_registrations += 1
+            return 200, {"ok": True}
+
+        if self.path == "/rp/assertion/begin":
+            if self.app.credential is None:
+                return 409, {"error": "no_credential"}
+            discoverable = request.get("discoverable", False)
+            if type(discoverable) is not bool:
+                raise ValueError("invalid assertion mode")
+            options, state = self.app.verifier.authenticate_begin(
+                credentials=None if discoverable else [self.app.credential],
+                user_verification=UserVerificationRequirement.REQUIRED,
+            )
+            transaction = secrets.token_urlsafe(18)
+            self.app.assertion_states[transaction] = (state, discoverable)
+            return 200, {"transaction": transaction, "publicKey": _json_value(options["publicKey"])}
+
+        if self.path == "/rp/assertion/complete":
+            transaction = request.get("transaction")
+            pending = self.app.assertion_states.pop(transaction, None)
+            if pending is None or self.app.credential is None:
+                return 400, {"error": "verification_failed"}
+            state, discoverable = pending
+            response = request.get("credential")
+            verified = self.app.verifier.authenticate_complete(
+                state,
+                [self.app.credential],
+                response,
+            )
+            parsed = AuthenticationResponse.from_dict(response)
+            handle = parsed.response.user_handle
+            if ((discoverable and handle is None)
+                    or (handle is not None and handle != self.app.user_handle)):
+                raise ValueError("unexpected account handle")
+            count = parsed.response.authenticator_data.counter
+            # python-fido2 validates signature, client data, RP hash, UP
+            # and required UV. Counter freshness is RP state policy here.
+            if verified.credential_id != self.app.credential.credential_id:
+                raise ValueError("unexpected credential")
+            # WebAuthn §7.2: authenticators without counters keep both
+            # values at zero. Retain clone/replay rejection when either
+            # stored or received counter is nonzero.
+            if (count or self.app.signature_counter) and count <= self.app.signature_counter:
+                raise ValueError("signature counter did not increase")
+            self.app.signature_counter = count
+            self.app.verified_assertions += 1
+            if discoverable:
+                self.app.verified_discoverable_assertions += 1
+            return 200, {"ok": True}
+
+        if self.path == "/rp/cleanup":
+            self.app.clear_account()
+            return 200, {"ok": True}
+
+        return 404, {"error": "not_found"}
 
 
 class _BoundedTlsServer(http.server.ThreadingHTTPServer):

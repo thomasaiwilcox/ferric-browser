@@ -21,6 +21,7 @@
      account below.</p>
   <button id="register">Create disposable credential</button>
   <button id="assert" disabled>Verify assertion</button>
+  <button id="discover" disabled>Sign in without a credential list</button>
   <button id="cleanup">Delete disposable account</button>
   <p id="status" role="status" aria-live="polite"></p>
 <script>
@@ -80,22 +81,28 @@ document.getElementById("register").addEventListener("click", async () => {
     if (!credential) throw new Error("Credential creation was cancelled");
     await post("/rp/register/complete", {transaction: start.transaction, credential: credentialJSON(credential)});
     document.getElementById("assert").disabled = false;
+    document.getElementById("discover").disabled = false;
     statusNode.textContent = "Disposable credential registered and independently verified.";
   } catch (_) { statusNode.textContent = "Registration did not complete; no credential success is claimed."; }
 });
-document.getElementById("assert").addEventListener("click", async () => {
+async function verifyAssertion(discoverable) {
   try {
-    const start = await post("/rp/assertion/begin");
+    const start = await post("/rp/assertion/begin", {discoverable});
     const credential = await navigator.credentials.get({publicKey: prepareOptions(start.publicKey)});
     if (!credential) throw new Error("Assertion was cancelled");
     await post("/rp/assertion/complete", {transaction: start.transaction, credential: credentialJSON(credential)});
-    statusNode.textContent = "Assertion verified by the independent relying party.";
+    statusNode.textContent = discoverable
+      ? "Discoverable assertion verified by the independent relying party."
+      : "Assertion verified by the independent relying party.";
   } catch (_) { statusNode.textContent = "Assertion did not verify; no sign-in success is claimed."; }
-});
+}
+document.getElementById("assert").addEventListener("click", () => verifyAssertion(false));
+document.getElementById("discover").addEventListener("click", () => verifyAssertion(true));
 document.getElementById("cleanup").addEventListener("click", async () => {
   try {
     await post("/rp/cleanup");
     document.getElementById("assert").disabled = true;
+    document.getElementById("discover").disabled = true;
     statusNode.textContent = "Disposable server-side account and outstanding challenges cleared.";
   } catch (_) { statusNode.textContent = "Cleanup request failed; stop the disposable server to clear memory."; }
 });

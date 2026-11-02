@@ -47,6 +47,8 @@ int main(int argc, char **argv)
     QGuiApplication::setDesktopFileName(QStringLiteral("ferric-phone-rp-fixture"));
     QGuiApplication::setApplicationDisplayName(QStringLiteral("Ferric disposable passkey test"));
     QQmlEngine engine;
+    QObject::connect(&engine, &QQmlEngine::quit, application.get(), &QCoreApplication::quit,
+                     Qt::QueuedConnection);
     QQmlComponent component(&engine, QUrl("qrc:/qt/qml/io/github/ferricbrowser/qml/Main.qml"));
     std::unique_ptr<QObject> root(component.beginCreate(engine.rootContext()));
     if (!root) return 2;
@@ -75,9 +77,11 @@ int main(int argc, char **argv)
     QTimer monitor;
     monitor.setInterval(50);
     bool requested = false;
+    bool closing = false;
     int result = 1;
     QObject::connect(&monitor, &QTimer::timeout, application.get(), [&] {
         if (elapsed.elapsed() > 20000) { application->exit(1); return; }
+        if (closing) return;
         if (!requested) {
             QQmlExpression expression(engine.rootContext(), root.get(), QStringLiteral("activeWebView()"));
             auto *view = qobject_cast<QQuickItem *>(expression.evaluate().value<QObject *>());
@@ -103,11 +107,22 @@ int main(int argc, char **argv)
             fputc('\n', stdout);
             fflush(stdout);
             dialog->reject();
-            application->exit(result);
+            if (result != 0) { application->exit(result); return; }
+            closing = true;
+            QTimer::singleShot(0, root.get(), [&] {
+                if (!QMetaObject::invokeMethod(root.get(), "beginApplicationShutdown"))
+                    application->exit(1);
+            });
             return;
         }
     });
     monitor.start();
     const int eventResult = application->exec();
-    return eventResult ? eventResult : result;
+    const bool approved = root->property("shutdownApproved").toBool();
+    const auto receipt = QJsonDocument(QJsonObject{{"production_shutdown_approved", approved}})
+        .toJson(QJsonDocument::Compact);
+    fwrite(receipt.data(), 1, size_t(receipt.size()), stdout);
+    fputc('\n', stdout);
+    fflush(stdout);
+    return eventResult ? eventResult : (result == 0 && approved ? 0 : 1);
 }

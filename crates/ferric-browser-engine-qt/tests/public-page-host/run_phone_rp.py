@@ -140,6 +140,7 @@ def main():
         remaining = attempt("child_audit", reap_children)
         registrations = attempt("registration_metrics", lambda: fixture.httpd.app.verified_registrations) if fixture else 0
         assertions = attempt("assertion_metrics", lambda: fixture.httpd.app.verified_assertions) if fixture else 0
+        discoverable = attempt("discoverable_metrics", lambda: fixture.httpd.app.verified_discoverable_assertions) if fixture else 0
         registrations, assertions = registrations or 0, assertions or 0
         verified = registrations > 0 and assertions > 0
         helper_hash = attempt("helper_hash", lambda: hashlib.sha256(helper.read_bytes()).hexdigest()) if helper.exists() else None
@@ -153,6 +154,7 @@ def main():
             "fixture_exit": result, "interactive": args.interactive, "interrupted": cancelled,
             "cleanup_errors": cleanup_errors, "helper_sha256": helper_hash,
             "rp_verified_registrations": registrations, "rp_verified_assertions": assertions,
+            "rp_verified_discoverable_assertions": discoverable or 0,
             "rp_verified_create_get": verified, "physical_qualified": False,
             "forced_cleanup": forced, "remaining_owned_pids": remaining}), flush=True)
         if layout.exists():

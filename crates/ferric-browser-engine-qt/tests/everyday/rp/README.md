@@ -18,6 +18,12 @@ user verification. With none attestation it does not authenticate an
 attestation certificate chain or manufacturer identity. It retains the
 credential public key from authenticator data.
 
+Enrollment requests a discoverable credential (`residentKey: required`). Each
+pending registration retains its own user/account identity, and that identity
+is installed only after successful verification. One account wins competing
+registrations. An account-owned lock serializes verification, commits and
+cleanup; HTTP reads and writes remain outside it.
+
 `authenticate_complete` parses assertion bytes and checks get type, exact
 origin, server-issued challenge, RP ID hash, user presence, required UV, known
 credential ID, and the assertion signature using the registered public key.
@@ -28,6 +34,12 @@ fresh server challenges and valid signatures. This supports physical passkeys
 without disguising a non-increasing nonzero counter. See
 [WebAuthn §7.2](https://www.w3.org/TR/webauthn-3/#sctn-verifying-assertion).
 Errors returned to the browser are generic and request bodies are never logged.
+
+The guided page offers both an allow-listed assertion and “Sign in without a
+credential list”. The latter omits `allowCredentials` and requires the returned
+user handle to match the registered account. Any supplied foreign handle is
+rejected in either mode. Separate receipt counts identify verified discoverable
+assertions; an ordinary assertion does not qualify that path.
 
 The test authenticator makes fresh P-256 keys, credential IDs, authenticator
 data, a `none` attestation object, client data, and ECDSA signatures for each
@@ -114,7 +126,9 @@ binary separately and supply both artifact paths:
 ```
 
 The default check displays the disposable browser, confirms the Phone choice
-is enabled, and cancels it without selecting the helper. It uses an explicit
+is enabled, and cancels it without selecting the helper. It then exercises the
+production Root Quit path and requires approved shutdown and natural exit.
+The plain QQmlEngine explicitly forwards Qt.quit to application shutdown. It uses an explicit
 direct route for that process and appends only the exact RP loopback mapping;
 proxy conflicts remain errors. It prints verification/cleanup counts without
 credential bodies. TLS handshakes and process cleanup have deadlines. Failed
@@ -125,6 +139,8 @@ passkey cleanup. Create and verify using Phone in both native choices, delete
 the RP account, then remove the passkey from the phone/provider before closing
 the disposable browser. Independent RP counters alone do not identify the
 physical authenticator; retain the operator's device/provider observations.
+To qualify discoverable sign-in, also use “Sign in without a credential list”
+before cleanup and retain its separate verified receipt count.
 
 For a separately requested remote test, use a domain you control and an
 operator-provided certificate/key. Example shape (replace every placeholder
