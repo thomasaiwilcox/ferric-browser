@@ -1,5 +1,12 @@
 [advisories]
 yanked = "deny"
+# These occur only in the pinned upstream virtual authenticator, which uses
+# disposable test keys. CI separately scans the production graph with
+# deny-production.toml and --exclude-dev, without these exceptions.
+ignore = [
+    { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill is confined to upstream virtual-authenticator tests" },
+    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.2.5 is confined to upstream virtual-authenticator tests; production uses 0.7.10" },
+]
 
 [licenses]
 version = 2
@@ -24,5 +31,12 @@ wildcards = "deny"
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-required-git-spec = "rev"
-allow-git = ["https://github.com/linux-credentials/libwebauthn"]
+# The upstream virtual authenticator uses a tag. tools/check_inputs.py checks
+# the complete source strings, including the exact locked commits, in CI.
+required-git-spec = "tag"
+allow-git = [
+    "https://github.com/linux-credentials/libwebauthn",
+    "https://github.com/Nitrokey/fido-authenticator",
+    "https://github.com/trussed-dev/trussed",
+    "https://github.com/trussed-dev/trussed-staging",
+]

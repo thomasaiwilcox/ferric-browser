@@ -4,8 +4,10 @@ This separate Rust 1.88 workspace implements strict request admission and one
 transient phone ceremony over the pinned library's cloud-assisted caBLE route.
 Ferric's opt-in native provider now connects it through the private ceremony
 actor and effective direct-network admission. Independent boundary/integration
-review and synthetic delivery checks pass. Real-device qualification remains
-required for the combined release; phone passkeys default to off.
+review and synthetic delivery checks pass. Disposable iPhone/Apple Passwords
+tests verified registration, allow-listed and discoverable sign-in, and
+cancellation recovery against an independent relying party. Phone passkeys
+default to off.
 
 ## Private protocol
 
@@ -58,7 +60,8 @@ admitted direct route. Neither entry point grants browser-side authority.
 The base is `linux-credentials/libwebauthn@9c0e5f78ac445d35dca05170efbb0afefc5a89ae`,
 package 0.10.0, edition 2021, LGPL-2.1-or-later. Exact source, original hashes,
 notices and the small direct-egress patch are retained under `vendor/`.
-`tools/check_vendor.py` verifies that only the documented files differ.
+`tools/check_vendor.py` verifies the changed-file inventory and reverses the
+recorded patch in a disposable copy to recover the exact upstream file hashes.
 The patch also moves libwebauthn and Snow to maintained P-256 APIs; protocol
 framing and cryptographic algorithms are preserved. Exact changes are recorded
 in the vendor manifests and checked against upstream vectors.
@@ -73,7 +76,7 @@ route with the actual target devices.
 
 Runtime prerequisites are system TLS roots, PSL data, an accessible BlueZ
 service and adapter, and normal user permissions. Building requires Rust
-1.88, a C toolchain, `pkg-config` and D-Bus development files. The dependency
+1.88, Git, a C toolchain, `pkg-config` and D-Bus development files. The dependency
 graph also contains ordinary HID support. No privilege elevation, udev change
 or service enablement is part of this implementation.
 
@@ -98,11 +101,21 @@ From this directory:
 
 ```sh
 python3 tools/check_vendor.py
+python3 -B -m unittest discover -v -s tools -p 'test_*.py'
 python3 tools/check_inputs.py --release
 cargo +1.88.0 test --locked --all-targets
 cargo +1.88.0 clippy --locked --all-targets -- -D warnings
 cargo +1.88.0 fmt --check
+cargo deny --locked --config deny.toml check
+cargo deny --locked --exclude-dev --config deny-production.toml check advisories
 ```
+
+The full test graph permits two documented advisories in the upstream virtual
+authenticator: the deprecated `atomic-polyfill` and timing variability in its
+old `crypto-bigint`. It uses disposable keys only. The separate production
+advisory check has no such exceptions and must pass before release; neither
+affected dependency is in the shipped helper graph. Source-policy checks
+also verify the exact locked commits of the upstream test dependencies.
 
 The admission/operation tests use the portable official PSL snapshot under `data/`. Virtual-HID tests exercise real
 library create/get calls and serialization, not a phone, radio or physical
@@ -110,6 +123,10 @@ authenticator. Additional tests cover QR bounds, explicit policy admission,
 relay/address exclusion, no transient metadata and uncertain-create replay
 prevention. No automated test opens a real account or radio.
 
-Physical iPhone, Android, native-key and independently verified RP results are
-still pending. Native fallback activation, browser-supervised live routing and
-release packaging must be qualified before enabling the phone provider.
+The recorded physical scope is one iPhone 17 Pro Max running iOS 27.2 with
+Apple Passwords, as reported by the operator, and a single disposable account
+on a local HTTPS relying party. Android and hardware security keys are untested
+and outside this release's qualification scope. This does not establish
+multiple-account or public-site compatibility. Combined release/install
+qualification remains separate; see the
+[implementation and qualification record](../../docs/implementation/WINDOW_PASSKEYS_PLAN.md).

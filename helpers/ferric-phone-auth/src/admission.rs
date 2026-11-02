@@ -630,9 +630,12 @@ mod tests {
         );
         assert!(matches!(
             prepare_request_with_psl_loader(valid_request, || {
-                DatFilePublicSuffixList::from_path(
-                    "/home/tom/Projects/ferric-everyday-work/builds/P06-fixtures/missing-psl.dat",
-                )
+                // A regular source file cannot contain a suffix-list child.
+                // This stays unusable on every checkout without a host path.
+                DatFilePublicSuffixList::from_path(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/Cargo.toml/missing-psl.dat",
+                ))
             }),
             Err(AdmissionError::PublicSuffixListUnavailable)
         ));

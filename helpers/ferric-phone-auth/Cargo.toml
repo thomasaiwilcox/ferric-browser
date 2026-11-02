@@ -12,15 +12,15 @@ members = ["."]
 resolver = "2"
 
 [dependencies]
-libwebauthn = { git = "https://github.com/linux-credentials/libwebauthn", rev = "9c0e5f78ac445d35dca05170efbb0afefc5a89ae", default-features = false }
+libwebauthn = { version = "=0.10.0", git = "https://github.com/linux-credentials/libwebauthn", rev = "9c0e5f78ac445d35dca05170efbb0afefc5a89ae", default-features = false }
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.149"
 tokio = { version = "=1.53.3", features = ["rt", "time"] }
 qrcode = { version = "=0.14.1", default-features = false }
 
 [dev-dependencies]
-libwebauthn = { git = "https://github.com/linux-credentials/libwebauthn", rev = "9c0e5f78ac445d35dca05170efbb0afefc5a89ae", default-features = false, features = ["virt"] }
-libwebauthn-tests = { git = "https://github.com/linux-credentials/libwebauthn", rev = "9c0e5f78ac445d35dca05170efbb0afefc5a89ae", package = "libwebauthn-tests" }
+libwebauthn = { version = "=0.10.0", git = "https://github.com/linux-credentials/libwebauthn", rev = "9c0e5f78ac445d35dca05170efbb0afefc5a89ae", default-features = false, features = ["virt"] }
+libwebauthn-tests = { version = "=0.0.0", git = "https://github.com/linux-credentials/libwebauthn", rev = "9c0e5f78ac445d35dca05170efbb0afefc5a89ae", package = "libwebauthn-tests" }
 
 # The companion test package is an upstream workspace member. Mirror its exact
 # workspace patches because Cargo does not inherit patch tables from dependencies.
