@@ -97,4 +97,3 @@ private:
   QByteArray frame_;
   QByteArray credentialPolicy_;
 };
-

@@ -26,11 +26,30 @@ panel. The journey checks the saved bytes, metadata readiness and preservation
 of expanded rows after a rendered refresh:
 
 ```sh
-cargo build --release -p ferric-browser-engine-qt -p ferric-browser --locked
-cmake -S crates/ferric-browser-engine-qt/tests/application -B target/application-tests
-cmake --build target/application-tests --parallel 2
+cargo xtask test application-clipboard
 ctest --test-dir target/application-tests -R '^portal_browser$' --output-on-failure
 ```
+
+The xtask builds the release engine and browser, then passes the matching
+static archive and generated CXX-Qt include directory from Cargo's build
+messages to CMake. This also supports a custom `CARGO_TARGET_DIR`; it avoids
+selecting headers from a stale build directory.
+
+CI runs `application_page_windows_portable` and
+`application_credential_association_wayland` against the owned Qt compositor.
+The former covers page creation, close, undo and session shutdown.
+`application_shutdown_pending_save` checks that shutdown waits for an older
+queued save. The complete `application_page_windows` entry also needs a
+compatible Hyprland session for live transfer, workflows, native grouping and
+focus checks. The Qt fixture has mapping-time focus only; the portable subset
+does not establish existing-window activation or Hyprland qualification.
+
+The separate helper workspace and independent relying-party tests have their
+own CI jobs. See the [helper checks](../helpers/ferric-phone-auth/README.md) and
+[verifier fixture](../crates/ferric-browser-engine-qt/tests/everyday/rp/README.md).
+These automated jobs use disposable credentials and require no phone, real
+account or radio. Production helper advisories are checked without the
+virtual-authenticator fixture exceptions.
 
 Set `FERRIC_PORTAL_TEST_ARTIFACTS` to a disposable output directory when running
 that CTest entry to save the updating and ready Downloads panel renders. The

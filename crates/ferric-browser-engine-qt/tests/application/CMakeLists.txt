@@ -10,6 +10,8 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS WaylandClient WebChannel QuickWidgets WebEngineWidgets Quick QuickControls2 WebEngineQuick Network DBus Test Widgets)
 get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
 set(FERRIC_ENGINE_LIBRARY "${REPO_ROOT}/target/release/libferric_browser_engine_qt.a" CACHE FILEPATH "Cargo-built production engine")
+get_filename_component(FERRIC_ENGINE_DIRECTORY "${FERRIC_ENGINE_LIBRARY}" DIRECTORY)
+set(FERRIC_BROWSER_EXECUTABLE "${FERRIC_ENGINE_DIRECTORY}/ferric-browser" CACHE FILEPATH "Cargo-built production browser")
 # Exercise the Linux distribution default locally, too. The static engine must
 # precede its native shared-library dependencies so --as-needed retains them.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -121,10 +123,33 @@ add_test(NAME application_settings_durability COMMAND "${DBUS_RUN_SESSION}"
     FERRIC_SETTINGS_SYNC_FIXTURE=1 $<TARGET_FILE:application_tests> productPolishSettingDurability)
 set_tests_properties(application_settings_durability PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME application_credential_association_wayland COMMAND "${DBUS_RUN_SESSION}"
+    --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
+    ${CMAKE_COMMAND} -E env FERRIC_PORTAL_TEST_BUS=isolated "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../portal/run.py" "${CMAKE_CURRENT_BINARY_DIR}/portal"
+    tab_recovery credentialViewAssociation)
+set_tests_properties(application_credential_association_wayland PROPERTIES TIMEOUT 180)
+# Portable window-mode coverage uses the owned Qt compositor. The full
+# application_page_windows entry also exercises actual Hyprland grouping.
+# Existing-window focus, live transfer and workflow rows need its activation
+# support; the Qt compositor provides mapping-time focus only.
+add_test(NAME application_page_windows_portable COMMAND "${DBUS_RUN_SESSION}"
+    --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
+    ${CMAKE_COMMAND} -E env FERRIC_PORTAL_TEST_BUS=isolated FERRIC_TEST_UNTAGGED_WINDOWS=1 "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../portal/run.py" "${CMAKE_CURRENT_BINARY_DIR}/portal"
+    tab_recovery
+    pageWindowPresentation:foreground pageWindowPresentation:background
+    pageWindowPresentation:private pageWindowPresentation:factory-failure
+    pageWindowPresentation:preparation-shutdown
+    pageWindowPresentation:window-undo-peer pageWindowPresentation:window-close-cancel
+    pageWindowPresentation:session-aggregate pageWindowPresentation:session-peer-order
+    pageWindowPresentation:session-queued-get pageWindowPresentation:session-hidden-survivor
+    pageWindowPresentation:session-quit-cancel pageWindowPresentation:session-quit-approved-close)
+set_tests_properties(application_page_windows_portable PROPERTIES TIMEOUT 480)
 add_test(NAME application_startup_recovery_restart COMMAND "${DBUS_RUN_SESSION}"
     --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
     "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_startup_recovery.py"
-    "${CMAKE_CURRENT_BINARY_DIR}" "${REPO_ROOT}/target/release/ferric-browser")
+    "${CMAKE_CURRENT_BINARY_DIR}" "${FERRIC_BROWSER_EXECUTABLE}")
 set_tests_properties(application_startup_recovery_restart PROPERTIES TIMEOUT 180)
 add_test(NAME application_startup_recovery_wayland COMMAND "${DBUS_RUN_SESSION}"
     --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
@@ -226,7 +251,6 @@ add_test(NAME application_tab_focus_wayland COMMAND "${DBUS_RUN_SESSION}"
 set_tests_properties(application_tab_focus_wayland PROPERTIES TIMEOUT 210)
 add_test(NAME application_download_finalization COMMAND "${DBUS_RUN_SESSION}" --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf -- "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_download_finalization_probe.py" --executable $<TARGET_FILE:downloads_tests> --interposer $<TARGET_FILE:download_save_interposer>)
 set_tests_properties(application_download_finalization PROPERTIES TIMEOUT 100)
-set(FERRIC_BROWSER_EXECUTABLE "${REPO_ROOT}/target/release/ferric-browser" CACHE FILEPATH "Production browser for runtime-version admission regression")
 add_test(NAME application_journey_history COMMAND "${DBUS_RUN_SESSION}"
     --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
     "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_journey_history_probe.py"

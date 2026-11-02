@@ -149,7 +149,10 @@ void ApplicationTests::pageWindowPresentation()
     page("window.pageWindowDraft = 'unfinished work'");
     QVERIFY(!evaluate("testWindow.tabStripVisible").toBool());
     QVERIFY(!evaluate("testWindow.pageWindowTag").toString().isEmpty());
-    QVERIFY(evaluate("testWindow.pageWindowTagRequested").toBool());
+    // The portable CI compositor deliberately advertises no tagging protocol.
+    // Those windows must remain usable without claiming native grouping proof.
+    QCOMPARE(evaluate("testWindow.pageWindowTagRequested").toBool(),
+             !qEnvironmentVariableIsSet("FERRIC_TEST_UNTAGGED_WINDOWS"));
 
     QObject ownedFocusTrace;
     if (scenario == "window-native-grouping") {
@@ -293,7 +296,7 @@ Ferric.FerricBrowserWindow {
             QTRY_VERIFY(evaluate("testQuitChild.livePageCoreCommitted() && testQuitChild.testRegistrationAttempts>0").toBool());
             QCOMPARE(evaluate("testQuitChild.activeView").value<QObject *>(),moving.data());
         } else {
-            if(publication) QVERIFY(page("var input=document.createElement('input');input.value='root draft';document.body.appendChild(input);true").toBool());
+            if(publication) QVERIFY(page("var input=document.createElement('input');input.id='quitRootDraft';input.value='root draft';document.body.appendChild(input);true").toBool());
             QVERIFY(command("tab-open "+destination));
             evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
             if (prepared) {
@@ -341,10 +344,19 @@ Ferric.FerricBrowserWindow {
             QTRY_VERIFY(evaluate("testWindow.shutdownPagePromptVisible").toBool());
             QTRY_VERIFY(evaluate("testQuitChild.windowShutdownPagePromptVisible || testQuitChild.windowApplicationQuitPrepared").toBool());
             QVERIFY(peerView);
-            QVERIFY(evaluate("testWindow.activateBrowserWindow(testWindow,testWindow.browserUi)").toBool());
-            QTRY_COMPARE(QGuiApplication::focusWindow(),window);
-            QVERIFY(clickCloseDecision(window,false));
+            // Both owners can publish a prompt asynchronously. Cancel the
+            // focused prompt: either decision must abort the entire Quit.
+            // A programmatic activation request cannot guarantee Wayland focus.
+            auto *peerWindow=qobject_cast<QQuickWindow *>(held.data());
+            QTRY_VERIFY((QGuiApplication::focusWindow()==window
+                            && evaluate("testWindow.shutdownPagePromptVisible").toBool())
+                    || (QGuiApplication::focusWindow()==peerWindow
+                            && evaluate("testQuitChild.windowShutdownPagePromptVisible").toBool()));
+            QVERIFY(clickCloseDecision(qobject_cast<QQuickWindow *>(QGuiApplication::focusWindow()),false));
             QTRY_VERIFY(!evaluate("testWindow.applicationShutdownInProgress").toBool());
+            QVERIFY(!evaluate("testWindow.shutdownPagePromptVisible || testQuitChild.windowShutdownPagePromptVisible").toBool());
+            pageReceiver="testWindow.tabViewAt(0)";
+            QCOMPARE(page("document.getElementById('quitRootDraft').value").toString(),QStringLiteral("root draft"));
             held->setProperty("testAllowRegistration",true);
             pageReceiver="testQuitChild.activeView";
             QTRY_COMPARE(page("location.href").toString(),destination);
@@ -1595,7 +1607,16 @@ Ferric.FerricBrowserWindow {
         auto queryLua = [](const QString &code) {
             QProcess query;
             query.start(QStringLiteral("hyprctl"), {QStringLiteral("repl"), code});
-            if (!query.waitForFinished(3000) || query.exitCode() != 0) return QStringLiteral("query failed");
+            // Native grouping dispatches through the GUI queue. A diagnostic
+            // probe must keep those callbacks and maintenance timers running.
+            if (!QTest::qWaitFor([&] { return query.state() == QProcess::NotRunning; }, 3000)) {
+                query.kill();
+                query.waitForFinished(1000);
+                return QStringLiteral("query timed out");
+            }
+            if (query.error() == QProcess::FailedToStart
+                || query.exitStatus() != QProcess::NormalExit || query.exitCode() != 0)
+                return QStringLiteral("query failed");
             return QString::fromUtf8(query.readAllStandardOutput()).trimmed();
         };
         auto groupState = [&]() {
