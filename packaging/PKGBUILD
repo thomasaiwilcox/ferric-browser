@@ -23,6 +23,7 @@ depends=(
 )
 makedepends=(
   'desktop-file-utils'
+  'git'
   'rust>=1.88'
   'pkgconf'
   'python'
@@ -90,7 +91,7 @@ package() {
   mkdir -p "${pkgdir}/usr/share/doc/${pkgname}"
   tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
     -C helpers/ferric-phone-auth --transform='s,^,ferric-phone-auth/,' -cf - \
-    Cargo.toml Cargo.lock rust-toolchain.toml README.md RELINKING.md deny.toml dependency-inventory.json \
+    Cargo.toml Cargo.lock rust-toolchain.toml README.md RELINKING.md deny.toml deny-production.toml dependency-inventory.json \
     src tools vendor data | gzip -n > \
     "${pkgdir}/usr/share/doc/${pkgname}/phone-auth-source.tar.gz"
   install -Dm644 "packaging/io.github.ferricbrowser.FerricBrowser.desktop" \
@@ -119,6 +120,8 @@ package() {
     "${pkgdir}/usr/share/doc/${pkgname}/bindings.md"
   install -Dm644 docs/user/actions.md \
     "${pkgdir}/usr/share/doc/${pkgname}/actions.md"
+  install -Dm644 docs/user/window-mode-and-passkeys.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/window-mode-and-passkeys.md"
   install -Dm644 packaging/dependencies.toml \
     "${pkgdir}/usr/share/doc/${pkgname}/dependencies.toml"
   install -Dm644 packaging/LICENSES.md \

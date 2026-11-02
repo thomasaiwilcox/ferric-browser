@@ -11,6 +11,7 @@
 /usr/share/doc/ferric-browser/configuration.md
 /usr/share/doc/ferric-browser/bindings.md
 /usr/share/doc/ferric-browser/actions.md
+/usr/share/doc/ferric-browser/window-mode-and-passkeys.md
 /usr/share/doc/ferric-browser/dependencies.toml
 /usr/share/doc/ferric-browser/LICENSES.md
 /usr/share/doc/ferric-browser/license-policy.toml

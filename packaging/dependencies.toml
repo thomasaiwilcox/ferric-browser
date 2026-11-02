@@ -46,7 +46,7 @@ qt_modules = [
 ]
 
 [build]
-arch_packages = ["desktop-file-utils", "rust>=1.88", "pkgconf", "python"]
+arch_packages = ["desktop-file-utils", "git", "rust>=1.88", "pkgconf", "python"]
 check_packages = ["dbus", "weston", "wayland", "wayland-protocols"]
 note = "desktop-file-utils is required by the package check phase; rust builds the locked application source; dbus and weston provide the disposable native-Wayland qualification harness."
 

@@ -14,10 +14,14 @@ as the first packaging environments. It deliberately follows qutebrowser's
 command names and keyboard ergonomics where practical, then documents Ferric
 extensions rather than silently repurposing familiar behavior.
 
+Opt-in [window mode and phone passkeys](docs/user/window-mode-and-passkeys.md)
+have separate configuration and qualification limits.
+
 ## Build and run
 
-Install Rust 1.85 or newer, Qt 6.11 with QtWebEngine, Qt Widgets, Qt Declarative, and Qt
-Wayland, KWindowSystem 6.28 or newer, pkg-config, and a C++ toolchain. Then run:
+Install Rust 1.88 or newer and the qualified Qt 6.11.2 SDK with QtWebEngine,
+Qt Widgets, Qt Declarative and Qt Wayland. You also need KWindowSystem 6.28
+or newer, pkg-config and a C++ toolchain. Then run:
 
 ```sh
 cargo build --locked
@@ -32,8 +36,10 @@ fresh GUI process. It rejects conflicting proxy environment variables or
 Chromium proxy options and cannot be forwarded to an already running browser.
 Without this option, Qt's system route remains in control. Phone passkeys are
 opt-in with `passkeys.phone = "on"`; they also require the installed helper,
-an eligible HTTPS connection and an admitted direct route. Physical-device
-qualification remains in progress.
+an eligible HTTPS connection and an admitted direct route. Disposable tests with
+an iPhone and Apple Passwords verified registration, sign-in with and without a
+credential list, and cancellation recovery. Android phones and hardware security
+keys remain untested; see the [qualification scope](docs/implementation/WINDOW_PASSKEYS_PLAN.md).
 
 Useful development checks:
 

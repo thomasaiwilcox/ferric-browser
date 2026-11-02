@@ -226,3 +226,47 @@ The iPhone result above is qualified for its recorded scope. On 2 November 2026 
 Use a separate disposable Qt profile for the exact `https://passkeys.ferric.test:8443` RP, supplying its exact-SAN fixture CA before profile creation and scoped loopback mapping. Do not alter global DNS/CA trust or bypass certificates. The phone does not need to browse or trust the RP fixture. Before scanning, explain that a real disposable phone passkey may sync, then arrange phone/provider deletion; RP cleanup cannot delete that credential.
 
 Resume with combined release/install qualification and record its actual results. Document the tested iPhone/Apple Passwords scope and the untested Android/hardware-key paths in the release record. Additional device testing is optional future work and must independently verify results and remove disposable passkeys from their provider. Automated engineering checks and the scoped security review are complete as recorded above. Do not push, publish or replace the user's installed browser without the corresponding release instruction.
+
+## Final local code-quality review, 2 November 2026
+
+The local implementation was reviewed against freshly fetched `origin/main`
+`e4aa108f9d63c99c3b3e977c2061d6d8dde48568`. The review removed dropped hot-tab
+scaffolding and unused queue/credential experiments, corrected the minimum Rust
+version to the verified 1.88, and fixed warnings without relaxing Clippy.
+Native test builds now select the archive and generated headers from the same
+Cargo build; desktop smokes respect custom target directories. Vendor checks
+now require the recorded patches to recover every upstream byte. CI covers the
+separate helper and relying-party verifier, credential boundaries and the
+portable window subset. User guidance and packaging inputs are updated.
+
+Current local checks pass: the repository gate (1,285 Rust tests, two existing
+ignored tests, and 1,223 QML tests), workspace all-target warnings-denied Clippy,
+Rust 1.88 all-target checks, 22 helper tests, 22 independent verifier tests,
+vendor provenance, dependency policies, packaging inputs, workflow lint,
+formatting and diff checks. The standard release/native build and clipboard
+suite pass. Portable regressions pass all three CTest entries, including 13
+window scenarios; five credential-boundary/helper suites also pass.
+
+Final owned-Hyprland regression passes CTest 4/4: window presentation 126/126,
+credential association 6/6, close requests 16/16 and session recovery 10/10,
+with zero failures/skips and verified session cleanup. The review corrected a
+blocking native grouping probe to process GUI events and reap timed-out
+queries. Publication-time Quit cancellation now follows the actually focused
+owned prompt and verifies retained document state, rather than assuming a
+Wayland activation request guarantees focus. Dedicated focus/grouping
+assertions remain in the full native suite.
+
+Two documented advisory exceptions apply only to the pinned upstream virtual
+authenticator's test dependencies. A separate production helper advisory scan
+passes without exceptions. The Weston startup smoke passes; its optional
+editable-input check is not run because that compositor lacks the required
+virtual-keyboard protocol. The full owned-Hyprland tests above qualify their
+recorded native focus/grouping cases separately.
+
+Evidence and the exact changed-file snapshot are recorded under
+`builds/window-passkeys/quality-review-r425/` in the enclosing engineering
+workspace (`review.json`, `changed-files.json` and `native-final/`). Earlier
+failed test-probe runs are retained as superseded evidence. This review leaves
+no open code-quality finding. Changes remain local; remote CI has not run.
+The next goal step remains combined release/install qualification, with the
+existing iPhone evidence and the same explicitly untested physical scope.

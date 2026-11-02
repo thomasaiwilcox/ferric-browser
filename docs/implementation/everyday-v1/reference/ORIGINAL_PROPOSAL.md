@@ -1,9 +1,9 @@
 # Ferric — Fast New Tabs, Phone Passkeys and Optional Window-Managed Browsing
 
-**Research and design proposal · 15 October 2026 · v1.0**  
-**Status:** Proposed work, not an implementation or security certification.  
-**Ferric source baseline:** `af30f6fb889ba694bf9fd2d71bbab3779427882e` on `main`.  
-**Ohm reference:** `ijt/ohm`; main resolved to `95640f6148d0ec436060825218a3e61916a44bc5` during research.  
+**Research and design proposal · 15 October 2026 · v1.0**\
+**Status:** Proposed work, not an implementation or security certification.\
+**Ferric source baseline:** `af30f6fb889ba694bf9fd2d71bbab3779427882e` on `main`.\
+**Ohm reference:** `ijt/ohm`; main resolved to `95640f6148d0ec436060825218a3e61916a44bc5` during research.\
 **Platform baseline:** Ferric's dependency manifest qualifies Qt 6.11.2; the proposed first platform remains Linux/Wayland, with optional Hyprland integration. [F08]
 
 ## Executive decision

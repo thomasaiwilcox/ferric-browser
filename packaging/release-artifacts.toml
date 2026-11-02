@@ -172,3 +172,15 @@ path = "helpers/ferric-phone-auth/data/provenance.json"
 [[artifact]]
 name = "phone-auth-relinking"
 path = "helpers/ferric-phone-auth/RELINKING.md"
+
+[[artifact]]
+name = "window-mode-and-passkeys-guide"
+path = "docs/user/window-mode-and-passkeys.md"
+
+[[artifact]]
+name = "phone-auth-test-dependency-policy"
+path = "helpers/ferric-phone-auth/deny.toml"
+
+[[artifact]]
+name = "phone-auth-production-advisory-policy"
+path = "helpers/ferric-phone-auth/deny-production.toml"
