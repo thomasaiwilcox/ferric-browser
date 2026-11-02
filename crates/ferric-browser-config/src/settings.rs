@@ -516,15 +516,6 @@ pub(super) const SETTING_METADATA: &[SettingMetadata] = &[
         "normal"
     ),
     setting_metadata!(
-        "performance.hot_tab",
-        "enum",
-        "off",
-        GLOBAL_SCOPES,
-        "live",
-        "qt-webengine",
-        "normal"
-    ),
-    setting_metadata!(
         "passkeys.phone",
         "enum",
         "off",

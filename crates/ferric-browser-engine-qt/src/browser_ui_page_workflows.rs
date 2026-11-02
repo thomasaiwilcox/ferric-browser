@@ -196,15 +196,14 @@ impl qobject::BrowserUi {
                     .map_err(Into::into);
             }
             if step.command.name == "tab-close" {
-                if let Some(route) = &step.route {
-                    if route.context.is_some()
+                if let Some(route) = &step.route
+                    && (route.context.is_some()
                         || Some(self.as_ref().ipc_route_window(route)?)
-                            != self.as_ref().rust().window
-                    {
-                        return Err(
-                            "Close pages in their issuing window without context routing".into(),
-                        );
-                    }
+                            != self.as_ref().rust().window)
+                {
+                    return Err(
+                        "Close pages in their issuing window without context routing".into(),
+                    );
                 }
                 let mut commands = expanded[index + 1..].to_vec();
                 for step in &mut commands {
@@ -226,16 +225,15 @@ impl qobject::BrowserUi {
                     .map_err(Into::into);
             }
             if crate::browser_ui_page_regroup::handles(&step.command) {
-                if let Some(route) = &step.route {
-                    if route.context.is_some()
+                if let Some(route) = &step.route
+                    && (route.context.is_some()
                         || Some(self.as_ref().ipc_route_window(route)?)
-                            != self.as_ref().rust().window
-                    {
-                        return Err(
-                            "Choose the page group in its issuing window without context routing"
-                                .into(),
-                        );
-                    }
+                            != self.as_ref().rust().window)
+                {
+                    return Err(
+                        "Choose the page group in its issuing window without context routing"
+                            .into(),
+                    );
                 }
                 return self
                     .execute_page_window_regroup(

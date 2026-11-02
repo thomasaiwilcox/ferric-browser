@@ -12,15 +12,6 @@ pub enum TabsPresentation {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum HotTabPolicy {
-    #[default]
-    Off,
-    Auto,
-    On,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
 pub enum PhonePasskeyPolicy {
     #[default]
     Off,

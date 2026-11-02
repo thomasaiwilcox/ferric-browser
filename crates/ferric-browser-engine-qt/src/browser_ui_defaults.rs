@@ -6,9 +6,9 @@ use super::{
     EffectiveMixedKeyPolicy, IdSource, Instant, LocalInteractionAuthority, Mode, Mutex,
     NativePromptLeases, PageDocumentIdentities, PortalCapabilities, PrivacyKind,
     ProfilePersistence, QString, QStringList, RefCell, RuntimeOverrides, SessionCheckpoint,
-    ThemePalette, Uuid, Value, blocking_evidence, bootstrap_runtime, browser_ui_start_page,
-    chrome_preferences, diagnostic_report, engine_requests, feature_preferences, profile_startup,
-    settings_presentation, theme_presentation,
+    ThemePalette, Uuid, Value, VecDeque, blocking_evidence, bootstrap_runtime,
+    browser_ui_start_page, chrome_preferences, diagnostic_report, feature_preferences,
+    profile_startup, settings_presentation, theme_presentation,
 };
 
 impl Default for BrowserUiRust {
@@ -62,7 +62,7 @@ impl Default for BrowserUiRust {
             core_mode: Mode::Normal,
             binding_clock: Instant::now(),
             pending_engine_action: None,
-            pending_engine_actions: engine_requests::PendingEngineRequests::new(),
+            pending_engine_actions: VecDeque::new(),
             page_window_preparing: false,
             page_window_ordinary: false,
             page_window_closing: false,
@@ -398,9 +398,6 @@ impl Default for BrowserUiRust {
             feature_tabs_presentation_reason: QString::from(
                 feature_preferences.tabs_presentation_reason,
             ),
-            feature_hot_tab_requested: QString::from(feature_preferences.hot_tab_requested),
-            feature_hot_tab_status: QString::from(feature_preferences.hot_tab_status),
-            feature_hot_tab_reason: QString::from(feature_preferences.hot_tab_reason),
             feature_phone_passkeys_requested: QString::from(
                 feature_preferences.phone_passkeys_requested,
             ),

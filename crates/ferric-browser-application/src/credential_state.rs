@@ -55,22 +55,6 @@ enum CredentialAvailability {
     SyntheticAvailable,
 }
 
-/// Typed source classification supplied by a future browser-owned mediator.
-/// It is not deserializable and must never be copied from page data.
-#[allow(dead_code)] // No production caller exists until P00 supplies that mediator.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum CredentialRequestIngress {
-    PhoneShim,
-    OutsidePhoneShim,
-}
-
-#[allow(dead_code)] // The policy result is exercised here before production wiring.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum CredentialIngressDecision {
-    ContinuePhoneAdmission,
-    LeaveNative,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CredentialTerminalReason {
     Aborted,
@@ -207,20 +191,6 @@ impl CredentialCeremonyState {
             terminal_outbox: VecDeque::with_capacity(terminal_capacity),
             terminal_capacity,
             next_token: 1,
-        }
-    }
-
-    /// Pure routing decision only. `OutsidePhoneShim` is left to Qt's existing
-    /// native handler; this method does not cancel or synthesize native work.
-    #[allow(dead_code)] // Intentionally awaits the separately qualified caller.
-    pub(crate) const fn classify_ingress(
-        ingress: CredentialRequestIngress,
-    ) -> CredentialIngressDecision {
-        match ingress {
-            CredentialRequestIngress::PhoneShim => {
-                CredentialIngressDecision::ContinuePhoneAdmission
-            }
-            CredentialRequestIngress::OutsidePhoneShim => CredentialIngressDecision::LeaveNative,
         }
     }
 

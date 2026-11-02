@@ -4,9 +4,7 @@
 //! as explicit properties prevents QML from reparsing the complete
 //! configuration graph for routine UI decisions.
 
-use ferric_browser_config::{
-    Config, HotTabPolicy, PageGroupingPolicy, PhonePasskeyPolicy, TabsPresentation,
-};
+use ferric_browser_config::{Config, PageGroupingPolicy, PhonePasskeyPolicy, TabsPresentation};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::struct_excessive_bools)]
@@ -26,9 +24,6 @@ pub(super) struct FeaturePreferences {
     pub tabs_presentation_effective: String,
     pub tabs_presentation_status: String,
     pub tabs_presentation_reason: String,
-    pub hot_tab_requested: String,
-    pub hot_tab_status: String,
-    pub hot_tab_reason: String,
     pub phone_passkeys_requested: String,
     pub phone_passkeys_status: String,
     pub phone_passkeys_reason: String,
@@ -69,19 +64,6 @@ pub(super) fn project(effective: &Config, requested: &Config) -> FeaturePreferen
         tabs_presentation_effective: tabs_presentation_name(&effective.tabs.presentation).into(),
         tabs_presentation_status: presentation_status(effective, requested).into(),
         tabs_presentation_reason: presentation_reason(effective, requested).into(),
-        hot_tab_requested: hot_tab_name(&requested.performance.hot_tab).into(),
-        hot_tab_status: if requested.performance.hot_tab == HotTabPolicy::Off {
-            "disabled"
-        } else {
-            "unqualified"
-        }
-        .into(),
-        hot_tab_reason: if requested.performance.hot_tab == HotTabPolicy::Off {
-            "disabled by setting"
-        } else {
-            "no qualified hot-tab consumer is registered"
-        }
-        .into(),
         phone_passkeys_requested: phone_passkeys_name(&requested.passkeys.phone).into(),
         phone_passkeys_status: if requested.passkeys.phone == PhonePasskeyPolicy::Off {
             "disabled"
@@ -115,14 +97,6 @@ fn tabs_presentation_name(value: &TabsPresentation) -> &'static str {
     match value {
         TabsPresentation::Internal => "internal",
         TabsPresentation::Windows => "windows",
-    }
-}
-
-fn hot_tab_name(value: &HotTabPolicy) -> &'static str {
-    match value {
-        HotTabPolicy::Off => "off",
-        HotTabPolicy::Auto => "auto",
-        HotTabPolicy::On => "on",
     }
 }
 
@@ -198,9 +172,6 @@ mod tests {
                 tabs_presentation_effective: "internal".into(),
                 tabs_presentation_status: "active".into(),
                 tabs_presentation_reason: "internal tabs are the active presentation".into(),
-                hot_tab_requested: "off".into(),
-                hot_tab_status: "disabled".into(),
-                hot_tab_reason: "disabled by setting".into(),
                 phone_passkeys_requested: "off".into(),
                 phone_passkeys_status: "disabled".into(),
                 phone_passkeys_reason:
@@ -248,7 +219,6 @@ mod tests {
             ),
             "Settings saved; some changes need a browser restart"
         );
-        assert_eq!(preferences.hot_tab_status, "disabled");
         assert_eq!(preferences.phone_passkeys_status, "disabled");
         assert_eq!(preferences.page_grouping_status, "disabled");
 

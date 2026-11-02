@@ -310,8 +310,6 @@ pub enum CredentialOperation {
 pub struct CredentialRequestId(u64);
 
 impl CredentialRequestId {
-    // The subsequent ceremony-state slice allocates these IDs.
-    #[allow(dead_code)]
     pub(crate) const fn from_sequence(sequence: u64) -> Self {
         Self(sequence)
     }
@@ -330,8 +328,6 @@ pub struct CredentialRequestOwner {
 }
 
 impl CredentialRequestOwner {
-    // The subsequent ceremony-state slice captures this owner at admission.
-    #[allow(dead_code)]
     pub(crate) const fn capture(id: CredentialRequestId, lease: CredentialDocumentLease) -> Self {
         Self { id, lease }
     }
@@ -393,7 +389,6 @@ impl OriginBoundRpCandidate {
 
 // The state manager binds immutable native ownership before handing only the
 // bounded raw candidate to the helper. This performs no RP validation.
-#[allow(dead_code)]
 pub(crate) fn bind_request_to_owner(
     request: CredentialRequestOptions,
     owner: CredentialRequestOwner,

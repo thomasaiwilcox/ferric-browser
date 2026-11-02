@@ -257,10 +257,10 @@ impl qobject::BrowserUi {
                     .execute_runtime_config_command(&command)
                     .map_err(super::PublicError::engine)
             };
-            if result.is_ok() {
-                if let Some(operation_id) = operation_id {
-                    self.as_mut().bind_configuration_operation(operation_id);
-                }
+            if result.is_ok()
+                && let Some(operation_id) = operation_id
+            {
+                self.as_mut().bind_configuration_operation(operation_id);
             }
             return result;
         }

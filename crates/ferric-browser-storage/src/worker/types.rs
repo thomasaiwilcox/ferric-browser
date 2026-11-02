@@ -239,11 +239,6 @@ impl StorageCommand {
         }
     }
 
-    /// Validates bounded request fields before worker or application admission.
-    ///
-    /// # Errors
-    ///
-    /// Returns the request's validation error when a field or batch is invalid.
     /// Capture ordering before an application's scheduler can defer this intent.
     #[must_use]
     pub fn session_save(path: PathBuf, snapshot: SessionSnapshot) -> Self {
@@ -255,6 +250,11 @@ impl StorageCommand {
         }
     }
 
+    /// Validates bounded request fields before worker or application admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns the request's validation error when a field or batch is invalid.
     pub fn validate(&self) -> Result<(), StorageWorkerError> {
         match self {
             Self::SessionSave { path, order, .. } if !order.matches_path(path) => {

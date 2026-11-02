@@ -15,7 +15,7 @@ members = [
 [workspace.package]
 edition = "2024"
 license = "GPL-3.0-or-later"
-rust-version = "1.85"
+rust-version = "1.88"
 
 [workspace.dependencies]
 adblock = { version = "0.13.3", default-features = false, features = ["debug-info", "embedded-domain-resolver", "full-regex-handling"] }

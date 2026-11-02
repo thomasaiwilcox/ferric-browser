@@ -892,11 +892,11 @@ impl qobject::BrowserUi {
             this.navigation.page_document_identities.invalidate(tab);
             this.navigation.pending_same_document_pass_through = None;
             this.navigation.content_histories.remove(&tab);
-            if let Some((_, _, original_closed, Some(temporary_tab))) = experiment_closing {
-                if original_closed && this.tab_ids.contains(&temporary_tab) {
-                    this.pending_engine_action =
-                        Some(format!("site-doctor-close\t{temporary_tab}"));
-                }
+            if let Some((_, _, original_closed, Some(temporary_tab))) = experiment_closing
+                && original_closed
+                && this.tab_ids.contains(&temporary_tab)
+            {
+                this.pending_engine_action = Some(format!("site-doctor-close\t{temporary_tab}"));
             }
             let active_tab = this.window.and_then(|window| {
                 this.state

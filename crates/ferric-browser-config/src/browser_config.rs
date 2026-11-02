@@ -3,8 +3,8 @@
 use super::{
     BTreeMap, CollisionPolicy, Deserialize, DownloadDirectory, EntryMode, ExternalLinks,
     HintAutoFollow, HintProxyTargets, HintSelectorFamily, HintSelectorPolicy, HintUnmatchedPolicy,
-    HotTabPolicy, LastClose, LogLevel, PageGroupingPolicy, PermissionDecision, PhonePasskeyPolicy,
-    PortalMode, Serialize, SessionRestore, TabsPresentation, default_builtin, default_checkpoint,
+    LastClose, LogLevel, PageGroupingPolicy, PermissionDecision, PhonePasskeyPolicy, PortalMode,
+    Serialize, SessionRestore, TabsPresentation, default_builtin, default_checkpoint,
     default_command_limit, default_count_limit, default_hint_chars, default_hint_marker_scale,
     default_hint_min_chars, default_keychain_timeout, default_languages, default_lists,
     default_log_size, default_new_tab, default_overlay_delay, default_related_position,
@@ -207,13 +207,6 @@ impl Default for TabsConfig {
             auto_discard: false,
         }
     }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PerformanceConfig {
-    #[serde(default)]
-    pub hot_tab: HotTabPolicy,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]

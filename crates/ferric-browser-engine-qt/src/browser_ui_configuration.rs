@@ -718,12 +718,6 @@ impl qobject::BrowserUi {
                 preferences.tabs_presentation_reason,
             ));
         self.as_mut()
-            .set_feature_hot_tab_requested(QString::from(preferences.hot_tab_requested));
-        self.as_mut()
-            .set_feature_hot_tab_status(QString::from(preferences.hot_tab_status));
-        self.as_mut()
-            .set_feature_hot_tab_reason(QString::from(preferences.hot_tab_reason));
-        self.as_mut()
             .set_feature_phone_passkeys_requested(QString::from(
                 preferences.phone_passkeys_requested,
             ));

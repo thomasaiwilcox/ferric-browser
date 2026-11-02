@@ -626,33 +626,33 @@ impl qobject::BrowserUi {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         for effect in effects {
-            if let Effect::Engine(effect) = effect {
-                if super::engine_requests::target(effect).is_some() {
-                    match effect {
-                        EngineEffect::ClearFindText { target } => {
-                            // Escape must also cancel searches not yet handed to
-                            // QML; otherwise they can reopen a retired session.
-                            this.pending_engine_actions.retain(|request| {
+            if let Effect::Engine(effect) = effect
+                && super::engine_requests::target(effect).is_some()
+            {
+                match effect {
+                    EngineEffect::ClearFindText { target } => {
+                        // Escape must also cancel searches not yet handed to
+                        // QML; otherwise they can reopen a retired session.
+                        this.pending_engine_actions.retain(|request| {
                                 !matches!(request, NativeRequest::Engine(EngineEffect::FindText { target: queued, .. }) if queued == target)
                             });
-                        }
-                        EngineEffect::FindText {
-                            target,
-                            new_search: true,
-                            ..
-                        } => {
-                            // Coalesce query edits, preserving explicit step
-                            // counts and intervening non-search command effects.
-                            while matches!(this.pending_engine_actions.back(), Some(NativeRequest::Engine(EngineEffect::FindText { target: queued, .. })) if queued == target)
-                            {
-                                let _ = this.pending_engine_actions.pop_back();
-                            }
-                        }
-                        _ => {}
                     }
-                    this.pending_engine_actions
-                        .push_back(NativeRequest::Engine(effect.clone()));
+                    EngineEffect::FindText {
+                        target,
+                        new_search: true,
+                        ..
+                    } => {
+                        // Coalesce query edits, preserving explicit step
+                        // counts and intervening non-search command effects.
+                        while matches!(this.pending_engine_actions.back(), Some(NativeRequest::Engine(EngineEffect::FindText { target: queued, .. })) if queued == target)
+                        {
+                            let _ = this.pending_engine_actions.pop_back();
+                        }
+                    }
+                    _ => {}
                 }
+                this.pending_engine_actions
+                    .push_back(NativeRequest::Engine(effect.clone()));
             }
         }
     }
@@ -712,7 +712,7 @@ impl qobject::BrowserUi {
         self.rust()
             .state
             .as_ref()
-            .and_then(|state| state.profile_instance_id())
+            .and_then(ferric_browser_application::BrowserApplication::profile_instance_id)
             .map_or_else(QString::default, |profile| {
                 QString::from(profile.to_string())
             })
@@ -741,7 +741,7 @@ impl qobject::BrowserUi {
             || rust
                 .state
                 .as_ref()
-                .and_then(|state| state.profile_instance_id())
+                .and_then(ferric_browser_application::BrowserApplication::profile_instance_id)
                 .is_none_or(|current| current.to_string() != profile)
         {
             return false;
@@ -828,7 +828,7 @@ impl qobject::BrowserUi {
         };
         rust.state
             .as_ref()
-            .and_then(|state| state.profile_instance_id())
+            .and_then(ferric_browser_application::BrowserApplication::profile_instance_id)
             .is_some_and(|current| current.to_string() == profile)
             && PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
                 bindings.borrow().iter().any(|binding| {
@@ -892,7 +892,7 @@ impl qobject::BrowserUi {
             let Some(profile_id) = rust
                 .state
                 .as_ref()
-                .and_then(|state| state.profile_instance_id())
+                .and_then(ferric_browser_application::BrowserApplication::profile_instance_id)
                 .map(|profile| profile.to_string())
             else {
                 return false;
@@ -1030,7 +1030,9 @@ impl qobject::BrowserUi {
                             .rust()
                             .state
                             .as_ref()
-                            .and_then(|state| state.profile_instance_id())
+                            .and_then(
+                                ferric_browser_application::BrowserApplication::profile_instance_id,
+                            )
                             .is_some_and(|current| current.to_string() == profile_id)
                     });
             let ui = self.as_ref().rust().window_token.to_string();

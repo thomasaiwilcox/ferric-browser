@@ -471,14 +471,14 @@ pub(crate) fn publish(ui: &qobject::BrowserUi) {
         release(&token);
         return;
     };
-    if let Ok(mut owners) = owners().lock() {
-        if owners.len() < 128 || owners.contains_key(&token) {
-            owner.scope_key = owners
-                .values()
-                .find(|previous| previous.scope == owner.scope)
-                .map_or_else(Uuid::new_v4, |previous| previous.scope_key);
-            owners.insert(token, owner);
-        }
+    if let Ok(mut owners) = owners().lock()
+        && (owners.len() < 128 || owners.contains_key(&token))
+    {
+        owner.scope_key = owners
+            .values()
+            .find(|previous| previous.scope == owner.scope)
+            .map_or_else(Uuid::new_v4, |previous| previous.scope_key);
+        owners.insert(token, owner);
     }
 }
 

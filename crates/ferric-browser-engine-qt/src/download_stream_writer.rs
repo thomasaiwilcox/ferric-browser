@@ -354,13 +354,13 @@ impl StreamDownloadWriter {
         loop {
             match self.events.try_recv() {
                 Ok(event) => {
-                    if let Some(slot) = self.slots.get_mut(&event.id) {
-                        if !slot.cancelled.load(Ordering::Acquire) {
-                            slot.phase = event.phase;
-                            slot.bytes = slot.bytes.max(event.bytes);
-                            slot.error = event.error;
-                            changed.push(event.id);
-                        }
+                    if let Some(slot) = self.slots.get_mut(&event.id)
+                        && !slot.cancelled.load(Ordering::Acquire)
+                    {
+                        slot.phase = event.phase;
+                        slot.bytes = slot.bytes.max(event.bytes);
+                        slot.error = event.error;
+                        changed.push(event.id);
                     }
                 }
                 Err(mpsc::TryRecvError::Empty) => break,

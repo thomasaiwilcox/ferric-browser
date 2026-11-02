@@ -302,13 +302,13 @@ impl qobject::BrowserUi {
                 ) {
                     Ok(_) => {
                         self.as_mut().continue_setting_feedback(setting_feedback);
-                        if let Some(operation_id) = operation_id {
-                            if !self.as_mut().bind_configuration_operation(&operation_id) {
-                                self.as_mut().rust_mut().as_mut().get_mut().set_operation(
-                                    operation_id,
-                                    crate::OperationUpdate::completed("settings published"),
-                                );
-                            }
+                        if let Some(operation_id) = operation_id
+                            && !self.as_mut().bind_configuration_operation(&operation_id)
+                        {
+                            self.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                                operation_id,
+                                crate::OperationUpdate::completed("settings published"),
+                            );
                         }
                     }
                     Err(error) => {

@@ -138,12 +138,10 @@ impl qobject::BrowserUi {
                 .collect::<Vec<_>>()
         };
         let mut blocking = self.ipc_blocking_status(&Value::Null)?;
-        if private {
-            if let Some(blocking) = blocking.as_object_mut() {
-                blocking.insert("active_site_blocked_requests".into(), Value::from(0));
-                blocking.insert("active_site_explanation".into(), serde_json::json!({}));
-                blocking.insert("active_site_decisions".into(), serde_json::json!([]));
-            }
+        if private && let Some(blocking) = blocking.as_object_mut() {
+            blocking.insert("active_site_blocked_requests".into(), Value::from(0));
+            blocking.insert("active_site_explanation".into(), serde_json::json!({}));
+            blocking.insert("active_site_decisions".into(), serde_json::json!([]));
         }
         let userscripts_available = if private || origin.is_none() {
             false

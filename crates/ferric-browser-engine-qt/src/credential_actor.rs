@@ -328,13 +328,12 @@ impl CredentialActor {
         let Some(active) = self.active.as_ref().filter(|a| a.token.sequence() == token) else {
             return;
         };
-        if let Some(owner) = self.state.active_owner().cloned() {
-            if !delivered
+        if let Some(owner) = self.state.active_owner().cloned()
+            && (!delivered
                 || self.state.finish_completion(active.token, &owner, now)
-                    != TransitionOutcome::TerminalEmitted
-            {
-                self.state.abort(active.token, &owner, now);
-            }
+                    != TransitionOutcome::TerminalEmitted)
+        {
+            self.state.abort(active.token, &owner, now);
         }
         self.active = None;
         while self.state.drain_one().is_some() {}

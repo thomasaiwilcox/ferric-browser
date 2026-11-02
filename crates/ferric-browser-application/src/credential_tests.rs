@@ -308,18 +308,6 @@ fn t054_disabled_unqualified_background_and_busy_rejections_preserve_owner() {
         .expect("explicit synthetic-only available seam");
     assert_eq!(state.active_owner(), Some(&owner));
 
-    assert_eq!(
-        CredentialCeremonyState::classify_ingress(
-            super::credential_state::CredentialRequestIngress::PhoneShim
-        ),
-        super::credential_state::CredentialIngressDecision::ContinuePhoneAdmission
-    );
-    assert_eq!(
-        CredentialCeremonyState::classify_ingress(
-            super::credential_state::CredentialRequestIngress::OutsidePhoneShim
-        ),
-        super::credential_state::CredentialIngressDecision::LeaveNative
-    );
     assert_eq!(state.active_owner(), Some(&owner));
     assert_eq!(state.queued_terminal_count(), 0);
 

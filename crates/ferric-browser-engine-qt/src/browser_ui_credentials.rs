@@ -305,10 +305,10 @@ impl CredentialEvents {
         // Reserve one maximum-sized progress slot: later coalesced QR updates
         // may replace a smaller status while this same closure is pending.
         let Some(reservation) = self.reserve(crate::credential_protocol::MAX_PROGRESS_FRAME) else {
-            if let Ok(mut progress) = self.progress.lock() {
-                if progress.generation == generation {
-                    progress.queued = false;
-                }
+            if let Ok(mut progress) = self.progress.lock()
+                && progress.generation == generation
+            {
+                progress.queued = false;
             }
             return 0;
         };
@@ -338,10 +338,10 @@ impl CredentialEvents {
             }
         });
         if queued.is_err() {
-            if let Ok(mut state) = self.progress.lock() {
-                if state.generation == generation {
-                    state.queued = false;
-                }
+            if let Ok(mut state) = self.progress.lock()
+                && state.generation == generation
+            {
+                state.queued = false;
             }
             return 0;
         }

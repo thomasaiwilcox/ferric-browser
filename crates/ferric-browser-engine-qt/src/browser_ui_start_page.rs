@@ -109,10 +109,10 @@ impl qobject::BrowserUi {
 
     pub(super) fn publish_start_page(mut self: Pin<&mut Self>) {
         let snapshot = self.as_ref().rust().library.start_snapshot.clone();
-        if self.as_ref().active_profile_is_transient() {
-            if let Ok(mut state) = self.as_ref().rust().private_start_state.lock() {
-                state.snapshot = snapshot.clone();
-            }
+        if self.as_ref().active_profile_is_transient()
+            && let Ok(mut state) = self.as_ref().rust().private_start_state.lock()
+        {
+            state.snapshot = snapshot.clone();
         }
         self.as_mut().set_start_page_eligible_sites(
             snapshot
@@ -1019,23 +1019,23 @@ impl qobject::BrowserUi {
             .wrapping_add(1);
         self.as_mut().set_content_history_revision(revision);
         if InternalPage::from_url(&url).is_some() {
-            if let Some(target) = self.as_ref().target_for_index(index) {
-                if let Ok(parsed) = ValidatedUrl::parse(&url) {
-                    let _ = self.as_mut().reduce_event(Event::CommitNavigation {
-                        target,
-                        url: parsed,
-                        title: if url == "rb://start" {
-                            "Start page".into()
-                        } else {
-                            "Blank".into()
-                        },
-                    });
-                    if let Some(target) = self.as_ref().target_for_index(index) {
-                        let _ = self
-                            .as_mut()
-                            .reduce_event(Event::CompleteNavigation { target });
-                        self.as_mut().page_creation_internal_ready(target, &url);
-                    }
+            if let Some(target) = self.as_ref().target_for_index(index)
+                && let Ok(parsed) = ValidatedUrl::parse(&url)
+            {
+                let _ = self.as_mut().reduce_event(Event::CommitNavigation {
+                    target,
+                    url: parsed,
+                    title: if url == "rb://start" {
+                        "Start page".into()
+                    } else {
+                        "Blank".into()
+                    },
+                });
+                if let Some(target) = self.as_ref().target_for_index(index) {
+                    let _ = self
+                        .as_mut()
+                        .reduce_event(Event::CompleteNavigation { target });
+                    self.as_mut().page_creation_internal_ready(target, &url);
                 }
             }
             if index == self.as_ref().rust().active_tab_index {

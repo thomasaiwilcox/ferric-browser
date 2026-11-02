@@ -162,7 +162,7 @@ mod tests {
     use super::*;
     use crate::BrowserApplication;
     use ferric_browser_config::{
-        HotTabPolicy, PageGroupingPolicy, PhonePasskeyPolicy, TabsPresentation, setting_metadata,
+        PageGroupingPolicy, PhonePasskeyPolicy, TabsPresentation, setting_metadata,
     };
 
     #[test]
@@ -170,10 +170,6 @@ mod tests {
         let presentation = setting_metadata("tabs.presentation").expect("presentation metadata");
         assert_eq!(presentation.supported_scopes, &["global"]);
         assert_eq!(presentation.apply_time, "restart");
-
-        let hot_tab = setting_metadata("performance.hot_tab").expect("hot-tab metadata");
-        assert_eq!(hot_tab.supported_scopes, &["global"]);
-        assert_eq!(hot_tab.apply_time, "live");
 
         let phone = setting_metadata("passkeys.phone").expect("phone metadata");
         assert_eq!(phone.supported_scopes, &["global", "profile"]);
@@ -190,7 +186,6 @@ mod tests {
         let before = app.configuration_snapshot();
         let mut candidate = Config::default();
         candidate.tabs.presentation = TabsPresentation::Windows;
-        candidate.performance.hot_tab = HotTabPolicy::On;
         candidate.passkeys.phone = PhonePasskeyPolicy::On;
         candidate.hyprland.page_grouping = PageGroupingPolicy::Auto;
         candidate.ui.font_size_pt = 5.0;
@@ -207,7 +202,6 @@ mod tests {
             app.configuration().tabs.presentation,
             TabsPresentation::Internal
         );
-        assert_eq!(app.configuration().performance.hot_tab, HotTabPolicy::Off);
         assert_eq!(app.configuration().passkeys.phone, PhonePasskeyPolicy::Off);
         assert_eq!(
             app.configuration().hyprland.page_grouping,

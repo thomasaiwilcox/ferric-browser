@@ -130,10 +130,6 @@ mod browser_ui_spatial;
 mod browser_ui_start_page;
 mod browser_ui_state;
 mod browser_ui_storage_writes;
-#[expect(
-    clippy::redundant_closure_for_method_calls,
-    reason = "pre-existing findings in browser_ui_tab_state.rs are outside F02e3q's source scope"
-)]
 mod browser_ui_tab_state;
 mod browser_ui_tabs;
 mod browser_ui_target_search;
@@ -165,9 +161,6 @@ mod feature_state;
 mod focus_policy;
 mod hint_payload;
 mod hint_policy;
-// Remove this module-scoped allowance when H01 adds its production caller.
-#[allow(dead_code)]
-mod hot_page_policy;
 mod hyprland;
 mod hyprland_events;
 mod input_validation;
@@ -519,7 +512,7 @@ use std::cell::{Cell, RefCell};
 use std::os::unix::process::CommandExt;
 use std::time::Instant;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -571,7 +564,7 @@ pub struct BrowserUiRust {
     core_mode: Mode,
     binding_clock: Instant,
     pending_engine_action: Option<String>,
-    pending_engine_actions: engine_requests::PendingEngineRequests,
+    pending_engine_actions: VecDeque<engine_requests::NativeRequest>,
     // Prepared page windows are unpublished and cannot consume document work.
     page_window_preparing: bool,
     page_window_ordinary: bool,
@@ -885,9 +878,6 @@ pub struct BrowserUiRust {
     feature_tabs_presentation_effective: QString,
     feature_tabs_presentation_status: QString,
     feature_tabs_presentation_reason: QString,
-    feature_hot_tab_requested: QString,
-    feature_hot_tab_status: QString,
-    feature_hot_tab_reason: QString,
     feature_phone_passkeys_requested: QString,
     feature_phone_passkeys_status: QString,
     feature_phone_passkeys_reason: QString,
