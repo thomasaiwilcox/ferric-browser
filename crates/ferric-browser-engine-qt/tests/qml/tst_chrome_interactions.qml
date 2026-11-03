@@ -1472,7 +1472,15 @@ TestCase {
         compare(recoveredSessions, 2)
     }
 
-    function test_shared_command_dialog_supports_keyboard_and_mouse() {
+    function test_shared_command_dialog_supports_keyboard_and_mouse_data() {
+        return [
+            { tag: "default", mouseWidth: 900, mouseDelay: -1 },
+            // Let resize processing run during input delivery to expose stale coordinates.
+            { tag: "resized", mouseWidth: 320, mouseDelay: 50 }
+        ]
+    }
+
+    function test_shared_command_dialog_supports_keyboard_and_mouse(data) {
         var dialog = createTemporaryObject(commandDialogFixture,
                                            testWindow.contentItem)
         verify(dialog)
@@ -1492,7 +1500,13 @@ TestCase {
         dialog.decisionTaken = false
         var accept = findChild(dialog, "commandDialogAction-accept")
         verify(accept)
-        mouseClick(accept, accept.width / 2, accept.height / 2)
+        testWindow.width = data.mouseWidth
+        // Sample the rendered layout: pending layout can change the button's
+        // size while the mouse event is waiting to be delivered.
+        verify(waitForRendering(accept))
+        verify(accept.width > 0 && accept.height > 0)
+        mouseClick(accept, accept.width / 2, accept.height / 2,
+                   Qt.LeftButton, Qt.NoModifier, data.mouseDelay)
         compare(acceptedCommandDialogs, 2)
     }
 
