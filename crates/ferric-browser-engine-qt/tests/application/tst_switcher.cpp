@@ -18,6 +18,7 @@
 #include <QQmlComponent>
 #include <QPointer>
 #include <QQmlContext>
+#include <QtQml/qqml.h>
 #include <QQmlExpression>
 #include <QQmlIncubationController>
 #include <QQuickItem>
@@ -560,6 +561,9 @@ class SwitcherTests final : public QObject {
         }
     }
     void init() {
+        if (QString::fromLatin1(QTest::currentTestFunction()) == "performanceLargeHistory"
+            && qEnvironmentVariable("FERRIC_PERF_SWITCHER") != "1")
+            QSKIP("Opt-in release performance fixture");
         QTest::failOnWarning(QRegularExpression(
             "qrc:/qt/qml/io/github/ferricbrowser/.*(ReferenceError|TypeError|Binding loop)"));
         QVERIFY(directory.isValid());
@@ -617,8 +621,58 @@ class SwitcherTests final : public QObject {
     void performanceLargeHistory() {
         if (qEnvironmentVariable("FERRIC_PERF_SWITCHER") != "1")
             QSKIP("Opt-in release performance fixture");
+        QObject *storageTimer = nullptr;
+        for (auto object : window->findChildren<QObject *>()) {
+            for (auto context = qmlContext(object); context; context = context->parentContext()) {
+                if (context->nameForObject(object) == "storageLibraryPollTimer") {
+                    storageTimer = object;
+                    break;
+                }
+            }
+            if (storageTimer) break;
+        }
+        QVERIFY2(storageTimer, "production storage timer was not found in its QML context");
+        QSignalSpy polls(storageTimer, SIGNAL(triggered()));
+        QVERIFY(polls.isValid());
+        // The visible Switcher republishes after a consumed storage poll. This
+        // fixture measures the public projection without opening its surface.
+        auto awaitSources = [&] {
+            int observed = polls.count();
+            QElapsedTimer deadline; deadline.start();
+            while (evaluate("testWindow.browserUi.switcher_sources_pending").toBool()
+                   && deadline.elapsed() < 10000) {
+                QTest::qWait(1);
+                if (polls.count() != observed) {
+                    observed = polls.count();
+                    evaluate("testWindow.browserUi.switcher_query('', 'history')");
+                }
+            }
+            return !evaluate("testWindow.browserUi.switcher_sources_pending || testWindow.browserUi.switcher_sources_failed").toBool();
+        };
         QVERIFY(evaluate("testWindow.browserUi.switcher_query('', 'history')").toBool());
-        QTRY_VERIFY(!evaluate("testWindow.browserUi.switcher_sources_pending").toBool());
+        QVERIFY2(awaitSources(), "initial history read/index did not publish readiness");
+        QTest::qWait(500);
+        polls.clear();
+        QElapsedTimer idle; idle.start();
+        QTest::qWait(5000);
+        const double idleMs = idle.nsecsElapsed()/1000000.0;
+        const int idlePolls = polls.count();
+        QVERIFY(idlePolls > 0);
+        const int idlePeriod = storageTimer->property("interval").toInt();
+        QJsonArray refreshSamples;
+        for (int sample=-10; sample<100; ++sample) {
+            QElapsedTimer refresh; refresh.start();
+            QVERIFY(evaluate("testWindow.browserUi.refresh_switcher_sources('history')").toBool());
+            QVERIFY2(awaitSources(), "admitted refresh/index did not publish readiness");
+            const double elapsed = refresh.nsecsElapsed()/1000000.0;
+            QVERIFY2(elapsed < 500, "idle polling must not delay admitted refresh/index completion");
+            if (sample>=0) refreshSamples.append(elapsed);
+        }
+        qInfo().noquote() << "FERRIC_STORAGE_POLL_PERFORMANCE_JSON" << QJsonDocument(QJsonObject{
+            {"durable_owners",1},{"idle_ms",idleMs},{"idle_period_ms",idlePeriod},
+            {"idle_poll_calls",idlePolls},{"refresh_ms",refreshSamples},{"warmups",10},
+            {"boundary","real primary storage timer; admitted empty history read and index completion"}
+        }).toJson(QJsonDocument::Compact);
         QDirIterator files(QFileInfo(configPath).absolutePath() + "/data", {"browser.sqlite"},
                            QDir::Files, QDirIterator::Subdirectories);
         QVERIFY(files.hasNext());
@@ -652,7 +706,7 @@ class SwitcherTests final : public QObject {
             seeded = count;
             QElapsedTimer load; load.start();
             QVERIFY(evaluate("testWindow.browserUi.refresh_switcher_sources('history')").toBool());
-            QTRY_VERIFY_WITH_TIMEOUT(!evaluate("testWindow.browserUi.switcher_sources_pending").toBool(), 15000);
+            QVERIFY2(awaitSources(), "seeded history did not publish readiness");
             const double refreshMs = load.nsecsElapsed()/1000000.0;
             QJsonArray uncached, cached;
             for (int sample = -10; sample < 100; ++sample) {
