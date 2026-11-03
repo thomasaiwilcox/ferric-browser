@@ -2947,7 +2947,9 @@ Exit statuses are 1 for general failures, 2 for invalid arguments/configuration,
 3 for unavailable or stale targets/instances, 4 for denied access, 5 for
 unsupported operations, 6 for busy/timeout outcomes, and 7 for protocol failures.
 After a response timeout, completion is unconfirmed. If earlier requests in a
-chain were accepted, report that fact rather than implying rollback. Local
+chain were accepted, report that fact rather than implying rollback.
+Command-chain error details include `accepted_commands`, counting admission
+rather than confirmation that asynchronous effects completed. Local
 encoding and selector conflicts must reject the full chain before sending it;
 CLI annotations must preserve command-authored profile/context selectors.
 Unexpected technical failures retain a reference in CLI text; JSON carries

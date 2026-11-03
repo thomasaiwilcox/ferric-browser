@@ -1047,57 +1047,68 @@ impl qobject::BrowserUi {
             if self.as_ref().in_page_window_mode()
                 && super::browser_ui_page_creation::handles(command, Some(route))
             {
-                return self.execute_page_window_ipc_creation(
-                    command,
-                    route,
-                    expanded[index + 1..].to_vec(),
-                    operation_id,
-                    handoff,
-                );
+                return self
+                    .execute_page_window_ipc_creation(
+                        command,
+                        route,
+                        expanded[index + 1..].to_vec(),
+                        operation_id,
+                        handoff,
+                    )
+                    .map_err(|error| error.after_accepted_commands(index));
             }
             if self.as_ref().in_page_window_mode() && command.name == "tab-close" {
-                return self.execute_page_window_ipc_close(
-                    command,
-                    route,
-                    expanded[index + 1..].to_vec(),
-                    operation_id,
-                    handoff,
-                );
+                return self
+                    .execute_page_window_ipc_close(
+                        command,
+                        route,
+                        expanded[index + 1..].to_vec(),
+                        operation_id,
+                        handoff,
+                    )
+                    .map_err(|error| error.after_accepted_commands(index));
             }
             if self.as_ref().in_page_window_mode()
                 && super::browser_ui_page_regroup::handles(command)
             {
-                return self.execute_page_window_ipc_regroup(
-                    command,
-                    route,
-                    expanded[index + 1..].to_vec(),
-                    operation_id,
-                    handoff,
-                );
+                return self
+                    .execute_page_window_ipc_regroup(
+                        command,
+                        route,
+                        expanded[index + 1..].to_vec(),
+                        operation_id,
+                        handoff,
+                    )
+                    .map_err(|error| error.after_accepted_commands(index));
             }
             if self.as_ref().in_page_window_mode()
                 && super::browser_ui_page_mutations::handles(command)
             {
-                return self.execute_page_window_ipc_mutation(
-                    command,
-                    route,
-                    expanded[index + 1..].to_vec(),
-                    operation_id,
-                    handoff,
-                );
+                return self
+                    .execute_page_window_ipc_mutation(
+                        command,
+                        route,
+                        expanded[index + 1..].to_vec(),
+                        operation_id,
+                        handoff,
+                    )
+                    .map_err(|error| error.after_accepted_commands(index));
             }
             if self.as_ref().in_page_window_mode() && handles(command) {
-                return self.execute_page_window_ipc_selection_with_handoff(
-                    command,
-                    route,
-                    expanded[index + 1..].to_vec(),
-                    operation_id,
-                    handoff,
-                );
+                return self
+                    .execute_page_window_ipc_selection_with_handoff(
+                        command,
+                        route,
+                        expanded[index + 1..].to_vec(),
+                        operation_id,
+                        handoff,
+                    )
+                    .map_err(|error| error.after_accepted_commands(index));
             }
-            result =
-                self.as_mut()
-                    .execute_ipc_command_with_operation(command.clone(), route, None)?;
+            result = self
+                .as_mut()
+                .execute_ipc_command_with_operation(command.clone(), route, None)
+                .map_err(|error| error.after_accepted_commands(index))?;
             if let Some(id) = result.get("operation_id").and_then(super::Value::as_str) {
                 operations.push(id.to_owned());
             }

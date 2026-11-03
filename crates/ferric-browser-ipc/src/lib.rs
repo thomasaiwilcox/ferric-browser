@@ -577,6 +577,7 @@ pub struct PublicError {
     code: ErrorCode,
     user_message: String,
     diagnostic_context: String,
+    accepted_commands: usize,
 }
 
 impl PublicError {
@@ -591,6 +592,7 @@ impl PublicError {
             code,
             user_message: user_message.into(),
             diagnostic_context: diagnostic_context.into(),
+            accepted_commands: 0,
         }
     }
 
@@ -620,15 +622,29 @@ impl PublicError {
         &self.diagnostic_context
     }
 
+    /// Records an already accepted prefix without claiming those commands
+    /// completed or were rolled back when a later command failed.
+    #[must_use]
+    pub fn after_accepted_commands(mut self, count: usize) -> Self {
+        self.accepted_commands = self.accepted_commands.saturating_add(count);
+        self
+    }
+
     /// Converts this error into the public protocol envelope before response
     /// redaction and correlation metadata are applied.
     #[must_use]
     pub fn into_protocol_error(self) -> ProtocolError {
+        let mut details = serde_json::Map::new();
+        if !self.diagnostic_context.is_empty() {
+            details.insert("diagnostic_context".into(), json!(self.diagnostic_context));
+        }
+        if self.accepted_commands > 0 {
+            details.insert("accepted_commands".into(), json!(self.accepted_commands));
+        }
         ProtocolError {
             code: self.code.as_str().into(),
             message: self.user_message,
-            details: (!self.diagnostic_context.is_empty())
-                .then(|| json!({"diagnostic_context": self.diagnostic_context})),
+            details: (!details.is_empty()).then_some(Value::Object(details)),
         }
     }
 }
@@ -831,6 +847,18 @@ impl Response {
         redact_value(&mut details);
         let Value::Object(mut details) = details else {
             unreachable!("error details are always converted to an object");
+        };
+        let (preserved, next_action) = if details
+            .get("accepted_commands")
+            .and_then(Value::as_u64)
+            .is_some_and(|count| count > 0)
+        {
+            (
+                "earlier commands were accepted; their effects may still be in progress",
+                "check the browser state before retrying the remaining commands",
+            )
+        } else {
+            (preserved, next_action)
         };
         details.insert(
             "correlation_id".into(),
@@ -1790,6 +1818,36 @@ mod tests {
         assert!(recent_error_correlations().iter().any(|record| {
             record["correlation_id"] == correlation_id && record["code"] == "E_INVALID_ARGUMENT"
         }));
+    }
+
+    #[test]
+    fn command_chain_failure_reports_only_accepted_commands() {
+        for count in [0, 1] {
+            let failure = PublicError::new(ErrorCode::NotFound, "Unknown setting.", "missing key")
+                .after_accepted_commands(count);
+            let error = Response::failure("chain", failure.into_protocol_error())
+                .error
+                .unwrap();
+            assert_eq!(error.code, "E_NOT_FOUND");
+            assert_eq!(error.message, "Unknown setting.");
+            let details = error.details.unwrap();
+            if count == 0 {
+                assert!(details.get("accepted_commands").is_none());
+                assert_eq!(details["preserved"], "existing state was left unchanged");
+            } else {
+                assert_eq!(details["accepted_commands"], count);
+                assert!(
+                    details["preserved"]
+                        .as_str()
+                        .unwrap()
+                        .contains("earlier commands were accepted")
+                );
+                assert_eq!(
+                    details["next_action"],
+                    "check the browser state before retrying the remaining commands"
+                );
+            }
+        }
     }
 
     #[test]
