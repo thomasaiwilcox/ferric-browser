@@ -68,8 +68,8 @@ pub(super) struct ConfigWriteWorker {
 }
 
 impl ConfigWriteWorker {
-    pub(super) fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
+    pub(super) fn new() -> Self {
+        let inner = SingleFlightWorker::deferred(
             "ferric-browser-config-writer",
             |request: ConfigWriteRequest| match request {
                 ConfigWriteRequest::Write { path, bytes } => (|| {
@@ -88,9 +88,8 @@ impl ConfigWriteWorker {
                     })
                 })(),
             },
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
+        );
+        Self { inner }
     }
 
     pub(super) fn request(&mut self, path: PathBuf, bytes: Vec<u8>) -> Result<(), String> {
@@ -116,8 +115,8 @@ impl ConfigWriteWorker {
 }
 
 impl ConfigReloadWorker {
-    pub(super) fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
+    pub(super) fn new() -> Self {
+        let inner = SingleFlightWorker::deferred(
             "ferric-browser-config-loader",
             |request: ConfigReloadRequest| match request {
                 ConfigReloadRequest::Load {
@@ -180,12 +179,11 @@ impl ConfigReloadWorker {
                         })
                     }),
             },
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self {
+        );
+        Self {
             inner,
             pending_operation: None,
-        })
+        }
     }
 
     pub(super) fn request(&mut self, path: PathBuf, profile_name: String) -> Result<(), String> {
