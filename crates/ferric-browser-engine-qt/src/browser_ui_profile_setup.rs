@@ -1,5 +1,5 @@
 use super::{
-    BrowserApplication, Config, ConfigReloadWorker, ConfigWatch, ConfigWriteWorker,
+    Arc, BrowserApplication, Config, ConfigReloadWorker, ConfigWatch, ConfigWriteWorker,
     ContextSnapshot, ContextsConfig, CxxQtType, EditorWriteWorker, LoggingConfig, Mode,
     NetworkPolicyWorker, PathBuf, PendingProfileConfiguration, Pin, PrintWorker, PrivacyKind,
     ProfileDeleteWorker, ProfileListWorker, ProfileOpenEffect, ProfileOpenRequest,
@@ -167,7 +167,7 @@ impl qobject::BrowserUi {
             private_profile,
             profile_name,
             storage_base,
-            state,
+            mut state,
             window,
             tab,
         } = pending;
@@ -285,6 +285,9 @@ impl qobject::BrowserUi {
             this.page_window_closing = false;
             this.restored_page_windows.clear();
             this.restored_page_group_ids.clear();
+            if let Some(wake) = &this.runtime_waker {
+                state.set_storage_waker(Arc::clone(wake));
+            }
             this.state = Some(state);
             this.context_catalog_revision = context_catalog_revision;
             this.navigation.journey_durable_ids.borrow_mut().clear();

@@ -1296,6 +1296,9 @@ pub(crate) mod qobject {
         fn poll_storage_library(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]
+        fn storage_library_delay_ms(self: &BrowserUi) -> i32;
+
+        #[qinvokable]
         fn activate_switcher_result(
             self: Pin<&mut BrowserUi>,
             kind: &QString,

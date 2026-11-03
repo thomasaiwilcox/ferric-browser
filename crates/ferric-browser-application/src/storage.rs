@@ -73,6 +73,7 @@ pub(crate) struct StorageCoordinator {
     effects: VecDeque<StorageEffect>,
     observations: BTreeMap<StorageTicket, StorageObservation>,
     next_ticket: u64,
+    wake: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl Default for StorageCoordinator {
@@ -84,11 +85,25 @@ impl Default for StorageCoordinator {
             effects: VecDeque::new(),
             observations: BTreeMap::new(),
             next_ticket: 1,
+            wake: None,
         }
     }
 }
 
 impl StorageCoordinator {
+    pub(crate) fn set_waker(&mut self, wake: std::sync::Arc<dyn Fn() + Send + Sync>) {
+        self.wake = Some(wake);
+        if self.has_work()
+            && let Some(wake) = &self.wake
+        {
+            wake();
+        }
+    }
+
+    pub(crate) fn has_work(&self) -> bool {
+        !self.pending.is_empty() || !self.active.is_empty() || !self.effects.is_empty()
+    }
+
     pub(crate) fn replace(&mut self, path: Option<&Path>) -> Result<(), StorageWorkerError> {
         self.replace_until(path, Instant::now() + RETIRE_TIMEOUT)
     }
@@ -148,6 +163,11 @@ impl StorageCoordinator {
             && let Some(observation) = observation
         {
             self.observations.insert(ticket, observation.admitted());
+        }
+        if result.is_ok()
+            && let Some(wake) = &self.wake
+        {
+            wake();
         }
         result
     }

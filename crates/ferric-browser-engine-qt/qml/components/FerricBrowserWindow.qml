@@ -739,7 +739,10 @@ ApplicationWindow {
         page_window_ordinary: secondaryWindow.windowOrdinaryPage
         hint_chrome_available: true
         status_text: "Ready"
-        onRuntime_work_available: secondaryWindow.scheduleRuntimeWork(0)
+        onRuntime_work_available: {
+            secondaryWindow.scheduleRuntimeWork(0)
+            rootWindow.scheduleStorageWork()
+        }
         onSwitcher_sources_changed: {
             if (rootWindow && rootWindow.switcherVisible)
                 rootWindow.requestSwitcherLiveRefresh()

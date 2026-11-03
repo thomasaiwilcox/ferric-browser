@@ -556,6 +556,7 @@ pub struct BrowserUiRust {
     // The application boundary owns reducer state and durable resources; Qt
     // receives only read projections and typed effects.
     state: Option<BrowserApplication>,
+    runtime_waker: Option<Arc<dyn Fn() + Send + Sync>>,
     window: Option<WindowId>,
     tab: Option<TabId>,
     registry: Arc<CommandRegistry>,

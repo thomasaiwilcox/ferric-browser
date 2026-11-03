@@ -123,7 +123,12 @@ impl qobject::BrowserUi {
             }
         });
         install_pending_request_waker(Arc::clone(&wake));
-        crate::page_window_operations::install_waker(wake);
+        crate::page_window_operations::install_waker(Arc::clone(&wake));
+        let mut rust = self.as_mut().rust_mut();
+        if let Some(state) = rust.state.as_mut() {
+            state.set_storage_waker(Arc::clone(&wake));
+        }
+        rust.runtime_waker = Some(wake);
     }
 
     pub(super) fn maintenance_delay_ms(mut self: Pin<&mut Self>) -> i32 {

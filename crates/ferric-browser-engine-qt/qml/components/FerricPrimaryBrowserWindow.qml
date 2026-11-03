@@ -981,28 +981,18 @@ ApplicationWindow {
         onTriggered: window.requestLinkCleaningUpdate(true)
     }
 
-    Timer {
+    FerricStoragePollScheduler {
         id: storageLibraryPollTimer
-        interval: 50
-        repeat: true
-        // Completion belongs to every durable window, including destinations
-        // opened from a private primary window.
-        running: !window.temporaryProfile || window.liveWindowEntries().some(function(entry) {
+        // The primary owns polling for all durable destinations, including
+        // destinations opened from a private primary window.
+        enabled: !window.temporaryProfile || window.liveWindowEntries().some(function(entry) {
             return entry && entry.ui && !entry.privateProfile && !entry.ephemeralProfile
         })
-        onTriggered: {
-            var entries = window.liveWindowEntries() || []
-            if (entries.length === 0) {
-                entries = [{ ui: browserUi }]
-            }
-            var consumed = false
-            for (var i = 0; i < entries.length; ++i) {
-                var entry = entries[i]
-                if (entry && entry.ui && !entry.privateProfile && !entry.ephemeralProfile
-                        && entry.ui.poll_storage_library()) {
-                    consumed = true
-                }
-            }
+        entries: function() {
+            var live = window.liveWindowEntries() || []
+            return live.length > 0 ? live : [{ ui: browserUi }]
+        }
+        onPolled: function(consumed) {
             if (consumed && window.switcherVisible) {
                 window.requestSwitcherLiveRefresh()
             }
@@ -1134,7 +1124,10 @@ ApplicationWindow {
         id: browserUi
         page_window_ordinary: true
         status_text: "Ready"
-        onRuntime_work_available: window.scheduleRuntimeWork(0)
+        onRuntime_work_available: {
+            window.scheduleRuntimeWork(0)
+            window.scheduleStorageWork()
+        }
         onSwitcher_sources_changed: {
             if (window.switcherVisible) window.requestSwitcherLiveRefresh()
         }
@@ -3356,6 +3349,10 @@ GridLayout {
     function applyRestorePayload(payload, hasModeLine) { return runtimeSurface.applyRestorePayload(payload, hasModeLine) }
 
     function syncTabModel() { return runtimeSurface.syncTabModel() }
+
+    function scheduleStorageWork() {
+        storageLibraryPollTimer.wake()
+    }
 
     function scheduleRuntimeWork(delay) { return runtimeSurface.scheduleRuntimeWork(delay) }
 
