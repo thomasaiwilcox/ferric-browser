@@ -50,6 +50,7 @@ class FerricBrowserRequestInterceptor : public QWebEngineUrlRequestInterceptor {
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
     Q_PROPERTY(qulonglong blockedCount READ blockedCount NOTIFY blockedCountChanged)
     Q_PROPERTY(qulonglong unknownContextCount READ unknownContextCount NOTIFY unknownContextCountChanged)
+    Q_PROPERTY(qulonglong evidenceRevision READ evidenceRevision NOTIFY evidenceChanged)
     Q_PROPERTY(QVariantMap blockedSiteCounts READ blockedSiteCounts NOTIFY blockedSiteCountsChanged)
 
 public:
@@ -98,6 +99,8 @@ public:
     qulonglong blockedCount() const;
     qulonglong unknownContextCount() const;
     QVariantMap blockedSiteCounts() const;
+    qulonglong evidenceRevision() const { return evidenceRevision_; }
+    Q_INVOKABLE qulonglong blockedSiteCount(const QString &site) const;
     // The QML bridge consumes fixed-width rows rather than JSON.  Keep the
     // QVariant containers private to this native adapter.
     Q_INVOKABLE QStringList blockedRequestExplanationFields(const QString &site) const;
@@ -130,8 +133,11 @@ public:
     void blockedCountChanged();
     void unknownContextCountChanged();
     void blockedSiteCountsChanged();
+    void evidenceChanged();
 
 private:
+    friend class FerricEvidenceTest;
+    qulonglong evidenceRevision_ = 0;
     struct ProfileAttachment {
         QPointer<QWebEngineProfile> webProfile;
         QPointer<QQuickWebEngineProfile> quickProfile;

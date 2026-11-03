@@ -453,14 +453,24 @@ QVariantMap FerricBrowserRequestInterceptor::blockedSiteCounts() const
     return result;
 }
 
+qulonglong FerricBrowserRequestInterceptor::blockedSiteCount(const QString &site) const
+{
+    const auto normalizedSite = normalizedHost(site);
+    QReadLocker locker(&countsLock_);
+    return blockedSiteCounts_.value(normalizedSite, 0);
+}
+
 QStringList FerricBrowserRequestInterceptor::blockedRequestExplanationFields(const QString &site) const
 {
     const auto normalizedSite = normalizedHost(site);
     if (normalizedSite.isEmpty()) {
         return {};
     }
-    QReadLocker locker(&countsLock_);
-    const auto explanation = blockedRequestExplanations_.value(normalizedSite);
+    QVariantMap explanation;
+    {
+        QReadLocker locker(&countsLock_);
+        explanation = blockedRequestExplanations_.value(normalizedSite);
+    }
     return explanation.isEmpty() ? QStringList{} : evidenceFields(explanation);
 }
 
@@ -470,9 +480,12 @@ QStringList FerricBrowserRequestInterceptor::blockedRequestDecisionFields(const 
     if (normalizedSite.isEmpty()) {
         return {};
     }
-    QReadLocker locker(&countsLock_);
+    QList<QVariantMap> decisions;
+    {
+        QReadLocker locker(&countsLock_);
+        decisions = requestDecisionLog_.value(normalizedSite);
+    }
     QStringList result;
-    const auto decisions = requestDecisionLog_.value(normalizedSite);
     result.reserve(decisions.size() * 13);
     for (const auto &decision : decisions) {
         result.append(evidenceFields(decision));
@@ -866,6 +879,8 @@ void FerricBrowserRequestInterceptor::scheduleEvidenceChanged()
         emit blockedCountChanged();
         emit unknownContextCountChanged();
         emit blockedSiteCountsChanged();
+        ++evidenceRevision_;
+        emit evidenceChanged();
     }, Qt::QueuedConnection);
 }
 

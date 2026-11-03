@@ -884,8 +884,8 @@ ApplicationWindow {
         var hostValue = view && view.url ? view.url.host : ""
         var host = hostValue === undefined || hostValue === null
                 ? "" : String(hostValue)
-        var counts = requestInterceptor.blockedSiteCounts || ({})
-        return host.length > 0 && counts[host] !== undefined ? Number(counts[host]) : 0
+        var revision = requestInterceptor.evidenceRevision
+        return host.length > 0 ? Number(requestInterceptor.blockedSiteCount(host)) : 0
     }
     readonly property int browserScriptWorld: WebEngineScript.ApplicationWorld
     readonly property string browserScriptBundleVersion: "1"
@@ -916,9 +916,7 @@ ApplicationWindow {
         adblockEngineHandle: browserUi.blocking_adblock_handle
         bypassSites: browserUi.blocking_bypass_sites
         securityDenyHosts: browserUi.blocking_security_deny_hosts
-        onBlockedCountChanged: window.refreshBlockingEvidence()
-        onUnknownContextCountChanged: window.refreshBlockingEvidence()
-        onBlockedSiteCountsChanged: window.refreshBlockingEvidence()
+        onEvidenceChanged: window.refreshBlockingEvidence()
     }
 
     function refreshBlockingEvidence() { return runtimeBase.refreshBlockingEvidence() }

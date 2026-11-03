@@ -250,8 +250,8 @@ WebEngineView {
                 property int blockedRequestCount: {
                     var host = webView.url && webView.url.host
                             ? String(webView.url.host) : ""
-                    var counts = viewInterceptor.blockedSiteCounts || ({})
-                    return host.length > 0 && counts[host] !== undefined ? Number(counts[host]) : 0
+                    var revision = viewInterceptor.evidenceRevision
+                    return host.length > 0 ? Number(viewInterceptor.blockedSiteCount(host)) : 0
                 }
                 profile: viewProfile
                 // Native pages supply their own content; the model or an
