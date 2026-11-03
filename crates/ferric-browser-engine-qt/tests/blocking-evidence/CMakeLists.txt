@@ -8,3 +8,7 @@ target_include_directories(evidence_tests PRIVATE ../../src)
 target_link_libraries(evidence_tests PRIVATE Qt6::Test Qt6::Qml Qt6::WebEngineCore Qt6::WebEngineQuick)
 enable_testing()
 add_test(NAME evidence COMMAND evidence_tests)
+# Opt-in benchmark: not registered with CTest and never changes browser policy.
+add_executable(hostname_perf EXCLUDE_FROM_ALL hostname_perf.cpp ../../src/request_interceptor.cpp ../../src/request_interceptor.h)
+target_include_directories(hostname_perf PRIVATE ../../src)
+target_link_libraries(hostname_perf PRIVATE Qt6::Core Qt6::WebEngineCore Qt6::WebEngineQuick)

@@ -448,7 +448,8 @@ TestCase {
             warmups: 10,
             time_to_visible_ms: samples,
             layout_compute_ms: layoutSamples,
-            renderer: "Qt Quick offscreen software",
+            renderer: {graphics_api: GraphicsInfo.api,
+                       note: "Qt Quick GraphicsInfo enum; capture QSG_INFO for device identity"},
             viewport: {width: width, height: height}
         }))
         hintOverlay.hintsVisible = false

@@ -7,7 +7,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     hint::black_box,
-    io::Write,
+    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     thread,
@@ -18,7 +18,7 @@ const DEFAULT_SAMPLES: usize = 30;
 const MAX_SAMPLES: usize = 1_000;
 const HISTORY_CANDIDATES: usize = 100_000;
 const UI_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
-const UI_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+const UI_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PerfSuite {
@@ -36,6 +36,7 @@ struct PerfOptions {
     pages: usize,
     presentation: String,
     page_url: String,
+    quit_plugin_dir: Option<PathBuf>,
     output: Option<PathBuf>,
 }
 
@@ -92,6 +93,7 @@ fn parse_arguments(arguments: &[String]) -> Result<PerfOptions, String> {
     let mut pages = None;
     let mut presentation = None;
     let mut page_url = None;
+    let mut quit_plugin_dir = None;
     let mut output = None;
     let mut index = 0;
     while index < arguments.len() {
@@ -179,6 +181,17 @@ fn parse_arguments(arguments: &[String]) -> Result<PerfOptions, String> {
                 *slot = Some(value.clone());
                 index += 2;
             }
+            "--quit-plugin-dir" => {
+                if quit_plugin_dir.is_some() || index + 1 >= arguments.len() {
+                    return Err("perf accepts --quit-plugin-dir PATH at most once".into());
+                }
+                let value = &arguments[index + 1];
+                if value.is_empty() || value.chars().any(char::is_control) {
+                    return Err("invalid quit plugin directory".into());
+                }
+                quit_plugin_dir = Some(PathBuf::from(value));
+                index += 2;
+            }
             "--output" => {
                 if output.is_some() || index + 1 >= arguments.len() {
                     return Err("perf accepts --output PATH at most once".into());
@@ -198,7 +211,8 @@ fn parse_arguments(arguments: &[String]) -> Result<PerfOptions, String> {
             || idle_seconds.is_some()
             || pages.is_some()
             || presentation.is_some()
-            || page_url.is_some())
+            || page_url.is_some()
+            || quit_plugin_dir.is_some())
     {
         return Err("UI workload options require --suite ui".into());
     }
@@ -208,6 +222,7 @@ fn parse_arguments(arguments: &[String]) -> Result<PerfOptions, String> {
         pages: pages.unwrap_or(1),
         presentation: presentation.unwrap_or_else(|| "internal".into()),
         page_url: page_url.unwrap_or_else(|| "about:blank".into()),
+        quit_plugin_dir,
         suite,
         samples,
         output,
@@ -345,9 +360,16 @@ impl Drop for UiRun {
 }
 
 fn collect_ui_report(options: &PerfOptions) -> Result<Value, String> {
+    let plugin_dir = options.quit_plugin_dir.as_ref().ok_or("UI performance requires --quit-plugin-dir PATH; build tests/performance-helpers with the same Qt SDK first")?;
+    if !plugin_dir
+        .join("generic/libferric_perf_quit_plugin.so")
+        .is_file()
+    {
+        return Err("quit plugin directory does not contain the owned performance helper".into());
+    }
     let mut runs = Vec::with_capacity(options.repetitions);
     for _ in 0..options.repetitions {
-        runs.push(collect_ui_run(options)?);
+        runs.push(collect_ui_run(options, plugin_dir)?);
     }
     let mut report = runs[0].clone();
     report["aggregation"] = json!(
@@ -360,7 +382,7 @@ fn collect_ui_report(options: &PerfOptions) -> Result<Value, String> {
     Ok(report)
 }
 
-fn collect_ui_run(options: &PerfOptions) -> Result<Value, String> {
+fn collect_ui_run(options: &PerfOptions, plugin_dir: &Path) -> Result<Value, String> {
     let samples = options.samples;
     let idle_window = Duration::from_secs(options.idle_seconds);
     if !cfg!(target_os = "linux") {
@@ -379,34 +401,51 @@ fn collect_ui_run(options: &PerfOptions) -> Result<Value, String> {
         ));
     }
 
-    let (mut run, startup_ms) = start_ui_run(&browser, options)?;
+    let (mut run, startup_ms) = start_ui_run(&browser, options, plugin_dir)?;
     let ready_started = Instant::now();
     loop {
-        let tabs = browser_json(
+        let tabs = browser_json_response(
             &browser,
             &run.basedir,
             &["query", "tabs", "--format", "json"],
+            true,
         )?;
-        if page_workload_ready(&tabs, options.pages)? {
+        if tabs
+            .as_ref()
+            .map(|tabs| page_workload_ready(tabs, options.pages))
+            .transpose()?
+            .unwrap_or(false)
+        {
             break;
         }
         if ready_started.elapsed() > Duration::from_secs(60) {
-            return Err("workload did not reach the requested settled page count".into());
+            return Err(format!(
+                "workload did not settle: requested {}, observed {}; stderr: {}",
+                options.pages,
+                tabs.map_or_else(|| "E_BUSY".into(), |value| value.to_string()),
+                fixture_stderr(&run.basedir)
+            ));
         }
         thread::sleep(Duration::from_millis(100));
     }
+    let workload_ready_ms = startup_ms + ready_started.elapsed().as_secs_f64() * 1000.0;
     let browser_pid = run.child.id();
     let ipc_samples_us = collect_ipc_samples(&browser, &run.basedir, samples)?;
     let idle = measure_idle_cpu(browser_pid, idle_window)?;
     let process_metrics = process_tree_metrics(browser_pid)?;
     let diagnostics = browser_json(&browser, &run.basedir, &["diagnostics", "--format", "json"])?;
     let runtime = diagnostics.get("runtime").cloned().unwrap_or(Value::Null);
-    let shutdown_ms = shutdown_ui_run(&browser, &mut run)?;
+    let shutdown = shutdown_ui_run(&browser, &mut run);
+    let shutdown_ms = shutdown.as_ref().ok().copied();
+    let shutdown_error = shutdown.err();
     let measurements = UiMeasurements {
         startup_ms,
+        workload_ready_ms,
+        quit_confirmed: run.basedir.join("quit-confirmed").is_file(),
         ipc_samples_us,
         idle,
         shutdown_ms,
+        shutdown_error,
         process_metrics,
         runtime,
     };
@@ -435,18 +474,38 @@ fn page_workload_ready(response: &Value, expected: usize) -> Result<bool, String
     Ok(settled)
 }
 
-fn start_ui_run(browser: &Path, options: &PerfOptions) -> Result<(UiRun, f64), String> {
+fn start_ui_run(
+    browser: &Path,
+    options: &PerfOptions,
+    plugin_dir: &Path,
+) -> Result<(UiRun, f64), String> {
     let basedir = create_ui_basedir()?;
+    fs::write(
+        basedir.join(".ferric-performance-fixture"),
+        "Ferric performance fixture only.\n",
+    )
+    .map_err(|error| format!("could not mark the owned performance profile: {error}"))?;
+    let mut plugin_paths = vec![plugin_dir.to_path_buf()];
+    if let Some(existing) = std::env::var_os("QT_PLUGIN_PATH") {
+        plugin_paths.extend(std::env::split_paths(&existing));
+    }
+    let plugins = std::env::join_paths(plugin_paths)
+        .map_err(|error| format!("invalid plugin paths: {error}"))?;
+    let stderr = fs::File::create(basedir.join("browser-stderr.log"))
+        .map_err(|error| format!("could not capture fixture stderr: {error}"))?;
     let child = Command::new(browser)
         .arg("--basedir")
         .arg(&basedir)
         .arg("--set")
         .arg(format!("tabs.presentation={:?}", options.presentation))
+        .env("QT_PLUGIN_PATH", plugins)
+        .env("QT_QPA_GENERIC_PLUGINS", "ferricperfquitfixture")
+        .env("FERRIC_PERF_QUIT_ROOT", &basedir)
         .arg("open")
         .args(std::iter::repeat_n(&options.page_url, options.pages))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::from(stderr))
         .spawn()
         .map_err(|error| format!("could not start {}: {error}", browser.display()))?;
     let mut run = UiRun { child, basedir };
@@ -458,7 +517,8 @@ fn start_ui_run(browser: &Path, options: &PerfOptions) -> Result<(UiRun, f64), S
             .map_err(|error| format!("could not inspect Ferric Browser startup: {error}"))?
         {
             return Err(format!(
-                "Ferric Browser exited before UI measurement with {status}"
+                "Ferric Browser exited before UI measurement with {status}: {}",
+                fixture_stderr(&run.basedir)
             ));
         }
         let error = match browser_json(
@@ -585,6 +645,10 @@ fn parse_cpu_stat(stat: &str) -> Result<(u64, u64), String> {
 
 fn shutdown_ui_run(browser: &Path, run: &mut UiRun) -> Result<f64, String> {
     let shutdown_started = Instant::now();
+    let authorization = run.basedir.join("confirm-quit.tmp");
+    fs::write(&authorization, "Confirm this performance fixture's quit.\n")
+        .and_then(|()| fs::rename(&authorization, run.basedir.join("confirm-quit")))
+        .map_err(|error| format!("could not authorize fixture shutdown: {error}"))?;
     let quit = Command::new(browser)
         .arg("--basedir")
         .arg(&run.basedir)
@@ -611,8 +675,9 @@ fn shutdown_ui_run(browser: &Path, run: &mut UiRun) -> Result<f64, String> {
         }
         if started.elapsed() >= UI_SHUTDOWN_TIMEOUT {
             return Err(format!(
-                "Ferric Browser did not exit within {} seconds",
-                UI_SHUTDOWN_TIMEOUT.as_secs()
+                "Ferric Browser did not exit within {} seconds: {}",
+                UI_SHUTDOWN_TIMEOUT.as_secs(),
+                fixture_stderr(&run.basedir)
             ));
         }
         thread::sleep(Duration::from_millis(25));
@@ -621,9 +686,12 @@ fn shutdown_ui_run(browser: &Path, run: &mut UiRun) -> Result<f64, String> {
 
 struct UiMeasurements {
     startup_ms: f64,
+    workload_ready_ms: f64,
+    quit_confirmed: bool,
     ipc_samples_us: Vec<f64>,
     idle: IdleMeasurement,
-    shutdown_ms: f64,
+    shutdown_ms: Option<f64>,
+    shutdown_error: Option<String>,
     process_metrics: ProcessTreeMetrics,
     runtime: Value,
 }
@@ -659,7 +727,12 @@ fn ui_report(browser: &Path, samples: usize, measurements: &UiMeasurements) -> V
                 "name": "startup.ipc_ready",
                 "value_ms": measurements.startup_ms,
             },
-            { "name": "shutdown", "value_ms": measurements.shutdown_ms },
+            { "name": "workload.ready", "value_ms": measurements.workload_ready_ms },
+            { "name": "shutdown", "value_ms": measurements.shutdown_ms,
+              "owned_quit_confirmed": measurements.quit_confirmed,
+              "error": measurements.shutdown_error,
+              "cleanup": "owned fixture is terminated after a failed shutdown; failure is not a successful latency sample",
+              "confirmation": "test-only Qt button click after measurement; helper dormant until authorization" },
             { "name": "idle.process_tree_cpu",
               "value_percent": measurements.idle.tree_percent,
               "appeared": measurements.idle.appeared,
@@ -724,6 +797,16 @@ fn create_ui_basedir() -> Result<PathBuf, String> {
 }
 
 fn browser_json(browser: &Path, basedir: &Path, arguments: &[&str]) -> Result<Value, String> {
+    browser_json_response(browser, basedir, arguments, false)?
+        .ok_or_else(|| "unexpected busy response".to_owned())
+}
+
+fn browser_json_response(
+    browser: &Path,
+    basedir: &Path,
+    arguments: &[&str],
+    allow_busy: bool,
+) -> Result<Option<Value>, String> {
     let output = Command::new(browser)
         .arg("--basedir")
         .arg(basedir)
@@ -731,6 +814,9 @@ fn browser_json(browser: &Path, basedir: &Path, arguments: &[&str]) -> Result<Va
         .stdin(Stdio::null())
         .output()
         .map_err(|error| format!("could not invoke {}: {error}", browser.display()))?;
+    if allow_busy && busy_response(output.status.code(), &output.stderr) {
+        return Ok(None);
+    }
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!(
@@ -741,7 +827,24 @@ fn browser_json(browser: &Path, basedir: &Path, arguments: &[&str]) -> Result<Va
         ));
     }
     serde_json::from_slice(&output.stdout)
+        .map(Some)
         .map_err(|error| format!("Ferric Browser returned invalid JSON: {error}"))
+}
+
+fn busy_response(status: Option<i32>, stderr: &[u8]) -> bool {
+    status == Some(6) && serde_json::from_slice::<Value>(stderr).is_ok_and(|value| {
+        value.get("error").and_then(|error| error.get("code")).and_then(Value::as_str) == Some("E_BUSY")
+    })
+}
+
+fn fixture_stderr(basedir: &Path) -> String {
+    let mut bytes = Vec::new();
+    if let Ok(mut file) = fs::File::open(basedir.join("browser-stderr.log")) {
+        let size = file.metadata().map_or(0, |metadata| metadata.len());
+        let _ = file.seek(SeekFrom::Start(size.saturating_sub(4096)));
+        let _ = file.take(4096).read_to_end(&mut bytes);
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 fn process_cpu_ticks(pid: u32) -> Result<u64, String> {
@@ -1043,6 +1146,16 @@ mod tests {
             ])
             .is_err()
         );
+    }
+
+    #[test]
+    fn readiness_retries_only_explicit_temporary_busy_responses() {
+        let busy = br#"{"error":{"code":"E_BUSY"}}"#;
+        assert!(super::busy_response(Some(6), busy));
+        assert!(!super::busy_response(Some(1), busy));
+        assert!(!super::busy_response(Some(6), br#"{"error":{"code":"E_DENIED"}}"#));
+        assert!(!super::busy_response(Some(6), b"malformed E_BUSY"));
+        assert!(!super::busy_response(None, busy));
     }
 
     #[test]
