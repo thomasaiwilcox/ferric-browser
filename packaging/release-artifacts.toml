@@ -152,3 +152,35 @@ path = "docs/architecture/ADR-0011-context-profile-window-actions.md"
 [[artifact]]
 name = "journey-ephemeral-state-decision"
 path = "docs/architecture/ADR-0012-journey-and-ephemeral-state.md"
+
+[[artifact]]
+name = "phone-auth-manifest"
+path = "helpers/ferric-phone-auth/Cargo.toml"
+
+[[artifact]]
+name = "phone-auth-lock"
+path = "helpers/ferric-phone-auth/Cargo.lock"
+
+[[artifact]]
+name = "phone-auth-vendor-provenance"
+path = "helpers/ferric-phone-auth/vendor/UPSTREAM.json"
+
+[[artifact]]
+name = "phone-auth-psl-provenance"
+path = "helpers/ferric-phone-auth/data/provenance.json"
+
+[[artifact]]
+name = "phone-auth-relinking"
+path = "helpers/ferric-phone-auth/RELINKING.md"
+
+[[artifact]]
+name = "window-mode-and-passkeys-guide"
+path = "docs/user/window-mode-and-passkeys.md"
+
+[[artifact]]
+name = "phone-auth-test-dependency-policy"
+path = "helpers/ferric-phone-auth/deny.toml"
+
+[[artifact]]
+name = "phone-auth-production-advisory-policy"
+path = "helpers/ferric-phone-auth/deny-production.toml"

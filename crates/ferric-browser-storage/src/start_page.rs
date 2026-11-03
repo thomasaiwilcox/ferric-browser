@@ -183,11 +183,11 @@ impl ProfileStore {
         let mut eligible = self.connection.prepare("SELECT normalized_url FROM pages WHERE EXISTS (SELECT 1 FROM visits WHERE page_id = pages.id AND committed_at >= ?1)")?;
         for url in eligible.query_map([retention_before], |row| row.get::<_, String>(0))? {
             let url = url?;
-            if let Some(site) = site_key(&url) {
-                if snapshot.dismissed.binary_search(&site).is_err() {
-                    snapshot.eligible_sites.push(site);
-                    snapshot.eligible_urls.push(url);
-                }
+            if let Some(site) = site_key(&url)
+                && snapshot.dismissed.binary_search(&site).is_err()
+            {
+                snapshot.eligible_sites.push(site);
+                snapshot.eligible_urls.push(url);
             }
         }
         snapshot.eligible_sites.sort();

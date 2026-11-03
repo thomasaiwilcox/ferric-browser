@@ -1,0 +1,4850 @@
+{
+  "schema_version": 1,
+  "status": "reconciled_source_inspection",
+  "repository": "thomasaiwilcox/ferric-browser",
+  "remote": {
+    "origin": "https://github.com/thomasaiwilcox/ferric-browser.git",
+    "identity_verified": true
+  },
+  "branch": "work/everyday-v1",
+  "product_source": {
+    "execution_baseline_sha": "e4aa108f9d63c99c3b3e977c2061d6d8dde48568",
+    "authoring_sha": "e4aa108f9d63c99c3b3e977c2061d6d8dde48568",
+    "fetched_main_sha": "e4aa108f9d63c99c3b3e977c2061d6d8dde48568",
+    "current_integration_head_at_reconciliation": "e4e907db673957d4b7b543812c20d876bd880248",
+    "authoring_commit_available": true,
+    "proposal_sha": "af30f6fb889ba694bf9fd2d71bbab3779427882e",
+    "proposal_commit_available": true,
+    "proposal_to_current_changed_paths": 555,
+    "authoring_to_fetched_main_changed_paths": 0,
+    "product_source_changed_after_authoring": false,
+    "pack_import_commit": "e4e907db673957d4b7b543812c20d876bd880248",
+    "pack_import_is_documentation_only": true,
+    "pack_import_created_separately_before_product_work": true
+  },
+  "source_manifest": [
+    {
+      "path": "README.md",
+      "inspection": "full",
+      "purpose": "Build requirements and current user behaviour",
+      "authoring_blob": "87da2b696a53841ae0cf11e7b0de5e73ddbfacad",
+      "product_baseline_blob": "87da2b696a53841ae0cf11e7b0de5e73ddbfacad",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "Cargo.toml",
+      "inspection": "full",
+      "purpose": "Workspace, MSRV and FFI panic policy",
+      "authoring_blob": "4091a5e55d287795767e35a9739448a71648d060",
+      "product_baseline_blob": "4091a5e55d287795767e35a9739448a71648d060",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "inspection": "full",
+      "purpose": "Application/runtime ownership",
+      "authoring_blob": "f982fa819cda00a83a368d498c6164e41d1e297d",
+      "product_baseline_blob": "f982fa819cda00a83a368d498c6164e41d1e297d",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "packaging/dependencies.toml",
+      "inspection": "full",
+      "purpose": "Qt 6.11.2, private-header guard, KF6 6.28",
+      "authoring_blob": "f4b7f65e324e84217e085715cd59012ccaba328d",
+      "product_baseline_blob": "f4b7f65e324e84217e085715cd59012ccaba328d",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "inspection": "full",
+      "purpose": "Current build and CI command families",
+      "authoring_blob": "eb5ccf006684d285528ffd71c2e79f00fdb09534",
+      "product_baseline_blob": "eb5ccf006684d285528ffd71c2e79f00fdb09534",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+      "inspection": "lines 1-180",
+      "purpose": "Secondary hint/search/appearance/profile hosts; do not duplicate",
+      "authoring_blob": "8f971a76fae7b0343cd044810ea321d71d20cda4",
+      "product_baseline_blob": "8f971a76fae7b0343cd044810ea321d71d20cda4",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+      "inspection": "lines 1-190 plus indexed symbol location",
+      "purpose": "Composition root, controllers and inline WebEngine factory",
+      "authoring_blob": "40fe0282850ee5cdb6aec4a25fb55db643687e4a",
+      "product_baseline_blob": "40fe0282850ee5cdb6aec4a25fb55db643687e4a",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+      "inspection": "full",
+      "purpose": "Profile consumers, downloads and owner-scoped retirement",
+      "authoring_blob": "697daba2255811951206edf7a31bcf69462a9dd8",
+      "product_baseline_blob": "697daba2255811951206edf7a31bcf69462a9dd8",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml",
+      "inspection": "full",
+      "purpose": "Shared profile/interceptor policy and lifecycle",
+      "authoring_blob": "40aef374e0217194f42e9312a512634274a450ee",
+      "product_baseline_blob": "40aef374e0217194f42e9312a512634274a450ee",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+      "inspection": "lines 1-190; transfer fallback discovered by search",
+      "purpose": "Script runner and current service allocation anchor",
+      "authoring_blob": "b5641f087379717b2aad5777fcf596064be92852",
+      "product_baseline_blob": "b5641f087379717b2aad5777fcf596064be92852",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricHintWorkspace.qml",
+      "inspection": "lines 1-100",
+      "purpose": "Existing per-window hints/grid owner",
+      "authoring_blob": "dea2901cb7a2ea983711ed877aea77fcdb1a0de2",
+      "product_baseline_blob": "dea2901cb7a2ea983711ed877aea77fcdb1a0de2",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/profile_lifetime.h",
+      "inspection": "full",
+      "purpose": "Native lifetime owner API",
+      "authoring_blob": "21a179f1b035168295fba94af340c962b6918374",
+      "product_baseline_blob": "21a179f1b035168295fba94af340c962b6918374",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "crates/ferric-browser-application/src/profile_session.rs",
+      "inspection": "full",
+      "purpose": "Existing shared durable and memory profile scopes",
+      "authoring_blob": "abbb75883320e8bd6f6022b5a4c452bac7eb9660",
+      "product_baseline_blob": "abbb75883320e8bd6f6022b5a4c452bac7eb9660",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "crates/ferric-browser-config/src/browser_config.rs",
+      "inspection": "lines 1-190",
+      "purpose": "Typed config and TabsConfig extension anchor",
+      "authoring_blob": "90e38d5e6c8b474adb2a3a2c848e4f117df2a5bf",
+      "product_baseline_blob": "90e38d5e6c8b474adb2a3a2c848e4f117df2a5bf",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/scripts/EngineRequests.js",
+      "inspection": "full",
+      "purpose": "Shared captured-request execution with target validation",
+      "authoring_blob": "ca08ba2845a14d3edb450ea2e0605ea0b46a0f8c",
+      "product_baseline_blob": "ca08ba2845a14d3edb450ea2e0605ea0b46a0f8c",
+      "authoring_blob_resolved": false
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt",
+      "inspection": "lines 1-180, displayed output truncated",
+      "purpose": "Existing production-engine harness, suite names and FERRIC_ENGINE_LIBRARY override",
+      "authoring_blob": null,
+      "product_baseline_blob": "a77cb631ef6bf3c4d1dbed954d3cc2443e8be6c5",
+      "authoring_blob_resolved": true
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/tests/application/tst_live_titles.cpp",
+      "inspection": "productPolishLiveTitles data rows and assertions",
+      "purpose": "T015 live-title owner transfer and stale source-target rejection",
+      "authoring_blob": "b3e3a37bbe039ae47ecb5f30da022ea4f85ccd03",
+      "product_baseline_blob": "b3e3a37bbe039ae47ecb5f30da022ea4f85ccd03",
+      "authoring_blob_resolved": true
+    }
+  ],
+  "planned_path_inventory": {
+    "unique_paths": 201,
+    "existing_product_paths": 77,
+    "execution_pack_artifacts": 2,
+    "planned_execution_outputs": 8,
+    "proposed_product_deliverables": 114,
+    "paths": [
+      {
+        "path": ".github/workflows/ci.yml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "eb5ccf006684d285528ffd71c2e79f00fdb09534",
+        "integration_head_blob": "eb5ccf006684d285528ffd71c2e79f00fdb09534",
+        "working_tree_file_present": true,
+        "slices": [
+          "X02"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "Cargo.toml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "4091a5e55d287795767e35a9739448a71648d060",
+        "integration_head_blob": "4091a5e55d287795767e35a9739448a71648d060",
+        "working_tree_file_present": true,
+        "slices": [],
+        "roles": [
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "README.md",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "87da2b696a53841ae0cf11e7b0de5e73ddbfacad",
+        "integration_head_blob": "87da2b696a53841ae0cf11e7b0de5e73ddbfacad",
+        "working_tree_file_present": true,
+        "slices": [
+          "X03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-application/src/configuration.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "78c5e285765b8320d613b44a79c8967154829c10",
+        "integration_head_blob": "78c5e285765b8320d613b44a79c8967154829c10",
+        "working_tree_file_present": true,
+        "slices": [
+          "F01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-application/src/configuration_write.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "3f6f1854c74ca28a80117e015fc799856592404e",
+        "integration_head_blob": "3f6f1854c74ca28a80117e015fc799856592404e",
+        "working_tree_file_present": true,
+        "slices": [
+          "F01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-application/src/credential_policy.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P02a",
+          "P02b",
+          "P02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-application/src/credential_state.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P02a",
+          "P02b",
+          "P02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-application/src/credential_tests.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P02a",
+          "P02b",
+          "P02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-application/src/lib.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "d7acac3edc2d885c72672eff098f8d07f50f6a61",
+        "integration_head_blob": "d7acac3edc2d885c72672eff098f8d07f50f6a61",
+        "working_tree_file_present": true,
+        "slices": [
+          "P02a",
+          "P02b",
+          "P02c",
+          "W01a"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-application/src/page_presentation.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W01a",
+          "W01b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-application/src/profile_session.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "abbb75883320e8bd6f6022b5a4c452bac7eb9660",
+        "integration_head_blob": "abbb75883320e8bd6f6022b5a4c452bac7eb9660",
+        "working_tree_file_present": true,
+        "slices": [],
+        "roles": [
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-application/src/sessions.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W09"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-config/src/browser_config.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "90e38d5e6c8b474adb2a3a2c848e4f117df2a5bf",
+        "integration_head_blob": "90e38d5e6c8b474adb2a3a2c848e4f117df2a5bf",
+        "working_tree_file_present": true,
+        "slices": [
+          "F00"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-config/src/config_model.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "f941a1572051bc94f17ad0025059ac231b4a4f9b",
+        "integration_head_blob": "f941a1572051bc94f17ad0025059ac231b4a4f9b",
+        "working_tree_file_present": true,
+        "slices": [
+          "F00"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-config/src/lib.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "a4c6ce4daa022bc053e6de63fe4b5d21fec9f558",
+        "integration_head_blob": "a4c6ce4daa022bc053e6de63fe4b5d21fec9f558",
+        "working_tree_file_present": true,
+        "slices": [
+          "F00"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-config/src/runtime_config.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "453ecf0654513039530b2f0fb33f0b1564772e5c",
+        "integration_head_blob": "453ecf0654513039530b2f0fb33f0b1564772e5c",
+        "working_tree_file_present": true,
+        "slices": [
+          "F00",
+          "F01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-config/src/settings.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "06a370b06b89ffdc729b60e5200fb5767f73e213",
+        "integration_head_blob": "06a370b06b89ffdc729b60e5200fb5767f73e213",
+        "working_tree_file_present": true,
+        "slices": [
+          "F01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-config/src/tests.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "3ceabb1c18f19037e803efb96aa6db34df528ebc",
+        "integration_head_blob": "3ceabb1c18f19037e803efb96aa6db34df528ebc",
+        "working_tree_file_present": true,
+        "slices": [
+          "F00"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-config/src/validation.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "7cf120ce64f151f64cdd50c774d17291116e8ba2",
+        "integration_head_blob": "7cf120ce64f151f64cdd50c774d17291116e8ba2",
+        "working_tree_file_present": true,
+        "slices": [
+          "F00"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-core/src/dispatcher.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "4af14655c48d8b3ccc752cc1b54585f81db8feeb",
+        "integration_head_blob": "4af14655c48d8b3ccc752cc1b54585f81db8feeb",
+        "working_tree_file_present": true,
+        "slices": [
+          "W01a",
+          "W01c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/build.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "6b1c9c245b23555848d0c91cd2d82a0c7aa5bff3",
+        "integration_head_blob": "6b1c9c245b23555848d0c91cd2d82a0c7aa5bff3",
+        "working_tree_file_present": true,
+        "slices": [
+          "H01",
+          "P03",
+          "P04",
+          "P05",
+          "P09",
+          "P10",
+          "W02",
+          "W05",
+          "F02a",
+          "F02b1",
+          "F02b2a",
+          "F02b2b",
+          "P05a"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ],
+        "aggregate_read_only_slices": [
+          "P05"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "8f971a76fae7b0343cd044810ea321d71d20cda4",
+        "integration_head_blob": "8f971a76fae7b0343cd044810ea321d71d20cda4",
+        "working_tree_file_present": true,
+        "slices": [
+          "F05",
+          "W02",
+          "W07",
+          "F02a",
+          "F02b1",
+          "F02b2a",
+          "F02b2b",
+          "F02d"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricCredentialProviderPrompt.qml",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P09",
+          "P10"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricHintWorkspace.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "dea2901cb7a2ea983711ed877aea77fcdb1a0de2",
+        "integration_head_blob": "dea2901cb7a2ea983711ed877aea77fcdb1a0de2",
+        "working_tree_file_present": true,
+        "slices": [
+          "F05"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricHotPageController.qml",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H01",
+          "H02",
+          "H03",
+          "H05"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricModalInputController.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "cb976effac3999474749bc6cda2f949ccecc57e1",
+        "integration_head_blob": "cb976effac3999474749bc6cda2f949ccecc57e1",
+        "working_tree_file_present": true,
+        "slices": [
+          "F05"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "F03",
+          "H01",
+          "H02",
+          "H05",
+          "W02",
+          "F02a",
+          "F02b1",
+          "F02b2a",
+          "F02b2b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricPageHost.qml",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H05",
+          "W02",
+          "W03",
+          "W05",
+          "W07",
+          "W10",
+          "W11",
+          "W12"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricPageSearch.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "8272e3499b25c94eef246728c456c751f5e2315b",
+        "integration_head_blob": "8272e3499b25c94eef246728c456c751f5e2315b",
+        "working_tree_file_present": true,
+        "slices": [
+          "F05"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "b5641f087379717b2aad5777fcf596064be92852",
+        "integration_head_blob": "b5641f087379717b2aad5777fcf596064be92852",
+        "working_tree_file_present": true,
+        "slices": [
+          "H02",
+          "F02a",
+          "F02b1",
+          "F02b2a",
+          "F02b2b",
+          "F02d"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "F03",
+          "H01",
+          "P03",
+          "P12",
+          "F02a",
+          "F02b1",
+          "F02b2a",
+          "F02b2b",
+          "F02d"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricPhonePasskeyPrompt.qml",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P10"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "40fe0282850ee5cdb6aec4a25fb55db643687e4a",
+        "integration_head_blob": "40fe0282850ee5cdb6aec4a25fb55db643687e4a",
+        "working_tree_file_present": true,
+        "slices": [
+          "F04",
+          "H02",
+          "W02",
+          "F02a",
+          "F02b1",
+          "F02b2a",
+          "F02b2b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "697daba2255811951206edf7a31bcf69462a9dd8",
+        "integration_head_blob": "697daba2255811951206edf7a31bcf69462a9dd8",
+        "working_tree_file_present": true,
+        "slices": [
+          "F03",
+          "F04",
+          "H03",
+          "W11",
+          "F02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "40aef374e0217194f42e9312a512634274a450ee",
+        "integration_head_blob": "40aef374e0217194f42e9312a512634274a450ee",
+        "working_tree_file_present": true,
+        "slices": [
+          "F04",
+          "F02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricRuntimeController.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "f4d68156a69e70b2f8a5b5c720dbaf2af52a8847",
+        "integration_head_blob": "f4d68156a69e70b2f8a5b5c720dbaf2af52a8847",
+        "working_tree_file_present": true,
+        "slices": [
+          "F05"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricSessionPreview.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "58770c36acc1e09cf2cf8da64217f5b9c2ed0b7d",
+        "integration_head_blob": "58770c36acc1e09cf2cf8da64217f5b9c2ed0b7d",
+        "working_tree_file_present": true,
+        "slices": [
+          "W10"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricWebAuthPrompt.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "41faad46cf75bbe30d2ee133af77068b15c81c90",
+        "integration_head_blob": "41faad46cf75bbe30d2ee133af77068b15c81c90",
+        "working_tree_file_present": true,
+        "slices": [
+          "P09"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "b2efe97c4ab63b283caaa168391348fd10cdc4ca",
+        "integration_head_blob": "b2efe97c4ab63b283caaa168391348fd10cdc4ca",
+        "working_tree_file_present": true,
+        "slices": [
+          "F04",
+          "H03",
+          "P12"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricWindowPresentationController.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "5ae9b71595abd7d7fb2415ca45718fd2e7c728aa",
+        "integration_head_blob": "5ae9b71595abd7d7fb2415ca45718fd2e7c728aa",
+        "working_tree_file_present": true,
+        "slices": [
+          "H02",
+          "W02",
+          "W03",
+          "W06",
+          "W07",
+          "W08",
+          "W10"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricWindowRequestsController.qml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "781d4f316ace9b54afc82d81c7356369c1b6ceec",
+        "integration_head_blob": "781d4f316ace9b54afc82d81c7356369c1b6ceec",
+        "working_tree_file_present": true,
+        "slices": [
+          "P09"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/scripts/EngineRequests.js",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "ca08ba2845a14d3edb450ea2e0605ea0b46a0f8c",
+        "integration_head_blob": "ca08ba2845a14d3edb450ea2e0605ea0b46a0f8c",
+        "working_tree_file_present": true,
+        "slices": [],
+        "roles": [
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/resources/credentials/mediator.js",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P04",
+          "P11",
+          "P12"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/resources/credentials/shim.js",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P04",
+          "P09",
+          "P11"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/background_workers.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "7bd5491b26032774a749f98e4bf43e1791576347",
+        "integration_head_blob": "7bd5491b26032774a749f98e4bf43e1791576347",
+        "working_tree_file_present": true,
+        "slices": [
+          "W04",
+          "W06",
+          "W13"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "dc2775c3e4262fbe0255afd20e57948745c4e0ce",
+        "integration_head_blob": "dc2775c3e4262fbe0255afd20e57948745c4e0ce",
+        "working_tree_file_present": true,
+        "slices": [
+          "F01b",
+          "F03",
+          "H01",
+          "P03",
+          "P05b",
+          "P05b1",
+          "P05b2"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true,
+        "aggregate_read_only_slices": [
+          "P05b"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_browsing_commands.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "ed4b2937a809372b797cfe1cbec84aa151cb63f7",
+        "integration_head_blob": "ed4b2937a809372b797cfe1cbec84aa151cb63f7",
+        "working_tree_file_present": true,
+        "slices": [
+          "W03",
+          "W01c"
+        ],
+        "roles": [
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_configuration.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "f5d743d9fa6df0bada6154cf48e177f75524f302",
+        "integration_head_blob": "f5d743d9fa6df0bada6154cf48e177f75524f302",
+        "working_tree_file_present": true,
+        "slices": [
+          "F01b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_context_navigation.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "0e0eaf85446d5901e7e6219799bad6fb09f80c84",
+        "integration_head_blob": "0e0eaf85446d5901e7e6219799bad6fb09f80c84",
+        "working_tree_file_present": true,
+        "slices": [
+          "W11",
+          "W01b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_credentials.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P03",
+          "P05",
+          "P08",
+          "P09",
+          "P10",
+          "P12",
+          "P05b",
+          "P05b1",
+          "P05b2"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P05",
+          "P05b"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_defaults.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "e9c38a320e58163fb71e9afc1fc7efe535b95c1c",
+        "integration_head_blob": "e9c38a320e58163fb71e9afc1fc7efe535b95c1c",
+        "working_tree_file_present": true,
+        "slices": [
+          "F01b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_hot_pages.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H01",
+          "H03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "b4af99d9b20f2820a26879aaffd97bce1fdf3d95",
+        "integration_head_blob": "b4af99d9b20f2820a26879aaffd97bce1fdf3d95",
+        "working_tree_file_present": true,
+        "slices": [
+          "W01b",
+          "W01a"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_ipc_runtime_dispatch.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "070d2eef93efd44ff1638a5cfc3feb9627a87477",
+        "integration_head_blob": "070d2eef93efd44ff1638a5cfc3feb9627a87477",
+        "working_tree_file_present": true,
+        "slices": [
+          "W01a",
+          "W01b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_persistence.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "cf7545e993d257e3bb7d7b544ae44b70f76b2e4e",
+        "integration_head_blob": "cf7545e993d257e3bb7d7b544ae44b70f76b2e4e",
+        "working_tree_file_present": true,
+        "slices": [
+          "W09"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_sessions.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "345c42663adda0f521e5f76752c454447ff8b0e5",
+        "integration_head_blob": "345c42663adda0f521e5f76752c454447ff8b0e5",
+        "working_tree_file_present": true,
+        "slices": [
+          "W09",
+          "W10",
+          "W01b"
+        ],
+        "roles": [
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_state.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "bb71b29ab877e658ad570b6349664de96b7bc895",
+        "integration_head_blob": "bb71b29ab877e658ad570b6349664de96b7bc895",
+        "working_tree_file_present": true,
+        "slices": [
+          "W01b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_tabs.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "fcb9e222f7e18315b9258c881a71789aa5d83e1c",
+        "integration_head_blob": "fcb9e222f7e18315b9258c881a71789aa5d83e1c",
+        "working_tree_file_present": true,
+        "slices": [
+          "W03",
+          "W08",
+          "W01c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/config_projection.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "00ba388382c713015e4b2176216eaf5a94c79d60",
+        "integration_head_blob": "00ba388382c713015e4b2176216eaf5a94c79d60",
+        "working_tree_file_present": true,
+        "slices": [
+          "F01b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/credential_bridge.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P03",
+          "P12"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/credential_bridge.h",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/credential_process.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P05",
+          "P05a",
+          "P05b",
+          "P05b1",
+          "P05b2"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P05",
+          "P05b"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/credential_process.h",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P05",
+          "P05a",
+          "P05b",
+          "P05b1",
+          "P05b2"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P05",
+          "P05b"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/credential_protocol.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P04",
+          "P05",
+          "P05b",
+          "P05b1",
+          "P05b2"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P05",
+          "P05b"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/diagnostics_overview.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "9211df14772ce4031ec08e6123580fd76bf45df2",
+        "integration_head_blob": "9211df14772ce4031ec08e6123580fd76bf45df2",
+        "working_tree_file_present": true,
+        "slices": [
+          "F00",
+          "X03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/diagnostics_snapshot.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "76a4c9b49b877828a2b6c85839d02bb6b3fee718",
+        "integration_head_blob": "76a4c9b49b877828a2b6c85839d02bb6b3fee718",
+        "working_tree_file_present": true,
+        "slices": [
+          "X03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/feature_preferences.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "bc5485d0ed7bcf513e31b37107a6a0cbe44974cf",
+        "integration_head_blob": "bc5485d0ed7bcf513e31b37107a6a0cbe44974cf",
+        "working_tree_file_present": true,
+        "slices": [
+          "F01b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/group_navigation.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W08",
+          "W12",
+          "W13"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/group_placement.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W06",
+          "W07",
+          "W13"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H00a",
+          "H00b",
+          "H00c",
+          "H03",
+          "H05"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/hyprland.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "dab4451157fbb7b17291b576b7070232b6e7dbbf",
+        "integration_head_blob": "dab4451157fbb7b17291b576b7070232b6e7dbbf",
+        "working_tree_file_present": true,
+        "slices": [
+          "W04",
+          "W05",
+          "W06",
+          "W08"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W04",
+          "W13"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/lib.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "26c9cbf75357482b3e59d890a5b1b71daeb100a3",
+        "integration_head_blob": "26c9cbf75357482b3e59d890a5b1b71daeb100a3",
+        "working_tree_file_present": true,
+        "slices": [
+          "F01b",
+          "F03",
+          "H00a",
+          "H00b",
+          "H00c",
+          "H01",
+          "P03",
+          "P04",
+          "W04",
+          "W06",
+          "W08",
+          "P05b",
+          "P05b1",
+          "P05b2"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true,
+        "aggregate_read_only_slices": [
+          "P05b"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/network_policy.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "eeb68365e307db9f22ab79dbc645e40015cded1e",
+        "integration_head_blob": "eeb68365e307db9f22ab79dbc645e40015cded1e",
+        "working_tree_file_present": true,
+        "slices": [
+          "P08"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/open_policy.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "33c003853d4514d9cdd5e42d647667d83c15ea72",
+        "integration_head_blob": "33c003853d4514d9cdd5e42d647667d83c15ea72",
+        "working_tree_file_present": true,
+        "slices": [
+          "W07",
+          "W01b",
+          "W01a"
+        ],
+        "roles": [
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/page_host_identity.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W05"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/page_host_identity.h",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W05"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/page_view_policy.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "F03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/profile_lifetime.cpp",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "06ff62f5d5d786529ab371c4eb846c092ff80e5f",
+        "integration_head_blob": "06ff62f5d5d786529ab371c4eb846c092ff80e5f",
+        "working_tree_file_present": true,
+        "slices": [
+          "F04",
+          "F02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/profile_lifetime.h",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "21a179f1b035168295fba94af340c962b6918374",
+        "integration_head_blob": "21a179f1b035168295fba94af340c962b6918374",
+        "working_tree_file_present": true,
+        "slices": [
+          "F04",
+          "F02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/renderer_lifecycle.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "c7f9a9a10f310e149dfd48027a9229ec1b3e829a",
+        "integration_head_blob": "c7f9a9a10f310e149dfd48027a9229ec1b3e829a",
+        "working_tree_file_present": true,
+        "slices": [
+          "W12"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/tab_presentation.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "c66285ab53df162cba1711d8b1c482274be304a3",
+        "integration_head_blob": "c66285ab53df162cba1711d8b1c482274be304a3",
+        "working_tree_file_present": true,
+        "slices": [
+          "W03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/tests/hot_page_policy.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H00a",
+          "H00b",
+          "H00c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/tests/page_presentation.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W01a",
+          "W01b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/tests/window_sessions.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W09"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/tests.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "e860d5a20b6e67223cc9c9a30fd9d66d30c7f679",
+        "integration_head_blob": "e860d5a20b6e67223cc9c9a30fd9d66d30c7f679",
+        "working_tree_file_present": true,
+        "slices": [
+          "W04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "1dea5a371af8000cf070dcfdad5ea06807d0b2f6",
+        "integration_head_blob": "1dea5a371af8000cf070dcfdad5ea06807d0b2f6",
+        "working_tree_file_present": true,
+        "slices": [
+          "W04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/view_lifecycle.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "e70a4542b12a60623b7676fba771265e42ac42ae",
+        "integration_head_blob": "e70a4542b12a60623b7676fba771265e42ac42ae",
+        "working_tree_file_present": true,
+        "slices": [
+          "W12"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "a77cb631ef6bf3c4d1dbed954d3cc2443e8be6c5",
+        "integration_head_blob": "a77cb631ef6bf3c4d1dbed954d3cc2443e8be6c5",
+        "working_tree_file_present": true,
+        "slices": [
+          "S01",
+          "X02"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "4efab65c5b1706a1e9ba8116074a4c1a2f90bd1d",
+        "integration_head_blob": "8bd1539527c693c0adb2f7f7e29399be98ac0a0c",
+        "working_tree_file_present": true,
+        "slices": [
+          "F02a",
+          "F02b1",
+          "F02b2a",
+          "F02b2b",
+          "F02d"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/application/tst_application.h",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "8a02be1a33e11afae231d897fec49634b2fc7f70",
+        "integration_head_blob": "ea463c3dbef164dfdb29245092a1c580403d2978",
+        "working_tree_file_present": true,
+        "slices": [
+          "F02b2a",
+          "F02b2b",
+          "F02d"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/application/tst_live_titles.cpp",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "b3e3a37bbe039ae47ecb5f30da022ea4f85ccd03",
+        "integration_head_blob": "b3e3a37bbe039ae47ecb5f30da022ea4f85ccd03",
+        "working_tree_file_present": true,
+        "slices": [
+          "F02a"
+        ],
+        "roles": [
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H04",
+          "P00a",
+          "P00b",
+          "P14",
+          "S01",
+          "W00",
+          "X00",
+          "X02",
+          "F02a",
+          "F02b1",
+          "F02b2a",
+          "F02b2b",
+          "F02d",
+          "P05a",
+          "P05b",
+          "P05b1",
+          "P05b2"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "qualification_read_only_slices": [
+          "F02b2a"
+        ],
+        "aggregate_read_only_slices": [
+          "P05b"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/benchmark_hot_pages.py",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/fixture_server.py",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "S01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/fixtures/auth_proxy.py",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P08"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-frame.html",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P00a",
+          "P00b",
+          "P14"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-hostile.html",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P00a",
+          "P00b",
+          "P14"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/fixtures/credential-options.html",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/fixtures/fake_auth_helper.py",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P05",
+          "P05a"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P05"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/fixtures/hot-target.html",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/fixtures/hyprland_proof.py",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W00"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/fixtures/phone-auth.html",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P13"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/fixtures/webauthn-compat.html",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P11"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/rp/README.md",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P13"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/rp/requirements.in",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P13"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/rp/requirements.lock",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P13"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/rp/server.py",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P13"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/rp/test_verification.py",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P13"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_compositor_identity.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W00"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_compositor_recovery.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W13"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_adversarial.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P14"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_boundary.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P00a",
+          "P00b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_bridge.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_choice.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P09"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_lifecycle.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P12",
+          "F01c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_limits.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P15"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_messages.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_network.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P08"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P05",
+          "P05a"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P05"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_results.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P11"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_ui.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P10"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_everyday.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "S01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_everyday.h",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "S01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_feature_composition.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "X00"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_group_navigation.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W08"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_group_placement.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W06"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_host_identity.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W05"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_benchmark.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_claim.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H02"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_eviction.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_prepare.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H01",
+          "F01c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_hot_windows.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H05"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_page_roles.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "F03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_phone_auth.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P14"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_shared_lifetime.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "F04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_shutdown_stress.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "X00"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_window_commands.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_window_openers.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W07"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_window_parity.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "F05"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_window_presentation.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W02"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_window_privacy.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W11"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_window_restore.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W10"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_window_visibility.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W12"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-storage/src/sessions.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "85df216a59481fd7d995878701efc7a66d1b1483",
+        "integration_head_blob": "85df216a59481fd7d995878701efc7a66d1b1483",
+        "working_tree_file_present": true,
+        "slices": [
+          "W09"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/xtask/src/main.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "c9b7fa31c1b0daa142b12c94ad710196d92247d4",
+        "integration_head_blob": "c9b7fa31c1b0daa142b12c94ad710196d92247d4",
+        "working_tree_file_present": true,
+        "slices": [
+          "S01",
+          "X02"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "docs/ARCHITECTURE.md",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "f982fa819cda00a83a368d498c6164e41d1e297d",
+        "integration_head_blob": "f982fa819cda00a83a368d498c6164e41d1e297d",
+        "working_tree_file_present": true,
+        "slices": [],
+        "roles": [
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "docs/PROVENANCE.md",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "221f23e2f9f09337e568803f2aebcc5e07b6918e",
+        "integration_head_blob": "221f23e2f9f09337e568803f2aebcc5e07b6918e",
+        "working_tree_file_present": true,
+        "slices": [
+          "P01",
+          "X01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "docs/TESTING.md",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "59b5efc0ebf89e53690c55676ff553a562674caf",
+        "integration_head_blob": "59b5efc0ebf89e53690c55676ff553a562674caf",
+        "working_tree_file_present": true,
+        "slices": [
+          "X03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "docs/architecture/ADR-everyday-credential-boundary.md",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P00a",
+          "P00b",
+          "P00c",
+          "P16"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/architecture/ADR-everyday-window-identity.md",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W00"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/implementation/everyday-v1/BASELINE.md",
+        "resolution": "execution_pack_artifact",
+        "product_baseline_blob": null,
+        "integration_head_blob": "c2f6a07e6943dc889cb07b7e8784c930cd32e406",
+        "working_tree_file_present": true,
+        "slices": [
+          "S00"
+        ],
+        "roles": [
+          "allowed"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/implementation/everyday-v1/control/release-capabilities.json",
+        "resolution": "planned_execution_output",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "X06"
+        ],
+        "roles": [
+          "allowed"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/implementation/everyday-v1/control/source-map.execution.json",
+        "resolution": "execution_pack_artifact",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "S00"
+        ],
+        "roles": [
+          "allowed"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/implementation/everyday-v1/reports/CREDENTIAL_SECURITY_REVIEW.md",
+        "resolution": "planned_execution_output",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P16"
+        ],
+        "roles": [
+          "allowed"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/implementation/everyday-v1/reports/FINAL_REPORT.md",
+        "resolution": "planned_execution_output",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "X06"
+        ],
+        "roles": [
+          "allowed"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/implementation/everyday-v1/reports/HOT_QUALIFICATION.md",
+        "resolution": "planned_execution_output",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H06"
+        ],
+        "roles": [
+          "allowed"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/implementation/everyday-v1/reports/INTEGRATION_REVIEW.md",
+        "resolution": "planned_execution_output",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "X04"
+        ],
+        "roles": [
+          "allowed"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/implementation/everyday-v1/reports/PHONE_DEVICE_QUALIFICATION.md",
+        "resolution": "planned_execution_output",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P17"
+        ],
+        "roles": [
+          "allowed"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/implementation/everyday-v1/reports/REBUILD_AND_RESOURCE_CHECK.md",
+        "resolution": "planned_execution_output",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "X05"
+        ],
+        "roles": [
+          "allowed"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/implementation/everyday-v1/reports/WINDOW_QUALIFICATION.md",
+        "resolution": "planned_execution_output",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W14"
+        ],
+        "roles": [
+          "allowed"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/testing/everyday-credential-fuzz.md",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P15"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/testing/everyday-hot-pages.md",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "H04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/testing/everyday-phone-manual.md",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P17"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/testing/everyday-webauthn-conformance.md",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P11"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/testing/everyday-windows-manual.md",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "W14"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "docs/user/commands.md",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "3e5d610f14e1d57c027184f8e5bb93a011b4cc1a",
+        "integration_head_blob": "3e5d610f14e1d57c027184f8e5bb93a011b4cc1a",
+        "working_tree_file_present": true,
+        "slices": [
+          "X03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "docs/user/configuration.md",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "ee10ce34de5432d8b08b006d053f9ec2335c0af4",
+        "integration_head_blob": "ee10ce34de5432d8b08b006d053f9ec2335c0af4",
+        "working_tree_file_present": true,
+        "slices": [
+          "X03",
+          "F01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "docs/user/everyday-features.md",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "X03"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/Cargo.lock",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P01",
+          "P06",
+          "P07a"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/Cargo.toml",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P01",
+          "P06",
+          "P07a"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/README.md",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P01",
+          "X01",
+          "P07b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/deny.toml",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P01",
+          "X02"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/fuzz/Cargo.toml",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P15"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/fuzz/fuzz_targets/options.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P15"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/fuzz/fuzz_targets/protocol.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P15"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/rust-toolchain.toml",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/src/admission.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P06",
+          "P11",
+          "P07a",
+          "P07b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/src/capabilities.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P08"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/src/errors.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P06",
+          "P07",
+          "P11"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P07"
+        ]
+      },
+      {
+        "path": "helpers/ferric-phone-auth/src/hybrid.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P07",
+          "P08",
+          "P07a",
+          "P07b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P07"
+        ]
+      },
+      {
+        "path": "helpers/ferric-phone-auth/src/main.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P01",
+          "P06",
+          "P07",
+          "P07b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P07"
+        ]
+      },
+      {
+        "path": "helpers/ferric-phone-auth/src/network.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P08"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/src/progress.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P07",
+          "P07b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P07"
+        ]
+      },
+      {
+        "path": "helpers/ferric-phone-auth/src/protocol.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P06"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/tests/admission.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P06"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "helpers/ferric-phone-auth/tests/hybrid_contract.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P07",
+          "P07a",
+          "P07b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P07"
+        ]
+      },
+      {
+        "path": "helpers/ferric-phone-auth/tests/resource_caps.rs",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P15"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "packaging/PKGBUILD",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "a80780ef3e77ab3583b24446bb92f0fdd56ec539",
+        "integration_head_blob": "a80780ef3e77ab3583b24446bb92f0fdd56ec539",
+        "working_tree_file_present": true,
+        "slices": [
+          "X01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "packaging/README.md",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "923c447bb78d922674fb62ca7671e332815bb7c9",
+        "integration_head_blob": "923c447bb78d922674fb62ca7671e332815bb7c9",
+        "working_tree_file_present": true,
+        "slices": [
+          "X01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "packaging/dependencies.toml",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "f4b7f65e324e84217e085715cd59012ccaba328d",
+        "integration_head_blob": "f4b7f65e324e84217e085715cd59012ccaba328d",
+        "working_tree_file_present": true,
+        "slices": [
+          "X01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor",
+          "source_manifest"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "packaging/installed-files.txt",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "f3c31cc5e93d18196e88c9f533cb51c73840de86",
+        "integration_head_blob": "f3c31cc5e93d18196e88c9f533cb51c73840de86",
+        "working_tree_file_present": true,
+        "slices": [
+          "X01"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/profile-lifetime/tst_lifetime.cpp",
+        "resolution": "existing_product_source",
+        "working_tree_file_present": true,
+        "slices": [
+          "F02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true,
+        "integration_head_blob": "0b3c58f851ba7c79bd0dc87b1cad37a030eff615",
+        "product_baseline_blob": "0b3c58f851ba7c79bd0dc87b1cad37a030eff615"
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/profile-lifetime/CMakeLists.txt",
+        "resolution": "existing_product_source",
+        "working_tree_file_present": true,
+        "slices": [
+          "F02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true,
+        "integration_head_blob": "d9e93069f7791e400a32957ff7e379e4a556f0f7",
+        "product_baseline_blob": "d9e93069f7791e400a32957ff7e379e4a556f0f7"
+      },
+      {
+        "path": "docs/architecture/ADR-popup-opener-lifetime.md",
+        "resolution": "proposed_product_deliverable",
+        "working_tree_file_present": false,
+        "slices": [
+          "F02c"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/qml/components/FerricPopupWindow.qml",
+        "resolution": "existing_product_source",
+        "working_tree_file_present": true,
+        "slices": [
+          "F02d"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true,
+        "integration_head_blob": "e76bb3d4e454fea10c10689316a0b1143573abde",
+        "product_baseline_blob": "e76bb3d4e454fea10c10689316a0b1143573abde"
+      },
+      {
+        "path": "helpers/ferric-phone-auth/src/lib.rs",
+        "resolution": "proposed_product_deliverable",
+        "working_tree_file_present": false,
+        "slices": [
+          "P06",
+          "P07a",
+          "P07b"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process_app.cpp",
+        "resolution": "proposed_product_deliverable",
+        "working_tree_file_present": false,
+        "slices": [
+          "P05b",
+          "P05b2"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false,
+        "aggregate_read_only_slices": [
+          "P05b"
+        ]
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/tests/everyday/tst_credential_process_bridge.cpp",
+        "resolution": "proposed_product_deliverable",
+        "product_baseline_blob": null,
+        "integration_head_blob": null,
+        "working_tree_file_present": false,
+        "slices": [
+          "P05b1"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": false
+      },
+      {
+        "path": "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs",
+        "resolution": "existing_product_source",
+        "product_baseline_blob": "677c261fa54f354872364c6c1e6a1d0a3de677f7",
+        "integration_head_blob": "677c261fa54f354872364c6c1e6a1d0a3de677f7",
+        "working_tree_file_present": true,
+        "slices": [
+          "W04"
+        ],
+        "roles": [
+          "allowed",
+          "read_anchor"
+        ],
+        "history_at_product_baseline": true
+      }
+    ]
+  },
+  "historical_path_resolution": [
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeBase.qml",
+      "proposal_blob": "26cc0b733d844fc179ba384d5a762b6fcd073a4a",
+      "product_baseline_blob": null,
+      "resolution": "deleted; composition responsibility now resides in the current primary shell/controllers; no direct replacement file"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeChrome.qml",
+      "proposal_blob": "63c12aa09e34b3166830c206ade3921a574cb0c0",
+      "product_baseline_blob": null,
+      "resolution": "deleted; primary composition is FerricPrimaryBrowserWindow.qml with current window controllers; do not recreate"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimePresentation.qml",
+      "proposal_blob": "9f7ada8a4f0ccfa8bc51558ffc7cd9a10d30b19d",
+      "product_baseline_blob": null,
+      "resolution": "deleted; presentation behavior is split across current window presentation/controller components; resolve per caller"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeSurface.qml",
+      "proposal_blob": "4829c9f9cd81fe2f339ce9120333d29c65ee92e1",
+      "product_baseline_blob": null,
+      "resolution": "deleted; current page/window surfaces are composed through FerricPrimaryBrowserWindow.qml and FerricBrowserWindow.qml"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeServices.qml",
+      "proposal_blob": "2f0ede3acad88adf99809b5523e98d4e0f6b5d9c",
+      "product_baseline_blob": null,
+      "resolution": "renamed to FerricPageServices.qml"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeRequests.qml",
+      "proposal_blob": "f76dca08a1dc8c5f58ca98f8c3c059a0e2c1386f",
+      "product_baseline_blob": null,
+      "resolution": "renamed to FerricWindowRequestsController.qml"
+    }
+  ],
+  "reconciliation_decisions": {
+    "A01_secondary_window_parity": "Reuse FerricBrowserWindow.qml, FerricHintWorkspace.qml, FerricPageSearch.qml and existing modal/profile/appearance owners; F05 checks only behavioural gaps.",
+    "A02_primary_composition": "Use FerricPrimaryBrowserWindow.qml and its existing controllers. FerricBrowserRuntimeChrome.qml/Base/Presentation/Surface are deleted historical paths. FerricPageFactory.qml is absent at the product baseline and remains a proposed F02 extraction.",
+    "A03_profile_lifetime": "Reuse FerricProfileResourceRegistry.qml, FerricProfileResources.qml, FerricProfileLifetime native ownership and application ProfileSession; do not create another display-name cache.",
+    "A04_captured_requests": "Keep EngineRequests.js target validation (tabId, generation and documentId) and captured view dispatch for delayed work.",
+    "A05_sdk": "Retain QtWebEngine 6.11.2/private-header guard, Qt Widgets and KWindowSystem >=6.28. Current host SDK reports Qt 6.12.0 and KF6WindowSystem 6.31.0; native engine build is unqualified until exact matching Qt/private headers are located.",
+    "A06_compositor_identity": "KWindowSystem foreign-toplevel export is not evidence of an exact Hyprland client mapping; W00 must prove it on an approved isolated test setup.",
+    "A07_helper_msrvs": "Root declares Rust 1.85. No helper exists at product baseline; helper remains a separate workspace with its own lock/toolchain floor.",
+    "A08_source_authority": "Current local Git objects and fetched main are authoritative. No indexed search or historical proposal path overrides this map."
+  },
+  "owners": {
+    "configuration": "ferric-browser-config owns typed persisted models/validation/registry; application configuration owns atomic writes and shared profile/session application.",
+    "application_state": "ferric-browser-application owns profile sessions and orchestration; mutable browser state changes through the existing reducers/events.",
+    "qt_webengine": "ferric-browser-engine-qt owns WebEngine views, QML windows, native prompts and Qt callback delivery.",
+    "profile_resources": "Root-window FerricProfileResourceRegistry owns shared per-profile Qt resources; FerricProfileLifetime owns native view/window references and drain/release; ProfileSession weakly shares durable Rust state and does not retain it alone.",
+    "delayed_requests": "qml/scripts/EngineRequests.js routes captured requests only after exact tab/generation/document validation."
+  },
+  "credential_and_script_worlds": {
+    "browser_script_world": "WebEngineScript.ApplicationWorld; FerricPrimaryBrowserWindow exposes browserScriptWorld and FerricPageServices uses it by default for browser-owned scripts.",
+    "page_world_uses": "Explicit page evaluation and installed user scripts execute in WebEngineScript.MainWorld; these are page-observable and must not become credential authority.",
+    "native_webauthn": "Existing WebEngineWebAuthUxRequest path is handled by FerricWindowRequestsController.qml and FerricWebAuthPrompt.qml, with captured view/UI, prompt lease and cancellation; preserve coexistence.",
+    "phone_provider": "No phone credential bridge, mediator, isolated-world admission protocol or helper exists at the product baseline; all are proposed work.",
+    "credential_authority": "No page-origin-only native bridge is present in current sources; P00a/P00b/P00c must prove qualified-world/document authority and a feasible public API route before P03 introduces one."
+  },
+  "build_environment": {
+    "os": "Omarchy 4.0.6 / Arch Linux compatible, Linux x86_64",
+    "rustc": "1.98.0 (root workspace advertises 1.85)",
+    "cargo": "1.98.0",
+    "cmake": "4.4.4",
+    "qmake_path": "/usr/bin/qmake6",
+    "qt_system": "Qt6Core 6.12.0; Qt6WebEngineCore 6.12.0; qmake 6.12.0",
+    "qt_project_qualification": "QtWebEngine 6.11.2 with matching private headers; system SDK does not satisfy exact guard.",
+    "kwindowsystem": "6.31.0 (satisfies minimum 6.28; no compositor identity qualification implied)",
+    "display": "Wayland and Hyprland environment present; presence alone is not a native qualification.",
+    "physical_devices": "not probed",
+    "gpu_driver": "not probed",
+    "preflight_evidence": "external evidence/preflight-b1.json",
+    "product_builds_run": "none",
+    "available_commands": {
+      "dbus-run-session": "/usr/bin/dbus-run-session",
+      "weston": "/usr/bin/weston",
+      "hyprland": "/usr/bin/hyprland",
+      "desktop-file-validate": "/usr/bin/desktop-file-validate",
+      "cmake": "/usr/bin/cmake",
+      "pkg-config": "/usr/bin/pkg-config",
+      "qmake6": "/usr/bin/qmake6"
+    },
+    "filesystem": {
+      "filesystem": "btrfs on /home",
+      "free_estimate_bytes": 129972428800,
+      "free_percent_approx": 48,
+      "metadata_allocated_bytes": 4294967296,
+      "metadata_used_bytes": 2034515968,
+      "metadata_used_percent": 47.37,
+      "df_inode_counts": "not provided by this Btrfs statfs (0/0); not treated as measured headroom",
+      "registered_run_builds": 0,
+      "repository_target_directory_present": false,
+      "active_compiler_or_ctest_process_at_preflight": false
+    }
+  },
+  "existing_test_inventory": {
+    "source_level_application_add_test_lines": 65,
+    "source_level_application_test_names": [
+      "application_switcher_live_updates",
+      "application_switcher_navigation",
+      "application_live_titles",
+      "application_privacy_identity",
+      "application_page_search",
+      "application_navigation_usability",
+      "application_navigation_recovery",
+      "application_keyboard_guide",
+      "application_tab_recovery",
+      "application_last_tab_undo",
+      "application_stop_state",
+      "application_form_reload",
+      "application_streaming_history",
+      "application_hint_controls",
+      "application_hint_controls_dpr2",
+      "application_close_requests",
+      "application_switcher",
+      "application_file_chooser_backend",
+      "application_file_chooser_privacy",
+      "application_action_feedback",
+      "application_startup_recovery",
+      "application_session_recovery",
+      "application_settings_durability",
+      "application_startup_recovery_restart",
+      "application_startup_recovery_wayland",
+      "application_session_recovery_wayland",
+      "application_switcher_live_updates_wayland",
+      "application_switcher_navigation_wayland",
+      "application_live_titles_wayland",
+      "application_bottom_chrome_wayland",
+      "application_navigation_recovery_wayland",
+      "application_keyboard_guide_wayland",
+      "application_page_search_wayland",
+      "application_privacy_identity_wayland",
+      "application_tab_recovery_wayland",
+      "application_last_tab_undo_wayland",
+      "application_stop_state_wayland",
+      "application_form_reload_wayland",
+      "application_streaming_history_wayland",
+      "application_command_editing_wayland",
+      "application_keyboard_chrome_wayland",
+      "application_tab_focus_wayland",
+      "application_download_finalization",
+      "application_journey_history",
+      "application_download_runtime_guard",
+      "application_downloads",
+      "application_notification_consent",
+      "application_notification_transport",
+      "application_native_notifications",
+      "application_context_reload",
+      "application_offscreen",
+      "application_offscreen_dpr2",
+      "application_lifetime",
+      "application_frame_dpr2",
+      "application_frame_lifetime",
+      "application_clipboard",
+      "application_product_polish",
+      "application_deferred_requests",
+      "application_repeat",
+      "application_open_targets",
+      "application_open_targets_wayland",
+      "application_open_targets_cli",
+      "application_cli_output",
+      "application_context_selection_cli",
+      "application_repeat_cli"
+    ],
+    "source_level_portal_add_test_lines": 3,
+    "source_level_portal_test_names": [
+      "portal_download_history",
+      "portal_activation",
+      "portal_${test}"
+    ],
+    "status": "source registration inspection only; no CMake build directory or runtime CTest inventory was created. S01 must register production harness and capture actual discovery/results.",
+    "repo_gate_commands": [
+      "cargo fmt --all -- --check",
+      "cargo clippy --workspace --all-targets --keep-going --locked -- -D warnings",
+      "cargo test --workspace --locked",
+      "cargo xtask check",
+      "cargo xtask test engine",
+      "cargo xtask test application-clipboard",
+      "cargo xtask docs",
+      "git diff --exit-code -- docs/user",
+      "desktop-file-validate packaging/io.github.ferricbrowser.FerricBrowser.desktop"
+    ]
+  },
+  "qualification_limits": [
+    "No product code has been changed, built or tested.",
+    "No native Qt/WebEngine, Hyprland grouping, physical phone, security-key, or hot-page performance qualification is claimed.",
+    "S01 must obtain an actual generated CTest inventory; CMake source matches are not runtime evidence."
+  ],
+  "execution_amendments": [
+    {
+      "id": "A27",
+      "reason": "Split H00 distinct policy outcomes after reviewed H00-readiness-audit; no path changes.",
+      "children": {
+        "H00a": [
+          "T025"
+        ],
+        "H00b": [
+          "T026"
+        ],
+        "H00c": [
+          "T027"
+        ]
+      },
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/hot_page_policy.rs",
+        "crates/ferric-browser-engine-qt/src/lib.rs",
+        "crates/ferric-browser-engine-qt/src/tests/hot_page_policy.rs"
+      ],
+      "preserved_candidate": "3bc509666d1d17b4732bea76f0cf271739d63b5a"
+    },
+    {
+      "id": "A28",
+      "reason": "Separate closed authority T052, exactly-once terminal state T053 and admission/provider isolation T054 after read-only P02 audit.",
+      "paths_unchanged": [
+        "crates/ferric-browser-application/src/credential_policy.rs",
+        "crates/ferric-browser-application/src/credential_state.rs",
+        "crates/ferric-browser-application/src/lib.rs",
+        "crates/ferric-browser-application/src/credential_tests.rs"
+      ],
+      "parent_history_preserved": "P02 failed attempts3/3, candidate3b44e6ee5c015c02ad51761e409e36b62a8b16d0"
+    },
+    {
+      "id": "A29",
+      "reason": "C07 pending RP candidate boundary; no new source paths, dependency or lock change.",
+      "owner": "P02a",
+      "full_validation_owner": "P06",
+      "packaging_owner": "X01",
+      "design_review": "evidence/P02a-a1/DESIGN_REVIEW-r1.json"
+    },
+    {
+      "id": "A30",
+      "reason": "Separate newly demonstrated native delegate-lifetime primitive and production repair from exhausted original popup implementation.",
+      "new_slices": {
+        "F02c": "T014c",
+        "F02d": "T014d"
+      },
+      "preserved_original": "F02b2a implemented_unqualified3/3; unchangedT014a qualification only after dependencies.",
+      "architecture_review": "evidence/D31-popup-lease-design/ARCHITECTURE_REVIEW.json"
+    },
+    {
+      "id": "A31",
+      "reason": "P06 external integration tests need the same production-compiled library as binary; strict typed envelopes need already-locked serde, and actual async pinned-library preparation needs already-locked tokio runtime.",
+      "added_paths": [
+        "helpers/ferric-phone-auth/src/lib.rs",
+        "helpers/ferric-phone-auth/Cargo.toml",
+        "helpers/ferric-phone-auth/Cargo.lock"
+      ],
+      "slice": "P06",
+      "preserved": "All three existing unit cases, dependencies, attempt cap, security/physical/native gates, exact library pin and helper Rust1.88 unchanged."
+    },
+    {
+      "id": "A32",
+      "reason": "Actual P05 native build/module/bridge/CTest registration needs ten original-union paths, exceeding eight. Split real process component from original composed application outcomes.",
+      "new_slices": {
+        "P05a": "T061a additional component",
+        "P05b": "T061-T063 unchanged application"
+      },
+      "source_audit": "evidence/D32-P05-scope/AUDIT.json",
+      "coordinator_targeted_anchors": "evidence/A32-a1/COORDINATOR_ANCHORS.json",
+      "preserved": "Original cases/levels/expectations, all gates and three-attempt child limits; no P05 implementation dispatched under oversize scope."
+    },
+    {
+      "id": "A33",
+      "reason": "Real P07 wiring needs lib/admission plus helper Cargo/lock dev support beyond original five paths. Split real shared-core/API/dev graph and actual helper pipe/progress integration without lowering original cases.",
+      "new_slices": {
+        "P07a": "additional T067a unit",
+        "P07b": "unchanged T067-T069 unit"
+      },
+      "design_review": "evidence/D35-P07-test-design/REVIEW-r2.json",
+      "design_proposal": "evidence/D35-P07-test-design/PROPOSAL-r2.json",
+      "mandatory_conditions": "Actual one-Git-package identity, full dev license/MSRV/locked Git closure, no virt/test graph in normal production build, unchanged real Cable factory and P08/P17 gates."
+    },
+    {
+      "id": "A34",
+      "slice": "P07b",
+      "old_path": "helpers/ferric-phone-auth/src/errors.rs",
+      "new_path": "helpers/ferric-phone-auth/src/admission.rs",
+      "reason": "Read-only operation-kind accessor on sealed PreparedCredentialRequest supplies correct freshQRhint; errors remain implemented in existing hybrid/lib files, so unused errors.rs is not a writable path.",
+      "limits": "Seven allowed paths/max7 preserved; all original T067-T069 unit requirements and addedT067a regression, contracts/dependencies/security/P08/P17 gates unchanged. Prior pre-amendment edit/scope-review oversight recorded externally; no acceptance before approved amendment.",
+      "attempts": "P07b attempt2 retained; no reset or extra implementation attempt."
+    },
+    {
+      "id": "A35",
+      "slice": "P05b",
+      "old_max_changed_product_files": 6,
+      "new_max_changed_product_files": 8,
+      "added_allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/credential_process.cpp",
+        "crates/ferric-browser-engine-qt/src/credential_process.h"
+      ],
+      "reason": "Actual std::function-native Events have no existing Rust CXX factory/callback adapter; existing compiled CPP/header plus six current Rust/application files fit global eight-path cap. D37 source audit and D38 corrected pure generator proof support the public API direction only.",
+      "native_proof_required": "Actual native ABI/GUI-thread ownership/cancellation/reentrancy/stale result and original application T061-T063 plus T061a regressions; real deadline path additionally tested.",
+      "unchanged": "Dependencies, locks, original expected cases and application levels, all guards/P00/P03/physical gates and counters unchanged; no implementation before P05a acceptance or plan review."
+    },
+    {
+      "id": "A36",
+      "parent": "P05b",
+      "reason": "D39 actual C08 actor cannot be admitted while native qualification remains unavailable and owner/candidate binding is private to application. No synthetic qualification, public constructor or visibility bypass permitted. Split genuinely executable non-admission decoder/CXX transport from original APP routing/qualification.",
+      "new_slices": {
+        "P05b1": "T061b unit +T061c component, no credential admission authority",
+        "P05b2": "original T061/T062/T063 APPLICATION unchanged; requires real P00/P03 and production BrowserUi route"
+      },
+      "scope": "Each child<=8 paths; P05b no-code aggregate; new explicit bridge test file, not an APP fixture relabeled as component.",
+      "live_attempts": "Original pre-edit P05b attempt1 preserved; P05b2 inherits1 so original APP attempt is not reset; P05b1 new distinct outcomes start0.",
+      "counts": "83 slices /172 cases; no security/default/physical or old-case waiver."
+    },
+    {
+      "id": "A37",
+      "reason": "User-approved public page-host redesign, explicit P00a/W01b fourth attempts and same-machine native/performance qualification.",
+      "source_sha": "a20d451506ebc5f92a80d37128f1539665f7d82f",
+      "new_slices": [
+        "F02e0",
+        "F02e1",
+        "F02e2",
+        "F02e3",
+        "F02e4",
+        "F02e5",
+        "F02e6",
+        "F02e7",
+        "F02e8",
+        "F02e"
+      ],
+      "supersession": {
+        "F02c": [
+          "F02e1"
+        ],
+        "F02d": [
+          "F02e8"
+        ]
+      },
+      "path_owners": {
+        "F02e0": [
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/chrome.qml",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/fixtures/popup.html",
+          "docs/architecture/ADR-public-page-host.md"
+        ],
+        "F02e1": [
+          "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+          "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+          "crates/ferric-browser-engine-qt/src/public_profile_owner.h",
+          "crates/ferric-browser-engine-qt/src/public_profile_owner.cpp",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_owner.cpp",
+          "crates/ferric-browser-engine-qt/src/request_interceptor.h"
+        ],
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/gui_application.cpp",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+        ],
+        "F02e3": [
+          "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+          "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+          "crates/ferric-browser-engine-qt/src/script_runner.h",
+          "crates/ferric-browser-engine-qt/src/script_runner.cpp",
+          "crates/ferric-browser-engine-qt/src/hint_frame_broker.h",
+          "crates/ferric-browser-engine-qt/src/hint_frame_broker.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+        ],
+        "F02e4": [
+          "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+          "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+          "crates/ferric-browser-engine-qt/src/download_source.h",
+          "crates/ferric-browser-engine-qt/src/download_source.cpp",
+          "crates/ferric-browser-engine-qt/src/request_interceptor.h",
+          "crates/ferric-browser-engine-qt/src/request_interceptor.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+        ],
+        "F02e5": [
+          "crates/ferric-browser-engine-qt/src/browser_key_router.h",
+          "crates/ferric-browser-engine-qt/src/browser_key_router.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.h",
+          "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.cpp",
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+        ],
+        "F02e6": [
+          "crates/ferric-browser-engine-qt/qml/Main.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+        ],
+        "F02e7": [
+          "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricPopupWindow.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricDevToolsWorkspace.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricDevToolsWindow.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWindowRegistryController.qml",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+        ],
+        "F02e8": [
+          "crates/ferric-browser-engine-qt/src/profile_lifetime.h",
+          "crates/ferric-browser-engine-qt/src/profile_lifetime.cpp",
+          "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+          "crates/ferric-browser-engine-qt/tests/application/tst_application.h",
+          "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/profile-lifetime/tst_lifetime.cpp",
+          "crates/ferric-browser-engine-qt/tests/profile-lifetime/CMakeLists.txt",
+          "docs/architecture/ADR-popup-opener-lifetime.md"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt": "proposed",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host.cpp": "proposed",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/chrome.qml": "proposed",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/fixtures/popup.html": "proposed",
+        "docs/architecture/ADR-public-page-host.md": "proposed",
+        "crates/ferric-browser-engine-qt/src/public_page_owner.h": "proposed",
+        "crates/ferric-browser-engine-qt/src/public_page_owner.cpp": "proposed",
+        "crates/ferric-browser-engine-qt/src/public_profile_owner.h": "proposed",
+        "crates/ferric-browser-engine-qt/src/public_profile_owner.cpp": "proposed",
+        "crates/ferric-browser-engine-qt/build.rs": "existing",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_owner.cpp": "proposed",
+        "crates/ferric-browser-engine-qt/src/request_interceptor.h": "existing",
+        "crates/ferric-browser-engine-qt/src/public_page_host.h": "proposed",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp": "proposed",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml": "proposed",
+        "crates/ferric-browser-engine-qt/src/gui_application.cpp": "existing",
+        "crates/ferric-browser-engine-qt/src/bridge.rs": "existing",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp": "proposed",
+        "crates/ferric-browser-engine-qt/src/script_runner.h": "existing",
+        "crates/ferric-browser-engine-qt/src/script_runner.cpp": "existing",
+        "crates/ferric-browser-engine-qt/src/hint_frame_broker.h": "existing",
+        "crates/ferric-browser-engine-qt/src/hint_frame_broker.cpp": "existing",
+        "crates/ferric-browser-engine-qt/src/download_source.h": "existing",
+        "crates/ferric-browser-engine-qt/src/download_source.cpp": "existing",
+        "crates/ferric-browser-engine-qt/src/request_interceptor.cpp": "existing",
+        "crates/ferric-browser-engine-qt/src/browser_key_router.h": "existing",
+        "crates/ferric-browser-engine-qt/src/browser_key_router.cpp": "existing",
+        "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.h": "existing",
+        "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.cpp": "existing",
+        "crates/ferric-browser-engine-qt/qml/Main.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageFactory.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageView.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricPopupWindow.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricDevToolsWorkspace.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricDevToolsWindow.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowRegistryController.qml": "existing",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowLifecycleController.qml": "existing",
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.h": "existing",
+        "crates/ferric-browser-engine-qt/src/profile_lifetime.cpp": "existing",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp": "existing",
+        "crates/ferric-browser-engine-qt/tests/application/tst_application.h": "existing",
+        "crates/ferric-browser-engine-qt/tests/everyday/CMakeLists.txt": "existing",
+        "crates/ferric-browser-engine-qt/tests/profile-lifetime/tst_lifetime.cpp": "existing",
+        "crates/ferric-browser-engine-qt/tests/profile-lifetime/CMakeLists.txt": "existing",
+        "docs/architecture/ADR-popup-opener-lifetime.md": "existing"
+      },
+      "preserved": "Historical attempts/receipts, original behavior/security/device gates; numerical performance thresholds retained. No Qt fork or desktop customization."
+    },
+    {
+      "id": "A38",
+      "reason": "Public QWebEngineProfile owner must keep existing request policy; current interceptor only attaches to sibling QQuickWebEngineProfile.",
+      "source_sha": "7a57a560294774b659419c80283d2536b3c4c3b2",
+      "supersedes": "A37.path_owners.F02e1",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/src/request_interceptor.cpp"
+      ],
+      "path_owners": {
+        "F02e1": [
+          "crates/ferric-browser-engine-qt/src/public_page_owner.h",
+          "crates/ferric-browser-engine-qt/src/public_page_owner.cpp",
+          "crates/ferric-browser-engine-qt/src/public_profile_owner.h",
+          "crates/ferric-browser-engine-qt/src/public_profile_owner.cpp",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_owner.cpp",
+          "crates/ferric-browser-engine-qt/src/request_interceptor.h",
+          "crates/ferric-browser-engine-qt/src/request_interceptor.cpp"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/src/request_interceptor.cpp": "existing"
+      },
+      "required_test_impact": "Extend T014e1 with actual allowed/blocked request on disposable plain QWebEngineProfile and retain the QQuick profile regression.",
+      "preserved": "All original contracts, T014e1 level/cases, locks, dependencies, three attempt cap, security behavior, no private API/dependency; no more than9 product paths."
+    },
+    {
+      "id": "A39",
+      "reason": "Exact-source W04 r4 compile gate reported E0004 at the existing worker-response dispatcher: the new passive Observe response variant is missing from an exhaustive match.",
+      "source_sha": "59b7269e37a4eaa4380294ba290a682b14604866",
+      "source_tree": "ac05b2b32ce26b53fea39159e1a5b970464be29d",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs"
+      ],
+      "path_owners": {
+        "W04": [
+          "crates/ferric-browser-engine-qt/src/hyprland.rs",
+          "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
+          "crates/ferric-browser-engine-qt/src/background_workers.rs",
+          "crates/ferric-browser-engine-qt/src/lib.rs",
+          "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs": "existing_product_source"
+      },
+      "required_change": "Add the smallest explicit HyprlandResponse::Observe arm to the existing passive-response dispatch. Keep observation read-only and non-user-visible; do not change focus, grouping, workspace routing, permission bits or action status behavior.",
+      "required_test_impact": "No new acceptance IDs. Preserve T112-T114 and run the original focused, crate-library, Clippy and workspace gates against the exact amended candidate.",
+      "locks_unchanged": [
+        "compositor-protocol",
+        "background-workers"
+      ],
+      "attempts_unchanged": true,
+      "max_changed_product_files_unchanged": 8,
+      "preserved": "All W04 contracts, test IDs and downstream physical/device qualification. This amendment authorizes exactly one extra existing product path."
+    },
+    {
+      "id": "A40",
+      "reason": "Exact-source W04 r8 crate-library gate ran 541 tests: 524 passed, 16 failed, 1 ignored. Twelve failures were existing static QML assertions whose required FerricPageView.qml component was absent from the tests.rs QML_SOURCE aggregation; four socket failures are addressed separately by a short private TMPDIR alias.",
+      "source_sha": "9fc210b30e29f08fdee76047321e3037f10bdd42",
+      "source_tree": "ff4b4c7e842e2622688d05510ea04858bf16007c",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/src/tests.rs"
+      ],
+      "path_owners": {
+        "W04": [
+          "crates/ferric-browser-engine-qt/src/hyprland.rs",
+          "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
+          "crates/ferric-browser-engine-qt/src/background_workers.rs",
+          "crates/ferric-browser-engine-qt/src/lib.rs",
+          "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs",
+          "crates/ferric-browser-engine-qt/src/tests.rs"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/src/tests.rs": "existing_product_source"
+      },
+      "required_change": "Include the existing FerricPageView.qml component in the test-only QML_SOURCE aggregation. Do not change product QML or runtime behavior.",
+      "required_test_impact": "Keep all original T112-T114 and existing QML assertions. Rerun focused tests, crate library tests, Clippy and workspace tests on the exact candidate.",
+      "locks_unchanged": [
+        "compositor-protocol",
+        "background-workers"
+      ],
+      "attempts_unchanged": true,
+      "max_changed_product_files_unchanged": 8,
+      "preserved": "All W04 contracts, test IDs, locks, retry cap and downstream device/performance qualification."
+    },
+    {
+      "id": "A41",
+      "reason": "Exact-source W04 r9 crate-library gate passed 538 tests but failed two: the existing media/MPRIS static assertion expects the obsolete window.updateMprisForPrimaryView spelling while FerricPageView.qml calls factory.rootWindow.updateMprisForPrimaryView; the IPC socket fixture still produces a 108-byte path under /tmp/ferric-w4r9/tmp, reaching the SUN_LEN limit.",
+      "source_sha": "75ac227287271e623b197f1ba0fee3dc2e5496d3",
+      "source_tree": "d27c23174550bfcfad4f85199ffaf2cc0f25d4ec",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs"
+      ],
+      "path_owners": {
+        "W04": [
+          "crates/ferric-browser-engine-qt/src/hyprland.rs",
+          "crates/ferric-browser-engine-qt/src/hyprland_events.rs",
+          "crates/ferric-browser-engine-qt/src/background_workers.rs",
+          "crates/ferric-browser-engine-qt/src/lib.rs",
+          "crates/ferric-browser-engine-qt/src/tests/hyprland_groups.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs",
+          "crates/ferric-browser-engine-qt/src/tests.rs",
+          "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs": "existing_product_source"
+      },
+      "required_change": "Update only the static QML assertion to match the live factory.rootWindow.updateMprisForPrimaryView(webView) call in FerricPageView.qml. No production QML/runtime change. Use a shorter private TMPDIR alias at /tmp/w4r10/t pointing to the isolated build-root tmp directory.",
+      "required_test_impact": "Preserve T112-T114 and existing QML assertions; rerun exact-source focused T112-T114, crate library tests, workspace Clippy and workspace tests.",
+      "locks_unchanged": [
+        "compositor-protocol",
+        "background-workers"
+      ],
+      "attempts_unchanged": true,
+      "max_changed_product_files_unchanged": 8,
+      "preserved": "All W04 contracts, acceptance IDs, security behavior, retry cap and downstream device/performance qualification."
+    },
+    {
+      "id": "A42",
+      "reason": "Independent F02e2 attempt-1 source review found that its C++ host adapter bypassed the required Rust/CXX-Qt typed host/page operation path; the existing QApplication implementation was already correct and required no edit.",
+      "source_sha": "1d9c254d13852b7aa3ea40f1f00529216fdc700f",
+      "source_tree": "ac19aa1df9fe0911d3a6b5ce5052cd3ab60c25ab",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs"
+      ],
+      "removed_paths": [
+        "crates/ferric-browser-engine-qt/src/gui_application.cpp"
+      ],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs": "existing_product_source",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs": "existing_product_source"
+      },
+      "required_change": "Add narrow typed BrowserUi attach/detach operations in bridge.rs with Rust validation in the existing browser_ui_tab_state.rs. Reuse the core's existing EngineEffect::ReparentView through the existing native request lane, extending engine_requests.rs to project that effect with captured page/document identity and opaque host/page-owner tokens. Validate current live owner, profile context and generations before emission; C++ resolves tokens and performs QWebEngineView lifetime/attachment work only. Do not pass a URL or raw QWebEnginePage pointer as operation authority, introduce a new core event/effect or add a parallel string command channel. If ReparentView cannot safely represent this operation, stop for another reviewed scope correction. Keep the slice component-level and do not claim shipped-root migration.",
+      "required_test_impact": "Extend T014e2 to request attach/detach through the registered Rust-backed BrowserUi, observe the existing ReparentView native-request projection, and prove the C++ adapter preserves the same owner/page/profile/document/URL/history across safe host replacement. Stale, retired and foreign-profile requests must emit no effect and cause no attachment. Preserve the existing focus, scale, appearance and native dialog parent checks.",
+      "locks_unchanged": [
+        "public-page-host",
+        "bridge",
+        "test-registration"
+      ],
+      "attempts_unchanged": true,
+      "max_changed_product_files": 9,
+      "previous_max_changed_product_files": 8,
+      "preserved": "T014e2, all A37 F02e dependencies and contracts, three-attempt cap, nine-file F02e2 cap, one native slot, Rust-owned lifecycle policy, no shipped-root migration claim, and all downstream qualification gates."
+    },
+    {
+      "id": "A44",
+      "reason": "The accepted A4 candidate passed the duplicate-header compile stage but exposed three Rust errors; the missing ReparentView arm is in browser_ui_input.rs outside the exact A42 path budget.",
+      "source_sha": "58ddf64574cea7cf14f96ca6ded497f0d4a1168a",
+      "source_tree": "8783dc6a4a580cfc57d9671ddf5cea4ca5e8157e",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+      ],
+      "removed_paths": [],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "existing_or_proposed": {
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs": "existing_product_source"
+      },
+      "added_locks": [
+        "browser-ui-input"
+      ],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "max_changed_product_files": 10,
+      "previous_max_changed_product_files": 9,
+      "required_change": "Fix only E0308 and E0716 in browser_ui_tab_state.rs and explicitly handle NativeRequest::ReparentView in the existing typed request queue in browser_ui_input.rs. Preserve queue ordering, existing typed dispatch, A3/A4 page-owner/profile/tab-incarnation lifecycle and native apply freshness checks. Do not silently drop the request or add a new channel.",
+      "required_test_impact": "T014e2 remains the exact application gate. It must exercise typed attach/detach and the ReparentView projection; no new test ID or assertion weakening.",
+      "preserved": "A37 and A43 history, global attempt limit 3, A42 exact historical nine-path owner list, one native slot, no new dependency/event/effect/string command, and downstream device/security/performance qualification."
+    },
+    {
+      "id": "A45",
+      "reason": "The accepted A5 source candidate was unchanged, but its native build command selected /usr/include/qt6 because QMAKE and pinned-first PATH were omitted.",
+      "source_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "source_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "added_paths": [],
+      "removed_paths": [],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "added_locks": [],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "max_changed_product_files": 10,
+      "previous_max_changed_product_files": 10,
+      "source_attempt_count": 5,
+      "max_same_source_retries": 1,
+      "same_source_only": true,
+      "source_changes_allowed": false,
+      "attempt_six_authorized": false,
+      "candidate_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "candidate_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "qmake": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/bin/qmake",
+      "prepend_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/bin",
+      "pkg_config_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig",
+      "stop_if_qt_include_outside_prefix": true,
+      "only_test_id": "T014e2",
+      "preserved": "A37/A43/A44 history, exact A5 source and review, source attempt count 5/5, global limit 3, ten product paths/four locks, and no attempt 6.",
+      "fresh_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake",
+      "cargo_target_dir": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake/cargo-target",
+      "cmake_dir": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake/cmake",
+      "pkg_config_libdir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig",
+      "cmake_prefix_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
+      "qt6_dir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/cmake/Qt6",
+      "strict_qt_guard_tool": "tools/run_gate.py --qt-include-prefix",
+      "emit_cxx_commands_env": "CC_ENABLE_DEBUG_OUTPUT=1"
+    },
+    {
+      "id": "A46",
+      "reason": "A45 live process monitor falsely classified generated CXX-Qt wrapper includes as an external Qt SDK include; independently accepted final same-source retry after a bounded shared-classifier correction.",
+      "source_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "source_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "added_paths": [],
+      "removed_paths": [],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "added_locks": [],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "max_changed_product_files": 10,
+      "previous_max_changed_product_files": 10,
+      "source_attempt_count": 5,
+      "max_same_source_retries": 2,
+      "same_source_retry_number": 2,
+      "same_source_only": true,
+      "source_changes_allowed": false,
+      "attempt_six_authorized": false,
+      "candidate_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "candidate_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "fresh_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake-r2",
+      "shared_classifier": "docs/implementation/everyday-v1/tools/qt_include_guard.py",
+      "tooling_paths": [
+        "docs/implementation/everyday-v1/tools/qt_include_guard.py",
+        "docs/implementation/everyday-v1/tools/run_gate.py",
+        "docs/implementation/everyday-v1/tools/test_tools.py",
+        "evidence/A46/watch_qt_includes.py",
+        "evidence/A46/run_native_retry.py"
+      ],
+      "tooling_file_cap": 5,
+      "required_test_suite": "docs/implementation/everyday-v1/tools/test_tools.py",
+      "strict_qt_guard_tool": "tools/run_gate.py --qt-include-prefix",
+      "only_test_id": "T014e2",
+      "preserved": "A45 retry 1 evidence, unchanged A5 candidate/source count 5/5, ten product paths/four locks, global attempt default 3, no attempt 6."
+    },
+    {
+      "id": "A47",
+      "reason": "A46 retry 2 exposed PKG_CONFIG_LIBDIR omission hiding system KF6WindowSystem; A47 uses a read-only verified combined search path and authorizes only same-source retry 3.",
+      "source_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "source_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "added_paths": [],
+      "removed_paths": [],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "added_locks": [],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "max_changed_product_files": 10,
+      "previous_max_changed_product_files": 10,
+      "source_attempt_count": 5,
+      "A45_same_source_retry_count_used": 1,
+      "A46_same_source_retry_count_used": 2,
+      "max_same_source_retries": 3,
+      "same_source_retry_number": 3,
+      "same_source_only": true,
+      "source_changes_allowed": false,
+      "attempt_six_authorized": false,
+      "retry_four_authorized": false,
+      "candidate_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "candidate_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "fresh_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a5-qt6112-qmake-r3",
+      "pkg_config_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig",
+      "pkg_config_libdir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig",
+      "shared_classifier": "docs/implementation/everyday-v1/tools/qt_include_guard.py",
+      "tooling_paths": [
+        "docs/implementation/everyday-v1/tools/test_tools.py",
+        "evidence/A47/watch_qt_includes.py",
+        "evidence/A47/run_native_retry.py"
+      ],
+      "tooling_file_cap": 3,
+      "required_test_suite": "docs/implementation/everyday-v1/tools/test_tools.py",
+      "only_test_id": "T014e2",
+      "preserved": "A45/A46 outcomes and evidence, exact A5 candidate, source count 5/5, ten product paths/four locks, global attempt default 3, no retry 4/attempt 6."
+    },
+    {
+      "id": "A48",
+      "reason": "A47 built the accepted F02e2 engine and configured the harness, then the integration target failed on incomplete QQuickWidget uses in the already-owned test translation unit; permit one narrow include-only source attempt.",
+      "source_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "source_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "added_paths": [],
+      "removed_paths": [],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "added_locks": [],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "max_changed_product_files": 10,
+      "previous_max_changed_product_files": 10,
+      "source_attempt_count": 6,
+      "previous_source_attempt_limit": 5,
+      "candidate_base_sha": "58c047c04072bb7efa382e3cd7ca65a11da1b117",
+      "candidate_base_tree": "f5cc15efd18496bb209d25866d060347157a00bd",
+      "allowed_source_paths": [
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+      ],
+      "max_source_paths_changed": 1,
+      "allowed_source_change": "add #include <QQuickWidget>",
+      "attempt_seven_authorized": false,
+      "same_source_retry_after_failure_authorized": false,
+      "native_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2-a6-qt6112-qmake",
+      "tooling_paths": [
+        "docs/implementation/everyday-v1/tools/common.py",
+        "docs/implementation/everyday-v1/tools/validate_pack.py",
+        "docs/implementation/everyday-v1/tools/test_tools.py"
+      ],
+      "tooling_file_cap": 3,
+      "test_id": "T014e2",
+      "required_source_review_before_native": true,
+      "stop_after_any_failure": true,
+      "preserved": "A37/A42/A43/A44/A45/A46/A47 records and evidence; global max_attempts 3; exact A5 source review; A47 retry 3 consumed; ten product paths/four locks; no attempt 7 or retry after attempt 6."
+    },
+    {
+      "id": "A49",
+      "reason": "A48 T014e2 failed before page-reparent assertions because the static test executable omitted the generated CXX-Qt initializer; a separate prerequisite task verifies only static QML registration and BrowserUi construction.",
+      "review_path": "evidence/A49/PLAN_REVIEW-r2_d28.json",
+      "review_sha256": "60d234b4f02f27604d19ebdf893179de015cd13cbb7963991d5d908e25684926",
+      "review_budget_path": "evidence/A49/PLAN_REVIEW_BUDGET-r2_d28.json",
+      "review_budget_sha256": "6bb486e64b76685667a20bfbe74992b4287d78e4176e9b39bcfef8e297a515fb",
+      "parent": "F02e2",
+      "parent_status": "failed",
+      "parent_attempts": "6/6",
+      "parent_test_owner": "F02e2",
+      "parent_test": "T014e2",
+      "parent_result": "failed",
+      "parent_run": "evidence/F02e2-a6/native/NATIVE_RUN-A48.json",
+      "parent_run_sha256": "e6b0695df918b20713c8c86d008e99c1ac3f7a68a8852fea40d37d2fd3ae9eb1",
+      "parent_receipt": "evidence/F02e2-a6/native/T014e2-A48/receipt.json",
+      "parent_receipt_sha256": "2e35b498a9a5db8802bac48bf3f28fbfed17ace1ac70810170bcc6bc38d9f32a",
+      "child": "F02e2q",
+      "child_test_owner": "F02e2q",
+      "child_test": "T014e2q",
+      "child_test_result": "not_run",
+      "added_paths": [
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_static_qml_registration.cpp"
+      ],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "existing T014e2 registration block in crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+        ],
+        "F02e2q": [
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_static_qml_registration.cpp",
+          "new static_qml_registration_tests target and T014e2q registration block in crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+        ]
+      },
+      "shared_paths": [
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt"
+      ],
+      "added_locks": [],
+      "locks": [
+        "public-page-host",
+        "test-registration"
+      ],
+      "child_max_changed_product_files": 2,
+      "child_default_attempt_limit": 3,
+      "child_dependencies": [
+        "F02e1"
+      ],
+      "fresh_native_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2q-a1-qt6112-qmake",
+      "child_target_name": "static_qml_registration_tests",
+      "child_ctest_name": "T014e2q",
+      "sdk": {
+        "prefix": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
+        "expected_version": "6.11.2",
+        "qmake": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/bin/qmake",
+        "prepend_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/bin",
+        "pkg_config_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig",
+        "pkg_config_libdir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig",
+        "cmake_prefix_path": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
+        "qt6_dir": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64/lib/cmake/Qt6",
+        "minimum_kf6_window_system": "6.28",
+        "last_verified_kf6_window_system": "6.31.0",
+        "reverify_before_lease": true
+      },
+      "compile_gate_controls": {
+        "cc_enable_debug_output": "1",
+        "include_guard": "docs/implementation/everyday-v1/tools/run_gate.py",
+        "qt_include_prefix": "/home/tom/.local/share/ferric-browser-runtime/qt/6.11.2/gcc_64",
+        "live_compiler_process_monitor": true,
+        "stop_and_close_lease_on_failure": true
+      },
+      "attempt_seven_authorized": false,
+      "parent_test_rerun_authorized": false,
+      "child_accepts_parent": false,
+      "child_unblocks_F02e3": false
+    },
+    {
+      "id": "A50",
+      "reason": "New F02e2r successor reuses A44 source scope to qualify page reparenting after the terminal A48 T014e2 failure; no parent retry or T014e2 execution.",
+      "added_paths": [],
+      "removed_paths": [],
+      "path_owners": {
+        "F02e2": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ],
+        "F02e2q": [
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_static_qml_registration.cpp"
+        ],
+        "F02e2r": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "added_locks": [],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "max_changed_product_files": 10,
+      "previous_max_changed_product_files": 10,
+      "source_reference_sha": "8e5b41f51ea698db3e5173a4b9ef344752af7bca",
+      "source_reference_tree": "5cba3470e4cb5977c92854985cb9b04120f3fde7",
+      "parent_test_owner": "F02e2",
+      "parent_test": "T014e2",
+      "successor_test_owner": "F02e2r",
+      "successor_test": "T014e2r",
+      "successor_new_slot": "rustBrowserUiRequestReparentsSamePageAcrossHostsWithInitializer",
+      "prerequisite_child": "F02e2q",
+      "prerequisite_test": "T014e2q",
+      "fresh_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2r-a1-qt6112-qmake",
+      "attempt_seven_authorized": false,
+      "parent_test_execution_authorized": false,
+      "parent_remains_failed_until_successor_acceptance": true,
+      "downstream_slice": "F02e3",
+      "downstream_dependency": "F02e2r",
+      "child_alone_unblocks_downstream": false,
+      "tooling_paths": [
+        "tools/common.py",
+        "tools/validate_pack.py",
+        "tools/test_tools.py"
+      ]
+    },
+    {
+      "id": "A51",
+      "reason": "Narrow postmortem-bound continuation of only the unrun A50 attempt-3 T014e2r gates after the independent review confirmed the link checker false negative; no attempt increment or source/build work.",
+      "added_paths": [],
+      "removed_paths": [],
+      "added_locks": [],
+      "continuation": {
+        "slice": "F02e2r",
+        "source_amendment": "A50",
+        "attempt": 3,
+        "attempt_limit": 3,
+        "attempt_increment": false,
+        "test_id": "T014e2r",
+        "candidate": {
+          "source_sha": "c6e29480e08f5e7a1ba54319ec2f2fe932d1f366",
+          "source_tree": "f5b7696b1c08d115ba435a521fc2a47fa128f538"
+        },
+        "target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2r-a3-qt6112-qmake",
+        "artifact_hashes": {
+          "target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2r-a3-qt6112-qmake",
+          "integration_executable_sha256": "da48cdbb935bb128d017c699d91b82dcc802d42e810f90014571f47ecf0b69f5",
+          "ctest_file_sha256": "306e7c47fd6d018083285d5e049d55ffe942b8c14e35a218485dc2cdcfbfacb1",
+          "link_command_sha256": "efb4315b0c4db1c233254d8d6fcde88498e738ae0c3bc377f245e69dd8344821"
+        },
+        "preserved_run": {
+          "path": "evidence/F02e2r-a3/native/NATIVE_RUN-A50-a3.json",
+          "sha256": "69c220a114afb4a05da8dfcf5458292db6d954305cf6900ac4cc8f07111c0906",
+          "result": "failed"
+        },
+        "preserved_lease_closure": {
+          "path": "evidence/F02e2r-a3/native/NATIVE_LEASE_CLOSED-A50-a3.json",
+          "sha256": "c6e059a05d0ba4271400c1dbaf4723818f05b7abf0c3901cfc0605954ce48739"
+        },
+        "postmortem": {
+          "path": "evidence/F02e2r-a3/GATE_POSTMORTEM_REVIEW_d28.json",
+          "sha256": "2babd0ab2103da96508f101e971555c80a01fa0d967ac3dbb42ea5474572d223",
+          "decision": "stop_request_new_reviewed_amendment_before_continuation"
+        },
+        "allowed_gates": [
+          "read-only exact-source/artifact/hash verification",
+          "nonzero CTest discovery requiring T014e2r",
+          "one serial T014e2r run with zero skips",
+          "independent A51 gate-evidence review"
+        ],
+        "prohibited": [
+          "source changes",
+          "engine or harness rebuild",
+          "CMake reconfigure",
+          "artifact substitution",
+          "attempt 4",
+          "T014e2",
+          "any additional product test"
+        ]
+      },
+      "test_matrix_row_remains": "not_run",
+      "independent_gate_evidence_review_required": true,
+      "F02e2_remains_failed_until_F02e2r_acceptance": true,
+      "F02e3_remains_blocked_until_F02e2r_acceptance": true
+    },
+    {
+      "id": "A52",
+      "reason": "A51 T014e2r failed its combined profile-readiness condition. A fresh successor drives the poll_config() work used by production and preserves both exhausted histories.",
+      "added_paths": [],
+      "removed_paths": [],
+      "added_locks": [],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "path_owners": {
+        "F02e2s": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "max_changed_product_files": 10,
+      "previous_max_changed_product_files": 10,
+      "base_sha": "eb6ff74ad7134ff6fb5a2e934e08fd3f22a777a9",
+      "base_tree": "42b809fee461d7a555b79f953fe1c56d6c1a0845",
+      "attempt_limit": 3,
+      "successor_test": "T014e2s",
+      "old_tests_execution_authorized": false,
+      "pump_contract": {
+        "both_BrowserUi_instances": true,
+        "operation": "BrowserUi::poll_config()",
+        "bounded": true,
+        "stops_before_destruction": true
+      },
+      "preserved_failures": {
+        "F02e2": "A48 failed 6/6",
+        "F02e2r": "A50 attempt 3/3 and A51 continuation failed"
+      },
+      "supersession": {
+        "F02e2": "F02e2s",
+        "F02e2r": "F02e2s",
+        "T014e2": "T014e2s",
+        "T014e2r": "T014e2s",
+        "only_after_independent_T014e2s_gate_review": true
+      },
+      "downstream_dependencies": {
+        "F02e3": [
+          "F02e2s"
+        ],
+        "F02e": [
+          "F02e0",
+          "F02e1",
+          "F02e2s",
+          "F02e3",
+          "F02e4",
+          "F02e5",
+          "F02e6",
+          "F02e7",
+          "F02e8"
+        ]
+      },
+      "native_gate_sequence": [
+        "read-only-sdk-selection-preflight",
+        "exact-source-release-engine-build",
+        "public-page-host-harness-configure",
+        "integration-target-build",
+        "robust-executable-link-order-verification",
+        "nonzero-ctest-discovery",
+        "T014e2s-serial"
+      ]
+    },
+    {
+      "id": "A53",
+      "reason": "A52 attempt2 proved bootstrap ready but exposed an empty optional durable profile ID for Ephemeral fixtures; a real session identity projection is outside adapter scope.",
+      "added_paths": [
+        "crates/ferric-browser-application/src/profile_session.rs",
+        "crates/ferric-browser-application/src/lib.rs"
+      ],
+      "path_owners": {
+        "F02e2i": [
+          "crates/ferric-browser-application/src/profile_session.rs",
+          "crates/ferric-browser-application/src/lib.rs"
+        ]
+      },
+      "locks": [
+        "application-interface",
+        "profile-session-identity"
+      ],
+      "max_changed_product_files": 2,
+      "prerequisite": "F02e2i",
+      "test_id": "T014e2i",
+      "parent": "F02e2s",
+      "reserved_parent_attempt": 3,
+      "parent_adapter_scope_unchanged": true,
+      "parent_source_base_rule": "accepted_F02e2i_integration_descended_from_eb6ff74",
+      "supersedes_A52_base_only_for_reserved_attempt3": true,
+      "parent_depends_on": [
+        "F02e1",
+        "F02e2q",
+        "F02e2i"
+      ],
+      "aggregate_depends_on": [
+        "F02e0",
+        "F02e1",
+        "F02e2i",
+        "F02e2s",
+        "F02e3",
+        "F02e4",
+        "F02e5",
+        "F02e6",
+        "F02e7",
+        "F02e8"
+      ],
+      "preserved_failures": {
+        "attempt1": {
+          "run": "evidence/F02e2s-a1/native/NATIVE_RUN-A52-a1.json",
+          "run_sha256": "b41bbe860a0d5c845d952bf5447aaee47ab1e56da7b7c0c59a35e39d7dff06b4",
+          "closure": "evidence/F02e2s-a1/native/NATIVE_LEASE_CLOSED-A52-a1.json",
+          "closure_sha256": "331bbf0b036c239ecacbd2728cc6e8a1d56aef6072a608b40a30c1dbab7ff613"
+        },
+        "attempt2": {
+          "run": "evidence/F02e2s-a2/native/NATIVE_RUN-A52-a2.json",
+          "run_sha256": "c95650d7caf8967b352a6dbc09d810df3a1596a215bc19cdcdcf13e525f2d6a9",
+          "closure": "evidence/F02e2s-a2/native/NATIVE_LEASE_CLOSED-A52-a2.json",
+          "closure_sha256": "fab15750237db01424cfc05aad311f8d1ae2771dd929329b4519d00c0bdebb82"
+        }
+      },
+      "review_sha256": "1dd499ddc3314a4797d66737d145ff3474ceaf8b838cb62f951f6bb93d4b4ede",
+      "proposal_sha256": "0229d82ffbff22f1986f5a623e0b53624c586ea2dee671bfeee0ca2d7c118f89",
+      "native_gate_sequence_unchanged": true,
+      "old_tests_execution_authorized": false
+    },
+    {
+      "id": "A54",
+      "kind": "one_time_test_only_source_exception",
+      "slice": "F02e2i",
+      "attempt": 4,
+      "previous_limit": 3,
+      "no_reset": true,
+      "no_source5_or_retry": true,
+      "parent_F02e2s_attempt": 3,
+      "parent_attempt4_authorized": false,
+      "allowed_delta_paths": [
+        "crates/ferric-browser-application/src/lib.rs"
+      ],
+      "expected_lib_sha256": "d8b3925b956a0e749df56593efc7d11b243413ebb1f6ae21746e7e16275d3b9c",
+      "unchanged_session_sha256": "41293d4d09d5a935c59a074bda9ed6348391e7ca90edf378793b66c95a56a5f2",
+      "repair_patch": {
+        "path": "evidence/A54/TEST_ONLY_REPAIR.diff",
+        "sha256": "3dc08cebb99304ff18173aef743159565e54fe189147a3193eda1e803d474abc",
+        "utf8_bytes": 1153
+      },
+      "preserved_source_failures": {
+        "1": {
+          "attempt": 1,
+          "candidate_sha": "1d309eda2a4d6c24f00c7245e6f3294d43bc54b2",
+          "candidate_tree": "f26be2f2047464170439ebf996b97af49f52b4f5",
+          "state_record_sha256": "1f33bba9da4aeae99e7cb518fc0fc65b0d4261ddd02929b587d1ccd82281deaa",
+          "budget_uncertain": true
+        },
+        "2": {
+          "attempt": 2,
+          "candidate_sha": "672018c484ebc49bbfa03d6fb5425a54fb4345be",
+          "candidate_tree": "1b56c25301b81e123d1fa3e48ca5f93c707604c8",
+          "state_record_sha256": "e44822ec563707da87328426d54102636cbe8e8e81bdf51af234db3c6860ac9a",
+          "budget_uncertain": false
+        },
+        "3": {
+          "attempt": 3,
+          "candidate_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+          "candidate_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+          "state_record_sha256": "0e5cc5a797dc83ad9ad3a49938ce36b3f7412f41c69ae90d67cc35ae5aba4e5e",
+          "budget_uncertain": false
+        }
+      },
+      "review_sha256": "d5b073a7b1ea44b8913766da2ae5b9414ddb44d200235a6d5985f26db60f0bb9",
+      "lifecycle": "evidence/F02e2i-a4/ATTEMPT_LIFECYCLE.jsonl",
+      "fixed_source_review": "evidence/F02e2i-a4/SOURCE_REVIEW.json",
+      "fixed_integrated_review": "evidence/F02e2i-a4/INTEGRATED_SOURCE_REVIEW.json",
+      "fixed_gate_review": "evidence/F02e2i-a4/GATE_EVIDENCE_REVIEW.json",
+      "failure_history_retained": true,
+      "audit_repository": "control/A54-lifecycle-audit.git",
+      "audit_ref_prefix": "refs/ferric/f02e2i-a4/"
+    },
+    {
+      "id": "A55",
+      "slice": "F02e2s",
+      "status": "independent plan accepted; pack implementation pending",
+      "plan_review": {
+        "path": "evidence/A55/PLAN_REVIEW.json",
+        "sha256": "abffbaf695d2671c95b47663e9ffd11ded8a6b24712e74d77af31f1847e8c07b"
+      },
+      "proposal": {
+        "path": "evidence/A55/PROPOSAL.json",
+        "sha256": "22236bf76f4e056e15aa494fd4ed3435ec4f1e07c6cf8bab20a754ed919562d9"
+      },
+      "exact_test_patch": {
+        "path": "evidence/A55/TEST_HELPER_LIFETIME_REPAIR.diff",
+        "sha256": "b22e3d7a316578a32510a632672ec3db9d65a76865badc23b932d32551b52277",
+        "bytes": 3285
+      },
+      "new_source_attempt": 4,
+      "previous_source_attempts_preserved": [
+        1,
+        2,
+        3
+      ],
+      "attempt_reset": false,
+      "attempt5_authorized": false,
+      "added_paths": [],
+      "removed_paths": [],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "path_owners": {
+        "F02e2s": [
+          "crates/ferric-browser-engine-qt/src/public_page_host.h",
+          "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+          "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+          "crates/ferric-browser-engine-qt/src/bridge.rs",
+          "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+          "crates/ferric-browser-engine-qt/build.rs",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+          "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+          "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+        ]
+      },
+      "only_new_edit": "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+      "accepted_base_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+      "failed3_reapply_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
+      "production_changes_relative_to_failed3_authorized": false,
+      "original_tests_and_native_gates_unchanged": true
+    },
+    {
+      "id": "A56",
+      "scope": "One explicitly user-authorized F02e2s source5 using bounded indexed inputs and the same pinned repair; terminal4 remains immutable.",
+      "slice": "F02e2s",
+      "attempt_limit": 5,
+      "proposal": {
+        "path": "evidence/A56/PROPOSAL.json",
+        "sha256": "71847ba5f481e1dc77969332b89338d377243e6ed70d304c6a8205614b02cae0"
+      },
+      "review": {
+        "path": "evidence/A56/PLAN_REVIEW.json",
+        "sha256": "37030bdf58663a142b3d3e0376576bb8922ef3dc657206afb5f5ac0fe73ef921"
+      },
+      "user_approval": {
+        "path": "evidence/A56/USER_APPROVAL.json",
+        "sha256": "4c0fb404c9666833e4015d180906d1f9d2701d386cd75c06ad852b3322eff5e5"
+      },
+      "repair_patch": {
+        "path": "evidence/A55/TEST_HELPER_LIFETIME_REPAIR.diff",
+        "sha256": "b22e3d7a316578a32510a632672ec3db9d65a76865badc23b932d32551b52277",
+        "bytes": 3285
+      },
+      "source_base_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+      "reapply_source_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
+      "attempt6_authorized": false
+    },
+    {
+      "id": "A57",
+      "kind": "qualified_direct_recovery",
+      "slice": "F02e2s",
+      "tested_source_sha": "441cc61a69a9084e2184fef12490f7cfb1adffaa",
+      "tested_source_tree": "05b8fe2b3b3b1b5b986ccf8b83d391468264341a",
+      "contract": "control/direct-recovery.A57.json",
+      "history": "Five failed numbered attempts preserved; direct recovery imported under later explicit user authority.",
+      "product_paths": [
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/src/public_page_host.h",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp"
+      ]
+    }
+  ]
+}

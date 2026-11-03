@@ -80,7 +80,7 @@ jobs:
         # Bound this phase separately so a timeout leaves time to upload logs.
         timeout-minutes: 75
         run: |
-          ctest --test-dir target/application-tests --output-on-failure --output-junit "$RUNNER_TEMP/browser-surface-results.xml" -R '^(application_(product_polish|context_reload|switcher|close_requests|downloads|download_finalization|download_runtime_guard|notification_transport|native_notifications|notification_consent|file_chooser_backend|file_chooser_privacy|action_feedback|navigation_usability|navigation_recovery|navigation_recovery_wayland|keyboard_guide|keyboard_guide_wayland|live_titles|live_titles_wayland|privacy_identity|privacy_identity_wayland|switcher_live_updates|switcher_live_updates_wayland|switcher_navigation|switcher_navigation_wayland|bottom_chrome_wayland|form_reload|form_reload_wayland|streaming_history|streaming_history_wayland|journey_history|command_editing_wayland|keyboard_chrome_wayland|tab_focus_wayland|stop_state|stop_state_wayland|tab_recovery|tab_recovery_wayland|last_tab_undo|last_tab_undo_wayland|repeat|repeat_cli|open_targets|open_targets_wayland|open_targets_cli|cli_output|context_selection_cli|session_recovery|session_recovery_wayland|startup_recovery|startup_recovery_wayland|startup_recovery_restart|page_search|page_search_wayland|hint_controls|hint_controls_dpr2)|portal_(browser|download_history))$'
+          ctest --test-dir target/application-tests --output-on-failure --output-junit "$RUNNER_TEMP/browser-surface-results.xml" -R '^(application_(page_windows_portable|credential_association_wayland|shutdown_pending_save|document_idle|product_polish|context_reload|switcher|close_requests|downloads|download_finalization|download_runtime_guard|notification_transport|native_notifications|notification_consent|file_chooser_backend|file_chooser_privacy|action_feedback|navigation_usability|navigation_recovery|navigation_recovery_wayland|keyboard_guide|keyboard_guide_wayland|live_titles|live_titles_wayland|privacy_identity|privacy_identity_wayland|switcher_live_updates|switcher_live_updates_wayland|switcher_navigation|switcher_navigation_wayland|bottom_chrome_wayland|form_reload|form_reload_wayland|streaming_history|streaming_history_wayland|journey_history|command_editing_wayland|keyboard_chrome_wayland|tab_focus_wayland|stop_state|stop_state_wayland|tab_recovery|tab_recovery_wayland|last_tab_undo|last_tab_undo_wayland|repeat|repeat_cli|open_targets|open_targets_wayland|open_targets_cli|cli_output|context_selection_cli|session_recovery|session_recovery_wayland|startup_recovery|startup_recovery_wayland|startup_recovery_restart|page_search|page_search_wayland|hint_controls|hint_controls_dpr2)|portal_(browser|download_history))$'
           python3 crates/ferric-browser-engine-qt/tests/application/run_ipc_probe.py
           python3 crates/ferric-browser-engine-qt/tests/application/run_startup_recovery_probe.py --executable target/release/ferric-browser --artifacts "$RUNNER_TEMP/startup-recovery-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           python3 crates/ferric-browser-engine-qt/tests/application/run_context_delete_probe.py
@@ -89,6 +89,9 @@ jobs:
           python3 crates/ferric-browser-engine-qt/tests/application/run_selection_lifecycle_probe.py --executable target/release/ferric-browser
           python3 crates/ferric-browser-engine-qt/tests/application/run_window_ipc_probe.py
           python3 crates/ferric-browser-engine-qt/tests/application/run_download_ipc_probe.py --executable target/release/ferric-browser --artifacts "$RUNNER_TEMP/download-ipc-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Passkey boundary and helper supervision regressions
+        run: |
+          ctest --test-dir target/application-tests --output-on-failure -R '^(everyday_T046_credential_isolated_world|everyday_T047_stale_credential_completion|everyday_T061a_helper_supervisor_component|everyday_T061c_helper_native_rust_bridge|credential_helper_parent_death)$'
       - run: desktop-file-validate packaging/io.github.ferricbrowser.FerricBrowser.desktop
       - name: Upload browser test reports
         if: always()
@@ -102,6 +105,73 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  msrv:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.88.0
+      - name: Install SQLite build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libsqlite3-dev
+      - name: Check Qt-independent crates on the minimum Rust version
+        run: cargo check -p ferric-browser-application -p ferric-browser-storage -p ferric-browser-ipc -p xtask --all-targets --locked
+
+  phone-auth:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: helpers/ferric-phone-auth
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.88.0
+          components: rustfmt, clippy
+      - name: Install helper build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev libudev-dev
+      - name: Verify vendored patches, source pins and suffix data
+        run: |
+          python3 tools/check_vendor.py
+          python3 -B -m unittest discover -v -s tools -p 'test_*.py'
+          python3 tools/check_inputs.py
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --all-targets --locked
+      - name: Check upstream protocol and cryptographic vectors
+        run: |
+          cargo test --manifest-path vendor/Cargo.toml -p libwebauthn --lib --locked --target-dir target pin::
+          cargo test --manifest-path vendor/Cargo.toml -p libwebauthn --lib --locked --target-dir target transport::cable::protocol::
+          cargo test --manifest-path vendor/Cargo.toml -p snow --features use-p256,vector-tests --test vectors --locked --target-dir target
+      - name: Check disposable installed layout with transport disabled
+        run: |
+          cargo build --locked
+          python3 tools/check_install.py --helper target/debug/ferric-phone-auth
+
+  passkey-verifier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.13.9
+      - name: Install hash-locked independent verifier
+        run: |
+          python -m venv "$RUNNER_TEMP/passkey-verifier"
+          "$RUNNER_TEMP/passkey-verifier/bin/python" -m pip install --require-hashes --only-binary=:all: -r crates/ferric-browser-engine-qt/tests/everyday/rp/requirements.lock
+      - name: Verify assertions, registration and fixture cleanup
+        env:
+          FERRIC_P13_TEST_TMP: ${{ runner.temp }}/passkey-fixtures
+        run: |
+          mkdir -p "$FERRIC_P13_TEST_TMP"
+          "$RUNNER_TEMP/passkey-verifier/bin/python" -B -m unittest discover -v -s crates/ferric-browser-engine-qt/tests/everyday/rp -p 'test_*.py'
+
   dependency-policy:
     runs-on: ubuntu-24.04
     steps:
@@ -109,6 +179,19 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           rust-version: stable
+      - name: Check the helper's separate dependency graph
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          rust-version: stable
+          manifest-path: helpers/ferric-phone-auth/Cargo.toml
+          arguments: --locked --config helpers/ferric-phone-auth/deny.toml
+      - name: Check production helper advisories without fixture exceptions
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          rust-version: stable
+          manifest-path: helpers/ferric-phone-auth/Cargo.toml
+          arguments: --locked --exclude-dev --config helpers/ferric-phone-auth/deny-production.toml
+          command-arguments: advisories
 
   dependency-review:
     if: github.event_name == 'pull_request'

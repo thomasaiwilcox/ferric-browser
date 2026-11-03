@@ -1,0 +1,585 @@
+{
+  "schema_version": 1,
+  "requirements": [
+    {
+      "id": "EF-S00",
+      "description": "Clone, reconcile latest source and freeze the execution map",
+      "owner": "S00",
+      "contracts": [
+        "C00",
+        "C01"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-S01",
+      "description": "Register production-backed feature test harness and baseline inventory",
+      "owner": "S01",
+      "contracts": [
+        "C00",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-F00",
+      "description": "Add typed feature settings and validate defaults",
+      "owner": "F00",
+      "contracts": [
+        "C00",
+        "C13"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-F01",
+      "description": "Wire setting registry, atomic application and effective status",
+      "owner": "F01",
+      "contracts": [
+        "C01",
+        "C13"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-F02",
+      "description": "Page factory, callback/focus and popup continuity through public QWebEnginePage/QWebEngineView ownership; true close and surviving descendants, replacing unsafe Quick leases. Live native-page bindings use actual profile-session instance identity, separate from optional durable profile IDs, across all privacy modes.",
+      "owner": "F02",
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "source": "updated proposal mapped to current baseline",
+      "amendment": "A37",
+      "amendments": [
+        "A37",
+        "A53"
+      ]
+    },
+    {
+      "id": "EF-F03",
+      "description": "Introduce explicit view role and generation guards",
+      "owner": "F03",
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-F04",
+      "description": "Qualify shared service and first-host lifetime",
+      "owner": "F04",
+      "contracts": [
+        "C01",
+        "C12"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-F05",
+      "description": "Verify current per-window interaction parity and fix only gaps",
+      "owner": "F05",
+      "contracts": [
+        "C01",
+        "C09",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-H00",
+      "description": "Implement single-spare policy and deterministic state tests",
+      "owner": "H00",
+      "contracts": [
+        "C02",
+        "C03"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-H01",
+      "description": "Prepare an inert internal-mode view with bounded readiness",
+      "owner": "H01",
+      "contracts": [
+        "C02",
+        "C03"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-H02",
+      "description": "Adopt a matching spare through normal open routing",
+      "owner": "H02",
+      "contracts": [
+        "C01",
+        "C02",
+        "C03"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-H03",
+      "description": "Eviction, resource pressure and teardown",
+      "owner": "H03",
+      "contracts": [
+        "C01",
+        "C03",
+        "C12"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-H04",
+      "description": "Add trustworthy hot/cold benchmark instrumentation",
+      "owner": "H04",
+      "contracts": [
+        "C00",
+        "C03",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-H05",
+      "description": "Qualify unmapped window-mode spare independently",
+      "owner": "H05",
+      "contracts": [
+        "C02",
+        "C03",
+        "C09"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-H06",
+      "description": "Native performance qualification on this machine only, with unchanged numerical acceptance thresholds and disclosed hardware limits.",
+      "owner": "H06",
+      "contracts": [
+        "C00",
+        "C03"
+      ],
+      "source": "updated proposal mapped to current baseline",
+      "amendment": "A37"
+    },
+    {
+      "id": "EF-P00",
+      "description": "Prove isolated-world credential boundary on qualified Qt",
+      "owner": "P00",
+      "contracts": [
+        "C04",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P01",
+      "description": "Create separately pinned helper build and dependency inventory",
+      "owner": "P01",
+      "contracts": [
+        "C06",
+        "C07"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P02",
+      "description": "Implement pure credential admission and ceremony state",
+      "owner": "P02",
+      "contracts": [
+        "C04",
+        "C08"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P03",
+      "description": "Implement production document-bound native credential bridge",
+      "owner": "P03",
+      "contracts": [
+        "C04",
+        "C06"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P04",
+      "description": "Implement mediator and public-key request serialization",
+      "owner": "P04",
+      "contracts": [
+        "C04",
+        "C05",
+        "C06"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P05",
+      "description": "Implement asynchronous helper supervision and bounded pipes",
+      "owner": "P05",
+      "contracts": [
+        "C06",
+        "C08"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P06",
+      "description": "Implement helper RP validation, PSL and request preparation",
+      "owner": "P06",
+      "contracts": [
+        "C05",
+        "C06",
+        "C07"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P07",
+      "description": "Implement QR hybrid registration and assertion transport",
+      "owner": "P07",
+      "contracts": [
+        "C05",
+        "C06",
+        "C07"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P08",
+      "description": "Enforce helper egress and Bluetooth capability policy",
+      "owner": "P08",
+      "contracts": [
+        "C06",
+        "C07"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P09",
+      "description": "Build native provider chooser and preserve native authentication",
+      "owner": "P09",
+      "contracts": [
+        "C05",
+        "C08"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P10",
+      "description": "Implement owned QR/progress UI and accessible cancellation",
+      "owner": "P10",
+      "contracts": [
+        "C06",
+        "C08"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P11",
+      "description": "Complete WebAuthn response objects and capability semantics",
+      "owner": "P11",
+      "contracts": [
+        "C05",
+        "C07"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P12",
+      "description": "Wire complete credential lifecycle, abort and document invalidation",
+      "owner": "P12",
+      "contracts": [
+        "C04",
+        "C08",
+        "C12"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P13",
+      "description": "Create independent relying-party verification fixture",
+      "owner": "P13",
+      "contracts": [
+        "C05",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P14",
+      "description": "Run composed phone flow and hostile bridge integration tests",
+      "owner": "P14",
+      "contracts": [
+        "C04",
+        "C05",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P15",
+      "description": "Fuzz credential boundaries and verify resource/privacy caps",
+      "owner": "P15",
+      "contracts": [
+        "C06",
+        "C07",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P16",
+      "description": "Independent credential security and conformance review",
+      "owner": "P16",
+      "contracts": [
+        "C00",
+        "C04",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-P17",
+      "description": "Physical iPhone, Android and native-key qualification",
+      "owner": "P17",
+      "contracts": [
+        "C00",
+        "C08",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W00",
+      "description": "Prove exact native-host correlation and grouping primitives",
+      "owner": "W00",
+      "contracts": [
+        "C10",
+        "C11"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W01",
+      "description": "Implement presentation/open-target policy at Rust boundary",
+      "owner": "W01",
+      "contracts": [
+        "C01",
+        "C09",
+        "C13"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W02",
+      "description": "Create single-page native hosts using existing workspaces",
+      "owner": "W02",
+      "contracts": [
+        "C01",
+        "C09"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W03",
+      "description": "Implement tab traversal, close, pin and undo in window mode",
+      "owner": "W03",
+      "contracts": [
+        "C09",
+        "C12"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W04",
+      "description": "Add bounded compositor observation and capability layer",
+      "owner": "W04",
+      "contracts": [
+        "C10",
+        "C11"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W05",
+      "description": "Bind actual host IDs to compositor clients",
+      "owner": "W05",
+      "contracts": [
+        "C10",
+        "C11"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W06",
+      "description": "Implement transaction-scoped grouped foreground creation",
+      "owner": "W06",
+      "contracts": [
+        "C09",
+        "C10",
+        "C11"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W07",
+      "description": "Preserve background creation, popup and standalone semantics",
+      "owner": "W07",
+      "contracts": [
+        "C09",
+        "C10",
+        "C11"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W08",
+      "description": "Use observed group order for non-destructive traversal",
+      "owner": "W08",
+      "contracts": [
+        "C09",
+        "C11"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W09",
+      "description": "Extend session presentation metadata compatibly",
+      "owner": "W09",
+      "contracts": [
+        "C09",
+        "C12"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W10",
+      "description": "Implement bounded restore and presentation conversion",
+      "owner": "W10",
+      "contracts": [
+        "C09",
+        "C12"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W11",
+      "description": "Qualify context/private isolation and prompt ownership",
+      "owner": "W11",
+      "contracts": [
+        "C01",
+        "C09",
+        "C12"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W12",
+      "description": "Separate visibility, focus and renderer lifecycle",
+      "owner": "W12",
+      "contracts": [
+        "C01",
+        "C11"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W13",
+      "description": "Handle compositor disconnect and grouping recovery",
+      "owner": "W13",
+      "contracts": [
+        "C10",
+        "C11",
+        "C12"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-W14",
+      "description": "Qualify actual Hyprland and generic Wayland experience",
+      "owner": "W14",
+      "contracts": [
+        "C00",
+        "C09",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-X00",
+      "description": "Add cross-feature composition and lifecycle stress matrix",
+      "owner": "X00",
+      "contracts": [
+        "C01",
+        "C12",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-X01",
+      "description": "Package helper, PSL, system prerequisites and license inventory",
+      "owner": "X01",
+      "contracts": [
+        "C06",
+        "C07",
+        "C13"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-X02",
+      "description": "Integrate new suites and helper checks into CI",
+      "owner": "X02",
+      "contracts": [
+        "C00",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-X03",
+      "description": "Generate user references, diagnostics and recovery guidance",
+      "owner": "X03",
+      "contracts": [
+        "C09",
+        "C12",
+        "C13"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-X04",
+      "description": "Independent integrated architecture and regression review",
+      "owner": "X04",
+      "contracts": [
+        "C00",
+        "C01",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-X05",
+      "description": "Run safe build cleanup and reproducible rebuild checkpoint",
+      "owner": "X05",
+      "contracts": [
+        "C00",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    },
+    {
+      "id": "EF-X06",
+      "description": "Final capability qualification and handover",
+      "owner": "X06",
+      "contracts": [
+        "C00",
+        "C13",
+        "C14"
+      ],
+      "source": "updated proposal mapped to current baseline"
+    }
+  ]
+}

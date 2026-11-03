@@ -2,12 +2,38 @@
 
 use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QString, QVariant};
 use ferric_browser_core::{EngineEffect, SearchCase, Target};
-
 #[derive(Clone, Debug)]
 pub(super) enum NativeRequest {
     Engine(EngineEffect),
+    ReparentView {
+        effect: EngineEffect,
+        target: Target,
+        profile_id: String,
+        host_token: String,
+        page_owner_token: String,
+        operation: PageHostOperation,
+    },
     View(ferric_browser_application::ViewRequest),
     Presentation(String),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PageHostOperation {
+    Attach,
+    Detach,
+}
+
+impl PageHostOperation {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Attach => "attach",
+            Self::Detach => "detach",
+        }
+    }
+
+    pub(super) fn attaches(self) -> bool {
+        self == Self::Attach
+    }
 }
 
 pub(super) fn target(effect: &EngineEffect) -> Option<Target> {
@@ -81,17 +107,88 @@ impl NativeRequest {
     pub(super) fn captured_target(&self) -> Option<Target> {
         match self {
             Self::Engine(effect) => target(effect),
+            Self::ReparentView { target, .. } => Some(*target),
             Self::View(request) => Some(request.target),
             Self::Presentation(_) => None,
         }
     }
+
+    pub(super) fn page_host_tokens(&self) -> Option<(&str, &str, &str, bool)> {
+        match self {
+            Self::ReparentView {
+                profile_id,
+                host_token,
+                page_owner_token,
+                operation,
+                ..
+            } => Some((
+                profile_id,
+                host_token,
+                page_owner_token,
+                operation.attaches(),
+            )),
+            _ => None,
+        }
+    }
+
     pub(super) fn projection(&self) -> QVariant {
         match self {
             Self::Engine(effect) => project(effect),
+            Self::ReparentView {
+                effect,
+                target,
+                profile_id,
+                host_token,
+                page_owner_token,
+                operation,
+            } => project_reparent_view(
+                effect,
+                *target,
+                profile_id,
+                host_token,
+                page_owner_token,
+                *operation,
+            ),
             Self::View(request) => project_view(request),
             Self::Presentation(_) => QVariant::default(),
         }
     }
+}
+
+fn project_reparent_view(
+    effect: &EngineEffect,
+    target: Target,
+    profile_id: &str,
+    host_token: &str,
+    page_owner_token: &str,
+    operation: PageHostOperation,
+) -> QVariant {
+    let EngineEffect::ReparentView {
+        tab,
+        generation,
+        window,
+    } = effect
+    else {
+        return QVariant::default();
+    };
+    if *tab != target.tab || *generation != target.generation {
+        return QVariant::default();
+    }
+
+    let mut row = QMap::<QMapPair_QString_QVariant>::default();
+    let mut text = |key: &str, value: &str| {
+        row.insert(QString::from(key), QVariant::from(&QString::from(value)));
+    };
+    text("kind", "reparent-view");
+    text("operation", operation.as_str());
+    text("tabId", &target.tab.to_string());
+    text("generation", &target.generation.to_string());
+    text("documentId", &target.document.to_string());
+    text("windowId", &window.to_string());
+    text("profileId", profile_id);
+    text("hostToken", host_token);
+    text("pageOwnerToken", page_owner_token);
+    QVariant::from(&row)
 }
 
 fn project_view(request: &ferric_browser_application::ViewRequest) -> QVariant {

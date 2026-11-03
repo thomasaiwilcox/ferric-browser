@@ -1,0 +1,128 @@
+{
+  "repository": "thomasaiwilcox/ferric-browser",
+  "ref": "e4aa108f9d63c99c3b3e977c2061d6d8dde48568",
+  "reviewed_on": "2026-10-24",
+  "scope": "targeted architecture and integration anchor review, not an exhaustive re-audit",
+  "search_note": "GitHub search returned indexed a245360c... results during authoring. Only pinned fetches establish this baseline. Re-resolve all discovered symbols locally.",
+  "files": [
+    {
+      "path": "README.md",
+      "git_blob": "87da2b696a53841ae0cf11e7b0de5e73ddbfacad",
+      "inspection": "full",
+      "purpose": "Build requirements and current user behaviour",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/README.md"
+    },
+    {
+      "path": "Cargo.toml",
+      "git_blob": "4091a5e55d287795767e35a9739448a71648d060",
+      "inspection": "full",
+      "purpose": "Workspace, MSRV and FFI panic policy",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/Cargo.toml"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "f982fa819cda00a83a368d498c6164e41d1e297d",
+      "inspection": "full",
+      "purpose": "Application/runtime ownership",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/docs/ARCHITECTURE.md"
+    },
+    {
+      "path": "packaging/dependencies.toml",
+      "git_blob": "f4b7f65e324e84217e085715cd59012ccaba328d",
+      "inspection": "full",
+      "purpose": "Qt 6.11.2, private-header guard, KF6 6.28",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/packaging/dependencies.toml"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "git_blob": "eb5ccf006684d285528ffd71c2e79f00fdb09534",
+      "inspection": "full",
+      "purpose": "Current build and CI command families",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/.github/workflows/ci.yml"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+      "git_blob": "8f971a76fae7b0343cd044810ea321d71d20cda4",
+      "inspection": "lines 1-180",
+      "purpose": "Secondary hint/search/appearance/profile hosts; do not duplicate",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+      "git_blob": "40fe0282850ee5cdb6aec4a25fb55db643687e4a",
+      "inspection": "lines 1-190 plus indexed symbol location",
+      "purpose": "Composition root, controllers and inline WebEngine factory",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml",
+      "git_blob": "697daba2255811951206edf7a31bcf69462a9dd8",
+      "inspection": "full",
+      "purpose": "Profile consumers, downloads and owner-scoped retirement",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-engine-qt/qml/components/FerricProfileResourceRegistry.qml"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml",
+      "git_blob": "40aef374e0217194f42e9312a512634274a450ee",
+      "inspection": "full",
+      "purpose": "Shared profile/interceptor policy and lifecycle",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-engine-qt/qml/components/FerricProfileResources.qml"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml",
+      "git_blob": "b5641f087379717b2aad5777fcf596064be92852",
+      "inspection": "lines 1-190; transfer fallback discovered by search",
+      "purpose": "Script runner and current service allocation anchor",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-engine-qt/qml/components/FerricPageServices.qml"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricHintWorkspace.qml",
+      "git_blob": "dea2901cb7a2ea983711ed877aea77fcdb1a0de2",
+      "inspection": "lines 1-100",
+      "purpose": "Existing per-window hints/grid owner",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-engine-qt/qml/components/FerricHintWorkspace.qml"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/profile_lifetime.h",
+      "git_blob": "21a179f1b035168295fba94af340c962b6918374",
+      "inspection": "full",
+      "purpose": "Native lifetime owner API",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-engine-qt/src/profile_lifetime.h"
+    },
+    {
+      "path": "crates/ferric-browser-application/src/profile_session.rs",
+      "git_blob": "abbb75883320e8bd6f6022b5a4c452bac7eb9660",
+      "inspection": "full",
+      "purpose": "Existing shared durable and memory profile scopes",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-application/src/profile_session.rs"
+    },
+    {
+      "path": "crates/ferric-browser-config/src/browser_config.rs",
+      "git_blob": "90e38d5e6c8b474adb2a3a2c848e4f117df2a5bf",
+      "inspection": "lines 1-190",
+      "purpose": "Typed config and TabsConfig extension anchor",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-config/src/browser_config.rs"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/scripts/EngineRequests.js",
+      "git_blob": "ca08ba2845a14d3edb450ea2e0605ea0b46a0f8c",
+      "inspection": "full",
+      "purpose": "Shared captured-request execution with target validation",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-engine-qt/qml/scripts/EngineRequests.js"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt",
+      "git_blob": null,
+      "inspection": "lines 1-180, displayed output truncated",
+      "purpose": "Existing production-engine harness, suite names and FERRIC_ENGINE_LIBRARY override",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt"
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/tests/application/tst_live_titles.cpp",
+      "git_blob": "b3e3a37bbe039ae47ecb5f30da022ea4f85ccd03",
+      "inspection": "productPolishLiveTitles data rows and assertions",
+      "purpose": "T015 live-title owner transfer and stale source-target rejection",
+      "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/e4aa108f9d63c99c3b3e977c2061d6d8dde48568/crates/ferric-browser-engine-qt/tests/application/tst_live_titles.cpp"
+    }
+  ]
+}

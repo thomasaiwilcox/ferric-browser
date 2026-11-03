@@ -63,7 +63,7 @@ mod browser_ui_edit_commands;
 mod browser_ui_external_actions;
 mod browser_ui_guide;
 mod gui_application;
-pub use gui_application::new_gui_application;
+pub use gui_application::{new_gui_application, new_gui_application_with_network_policy};
 mod browser_ui_hint_pointer;
 pub use browser_ui_hint_pointer::reject_external_hint_interaction_chain;
 mod browser_ui_diagnostics;
@@ -93,6 +93,15 @@ mod browser_ui_native_prompts;
 mod browser_ui_navigation;
 mod browser_ui_navigation_lifecycle;
 mod browser_ui_operations;
+mod browser_ui_page_close;
+mod browser_ui_page_creation;
+mod browser_ui_page_get;
+mod browser_ui_page_mutations;
+mod browser_ui_page_regroup;
+mod browser_ui_page_sessions;
+mod browser_ui_page_transfer;
+mod browser_ui_page_windows;
+mod browser_ui_page_workflows;
 mod browser_ui_persistence;
 mod browser_ui_popup_owner;
 mod browser_ui_popups;
@@ -114,6 +123,8 @@ mod browser_ui_scope_handoff;
 mod browser_ui_selector_config;
 mod browser_ui_session_save;
 mod browser_ui_sessions;
+mod browser_ui_shutdown_pages;
+mod browser_ui_shutdown_sessions;
 mod browser_ui_site;
 mod browser_ui_spatial;
 mod browser_ui_start_page;
@@ -151,6 +162,7 @@ mod focus_policy;
 mod hint_payload;
 mod hint_policy;
 mod hyprland;
+mod hyprland_events;
 mod input_validation;
 mod ipc_command_decoder;
 mod ipc_contract;
@@ -179,6 +191,14 @@ mod open_policy;
 mod operation_policy;
 mod operation_projection;
 mod page_document_identity;
+mod page_group_runtime;
+mod page_window_focus;
+mod page_window_macros;
+mod page_window_native;
+mod page_window_operations;
+mod page_window_order;
+mod page_window_undo;
+mod page_workflow_expansion;
 mod presentation_text;
 mod process_output;
 mod profile_management;
@@ -545,6 +565,32 @@ pub struct BrowserUiRust {
     binding_clock: Instant,
     pending_engine_action: Option<String>,
     pending_engine_actions: VecDeque<engine_requests::NativeRequest>,
+    // Prepared page windows are unpublished and cannot consume document work.
+    page_window_preparing: bool,
+    page_window_ordinary: bool,
+    page_window_closing: bool,
+    page_window_group: String,
+    page_window_focus_lease: Option<page_window_focus::Lease>,
+    accepted_page_gets: std::collections::HashMap<TabId, browser_ui_page_get::AcceptedPageGet>,
+    shutdown_session_lease: Option<browser_ui_shutdown_sessions::ShutdownSessionLease>,
+    shutdown_pages: Option<browser_ui_shutdown_pages::ShutdownPages>,
+    pending_page_session: Option<live_ipc_owners::PendingSessionLease>,
+    page_creation_publications:
+        std::collections::VecDeque<browser_ui_page_creation::CreationPublication>,
+    page_creations:
+        std::collections::HashMap<TabId, Box<browser_ui_page_creation::PendingCreation>>,
+    page_creation_focus_owned: bool,
+    page_creation_presentation: Option<browser_ui_page_creation::CreationPresentation>,
+    page_close_intent: Option<Box<browser_ui_page_close::CloseIntent>>,
+    restored_page_windows:
+        std::collections::HashMap<TabId, browser_ui_page_sessions::RestoredPageWindow>,
+    restored_page_group_ids: std::collections::HashMap<Uuid, String>,
+    credential_policy_epoch: u64,
+    prepared_page_window: Option<browser_ui_popup_owner::PreparedPageWindow>,
+    prepared_page_releases:
+        std::collections::HashMap<TabId, browser_ui_popup_owner::PreparedPageRelease>,
+    live_page_move: Option<Box<browser_ui_page_transfer::LivePageMove>>,
+    prepared_live_page: Option<Box<browser_ui_page_transfer::PreparedLivePage>>,
     pending_print: Option<PathBuf>,
     pending_history_clear: Option<(Option<i64>, Option<String>)>,
     tab_ids: Vec<TabId>,
@@ -828,6 +874,16 @@ pub struct BrowserUiRust {
     feature_blocking_update_interval_hours: i32,
     feature_link_cleaning_update_source: QString,
     feature_link_cleaning_update_sha256: QString,
+    feature_tabs_presentation_requested: QString,
+    feature_tabs_presentation_effective: QString,
+    feature_tabs_presentation_status: QString,
+    feature_tabs_presentation_reason: QString,
+    feature_phone_passkeys_requested: QString,
+    feature_phone_passkeys_status: QString,
+    feature_phone_passkeys_reason: QString,
+    feature_page_grouping_requested: QString,
+    feature_page_grouping_status: QString,
+    feature_page_grouping_reason: QString,
     config_base_json: QString,
     cli_overrides_json: QString,
     profile_overrides_json: QString,
@@ -1006,6 +1062,7 @@ struct ClosedTabDescriptor {
     pinned: bool,
     muted: bool,
     zoom_hundredths: u32,
+    scope: Option<page_window_undo::Scope>,
 }
 
 #[derive(Clone, Debug)]
@@ -1293,5 +1350,9 @@ impl qobject::BrowserUi {
     }
 }
 
+mod browser_ui_credential_binding;
+mod browser_ui_credentials;
+mod credential_actor;
+mod credential_protocol;
 #[cfg(test)]
 mod tests;

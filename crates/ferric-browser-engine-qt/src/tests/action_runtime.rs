@@ -371,7 +371,7 @@ fn ipc_command_failure_preserves_context_without_sensitive_details() {
             ErrorCode::StaleTarget,
             "The captured tab is no longer available.",
             "captured tab id tab-1 was removed before execution",
-        ),
+        ).after_accepted_commands(1),
         context,
     );
     let error = response.error.expect("structured command error");
@@ -379,6 +379,8 @@ fn ipc_command_failure_preserves_context_without_sensitive_details() {
     let details = error.details.expect("command error details");
     assert_eq!(details["command_context"]["operation_id"], "op-1");
     assert_eq!(details["command_context"]["privacy"], "normal");
+    assert_eq!(details["accepted_commands"], 1);
+    assert!(details["preserved"].as_str().unwrap().contains("earlier commands were accepted"));
     assert!(details.get("url").is_none());
     assert!(details.get("title").is_none());
 }
@@ -764,7 +766,7 @@ fn qml_idle_path_is_event_driven_and_devtools_are_lazy() {
     assert!(!qml.contains("id: attachedDevToolsView"));
     assert!(!qml.contains("id: secondaryDevToolsView"));
     assert!(script.contains("if(!root)return null"));
-    assert!(qml.contains("WebEngineProfilePrototype {\n        id: browserProfilePrototype"));
+    assert!(qml.contains("FerricProfilePrototype {\n        id: browserProfilePrototype"));
 }
 
 #[test]

@@ -44,13 +44,14 @@ ApplicationWindow {
     readonly property alias runtime_libraryManager: libraryManager
     readonly property alias runtime_switcherSurface: switcherSurface
     readonly property alias runtime_webViews: webViews
-    readonly property alias runtime_webViewComponent: webViewComponent
+    readonly property var runtime_webViewComponent: webViewComponent.viewComponent
     readonly property alias runtime_runtimeWorkTimer: runtimeWorkTimer
     readonly property alias runtime_focusProbeTimer: focusProbeTimer
     readonly property alias runtime_scrollCaptureTimer: scrollCaptureTimer
 
     readonly property var modalInputScope: FerricModalInputController { hostWindow: window }
     property bool runtimeDisposing: false
+    property bool primaryPageRetired: false
     property bool profileBootstrapComplete: false
     property var primaryProfileResources: null
     readonly property alias profileResourceRegistry: profileResources
@@ -79,7 +80,7 @@ ApplicationWindow {
     property var rendererFailureSurfaceComponentObject: rendererFailureSurfaceComponent
     property var browserWindowComponentObject: browserWindowComponent
     property var popupWindowComponentObject: popupWindowComponent
-    property var webViewComponentObject: webViewComponent
+    property var webViewComponentObject: webViewComponent.viewComponent
     property var webViewsObject: webViews
     readonly property alias permissionPromptFactory: window.permissionPromptSurfaceComponentObject
     readonly property alias captureIndicatorFactory: window.captureIndicatorComponentObject
@@ -93,12 +94,52 @@ ApplicationWindow {
     objectName: "ferric_browserWindow"
     width: 1280
     height: 800
-    visible: true
+    visible: primaryPageIdentity.prepared
+    FerricPageWindowIdentity { id: primaryPageIdentity; targetWindow: window }
+    readonly property string pageWindowTag: primaryPageIdentity.tag
+    readonly property bool pageWindowTagRequested: primaryPageIdentity.tagRequested
+    function supersedePageWindowFocus() { return primaryPageIdentity.supersedePageFocus() }
+    function pageFocusIntentCurrent(intent) { return primaryPageIdentity.focusIntentCurrent(intent) }
+    function currentPageFocusIntent() { return primaryPageIdentity.currentPageFocus() }
+    function presentIdlePageSurvivor(entry) { return runtimeBase.presentIdlePageSurvivor(entry) }
+    function captureShutdownViewProof(host) { return runtimeBase.captureShutdownViewProof(host) }
+    function shutdownViewProofCurrent(host, proof) { return runtimeBase.shutdownViewProofCurrent(host,proof) }
+    property var shutdownPageViewProof: []
+    onShutdownPagePromptVisibleChanged: if (shutdownPagePromptVisible && applicationShutdownInProgress)
+        window.activateBrowserWindow(window,browserUi)
+    onApplicationShutdownForcePromptVisibleChanged: if (applicationShutdownForcePromptVisible && applicationShutdownInProgress)
+        window.activateBrowserWindow(window,browserUi)
+    function requestPageWindowFocus(issuer, target, nonce) {
+        return primaryPageIdentity ? primaryPageIdentity.activatePage(issuer, target, nonce) : "stale"
+    }
+    function pageWindowFocusStatus(issuer, target, nonce) {
+        return primaryPageIdentity ? primaryPageIdentity.pageFocusStatus(issuer, target, nonce) : "stale"
+    }
+    property string pageGroupId: primaryPageIdentity.tag
+    Timer {
+        interval: 100
+        repeat: true
+        running: window.primaryPageRetired && !window.applicationShutdownInProgress
+        onTriggered: {
+            window.browserUi.refresh_operations()
+            window.browserUi.poll_ipc()
+            window.pageWindowCoordinator.recheckLastWindow()
+        }
+    }
+    readonly property var pageCloseController: FerricPageCloseController {
+        parent: window.contentItem
+        host: window
+        ui: window.browserUi
+        rootWindow: window
+    }
+    readonly property var pageWindowCoordinator: FerricPageWindowCoordinator { rootWindow: window }
     readonly property string windowPrivacyLabel: primaryPrivacyHeader.label
     title: "Ferric Browser"
            + (window.windowPrivacyLabel.length > 0 ? " · " + window.windowPrivacyLabel : "")
            + (window.ephemeralProfile ? " · " + window.profileLabel : "")
-           + (!window.tabStripVisible ? " · " + browserUi.tab_count + (browserUi.tab_count === 1 ? " tab" : " tabs") : "")
+           + (browserUi.feature_tabs_presentation_effective === "windows" && browserUi.page_title.length > 0
+              ? " · " + browserUi.page_title
+              : (!window.tabStripVisible ? " · " + browserUi.tab_count + (browserUi.tab_count === 1 ? " tab" : " tabs") : ""))
     color: window.backgroundColor
     font.family: window.chromeFontFamily
     font.pointSize: window.chromeFontPointSize
@@ -127,7 +168,7 @@ ApplicationWindow {
     property alias focusReturnStack: focusOverlayController.focusReturnStack
     property alias modeFocusReturnTarget: focusOverlayController.modeFocusReturnTarget
     property alias modeFocusCaptured: focusOverlayController.modeFocusCaptured
-    readonly property bool browserKeyFocusActive: !window.browserChromeInputActive
+    readonly property bool browserKeyFocusActive: !window.applicationShutdownInProgress && !window.browserChromeInputActive
     property color backgroundColor: "#1e1e2e"
     property color surfaceColor: "#313244"
     property color panelColor: "#181825"
@@ -152,9 +193,9 @@ ApplicationWindow {
     property string tabPosition: "top"
     property bool tabSwitchingVisible: false
     readonly property bool tabStripVisible:
-        tabsMode === "always"
+        (browserUi.feature_tabs_presentation_effective !== "windows" || tabViews.length > 1) && (tabsMode === "always"
         || (tabsMode === "multiple" && browserUi.tab_count > 1)
-        || (tabsMode === "switching" && tabSwitchingVisible)
+        || (tabsMode === "switching" && tabSwitchingVisible))
     readonly property bool sideTabs: tabPosition === "left" || tabPosition === "right"
     readonly property real sideTabWidth: Math.max(160, Math.min(280, width * 0.22))
     readonly property bool inputBarActive: browserUi.mode === "command"
@@ -175,6 +216,8 @@ ApplicationWindow {
     readonly property real chromeOpacity: 1.0
     property var browserWindowRegistry: []
     property var popupWindowRegistry: []
+    property bool applicationShutdownCommitStarted: false
+    property bool applicationShutdownRootPrepared: false
     property bool applicationShutdownInProgress: false
     property bool applicationShutdownForcePromptVisible: false
     property var attachedDevToolsView: null
@@ -208,12 +251,17 @@ ApplicationWindow {
     property string journeyExportPreviewText: ""
     property string ephemeralInvocationToken: ""
     property string activationStatus: "unknown"
-    property var pendingActivationHost: null
-    property var pendingActivationUi: null
-    property string pendingActivationOperationId: ""
-    property var pendingWorkspaceRouteHost: null
-    property var pendingWorkspaceRouteUi: null
-    property string pendingWorkspaceRoute: ""
+    property var pendingActivation: null
+    readonly property var pendingActivationHost: pendingActivation ? pendingActivation.host : null
+    readonly property var pendingActivationUi: pendingActivation ? pendingActivation.ui : null
+    readonly property string pendingActivationOperationId: pendingActivation ? pendingActivation.operation : ""
+    readonly property string pendingActivationNonce: pendingActivation ? pendingActivation.nonce : ""
+    readonly property string pendingActivationIntent: pendingActivation ? pendingActivation.intent : ""
+    readonly property var pendingActivationTargetUi: pendingActivation ? pendingActivation.targetUi : null
+    readonly property var pendingWorkspaceRouteHost: pendingActivation && pendingActivation.workspace.length > 0 ? pendingActivation.host : null
+    readonly property var pendingWorkspaceRouteUi: pendingActivation && pendingActivation.workspace.length > 0 ? pendingActivation.ui : null
+    readonly property string pendingWorkspaceRoute: pendingActivation ? pendingActivation.workspace : ""
+    readonly property string pendingWorkspaceRouteIntent: pendingActivation && pendingActivation.workspace.length > 0 ? pendingActivation.intent : ""
     readonly property real chromePadding: Math.max(4, Math.ceil(chromeFontMetrics.height * 0.25))
     readonly property real statusBarHeight: Math.ceil(
         chromeFontMetrics.height + (chromePadding * 2))
@@ -428,8 +476,12 @@ ApplicationWindow {
     function ephemeralTokenForUi(ui) { return runtimeBase.ephemeralTokenForUi(ui) }
 
     function executeWindowFocusAction(sourceUi, action) { return runtimeBase.executeWindowFocusAction(sourceUi, action) }
+    function finishWindowActivation(state, receipt) { return runtimeBase.finishWindowActivation(state, receipt) }
 
-    function activateBrowserWindow(hostWindow, targetUi, operationId) { return runtimeBase.activateBrowserWindow(hostWindow, targetUi, operationId) }
+    function failPreparedPagePublication(id) { return window.pageWindowCoordinator.failCommittedPreparedPage(id) }
+    function presentCreatedPageDecision(ui, host, intent) { return runtimeBase.presentCreatedPageDecision(ui,host,intent) }
+    function presentPageCloseDecision(ui, host, nonce) { return runtimeBase.presentPageCloseDecision(ui,host,nonce) }
+    function activateBrowserWindow(hostWindow, targetUi, operationId, workspace) { return runtimeBase.activateBrowserWindow(hostWindow, targetUi, operationId, workspace) }
 
     function focusNotificationOrigin(profileScope, origin) { return runtimeBase.focusNotificationOrigin(profileScope, origin) }
 
@@ -462,6 +514,7 @@ ApplicationWindow {
             return
         }
         close.accepted = false
+        if (window.primaryPageRetired) { window.hide(); return }
         window.beginQuitRequest(":window-close")
     }
     property string startupUrl: "about:blank"
@@ -797,6 +850,8 @@ ApplicationWindow {
         || window.profileManagerVisible
         || window.profileDeletePreviewVisible
         || window.downloadManagerVisible
+        || window.pageCloseController.confirmationVisible
+        || window.pageCloseController.dirtyVisible
         || window.shutdownConfirmationVisible
         || window.shutdownPromptVisible
         || window.shutdownPagePromptVisible
@@ -835,7 +890,7 @@ ApplicationWindow {
     readonly property int browserScriptWorld: WebEngineScript.ApplicationWorld
     readonly property string browserScriptBundleVersion: "1"
 
-    WebEngineProfilePrototype {
+    FerricProfilePrototype {
         id: browserProfilePrototype
         storageName: window.temporaryProfile ? "" : "ferric-browser-" + window.profileName
         persistentStoragePath: window.temporaryProfile || window.storageBasePath.length === 0
@@ -1079,6 +1134,7 @@ ApplicationWindow {
 
     BrowserUi {
         id: browserUi
+        page_window_ordinary: true
         status_text: "Ready"
         onRuntime_work_available: window.scheduleRuntimeWork(0)
         onSwitcher_sources_changed: {
@@ -1089,11 +1145,11 @@ ApplicationWindow {
             if (window.commandNoticeVisible && browserUi.mode !== "command"
                     && browserUi.status_text !== "Normal mode") {
                 var loweredStatus = browserUi.status_text.toLowerCase()
-                window.showCommandNotice(
-                    browserUi.status_text,
-                    loweredStatus.indexOf("failed") >= 0
-                    || loweredStatus.indexOf("error") >= 0
-                    || loweredStatus.indexOf("rejected") >= 0)
+                var statusIsError = loweredStatus.indexOf("failed") >= 0
+                        || loweredStatus.indexOf("error") >= 0
+                        || loweredStatus.indexOf("rejected") >= 0
+                if (!window.commandNoticeError || statusIsError)
+                    window.showCommandNotice(browserUi.status_text, statusIsError)
             }
         }
     }
@@ -1333,46 +1389,14 @@ ApplicationWindow {
         interval: 250
         repeat: false
         onTriggered: {
-            var host = window.pendingActivationHost
-            var ui = window.pendingActivationUi || browserUi
-            var operationId = window.pendingActivationOperationId
-            if (!host || !ui) {
-                window.activationStatus = "unknown"
-                return
+            var state = window.pendingActivation
+            if (!state || state.finished) return
+            var receipt = "unknown"
+            if (!state.queued && window.pageFocusIntentCurrent(state.intent) && state.host && state.ui) {
+                receipt = state.nonce.length > 0 ? state.host.pageWindowFocusStatus(state.ui, state.targetUi, state.nonce)
+                    : state.host.active ? "activated" : "unknown"
             }
-            if (host.active) {
-                window.activationStatus = "activated"
-                if (operationId.length > 0) {
-                    ui.complete_window_focus(operationId, "activated")
-                }
-                ui.status_text = "Window activated"
-                var workspaceHost = window.pendingWorkspaceRouteHost
-                var workspaceUi = window.pendingWorkspaceRouteUi
-                var workspace = window.pendingWorkspaceRoute
-                if (workspaceHost === host && workspaceUi === ui && workspace.length > 0) {
-                    window.pendingWorkspaceRouteHost = null
-                    window.pendingWorkspaceRouteUi = null
-                    window.pendingWorkspaceRoute = ""
-                    if (!ui.hyprland_route_workspace(workspace)) {
-                        ui.status_text = "Workspace routing was denied by the compositor"
-                    }
-                }
-            } else {
-                window.activationStatus = "unknown"
-                ui.status_text = "Window activation outcome unknown; compositor may deny focus"
-                if (operationId.length > 0) {
-                    ui.complete_window_focus(operationId, "unknown")
-                }
-                if (window.pendingWorkspaceRouteHost === host) {
-                    window.pendingWorkspaceRouteHost = null
-                    window.pendingWorkspaceRouteUi = null
-                    window.pendingWorkspaceRoute = ""
-                    ui.status_text = "Workspace routing denied because window activation was denied"
-                }
-            }
-            window.pendingActivationHost = null
-            window.pendingActivationUi = null
-            window.pendingActivationOperationId = ""
+            window.finishWindowActivation(state, receipt === "requested" ? "unknown" : receipt)
         }
     }
 
@@ -1515,7 +1539,8 @@ ApplicationWindow {
     property alias tabViews: primaryTabController.tabViews
     FerricTabViewController {
         id: primaryTabController
-        ready: window.profileBootstrapComplete && !window.runtimeDisposing
+        ready: window.profileBootstrapComplete && !window.runtimeDisposing && !window.primaryPageRetired
+        pageWindowCoordinator: window.pageWindowCoordinator
         browserUi: window.browserUi
         browserHost: window
         tabs: window.tabsModel
@@ -1691,6 +1716,44 @@ ApplicationWindow {
     function continueQuitRequest() { return runtimePresentation.continueQuitRequest() }
 
     function finalizeQuit() { return runtimePresentation.finalizeQuit() }
+    function retirePrimaryPage() {
+        primaryPageRetired = true
+        if (!browserUi.retire_page_presentation()) {
+            primaryPageRetired = false
+            browserUi.status_text = "The page couldn't close. Try again."
+            return false
+        }
+        var views = tabViews.slice(0)
+        for (var i = 0; i < views.length; ++i) {
+            var view = views[i]
+            if (!view) continue
+            window.cancelScriptsForView(view)
+            window.clearPageDialogForView(view)
+            window.clearClientCertificateForView(view)
+            window.clearCertificateErrorForView(view)
+            window.clearWebAuthForView(view)
+            window.clearContextMenuForView(view)
+            window.clearDesktopMediaForView(view)
+            window.clearCaptureSessionForView(view)
+            window.clearRendererFailureForView(view)
+            window.clearSiteDataClearForView(view)
+        }
+        window.closeDevTools()
+        window.profileResourceRegistry.releaseWindow(window)
+        primaryTabController.tabViews = []
+        tabs.clear()
+        // Retain the empty process controller and QML service context while
+        // removing the retired presentation from ordinary window routing.
+        window.browserWindowRegistry = window.browserWindowRegistry.filter(function(entry) {
+            return entry && entry.ui !== browserUi
+        })
+        window.publishBrowserWindowRegistry()
+        window.hide()
+        window.pageCloseController.released()
+        window.pageWindowCoordinator.recheckLastWindow()
+        return true
+    }
+
 
     function cancelDownloadsAndQuit() { return runtimePresentation.cancelDownloadsAndQuit() }
 
@@ -3134,491 +3197,12 @@ GridLayout {
             return selected ? selected.StackLayout.index : -1
         }
 
-        Component {
+        FerricPageFactory {
             id: webViewComponent
-
-            WebEngineView {
-                id: webView
-                readonly property string promptLeaseIdentity: browserUi.new_prompt_view_identity()
-                property var promptIdentityUi: null
-                property int promptIdentityTabIndex: -1
-                function refreshPromptViewIdentity() {
-                    if (promptIdentityUi && promptIdentityTabIndex >= 0
-                            && promptIdentityUi.unregister_prompt_view_identity) {
-                        promptIdentityUi.unregister_prompt_view_identity(
-                            promptIdentityTabIndex, promptLeaseIdentity)
-                    }
-                    promptIdentityUi = viewUi
-                    promptIdentityTabIndex = tabIndex
-                    if (promptIdentityUi && promptIdentityTabIndex >= 0
-                            && promptIdentityUi.register_prompt_view_identity) {
-                        promptIdentityUi.register_prompt_view_identity(
-                            promptIdentityTabIndex, promptLeaseIdentity)
-                    }
-                }
-                onTabIndexChanged: refreshPromptViewIdentity()
-                onViewUiChanged: {
-                    documentRequestOwner = ({})
-                    documentTitleTarget = null
-                    refreshPromptViewIdentity()
-                    if (resourceTracked) window.profileResourceRegistry.trackView(webView,viewHost,viewUi)
-                }
-                onViewHostChanged: {
-                    documentRequestOwner = ({})
-                    if (resourceTracked) window.profileResourceRegistry.trackView(webView,viewHost,viewUi)
-                }
-                property bool resourceTracked: false
-                property alias nativeUrl: nativeContent.nativeUrl
-                onNativeUrlChanged: {
-                    documentRequestOwner = ({})
-                    documentTitleTarget = null
-                }
-                property alias contentTraversalPending: nativeContent.traversalPending
-                readonly property var startPage: nativeContent.startPage
-                readonly property int engineHistoryIndex: nativeContent.engineHistoryIndex
-                readonly property bool contentCanGoBack: nativeContent.canNavigateBack
-                readonly property bool contentCanGoForward: nativeContent.canNavigateForward
-                property bool contentInitialized: false
-                readonly property string modelContentUrl: viewModel.loaded ? viewModel.url : ""
-                function setContentUrl(destination, traversal, engineMoves, freshRequest, historyIndex) { contentInitialized = true; nativeContent.setContentUrl(destination, traversal, engineMoves, freshRequest, historyIndex) }
-                function requestContentReload(request) { nativeContent.requestReload(request) }
-                function cancelPendingContentReload() { nativeContent.cancelReloadAttempt() }
-                function noteBeforeUnloadRejected() { nativeContent.noteBeforeUnloadRejected() }
-                readonly property bool formResubmissionPending: !!nativeContent.formReloadRequest
-                function contentEngineOffset(destination, expected, backwards) { return nativeContent.engineOffset(destination, expected, backwards) }
-                function synchronizeContentHistory() { nativeContent.synchronizeHistory() }
-                function requestContentHistoryTraversal(backwards, count, perform) {
-                    nativeContent.requestHistoryTraversal(backwards, count, perform)
-                }
-                // Bootstrap can publish a temporary blank tab before choosing
-                // its startup content. Initialize from the settled model, or
-                // let an explicit navigation take ownership first.
-                Timer {
-                    id: initializeContentTimer
-                    interval: 0
-                    onTriggered: if (webView.ownsTab() && webView.viewModel.loaded && !webView.contentInitialized)
-                        webView.setContentUrl(webView.modelContentUrl || "about:blank", false)
-                }
-                onModelContentUrlChanged: {
-                    if (!contentInitialized) { initializeContentTimer.restart(); return }
-                    if (modelContentUrl.length > 0 && (modelContentUrl === "rb://start" || modelContentUrl === "rb://blank" || nativeUrl.length > 0)) setContentUrl(modelContentUrl, false)
-                }
-                FerricNativeTabContent {
-                    id: nativeContent
-                    anchors.fill: parent
-                    webView: webView
-                    browserUi: webView.viewUi
-                    browserWindow: window
-                    browserHost: webView.viewHost
-                    tabsModel: webView.viewTabs
-                }
-                property int tabIndex: -1
-                property string stableTabId: ""
-                onStableTabIdChanged: documentTitleOwnerTimer.restart()
-                Timer {
-                    id: documentTitleOwnerTimer
-                    interval: 0
-                    // The view owns this deferred work, so destroying a
-                    // provisional view during transfer cancels the callback.
-                    onTriggered: {
-                        if (!webView.ownsTab() || webView.loading || !nativeContent.engineDocumentReady) return
-                        webView.documentTitleTarget = webView.viewUi.navigation_target_for_index(webView.tabIndex)
-                        webView.publishPageTitle()
-                    }
-                }
-                property var viewUi: browserUi
-        property var selectionSource: null
-                property var viewHost: window
-                property var viewTabs: tabs
-                property var viewModel: ({})
-                property var viewProfile: browserProfile
-                property var viewInterceptor: window.primaryRequestInterceptor
-                property bool viewTransientProfile: window.temporaryProfile
-                property bool viewTransferred: false
-                property bool viewRetired: false
-                property var documentRequestOwner: ({})
-                property var documentTitleTarget: null
-                function publishPageTitle() {
-                    var target = documentTitleTarget
-                    if (!target || !ownsTab() || nativeUrl.length > 0 || loading
-                            || !nativeContent.engineDocumentReady) return
-                    viewUi.document_title_changed(target.tabId, target.generation,
-                            target.documentId, title)
-                }
-                function ownsTab() {
-                    return !viewRetired && !!viewUi && tabIndex >= 0 && stableTabId.length > 0
-                        && viewUi.tab_id_for_index(tabIndex) === stableTabId
-                }
-                property var pageUserScriptNames: []
-                property string pageUserScriptReloadUrl: ""
-                property string pageDialogDocumentKey: ""
-                property int pageDialogCount: 0
-                property bool pageDialogSuppressed: false
-                property bool rendererFailed: false
-                property int rendererFailureCount: 0
-                property double rendererFailureAt: 0
-                property string rendererFailureSafeUrl: ""
-                property string rendererFailureReason: ""
-                property int rendererFailureExitCode: 0
-                property bool scrollPositionRestored: false
-                devToolsView: viewHost && viewHost.devToolsWorkspace
-                    ? viewHost.devToolsWorkspace.inspectorFor(webView) : null
-                // Navigation-scoped content settings are snapshotted per
-                // document; live config changes apply to the next navigation.
-                property var effectiveSiteSettings: ({ values: {}, matched_rules: [] })
-                function refreshEffectiveSiteSettings() {
-                    effectiveSiteSettings = window.siteRuleSettingsFor(
-                        viewUi, webView.url.toString())
-                }
-                Connections {
-                    target: viewUi
-                    function onSite_experiment_kindChanged() {
-                        webView.refreshEffectiveSiteSettings()
-                    }
-                    function onActive_tab_indexChanged() {
-                        if (viewUi === browserUi
-                                && tabIndex === viewUi.active_tab_index) {
-                            window.refreshBlockingEvidence()
-                            window.updateMprisForPrimaryView(webView)
-                            window.scheduleFocusProbe(2)
-                        }
-                    }
-                }
-                property int blockedRequestCount: {
-                    var host = webView.url && webView.url.host
-                            ? String(webView.url.host) : ""
-                    var counts = viewInterceptor.blockedSiteCounts || ({})
-                    return host.length > 0 && counts[host] !== undefined ? Number(counts[host]) : 0
-                }
-                profile: viewProfile
-                // Native pages supply their own content; the model or an
-                // explicit request initializes the first engine navigation.
-                url: ""
-                audioMuted: !!viewModel.muted
-                zoomFactor: Number(window.siteRuleValue(
-                    effectiveSiteSettings, "content.zoom", viewModel.zoom))
-                settings.javascriptEnabled: !!window.siteRuleValue(
-                    effectiveSiteSettings, "content.javascript", true)
-                settings.autoLoadImages: !!window.siteRuleValue(
-                    effectiveSiteSettings, "content.images", true)
-                settings.forceDarkMode: !!window.siteRuleValue(
-                    effectiveSiteSettings, "content.force_dark", false)
-                settings.playbackRequiresUserGesture:
-                    window.siteRuleValue(effectiveSiteSettings, "content.autoplay", "engine-default")
-                    === "require-gesture"
-                Accessible.name: "Web content for tab " + (tabIndex + 1)
-                Component.onCompleted: {
-                    resourceTracked=window.profileResourceRegistry.trackView(webView,viewHost,viewUi)
-                    if (!resourceTracked) {
-                        viewRetired=true
-                        viewUi.status_text="This page couldn't be initialized. Try reopening the window."
-                        return
-                    }
-                    refreshPromptViewIdentity()
-                    if (viewModel.loaded && !contentInitialized) initializeContentTimer.restart()
-                    refreshEffectiveSiteSettings()
-                    if (nativeUrl.length > 0) {
-                        viewUi.content_navigated(tabIndex, nativeUrl, engineHistoryIndex, false)
-                        if (nativeUrl === "rb://start") Qt.callLater(nativeContent.focusContent)
-                    } else if (viewModel.loaded) window.installFocusObserver(webView)
-                }
-                onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID) {
-                    window.probeFocusNotification(viewUi, viewHost, webView, tabIndex, message)
-                }
-                onActiveFocusChanged: {
-                    if (activeFocus && nativeUrl === "rb://start") { Qt.callLater(nativeContent.focusContent); return }
-                    if (activeFocus && viewUi === browserUi
-                            && tabIndex === viewUi.active_tab_index) {
-                        window.scheduleFocusProbe(2)
-                    }
-                }
-                onRecentlyAudibleChanged: {
-                    if (ownsTab() && viewUi === browserUi && tabIndex === viewUi.active_tab_index)
-                        window.updateMprisForPrimaryView(webView)
-                }
-                onAudioMutedChanged: {
-                    if (ownsTab() && viewUi === browserUi && tabIndex === viewUi.active_tab_index)
-                        window.updateMprisForPrimaryView(webView)
-                }
-                onZoomFactorChanged: {
-                    if (viewUi === browserUi && browserUi.mode === "grid") {
-                        browserUi.spatial_invalidated("geometry-changed")
-                    }
-                }
-
-                onNavigationRequested: function(request) {
-                    if (request.isMainFrame && request.navigationType === WebEngineView.ReloadNavigation
-                            && nativeContent.interceptReloadNavigation(request)) return
-                    if (request.isMainFrame) nativeContent.beginNavigation(
-                        request.navigationType === WebEngineView.BackForwardNavigation, request.hasFormData,
-                        request.navigationType === WebEngineView.ReloadNavigation)
-                }
-                onUrlChanged: {
-                    if (nativeUrl.length > 0) return
-                    if (!ownsTab()) return
-                    nativeContent.noteSameDocument(url.toString())
-                    refreshEffectiveSiteSettings()
-                    if (!viewModel.loaded) {
-                        return
-                    }
-                    var changedUrl = url.toString()
-                    if (viewModel.url !== changedUrl && viewTabs && tabIndex >= 0) {
-                        viewTabs.setProperty(tabIndex, "url", changedUrl)
-                    }
-                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
-                        if (viewUi === browserUi) {
-                            address.text = browserUi.display_url
-                            window.updateMprisForPrimaryView(webView)
-                            window.refreshBlockingEvidence()
-                        }
-                    }
-                }
-                onTitleChanged: {
-                    if (nativeUrl.length > 0) return
-                    if (!ownsTab()) return
-                    publishPageTitle()
-                    if (viewModel.loaded && viewTabs && tabIndex >= 0) {
-                        viewTabs.setProperty(tabIndex, "title", viewUi.display_page_title(title) || "New tab")
-                        if (tabIndex === viewUi.active_tab_index && viewUi === browserUi) {
-                            window.updateMprisForPrimaryView(webView)
-                        }
-                    }
-                }
-                onLoadingChanged: function(loadRequest) {
-                    var stage = loadRequest.status === WebEngineView.LoadStartedStatus ? "started"
-                        : loadRequest.status === WebEngineView.LoadStoppedStatus ? "stopped"
-                        : loadRequest.status === WebEngineView.LoadSucceededStatus ? "succeeded"
-                        : loadRequest.status === WebEngineView.LoadFailedStatus ? "failed" : ""
-                    if (nativeContent.settleBeforeUnloadLoading(stage, loadRequest)) return
-                    if (nativeContent.blockedReloadLoading(stage)) return
-                    if (loadRequest.status === WebEngineView.LoadStartedStatus) {
-                        documentRequestOwner = ({})
-                        documentTitleTarget = null
-                    }
-                    if (!viewModel.loaded || nativeUrl.length > 0 || !ownsTab()) return
-                    if (loadRequest.status === WebEngineView.LoadStartedStatus) {
-                        nativeContent.engineLoadState = "loading"
-                        viewUi.invalidate_native_prompt_leases()
-                        webView.scrollPositionRestored = false
-                        window.clearPageDialogForView(webView)
-                        window.clearClientCertificateForView(webView)
-                        window.clearCertificateErrorForView(webView)
-                        window.clearWebAuthForView(webView)
-                        window.clearContextMenuForView(webView)
-                        window.clearDesktopMediaForView(webView)
-                        window.clearSiteDataClearForView(webView)
-                        window.noteCaptureNavigation(webView)
-                        if (viewHost && viewHost.clearFileDialogForView) viewHost.clearFileDialogForView(webView)
-                        window.clearRendererFailureForView(webView)
-                        window.resetPageDialogBudget(webView)
-                        viewInterceptor.clearSiteEvidence(webView.url.host)
-                        viewUi.clear_blocking_active_evidence()
-                        if (viewTabs && tabIndex >= 0) {
-                            window.removePermissionGroups(function(group) {
-                                return group.ui === webView.viewUi && group.tabIndex === webView.tabIndex
-                            }, true)
-                        } else {
-                            window.cancelPermissionForUi(viewUi)
-                        }
-                        window.installPageUserscripts(
-                            viewUi, webView, webView.url.toString(), viewTransientProfile)
-                        window.injectPageUserscripts(
-                            viewUi, webView, webView.url.toString(), viewTransientProfile,
-                            "document_start")
-                        window.injectCosmeticRules(viewUi, webView)
-                        if (viewTabs && tabIndex >= 0) {
-                            viewUi.navigation_started_for(tabIndex, loadRequest.url.toString())
-                        } else {
-                            viewUi.navigation_started(loadRequest.url.toString())
-                        }
-                    } else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
-                        nativeContent.noteCommit(true)
-                        if (viewTabs && tabIndex >= 0) {
-                            viewUi.navigation_committed_for(tabIndex, webView.url.toString(), webView.title)
-                        } else {
-                            viewUi.navigation_committed(webView.url.toString(), webView.title)
-                        }
-                        if (!webView.scrollPositionRestored) {
-                            webView.scrollPositionRestored = true
-                            window.restoreScrollPosition(webView, viewModel.scrollX, viewModel.scrollY)
-                        }
-                        window.injectPageUserscripts(
-                            viewUi, webView, webView.url.toString(), viewTransientProfile,
-                            "document_end")
-                        window.injectCosmeticRules(viewUi, webView)
-                        Qt.callLater(function() {
-                            window.injectPageUserscripts(
-                                viewUi, webView, webView.url.toString(), viewTransientProfile,
-                                "document_idle")
-                        })
-                        if (viewTabs && tabIndex >= 0) {
-                            viewUi.navigation_completed_for(tabIndex)
-                        } else {
-                            viewUi.navigation_completed()
-                        }
-                        documentTitleTarget = viewUi.navigation_target_for_index(tabIndex)
-                        publishPageTitle()
-                        if (viewUi === browserUi
-                                && tabIndex === viewUi.active_tab_index) {
-                            window.scheduleFocusProbe(3)
-                        }
-                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
-                            window.finishSiteDoctorAfterLoad(viewUi, true)
-                        }
-                    } else if (loadRequest.status === WebEngineView.LoadStoppedStatus) {
-                        nativeContent.noteStopped()
-                    } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
-                        nativeContent.noteCommit(false)
-                        if (viewTabs && tabIndex >= 0) {
-                            viewUi.navigation_failed_with_details(
-                                tabIndex,
-                                loadRequest.url.toString(),
-                                window.navigationFailureKind(loadRequest),
-                                window.navigationFailureDetail(loadRequest))
-                        } else {
-                            viewUi.navigation_failed()
-                        }
-                        if (tabIndex === viewUi.active_tab_index) {
-                            window.finishSiteDoctorAfterLoad(viewUi, false)
-                        }
-                    }
-                }
-                onPdfPrintingFinished: function(filePath, success) {
-                    viewUi.finish_print_pdf(filePath, success)
-                }
-                onFileDialogRequested: function(request) {
-                    if (!request) return
-                    request.accepted = true
-                    var host = viewHost || window
-                    if ((!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index)
-                            && !host.runtimeReleased && !host.runtimeDisposing
-                            && host.handleFileDialogRequested) {
-                        host.handleFileDialogRequested(request, webView, viewUi)
-                    } else {
-                        window.resolveQtRequest(viewUi, request, "file-dialog", "dialogReject", [])
-                    }
-                }
-                onPermissionRequested: function(permissionRequest) {
-                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
-                        window.handlePermissionRequested(permissionRequest, tabIndex,
-                            viewUi, webView, viewTransientProfile, viewHost)
-                    } else {
-                        window.resolveQtRequest(viewUi, permissionRequest, "permission", "deny", [])
-                    }
-                }
-                onJavaScriptDialogRequested: function(request) {
-                    window.handleJavaScriptDialogRequested(
-                        viewUi, webView, request, viewTransientProfile, viewHost)
-                }
-                onAuthenticationDialogRequested: function(request) {
-                    window.handleAuthenticationDialogRequested(
-                        viewUi, webView, request, viewTransientProfile, viewHost)
-                }
-                onSelectClientCertificate: function(selection) {
-                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
-                        window.handleClientCertificateRequested(
-                            viewUi, webView, selection, viewTransientProfile, viewHost)
-                    } else {
-                        window.resolveQtRequest(viewUi, selection, "client-certificate", "selectNone", [])
-                    }
-                }
-                onCertificateError: function(error) {
-                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
-                        window.handleCertificateError(
-                            viewUi, webView, error, viewHost)
-                    } else {
-                        window.resolveQtRequest(viewUi, error, "client-certificate", "rejectCertificate", [])
-                    }
-                }
-                onWebAuthUxRequested: function(request) {
-                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
-                        window.handleWebAuthRequested(
-                            viewUi, webView, request, viewHost)
-                    } else {
-                        window.resolveQtRequest(viewUi, request, "webauth", "cancel", [])
-                    }
-                }
-                onContextMenuRequested: function(request) {
-                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
-                        window.handleContextMenuRequested(
-                            viewUi, webView, request, viewHost)
-                    } else {
-                        request.accepted = true
-                    }
-                }
-                onDesktopMediaRequested: function(request) {
-                    window.handleDesktopMediaRequested(
-                        viewUi, webView, request, viewHost)
-                }
-                onFullScreenRequested: function(request) {
-                    if (viewUi === browserUi && browserUi.mode === "grid") {
-                        browserUi.spatial_invalidated("view-changed")
-                    }
-                    request.accept()
-                    if (request.toggleOn) {
-                        viewHost.showFullScreen()
-                        viewUi.status_text = "Page fullscreen enabled"
-                    } else {
-                        viewHost.showNormal()
-                        viewUi.status_text = "Page fullscreen ended"
-                    }
-                }
-                onRenderProcessTerminated: function(terminationStatus, exitCode) {
-                    if (nativeUrl.length > 0) return
-                    window.handleRendererProcessTerminated(
-                        viewUi, webView, viewHost, tabIndex,
-                        terminationStatus, exitCode)
-                }
-                Component.onDestruction: {
-                    if (!(viewHost && viewHost.runtimeReleased) && !window.runtimeDisposing) {
-                        window.cancelScriptsForView(webView)
-                        window.clearPageDialogForView(webView)
-                        window.clearClientCertificateForView(webView)
-                        window.clearCertificateErrorForView(webView)
-                        window.clearWebAuthForView(webView)
-                        window.clearContextMenuForView(webView)
-                        window.clearDesktopMediaForView(webView)
-                        window.clearCaptureSessionForView(webView)
-                        if (viewHost && viewHost.clearFileDialogForView) viewHost.clearFileDialogForView(webView)
-                        window.clearRendererFailureForView(webView)
-                    }
-                    if (promptIdentityUi && promptIdentityTabIndex >= 0
-                            && promptIdentityUi.unregister_prompt_view_identity) {
-                        promptIdentityUi.unregister_prompt_view_identity(
-                            promptIdentityTabIndex, promptLeaseIdentity)
-                    }
-                }
-                onNewWindowRequested: function(request) {
-                    var pageSearch = viewHost && viewHost.searchWorkspace
-                    if (pageSearch && pageSearch.acceptNewTabRequest(webView, request)) return
-                    var popupAllowed = viewTabs && tabIndex >= 0
-                            ? viewUi.popup_allowed_for(
-                                tabIndex, request.requestedUrl.toString(), request.userInitiated)
-                            : viewUi.popup_allowed(
-                                request.requestedUrl.toString(), request.userInitiated)
-                    if (!popupAllowed) {
-                        return
-                    }
-                    var popupToken=viewUi.take_popup_journey_token(request.requestedUrl.toString())
-                    var popup = popupWindowComponent.createObject(null, {
-                        popupRequest: request,
-                        popupJourneyToken: popupToken,
-                        popupProfile: viewProfile,
-                        popupOpenerUi: viewUi,
-                        popupContextName: viewUi.context_name,
-                        popupContextLabel: viewUi.context_label,
-                        popupPrivateProfile: viewTransientProfile,
-                        popupEphemeralProfile: viewHost === window ? window.ephemeralProfile : viewHost.windowEphemeralProfile,
-                        popupEphemeralInvocationToken: viewHost === window ? window.ephemeralInvocationToken : viewHost.windowEphemeralInvocationToken,
-                        popupProfileName: viewHost === window ? window.profileName : viewHost.windowProfileName,
-                        popupStorageBasePath: viewHost === window ? window.storageBasePath : viewHost.windowStorageBasePath
-                    })
-                    if (!popup || !popup.profileBootstrapComplete) {
-                        viewUi.close_popup_tab(popupToken)
-                        viewUi.status_text="The popup could not be opened. Try opening the link again."
-                    }
-                }
-            }
+            rootWindow: window
+            primaryUi: browserUi
+            addressField: address
+            popupFactory: popupWindowComponent
         }
     }
 
@@ -3764,6 +3348,9 @@ GridLayout {
 
     function executePendingEngineAction() { return runtimeSurface.executePendingEngineAction() }
 
+    function restoreStagedLiveView(view) { return primaryTabController.restoreStagedLiveView(view) }
+    function finishStagedLiveRollback(view) { return primaryTabController.finishStagedLiveRollback(view) }
+    readonly property var activeView: activeWebView()
     function activeWebView() { return runtimeSurface.activeWebView() }
 
     function updateActiveTabUrl() { return runtimeSurface.updateActiveTabUrl() }
@@ -3862,6 +3449,10 @@ GridLayout {
             if (window.shutdownConfirmationCommand === ":quit") {
                 return "This will close every Ferric Browser window and tab."
             }
+            if (browserUi.feature_tabs_presentation_effective === "windows"
+                    && window.liveWindowEntries().some(function(entry) { return entry.host !== window })) {
+                return "This will close this page window. Other Ferric Browser windows stay open."
+            }
             if (window.shutdownParticipantCount() > 0) {
                 return "This is the primary browser window, so closing it will close every Ferric Browser window and tab."
             }
@@ -3876,6 +3467,7 @@ GridLayout {
                                ? "Quit Ferric Browser" : "Close browser window"
         dialogHeight: 220 * window.chromeScale
         onKeepRequested: {
+            window.pageCloseController.cancel()
             window.shutdownConfirmationVisible = false
             browserUi.status_text = "Shutdown cancelled"
         }
@@ -3895,6 +3487,8 @@ GridLayout {
         proceedLabel: "Cancel active work and quit"
         dialogHeight: 190 * window.chromeScale
         onKeepRequested: {
+            window.pageCloseController.cancel()
+            window.abortApplicationShutdown()
             window.shutdownPromptVisible = false
             browserUi.status_text = "Shutdown cancelled"
         }
@@ -3915,6 +3509,8 @@ GridLayout {
         proceedAccessibleName: "Close anyway despite page state"
         dialogHeight: 220 * window.chromeScale
         onKeepRequested: {
+            window.pageCloseController.cancel()
+            window.abortApplicationShutdown()
             window.shutdownPageProbeGeneration += 1
             window.shutdownPagePromptVisible = false
             browserUi.status_text = "Shutdown cancelled"

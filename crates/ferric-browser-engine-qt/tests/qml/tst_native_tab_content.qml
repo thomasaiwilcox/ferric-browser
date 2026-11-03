@@ -13,8 +13,13 @@ TestCase {
     QtObject {
         id: web
         property int tabIndex: 0
+        property string stableTabId: "tab-a"
         property bool ownerValid: true
         function ownsTab() { return ownerValid && tabIndex >= 0 }
+        function lifecycleOwner() { return {ui:viewUi,host:viewHost,tabs:provisionalTabs,index:tabIndex} }
+        function ownsLifecycleTab() {
+            return ownsTab() && !!viewUi && viewUi.tab_id_for_index(tabIndex) === stableTabId
+        }
         property var history: ({ backItems: backItems, forwardItems: forwardItems })
         property url url: "https://a.test"
         property string title: "Example"
@@ -107,6 +112,7 @@ TestCase {
             webView: web; browserUi: ui; browserWindow: theme; browserHost: host
         }
     }
+    Component { id: unavailableUi; QtObject {} }
     function init() {
         web.tabIndex = 0; web.ownerValid = true; ui.active_tab_index = 0
         provisionalTabs.clear(); provisionalTabs.append({url:"https://a.test",loaded:true})
@@ -119,6 +125,21 @@ TestCase {
         backItems.clear(); backItems.append({url: "https://a.test", offset: -1})
         forwardItems.clear()
         web.historyObservation = null; web.deferProbe = false; web.probeCallback = null
+    }
+    function test_history_rejects_retired_or_unavailable_owner_data() {
+        return [{tag:"retired",retired:true},{tag:"unavailable",retired:false}]
+    }
+    function test_history_rejects_retired_or_unavailable_owner(row) {
+        failOnWarning(/TypeError|ReferenceError/)
+        var content=createTemporaryObject(fixture,host.contentItem)
+        web.ownerValid=!row.retired
+        web.viewUi=createTemporaryObject(unavailableUi,host.contentItem)
+        verify(!content.hasLiveOwner())
+        verify(!content.canNavigateBack)
+        verify(!content.canNavigateForward)
+        content.synchronizeHistory()
+        compare(ui.entries.length,0)
+        wait(0)
     }
     function test_navigation_kind_follows_the_live_engine_policy_data() {
         return [{tag:"history",history:true},{tag:"fresh",history:false}]

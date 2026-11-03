@@ -1,0 +1,4 @@
+# Unified patches use a context-marker space on otherwise empty lines.
+helpers/ferric-phone-auth/vendor/*.patch whitespace=-blank-at-eol
+# Preserve the upstream license byte-for-byte for provenance verification.
+helpers/ferric-phone-auth/vendor/snow/LICENSE-APACHE whitespace=-blank-at-eof

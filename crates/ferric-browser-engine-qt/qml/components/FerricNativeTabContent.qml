@@ -42,25 +42,34 @@ Item {
     property int navigationSerial: 0
     onEngineDocumentReadyChanged: if (!engineDocumentReady) fragmentVisit = null
     property int navigationBaseIndex: 0
-    readonly property int tabIndex: webView ? webView.tabIndex : -1
-    // A provisional or retired renderer must never borrow the active tab.
+    readonly property int tabIndex: liveTabIndex()
+    function liveUi() { return webView ? webView.lifecycleOwner().ui : browserUi }
+    function liveHost() { return webView ? webView.lifecycleOwner().host : browserHost }
+    function liveTabs() { return webView ? webView.lifecycleOwner().tabs : tabsModel }
+    function liveTabIndex() { return webView ? webView.lifecycleOwner().index : -1 }
+    // Resolve authority at each call, including the interval between the pure
+    // Core commit and native completion's notifications.
     function hasLiveOwner() {
-        return !!browserUi && !!webView && tabIndex >= 0
-            && typeof webView.ownsTab === "function" && webView.ownsTab()
+        var ui = liveUi()
+        var index = liveTabIndex()
+        return !!webView && !!ui && index >= 0
+            && typeof ui.tab_id_for_index === "function"
+            && webView.ownsLifecycleTab()
+            && ui.tab_id_for_index(index) === webView.stableTabId
     }
     onBrowserUiChanged: { invalidateHistoryProbe(); reportUndoFallback() }
     onTabIndexChanged: { invalidateHistoryProbe(); reportUndoFallback() }
     readonly property int engineHistoryIndex: historyCursor.count
-    readonly property bool canNavigateBack: { if (!hasLiveOwner()) return false; var revision = browserUi.content_history_revision; return browserUi.content_history_available(tabIndex, -1) }
-    readonly property bool canNavigateForward: { if (!hasLiveOwner()) return false; var revision = browserUi.content_history_revision; return browserUi.content_history_available(tabIndex, 1) }
+    readonly property bool canNavigateBack: { if (!hasLiveOwner()) return false; var revision = liveUi().content_history_revision; return liveUi().content_history_available(liveTabIndex(), -1) }
+    readonly property bool canNavigateForward: { if (!hasLiveOwner()) return false; var revision = liveUi().content_history_revision; return liveUi().content_history_available(liveTabIndex(), 1) }
     readonly property var startPage: startLoader.item
     readonly property bool undoFallbackReady: hasLiveOwner() && nativeUrl === "rb://start"
         && !!startPage && !startPage.inputActive && !startPage.closeNeedsConfirmation
         && !navigationPending && !traversalPending
     onUndoFallbackReadyChanged: reportUndoFallback()
     function reportUndoFallback() {
-        if (browserUi && webView && typeof browserUi.report_undo_fallback === "function")
-            browserUi.report_undo_fallback(String(webView.stableTabId || ""), undoFallbackReady)
+        if (liveUi() && webView && typeof liveUi().report_undo_fallback === "function")
+            liveUi().report_undo_fallback(String(webView.stableTabId || ""), undoFallbackReady)
     }
     Component.onCompleted: reportUndoFallback()
     property bool startCreated: false
@@ -84,10 +93,10 @@ Item {
     MouseArea {
         anchors.fill: parent
         z: 4
-        enabled: content.hasLiveOwner() && content.browserUi.mode === "normal"
+        enabled: content.hasLiveOwner() && content.liveUi().mode === "normal"
         acceptedButtons: Qt.BackButton | Qt.ForwardButton
         onClicked: function(mouse) {
-            content.browserHost.submitInteractiveCommand(
+            content.liveHost().submitInteractiveCommand(
                 mouse.button === Qt.BackButton ? "back" : "forward")
         }
     }
@@ -122,7 +131,7 @@ Item {
         settleFragmentVisit()
         if (nativeUrl.length > 0) { finishHistoryTraversal(true); return }
         if (typeof webView.runJavaScript !== "function" || typeof browserWindow.browserScriptWorld !== "number") {
-            if (!webView.loading && (!navigationPending || browserUi.load_state === "complete")) reconcileHistory()
+            if (!webView.loading && (!navigationPending || liveUi().load_state === "complete")) reconcileHistory()
             finishHistoryTraversal(!webView.loading)
             return
         }
@@ -132,8 +141,8 @@ Item {
         var position = engineHistoryIndex
         var identityIndex = tabIndex
         var identityTabId = identityIndex >= 0
-                ? String(browserUi.tab_id_for_index(identityIndex)) : ""
-        var identityInputEpoch = Number(browserUi.input_epoch) || 0
+                ? String(liveUi().tab_id_for_index(identityIndex)) : ""
+        var identityInputEpoch = Number(liveUi().input_epoch) || 0
         historyProbePending = true
         var launched = browserWindow.runBrowserScript(webView, BrowserScripts.historyTraversalProbe(), function(value) {
             if (epoch !== historyProbeEpoch) return
@@ -164,10 +173,10 @@ Item {
                         && notification.document === value.document
                         && observedUrl === notification.destination
                         && !webView.loading && !navigationPending
-                        && browserUi.load_state === "complete"
+                        && liveUi().load_state === "complete"
                 if (!webView.loading && identityTabId.length > 0
-                        && typeof browserUi.page_document_identity_for === "function") {
-                    browserUi.page_document_identity_for(
+                        && typeof liveUi().page_document_identity_for === "function") {
+                    liveUi().page_document_identity_for(
                         identityIndex, identityTabId, value.document, identityInputEpoch)
                 }
                 var baseline = historyDocument === value.document ? historySequence : 0
@@ -179,9 +188,9 @@ Item {
                     pendingSameDocumentNotification = null
                     if (notification.destination === webView.url.toString()
                             && notification.index === tabIndex
-                            && notification.tabId === String(browserUi.tab_id_for_index(tabIndex))) {
-                        if (typeof browserUi.complete_same_document_url_change_for === "function") {
-                            browserUi.complete_same_document_url_change_for(
+                            && notification.tabId === String(liveUi().tab_id_for_index(liveTabIndex()))) {
+                        if (typeof liveUi().complete_same_document_url_change_for === "function") {
+                            liveUi().complete_same_document_url_change_for(
                                 notification.index, notification.tabId,
                                 notification.destination,
                                 identityMatches ? value.document : "",
@@ -192,7 +201,7 @@ Item {
             } else {
                 settleUnprovenSameDocumentChange(epoch, destination)
             }
-            if (matchesDestination || (!webView.loading && (!navigationPending || browserUi.load_state === "complete"))) {
+            if (matchesDestination || (!webView.loading && (!navigationPending || liveUi().load_state === "complete"))) {
                 reconcileHistory()
                 finishHistoryTraversal(true)
             } else {
@@ -200,7 +209,7 @@ Item {
                 // Its history position remains the basis for Back/Forward.
                 var current = null
                 try {
-                    var snapshot = JSON.parse(browserUi.content_history_export(tabIndex))
+                    var snapshot = JSON.parse(liveUi().content_history_export(liveTabIndex()))
                     current = snapshot.entries[snapshot.cursor]
                 } catch (error) {}
                 finishHistoryTraversal(provenDocument && current && current.url === observedUrl)
@@ -216,7 +225,7 @@ Item {
         if (pending && reloadOwnerCurrent(pending.owner)) {
             pending.offset = Math.max(-100, Math.min(100, pending.offset + offset))
         } else {
-            var target = browserUi.navigation_target_for_index(tabIndex)
+            var target = liveUi().navigation_target_for_index(liveTabIndex())
             if (!target) return
             historyTraversalRequest = {owner: reloadSnapshot(target, false), offset: offset, perform: perform}
         }
@@ -234,7 +243,7 @@ Item {
         if (ready && traversalPending && requestedHistoryIndex >= 0
                 && engineHistoryIndex !== requestedHistoryIndex) return
         historyTraversalRequest = null
-        if (!ready) { browserUi.status_text = "History is changing; try again"; return }
+        if (!ready) { liveUi().status_text = "History is changing; try again"; return }
         if (pending.offset !== 0) pending.perform(pending.offset < 0, Math.abs(pending.offset))
     }
     function invalidateHistoryProbe() {
@@ -248,16 +257,16 @@ Item {
     function reconcileHistory() {
         if (!hasLiveOwner()) return
         var snapshot
-        try { snapshot = JSON.parse(browserUi.content_history_export(tabIndex)) } catch (error) { return }
+        try { snapshot = JSON.parse(liveUi().content_history_export(liveTabIndex())) } catch (error) { return }
         if (!snapshot || !snapshot.entries || !snapshot.entries[snapshot.cursor]) return
         var current = snapshot.entries[snapshot.cursor]
         var destination = webView.url.toString()
-        var loadPending = webView.loading || browserUi.load_state === "provisional"
+        var loadPending = webView.loading || liveUi().load_state === "provisional"
         var nativeCurrent = current.url === "rb://start" || current.url === "rb://blank"
         if (traversalPending && requestedHistoryIndex >= 0) {
             if (engineHistoryIndex !== requestedHistoryIndex
                     || (loadPending && current.url !== destination)) return
-            browserUi.content_navigated(tabIndex, destination, engineHistoryIndex, true)
+            liveUi().content_navigated(liveTabIndex(), destination, engineHistoryIndex, true)
             requestedHistoryIndex = -1
             sameDocumentTraversalPending = false
             navigationPending = navigationPending && loadPending
@@ -283,7 +292,7 @@ Item {
             // A history request can commit before the history models move.
             // Wait for their new position instead of recording a new visit.
             if (engineTraversalPending && current.engine_index === engineHistoryIndex) return
-            if (browserUi.content_engine_traversed(tabIndex, destination, engineHistoryIndex)) {
+            if (liveUi().content_engine_traversed(liveTabIndex(), destination, engineHistoryIndex)) {
                 engineTraversalPending = false; navigationPending = navigationPending && loadPending; traversalPending = false
                 return
             }
@@ -306,7 +315,7 @@ Item {
                 snapshot.cursor = snapshot.entries.length - 1
             }
             while (snapshot.entries.length > 4096) { snapshot.entries.shift(); snapshot.cursor -= 1 }
-            browserUi.content_history_import(tabIndex, JSON.stringify(snapshot))
+            liveUi().content_history_import(liveTabIndex(), JSON.stringify(snapshot))
             navigationPending = navigationPending && loadPending; traversalPending = false
             return
         }
@@ -340,13 +349,13 @@ Item {
             var removed = snapshot.entries.length - 4096
             snapshot.entries.splice(0, removed); snapshot.cursor -= removed
         }
-        browserUi.content_history_import(tabIndex, JSON.stringify(snapshot))
+        liveUi().content_history_import(liveTabIndex(), JSON.stringify(snapshot))
     }
     function focusContent() { if (hasLiveOwner() && nativeUrl === "rb://start" && startPage) startPage.focusContent() }
     function requestReload(request) {
         if (!hasLiveOwner()) return
         if (queuedReload && reloadOwnerCurrent(queuedReload)) {
-            browserUi.status_text = "Reload pending"
+            liveUi().status_text = "Reload pending"
             return
         }
         queuedReload = reloadSnapshot(request, false)
@@ -367,11 +376,11 @@ Item {
         if (!hasLiveOwner()) return
         if (formReloadRequest) {
             if (reloadOwnerCurrent(formReloadRequest)) restoreReloadState(formReloadRequest.state)
-            browserUi.status_text = "Confirm form resubmission"
+            liveUi().status_text = "Confirm form resubmission"
             return
         }
         if (blockedReload || reloadAttempt) {
-            browserUi.status_text = "Reload pending"
+            liveUi().status_text = "Reload pending"
             return
         }
         var failedForm = engineLoadState === "failed" && navigationHasFormData
@@ -383,39 +392,39 @@ Item {
         showFormReload(reloadSnapshot(request, false), true)
     }
     function reloadSnapshot(request, approved) {
-        return { target: request, view: webView, ui: browserUi, host: browserHost,
+        return { target: request, view: webView, ui: liveUi(), host: liveHost(),
             documentOwner: webView.documentRequestOwner, url: webView.url.toString(),
             content: content, serial: navigationSerial, state: engineLoadState,
             wasLoading: webView.loading, approved: approved }
     }
     function navigationOwnerCurrent(pending) {
-        return hasLiveOwner() && pending && pending.view === webView && pending.ui === browserUi
-            && pending.host === browserHost && pending.serial === navigationSerial
+        return hasLiveOwner() && pending && pending.view === webView && pending.ui === liveUi()
+            && pending.host === liveHost() && pending.serial === navigationSerial
             && webView.viewUi === pending.ui && webView.viewHost === pending.host
             && pending.documentOwner === webView.documentRequestOwner
-            && browserUi.request_target_current(pending.target.tabId, pending.target.generation, pending.target.documentId)
+            && liveUi().request_target_current(pending.target.tabId, pending.target.generation, pending.target.documentId)
     }
     function reloadOwnerCurrent(pending) {
         return navigationOwnerCurrent(pending) && pending.url === webView.url.toString()
     }
     function restoreReloadState(state) {
-        if (state === "complete") browserUi.navigation_completed_for(tabIndex)
-        else if (state === "failed") browserUi.navigation_failed_for(tabIndex)
-        else if (state === "stopped") browserUi.navigation_stopped_for(tabIndex)
+        if (state === "complete") liveUi().navigation_completed_for(liveTabIndex())
+        else if (state === "failed") liveUi().navigation_failed_for(liveTabIndex())
+        else if (state === "stopped") liveUi().navigation_stopped_for(liveTabIndex())
         // A response still arriving keeps its provisional state and connection.
     }
     function showFormReload(pending, restoreState) {
         if (!reloadOwnerCurrent(pending)) return
         if (restoreState) restoreReloadState(pending.state)
-        if (tabIndex !== browserUi.active_tab_index) {
-            browserUi.status_text = "Select this tab to confirm resending its form"
+        if (tabIndex !== liveUi().active_tab_index) {
+            liveUi().status_text = "Select this tab to confirm resending its form"
             return
         }
         if (!formReloadRequest) {
             formReloadRequest = pending
             formReloadCreated = true
         }
-        browserUi.status_text = "Confirm form resubmission"
+        liveUi().status_text = "Confirm form resubmission"
     }
     function performReload(request, approved) {
         if (!hasLiveOwner()) return
@@ -489,7 +498,7 @@ Item {
         if (hasLiveOwner() && nativeUrl.length === 0) {
             requestedHistoryIndex = -1
             traversalPending = false
-            var target = browserUi.navigation_target_for_index(tabIndex)
+            var target = liveUi().navigation_target_for_index(liveTabIndex())
             if (target) beforeUnloadCancellation = reloadSnapshot(target, false)
         }
         cancelReloadAttempt()
@@ -518,7 +527,7 @@ Item {
             updateReloadSnapshots()
             restoreReloadState(pending.state)
         } else noteStopped()
-        if (tabIndex === browserUi.active_tab_index) browserUi.status_text = "Stayed on page"
+        if (tabIndex === liveUi().active_tab_index) liveUi().status_text = "Stayed on page"
         return true
     }
     function noteStopped() {
@@ -528,7 +537,7 @@ Item {
         requestedHistoryIndex = -1
         traversalPending = false
         updateReloadSnapshots()
-        browserUi.navigation_stopped_for(tabIndex)
+        liveUi().navigation_stopped_for(liveTabIndex())
         historyRefreshTimer.restart()
     }
     Timer {
@@ -544,18 +553,18 @@ Item {
     function settleFragmentVisit() {
         var visit = fragmentVisit
         if (!visit || !hasLiveOwner() || nativeUrl.length > 0 || webView.loading
-                || browserUi !== visit.ui
+                || liveUi() !== visit.ui
                 || webView.url.toString() !== visit.destination
-                || browserUi.tab_id_for_index(tabIndex) !== visit.tabId
+                || liveUi().tab_id_for_index(liveTabIndex()) !== visit.tabId
                 || (visit.changed && engineHistoryIndex <= visit.baseIndex)) return
         fragmentVisit = null
         navigationHasFormData = visit.hasFormData
         engineDocumentUrl = visit.destination
-        browserUi.navigation_committed_for(tabIndex, visit.destination, webView.title)
-        browserUi.navigation_completed_for(tabIndex)
+        liveUi().navigation_committed_for(liveTabIndex(), visit.destination, webView.title)
+        liveUi().navigation_completed_for(liveTabIndex())
         // Explicit Open admitted a new target while keeping this renderer.
         // No load-success notification will refresh its live-title owner.
-        webView.documentTitleTarget = browserUi.navigation_target_for_index(tabIndex)
+        webView.documentTitleTarget = liveUi().navigation_target_for_index(liveTabIndex())
         // The history model now includes a changed fragment's new entry.
         // An unchanged anchor keeps the current entry and document method.
         noteCommit()
@@ -576,10 +585,10 @@ Item {
             committedContent = true
             traversalPending = false
             navigationPending = false
-            browserUi.content_navigated(tabIndex, destination, engineHistoryIndex, !!traversal)
-            if (tabsModel && tabIndex >= 0 && tabIndex < tabsModel.count) {
-                tabsModel.setProperty(tabIndex, "url", destination)
-                tabsModel.setProperty(tabIndex, "title", destination === "rb://start" ? "Start page" : "Blank")
+            liveUi().content_navigated(liveTabIndex(), destination, engineHistoryIndex, !!traversal)
+            if (liveTabs() && tabIndex >= 0 && tabIndex < liveTabs().count) {
+                liveTabs().setProperty(tabIndex, "url", destination)
+                liveTabs().setProperty(tabIndex, "title", destination === "rb://start" ? "Start page" : "Blank")
             }
             if (destination === "rb://start") {
                 startCreated = true
@@ -604,8 +613,8 @@ Item {
                     changed: webView.url.toString() !== destination,
                     baseIndex: engineHistoryIndex,
                     hasFormData: engineDocumentHasFormData,
-                    ui: browserUi,
-                    tabId: browserUi.tab_id_for_index(tabIndex)
+                    ui: liveUi(),
+                    tabId: liveUi().tab_id_for_index(liveTabIndex())
                 }
                 webView.url = destination
                 settleFragmentVisit()
@@ -616,16 +625,16 @@ Item {
                 navigationPending = true
                 webView.url = destination
             } else if (!traversal && committedContent && !navigationPending && !webView.loading) {
-                browserUi.navigation_committed_for(tabIndex, destination, webView.title)
-                browserUi.navigation_completed_for(tabIndex)
+                liveUi().navigation_committed_for(liveTabIndex(), destination, webView.title)
+                liveUi().navigation_completed_for(liveTabIndex())
                 noteCommit()
             }
-            if (tabsModel && tabIndex >= 0 && tabIndex < tabsModel.count) tabsModel.setProperty(tabIndex, "url", destination)
+            if (liveTabs() && tabIndex >= 0 && tabIndex < liveTabs().count) liveTabs().setProperty(tabIndex, "url", destination)
             if (traversal && !engineMoves && webView.url.toString() === destination) {
                 noteSameDocument(destination)
-                browserUi.navigation_committed_for(tabIndex, destination, webView.title)
-                browserUi.navigation_completed_for(tabIndex)
-                browserUi.content_navigated(tabIndex, destination, engineHistoryIndex, true)
+                liveUi().navigation_committed_for(liveTabIndex(), destination, webView.title)
+                liveUi().navigation_completed_for(liveTabIndex())
+                liveUi().content_navigated(liveTabIndex(), destination, engineHistoryIndex, true)
                 traversalPending = false
             }
         }
@@ -633,7 +642,7 @@ Item {
     function beginNavigation(engineTraversal, hasFormData, reloading) {
         if (!hasLiveOwner()) return
         if (nativeUrl.length > 0) return
-        browserUi.navigation_kind_for(tabIndex, !!engineTraversal)
+        liveUi().navigation_kind_for(liveTabIndex(), !!engineTraversal)
         if (!engineTraversal) {
             requestedHistoryIndex = -1
             traversalPending = false
@@ -655,10 +664,10 @@ Item {
     }
     function reportUrlChange(index, destination) {
         if (!hasLiveOwner()) return
-        if (index >= 0 && typeof browserUi.navigation_url_changed_for === "function") {
-            browserUi.navigation_url_changed_for(index, destination)
+        if (index >= 0 && typeof liveUi().navigation_url_changed_for === "function") {
+            liveUi().navigation_url_changed_for(index, destination)
         } else {
-            browserUi.navigation_url_changed(destination)
+            liveUi().navigation_url_changed(destination)
         }
     }
     function settleUnprovenSameDocumentChange(epoch, probedDestination) {
@@ -669,12 +678,12 @@ Item {
                 || notification.destination !== probedDestination
                 || notification.destination !== webView.url.toString()
                 || notification.index !== tabIndex
-                || notification.tabId !== String(browserUi.tab_id_for_index(tabIndex))) {
+                || notification.tabId !== String(liveUi().tab_id_for_index(liveTabIndex()))) {
             return
         }
         pendingSameDocumentNotification = null
-        if (typeof browserUi.complete_same_document_url_change_for === "function") {
-            browserUi.complete_same_document_url_change_for(
+        if (typeof liveUi().complete_same_document_url_change_for === "function") {
+            liveUi().complete_same_document_url_change_for(
                 notification.index, notification.tabId,
                 notification.destination, "", notification.inputEpoch)
         }
@@ -686,29 +695,29 @@ Item {
             return
         }
         var index = tabIndex
-        var tabId = index >= 0 ? String(browserUi.tab_id_for_index(index)) : ""
+        var tabId = index >= 0 ? String(liveUi().tab_id_for_index(index)) : ""
         var notification = {
             serial: ++sameDocumentNotificationSerial,
             probeEpoch: historyProbeEpoch,
             destination: destination,
             index: index,
             tabId: tabId,
-            inputEpoch: Number(browserUi.input_epoch) || 0,
+            inputEpoch: Number(liveUi().input_epoch) || 0,
             document: historyDocument
         }
         if (nativeUrl.length > 0 || index < 0 || tabId.length === 0
                 || typeof webView.runJavaScript !== "function"
                 || typeof browserWindow.browserScriptWorld !== "number"
-                || typeof browserUi.begin_same_document_url_change_for !== "function"
+                || typeof liveUi().begin_same_document_url_change_for !== "function"
                 || webView.loading || navigationPending
-                || browserUi.load_state !== "complete" || historyDocument.length === 0) {
+                || liveUi().load_state !== "complete" || historyDocument.length === 0) {
             pendingSameDocumentNotification = null
             reportUrlChange(index, destination)
             historyRefreshTimer.restart()
             return
         }
         pendingSameDocumentNotification = notification
-        browserUi.begin_same_document_url_change_for(
+        liveUi().begin_same_document_url_change_for(
             index, tabId, destination, historyDocument, notification.inputEpoch)
         historyRefreshTimer.restart()
     }
@@ -732,30 +741,30 @@ Item {
             historyRefreshTimer.restart()
             return
         }
-        if (!engineTraversalPending) browserUi.content_navigated(tabIndex, webView.url.toString(), engineHistoryIndex, traversalPending)
+        if (!engineTraversalPending) liveUi().content_navigated(liveTabIndex(), webView.url.toString(), engineHistoryIndex, traversalPending)
         requestedHistoryIndex = -1
         traversalPending = false
         historyRefreshTimer.restart()
     }
     Rectangle { anchors.fill: parent; visible: content.nativeUrl.length > 0; color: content.browserWindow.backgroundColor }
     Loader {
-        parent: content.browserHost ? content.browserHost.contentItem : null
+        parent: content.liveHost() ? content.liveHost().contentItem : null
         anchors.fill: parent
         z: 65
-        active: content.formReloadCreated && !!content.browserHost && !!content.browserUi
+        active: content.formReloadCreated && !!content.liveHost() && !!content.liveUi()
         sourceComponent: FerricFormResubmission {
-            browserWindow: (content.browserHost && content.browserHost.chromeAppearance) || content.browserWindow
-            hostWindow: content.browserHost
-            browserUi: content.browserUi
+            browserWindow: (content.liveHost() && content.liveHost().chromeAppearance) || content.browserWindow
+            hostWindow: content.liveHost()
+            browserUi: content.liveUi()
             reloadRequest: content.formReloadRequest
             onFinished: function(resubmit) {
                 var pending = content.formReloadRequest
                 var current = targetCurrent()
-                if (resubmit && current) content.browserUi.clear_navigation_failure()
+                if (resubmit && current) content.liveUi().clear_navigation_failure()
                 content.formReloadRequest = null
                 if (!pending || !current) return
                 if (resubmit) content.performReload(pending.target, true)
-                else content.browserUi.status_text = "Reload cancelled"
+                else content.liveUi().status_text = "Reload cancelled"
             }
         }
     }
@@ -767,9 +776,9 @@ Item {
         enabled: visible
         onLoaded: contentFocusTimer.restart()
         sourceComponent: FerricStartPage {
-            browserUi: content.browserUi
+            browserUi: content.liveUi()
             browserWindow: content.browserWindow
-            browserHost: content.browserHost
+            browserHost: content.liveHost()
             contentView: content.webView
         }
     }
@@ -783,7 +792,7 @@ Item {
         visible: true
         onStatusChanged: {
             if (status !== Image.Ready || content.nativeUrl.length > 0) return
-            var path = content.browserUi.start_page_icon_path(content.webView.url.toString(), true)
+            var path = content.liveUi().start_page_icon_path(content.webView.url.toString(), true)
             if (path.length > 0) grabToImage(function(result) { result.saveToFile(path) })
         }
     }

@@ -1,0 +1,394 @@
+{
+  "goal_utf8_bytes": 732,
+  "packet_limit_bytes": 24000,
+  "packets": [
+    {
+      "slice": "S00",
+      "utf8_bytes": 12688
+    },
+    {
+      "slice": "S01",
+      "utf8_bytes": 12574
+    },
+    {
+      "slice": "F00",
+      "utf8_bytes": 11773
+    },
+    {
+      "slice": "F01",
+      "utf8_bytes": 10337
+    },
+    {
+      "slice": "F01b",
+      "utf8_bytes": 10097
+    },
+    {
+      "slice": "F01c",
+      "utf8_bytes": 9978
+    },
+    {
+      "slice": "F02",
+      "utf8_bytes": 11150
+    },
+    {
+      "slice": "F02a",
+      "utf8_bytes": 13395
+    },
+    {
+      "slice": "F02b",
+      "utf8_bytes": 11185
+    },
+    {
+      "slice": "F02b1",
+      "utf8_bytes": 11913
+    },
+    {
+      "slice": "F02b2",
+      "utf8_bytes": 11395
+    },
+    {
+      "slice": "F02c",
+      "utf8_bytes": 19164
+    },
+    {
+      "slice": "F02d",
+      "utf8_bytes": 18519
+    },
+    {
+      "slice": "F02b2a",
+      "utf8_bytes": 10703
+    },
+    {
+      "slice": "F02b2b",
+      "utf8_bytes": 13050
+    },
+    {
+      "slice": "F03",
+      "utf8_bytes": 13784
+    },
+    {
+      "slice": "F04",
+      "utf8_bytes": 12286
+    },
+    {
+      "slice": "F05",
+      "utf8_bytes": 15343
+    },
+    {
+      "slice": "H00",
+      "utf8_bytes": 10473
+    },
+    {
+      "slice": "H00a",
+      "utf8_bytes": 12110
+    },
+    {
+      "slice": "H00b",
+      "utf8_bytes": 11517
+    },
+    {
+      "slice": "H00c",
+      "utf8_bytes": 11540
+    },
+    {
+      "slice": "H01",
+      "utf8_bytes": 13758
+    },
+    {
+      "slice": "H02",
+      "utf8_bytes": 16964
+    },
+    {
+      "slice": "H03",
+      "utf8_bytes": 15235
+    },
+    {
+      "slice": "H04",
+      "utf8_bytes": 15237
+    },
+    {
+      "slice": "H05",
+      "utf8_bytes": 16307
+    },
+    {
+      "slice": "H06",
+      "utf8_bytes": 12131
+    },
+    {
+      "slice": "P00",
+      "utf8_bytes": 9810
+    },
+    {
+      "slice": "P00a",
+      "utf8_bytes": 10597
+    },
+    {
+      "slice": "P00b",
+      "utf8_bytes": 9878
+    },
+    {
+      "slice": "P00c",
+      "utf8_bytes": 9744
+    },
+    {
+      "slice": "P01",
+      "utf8_bytes": 12374
+    },
+    {
+      "slice": "P02",
+      "utf8_bytes": 8962
+    },
+    {
+      "slice": "P02a",
+      "utf8_bytes": 14047
+    },
+    {
+      "slice": "P02b",
+      "utf8_bytes": 13512
+    },
+    {
+      "slice": "P02c",
+      "utf8_bytes": 10173
+    },
+    {
+      "slice": "P03",
+      "utf8_bytes": 13486
+    },
+    {
+      "slice": "P04",
+      "utf8_bytes": 15975
+    },
+    {
+      "slice": "P05a",
+      "utf8_bytes": 17116
+    },
+    {
+      "slice": "P05b",
+      "utf8_bytes": 17968
+    },
+    {
+      "slice": "P05b1",
+      "utf8_bytes": 20839
+    },
+    {
+      "slice": "P05b2",
+      "utf8_bytes": 22217
+    },
+    {
+      "slice": "P05",
+      "utf8_bytes": 9026
+    },
+    {
+      "slice": "P06",
+      "utf8_bytes": 16493
+    },
+    {
+      "slice": "P07a",
+      "utf8_bytes": 21208
+    },
+    {
+      "slice": "P07b",
+      "utf8_bytes": 21923
+    },
+    {
+      "slice": "P07",
+      "utf8_bytes": 12376
+    },
+    {
+      "slice": "P08",
+      "utf8_bytes": 12314
+    },
+    {
+      "slice": "P09",
+      "utf8_bytes": 12062
+    },
+    {
+      "slice": "P10",
+      "utf8_bytes": 11999
+    },
+    {
+      "slice": "P11",
+      "utf8_bytes": 12188
+    },
+    {
+      "slice": "P12",
+      "utf8_bytes": 14845
+    },
+    {
+      "slice": "P13",
+      "utf8_bytes": 12222
+    },
+    {
+      "slice": "P14",
+      "utf8_bytes": 15523
+    },
+    {
+      "slice": "P15",
+      "utf8_bytes": 15114
+    },
+    {
+      "slice": "P16",
+      "utf8_bytes": 15216
+    },
+    {
+      "slice": "P17",
+      "utf8_bytes": 14565
+    },
+    {
+      "slice": "W00",
+      "utf8_bytes": 12019
+    },
+    {
+      "slice": "W01",
+      "utf8_bytes": 11990
+    },
+    {
+      "slice": "W01a",
+      "utf8_bytes": 13284
+    },
+    {
+      "slice": "W01b",
+      "utf8_bytes": 13807
+    },
+    {
+      "slice": "W01c",
+      "utf8_bytes": 12851
+    },
+    {
+      "slice": "W02",
+      "utf8_bytes": 12439
+    },
+    {
+      "slice": "W03",
+      "utf8_bytes": 11523
+    },
+    {
+      "slice": "W04",
+      "utf8_bytes": 16476
+    },
+    {
+      "slice": "W05",
+      "utf8_bytes": 11438
+    },
+    {
+      "slice": "W06",
+      "utf8_bytes": 14240
+    },
+    {
+      "slice": "W07",
+      "utf8_bytes": 14248
+    },
+    {
+      "slice": "W08",
+      "utf8_bytes": 11509
+    },
+    {
+      "slice": "W09",
+      "utf8_bytes": 11367
+    },
+    {
+      "slice": "W10",
+      "utf8_bytes": 11506
+    },
+    {
+      "slice": "W11",
+      "utf8_bytes": 14699
+    },
+    {
+      "slice": "W12",
+      "utf8_bytes": 11933
+    },
+    {
+      "slice": "W13",
+      "utf8_bytes": 13905
+    },
+    {
+      "slice": "W14",
+      "utf8_bytes": 14576
+    },
+    {
+      "slice": "X00",
+      "utf8_bytes": 14807
+    },
+    {
+      "slice": "X01",
+      "utf8_bytes": 14655
+    },
+    {
+      "slice": "X02",
+      "utf8_bytes": 11974
+    },
+    {
+      "slice": "X03",
+      "utf8_bytes": 13924
+    },
+    {
+      "slice": "X04",
+      "utf8_bytes": 15141
+    },
+    {
+      "slice": "X05",
+      "utf8_bytes": 11775
+    },
+    {
+      "slice": "X06",
+      "utf8_bytes": 14557
+    },
+    {
+      "slice": "F02e0",
+      "utf8_bytes": 18230
+    },
+    {
+      "slice": "F02e1",
+      "utf8_bytes": 17802
+    },
+    {
+      "slice": "F02e2",
+      "utf8_bytes": 23947
+    },
+    {
+      "slice": "F02e2q",
+      "utf8_bytes": 16504
+    },
+    {
+      "slice": "F02e2r",
+      "utf8_bytes": 21047
+    },
+    {
+      "slice": "F02e2i",
+      "utf8_bytes": 20528
+    },
+    {
+      "slice": "F02e2s",
+      "utf8_bytes": 23216
+    },
+    {
+      "slice": "F02e3",
+      "utf8_bytes": 17800
+    },
+    {
+      "slice": "F02e4",
+      "utf8_bytes": 17444
+    },
+    {
+      "slice": "F02e5",
+      "utf8_bytes": 17480
+    },
+    {
+      "slice": "F02e6",
+      "utf8_bytes": 17526
+    },
+    {
+      "slice": "F02e7",
+      "utf8_bytes": 17554
+    },
+    {
+      "slice": "F02e8",
+      "utf8_bytes": 17746
+    },
+    {
+      "slice": "F02e",
+      "utf8_bytes": 10598
+    }
+  ]
+}

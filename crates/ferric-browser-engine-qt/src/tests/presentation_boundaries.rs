@@ -486,10 +486,10 @@ fn scaling_uses_qt_logical_units_and_bounds_large_font_overlays() {
 #[test]
 fn activation_uses_qt_request_and_reports_unknown_compositor_outcomes() {
     let qml = QML_SOURCE;
-    assert!(qml.contains("hostWindow.requestActivate()"));
+    assert!(qml.contains("state.host.requestActivate()"));
     assert!(qml.contains("activationOutcomeTimer"));
     assert!(qml.contains("Window activation outcome unknown"));
-    assert!(qml.contains("hostWindow.active"));
+    assert!(qml.contains("state.host.active"));
     assert!(!qml.contains("xdotool"));
     assert!(!qml.contains("wmctrl"));
 }
@@ -1372,7 +1372,7 @@ fn background_link_navigation_captures_the_source_journey_node() {
 fn ephemeral_profile_uses_off_the_record_memory_only_setup() {
     let qml = QML_SOURCE;
     assert!(qml.contains("property bool ephemeralProfile"));
-    assert!(qml.contains("WebEngineProfilePrototype {"));
+    assert!(qml.contains("FerricProfilePrototype {"));
     assert!(qml.contains("storageName: window.temporaryProfile ? \"\""));
     assert!(qml.contains("persistentStoragePath: window.temporaryProfile"));
     assert!(qml.contains("cachePath: window.temporaryProfile"));
@@ -2007,7 +2007,7 @@ fn media_keys_and_mpris_use_one_engine_toggle_path() {
     assert!(qml.contains("var url = view.url ? view.url.toString() : \"\""));
     assert!(qml.contains("browserUi.current_url"));
     assert!(qml.contains("function updateMprisForPrimaryView(view)"));
-    assert!(qml.contains("window.updateMprisForPrimaryView(webView)"));
+    assert!(qml.contains("factory.rootWindow.updateMprisForPrimaryView(webView)"));
     assert!(qml.contains("onRecentlyAudibleChanged"));
     assert!(qml.contains("onAudioMutedChanged"));
     assert!(mpris.contains("org.mpris.MediaPlayer2.Player"));
@@ -2170,7 +2170,8 @@ fn native_window_close_requires_a_user_decision_before_shutdown_checks() {
     assert!(secondary.contains("promptVisible: secondaryWindow.windowCloseConfirmationVisible"));
 
     assert!(root.contains("host.continueQuitRequest()"));
-    assert!(root.contains("popup.continueQuitRequest()"));
+    assert!(root.contains("window.popupWindowRegistry || []"));
+    assert!(root.contains("starting[j].host.continueQuitRequest()"));
 }
 
 #[test]

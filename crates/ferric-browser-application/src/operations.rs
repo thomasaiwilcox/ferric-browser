@@ -1,6 +1,13 @@
 //! Bounded operation ownership and irreversible terminal transitions.
 
 use std::collections::{BTreeMap, VecDeque};
+use std::sync::Weak;
+
+mod native;
+pub use native::{
+    NativeOperationOutcome, NativeOperationReceipt, NativeOperationRegistry,
+    NativeOperationReporter, NativeOperationScope, ScopedOperationCompletion,
+};
 
 use ferric_browser_core::FailureKind;
 
@@ -114,8 +121,10 @@ pub struct OperationCompletion {
 
 /// The catalog owns both admission and retained output. No caller can mutate
 /// a record directly or recreate a forgotten operation with a late completion.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct OperationCatalog {
+    owner: uuid::Uuid,
+    native_handoffs: BTreeMap<String, Weak<native::NativeOperationIdentity>>,
     records: BTreeMap<String, OperationRecord>,
     terminal: VecDeque<String>,
     completions: VecDeque<OperationCompletion>,
@@ -126,19 +135,37 @@ pub struct OperationCatalog {
     sequence: u64,
 }
 
+impl Default for OperationCatalog {
+    fn default() -> Self {
+        Self {
+            owner: uuid::Uuid::new_v4(),
+            native_handoffs: BTreeMap::new(),
+            records: BTreeMap::new(),
+            terminal: VecDeque::new(),
+            completions: VecDeque::new(),
+            stderr_order: VecDeque::new(),
+            active: 0,
+            stderr_bytes: 0,
+            revision: 0,
+            sequence: 0,
+        }
+    }
+}
+
 impl OperationCatalog {
     /// Reserves capacity before any associated side effect begins.
     ///
     /// # Errors
     /// Rejects invalid/reused IDs and admission beyond the active bound.
     pub fn admit(&mut self, id: String) -> Result<(), FailureKind> {
+        self.prune_native_handoffs();
         if id.is_empty() || id.len() > 128 || id.chars().any(char::is_control) {
             return Err(FailureKind::InvalidArgument);
         }
-        if self.records.contains_key(&id) {
+        if self.records.contains_key(&id) || self.native_handoffs.contains_key(&id) {
             return Err(FailureKind::InvalidArgument);
         }
-        if self.active >= MAX_ACTIVE_OPERATIONS
+        if self.active + self.active_native_handoffs() >= MAX_ACTIVE_OPERATIONS
             || self.active + self.completions.len() >= MAX_PENDING_COMPLETIONS
         {
             return Err(FailureKind::Busy);
@@ -261,8 +288,8 @@ impl OperationCatalog {
     }
 
     #[must_use]
-    pub const fn has_active(&self) -> bool {
-        self.active != 0
+    pub fn has_active(&self) -> bool {
+        self.active != 0 || self.active_native_handoffs() != 0
     }
 
     #[must_use]

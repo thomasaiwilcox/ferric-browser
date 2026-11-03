@@ -541,9 +541,9 @@ pub(crate) fn sha256_hex(input: &[u8]) -> String {
     padded[padded_len - 8..].copy_from_slice(&bit_len.to_be_bytes());
 
     let mut state = INITIAL;
-    for block in padded.chunks_exact(64) {
+    for block in padded.as_chunks::<64>().0 {
         let mut words = [0_u32; 64];
-        for (index, bytes) in block.chunks_exact(4).take(16).enumerate() {
+        for (index, bytes) in block.as_chunks::<4>().0.iter().take(16).enumerate() {
             words[index] = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
         }
         for index in 16..64 {

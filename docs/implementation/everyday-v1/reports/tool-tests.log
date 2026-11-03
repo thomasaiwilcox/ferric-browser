@@ -1,0 +1,46 @@
+test_active_lock_refused (__main__.CleanupTests.test_active_lock_refused) ... ok
+test_active_registry_refused (__main__.CleanupTests.test_active_registry_refused) ... ok
+test_apply_owned_only (__main__.CleanupTests.test_apply_owned_only) ... ok
+test_dry_run_keeps_data (__main__.CleanupTests.test_dry_run_keeps_data) ... ok
+test_owner_mismatch_refused (__main__.CleanupTests.test_owner_mismatch_refused) ... ok
+test_source_checkout_refused (__main__.CleanupTests.test_source_checkout_refused) ... ok
+test_symlink_build_refused (__main__.CleanupTests.test_symlink_build_refused) ... ok
+test_unknown_or_escape_refused (__main__.CleanupTests.test_unknown_or_escape_refused) ... ok
+test_log_tamper_rejected (__main__.EvidenceTests.test_log_tamper_rejected) ... ok
+test_native_cannot_be_unit_receipt (__main__.EvidenceTests.test_native_cannot_be_unit_receipt) ... ok
+test_physical_requires_device_record (__main__.EvidenceTests.test_physical_requires_device_record) ... ok
+test_self_review_rejected (__main__.EvidenceTests.test_self_review_rejected) ... ok
+test_valid_unit_ledger (__main__.EvidenceTests.test_valid_unit_ledger) ... ok
+test_dirty_source_recorded (__main__.GateTests.test_dirty_source_recorded) ... ok
+test_failure_exit_not_success (__main__.GateTests.test_failure_exit_not_success) ... ok
+test_failure_summary_even_zero_exit (__main__.GateTests.test_failure_summary_even_zero_exit) ... ok
+test_log_overflow_rejected (__main__.GateTests.test_log_overflow_rejected) ... ok
+test_output_not_overwritten (__main__.GateTests.test_output_not_overwritten) ... ok
+test_positive_summary_and_digest (__main__.GateTests.test_positive_summary_and_digest) ... ok
+test_skip_rejected (__main__.GateTests.test_skip_rejected) ... ok
+test_summary_parsers (__main__.GateTests.test_summary_parsers) ... ok
+test_timeout_rejected (__main__.GateTests.test_timeout_rejected) ... ok
+test_timeout_when_parent_exits_before_child (__main__.GateTests.test_timeout_when_parent_exits_before_child) ... ok
+test_zero_tests_rejected (__main__.GateTests.test_zero_tests_rejected) ... ok
+test_bootstrap_existing_without_network (__main__.SetupTests.test_bootstrap_existing_without_network) ... ok
+test_bootstrap_suppresses_checkout_hook (__main__.SetupTests.test_bootstrap_suppresses_checkout_hook) ... ok
+test_dirty_checkout_refused_untouched (__main__.SetupTests.test_dirty_checkout_refused_untouched) ... ok
+test_existing_branch_refused (__main__.SetupTests.test_existing_branch_refused) ... ok
+test_nonempty_workspace_refused (__main__.SetupTests.test_nonempty_workspace_refused) ... ok
+test_preflight_records_actual_source (__main__.SetupTests.test_preflight_records_actual_source) ... ok
+test_wrong_remote_refused (__main__.SetupTests.test_wrong_remote_refused) ... ok
+test_all_packets_bounded (__main__.StructureTests.test_all_packets_bounded) ... ok
+test_capacity_exhausted (__main__.StructureTests.test_capacity_exhausted) ... ok
+test_cycle_rejected (__main__.StructureTests.test_cycle_rejected) ... ok
+test_file_conflicts_even_without_named_lock (__main__.StructureTests.test_file_conflicts_even_without_named_lock) ... ok
+test_goal_limit (__main__.StructureTests.test_goal_limit) ... ok
+test_initial_not_complete (__main__.StructureTests.test_initial_not_complete) ... ok
+test_initial_ready (__main__.StructureTests.test_initial_ready) ... ok
+test_path_escape_rejected (__main__.StructureTests.test_path_escape_rejected) ... ok
+test_structure (__main__.StructureTests.test_structure) ... ok
+test_unknown_dependency_rejected (__main__.StructureTests.test_unknown_dependency_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 41 tests in 10.414s
+
+OK

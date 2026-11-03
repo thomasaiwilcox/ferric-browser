@@ -132,6 +132,8 @@ fn worker_lists_named_sessions_off_thread() {
         1,
         "1",
         vec![SnapshotWindowInput {
+            group: None,
+            context: None,
             selected_tab: Some(tab_id),
             workspace: None,
             tabs: vec![SnapshotTabInput {
@@ -148,6 +150,8 @@ fn worker_lists_named_sessions_off_thread() {
     )
     .expect("snapshot");
     snapshot.closed_tabs.push(crate::ClosedTabSnapshot {
+        context: None,
+        group: None,
         id: uuid::Uuid::new_v4(),
         url: "https://closed.example.test/".into(),
         title: "Closed worker tab".into(),
@@ -950,4 +954,86 @@ fn invalid_payloads_are_rejected_before_admission_and_do_not_occupy_the_worker()
     assert_eq!(store.history(10).unwrap()[0].title, "valid");
     drop(store);
     let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn independent_session_workers_serialize_and_suppress_delayed_older_snapshots() {
+    let root =
+        std::env::temp_dir().join(format!("ferric-session-writers-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let database = root.join("browser.sqlite");
+    drop(ProfileStore::open(&database, StoreMode::Normal).unwrap());
+    let path = root.join("current.json");
+    let snapshot = |revision| {
+        SessionSnapshot::new(
+            uuid::Uuid::new_v4(),
+            "last-session",
+            uuid::Uuid::new_v4(),
+            revision,
+            revision.to_string(),
+            Vec::new(),
+        )
+        .unwrap()
+    };
+    save_session_atomic(&path, &snapshot(1)).unwrap();
+    let old = StorageCommand::session_save(path.clone(), snapshot(2));
+    let new = StorageCommand::session_save(path.clone(), snapshot(3));
+    let mut first = ProfileStoreWorker::spawn(&database).unwrap();
+    let mut second = ProfileStoreWorker::spawn(&database).unwrap();
+    let wait = |worker: &mut ProfileStoreWorker| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        loop {
+            if let Some(result) = worker.poll_session_save() {
+                assert_eq!(result, Ok(()));
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "session worker did not complete"
+            );
+            thread::sleep(std::time::Duration::from_millis(1));
+        }
+    };
+    // Model an older intent held in one application's scheduler while another
+    // metadata worker completes its newer full-profile aggregate.
+    second.try_submit(new).unwrap();
+    wait(&mut second);
+    first.try_submit(old).unwrap();
+    wait(&mut first);
+    assert_eq!(load_session(&path).unwrap().revision, 3);
+    assert_eq!(
+        load_session(path.with_extension("previous"))
+            .unwrap()
+            .revision,
+        1
+    );
+
+    let older = StorageCommand::session_save(path.clone(), snapshot(4));
+    let newer = StorageCommand::session_save(path.clone(), snapshot(5));
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+    let a = barrier.clone();
+    let b = barrier.clone();
+    let first = thread::spawn(move || {
+        a.wait();
+        first.try_submit(older).unwrap();
+        wait(&mut first);
+        first
+    });
+    let second = thread::spawn(move || {
+        b.wait();
+        second.try_submit(newer).unwrap();
+        wait(&mut second);
+        second
+    });
+    barrier.wait();
+    drop(first.join().unwrap());
+    drop(second.join().unwrap());
+    assert_eq!(load_session(&path).unwrap().revision, 5);
+    assert!(
+        load_session(path.with_extension("previous"))
+            .unwrap()
+            .revision
+            < 5
+    );
+    std::fs::remove_dir_all(root).unwrap();
 }

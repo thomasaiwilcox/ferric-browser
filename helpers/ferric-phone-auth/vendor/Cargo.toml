@@ -1,0 +1,6 @@
+[workspace]
+resolver = "2"
+members = ["libwebauthn", "snow"]
+
+[patch.crates-io]
+snow = { path = "snow" }

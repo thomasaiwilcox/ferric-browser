@@ -2362,6 +2362,32 @@ fn software_rendering_is_a_gui_only_startup_option() {
 }
 
 #[test]
+fn direct_network_requires_fresh_gui_startup_and_rejects_duplicates() {
+    let (options, action) = parse_cli(&["--direct-network".into()]).unwrap();
+    assert!(options.direct_network);
+    assert!(matches!(action, CliAction::Open { .. }));
+    assert!(parse_cli(&["--direct-network".into(), "--direct-network".into()]).is_err());
+    for command in [
+        vec!["query", "tabs"],
+        vec!["command", "tab-next"],
+        vec!["reset-data", "--confirm"],
+    ] {
+        let mut arguments = vec!["--direct-network".to_owned()];
+        arguments.extend(command.into_iter().map(str::to_owned));
+        let (options, action) = parse_cli(&arguments).unwrap();
+        assert!(
+            validate_cli_request(&options, &action)
+                .unwrap_err()
+                .contains("only applies to fresh GUI startup")
+        );
+        assert_eq!(
+            run(&arguments).unwrap_err().into_protocol().code,
+            ErrorCode::InvalidArgument.as_str()
+        );
+    }
+}
+
+#[test]
 fn incompatible_selected_roots_preserve_files_and_offer_nondestructive_recovery() {
     let roots = StorageRoots::resolve(RootSpec::Temporary).expect("owned roots");
     roots.ensure().expect("owned directories");

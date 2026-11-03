@@ -187,10 +187,8 @@ mod tests {
             "handoff",
         )
         .unwrap();
-        let mut rust = BrowserUiRust {
-            state: Some(application),
-            ..BrowserUiRust::default()
-        };
+        let mut rust = BrowserUiRust::default();
+        rust.state = Some(application);
         for requested in [Some("op-envelope"), None] {
             let id = rust.start_native_handoff(requested).unwrap();
             assert!(id.starts_with("op-"));

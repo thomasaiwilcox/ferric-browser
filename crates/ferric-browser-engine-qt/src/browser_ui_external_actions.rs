@@ -927,10 +927,9 @@ impl qobject::BrowserUi {
             .pending_editor
             .as_ref()
             .is_some_and(|pending| pending.token == token)
+            && let Some(pending) = this.processes.pending_editor.take()
         {
-            if let Some(pending) = this.processes.pending_editor.take() {
-                discard_editor_request(pending);
-            }
+            discard_editor_request(pending);
         }
         self.set_status_text(QString::from(format!("Editor not started: {error}")));
     }

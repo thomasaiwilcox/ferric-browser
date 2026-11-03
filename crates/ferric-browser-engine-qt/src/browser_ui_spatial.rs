@@ -153,8 +153,12 @@ impl qobject::BrowserUi {
                 .cancel_spatial_navigation(SpatialCancelReason::DispatchUncertain);
             return false;
         }
-        if self.as_ref().rust().recording_macro.is_some() {
+        if crate::page_window_macros::recording_register(self.as_ref().rust()).is_some() {
+            crate::page_window_macros::abort(self.as_ref().rust());
             self.as_mut().rust_mut().as_mut().get_mut().recording_macro = None;
+            if let Some(scope) = crate::page_window_undo::Scope::capture(self.as_ref().rust()) {
+                crate::live_ipc_owners::page_macros_changed(&scope);
+            }
             self.as_mut().sync_macro_status_text();
             self.set_status_text(QString::from(
                 "Grid denied during macro recording; recording aborted",

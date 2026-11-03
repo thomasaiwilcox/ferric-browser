@@ -15,11 +15,20 @@ impl qobject::BrowserUi {
         self.execute_counted_parsed_commands(commands, 1)
     }
 
-    #[allow(clippy::too_many_lines)]
     pub(super) fn execute_counted_parsed_commands(
+        self: Pin<&mut Self>,
+        commands: Vec<ParsedCommand>,
+        count: u32,
+    ) -> bool {
+        self.execute_counted_parsed_commands_with_handoff(commands, count, &mut None)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub(super) fn execute_counted_parsed_commands_with_handoff(
         mut self: Pin<&mut Self>,
         commands: Vec<ParsedCommand>,
         count: u32,
+        handoff: &mut Option<super::browser_ui_page_windows::PageHandoff>,
     ) -> bool {
         let registry = self.as_ref().rust().registry.clone();
         let commands = match registry.expand_chain(commands) {
@@ -32,10 +41,70 @@ impl qobject::BrowserUi {
         if self.as_mut().reject_generic_pointer_hint_chain(&commands) {
             return false;
         }
+        if self.as_ref().in_page_window_mode()
+            && commands
+                .iter()
+                .any(super::browser_ui_page_windows::is_command_workflow)
+        {
+            return match self.as_mut().execute_page_workflow(
+                commands
+                    .into_iter()
+                    .map(|command| crate::RepeatableCommand {
+                        command,
+                        count,
+                        route: None,
+                    })
+                    .collect(),
+                None,
+                handoff,
+            ) {
+                Ok(_) => true,
+                Err(error) => {
+                    self.set_status_text(QString::from(error.user_message()));
+                    false
+                }
+            };
+        }
         let command_count = commands.len();
-        for (command_index, mut command) in commands.into_iter().enumerate() {
+        for (command_index, mut command) in commands.iter().cloned().enumerate() {
             if command_index > 0 {
                 self.as_mut().queue_pending_engine_action();
+            }
+            if self.as_ref().in_page_window_mode() {
+                let creation = if command.name == "tab-open" {
+                    Some((command.clone(), None))
+                } else if command.name == "open" {
+                    match super::interactive_open_command(&command) {
+                        Ok(Some((parsed, mut route)))
+                            if super::browser_ui_page_creation::handles(&parsed, Some(&route)) =>
+                        {
+                            route.source = super::CommandSource::Ui;
+                            Some((parsed, Some(route)))
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                if let Some((creation, route)) = creation {
+                    return match self.as_mut().execute_page_window_creation(
+                        &creation,
+                        count,
+                        route.as_ref(),
+                        super::browser_ui_page_windows::PageContinuation::Interactive {
+                            commands: commands[command_index + 1..].to_vec(),
+                            count,
+                        },
+                        None,
+                        handoff,
+                    ) {
+                        Ok(_) => true,
+                        Err(error) => {
+                            self.set_status_text(QString::from(error));
+                            false
+                        }
+                    };
+                }
             }
             match self
                 .as_mut()
@@ -44,6 +113,101 @@ impl qobject::BrowserUi {
                 CommandDispatchControl::Continue => continue,
                 CommandDispatchControl::Failed => return false,
                 CommandDispatchControl::Unhandled => {}
+            }
+            if self.as_ref().in_page_window_mode() && command.name == "tab-close" {
+                return match self.as_mut().execute_page_window_close(
+                    &command,
+                    count,
+                    super::browser_ui_page_windows::PageContinuation::Interactive {
+                        commands: commands[command_index + 1..].to_vec(),
+                        count,
+                    },
+                    None,
+                    handoff,
+                ) {
+                    Ok(_) => {
+                        self.as_mut()
+                            .note_repeatable_invocation(&command, None, count);
+                        true
+                    }
+                    Err(error) => {
+                        self.set_status_text(QString::from(error));
+                        false
+                    }
+                };
+            }
+            if self.as_ref().in_page_window_mode()
+                && super::browser_ui_page_regroup::handles(&command)
+            {
+                return match self.as_mut().execute_page_window_regroup(
+                    &command,
+                    super::browser_ui_page_windows::PageContinuation::Interactive {
+                        commands: commands[command_index + 1..].to_vec(),
+                        count,
+                    },
+                    None,
+                    handoff,
+                ) {
+                    Ok(_) => true,
+                    Err(error) => {
+                        self.set_status_text(QString::from(error));
+                        false
+                    }
+                };
+            }
+            if self.as_ref().in_page_window_mode()
+                && super::browser_ui_page_mutations::handles(&command)
+            {
+                let continuation = super::browser_ui_page_windows::PageContinuation::Interactive {
+                    commands: commands[command_index + 1..].to_vec(),
+                    count,
+                };
+                return match self.as_mut().execute_page_window_mutation(
+                    &command,
+                    continuation,
+                    None,
+                    handoff,
+                ) {
+                    Ok(_) => {
+                        self.as_mut()
+                            .note_repeatable_invocation(&command, None, count);
+                        true
+                    }
+                    Err(error) => {
+                        self.set_status_text(QString::from(error));
+                        false
+                    }
+                };
+            }
+            if self.as_ref().in_page_window_mode()
+                && super::browser_ui_page_windows::handles(&command)
+            {
+                if let Err(error) = registry.validate(&command, self.as_ref().rust().core_mode) {
+                    self.set_status_text(QString::from(error.to_string()));
+                    return false;
+                }
+                let continuation = super::browser_ui_page_windows::PageContinuation::Interactive {
+                    commands: commands[command_index + 1..].to_vec(),
+                    count,
+                };
+                return match self.as_mut().execute_page_window_selection_with_handoff(
+                    &command,
+                    count,
+                    continuation,
+                    None,
+                    handoff.clone(),
+                ) {
+                    Ok(_) => {
+                        handoff.take();
+                        self.as_mut()
+                            .note_repeatable_invocation(&command, None, count);
+                        true
+                    }
+                    Err(error) => {
+                        self.set_status_text(QString::from(error));
+                        false
+                    }
+                };
             }
             if let Some(executor) = registry
                 .resolve(&command.name)

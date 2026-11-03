@@ -69,7 +69,85 @@ struct JourneyPath {
     cursor: usize,
 }
 
+/// Native-only history of one actual page; never reconstructed from a wire
+/// envelope or safe URL projection. Historical records in the source remain.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TabJourneyTransfer {
+    nodes: BTreeMap<JourneyNodeId, JourneyNode>,
+    edges: Vec<JourneyEdge>,
+    current: Option<JourneyNodeId>,
+    path: Option<JourneyPath>,
+    pending: Option<i32>,
+}
+
+impl TabJourneyTransfer {
+    pub(crate) fn highest_id(&self) -> Option<JourneyNodeId> {
+        self.nodes.last_key_value().map(|(id, _)| *id)
+    }
+}
+
 impl JourneyGraph {
+    pub(crate) fn capture_transfer(&self, tab: TabId) -> TabJourneyTransfer {
+        let path = self.paths_by_tab.get(&tab).cloned();
+        let current = self.current_node(tab);
+        let mut ids = path
+            .as_ref()
+            .map_or_else(BTreeSet::new, |path| path.nodes.iter().copied().collect());
+        ids.extend(current);
+        TabJourneyTransfer {
+            nodes: ids
+                .iter()
+                .filter_map(|id| self.nodes.get(id).map(|node| (*id, node.clone())))
+                .collect(),
+            edges: self
+                .edges
+                .iter()
+                .filter(|edge| ids.contains(&edge.source) && ids.contains(&edge.target))
+                .cloned()
+                .collect(),
+            current,
+            path,
+            pending: self.pending_traversals.get(&tab).copied(),
+        }
+    }
+
+    pub(crate) fn is_untouched(&self) -> bool {
+        self.nodes.is_empty()
+            && self.edges.is_empty()
+            && self.current_by_tab.is_empty()
+            && self.paths_by_tab.is_empty()
+            && self.pending_traversals.is_empty()
+    }
+
+    pub(crate) fn install_transfer(
+        &mut self,
+        tab: TabId,
+        profile: ProfileId,
+        mut transfer: TabJourneyTransfer,
+    ) {
+        debug_assert!(self.is_untouched());
+        for node in transfer.nodes.values_mut() {
+            node.profile = profile;
+        }
+        self.nodes = transfer.nodes;
+        self.edges = transfer.edges;
+        if let Some(current) = transfer.current {
+            self.current_by_tab.insert(tab, current);
+        }
+        if let Some(path) = transfer.path {
+            self.paths_by_tab.insert(tab, path);
+        }
+        if let Some(pending) = transfer.pending {
+            self.pending_traversals.insert(tab, pending);
+        }
+    }
+
+    pub(crate) fn release_tab(&mut self, tab: TabId) {
+        self.current_by_tab.remove(&tab);
+        self.paths_by_tab.remove(&tab);
+        self.pending_traversals.remove(&tab);
+    }
+
     #[must_use]
     pub fn new() -> Self {
         Self::default()

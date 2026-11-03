@@ -1,7 +1,10 @@
 #include "tst_application.h"
 #include "owned_renderer_process.h"
+#include "owned_browser_keyboard.h"
 #include "../../src/url_display.h"
 #include "../../src/gui_application.h"
+#include <QEvent>
+#include <QKeyEvent>
 #include <QClipboard>
 #include <QtWebEngineQuick/QQuickWebEngineProfile>
 #include <QMimeData>
@@ -49,6 +52,28 @@ static QQuickItem *findVisualItem(QQuickItem *parent, const QString &name) {
     }
     return nullptr;
 }
+
+class HostKeyPressObserver final : public QObject {
+public:
+  HostKeyPressObserver(QQuickWindow *host, int key)
+      : QObject(host), host(host), key(key) {
+    host->installEventFilter(this);
+  }
+  int presses = 0;
+
+protected:
+  bool eventFilter(QObject *watched, QEvent *event) override {
+    if (watched == host && event->type() == QEvent::KeyPress &&
+        static_cast<QKeyEvent *>(event)->key() == key) {
+      ++presses;
+    }
+    return false;
+  }
+
+private:
+  QQuickWindow *host;
+  int key;
+};
 
 // Only observation and fixture orchestration live here. Policy, BrowserUi,
 // chrome, key routing and pointer dispatch all come from the production module.
@@ -150,7 +175,7 @@ void ApplicationTests::init() {
 <button id="button" onclick="window.clicks++;window.trust=event.isTrusted">Activate exact button</button>
 <input id="input" aria-label="Editable field"><div id="editor" aria-label="Editable document" contenteditable="true">Editable content</div>
 <a id="same" href="#fragment">Same document</a><a id="new" href="fixture.html?new">New document</a>
-<iframe id="frame" src="/child.html" style="position:absolute;left:530px;top:30px;border:9px solid green;width:300px;height:180px"></iframe><div id="shadow" style="position:absolute;left:530px;top:260px"></div><a id="blank" href="/popup.html" target="_blank" style="position:absolute;left:530px;top:330px">Open popup</a>
+<iframe id="frame" src="/child.html" style="position:absolute;left:530px;top:30px;border:9px solid green;width:300px;height:180px"></iframe><div id="shadow" style="position:absolute;left:530px;top:260px"></div><a id="blank" href="/popup.html" target="_blank" rel="opener" style="position:absolute;left:530px;top:330px">Open popup</a>
 <section role="region" aria-label="Scoped panel" style="margin-left:70px;border:7px solid black;width:350px;height:220px;overflow:auto"><button id="scoped" onclick="window.scopedClicks=(window.scopedClicks||0)+1">Scoped control</button><div style="height:800px"></div></section><div style="height:1500px"></div><script>window.clicks=0;window.trust=false;window.shadowClicks=0;document.getElementById('shadow').attachShadow({mode:'open'}).innerHTML='<button style="width:220px;height:32px" onclick="window.shadowClicks++;window.shadowTrusted=event.isTrusted">Open shadow action</button>';window.keys=[];document.addEventListener('keydown',e=>window.keys.push(e.key));document.addEventListener('click',e=>{window.lastClicked=e.target.id;window.lastTrusted=e.isTrusted;window.allClicks=(window.allClicks||0)+1;window.clientPoint=[e.clientX,e.clientY]},true);</script>)HTML");
     fixture.close();
     QVERIFY(fixture.open(QIODevice::ReadOnly));
@@ -187,11 +212,19 @@ void ApplicationTests::init() {
                               "window."
                               "trust=event.isTrusted'>Frame control</button>")
                         : fixtureHtml;
-                socket->write(
+                const auto response =
                     "HTTP/1.1 200 OK\r\nContent-Type: text/html; "
                     "charset=utf-8\r\nConnection: close\r\nContent-Length: " +
-                    QByteArray::number(body.size()) + "\r\n\r\n" + body);
-                socket->disconnectFromHost();
+                    QByteArray::number(body.size()) + "\r\n\r\n" + body;
+                const auto sendResponse = [socket, response] {
+                    socket->write(response);
+                    socket->disconnectFromHost();
+                };
+                const auto delay = fixtureResponseDelays.value(path);
+                if (delay > 0)
+                    QTimer::singleShot(delay, socket, sendResponse);
+                else
+                    sendResponse();
             });
             connect(socket, &QTcpSocket::disconnected, socket,
                     &QObject::deleteLater);
@@ -204,11 +237,16 @@ void ApplicationTests::init() {
     const bool identityTemporary = testName == "productPolishPrivacyIdentity" && dataTag.endsWith("-temporary");
     const bool recoveryTemporary = (testName == "productPolishTabRecovery" || testName == "productPolishLastTabUndo")
         && dataTag.startsWith("temporary-");
-    const bool durable = !identityPrivate && !identityTemporary && !recoveryTemporary && (testName.startsWith("durablePersistence")
+    const bool windowContext = testName == "pageWindowPresentation" && (dataTag == "activation-context" || dataTag.startsWith("session-") || dataTag == "window-mutations" || dataTag == "window-chain-workflows" || dataTag.startsWith("window-regroup") || dataTag.startsWith("window-live-") || dataTag == "window-grouping-context" || dataTag == "window-focus-stale" || dataTag == "window-order" || dataTag == "window-undo-peer" || dataTag == "window-undo-context");
+    const bool durable = windowContext || !identityPrivate && !identityTemporary && !recoveryTemporary && (testName.startsWith("durablePersistence")
                          || testName == "selectorValidationRejectsWholeCandidate"
                          || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary"
                              && !(testName == "productPolishDiagnosticLifecycle" && QString::fromLatin1(QTest::currentDataTag()) == "private")));
     QString startupConfig = "{\"schema_version\":3}";
+    if (testName == "credentialViewAssociation")
+        startupConfig = R"JSON({"schema_version":3,"passkeys":{"phone":"on"}})JSON";
+    if (testName == "pageWindowPresentation")
+        startupConfig = R"JSON({"schema_version":3,"tabs":{"presentation":"windows"}})JSON";
     if (testName == "productPolishExternalActionFeedback") {
         const auto tag = QString::fromLatin1(QTest::currentDataTag());
         const auto subject = tag.startsWith("selection") ? "selection" : "url";
@@ -273,7 +311,7 @@ void ApplicationTests::init() {
         QVERIFY(invalidConfig.open(QIODevice::WriteOnly));
         invalidConfig.write("schema_version = [ malformed private setting");
     }
-    engine->setInitialProperties(
+    QVariantMap initialProperties
         {{"temporaryProfile", !durable},
          {"ephemeralProfile", identityTemporary || recoveryTemporary},
          {"ephemeralInvocationToken", identityTemporary ? QString("privacy-identity-fixture")
@@ -293,7 +331,10 @@ void ApplicationTests::init() {
          {"startupCleanLink", testName == "productPolishStartupCleanLink"},
          {"startupUrl", QString("http://127.0.0.1:%1/fixture.html%2")
                             .arg(server.serverPort()).arg(testName == "productPolishStartupCleanLink"
-                                ? "?keep=yes&utm_source=polish" : "")}});
+                                ? "?keep=yes&utm_source=polish" : "")}};
+    if (windowContext) initialProperties.insert("startupContextsJson", QStringLiteral(
+        R"JSON({"schema_version":3,"contexts":[{"name":"changed","label":"Changed","profile":"default"}]})JSON"));
+    engine->setInitialProperties(initialProperties);
     qInfo() << "loading production QML";
     engine->load(QUrl("qrc:/qt/qml/io/github/ferricbrowser/qml/Main.qml"));
     qInfo() << "production QML created";
@@ -302,6 +343,8 @@ void ApplicationTests::init() {
     QVERIFY(window);
     engine->rootContext()->setContextProperty("testWindow", window);
     engine->rootContext()->setContextProperty("testProbe", this);
+    if (qEnvironmentVariable("FERRIC_PORTAL_TEST_BUS") == "isolated")
+        QVERIFY(!evaluate("testWindow.pageWindowTagRequested").toBool());
     QTRY_VERIFY_WITH_TIMEOUT(
         evaluate("testWindow.activeWebView() !== null").toBool(), 10000);
     QTRY_VERIFY_WITH_TIMEOUT(
@@ -332,6 +375,7 @@ void ApplicationTests::init() {
 void ApplicationTests::cleanup() {
     engine.reset();
     frameFixtures.clear();
+    fixtureResponseDelays.clear();
     server.close();
     server.disconnect(this);
     window = nullptr;
@@ -1189,6 +1233,52 @@ void ApplicationTests::selectorReloadActivatesAtBoundary() {
     QVERIFY(config["hints"].toObject()["selectors"].toObject().isEmpty());
     QVERIFY(command("hint all"));
     QTRY_VERIFY(evaluate("testWindow.hintResults.length").toInt()>1);
+}
+void ApplicationTests::requestedWindowPresentationRemainsPendingUntilRestart() {
+    auto *browserUi = evaluate("testWindow.browserUi").value<QObject *>();
+    QVERIFY(browserUi);
+
+    const auto requestedIndex =
+        browserUi->metaObject()->indexOfProperty("feature_tabs_presentation_requested");
+    const auto effectiveIndex =
+        browserUi->metaObject()->indexOfProperty("feature_tabs_presentation_effective");
+    const auto statusIndex =
+        browserUi->metaObject()->indexOfProperty("feature_tabs_presentation_status");
+    QVERIFY(requestedIndex >= 0);
+    QVERIFY(effectiveIndex >= 0);
+    QVERIFY(statusIndex >= 0);
+
+    QObject *const activePage = evaluate("testWindow.activeWebView()").value<QObject *>();
+    QVERIFY(activePage);
+    const auto hostCount = evaluate("testWindow.browserWindowRegistry.length").toInt();
+    const auto liveWindowCount = QGuiApplication::allWindows().size();
+
+    const auto path = directory.filePath("window-presentation.toml");
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("schema_version=3\n[tabs]\npresentation='windows'\n");
+    file.close();
+    evaluate("testWindow.browserUi.config_path=" + quoted(path));
+    QVERIFY(command("config-reload"));
+
+    QTRY_COMPARE_WITH_TIMEOUT(
+        browserUi->metaObject()->property(requestedIndex).read(browserUi).toString(),
+        QString("windows"), 6000);
+    QCOMPARE(
+        browserUi->metaObject()->property(effectiveIndex).read(browserUi).toString(),
+        QString("internal"));
+    QCOMPARE(
+        browserUi->metaObject()->property(statusIndex).read(browserUi).toString(),
+        QString("pending-restart"));
+    QVERIFY(text("status_text").contains("some changes need a browser restart"));
+
+    const auto effectiveConfig =
+        QJsonDocument::fromJson(text("config_json").toUtf8()).object();
+    QCOMPARE(effectiveConfig["tabs"].toObject()["presentation"].toString(),
+             QString("internal"));
+    QCOMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), activePage);
+    QCOMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), hostCount);
+    QCOMPARE(QGuiApplication::allWindows().size(), liveWindowCount);
 }
 void ApplicationTests::selectorReloadRejectsInvalidAndStaleCandidates() {
     const auto path = directory.filePath("config.toml");
@@ -2937,7 +3027,7 @@ void ApplicationTests::productPolishPopupSourceClose() {
     QTRY_VERIFY(page("document.getElementById('blank')!==null && document.readyState==='complete'").toBool());
     QPointer<QQuickWindow> sourceWindow=qobject_cast<QQuickWindow *>(evaluate(source + ".host").value<QObject *>());
     QPointer<QObject> sourceUi=evaluate(source + ".ui").value<QObject *>();
-    auto sourceView=qobject_cast<QQuickItem *>(evaluate(pageReceiver).value<QObject *>());
+    QPointer<QQuickItem> sourceView=qobject_cast<QQuickItem *>(evaluate(pageReceiver).value<QObject *>());
     QVERIFY(sourceWindow && sourceView && sourceUi);
     sourceWindow->requestActivate();QTRY_VERIFY(sourceWindow->isActive());
     const auto point=page("(()=>{const r=document.getElementById('blank').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()").toList();
@@ -2950,6 +3040,8 @@ void ApplicationTests::productPolishPopupSourceClose() {
     QPointer<QQuickWebEngineProfile> profile=qobject_cast<QQuickWebEngineProfile *>(
         evaluate(popup + ".view.profile").value<QObject *>());
     QVERIFY(view && profile);
+    QTRY_COMPARE(evaluate("testWindow.profileResourceRegistry.forProfile(" + popup
+        + ".view.profile).lifetime.popupOpenerLeaseCount()").toInt(),1);
     QCOMPARE(profile->isOffTheRecord(),privateProfile || ephemeralProfile);
     QVERIFY(evaluate(popup + ".ui === " + popup + ".view.viewUi && "
         + popup + ".ui !== " + source + ".ui").toBool());
@@ -2968,6 +3060,9 @@ void ApplicationTests::productPolishPopupSourceClose() {
     QTRY_VERIFY(sourceWindow.isNull());
     QTRY_VERIFY(sourceUi.isNull());
     QTest::qWait(50);
+    QVERIFY2(sourceView,"Qt's adopted rendering delegate must retain its opener view");
+    QVERIFY(!sourceView->isVisible() && !sourceView->isEnabled());
+    QVERIFY(!sourceView->parentItem());
     QVERIFY2(profile,"A popup profile must survive destruction of its opener window");
     QVERIFY2(view,"A popup page must survive destruction of its opener window");
     QCOMPARE(evaluate("JSON.stringify(testWindow.profileResourceRegistry.forProfile(" + popup + ".view.profile).policySnapshot)").toString(),retainedPolicy);
@@ -3004,6 +3099,7 @@ void ApplicationTests::productPolishPopupSourceClose() {
     child->deleteLater();
     QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
     QTRY_VERIFY(view.isNull());
+    QTRY_VERIFY(sourceView.isNull());
     QTRY_VERIFY(profile.isNull());
     QTRY_VERIFY(popupUi.isNull());
     QTRY_COMPARE(evaluate("testWindow.profileResourceRegistry.groups.length").toInt(),1);
@@ -3797,7 +3893,7 @@ QtObject {
     QCOMPARE(text("hint_values"),primaryHints);
 }
 
-void ApplicationTests::productPolishPopupCommands() {
+void ApplicationTests::productPolishPopupCommandsOpenerIdentity() {
     QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError).*"));
     const auto openerUrl=text("current_url");
     QVERIFY(command("bind p hint --target pointer links"));key(Qt::Key_P);
@@ -3810,6 +3906,17 @@ void ApplicationTests::productPolishPopupCommands() {
     QVERIFY(child);
     pageReceiver=entry+".view";
     QTRY_VERIFY(page("document.readyState==='complete' && document.getElementById('input')!==null").toBool());
+    QVERIFY(page("window.opener !== null").toBool());
+    pageReceiver = "testWindow.activeWebView()";
+    page("window.popupOpenerMessage=null;"
+         "window.addEventListener('message',e=>window.popupOpenerMessage=e."
+         "data);true");
+    pageReceiver = entry + ".view";
+    page("window.opener.postMessage('qt-popup-opener-live','*');true");
+    pageReceiver = "testWindow.activeWebView()";
+    QTRY_COMPARE(page("window.popupOpenerMessage").toString(),
+                 QString("qt-popup-opener-live"));
+    pageReceiver = entry + ".view";
     QTRY_VERIFY(!evaluate(entry+".ui.profile_bootstrap_pending").toBool());
     const auto desired=page("new URL('/fixture.html?popup-command=1',location.href).href").toString();
     QVERIFY(evaluate(entry+".ui.execute_secondary_interactive_command("+quoted("open "+desired)+")").toBool());
@@ -3859,7 +3966,13 @@ void ApplicationTests::productPolishPopupCommands() {
     QVERIFY(evaluate(nested+".view.profile === "+entry+".view.profile && "+nested+".ui !== "+entry+".ui").toBool());
     pageReceiver=nested+".view";
     QTRY_VERIFY(page("document.readyState==='complete' && document.getElementById('input')!==null").toBool());
+    QVERIFY(page("window.opener !== null").toBool());
     page("window.nestedPopupState=95");
+    const auto popupSource =
+        evaluate(nested + ".host.activeView").value<QObject *>();
+    QCOMPARE(popupSource, evaluate(nested + ".view").value<QObject *>());
+    QVERIFY(popupSource);
+    QCOMPARE(page("window.nestedPopupState").toInt(), 95);
     evaluate(entry+".host.windowShutdownApproved=true");
     QVERIFY(child->close());child->deleteLater();
     QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
@@ -3871,6 +3984,10 @@ void ApplicationTests::productPolishPopupCommands() {
     QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(),0);
     QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),1);
     pageReceiver="testWindow.activeWebView()";
+}
+
+void ApplicationTests::productPolishPopupCommands() {
+  productPolishPopupCommandsOpenerIdentity();
 }
 
 void ApplicationTests::productPolishProvisionalTransferFallback_data() {
@@ -3918,6 +4035,62 @@ void ApplicationTests::productPolishSecondaryTabs() {
     pageReceiver = entry + ".host.activeView";
     QTRY_VERIFY(page("location.href === " + quoted(primaryUrl)
         + " && document.readyState === 'complete'").toBool());
+    QTRY_COMPARE(evaluate(entry + ".host.activeView.nativeUrl").toString(),
+                 QString());
+    page("document.title='Factory created page';window.retainedState=41;true");
+    QTRY_COMPARE(evaluate(entry + ".ui.page_title").toString(),
+                 QString("Factory created page"));
+    QTRY_COMPARE(evaluate(entry + ".host.tabsModel.get(0).title").toString(),
+                 QString("Factory created page"));
+    const auto initialHistory =
+        evaluate("JSON.parse(" + entry + ".ui.content_history_export(0))")
+            .toMap();
+    const auto historyEntries = initialHistory.value("entries").toList();
+    const auto historyCursor = initialHistory.value("cursor").toInt();
+    QVERIFY(historyCursor >= 0);
+    QVERIFY(historyCursor < historyEntries.size());
+    const auto currentHistoryEntry = historyEntries.at(historyCursor).toMap();
+    QCOMPARE(currentHistoryEntry.value("url").toString(), primaryUrl);
+    QCOMPARE(currentHistoryEntry.value("engine_index").toInt(),
+             evaluate(entry + ".host.activeView.engineHistoryIndex").toInt());
+    QVERIFY(evaluate(entry +
+                     ".ui.execute_secondary_interactive_command('zoom 1.25')")
+                .toBool());
+    evaluate(entry + ".host.processRuntimeWork()");
+    QTRY_COMPARE(
+        qRound(evaluate(entry + ".host.activeView.zoomFactor").toDouble() *
+               100),
+        125);
+    QPointer<QQuickWindow> secondaryHost = qobject_cast<QQuickWindow *>(
+        evaluate(entry + ".host").value<QObject *>());
+    QVERIFY(secondaryHost);
+    secondaryHost->requestActivate();
+    QTRY_VERIFY(secondaryHost->isActive());
+    auto focusedPage = qobject_cast<QQuickItem *>(
+        evaluate(entry + ".host.activeView").value<QObject *>());
+    QVERIFY(focusedPage);
+    focusedPage->forceActiveFocus();
+    QTRY_VERIFY(secondaryHost->activeFocusItem() &&
+                (secondaryHost->activeFocusItem() == focusedPage ||
+                 focusedPage->isAncestorOf(secondaryHost->activeFocusItem())));
+    // This T013 fixture deliberately selects the supported Mixed page-key
+    // route through the secondary UI's normal temporary-settings command.
+    // It does not change the browser's default BrowserFirst policy.
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command(" +
+                     quoted("set --temp input.shortcut_policy=mixed") + ")")
+                .toBool());
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command(" +
+                     quoted("set --temp \"input.page_keys=['x']\"") + ")")
+                .toBool());
+    evaluate(entry + ".host.processRuntimeWork()");
+    const auto xRoute = evaluate(entry + ".ui.mixed_key_route('x')").toString();
+    qInfo() << "T013 effective mixed_key_route(x)" << xRoute;
+    QCOMPARE(xRoute, QString("page"));
+    page("window.keys=[];true");
+    HostKeyPressObserver keyPressObserver(secondaryHost, Qt::Key_X);
+    sendOwnedBrowserKey(secondaryHost, Qt::Key_X);
+    QTRY_COMPARE(keyPressObserver.presses, 1);
+    QTRY_VERIFY(page("window.keys.indexOf('x') >= 0").toBool());
     page("window.retainedState=41");
     const QPointer<QObject> firstPage = evaluate(entry + ".host.activeView").value<QObject *>();
     QVERIFY2(evaluate(entry + ".ui.execute_secondary_interactive_command(" + quoted("tab-open " + primaryUrl) + ")").toBool(),
@@ -4588,6 +4761,10 @@ void ApplicationTests::productPolishWindowClose() {
 }
 
 void ApplicationTests::productPolishPopupScripts() {
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.refresh_userscript_inventory()").toBool());
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.userscript_inventory_pending").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.userscript_inventory_ready").toBool());
     // Install ordinary top-frame page scripts through the real manager. Both
     // phases must run after a popup's navigation has committed successfully.
     for (const auto &phase : {QString("document_end"), QString("document_idle")}) {
@@ -4602,8 +4779,10 @@ void ApplicationTests::productPolishPopupScripts() {
                         "page_world = true\nsource = \"" + name + ".js\"\n"
                         "matches = [\"http://127.0.0.1:*/*\"]\nrun_at = \"" + phase + "\"\n").toUtf8());
         manifest.close();
-        QVERIFY(evaluate("testWindow.browserUi.install_userscript_manifest(" +
-                         quoted(manifest.fileName()) + ")").toBool());
+        QTRY_VERIFY(!evaluate("testWindow.browserUi.userscript_inventory_pending").toBool());
+        QVERIFY2(evaluate("testWindow.browserUi.install_userscript_manifest(" +
+                          quoted(manifest.fileName()) + ")").toBool(),
+                 qPrintable(text("userscript_install_state")));
         QTRY_COMPARE(text("userscript_install_state"), QString("installed"));
     }
     evaluate("testWindow.safeMode=false;testWindow.userscriptsOff=false");
@@ -4620,6 +4799,41 @@ void ApplicationTests::productPolishPopupScripts() {
     QTRY_COMPARE(page("window.popup_document_idle || 0").toInt(), 1);
     evaluate("testWindow.popupWindowRegistry[0].host.destroy()");
     pageReceiver = "testWindow.activeWebView()";
+}
+
+void ApplicationTests::productPolishDocumentIdleLifetime_data() {
+    QTest::addColumn<QString>("change");
+    for (const auto &change : {"current", "navigation", "retirement", "destruction"})
+        QTest::newRow(change) << QString::fromLatin1(change);
+}
+
+void ApplicationTests::productPolishDocumentIdleLifetime() {
+    QFETCH(QString,change);
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError).*"));
+    const QString view="testWindow.activeWebView()";
+    evaluate(view + ".queueDocumentIdleScripts()");
+    QVERIFY(evaluate(view + ".pendingDocumentIdleScripts !== null").toBool());
+    if (change == "destruction") {
+        QPointer<QObject> guarded=evaluate(view).value<QObject *>();
+        // Destroy the real QML creation context before the zero-interval timer
+        // can run. Owned deferred work must not outlive that context.
+        engine.reset();
+        window=nullptr;
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        QTRY_VERIFY(guarded.isNull());
+        QTest::qWait(20);
+        return;
+    }
+    if (change == "navigation") {
+        const auto target=evaluate("JSON.stringify(" + view + ".pendingDocumentIdleScripts.target)").toString();
+        // A navigation intent allocates the replacement Target before the
+        // engine action runs; load notifications keep that captured identity.
+        evaluate("testWindow.browserUi.navigate(" + quoted(text("current_url") + "?replacement") + ")");
+        QVERIFY(evaluate("JSON.stringify(testWindow.browserUi.navigation_target_for_index(0))").toString()!=target);
+    } else if (change == "retirement")
+        evaluate(view + ".viewRetired=true");
+    QCOMPARE(evaluate(view + ".deliverDocumentIdleScripts()").toBool(),change == "current");
+    QVERIFY(!evaluate(view + ".deliverDocumentIdleScripts()").toBool());
 }
 
 void ApplicationTests::productPolishSiteLedger() {

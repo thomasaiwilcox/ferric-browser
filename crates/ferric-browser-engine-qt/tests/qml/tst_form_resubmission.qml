@@ -59,8 +59,14 @@ TestCase {
         parent: host.contentItem
         width: 20; height: 20
         property int tabIndex: 0
+        property string stableTabId: "tab"
         property bool live: true
         function ownsTab() { return live }
+        function lifecycleOwner() { return {ui:viewUi,host:viewHost,tabs:null,index:tabIndex} }
+        function ownsLifecycleTab() {
+            return ownsTab() && !!viewUi && tabIndex >= 0
+                && viewUi.tab_id_for_index(tabIndex) === stableTabId
+        }
         property var viewUi: ui
         property var viewHost: host
         property var documentRequestOwner: ({})
@@ -115,7 +121,7 @@ TestCase {
     function test_form_surface_releases_its_missing_host(data) {
         var content=createTemporaryObject(contentFixture,host.contentItem)
         if (data.open) prompt(content,false)
-        content.browserHost=null
+        web.viewHost=null
         wait(0)
         verify(!findChild(host,"formResubmissionSurface"))
         compare(web.reloads,0)
@@ -175,7 +181,13 @@ TestCase {
         else if(data.tag==="retired") web.live=false
         else if(data.tag==="target") {ui.targetValid=false;ui.input_epoch++}
         else if(data.tag==="address") web.url="https://example.test/other"
-        else web.viewHost=null
+        else {
+            web.viewHost=null
+            wait(0)
+            verify(!findChild(host,"formResubmissionSurface"))
+            compare(web.reloads,0);compare(web.bypassReloads,0)
+            return
+        }
         surface.requestAction("resubmit")
         tryCompare(surface,"visible",false)
         compare(web.reloads,0);compare(web.bypassReloads,0)

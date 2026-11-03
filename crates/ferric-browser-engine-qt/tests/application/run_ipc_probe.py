@@ -97,11 +97,13 @@ def main():
                 rejected = invoke('command', 'open https://should-not-open.invalid/ ;; settings unexpected',
                                   accepted=False, error_code='E_INVALID_ARGUMENT')
                 assert 'earlier requests were accepted' not in rejected, rejected
+                assert 'earlier commands were accepted' not in rejected, rejected
                 invoke('command', 'get downloads.ask_destination')
                 rejected = invoke('command', 'get no.such.setting',
                                   accepted=False, error_code='E_NOT_FOUND')
                 assert 'Unknown setting: no.such.setting.' in rejected and ':settings' in rejected, rejected
                 assert 'earlier requests were accepted' not in rejected, rejected
+                assert 'earlier commands were accepted' not in rejected, rejected
                 rejected = invoke('command', 'get downloads.ask_destination --url file:///tmp/not-a-site',
                                   accepted=False, error_code='E_INVALID_ARGUMENT')
                 assert 'Use an HTTP or HTTPS page address with --url.' in rejected, rejected
@@ -112,7 +114,7 @@ def main():
                                   'set --temp downloads.ask_destination=false ;; get no.such.setting ;; '
                                   'set --temp downloads.ask_destination=true ;; open https://should-not-open.invalid/',
                                   accepted=False, error_code='E_NOT_FOUND')
-                assert 'earlier requests were accepted' in rejected, rejected
+                assert 'earlier commands were accepted' in rejected, rejected
                 assert 'Unknown setting: no.such.setting.' in rejected and ':settings' in rejected, rejected
                 retained_setting = invoke('query', 'config', 'downloads.ask_destination', '--format', 'json')
                 assert retained_setting['value'] is False, retained_setting

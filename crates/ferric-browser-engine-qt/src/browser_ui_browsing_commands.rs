@@ -72,8 +72,8 @@ impl qobject::BrowserUi {
         }
         let id = self
             .as_ref()
-            .rust()
-            .closed_tabs
+            .get_ref()
+            .closed_page_descriptors(false)
             .first()
             .map(|closed| closed.id.to_string())
             .ok_or_else(|| "no eligible closed tab is available".to_owned())?;

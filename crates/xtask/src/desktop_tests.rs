@@ -1,6 +1,6 @@
 use super::{
-    BufReader, Child, Command, Duration, Instant, Output, Path, Stdio, SystemTime, TcpStream,
-    UNIX_EPOCH, check_accessibility_contract, check_compatibility_report, fs,
+    BufReader, Child, Command, Duration, Instant, Output, Path, PathBuf, Stdio, SystemTime,
+    TcpStream, UNIX_EPOCH, check_accessibility_contract, check_compatibility_report, fs,
     prepare_application_tests, run, run_application_tests, run_fuzz_smoke, run_native_insert_tests,
     run_qml_ui_tests, run_wayland_application_tests, thread,
 };
@@ -8,6 +8,13 @@ use std::{
     io::{BufRead as _, Read as _, Write as _},
     net::ToSocketAddrs as _,
 };
+
+fn browser_build_executable(profile: &str) -> PathBuf {
+    std::env::var_os("CARGO_TARGET_DIR")
+        .map_or_else(|| PathBuf::from("target"), PathBuf::from)
+        .join(profile)
+        .join("ferric-browser")
+}
 
 pub(super) fn run_test(arguments: &[String]) -> Result<(), String> {
     let task = arguments.first().ok_or_else(|| {
@@ -102,7 +109,8 @@ pub(super) fn run_mpris_smoke() -> Result<(), String> {
         println!("MPRIS smoke not-run: no session D-Bus address is available");
         return Ok(());
     }
-    let executable = Path::new("target/debug/ferric-browser");
+    let executable_path = browser_build_executable("debug");
+    let executable = executable_path.as_path();
     if !executable.is_file() {
         return Err(format!(
             "MPRIS smoke requires {}; build the browser first",
@@ -296,7 +304,8 @@ pub(super) fn run_repeated_contract_smoke() -> Result<(), String> {
 
 pub(super) fn run_adapter_smoke() -> Result<(), String> {
     run("cargo", &["build", "-p", "ferric-browser", "--locked"])?;
-    let executable = Path::new("target/debug/ferric-browser");
+    let executable_path = browser_build_executable("debug");
+    let executable = executable_path.as_path();
     if !executable.is_file() {
         return Err(format!(
             "adapter smoke build did not produce {}",
@@ -359,7 +368,8 @@ pub(super) fn run_adapter_smoke() -> Result<(), String> {
 pub(super) fn run_wayland_smoke() -> Result<(), String> {
     check_nested_wayland_requirements()?;
     run("cargo", &["build", "-p", "ferric-browser", "--locked"])?;
-    let executable = Path::new("target/debug/ferric-browser");
+    let executable_path = browser_build_executable("debug");
+    let executable = executable_path.as_path();
     if !executable.is_file() {
         return Err(format!(
             "Wayland smoke build did not produce {}",
@@ -383,14 +393,15 @@ pub(super) fn run_wayland_input_qualification() -> Result<(), String> {
             "--offline",
         ],
     )?;
-    run_nested_wayland_smoke(Path::new("target/release/ferric-browser"), true)
+    run_nested_wayland_smoke(&browser_build_executable("release"), true)
 }
 
 #[allow(clippy::too_many_lines)]
 pub(super) fn run_config_smoke() -> Result<(), String> {
     check_nested_wayland_requirements()?;
     run("cargo", &["build", "-p", "ferric-browser", "--locked"])?;
-    let executable = Path::new("target/debug/ferric-browser");
+    let executable_path = browser_build_executable("debug");
+    let executable = executable_path.as_path();
     if !executable.is_file() {
         return Err(format!(
             "config smoke build did not produce {}",
@@ -570,7 +581,8 @@ pub(super) fn run_config_smoke() -> Result<(), String> {
 pub(super) fn run_blocking_smoke() -> Result<(), String> {
     check_nested_wayland_requirements()?;
     run("cargo", &["build", "-p", "ferric-browser", "--locked"])?;
-    let executable = Path::new("target/debug/ferric-browser");
+    let executable_path = browser_build_executable("debug");
+    let executable = executable_path.as_path();
     if !executable.is_file() {
         return Err(format!(
             "blocking smoke build did not produce {}",

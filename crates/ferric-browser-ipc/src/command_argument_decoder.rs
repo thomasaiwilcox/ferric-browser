@@ -291,20 +291,20 @@ pub(super) fn decode_command_arguments(
         }
         "binding-list" => {
             let mode = optional_text_argument("mode")?;
-            if let Some(mode) = &mode {
-                if !valid_ipc_mode(mode) {
-                    return Err("command argument mode is invalid".into());
-                }
+            if let Some(mode) = &mode
+                && !valid_ipc_mode(mode)
+            {
+                return Err("command argument mode is invalid".into());
             }
             mode.map(|mode| vec!["--mode".into(), mode])
                 .unwrap_or_default()
         }
         "binding-explain" => {
             let mode = optional_text_argument("mode")?;
-            if let Some(mode) = &mode {
-                if !valid_ipc_mode(mode) {
-                    return Err("command argument mode is invalid".into());
-                }
+            if let Some(mode) = &mode
+                && !valid_ipc_mode(mode)
+            {
+                return Err("command argument mode is invalid".into());
             }
             let mut args = vec![text_argument("keychain")?];
             if let Some(mode) = mode {

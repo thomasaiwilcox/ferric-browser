@@ -792,11 +792,11 @@ impl qobject::BrowserUi {
                 .join()
                 .ok()
                 .unwrap_or_else(|| Err("userscript context writer stopped".into()));
-            if status.state() == OperationState::Completed {
-                if let Err(error) = input_result {
-                    status = OperationUpdate::failed(FailureKind::Engine, error.to_string());
-                    action = None;
-                }
+            if status.state() == OperationState::Completed
+                && let Err(error) = input_result
+            {
+                status = OperationUpdate::failed(FailureKind::Engine, error.to_string());
+                action = None;
             }
             let stderr = stderr_reader
                 .join()

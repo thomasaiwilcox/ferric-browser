@@ -156,3 +156,56 @@ impl ConfigurationState {
         self.snapshot()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::BrowserApplication;
+    use ferric_browser_config::{
+        PageGroupingPolicy, PhonePasskeyPolicy, TabsPresentation, setting_metadata,
+    };
+
+    #[test]
+    fn feature_settings_declare_their_scope_and_apply_boundary() {
+        let presentation = setting_metadata("tabs.presentation").expect("presentation metadata");
+        assert_eq!(presentation.supported_scopes, &["global"]);
+        assert_eq!(presentation.apply_time, "restart");
+
+        let phone = setting_metadata("passkeys.phone").expect("phone metadata");
+        assert_eq!(phone.supported_scopes, &["global", "profile"]);
+        assert_eq!(phone.apply_time, "navigation");
+
+        let grouping = setting_metadata("hyprland.page_grouping").expect("page-grouping metadata");
+        assert_eq!(grouping.supported_scopes, &["global"]);
+        assert_eq!(grouping.apply_time, "live");
+    }
+
+    #[test]
+    fn invalid_combined_feature_update_leaves_active_configuration_unchanged() {
+        let mut app = BrowserApplication::new(Config::default());
+        let before = app.configuration_snapshot();
+        let mut candidate = Config::default();
+        candidate.tabs.presentation = TabsPresentation::Windows;
+        candidate.passkeys.phone = PhonePasskeyPolicy::On;
+        candidate.hyprland.page_grouping = PageGroupingPolicy::Auto;
+        candidate.ui.font_size_pt = 5.0;
+
+        assert!(
+            app.update_configuration(ConfigurationLayers::new(candidate))
+                .is_err(),
+            "an invalid combined configuration update must be rejected"
+        );
+
+        assert_eq!(app.configuration_snapshot(), before);
+        assert_eq!(app.configuration_revision(), before.revision);
+        assert_eq!(
+            app.configuration().tabs.presentation,
+            TabsPresentation::Internal
+        );
+        assert_eq!(app.configuration().passkeys.phone, PhonePasskeyPolicy::Off);
+        assert_eq!(
+            app.configuration().hyprland.page_grouping,
+            PageGroupingPolicy::Off
+        );
+    }
+}

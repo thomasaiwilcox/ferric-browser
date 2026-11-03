@@ -1,0 +1,319 @@
+//! Page state changes across registered native owners. The mutation targets a
+//! stable page; document continuations return to the issuing page without
+//! changing focus unless the chain itself selected a different owner.
+
+use super::{CxxQtType, ParsedCommand, Pin, TabId, qobject};
+use crate::browser_ui_page_windows::{
+    PageContinuation, PageHandoff, PageWindowSnapshot, candidates, continuation_current,
+};
+use cxx_qt::Threading;
+
+pub(super) fn handles(command: &ParsedCommand) -> bool {
+    matches!(command.name.as_str(), "tab-pin" | "tab-mute")
+        || command.name == "tab-move"
+            && command
+                .arguments
+                .iter()
+                .any(|value| matches!(value.as_str(), "left" | "right"))
+            && !command.arguments.iter().any(|value| value == "--context")
+}
+
+impl qobject::BrowserUi {
+    pub(super) fn synchronize_local_page_order(mut self: Pin<&mut Self>) -> Result<bool, String> {
+        let (window, desired, original) = {
+            let rust = self.as_ref();
+            let rust = rust.rust();
+            let window = rust.window.ok_or("The page window is unavailable")?;
+            let state = rust.state.as_ref().ok_or("The page state is unavailable")?;
+            let original = state
+                .windows()
+                .get(&window)
+                .ok_or("The page window is unavailable")?
+                .tabs
+                .clone();
+            let ranks = super::live_ipc_owners::page_order_ranks(&original);
+            let mut desired = original.clone();
+            desired.sort_by_key(|id| {
+                (
+                    !state.tabs().get(id).is_some_and(|page| page.pinned),
+                    ranks.get(id).copied().unwrap_or(usize::MAX),
+                )
+            });
+            (window, desired, original)
+        };
+        if desired == original {
+            return Ok(false);
+        }
+        self.as_mut()
+            .reduce_event(super::Event::ReorderTabs {
+                window,
+                tabs: desired,
+            })
+            .map_err(|error| error.to_string())?;
+        self.as_mut().sync_tab_order_from_core();
+        Ok(true)
+    }
+
+    fn apply_page_order_move(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        source: &PageWindowSnapshot,
+    ) -> Result<(), String> {
+        let [id, direction] = command.arguments.as_slice() else {
+            return Err("tab-move requires a page and left or right".into());
+        };
+        let id = TabId::from_display(id).ok_or("The page ID is invalid")?;
+        let pages = candidates(
+            super::live_ipc_owners::page_window_owners(&source.scope),
+            source,
+        );
+        let moving = pages
+            .iter()
+            .find(|page| page.page.id == id)
+            .ok_or("This page is no longer available")?;
+        let pinned = moving.page.pinned;
+        let expected = moving.owner.snapshot.clone();
+        let pages = pages
+            .into_iter()
+            .filter(|page| page.page.pinned == pinned)
+            .collect::<Vec<_>>();
+        let index = pages
+            .iter()
+            .position(|page| page.page.id == id)
+            .ok_or("This page is no longer available")?;
+        let neighbor = if direction == "left" {
+            index.checked_sub(1)
+        } else {
+            index.checked_add(1).filter(|index| *index < pages.len())
+        };
+        let Some(neighbor) = neighbor.map(|index| pages[index].clone()) else {
+            return Ok(());
+        };
+        self.as_mut().refresh_ipc_owner();
+        let valid = PageWindowSnapshot::capture(self.as_ref().get_ref()).is_some_and(|current| {
+            current.scope == expected.scope
+                && current.group == expected.group
+                && current
+                    .pages
+                    .iter()
+                    .any(|page| page.id == id && page.pinned == pinned)
+        });
+        let fresh = candidates(
+            super::live_ipc_owners::page_window_owners(&source.scope),
+            source,
+        )
+        .into_iter()
+        .filter(|page| page.page.pinned == pinned)
+        .collect::<Vec<_>>();
+        let adjacent = fresh
+            .iter()
+            .position(|page| page.page.id == id)
+            .is_some_and(|index| {
+                let next = if direction == "left" {
+                    index.checked_sub(1)
+                } else {
+                    index.checked_add(1)
+                };
+                next.and_then(|index| fresh.get(index))
+                    .is_some_and(|page| page.page.id == neighbor.page.id)
+            });
+        if !valid || !adjacent || !super::live_ipc_owners::swap_page_order(id, neighbor.page.id) {
+            return Err("The page order changed. Try the move again.".into());
+        }
+        self.as_mut().synchronize_local_page_order()?;
+        let valid = PageWindowSnapshot::capture(self.as_ref().get_ref()).is_some_and(|current| {
+            current.scope == expected.scope
+                && current.group == expected.group
+                && current
+                    .pages
+                    .iter()
+                    .any(|page| page.id == id && page.pinned == pinned)
+        });
+        if !valid {
+            return Err("The page window changed during its move".into());
+        }
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        this.library.switcher_cache = None;
+        this.checkpoint
+            .mark_dirty(super::elapsed_ms(this.binding_clock));
+        Ok(())
+    }
+
+    pub(super) fn execute_page_window_ipc_mutation(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        route: &super::IpcRoute,
+        commands: Vec<(ParsedCommand, super::IpcRoute)>,
+        operation_id: Option<&str>,
+        handoff: &mut Option<PageHandoff>,
+    ) -> Result<super::Value, super::PublicError> {
+        if route.context.is_some() {
+            return Err("context routing is not valid for page state changes".into());
+        }
+        self.as_ref().validate_ipc_route_public(route)?;
+        if Some(self.as_ref().ipc_route_window(route)?) != self.as_ref().rust().window {
+            return Err("Choose a page in the requested window.".into());
+        }
+        let result = self.as_mut().execute_page_window_mutation(
+            command,
+            PageContinuation::Ipc {
+                commands,
+                route: route.clone(),
+            },
+            operation_id,
+            handoff,
+        )?;
+        self.as_mut()
+            .note_repeatable_invocation(command, Some(route), 1);
+        Ok(result)
+    }
+
+    pub(super) fn execute_page_window_mutation(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        continuation: PageContinuation,
+        operation_id: Option<&str>,
+        handoff: &mut Option<PageHandoff>,
+    ) -> Result<super::Value, String> {
+        self.as_ref()
+            .rust()
+            .registry
+            .validate(command, self.as_ref().rust().core_mode)
+            .map_err(|error| error.to_string())?;
+        let source = PageWindowSnapshot::capture_checked(self.as_ref().get_ref())?;
+        let current = self.as_ref().rust().tab.ok_or("No active page")?;
+        let source_target = source
+            .pages
+            .iter()
+            .find(|page| page.id == current)
+            .ok_or("The issuing page is no longer presented")?
+            .target;
+        let mut normalized = command.clone();
+        super::normalize_active_tab_command(&mut normalized, Some(current.to_string()))?;
+        let id = match normalized.arguments.as_slice() {
+            [id, direction]
+                if normalized.name == "tab-move"
+                    && matches!(direction.as_str(), "left" | "right") =>
+            {
+                id
+            }
+            [id] => id,
+            [id, state]
+                if normalized.name != "tab-move"
+                    && matches!(state.as_str(), "on" | "off" | "toggle") =>
+            {
+                id
+            }
+            _ => return Err("Use a stable page ID and optional on, off or toggle state".into()),
+        };
+        let id = TabId::from_display(id).ok_or("The page ID is invalid")?;
+        self.as_mut().refresh_ipc_owner();
+        let target = candidates(
+            super::live_ipc_owners::page_window_owners(&source.scope),
+            &source,
+        )
+        .into_iter()
+        .find(|candidate| candidate.page.id == id)
+        .ok_or("This page is outside the current group")?;
+        let generation = target.page.target.generation;
+        let target_token = target.owner.token;
+        let target_group = target.owner.snapshot.group;
+        let result_window = target.owner.window;
+        let source_token = self.as_ref().rust().window_token.to_string();
+        let source_thread = self.as_ref().get_ref().qt_thread();
+        let receipt = self
+            .as_mut()
+            .prepare_page_handoff(handoff.clone(), &source, operation_id)?;
+        target
+            .owner
+            .thread
+            .queue(move |mut ui| {
+                let owners = super::live_ipc_owners::page_window_owners(&source.scope);
+                let source_current = owners.iter().any(|owner| {
+                    owner.token == source_token
+                        && owner.snapshot.group == source.group
+                        && owner.snapshot.pages.iter().any(|page| page.id == current)
+                });
+                let eligible = source_current
+                    && candidates(owners, &source).iter().any(|candidate| {
+                        candidate.owner.token == target_token && candidate.page.id == id
+                    });
+                let valid = eligible
+                    && PageWindowSnapshot::capture(ui.as_ref().get_ref()).is_some_and(|snapshot| {
+                        snapshot.scope == source.scope
+                            && snapshot.group == target_group
+                            && snapshot
+                                .pages
+                                .iter()
+                                .any(|page| page.id == id && page.target.generation == generation)
+                    });
+                if !valid {
+                    receipt.finish(false, false, ui.as_ref().get_ref());
+                    return;
+                }
+                let applied = if normalized.name == "tab-move" {
+                    ui.as_mut().apply_page_order_move(&normalized, &source)
+                } else {
+                    ui.as_mut()
+                        .execute_tab_action(&normalized, None)
+                        .map(|_| ())
+                };
+                if applied.is_err() {
+                    receipt.finish(true, false, ui.as_ref().get_ref());
+                    return;
+                }
+                ui.as_mut().runtime_work_available();
+                let _ = source_thread.queue(move |mut issuer| {
+                    let source_current = PageWindowSnapshot::capture(issuer.as_ref().get_ref())
+                        .is_some_and(|snapshot| {
+                            snapshot.scope == source.scope
+                                && snapshot.group == source.group
+                                && snapshot.pages.iter().any(|page| {
+                                    page.id == current
+                                        && page.target.generation == source_target.generation
+                                })
+                        });
+                    let document_current = !continuation.has_commands()
+                        || continuation_current(
+                            issuer.as_ref().get_ref(),
+                            &source.scope,
+                            &source.group,
+                            source_target,
+                        );
+                    if !source_current || !document_current {
+                        receipt.finish(false, false, issuer.as_ref().get_ref());
+                        return;
+                    }
+                    let mut handoff = Some(receipt);
+                    let succeeded = match continuation {
+                        PageContinuation::Interactive { commands, count } => issuer
+                            .as_mut()
+                            .execute_counted_parsed_commands_with_handoff(
+                                commands,
+                                count,
+                                &mut handoff,
+                            ),
+                        PageContinuation::Ipc { commands, .. } => issuer
+                            .as_mut()
+                            .execute_routed_ipc_chain_with_handoff(commands, None, &mut handoff)
+                            .is_ok(),
+                        PageContinuation::Recorded { commands, .. } => issuer
+                            .as_mut()
+                            .execute_page_recorded_commands(commands, None, &mut handoff)
+                            .is_ok(),
+                    };
+                    issuer.as_mut().runtime_work_available();
+                    if let Some(receipt) = handoff {
+                        receipt.finish(true, succeeded, issuer.as_ref().get_ref());
+                    }
+                });
+            })
+            .map_err(|_| "The requested page window is no longer available".to_owned())?;
+        handoff.take();
+        Ok(
+            serde_json::json!({"status":"accepted", "action":command.name.trim_start_matches("tab-"),
+            "tab_id":id.to_string(), "window_id":result_window.to_string(), "pending":true}),
+        )
+    }
+}

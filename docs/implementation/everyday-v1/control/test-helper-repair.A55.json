@@ -1,0 +1,687 @@
+{
+  "metadata": {
+    "amendment": "A55",
+    "slice": "F02e2s",
+    "attempt": 4,
+    "previous_limit": 3,
+    "global_limit": 3,
+    "attempt_reset": false,
+    "attempt5_authorized": false,
+    "review": {
+      "path": "evidence/A55/PLAN_REVIEW.json",
+      "sha256": "abffbaf695d2671c95b47663e9ffd11ded8a6b24712e74d77af31f1847e8c07b"
+    },
+    "review_budget": {
+      "path": "evidence/A55/PLAN_REVIEW_BUDGET.json",
+      "sha256": "518efd9330ebf612116768cb116a83b9305b486e7a4d998adc2e2b2fa4b53fac"
+    },
+    "review_clarification": {
+      "path": "evidence/A55/PLAN_REVIEW_CLARIFICATION.json",
+      "sha256": "4c715673ba3cc696e31925e52512ad7c8a7753c88d22815d506aac5c540263ac"
+    },
+    "proposal": {
+      "path": "evidence/A55/PROPOSAL.json",
+      "sha256": "22236bf76f4e056e15aa494fd4ed3435ec4f1e07c6cf8bab20a754ed919562d9"
+    },
+    "repair_patch": {
+      "path": "evidence/A55/TEST_HELPER_LIFETIME_REPAIR.diff",
+      "sha256": "b22e3d7a316578a32510a632672ec3db9d65a76865badc23b932d32551b52277",
+      "bytes": 3285
+    },
+    "source_base_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+    "source_base_tree": "6c46cb7fc9847fbeb2704c95a5e87b52973d5da6",
+    "reapply_source_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
+    "reapply_source_tree": "d2ad031ccd9ed37dc9dc370c081e9c684111ab01",
+    "test_path": "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+    "test_before_sha256": "cfa21e477c0164b81d5228232612c23a2ba4a462f75c01b95595ddd676ea1e9e",
+    "test_after_sha256": "b19b92eaca2addac6281aa534f35465420b79034ba0cfd1059c3dc469088fa9b",
+    "unchanged_product_sha256": {
+      "crates/ferric-browser-engine-qt/src/public_page_host.h": "3f55a0d175c05b6c7731d53d82b59c42aa29af0bc15f3d9210e67226b15798e5",
+      "crates/ferric-browser-engine-qt/src/public_page_host.cpp": "3e4e57feba5a3c9a911c581319e7ef24abbcc548f1b8c424f1b0a14f64f95262",
+      "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml": "67cab9a0b18465b9bc016f3010b6a36869e3b56f96b9b9583f3171db4d08449e",
+      "crates/ferric-browser-engine-qt/src/bridge.rs": "ba1b4a495087e8f85f872ca12b47e4134382fad89491ba258465f850557a4e9c",
+      "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs": "e0a2ce25740bd4ad66dc9b74a927f638a53fcc21f8acf6e95507c31c09dba127",
+      "crates/ferric-browser-engine-qt/src/engine_requests.rs": "6530239164f533527b5c96f40e104bc6e7e6eb65de9d05407789066b847e3ddf",
+      "crates/ferric-browser-engine-qt/build.rs": "a5a018c9d94b63ffe4c1a6773612a881ea41fff58c0cef92c40305945db1f79f",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt": "c67720932a0078408ec716105d51346e9377e354ac7a79e5d99465beabc11118",
+      "crates/ferric-browser-engine-qt/src/browser_ui_input.rs": "526c21cd179185518162d945b13664518d1c1b991d1a03785bec1c3c88174740"
+    },
+    "source4_assignment": "evidence/F02e2s-a4/ASSIGNMENT.json",
+    "lifecycle": "evidence/F02e2s-a4/ATTEMPT_LIFECYCLE.jsonl",
+    "audit_repository": "control/A55-parent-lifecycle-audit.git",
+    "audit_ref_prefix": "refs/ferric/f02e2s-a4/",
+    "audit_owner_kind": "F02e2s-A55-lifecycle",
+    "terminal_marker": "evidence/F02e2s-a4/TERMINAL.json",
+    "source_freeze": "evidence/F02e2s-a4/SOURCE_FREEZE.json",
+    "source_review": "evidence/F02e2s-a4/SOURCE_REVIEW.json",
+    "integrated_freeze": "evidence/F02e2s-a4/INTEGRATED_FREEZE.json",
+    "integrated_source_review": "evidence/F02e2s-a4/INTEGRATED_SOURCE_REVIEW.json",
+    "native_policy_freeze": "evidence/F02e2s-a4/NATIVE_POLICY_FREEZE.json",
+    "native_runner_review": "evidence/F02e2s-a4/NATIVE_RUNNER_REVIEW.json",
+    "native_command_manifest": "evidence/F02e2s-a4/NATIVE_COMMANDS-A55-a4.json",
+    "manifest_binding": "evidence/F02e2s-a4/FINAL_MANIFEST_BINDING.json",
+    "gate_evidence_review": "evidence/F02e2s-a4/GATE_EVIDENCE_REVIEW.json",
+    "native_run": "evidence/F02e2s-a4/native/NATIVE_RUN-A55-a4.json",
+    "native_closure": "evidence/F02e2s-a4/native/NATIVE_LEASE_CLOSED-A55-a4.json",
+    "target_relative": "builds/native-F02e2s-a4-qt6112-qmake",
+    "private_bus_helper": {
+      "path": "evidence/A53/private_bus-r5.py",
+      "sha256": "2c6c963ba71eb9515ec386aa15b1acc37c2a06fdc29e76f47e8d4c21eacc5fc5"
+    },
+    "private_bus_cleanup": "evidence/F02e2s-a4/native/private-bus-cleanup.json",
+    "engine_supervisor_seconds": 5400,
+    "readiness_seconds": 30,
+    "ctest_test_seconds": 180,
+    "native_gate_sequence": [
+      "read-only-sdk-selection-preflight",
+      "exact-source-release-engine-build",
+      "public-page-host-harness-configure",
+      "integration-target-build",
+      "robust-executable-link-order-verification",
+      "nonzero-ctest-discovery",
+      "T014e2s-serial"
+    ],
+    "accepted_child": {
+      "state_record_sha256": "e8e1042519185284ec38bb84f852d61e02e53c3031bbaa9cbf4412cb8e8f1b45",
+      "source_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+      "source_tree": "6c46cb7fc9847fbeb2704c95a5e87b52973d5da6",
+      "evidence": {
+        "path": "evidence/F02e2i-a4/EVIDENCE.json",
+        "sha256": "765a0155f51d046b6f3ae282854423c8ebbae35db2f9f5f8768ec8a6221d9e7a"
+      },
+      "attempts": 4,
+      "source5_authorized": false
+    },
+    "accepted_slices_before_source4": 37,
+    "worker_source3_budget": 95242,
+    "reviewer_source3_budget": 95767,
+    "native_gate_receipts": [
+      "evidence/F02e2s-a4/native/sdk-preflight.json",
+      "evidence/F02e2s-a4/native/exact-source-release-engine-build/receipt.json",
+      "evidence/F02e2s-a4/native/public-page-host-harness-configure/receipt.json",
+      "evidence/F02e2s-a4/native/integration-target-build/receipt.json",
+      "evidence/F02e2s-a4/native/link-order-verification.json",
+      "evidence/F02e2s-a4/native/nonzero-ctest-discovery/receipt.json",
+      "evidence/F02e2s-a4/native/T014e2s-serial/receipt.json"
+    ],
+    "worker_result": "evidence/F02e2s-a4/WORKER_RESULT.json",
+    "source_budget": "evidence/F02e2s-a4/SOURCE_BUDGET.json",
+    "source_read_log": "evidence/F02e2s-a4/worker/SOURCE_READ_LOG.json",
+    "worker_success_result": "source_complete",
+    "source4_worktree_relative": "worktrees/F02e2s-a4",
+    "integrated_worktree_relative": "worktrees/F02e2s-a4-integrated",
+    "pack_implementation_review": "evidence/A55/PACK_IMPLEMENTATION_REVIEW_FINAL.json",
+    "native_coordinator": "evidence/F02e2s-a4/native_a55.py",
+    "discovery_script": "evidence/F02e2s-a4/discover_a55.py"
+  },
+  "task": {
+    "id": "F02e2s",
+    "title": "Qualify page reparenting with production-driven profile bootstrap",
+    "lane": "presentation",
+    "depends_on": [
+      "F02e1",
+      "F02e2q",
+      "F02e2i"
+    ],
+    "contracts": [
+      "C00",
+      "C01",
+      "C02",
+      "C14"
+    ],
+    "allowed_paths": [
+      "crates/ferric-browser-engine-qt/src/public_page_host.h",
+      "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+      "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+      "crates/ferric-browser-engine-qt/src/bridge.rs",
+      "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+      "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+      "crates/ferric-browser-engine-qt/build.rs",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+      "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+    ],
+    "steps": [
+      "A55 sole source4 starts from exact accepted F02e2i integration a2b39ea649a9664572081eaead771c3db7a0b943, reapplies complete pinned failed3 delta62c22658 as a patch, then applies only the pinned one-file test-helper lifetime/regression repair. Never use a failed candidate as the source base.",
+      "Add a distinct T014e2s slot and CTest registration. Keep the original T014e2 and successor T014e2r registrations and their historical results intact except for direct superseded_by mappings to T014e2s. Never run either old CTest ID or QtTest slot.",
+      "Drive asynchronous profile bootstrap for both BrowserUi instances created by the retained integration body, including the later-created foreign-profile UI. Give each UI a scoped bounded QTimer/event-loop pump invoking existing BrowserUi::poll_config(); stop and disconnect each pump before its corresponding BrowserUi is destroyed.",
+      "Do not set readiness properties, forge profile IDs, insert tabs, or bypass privacy/profile/owner validation. On timeout, report each UI\u2019s poll invocation result, profile ID, tab_count, profile_bootstrap_pending, profile_startup_notice and status_text.",
+      "Preserve every same-page attach/detach, document identity, stale and foreign-owner rejection, focus, geometry, native dialog parent and lifecycle assertion. Do not delete, weaken, or replace the original page-host assertions.",
+      "If root-cause repair requires a product path outside this exact ten-path list, stop and request another independently reviewed amendment before editing.",
+      "A55 preserves all production typed live-session identity checks, Ephemeral fixtures, durable ids and original native assertions byte-for-byte. The only new edit is the exact pinned test helper/regression patch. No reset, same-attempt restart, correction/retry or source5; native work waits for complete independent source/integration/exact runner reviews."
+    ],
+    "kind": "implementation",
+    "locks": [
+      "public-page-host",
+      "bridge",
+      "test-registration",
+      "browser-ui-input"
+    ],
+    "recipe": "application",
+    "requirement_id": "EF-F02",
+    "test_ids": [
+      "T014e2s"
+    ],
+    "max_changed_product_files": 10,
+    "path_budget_amendment": "A52",
+    "worker_may_delegate": false,
+    "new_paths_notice": "A52 creates a fresh three-attempt successor after F02e2r exhausted at 3/3. It reuses exactly A44/A50\u2019s ten product paths and four locks; no eleventh path or new lock is allowed. F02e2 (6/6) and F02e2r (3/3) remain failed with A48/A50/A51 evidence immutable until independently reviewed T014e2s acceptance. The old T014e2 and T014e2r entries remain historical and are never executed.",
+    "slice_file": "slices/F02e2s.md",
+    "read_anchors": [
+      "crates/ferric-browser-engine-qt/src/public_page_host.h",
+      "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+      "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+      "crates/ferric-browser-engine-qt/src/bridge.rs",
+      "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+      "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+      "crates/ferric-browser-engine-qt/build.rs",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+      "crates/ferric-browser-engine-qt/src/browser_ui_input.rs",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/tst_static_qml_registration.cpp",
+      "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp",
+      "crates/ferric-browser-engine-qt/tests/portal/tst_browser_file_choosers.cpp",
+      "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+      "crates/ferric-browser-engine-qt/qml/components/FerricRuntimeController.qml",
+      "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+      "crates/ferric-browser-engine-qt/src/browser_ui_profile_setup.rs",
+      "crates/ferric-browser-application/src/profile_session.rs",
+      "crates/ferric-browser-application/src/lib.rs"
+    ],
+    "parent_id": "F02e",
+    "identity_prerequisite_amendment": "A53",
+    "max_attempts": 4,
+    "test_helper_repair_amendment": "A55"
+  },
+  "initial_parent": {
+    "status": "failed",
+    "attempts": 3,
+    "author": "/root/f02e2s_a3_continued_worker",
+    "reviewer": null,
+    "evidence": null,
+    "blocker": "Historical failed3; source4 requires exact independently accepted A55 pack authority and one immutable assignment.",
+    "attempt_budget": 3,
+    "scope_amendment": "A52",
+    "test_id": "T014e2s",
+    "base_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+    "base_tree": "6c46cb7fc9847fbeb2704c95a5e87b52973d5da6",
+    "allowed_paths": [
+      "crates/ferric-browser-engine-qt/src/public_page_host.h",
+      "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+      "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+      "crates/ferric-browser-engine-qt/src/bridge.rs",
+      "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+      "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+      "crates/ferric-browser-engine-qt/build.rs",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+      "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+      "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+    ],
+    "locks": [
+      "public-page-host",
+      "bridge",
+      "test-registration",
+      "browser-ui-input"
+    ],
+    "packet": "packets/F02e2s-a3-continued-A53.md",
+    "packet_sha256": "7fb34eb02d8f7d0f91ec1249563be008ce050e395853a830fa70fccf36db71de",
+    "pack_revision_sha": "8f44158c8cdd946c32f84bbae803363c07b3551d",
+    "pack_revision_tree": "eee67dfd016f36cf552b4dafa27b1c84f20faeb9",
+    "source_changes_authorized": false,
+    "native_work_authorized_after_independent_source_review": false,
+    "native_lease_active": false,
+    "fresh_target_pattern": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2s-aN-qt6112-qmake",
+    "review_requirement": "Independent source review must accept the exact candidate before native qualification.",
+    "worker": "/root/f02e2s_a3_continued_worker",
+    "worktree": "/home/tom/Projects/ferric-everyday-work/worktrees/F02e2s-a3-continued",
+    "branch": "work/everyday-v1-F02e2s-a3-continued",
+    "assigned_at_utc": "2026-10-27T08:59:50Z",
+    "heartbeat_at_utc": "2026-10-27T08:59:50Z",
+    "assignment": "evidence/F02e2s-a3/ASSIGNMENT.json",
+    "assignment_sha256": "f9fd44c9cae80a57618484b629e04b84d3e77405f54b0d35516291e41c05969f",
+    "native_work_authorized": false,
+    "source_review_status": "request_changes",
+    "source_manifest": null,
+    "source_manifest_sha256": null,
+    "worker_result": "evidence/F02e2s-a3/continued-worker/final/WORKER_RESULT.json",
+    "worker_result_sha256": "456a3281666919e531a17cc10d0a1264ba18dfee1797a66dbe856aee4a707612",
+    "source_budget": "evidence/F02e2s-a3/continued-worker/final/SOURCE_BUDGET.json",
+    "source_budget_sha256": "2e73096fba0b5554dd96532886baec2fff29267782e7e9f9fed192528e74d6c7",
+    "submitted_at_utc": "2026-10-27T07:41:44Z",
+    "source_review": "evidence/F02e2s-a3/SOURCE_REVIEW_A53.json",
+    "source_review_sha256": "677c7f0d91605a1299d85faae161fcf3aec7cd3547df4ef09400ab6d65939ae8",
+    "source_review_budget": "evidence/F02e2s-a3/SOURCE_REVIEW_BUDGET_A53.json",
+    "source_review_budget_sha256": "0fc628dd0b06c217a0dc682dda08bf3df71437be5bfed92ec395fbe6ad18ea97",
+    "native_worktree": null,
+    "integration_branch": "work/everyday-v1-integration-A52-F02e2s-a1",
+    "integrated_source_review_status": "not_started_for_typed_identity_continuation",
+    "integrated_source_review": null,
+    "integrated_source_review_sha256": null,
+    "source_format_receipt": "evidence/F02e2s-a1/source-format/receipt.json",
+    "source_format_receipt_sha256": "13ae3f1da080ccf4ead633d1d6beb556f227fc83c3fc74d59ac2860a64ca8d0a",
+    "native_runner_review_status": "not_started_for_attempt3",
+    "native_runner_review": null,
+    "native_runner_review_sha256": null,
+    "native_command_manifest": null,
+    "native_command_manifest_sha256": null,
+    "native_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2s-a2-qt6112-qmake",
+    "attempt_stage": "failed_source_review_no_native",
+    "attempt_history": {
+      "1": {
+        "result": "failed_setup_before_compile",
+        "run_result": "evidence/F02e2s-a1/native/NATIVE_RUN-A52-a1.json",
+        "run_result_sha256": "b41bbe860a0d5c845d952bf5447aaee47ab1e56da7b7c0c59a35e39d7dff06b4",
+        "closure_record": "evidence/F02e2s-a1/native/NATIVE_LEASE_CLOSED-A52-a1.json",
+        "closure_record_sha256": "331bbf0b036c239ecacbd2728cc6e8a1d56aef6072a608b40a30c1dbab7ff613",
+        "reconciliation": "evidence/F02e2s-a1/SETUP_FAILURE_RECONCILIATION.json",
+        "reconciliation_sha256": "9109accc206820db6a476d729c961603df89822702164375746551e9c74944a5"
+      },
+      "2": {
+        "result": "failed_primary_profile_identity",
+        "native_run": "evidence/F02e2s-a2/native/NATIVE_RUN-A52-a2.json",
+        "native_run_sha256": "c95650d7caf8967b352a6dbc09d810df3a1596a215bc19cdcdcf13e525f2d6a9",
+        "lease_closure": "evidence/F02e2s-a2/native/NATIVE_LEASE_CLOSED-A52-a2.json",
+        "lease_closure_sha256": "fab15750237db01424cfc05aad311f8d1ae2771dd929329b4519d00c0bdebb82",
+        "failure_diagnosis": "evidence/F02e2s-a2/FAILURE_DIAGNOSIS.json",
+        "failure_diagnosis_sha256": "5f77cc14548cee50327b71526c826ecfb30cd8e15f806c425d8509ad240f8597"
+      },
+      "3": {
+        "result": "source_request_changes_no_native_execution",
+        "candidate_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
+        "candidate_tree": "d2ad031ccd9ed37dc9dc370c081e9c684111ab01",
+        "source_review": "evidence/F02e2s-a3/SOURCE_REVIEW_A53.json",
+        "source_review_sha256": "677c7f0d91605a1299d85faae161fcf3aec7cd3547df4ef09400ab6d65939ae8",
+        "worker_result": "evidence/F02e2s-a3/continued-worker/final/WORKER_RESULT.json",
+        "worker_result_sha256": "456a3281666919e531a17cc10d0a1264ba18dfee1797a66dbe856aee4a707612",
+        "source_budget": "evidence/F02e2s-a3/continued-worker/final/SOURCE_BUDGET.json",
+        "source_budget_sha256": "2e73096fba0b5554dd96532886baec2fff29267782e7e9f9fed192528e74d6c7",
+        "source_read_log": "evidence/F02e2s-a3/continued-worker/SOURCE_READ_LOG.json",
+        "source_read_log_sha256": "3f004c55672631786f1d0d57b87f6c2221412fcafb604cabc5201bc3000caada",
+        "verified_source_read_bytes": 95242,
+        "finding": "A53-SR2-001",
+        "native_gates_run": false
+      }
+    },
+    "attempt2_reason": "Coordinator-only mixed-registry repair; reviewed product source unchanged; new native qualification attempt, no attempt1 replay.",
+    "native_work_started": false,
+    "scope_amendment_request": "evidence/F02e2s-a3/SCOPE_AMENDMENT_REQUEST.json",
+    "scope_amendment_request_sha256": "32b97deb0c2a59e74f4dd65097a60d4c65bd8133b28cae814ed75807d7dad378",
+    "staged_reapply_tree": "bd0b6d35940d240f1ccdde17fdb495a6fedf45c6",
+    "continuation_A53": {
+      "prerequisite": "F02e2i",
+      "reserved_attempt": 3,
+      "phase": "source_review_failed",
+      "attempt_reset": false,
+      "attempt4_authorized": false,
+      "accepted_prerequisite_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+      "accepted_prerequisite_tree": "6c46cb7fc9847fbeb2704c95a5e87b52973d5da6"
+    },
+    "preserved_failures_A53": {
+      "attempt1": {
+        "run": "evidence/F02e2s-a1/native/NATIVE_RUN-A52-a1.json",
+        "run_sha256": "b41bbe860a0d5c845d952bf5447aaee47ab1e56da7b7c0c59a35e39d7dff06b4",
+        "closure": "evidence/F02e2s-a1/native/NATIVE_LEASE_CLOSED-A52-a1.json",
+        "closure_sha256": "331bbf0b036c239ecacbd2728cc6e8a1d56aef6072a608b40a30c1dbab7ff613"
+      },
+      "attempt2": {
+        "run": "evidence/F02e2s-a2/native/NATIVE_RUN-A52-a2.json",
+        "run_sha256": "c95650d7caf8967b352a6dbc09d810df3a1596a215bc19cdcdcf13e525f2d6a9",
+        "closure": "evidence/F02e2s-a2/native/NATIVE_LEASE_CLOSED-A52-a2.json",
+        "closure_sha256": "fab15750237db01424cfc05aad311f8d1ae2771dd929329b4519d00c0bdebb82"
+      }
+    },
+    "scope_request_A53": {
+      "path": "evidence/F02e2s-a3/SCOPE_AMENDMENT_REQUEST.json",
+      "sha256": "32b97deb0c2a59e74f4dd65097a60d4c65bd8133b28cae814ed75807d7dad378"
+    },
+    "source_budget_carry_forward_A53": {
+      "path": "evidence/F02e2s-a3/SOURCE_READ_RECONSTRUCTION-r2.json",
+      "sha256": "d9701edcd18c6594c940b5a945afbd9ba0c429a075f8b87227651f8fef892364",
+      "used_bytes": 75678,
+      "hard_limit_bytes": 96000,
+      "soft_limit_bytes": 48000,
+      "remaining_hard_bytes": 20322,
+      "scope": "same reserved F02e2s source attempt3; no reset"
+    },
+    "continuation_packet_A53": {
+      "path": "packets/F02e2s-A53-resume-template.md",
+      "sha256": "de9617a1d3e7b0c41114dbe3c5132992c34d17e5dbbd6897891aef115633b6b0",
+      "utf8_bytes": 23912,
+      "dispatch_status": "template_only_until_assignment_and_prerequisites_accepted"
+    },
+    "preserved_qualifier_fields_before_A53_continuation": {
+      "source_review": "evidence/F02e2s-a1/SOURCE_REVIEW_d28.json",
+      "source_review_sha256": "ee544f7e9abacaecc44979131f2f16afa7f9e58b9ca86fbd615ff4cdab178740",
+      "integrated_source_review": "evidence/F02e2s-a1/INTEGRATED_SOURCE_REVIEW_d28.json",
+      "integrated_source_review_sha256": "c994a0746e660555793c2c674d0f4256b6a8446f937696ff78b761b255925b66",
+      "native_runner_review": "evidence/F02e2s-a2/NATIVE_RUNNER_REVIEW_final.json",
+      "native_runner_review_sha256": "c30c4ef2678aed47f4e4d1190a3e2ef59156590133318507b34322fded4f256a",
+      "native_command_manifest": "evidence/F02e2s-a2/NATIVE_COMMANDS-A52-a2.json",
+      "native_command_manifest_sha256": "8e15458ef468f468b2e2844c2243970e487f65d2fdcec278633eb7a7cb0513c9",
+      "source_manifest": "evidence/F02e2s-a1/SOURCE_MANIFEST.json",
+      "source_manifest_sha256": "ed9523ad73a042d2b9a46b9c129602ea9eccfa4e05132f4f2c7b728e6bc53669",
+      "worker_result": "evidence/F02e2s-a3/WORKER_RESULT.json",
+      "worker_result_sha256": "553ef71d346a5ba46d2a289f9d684024cc02493cd7c6b70243eadfb900393a02",
+      "source_budget": "evidence/F02e2s-a3/SOURCE_BUDGET.json",
+      "source_budget_sha256": "f2bc7d0543b4a6f2e494940901f32ce800e217d82823765b33b110559e22baef"
+    },
+    "native_source_sha": null,
+    "native_source_tree": null,
+    "source_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
+    "source_tree": "d2ad031ccd9ed37dc9dc370c081e9c684111ab01",
+    "compile_test_authorized": false,
+    "continuation_assignment_A53": {
+      "path": "evidence/F02e2s-a3/CONTINUATION_ASSIGNMENT-A53.json",
+      "sha256": "0ff69d3ff4a913005215cbff4222d6af8160513d829e57ceb9206fc6beb07bf0"
+    },
+    "verified_source_read_bytes": 95242,
+    "implementation_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
+    "implementation_tree": "d2ad031ccd9ed37dc9dc370c081e9c684111ab01",
+    "source_read_log": "evidence/F02e2s-a3/continued-worker/SOURCE_READ_LOG.json",
+    "source_read_log_sha256": "3f004c55672631786f1d0d57b87f6c2221412fcafb604cabc5201bc3000caada",
+    "source4_A55_authorized": false
+  },
+  "history": {
+    "1": {
+      "state_record_sha256": "2276e0e896641002d28084bcbebece84c7db92b3822f691820c02b15eb5ef5a3",
+      "files": {
+        "run_result": {
+          "path": "evidence/F02e2s-a1/native/NATIVE_RUN-A52-a1.json",
+          "sha256": "b41bbe860a0d5c845d952bf5447aaee47ab1e56da7b7c0c59a35e39d7dff06b4"
+        },
+        "closure_record": {
+          "path": "evidence/F02e2s-a1/native/NATIVE_LEASE_CLOSED-A52-a1.json",
+          "sha256": "331bbf0b036c239ecacbd2728cc6e8a1d56aef6072a608b40a30c1dbab7ff613"
+        },
+        "reconciliation": {
+          "path": "evidence/F02e2s-a1/SETUP_FAILURE_RECONCILIATION.json",
+          "sha256": "9109accc206820db6a476d729c961603df89822702164375746551e9c74944a5"
+        }
+      }
+    },
+    "2": {
+      "state_record_sha256": "3174c81172450dd2862f9ba6276d508b03f6762d12e639a91d0fc619d81d6f2e",
+      "files": {
+        "native_run": {
+          "path": "evidence/F02e2s-a2/native/NATIVE_RUN-A52-a2.json",
+          "sha256": "c95650d7caf8967b352a6dbc09d810df3a1596a215bc19cdcdcf13e525f2d6a9"
+        },
+        "lease_closure": {
+          "path": "evidence/F02e2s-a2/native/NATIVE_LEASE_CLOSED-A52-a2.json",
+          "sha256": "fab15750237db01424cfc05aad311f8d1ae2771dd929329b4519d00c0bdebb82"
+        },
+        "failure_diagnosis": {
+          "path": "evidence/F02e2s-a2/FAILURE_DIAGNOSIS.json",
+          "sha256": "5f77cc14548cee50327b71526c826ecfb30cd8e15f806c425d8509ad240f8597"
+        }
+      }
+    },
+    "3": {
+      "state_record_sha256": "20941e73600026b0066c1cbb24956bbb44bac37e56c8a37cd605b547eaa6385f",
+      "files": {
+        "source_review": {
+          "path": "evidence/F02e2s-a3/SOURCE_REVIEW_A53.json",
+          "sha256": "677c7f0d91605a1299d85faae161fcf3aec7cd3547df4ef09400ab6d65939ae8"
+        },
+        "worker_result": {
+          "path": "evidence/F02e2s-a3/continued-worker/final/WORKER_RESULT.json",
+          "sha256": "456a3281666919e531a17cc10d0a1264ba18dfee1797a66dbe856aee4a707612"
+        },
+        "source_budget": {
+          "path": "evidence/F02e2s-a3/continued-worker/final/SOURCE_BUDGET.json",
+          "sha256": "2e73096fba0b5554dd96532886baec2fff29267782e7e9f9fed192528e74d6c7"
+        },
+        "source_read_log": {
+          "path": "evidence/F02e2s-a3/continued-worker/SOURCE_READ_LOG.json",
+          "sha256": "3f004c55672631786f1d0d57b87f6c2221412fcafb604cabc5201bc3000caada"
+        }
+      }
+    }
+  },
+  "retained_external_artifacts": {
+    "evidence/F02e2s-a3/SOURCE_REVIEW_DELIVERY_LIMIT.json": {
+      "path": "evidence/F02e2s-a3/SOURCE_REVIEW_DELIVERY_LIMIT.json",
+      "sha256": "163568bf11cd1dd7d9e27b60750d4b65570ed439eebb3b838c58febb077c4a4a"
+    },
+    "evidence/F02e2s-a3/SOURCE_REVIEW_DELIVERY_BUDGET.json": {
+      "path": "evidence/F02e2s-a3/SOURCE_REVIEW_DELIVERY_BUDGET.json",
+      "sha256": "a55b213a3947cc7e59dabaad4876c553c05c95f37c10b78ecc144a19057e2331"
+    },
+    "evidence/F02e2s-a3/SOURCE_REVIEW_BUDGET_A53.json": {
+      "path": "evidence/F02e2s-a3/SOURCE_REVIEW_BUDGET_A53.json",
+      "sha256": "0fc628dd0b06c217a0dc682dda08bf3df71437be5bfed92ec395fbe6ad18ea97"
+    },
+    "evidence/A55/PLAN_REVIEW_INCOMPLETE_BUDGET.json": {
+      "path": "evidence/A55/PLAN_REVIEW_INCOMPLETE_BUDGET.json",
+      "sha256": "0fae698d85feb6d2f6dfe3ab32fd8aa15d3abba592ab7d8c6b065b842631970e"
+    },
+    "evidence/A55/PLAN_REVIEW_BUDGET_INCOMPLETE.json": {
+      "path": "evidence/A55/PLAN_REVIEW_BUDGET_INCOMPLETE.json",
+      "sha256": "7c9527a113746ac9c8b4188d77aa4ff5778b31e6b1092c4e135f2b1098d08735"
+    },
+    "evidence/F02e2s-a3/SOURCE_READ_RECONSTRUCTION-r2.json": {
+      "path": "evidence/F02e2s-a3/SOURCE_READ_RECONSTRUCTION-r2.json",
+      "sha256": "d9701edcd18c6594c940b5a945afbd9ba0c429a075f8b87227651f8fef892364"
+    },
+    "evidence/F02e2s-a3/continued-worker/WORKER_RESULT.json": {
+      "path": "evidence/F02e2s-a3/continued-worker/WORKER_RESULT.json",
+      "sha256": "aad7f6334a7fb4f47587fa869ba95ecab1b2318d91c736725b9ac498b073197e"
+    },
+    "evidence/F02e2s-a3/continued-worker/SOURCE_BUDGET.json": {
+      "path": "evidence/F02e2s-a3/continued-worker/SOURCE_BUDGET.json",
+      "sha256": "8eb905523e749074809cd77267701fb647b885913e0cb8e0794fa8a55ec6366f"
+    },
+    "evidence/F02e2s-a3/NATIVE_RUNNER_PRELIMINARY_REVIEW.json": {
+      "path": "evidence/F02e2s-a3/NATIVE_RUNNER_PRELIMINARY_REVIEW.json",
+      "sha256": "d3a42beba0b5dd2c1ed885a9dca80c45c22991415364b2abedf473e8bc28e2c1"
+    },
+    "evidence/F02e2s-a3/NATIVE_RUNNER_RETRIEVAL_BUDGET.json": {
+      "path": "evidence/F02e2s-a3/NATIVE_RUNNER_RETRIEVAL_BUDGET.json",
+      "sha256": "6508f714575624ef83f4f17ba373c62a39c4243a8d93c215ffbaf1bf6587d32a"
+    }
+  },
+  "prior_attempt_exceptions": {
+    "P00a": {
+      "amendment": "A37",
+      "default_limit": 3,
+      "authorized_limit": 4,
+      "reason": "User-authorized fourth attempt: repair pinned-Qt certificate handle and Reload API compile failures, then execute original T046."
+    },
+    "W01b": {
+      "amendment": "A37",
+      "default_limit": 3,
+      "authorized_limit": 4,
+      "reason": "User-authorized fourth attempt: reconstruct reviewed routing and fix E0716 while preserving accepted W01a/W01c; execute original T104."
+    },
+    "F02e2": {
+      "amendment": "A48",
+      "default_limit": 3,
+      "authorized_limit": 6,
+      "reason": "A48 authorizes one final source attempt 6 from accepted A5 solely to add the QQuickWidget complete-type include after A47 harness compile failure; preserve attempts 1-5 and stop after any attempt-6 failure with no attempt 7 or retry."
+    },
+    "F02e2i": {
+      "amendment": "A54",
+      "default_limit": 3,
+      "authorized_limit": 4,
+      "reason": "A54 permits only one final source attempt4 for the pinned three cfg(test) replacements after three preserved source-review failures; no source5 or retry, production delta, test reduction or parent4."
+    }
+  },
+  "prior_policy_amendments": {
+    "P00a": "A37",
+    "W01b": "A37",
+    "F02e2": "A48",
+    "F02e2i": "A54"
+  },
+  "prior_policy_limits": {
+    "P00a": 4,
+    "W01b": 4,
+    "F02e2": 6,
+    "F02e2i": 4
+  },
+  "source_map": {
+    "id": "A55",
+    "slice": "F02e2s",
+    "status": "independent plan accepted; pack implementation pending",
+    "plan_review": {
+      "path": "evidence/A55/PLAN_REVIEW.json",
+      "sha256": "abffbaf695d2671c95b47663e9ffd11ded8a6b24712e74d77af31f1847e8c07b"
+    },
+    "proposal": {
+      "path": "evidence/A55/PROPOSAL.json",
+      "sha256": "22236bf76f4e056e15aa494fd4ed3435ec4f1e07c6cf8bab20a754ed919562d9"
+    },
+    "exact_test_patch": {
+      "path": "evidence/A55/TEST_HELPER_LIFETIME_REPAIR.diff",
+      "sha256": "b22e3d7a316578a32510a632672ec3db9d65a76865badc23b932d32551b52277",
+      "bytes": 3285
+    },
+    "new_source_attempt": 4,
+    "previous_source_attempts_preserved": [
+      1,
+      2,
+      3
+    ],
+    "attempt_reset": false,
+    "attempt5_authorized": false,
+    "added_paths": [],
+    "removed_paths": [],
+    "locks": [
+      "public-page-host",
+      "bridge",
+      "test-registration",
+      "browser-ui-input"
+    ],
+    "path_owners": {
+      "F02e2s": [
+        "crates/ferric-browser-engine-qt/src/public_page_host.h",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+      ]
+    },
+    "only_new_edit": "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+    "accepted_base_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+    "failed3_reapply_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
+    "production_changes_relative_to_failed3_authorized": false,
+    "original_tests_and_native_gates_unchanged": true
+  },
+  "mandatory_conditions": [
+    {
+      "id": "A55-P01",
+      "requirement": "Preserve all parent attempts1/2/3, their exact canonical history hashes, source/review/native failure artifacts and actual budgets. Source3 worker95242/96000 and full reviewer95767 bytes remain charged; no reset, relabel, deletion, same-attempt restart or replacement of failed3. Preserve every earlier failed native/source result and the prior INCOMPLETE_BUDGET plan review as non-authoritative history."
+    },
+    {
+      "id": "A55-P02",
+      "requirement": "Preserve the qualified accepted F02e2i child at a2b39ea/tree6c46cb7f on the same actual eight focused and146 full tests and reviews. No child source5, new child qualification or implied native/device/performance qualification. Preserve37 accepted slices and unrelated task state."
+    },
+    {
+      "id": "A55-P03",
+      "requirement": "Leave canonical A53 and A54 contracts/amendment/source-map sections byte-identical. Add an exact independently reviewable A55 contract/overlay and version only the named parent cap, failed3/initial snapshot, continuation, base/content/authority, assignment/lifecycle and native exact4 admission rules. Explicitly handle the A53 exact task/initial/reserved3 rules and A54 whole-policy pins; no bypass or wholesale validator disablement."
+    },
+    {
+      "id": "A55-P04",
+      "requirement": "Only F02e2s:A55:4 may receive a new exception with max4. Keep GLOBAL_MAX_ATTEMPTS3, all prior exception values, every other cap, tasks, tests, dependencies, locks, allowed paths, case mappings and thresholds unchanged. Reject bool/noninteger/out-of-range/malformed limits and unauthorized4/5. No reset, replay or fifth attempt."
+    },
+    {
+      "id": "A55-P05",
+      "requirement": "Source4 must start from exact accepted child a2b39ea649a9664572081eaead771c3db7a0b943/tree6c46cb7fc9847fbeb2704c95a5e87b52973d5da6, reapply the pinned failed3 source delta62c226582c4b7cd50d162b1109f884cba0246bf0/treed2ad031ccd9ed37dc9dc370c081e9c684111ab01, then apply only exact patchb22e3d7a316578a32510a632672ec3db9d65a76865badc23b932d32551b52277. The failed candidate is never the base. Pin the one test path and expected file hashb19b92eaca2addac6281aa534f35465420b79034ba0cfd1059c3dc469088fa9b; enforce all nine product/build hashes and exact remaining source content. Preserve typed identity, privacy, fixtures and every original assertion."
+    },
+    {
+      "id": "A55-P06",
+      "requirement": "Before any source4 readiness/assignment, require independently accepted exact A55 pack commit/tree, complete tooling regression tests, pack validation, regenerated checksums and execution packet<=24000 bytes. Bind plan review/budget/proposal/patch/implementation review digests to the pack. Plan acceptance alone authorizes preparation only. Root alone writes control state; source4/native work stays unauthorized until these prerequisites are satisfied."
+    },
+    {
+      "id": "A55-P07",
+      "requirement": "Use one immutable source4 assignment bound to exact worker, base, reapply source, test patch/content, accepted pack commit/tree, unique run nonce, fixed worktree/target/review/evidence paths and source budget. Freeze exact source SHA/tree before independent review. Keep strict source actor and resource ownership, path limits,48KB soft/96KB hard per new attempt, no reset of old budgets, and no remote/merge/install."
+    },
+    {
+      "id": "A55-P08",
+      "requirement": "An ordered audited lifecycle must record each source/review/integration/native gate start before execution and allow each once. Preserve a separately owned immutable audit store/refs outside rollback of mutable control/evidence. Reject missing/deleted/replaced assignment, journal, witness, artifact, reordered event, changed nonce, phase rollback, receipt replacement, alternate review path or replay. No lifecycle/audit-store recreation after assignment; retain terminal failure history."
+    },
+    {
+      "id": "A55-P09",
+      "requirement": "Stop permanently on any source, source-budget, independent-review, integration, compiler, test, timeout, output, receipt or evidence failure, including interruption/incomplete execution after start. Terminal source4 failure forbids correction, resubmission, resumed phase, native rerun or attempt5. Successful progression must not admit retries by renaming directories, replacing receipts, moving phase/state back or rolling history back."
+    },
+    {
+      "id": "A55-P10",
+      "requirement": "Require complete independent exact-source review, serial integration onto the accepted base, independent exact integrated-source confirmation and independent exact runner/manifest review before native work. Independent authors must differ from source worker/root as applicable. Do not reuse source3 acceptance or preliminary runner review as exact source4/integrated-runner acceptance."
+    },
+    {
+      "id": "A55-P11",
+      "requirement": "Execute unchanged seven native gates once, in their fixed order, with one fixed receipt/output set on fresh owned native-F02e2s-a4-qt6112-qmake. Preserve every A52/A53 Qt6.11.2+KF6 ABI/include/link/runtime, owner/lease/monitor/helper proof, exact-source binding, jobs2/locked/offline, readiness30s, CTest180s and engine supervisor5400 requirement. Native acceptance may version only exact A55-authorized4 admission; all gate semantics remain. Only actual T014e2s serial verbose may qualify, with nonzero discovery and zero failures/skips; no new CTest ID, retry/skip, physical/security/performance threshold change or unavailable qualification."
+    },
+    {
+      "id": "A55-P12",
+      "requirement": "Acceptance/supersession requires actual passing helper regression assertions and all original page/owner/document/focus/dialog/geometry/lifecycle assertions in T014e2s output, exact source/target receipts and a fixed independent gate-evidence review. A complete independent pack implementation review must verify the narrow overlay and meaningful negative regression coverage for cap/base/content/history/authority/assignment/audit/failure/replay/gate-order/receipt safeguards before source assignment."
+    }
+  ],
+  "prior_other_tasks_sha256": "735c0f595c8dd65108ff2d47d1947bbd745689fa5a41815487388b7a1bfb8ae2",
+  "prior_initial_remainder_sha256": "a17c8a872fbe61f2b4023f7eb50ce800a5da9923a3c3516fb0854124c642f13a",
+  "prior_test_matrix_sha256": "c434cce243d9ec6065ecb9ec5f23aaadaa0b4c4ff42fd61d59b2961ae26044e9",
+  "prior_source_map_sha256": "59cec1011f71fba3b80948e7993deabd8b35f91d8950af3e2c682d37c754c135",
+  "prior_contract_sha256": {
+    "profile-identity.A53.json": "146c7a691de8029a27fa98d11bf403fb2297acfe4626bebac79c8f2422f48741",
+    "profile-identity-repair.A54.json": "08bde2b22c39345500157cdc8e843cda8d4af3a272ecdaea71589dc688a2ce48"
+  },
+  "prior_amendment_sections_sha256": {
+    "A53": "6af962e7736eacdb5ff5cf5273a4fbf8ff884dbed0909e788d33764d964682bd",
+    "A54": "f0a5e0a24a787a9cbfde2dd3c8746c4549332bd737af0da80d3151ffa155ac79"
+  },
+  "accepted_states_sha256": {
+    "S00": "78a2b0a33201b8590b3ce72f0ca563e04aac20fb93145889b858c63cbc3e94d7",
+    "S01": "ccc06d4bfc21f763f9e94cdef93a33682727e98c7aa304d3be835209a99b8171",
+    "F00": "ed5ad3a1ae1cd91f72a6563f3fbe25854bf7c8c8f828eae94afd2b76017be099",
+    "F01": "3c10291ccb1765d3b576f0a59634a0f88834dd38f8823e0478b9068c0f246de9",
+    "F02a": "2dabaeb36aebf9cc47a32a2d1bd460531bdf0dde706c532bb0a4c3bbd20384b4",
+    "H00": "9eba8efb664a18fec389b76f50bbd9bfbc435f646f9010959cd66f77c991334e",
+    "P00": "b03f564921c9509ba8641c10fb8b29301439d58f4ff543ee59f793069fba703e",
+    "P00a": "2bb83fb70eee876ce4b03c6c5f2b5f8dced113e9965684054a6c139820079a6c",
+    "P00b": "28460ce5fe03626bd82a04a89ba3d614a5ed8b976187f00dcc7a3612f25c94a3",
+    "P00c": "23f1e839e36cf3682492a214e6b93452b5e1b82731ee40a60be3f02a4f9c6374",
+    "P01": "95711ff6945b27ee36639cbe52ffcda4efa55881d5a93315bc70c79605dbb519",
+    "P02": "2f0484fba4acb732a60ae17fdca2200d77d9184391319308d8506a1eec006bb7",
+    "P06": "c98d7cec5ad0c2c0e879bdc3088ea438a511d62b81e68e93e71b1b95f842a963",
+    "P07": "ed3da07f432b21cd140442c7aa436d8711a93a320a5bf9085ca15a867948d900",
+    "P13": "c4925a4a1eebf00a667e99ed85746823e590699e8b3ed2f7ed5ed8e60a08b433",
+    "W00": "21d081265c7ef32d715528b78b300e96c3c7140a0d5771725eba90cc053ffa17",
+    "W01": "bf0265e342080caafb69d5db2ec2b0521369139d72999b3fb4d19c8c36d2b53a",
+    "W04": "90f903c913b5f5db17aa474cc6797f84882530af699de5cfda26d6255af2a793",
+    "F01b": "5bfa29df60185fdb07e5b5a6a1f838846676f5fd2577de8c4f3d8ba27d5e5e5f",
+    "W01a": "6ca2f1ebb49a1656cee685b0183ebcc9b7dd9d493dad541a477b35381dc68967",
+    "W01b": "592e4255806bd3d35a39fd422c9bff4247de35a4899d54611e1829aab3bd9ddc",
+    "W01c": "9a134857048faf7d844ff8d4d89373a53c5b400116cbcf6462759ed60f4eab71",
+    "F02b1": "c89bef7e4d9f68a17031303c214f12950e76d481539f855feb02df5a998b3de7",
+    "H00a": "3ffbd87cf252a8895989e221123fc07f324ae4cfdb4a8596ea3b67f6d2cc5a5f",
+    "H00b": "83970fb281e5b723b024af923c4c269ffd3d7b34bfc8e55a5991919b35108da4",
+    "H00c": "bbc60a441715370a951f495d92640577281e0095e6d9f0fd37788cfdd5765c11",
+    "P02a": "82fd17eceda01b0c07742aeb898595ea0626824aabc5f0ee9614b4ff6ce5eb7d",
+    "P02b": "d8fd8ea59e30e45a232b13a21e06b5e25dc1b0efa567e86c680cdbe6266814d5",
+    "P02c": "81f5b9f11f51fd617a9b17f082e74b66269276340678c96830a27f71c10912f8",
+    "P05a": "f87c09c739f15c3ba297f4181831628c951f3b6650ac8e267935fedd55285acd",
+    "P07a": "79d814f503585e999bbbf6f8b1942f492394db1698cfe677b56391453e387c30",
+    "P07b": "c51fd53c9f70ba19cef81f4b9eaafcec1bff201f1fba7aa169e04f2453734c67",
+    "P05b1": "b8b4f135262e71fb3544d48359791178c1bcaef8ffd27509a5623926fe6abc14",
+    "F02e0": "18819d95bd57747047710ab3ec4553646aa91a58d0332a9bd7cc40205de015a5",
+    "F02e1": "74d901d2809935b8c3d8393fbdc47729fba1d210cad40d0f4f381010f2b85ccf",
+    "F02e2q": "7567fb05ba550503b0acc9c6466e33b202c0bc6f7508165fa42d8e8a6fedf45c",
+    "F02e2i": "e8e1042519185284ec38bb84f852d61e02e53c3031bbaa9cbf4412cb8e8f1b45"
+  },
+  "prior_limits": {
+    "max_noncoordinator_agents": 6,
+    "max_simultaneous_builds": 2,
+    "max_native_builds": 1,
+    "max_packet_bytes": 24000,
+    "source_read_soft_bytes": 48000,
+    "source_read_hard_bytes": 96000,
+    "max_worker_result_bytes": 6000,
+    "max_changed_product_files_per_slice": 8,
+    "max_attempts": 3,
+    "max_repair_rounds": 2
+  }
+}

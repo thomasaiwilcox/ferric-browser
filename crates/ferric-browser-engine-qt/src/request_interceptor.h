@@ -12,6 +12,7 @@
 #include <QtCore/QVariantList>
 #include <QtQml/qqmlregistration.h>
 #include <QtWebEngineCore/QWebEngineUrlRequestInterceptor>
+#include <QtWebEngineCore/QWebEngineProfile>
 #include <QtWebEngineQuick/QQuickWebEngineProfile>
 
 #include <memory>
@@ -83,6 +84,14 @@ public:
     qulonglong adblockEngineHandle() const;
     void setAdblockEngineHandle(qulonglong handle);
 
+    // Native credential admission observes the policy actually installed on
+    // this shared profile, independently of which window supplied it.
+    quint64 policyGeneration() const;
+    bool attachedToProfile(QObject *profile) const;
+    // Private native admission for the fixed phone relay set. Complex ABP
+    // path policy is unsupported unless the requesting site already bypasses
+    // it; never infer approval from an arbitrary representative relay URL.
+    bool phoneTransportAllowed(const QUrl &requestingOrigin) const;
     bool enabled() const;
     void setEnabled(bool enabled);
 
@@ -106,6 +115,7 @@ public:
     void interceptRequest(QWebEngineUrlRequestInfo &info) override;
 
     signals:
+    void policyChanged();
     void blockedHostsChanged();
     void exceptionHostsChanged();
     void bypassSitesChanged();
@@ -122,6 +132,10 @@ public:
     void blockedSiteCountsChanged();
 
 private:
+    struct ProfileAttachment {
+        QPointer<QWebEngineProfile> webProfile;
+        QPointer<QQuickWebEngineProfile> quickProfile;
+    };
     struct DownloadController {
         QUrl expected;
         QString proposed;
@@ -154,9 +168,12 @@ private:
     void recordDecision(const QString &site, const QVariantMap &decision);
     void scheduleEvidenceChanged();
     void detachProfiles();
+    void advancePolicyGenerationLocked();
+    void publishPolicyLocked(PolicySnapshot replacement);
 
     mutable QReadWriteLock policyLock_;
     std::shared_ptr<const PolicySnapshot> policy_;
+    quint64 policyGeneration_ = 1;
     QStringList blockedRuleHosts_;
     QStringList blockedRuleListIds_;
     QStringList exceptionRuleHosts_;
@@ -169,7 +186,9 @@ private:
     QHash<QString, QVariantMap> blockedRequestExplanations_;
     QHash<QString, QList<QVariantMap>> requestDecisionLog_;
     std::atomic_bool evidenceSignalPending_{false};
-    QList<QPointer<QQuickWebEngineProfile>> profiles_;
+    // Qt Quick and core profiles are distinct QObject APIs; retain each weakly
+    // so destruction detaches through the exact public owner type.
+    QList<ProfileAttachment> profiles_;
 };
 
 #endif

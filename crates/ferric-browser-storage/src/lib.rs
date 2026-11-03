@@ -13,6 +13,8 @@ mod lifecycle;
 mod permissions;
 mod profiles;
 mod roots;
+mod session_write_order;
+pub use session_write_order::SessionSaveOrder;
 mod sessions;
 mod start_page;
 mod store_catalog;

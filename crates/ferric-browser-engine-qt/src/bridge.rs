@@ -1,10 +1,44 @@
 //! Generated Qt interface declarations, isolated from application implementation.
 #![allow(unsafe_code, clippy::too_many_arguments)]
 use crate::BrowserUiRust;
+pub(crate) use crate::browser_ui_credential_binding::{
+    CredentialLeaseCapture, capture_native_credential_lease, credential_context_identity,
+    credential_view_association_current,
+};
+pub(crate) use crate::browser_ui_credentials::CredentialEvents;
+pub(crate) use crate::browser_ui_credentials::create_credential_events;
+pub(crate) use crate::credential_actor::{CredentialActor, new_credential_actor};
+pub(crate) use crate::page_window_focus::{
+    current_page_focus, page_focus_intent_current, supersede_page_focus, validate_page_focus,
+};
+
+pub(crate) use crate::browser_ui_page_transfer::{PageRollbackProof, capture_page_rollback};
 
 #[cxx_qt::bridge]
 pub(crate) mod qobject {
+    #[namespace = "ferric::credentials"]
+    struct NativeCredentialUpdate {
+        kind: i32,
+        width: u16,
+        modules: Vec<u8>,
+        payload: String,
+    }
+    /// Only the private native main-frame receiver constructs these facts.
+    /// This value has no QML or WebChannel representation.
+    #[namespace = "ferric::credentials"]
+    struct NativeCredentialFacts {
+        origin: String,
+        profile_generation: u64,
+        page_generation: u64,
+        document_generation: u64,
+        host_generation: u64,
+        presentation_generation: u64,
+        foreground: bool,
+    }
+
     unsafe extern "C++" {
+        include!("credential_process.h");
+        include!("credential_network_policy.h");
         include!("cxx-qt-lib/qstring.h");
         include!("cxx-qt-lib/core/qbytearray.h");
         include!("cxx-qt-lib/qstringlist.h");
@@ -13,6 +47,10 @@ pub(crate) mod qobject {
         include!("cxx-qt-lib/qguiapplication.h");
         include!("cxx-qt-lib/core/qvector/qvector_QByteArray.h");
         include!("gui_application.h");
+        include!("public_page_host.h");
+        include!("page_window_identity.h");
+        include!("popup_owner_bridge.h");
+        fn ferric_queue_page_creation_publication(ui: &BrowserUi);
         include!("url_display.h");
         type QString = cxx_qt_lib::QString;
         type QByteArray = cxx_qt_lib::QByteArray;
@@ -22,9 +60,57 @@ pub(crate) mod qobject {
         type QGuiApplication = cxx_qt_lib::QGuiApplication;
         type QVector_QByteArray = cxx_qt_lib::QVector<cxx_qt_lib::QByteArray>;
 
+        fn ferric_browser_native_page_window_identity(ui: &BrowserUi) -> QStringList;
+        fn ferric_browser_page_window_marker(ui: &BrowserUi) -> QString;
+
+        fn ferric_public_page_for_request(request: &QVariant) -> QVariant;
+
+        fn ferric_public_page_capture_request(
+            owner_token: &QString,
+            request: &QVariant,
+        ) -> QVariant;
+
+        fn ferric_public_page_host_tokens_live(
+            host_token: &QString,
+            page_owner_token: &QString,
+            profile_id: &QString,
+            attach: bool,
+        ) -> bool;
+
+        #[namespace = "ferric::credentials"]
+        type CredentialProcess;
+        #[namespace = "ferric::credentials"]
+        #[allow(
+            dead_code,
+            reason = "private process factory awaits the P05b2 admitted caller"
+        )]
+        fn new_credential_process() -> UniquePtr<CredentialProcess>;
+        #[namespace = "ferric::credentials"]
+        #[allow(
+            dead_code,
+            reason = "private event installation awaits the P05b2 admitted caller"
+        )]
+        fn install_rust_events(process: Pin<&mut CredentialProcess>, events: Box<CredentialEvents>);
+        #[namespace = "ferric::credentials"]
+        #[allow(
+            dead_code,
+            reason = "private process start awaits the P05b2 admitted caller"
+        )]
+        fn start_credential_process(process: Pin<&mut CredentialProcess>, request: &[u8]) -> u64;
+        #[namespace = "ferric::credentials"]
+        #[allow(
+            dead_code,
+            reason = "private process cancellation awaits the P05b2 admitted caller"
+        )]
+        fn cancel_credential_process(process: Pin<&mut CredentialProcess>, token: u64);
+
         fn ferric_browser_gui_application(
             arguments: &QVector_QByteArray,
         ) -> UniquePtr<QGuiApplication>;
+
+        #[namespace = "FerricCredentialNetworkPolicy"]
+        #[cxx_name = "capture"]
+        fn capture_credential_network_policy(explicit_direct: bool) -> bool;
 
         fn ferric_browser_to_ascii_host(host: &QString) -> QString;
         fn ferric_browser_canonicalize_url(value: &QString) -> QString;
@@ -41,6 +127,115 @@ pub(crate) mod qobject {
         fn ferric_browser_set_desktop_identity();
         fn ferric_browser_enable_software_rendering();
         fn ferric_browser_register_internal_scheme();
+    }
+
+    extern "Rust" {
+        #[namespace = "ferric::page_windows"]
+        type PageRollbackProof;
+        #[namespace = "ferric::page_windows"]
+        fn capture_page_rollback(source: &BrowserUi, nonce: &QString) -> Box<PageRollbackProof>;
+        #[namespace = "ferric::page_windows"]
+        fn source_current(self: &PageRollbackProof, source: &BrowserUi) -> bool;
+
+        #[namespace = "ferric::page_windows"]
+        fn supersede_page_focus() -> QString;
+        #[namespace = "ferric::page_windows"]
+        fn current_page_focus() -> QString;
+        #[namespace = "ferric::page_windows"]
+        fn page_focus_intent_current(intent: &QString) -> bool;
+        #[namespace = "ferric::page_windows"]
+        fn validate_page_focus(
+            issuer: &BrowserUi,
+            target: &BrowserUi,
+            nonce: &QString,
+            marker: &QString,
+            phase: u8,
+        ) -> bool;
+        #[namespace = "ferric::credentials"]
+        type CredentialActor;
+        #[namespace = "ferric::credentials"]
+        fn new_credential_actor() -> Box<CredentialActor>;
+        #[namespace = "ferric::credentials"]
+        fn admit(
+            self: &mut CredentialActor,
+            lease: &CredentialLeaseCapture,
+            is_create: bool,
+            options: &[u8],
+            now: u64,
+        ) -> u64;
+        #[namespace = "ferric::credentials"]
+        fn helper_request(
+            self: &mut CredentialActor,
+            token: u64,
+            direct: bool,
+            now: u64,
+        ) -> Vec<u8>;
+        #[namespace = "ferric::credentials"]
+        fn helper_started(self: &mut CredentialActor, token: u64, now: u64) -> bool;
+        #[namespace = "ferric::credentials"]
+        fn frame(
+            self: &mut CredentialActor,
+            token: u64,
+            bytes: &[u8],
+            now: u64,
+        ) -> NativeCredentialUpdate;
+        #[namespace = "ferric::credentials"]
+        fn current(self: &mut CredentialActor, token: u64, now: u64) -> bool;
+        #[namespace = "ferric::credentials"]
+        fn response(self: &mut CredentialActor, token: u64, index: u16, now: u64) -> String;
+        #[namespace = "ferric::credentials"]
+        fn account_label(self: &CredentialActor, token: u64, index: u16) -> String;
+        #[namespace = "ferric::credentials"]
+        fn finish(self: &mut CredentialActor, token: u64, now: u64, delivered: bool);
+        #[namespace = "ferric::credentials"]
+        type CredentialLeaseCapture;
+        #[namespace = "ferric::credentials"]
+        fn credential_context_identity(ui: &BrowserUi, tab: &str) -> String;
+        #[namespace = "ferric::credentials"]
+        fn credential_view_association_current(
+            ui: &BrowserUi,
+            tab: &str,
+            index: i32,
+            view_identity: &str,
+        ) -> bool;
+        #[namespace = "ferric::credentials"]
+        fn capture_native_credential_lease(
+            ui: &BrowserUi,
+            tab: &str,
+            facts: &NativeCredentialFacts,
+        ) -> Box<CredentialLeaseCapture>;
+        #[namespace = "ferric::credentials"]
+        fn is_valid(self: &CredentialLeaseCapture) -> bool;
+        #[namespace = "ferric::credentials"]
+        fn is_current(
+            self: &CredentialLeaseCapture,
+            ui: &BrowserUi,
+            tab: &str,
+            facts: &NativeCredentialFacts,
+        ) -> bool;
+
+        #[namespace = "ferric::credentials"]
+        type CredentialEvents;
+        fn create_credential_events(
+            ui: &BrowserUi,
+            request_id: &str,
+            is_create: bool,
+            incarnation: u64,
+        ) -> Box<CredentialEvents>;
+        #[namespace = "ferric::credentials"]
+        fn process_started(self: &CredentialEvents, token: u64);
+        #[namespace = "ferric::credentials"]
+        fn process_frame(self: &CredentialEvents, token: u64, frame: &[u8]) -> i32;
+        #[namespace = "ferric::credentials"]
+        fn process_finished(self: &CredentialEvents, token: u64, outcome: i32);
+        #[namespace = "ferric::credentials"]
+        fn process_invalidated(self: &CredentialEvents, token: u64);
+        #[namespace = "ferric::credentials"]
+        fn process_snapshot(self: &CredentialEvents) -> u64;
+        #[namespace = "ferric::credentials"]
+        fn process_progress_snapshot(self: &CredentialEvents) -> u64;
+        #[namespace = "ferric::credentials"]
+        fn process_pending_bytes(self: &CredentialEvents) -> u64;
     }
 
     extern "RustQt" {
@@ -305,6 +500,17 @@ pub(crate) mod qobject {
         #[qproperty(i32, feature_blocking_update_interval_hours)]
         #[qproperty(QString, feature_link_cleaning_update_source)]
         #[qproperty(QString, feature_link_cleaning_update_sha256)]
+        #[qproperty(bool, page_window_ordinary)]
+        #[qproperty(QString, feature_tabs_presentation_requested)]
+        #[qproperty(QString, feature_tabs_presentation_effective)]
+        #[qproperty(QString, feature_tabs_presentation_status)]
+        #[qproperty(QString, feature_tabs_presentation_reason)]
+        #[qproperty(QString, feature_phone_passkeys_requested)]
+        #[qproperty(QString, feature_phone_passkeys_status)]
+        #[qproperty(QString, feature_phone_passkeys_reason)]
+        #[qproperty(QString, feature_page_grouping_requested)]
+        #[qproperty(QString, feature_page_grouping_status)]
+        #[qproperty(QString, feature_page_grouping_reason)]
         #[qproperty(QString, config_base_json)]
         #[qproperty(QString, cli_overrides_json)]
         #[qproperty(QString, profile_overrides_json)]
@@ -996,6 +1202,17 @@ pub(crate) mod qobject {
         fn request_shutdown(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]
+        fn capture_shutdown_pages(self: Pin<&mut BrowserUi>) -> bool;
+        #[qinvokable]
+        fn shutdown_pages_current(&self) -> bool;
+        #[qinvokable]
+        fn page_close_commits_pending(&self) -> bool;
+
+        #[qinvokable]
+        fn begin_shutdown_session_snapshot(self: Pin<&mut BrowserUi>) -> bool;
+        #[qinvokable]
+        fn abort_shutdown_session_snapshot(self: Pin<&mut BrowserUi>);
+        #[qinvokable]
         fn begin_shutdown_gate(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]
@@ -1157,6 +1374,7 @@ pub(crate) mod qobject {
             self: Pin<&mut BrowserUi>,
             destination: Pin<&mut BrowserUi>,
             token: &QString,
+            join_page_group: bool,
         ) -> bool;
 
         fn initialize_window_owner(
@@ -1164,6 +1382,86 @@ pub(crate) mod qobject {
             destination: Pin<&mut BrowserUi>,
             profile_name: &QString,
         ) -> bool;
+
+        fn initialize_page_owner(
+            self: Pin<&mut BrowserUi>,
+            destination: Pin<&mut BrowserUi>,
+            tab_id: &QString,
+        ) -> bool;
+
+        fn commit_page_owner(self: Pin<&mut BrowserUi>, destination: Pin<&mut BrowserUi>) -> bool;
+        fn publish_prepared_page_source(self: Pin<&mut BrowserUi>, tab_id: &QString) -> bool;
+        fn publish_prepared_page_owner(self: Pin<&mut BrowserUi>) -> bool;
+        fn recover_prepared_page_owner(self: Pin<&mut BrowserUi>) -> bool;
+
+        fn initialize_live_page_owner(
+            self: Pin<&mut BrowserUi>,
+            destination: Pin<&mut BrowserUi>,
+            nonce: &QString,
+        ) -> bool;
+        fn validate_live_page_owner(
+            self: &BrowserUi,
+            destination: &BrowserUi,
+            nonce: &QString,
+            tab: &QString,
+            prompt: &QString,
+            index: i32,
+        ) -> bool;
+        fn commit_live_page_owner(
+            self: Pin<&mut BrowserUi>,
+            destination: Pin<&mut BrowserUi>,
+            nonce: &QString,
+        ) -> bool;
+        fn ready_live_page_owner(self: Pin<&mut BrowserUi>, nonce: &QString) -> bool;
+        fn publish_live_page_owner(
+            self: Pin<&mut BrowserUi>,
+            nonce: &QString,
+            continue_commands: bool,
+        ) -> bool;
+        fn publish_live_page_source(self: Pin<&mut BrowserUi>, nonce: &QString);
+        fn fail_live_page_owner(self: Pin<&mut BrowserUi>, nonce: &QString);
+        #[qinvokable]
+        fn cancel_live_page_move(self: Pin<&mut BrowserUi>, nonce: &QString);
+
+        fn created_page_presentation_intent(self: &BrowserUi) -> QString;
+        fn take_created_page_presentation(self: Pin<&mut BrowserUi>) -> bool;
+        fn publish_page_creation(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn begin_page_creation_load(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            identity: &QString,
+            url: &QString,
+        ) -> QString;
+        #[qinvokable]
+        fn complete_page_creation_load(
+            self: Pin<&mut BrowserUi>,
+            receipt: &QString,
+            identity: &QString,
+            success: bool,
+        );
+
+        #[qinvokable]
+        fn page_creation_controls_focus(self: &BrowserUi) -> bool;
+
+        fn activate_prepared_page(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn retire_page_presentation(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn page_close_index(self: &BrowserUi, nonce: &QString) -> i32;
+        #[qinvokable]
+        fn page_close_focus_intent(self: &BrowserUi, nonce: &QString) -> QString;
+        #[qinvokable]
+        fn authorize_page_close(self: Pin<&mut BrowserUi>, nonce: &QString) -> bool;
+        #[qinvokable]
+        fn cancel_page_close(self: Pin<&mut BrowserUi>, nonce: &QString);
+        #[qinvokable]
+        fn page_close_released(self: Pin<&mut BrowserUi>, nonce: &QString);
+        #[qinvokable]
+        fn page_closes_pending(self: &BrowserUi) -> bool;
 
         // Read-only comparison invoked through the checked native owner bridge.
         fn shares_permission_session(self: &BrowserUi, other: &BrowserUi) -> bool;
@@ -1565,7 +1863,56 @@ pub(crate) mod qobject {
         fn take_engine_action(self: Pin<&mut BrowserUi>) -> QString;
 
         #[qinvokable]
+        fn native_page_for_request(&self, request: &QVariant) -> QVariant;
+
+        #[qinvokable]
         fn take_engine_request(self: Pin<&mut BrowserUi>) -> QVariant;
+
+        #[qinvokable]
+        fn page_host_profile_id(self: &BrowserUi) -> QString;
+
+        #[qinvokable]
+        fn register_page_host_owner(
+            self: &BrowserUi,
+            tab: &QString,
+            profile_id: &QString,
+            host_token: &QString,
+            page_owner_token: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn release_page_host_owner(
+            self: &BrowserUi,
+            profile_id: &QString,
+            page_owner_token: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn page_host_owner_matches_target(
+            self: &BrowserUi,
+            page_owner_token: &QString,
+            profile_id: &QString,
+            tab: &QString,
+            generation: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn attach_page_host(
+            self: Pin<&mut BrowserUi>,
+            tab: &QString,
+            profile_id: &QString,
+            host_token: &QString,
+            page_owner_token: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn detach_page_host(
+            self: Pin<&mut BrowserUi>,
+            tab: &QString,
+            profile_id: &QString,
+            host_token: &QString,
+            page_owner_token: &QString,
+        ) -> bool;
 
         #[qinvokable]
         fn request_target_current(
@@ -1625,6 +1972,9 @@ pub(crate) mod qobject {
         fn refresh_operations(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
+        fn native_operation_profile_drained(self: Pin<&mut BrowserUi>, profile: &QString);
+
+        #[qinvokable]
         fn enter_caret(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
@@ -1632,6 +1982,9 @@ pub(crate) mod qobject {
 
         #[qinvokable]
         fn view_closed(self: Pin<&mut BrowserUi>);
+
+        #[qinvokable]
+        fn record_page_window_close(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
         fn release_transient_resources(self: Pin<&mut BrowserUi>) -> bool;

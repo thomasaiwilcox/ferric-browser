@@ -48,12 +48,93 @@ impl ClipboardEdit {
 /// reparented by the UI adapter.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TabTransfer {
+    /// Only a trusted native transfer may retain an existing logical identity.
+    /// Generic transfer JSON/IPC must leave this absent.
+    pub identity: Option<TabTransferIdentity>,
     pub url: Option<String>,
     pub title: String,
     pub loading: LoadingState,
     pub pinned: bool,
     pub muted: bool,
     pub zoom_hundredths: u32,
+}
+
+/// Non-deserializable identity captured from an actual source page. Native
+/// orchestration must verify its live owner/profile and commit source release
+/// before publishing or navigating the imported destination.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TabTransferIdentity {
+    tab: TabId,
+    generation: u64,
+    document: DocumentId,
+    presented: Option<PresentedTransferState>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PresentedTransferState {
+    renderer: RendererState,
+    resources: ResourceLifecycle,
+    search: Option<SearchState>,
+    zoom_bits: u64,
+    journey: Option<crate::journey::TabJourneyTransfer>,
+}
+
+impl TabTransferIdentity {
+    #[must_use]
+    pub const fn capture(page: &crate::TabState) -> Self {
+        Self {
+            tab: page.id,
+            generation: page.generation,
+            document: page.document,
+            presented: None,
+        }
+    }
+}
+
+impl TabTransfer {
+    /// Capture a live page for a native view transfer. The adapter must prove
+    /// the actual view/profile association and revalidate the source before
+    /// committing both runtimes without callbacks. This has no wire format.
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // finite, positive and bounded above
+    pub fn capture_presented(page: &crate::TabState) -> Option<Self> {
+        if page.existence != ExistenceState::Live
+            || !page.zoom.is_finite()
+            || !(0.25..=5.0).contains(&page.zoom)
+        {
+            return None;
+        }
+        let mut identity = TabTransferIdentity::capture(page);
+        identity.presented = Some(PresentedTransferState {
+            renderer: page.renderer,
+            resources: page.resources,
+            search: page.search.clone(),
+            zoom_bits: page.zoom.to_bits(),
+            journey: None,
+        });
+        Some(Self {
+            identity: Some(identity),
+            url: page.url.clone(),
+            title: page.title.clone(),
+            loading: page.loading,
+            pinned: page.pinned,
+            muted: page.muted,
+            zoom_hundredths: ((page.zoom * 100.0).round() as u32).clamp(25, 500),
+        })
+    }
+
+    /// Preserve the actual page's retained back/forward journey as well as its
+    /// live state. Import requires a fresh unpublished destination runtime.
+    #[must_use]
+    pub fn capture_presented_with_history(
+        page: &crate::TabState,
+        journey: &crate::JourneyGraph,
+    ) -> Option<Self> {
+        let mut transfer = Self::capture_presented(page)?;
+        transfer.identity.as_mut()?.presented.as_mut()?.journey =
+            Some(journey.capture_transfer(page.id));
+        Some(transfer)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -103,6 +184,11 @@ pub enum Event {
         tab: TabId,
         to_window: WindowId,
         index: Option<usize>,
+    },
+    /// Reorders exactly one window's existing pages without changing selection.
+    ReorderTabs {
+        window: WindowId,
+        tabs: Vec<TabId>,
     },
     TransferTabOut {
         tab: TabId,
@@ -593,6 +679,44 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
             state.active_window = Some(window);
             state.last_focused_window = Some(window);
         }
+        Event::ReorderTabs { window, tabs } => {
+            ensure_running(state)?;
+            let current = state
+                .windows
+                .get(&window)
+                .ok_or(ReduceError::UnknownWindow(window))?;
+            let expected = current
+                .tabs
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>();
+            let actual = tabs
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>();
+            if tabs.len() != current.tabs.len() || actual.len() != tabs.len() || actual != expected
+            {
+                return Err(ReduceError::InvalidActivation);
+            }
+            let mut unpinned = false;
+            for id in &tabs {
+                let page = state.tabs.get(id).ok_or(ReduceError::UnknownTab(*id))?;
+                if page.existence != ExistenceState::Live
+                    || page.window != window
+                    || page.profile != current.profile
+                    || unpinned && page.pinned
+                {
+                    return Err(ReduceError::InvalidActivation);
+                }
+                unpinned |= !page.pinned;
+            }
+            state
+                .windows
+                .get_mut(&window)
+                .expect("validated window")
+                .tabs = tabs;
+            persist(state, &mut effects);
+        }
         Event::MoveTab {
             tab,
             to_window,
@@ -728,6 +852,7 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                     .active_tab = active;
             }
             state.tabs.remove(&tab);
+            state.journey.release_tab(tab);
             persist(state, &mut effects);
         }
         Event::TransferTabIn { window, transfer } => {
@@ -748,7 +873,52 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                             && tab.loading == LoadingState::Idle
                     })
                 });
-            let tab = if let Some(tab) = reusable_tab {
+            let mut presented = None;
+            let tab = if let Some(identity) = transfer.identity {
+                let placeholder = reusable_tab.ok_or(ReduceError::InvalidActivation)?;
+                let untouched = state.tabs.get(&placeholder).is_some_and(|page| {
+                    page.generation == 0
+                        && page.search.is_none()
+                        && !page.pinned
+                        && !page.muted
+                        && page.zoom.to_bits() == 1.0f64.to_bits()
+                        && page.resources == ResourceLifecycle::Active
+                        && page.renderer == RendererState::Healthy
+                });
+                let journey = identity
+                    .presented
+                    .as_ref()
+                    .and_then(|presented| presented.journey.as_ref());
+                if !untouched
+                    || state.tabs.contains_key(&identity.tab)
+                    || journey.is_some() && !state.journey.is_untouched()
+                    || !state.ids.reserve_transferred_page(
+                        identity.tab,
+                        identity.document,
+                        journey.and_then(crate::journey::TabJourneyTransfer::highest_id),
+                    )
+                {
+                    return Err(ReduceError::InvalidActivation);
+                }
+                let mut page = state
+                    .tabs
+                    .remove(&placeholder)
+                    .expect("placeholder validated");
+                page.id = identity.tab;
+                page.generation = identity.generation;
+                page.document = identity.document;
+                page.url.clone_from(&transfer.url);
+                presented = identity.presented;
+                state.tabs.insert(identity.tab, page);
+                let destination = state
+                    .windows
+                    .get_mut(&window)
+                    .expect("destination validated");
+                destination.tabs = vec![identity.tab];
+                destination.active_tab = Some(identity.tab);
+                destination.previous_tab = None;
+                identity.tab
+            } else if let Some(tab) = reusable_tab {
                 state
                     .tabs
                     .get_mut(&tab)
@@ -765,6 +935,17 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
             tab_state.pinned = transfer.pinned;
             tab_state.muted = transfer.muted;
             tab_state.zoom = f64::from(transfer.zoom_hundredths) / 100.0;
+            if let Some(presented) = presented {
+                tab_state.renderer = presented.renderer;
+                tab_state.resources = presented.resources;
+                tab_state.search = presented.search;
+                tab_state.zoom = f64::from_bits(presented.zoom_bits);
+                if let Some(journey) = presented.journey {
+                    state
+                        .journey
+                        .install_transfer(tab, tab_state.profile, journey);
+                }
+            }
             if transfer.pinned {
                 let pinned_ids = state
                     .tabs
@@ -1764,7 +1945,13 @@ mod tests {
     }
 
     fn setup() -> (ApplicationState, ProfileId, WindowId, TabId, Target) {
-        let mut state = ApplicationState::new();
+        setup_with_ids(crate::IdSource::new())
+    }
+
+    fn setup_with_ids(
+        ids: crate::IdSource,
+    ) -> (ApplicationState, ProfileId, WindowId, TabId, Target) {
+        let mut state = ApplicationState::with_id_source(ids);
         reduce(
             &mut state,
             Event::CreateProfile {
@@ -2023,6 +2210,68 @@ mod tests {
         )
         .unwrap();
         assert_eq!(state.windows[&window].tabs, vec![first, second]);
+        assert!(state.validate().is_ok());
+    }
+
+    #[test]
+    fn exact_window_reordering_preserves_selection_and_all_documents() {
+        let (mut state, _, window, first, _) = setup();
+        reduce(&mut state, Event::OpenTab { window }).unwrap();
+        let second = state.windows[&window].active_tab.unwrap();
+        reduce(&mut state, Event::OpenTab { window }).unwrap();
+        let third = state.windows[&window].active_tab.unwrap();
+        reduce(&mut state, Event::ActivateTab { window, tab: first }).unwrap();
+        reduce(&mut state, Event::ActivateTab { window, tab: third }).unwrap();
+        let pages = state.tabs.clone();
+        let active_window = state.active_window;
+        let focused = state.last_focused_window;
+        reduce(
+            &mut state,
+            Event::ReorderTabs {
+                window,
+                tabs: vec![second, first, third],
+            },
+        )
+        .unwrap();
+        assert_eq!(state.windows[&window].tabs, [second, first, third]);
+        assert_eq!(state.windows[&window].active_tab, Some(third));
+        assert_eq!(state.windows[&window].previous_tab, Some(first));
+        assert_eq!(state.tabs, pages);
+        assert_eq!(state.active_window, active_window);
+        assert_eq!(state.last_focused_window, focused);
+        assert!(state.validate().is_ok());
+    }
+
+    #[test]
+    fn exact_reordering_rejects_changed_membership_and_pinned_boundaries_atomically() {
+        let (mut state, profile, window, first, _) = setup();
+        reduce(&mut state, Event::OpenTab { window }).unwrap();
+        let second = state.windows[&window].active_tab.unwrap();
+        reduce(
+            &mut state,
+            Event::SetTabPinned {
+                tab: first,
+                pinned: true,
+            },
+        )
+        .unwrap();
+        reduce(&mut state, Event::CreateWindow { profile }).unwrap();
+        let other = state.active_window.unwrap();
+        reduce(&mut state, Event::OpenTab { window: other }).unwrap();
+        let foreign = state.windows[&other].active_tab.unwrap();
+        for tabs in [
+            vec![first],
+            vec![first, first],
+            vec![second, first],
+            vec![first, foreign],
+        ] {
+            let original = state.clone();
+            assert_eq!(
+                reduce(&mut state, Event::ReorderTabs { window, tabs }),
+                Err(ReduceError::InvalidActivation)
+            );
+            assert_eq!(state, original);
+        }
         assert!(state.validate().is_ok());
     }
 
@@ -2584,6 +2833,7 @@ mod tests {
             Event::TransferTabIn {
                 window,
                 transfer: TabTransfer {
+                    identity: None,
                     url: Some("https://example.test/".into()),
                     title: "Example".into(),
                     loading: LoadingState::Complete,
@@ -2608,6 +2858,204 @@ mod tests {
                 .any(|effect| matches!(effect, Effect::Persist(_)))
         );
         assert!(state.validate().is_ok());
+    }
+
+    #[test]
+    fn native_transfer_preserves_identity_and_replaces_placeholder_references() {
+        let (mut state, _, window, tab, target) = setup();
+        let mut page = state.tabs[&tab].clone();
+        // Import from a different allocator, including a newer document ID.
+        page.id = TabId::from_raw(1000);
+        page.document = DocumentId::from_raw(2000);
+        page.generation = 9;
+        let transfer = TabTransfer {
+            identity: Some(TabTransferIdentity::capture(&page)),
+            url: Some("https://example.test/page".into()),
+            title: "Preserved".into(),
+            loading: LoadingState::Idle,
+            pinned: true,
+            muted: true,
+            zoom_hundredths: 125,
+        };
+        let effects = reduce(&mut state, Event::TransferTabIn { window, transfer }).unwrap();
+        assert!(!state.tabs.contains_key(&tab));
+        assert_eq!(state.windows[&window].tabs, vec![page.id]);
+        assert_eq!(state.windows[&window].active_tab, Some(page.id));
+        assert_eq!(state.windows[&window].previous_tab, None);
+        assert_eq!(
+            state.capture_target(page.id),
+            Some(Target {
+                tab: page.id,
+                generation: 9,
+                document: page.document
+            })
+        );
+        assert_eq!(state.tabs[&page.id].window, window);
+        assert!(state.tabs[&page.id].pinned && state.tabs[&page.id].muted);
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::Engine(_)))
+        );
+        assert!(state.validate().is_ok());
+        reduce(&mut state, Event::OpenTab { window }).unwrap();
+        assert!(state.windows[&window].active_tab.unwrap().raw() > page.document.raw());
+        assert_ne!(state.capture_target(page.id), Some(target));
+    }
+
+    #[test]
+    fn presented_transfer_preserves_all_page_state_except_destination_owner() {
+        let (mut state, profile, window, tab, _) = setup();
+        let mut page = state.tabs[&tab].clone();
+        page.id = TabId::from_raw(1000);
+        page.document = DocumentId::from_raw(2000);
+        page.generation = 19;
+        page.window = WindowId::from_raw(8000);
+        page.profile = ProfileId::from_raw(9000);
+        page.url = Some("https://example.test/live".into());
+        page.title = "Live page".into();
+        page.loading = LoadingState::Complete;
+        page.resources = ResourceLifecycle::Frozen;
+        page.renderer = RendererState::Terminated;
+        page.search = Some(SearchState {
+            query: "retained query".into(),
+            backward: true,
+            case: SearchCase::Sensitive,
+        });
+        page.pinned = true;
+        page.muted = true;
+        page.zoom = 1.234_567;
+        let transfer = TabTransfer::capture_presented(&page).unwrap();
+        let effects = reduce(&mut state, Event::TransferTabIn { window, transfer }).unwrap();
+        page.window = window;
+        page.profile = profile;
+        assert_eq!(state.tabs[&page.id], page);
+        assert!(!state.tabs.contains_key(&tab));
+        assert!(state.validate().is_ok());
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::Engine(_)))
+        );
+        page.existence = ExistenceState::Closing;
+        assert!(TabTransfer::capture_presented(&page).is_none());
+    }
+
+    #[test]
+    fn native_transfer_rejects_collision_modified_destination_and_overflow_without_mutation() {
+        for scenario in ["collision", "modified", "overflow"] {
+            let (mut state, _, window, tab, _) = setup();
+            let mut page = state.tabs[&tab].clone();
+            if scenario != "collision" {
+                page.id = TabId::from_raw(1000);
+            }
+            if scenario == "overflow" {
+                page.document = DocumentId::from_raw(u64::MAX);
+            }
+            if scenario == "modified" {
+                state.tabs.get_mut(&tab).unwrap().muted = true;
+            }
+            let previous_tabs = state.tabs.clone();
+            let previous_windows = state.windows.clone();
+            let revision = state.revision;
+            let transfer = TabTransfer {
+                identity: Some(TabTransferIdentity::capture(&page)),
+                url: None,
+                title: String::new(),
+                loading: LoadingState::Idle,
+                pinned: false,
+                muted: false,
+                zoom_hundredths: 100,
+            };
+            assert!(
+                reduce(&mut state, Event::TransferTabIn { window, transfer }).is_err(),
+                "{scenario}"
+            );
+            assert_eq!(state.tabs, previous_tabs, "{scenario}");
+            assert_eq!(state.windows, previous_windows, "{scenario}");
+            assert_eq!(state.revision, revision, "{scenario}");
+        }
+    }
+
+    #[test]
+    fn presented_transfer_preserves_history_cursor_forward_entries_and_identity_reservations() {
+        let mut ids = crate::IdSource::new();
+        assert!(ids.reserve_transferred_page(
+            TabId::from_raw(999),
+            DocumentId::from_raw(1000),
+            None
+        ));
+        let (mut source, _, _, tab, target) = setup_with_ids(ids);
+        commit_at_visit(&mut source, target, "https://example.test/first", None);
+        commit_at_visit(&mut source, target, "https://example.test/second", None);
+        let second = source.journey.current_node(tab).unwrap();
+        commit_at_visit(&mut source, target, "https://example.test/third", None);
+        let third = source.journey.current_node(tab).unwrap();
+        commit_at_visit(
+            &mut source,
+            target,
+            "https://example.test/second",
+            Some(second),
+        );
+        let source_journey = source.journey.clone();
+        let transfer =
+            TabTransfer::capture_presented_with_history(&source.tabs[&tab], &source.journey)
+                .unwrap();
+        let (mut destination, profile, window, _, _) = setup();
+        let effects = reduce(&mut destination, Event::TransferTabIn { window, transfer }).unwrap();
+        assert!(destination.validate().is_ok());
+        assert_eq!(destination.journey.current_node(tab), Some(second));
+        assert_eq!(
+            destination.journey.node_count(),
+            source_journey.node_count()
+        );
+        assert!(
+            destination
+                .journey
+                .nodes()
+                .all(|node| node.profile == profile)
+        );
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::Engine(_)))
+        );
+        destination.journey.request_traversal(tab, 1);
+        assert_eq!(destination.journey.complete_traversal(tab), Some(third));
+        reduce(&mut destination, Event::OpenTab { window }).unwrap();
+        assert!(destination.windows[&window].active_tab.unwrap().raw() > third.raw());
+        reduce(&mut source, Event::TransferTabOut { tab }).unwrap();
+        assert_eq!(source.journey.current_node(tab), None);
+        assert_eq!(source.journey.node_count(), source_journey.node_count());
+        assert!(source.validate().is_ok());
+    }
+
+    #[test]
+    fn presented_history_import_rejects_a_previously_used_destination_without_mutation() {
+        let (mut source, _, _, tab, target) = setup();
+        commit_at_visit(&mut source, target, "https://example.test/source", None);
+        let mut page = source.tabs[&tab].clone();
+        page.id = TabId::from_raw(1000);
+        let transfer = TabTransfer::capture_presented_with_history(&page, &source.journey).unwrap();
+        let (mut destination, _, window, placeholder, target) = setup();
+        commit_at_visit(&mut destination, target, "https://example.test/old", None);
+        // Return the descriptor to blank; retained journey still proves this
+        // is not the unpublished child required by a presented transfer.
+        let blank = source.tabs[&tab].clone();
+        let page = destination.tabs.get_mut(&placeholder).unwrap();
+        page.url = None;
+        page.title.clear();
+        page.loading = LoadingState::Idle;
+        page.generation = 0;
+        page.search = None;
+        page.pinned = false;
+        page.muted = false;
+        page.zoom = 1.0;
+        page.resources = blank.resources;
+        page.renderer = blank.renderer;
+        let before = destination.clone();
+        assert!(reduce(&mut destination, Event::TransferTabIn { window, transfer }).is_err());
+        assert_eq!(destination, before);
     }
 
     #[test]

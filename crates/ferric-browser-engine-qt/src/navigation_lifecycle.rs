@@ -70,6 +70,11 @@ impl qobject::BrowserUi {
     pub(super) fn navigation_stopped_for(mut self: Pin<&mut Self>, index: i32) {
         if let Some(target) = self.as_ref().get_ref().target_for_index(index) {
             self.as_mut().clear_engine_navigation_kind(target);
+            // Cancelled navigation must not keep the page permanently busy.
+            // Its exact accepted GET is retained separately for restoration.
+            let _ = self.as_mut().take_journey_redirect(target);
+            let _ = self.as_mut().take_journey_transition(target);
+            let _ = self.as_mut().take_journey_parent(target);
             let _ = self
                 .as_mut()
                 .reduce_event(Event::CancelNavigation { target });

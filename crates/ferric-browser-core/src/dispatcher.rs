@@ -1403,10 +1403,38 @@ mod tests {
     #[test]
     fn tab_close_supports_targeted_and_unpinned_bulk_forms() {
         let mut state = state();
-        let window = state.active_window().unwrap();
-        reduce(&mut state, Event::OpenTab { window }).unwrap();
-        reduce(&mut state, Event::OpenTab { window }).unwrap();
-        let tabs = state.windows()[&window].tabs.clone();
+        let first_window = state.active_window().unwrap();
+        let profile = state.windows()[&first_window].profile;
+        reduce(
+            &mut state,
+            Event::OpenTab {
+                window: first_window,
+            },
+        )
+        .unwrap();
+        reduce(
+            &mut state,
+            Event::OpenTab {
+                window: first_window,
+            },
+        )
+        .unwrap();
+        reduce(&mut state, Event::CreateWindow { profile }).unwrap();
+        let second_window = state
+            .windows()
+            .keys()
+            .copied()
+            .find(|window| *window != first_window)
+            .expect("second window");
+        reduce(
+            &mut state,
+            Event::OpenTab {
+                window: second_window,
+            },
+        )
+        .unwrap();
+        let tabs = state.windows()[&first_window].tabs.clone();
+        let other_window_tab = state.windows()[&second_window].tabs[0];
         reduce(
             &mut state,
             Event::SetTabPinned {
@@ -1420,11 +1448,12 @@ mod tests {
         let command = crate::parse_chain("tab-close --count 2", ParseInput::Cli)
             .unwrap()
             .remove(0);
-        let events = dispatch_command(
+        let events = dispatch_command_for(
             &state,
             &registry,
             CommandInvocation::new(command),
             &NavigationContext::default(),
+            DispatchTarget::Window(first_window),
         )
         .unwrap();
         assert_eq!(
@@ -1434,18 +1463,44 @@ mod tests {
                 Event::CloseTab { tab: tabs[1] }
             ]
         );
+        assert!(events.iter().all(|event| match event {
+            Event::CloseTab { tab } => state.tabs()[tab].window == first_window,
+            _ => false,
+        }));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            Event::CloseTab { tab } if *tab == other_window_tab
+        )));
 
         let command = crate::parse_chain(&format!("tab-close --id {}", tabs[0]), ParseInput::Cli)
             .unwrap()
             .remove(0);
-        let events = dispatch_command(
+        let events = dispatch_command_for(
             &state,
             &registry,
             CommandInvocation::new(command),
             &NavigationContext::default(),
+            DispatchTarget::Window(first_window),
         )
         .unwrap();
         assert_eq!(events, vec![Event::CloseTab { tab: tabs[0] }]);
+
+        let command = crate::parse_chain(
+            &format!("tab-close --id {other_window_tab}"),
+            ParseInput::Cli,
+        )
+        .unwrap()
+        .remove(0);
+        assert!(matches!(
+            dispatch_command_for(
+                &state,
+                &registry,
+                CommandInvocation::new(command),
+                &NavigationContext::default(),
+                DispatchTarget::Window(first_window),
+            ),
+            Err(DispatchError::NoActiveTab)
+        ));
     }
 
     #[test]
@@ -1489,17 +1544,34 @@ mod tests {
 
     #[test]
     fn quit_dispatches_a_shutdown_request_without_a_page_target() {
-        let state = state();
+        let mut state = state();
+        let first_window = state.active_window().expect("first window");
+        let profile = state.windows()[&first_window].profile;
+        reduce(&mut state, Event::CreateWindow { profile }).expect("second window");
+        let second_window = state
+            .windows()
+            .keys()
+            .copied()
+            .find(|window| *window != first_window)
+            .expect("second window");
+        reduce(
+            &mut state,
+            Event::OpenTab {
+                window: second_window,
+            },
+        )
+        .expect("second-window tab");
         let registry = CommandRegistry::default_v1();
         let command = crate::parse_chain("quit", ParseInput::Cli)
             .unwrap()
             .remove(0);
         assert_eq!(
-            dispatch_command(
+            dispatch_command_for(
                 &state,
                 &registry,
                 CommandInvocation::new(command),
                 &NavigationContext::default(),
+                DispatchTarget::Window(first_window),
             )
             .unwrap(),
             vec![Event::RequestShutdown]
@@ -1508,11 +1580,12 @@ mod tests {
             .unwrap()
             .remove(0);
         assert_eq!(
-            dispatch_command(
+            dispatch_command_for(
                 &state,
                 &registry,
                 CommandInvocation::new(command),
                 &NavigationContext::default(),
+                DispatchTarget::Window(first_window),
             )
             .unwrap(),
             vec![Event::RequestShutdown]

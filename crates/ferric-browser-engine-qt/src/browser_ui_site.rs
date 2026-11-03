@@ -369,10 +369,9 @@ impl qobject::BrowserUi {
             .get_mut()
             .last_site_doctor_result
             .as_mut()
+            && let Some(object) = result.as_object_mut()
         {
-            if let Some(object) = result.as_object_mut() {
-                object.insert("state".into(), Value::String("applied".into()));
-            }
+            object.insert("state".into(), Value::String("applied".into()));
         }
         self.set_status_text(QString::from(
             "Site Doctor blocker exception saved; policy reloaded",

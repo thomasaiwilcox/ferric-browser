@@ -1,0 +1,1879 @@
+{
+  "schema_version": 1,
+  "tests": [
+    {
+      "id": "T001",
+      "slice": "S00",
+      "requirement": "EF-S00",
+      "level": "inspection",
+      "name": "Correct clone identity and drift map",
+      "expected": "Fresh checkout identifies the exact remote, fetched/main SHA and all source anchors; changed prerequisites have an explicit reuse decision.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T002",
+      "slice": "S00",
+      "requirement": "EF-S00",
+      "level": "inspection",
+      "name": "Existing-work protection",
+      "expected": "A dirty or unrelated checkout is refused; tracked/untracked sentinel files and branch positions remain unchanged.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T003",
+      "slice": "S00",
+      "requirement": "EF-S00",
+      "level": "inspection",
+      "name": "Baseline provenance",
+      "expected": "All source claims distinguish pinned reads, indexed discovery and execution checks; absent history is reported, not treated as no changes.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T004",
+      "slice": "S01",
+      "requirement": "EF-S01",
+      "level": "application",
+      "name": "Production host baseline",
+      "expected": "Open primary/secondary fixtures through shipped resources; verify ordinary navigation/search/hints before new switches.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T005",
+      "slice": "S01",
+      "requirement": "EF-S01",
+      "level": "application",
+      "name": "Discovery cannot pass empty",
+      "expected": "A missing filter/test registration makes the gate fail; test counts and actual suite names are retained.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T006",
+      "slice": "S01",
+      "requirement": "EF-S01",
+      "level": "application",
+      "name": "Fixture isolation",
+      "expected": "Test profile, TLS and portal resources are disposable and do not read or mutate the live Ferric profile/desktop.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T007",
+      "slice": "F00",
+      "requirement": "EF-F00",
+      "level": "unit",
+      "name": "Default compatibility",
+      "expected": "An old config yields unchanged internal browsing and all new optional capabilities off.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T008",
+      "slice": "F00",
+      "requirement": "EF-F00",
+      "level": "unit",
+      "name": "Closed configuration grammar",
+      "expected": "Unknown values, wrong types and page-level overrides are rejected without partial configuration mutation.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T009",
+      "slice": "F00",
+      "requirement": "EF-F00",
+      "level": "unit",
+      "name": "Config round-trip",
+      "expected": "All supported choices round-trip while existing navigation/last-close/hyprland settings are preserved.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T010",
+      "slice": "F01",
+      "requirement": "EF-F01",
+      "level": "unit",
+      "name": "Atomic rejection",
+      "expected": "An invalid combined update does not partially activate any feature.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T011",
+      "slice": "F01b",
+      "requirement": "EF-F01",
+      "level": "application",
+      "name": "Pending restart clarity",
+      "expected": "Changing presentation updates pending status but leaves current host routing intact until controlled restart.",
+      "result": "not_run",
+      "binding": "Bind to the typed application/UI projection and a controlled pending-restart assertion."
+    },
+    {
+      "id": "T012",
+      "slice": "F01c",
+      "requirement": "EF-F01",
+      "level": "application",
+      "name": "Disable semantics",
+      "expected": "Disabling prewarm/auth invalidates corresponding work without changing unrelated browsing or native auth.",
+      "result": "not_run",
+      "binding": "Requires both hot-preparation invalidation and owned phone-request cancellation after H01/P12 are accepted; see F01c."
+    },
+    {
+      "id": "T013",
+      "slice": "F02b1",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Factory equivalence",
+      "expected": "Cold-created primary/secondary pages retain correct URL/title/history/settings and keyboard focus.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T014a",
+      "slice": "F02b2a",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Popup commands and opener identity",
+      "expected": "The actual Qt popup handoff and live opener communication preserve the correct popup source/view while secondary commands, tab state and nested popup setup retain the original page identity and state.",
+      "result": "not_run",
+      "binding": "Run the exact registered everyday_T014a_popup_commands_opener_identity CTest with zero skips; it covers the original T014 assertions before transfer-reserve preparation."
+    },
+    {
+      "id": "T014b",
+      "slice": "F02b2b",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Transfer reserve and hover preservation",
+      "expected": "The production transfer reserve is non-null, distinct, hidden and untabbed while the original popup stays active with its URL, history and page state; QtWebEngine hover/update delivery and cleanup complete without a crash or URL recreation.",
+      "result": "not_run",
+      "binding": "Run the exact registered everyday_T014b_transfer_reserve_hover_preservation CTest with zero skips; rerun T014a, T013 and T015 as affected regressions on the same integrated source."
+    },
+    {
+      "id": "T015",
+      "slice": "F02a",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Document-owner callbacks",
+      "expected": "Delayed callbacks after close/move do not update the wrong page or active chrome.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T016",
+      "slice": "F03",
+      "requirement": "EF-F03",
+      "level": "application",
+      "name": "Inert construction",
+      "expected": "Spare construction emits no history, tab row, notification, prompt, download, script or focus action.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T017",
+      "slice": "F03",
+      "requirement": "EF-F03",
+      "level": "application",
+      "name": "Stale epoch rejection",
+      "expected": "Preparation callbacks delivered after claim/retire cannot affect the live document.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T018",
+      "slice": "F03",
+      "requirement": "EF-F03",
+      "level": "unit",
+      "name": "Role transitions",
+      "expected": "Invalid and repeated transitions fail predictably without duplicate ownership or allocation.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T019",
+      "slice": "F04",
+      "requirement": "EF-F04",
+      "level": "application",
+      "name": "First-window closure",
+      "expected": "Close the first visible window while another page remains; hints, navigation and correctly scoped services continue.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T020",
+      "slice": "F04",
+      "requirement": "EF-F04",
+      "level": "application",
+      "name": "Private release boundary",
+      "expected": "Closing the last private real consumer releases its session; a spare or weak registry entry cannot retain it.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T021",
+      "slice": "F04",
+      "requirement": "EF-F04",
+      "level": "application",
+      "name": "Shutdown drains once",
+      "expected": "Last real-page shutdown retires views and profile resources once without lost accepted storage work.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T022",
+      "slice": "F05",
+      "requirement": "EF-F05",
+      "level": "application",
+      "name": "Window feature parity",
+      "expected": "Same fixture tasks succeed in primary and secondary hosts with distinct active pages.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T023",
+      "slice": "F05",
+      "requirement": "EF-F05",
+      "level": "application",
+      "name": "No cross-window targeting",
+      "expected": "A pending action plus active-window switch never acts on the other page.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T024",
+      "slice": "F05",
+      "requirement": "EF-F05",
+      "level": "native",
+      "name": "Native input ownership",
+      "expected": "Original key/release/IME and modal interactions work in secondary and popup hosts; unavailable native execution is explicitly blocked.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T025",
+      "slice": "H00a",
+      "requirement": "EF-H00",
+      "level": "unit",
+      "name": "Single-spare bound",
+      "expected": "Many windows/replenish requests cannot allocate more than one speculative spare.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T026",
+      "slice": "H00b",
+      "requirement": "EF-H00",
+      "level": "unit",
+      "name": "Exactly-once claim",
+      "expected": "Two racing opens produce at most one hot claim and one correct independent cold path.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T027",
+      "slice": "H00c",
+      "requirement": "EF-H00",
+      "level": "unit",
+      "name": "Environment isolation",
+      "expected": "Same names with different native profiles/generations/partitions/host windows never match.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T028",
+      "slice": "H01",
+      "requirement": "EF-H01",
+      "level": "application",
+      "name": "Ready without visible page",
+      "expected": "A spare reaches bounded readiness without tab/accessibility entries, mapped hidden windows or focus changes.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T029",
+      "slice": "H01",
+      "requirement": "EF-H01",
+      "level": "application",
+      "name": "No network/script work",
+      "expected": "A loopback/network observer and userscript sentinel see no speculative requests or user script execution.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T030",
+      "slice": "H01",
+      "requirement": "EF-H01",
+      "level": "application",
+      "name": "Prepare failure fallback",
+      "expected": "Failed/slow blank initialization leaves ordinary new-tab allocation immediately usable.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T031",
+      "slice": "H02",
+      "requirement": "EF-H02",
+      "level": "application",
+      "name": "Hot/cold observable equivalence",
+      "expected": "New blank/internal/URL tabs have identical history, focus, settings and IDs apart from allocation timing.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T032",
+      "slice": "H02",
+      "requirement": "EF-H02",
+      "level": "application",
+      "name": "Atomic claim failure",
+      "expected": "Injected failure after reservation produces one user page, no stale ownership and no resource leak.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T033",
+      "slice": "H02",
+      "requirement": "EF-H02",
+      "level": "application",
+      "name": "Popup cold path",
+      "expected": "window.open preserves opener/native handoff and never consumes the ordinary hot spare.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T034",
+      "slice": "H03",
+      "requirement": "EF-H03",
+      "level": "application",
+      "name": "Privacy/config change",
+      "expected": "Change profile partition/config during prepare and ready; old view cannot be claimed.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T035",
+      "slice": "H03",
+      "requirement": "EF-H03",
+      "level": "application",
+      "name": "Failure and shutdown",
+      "expected": "Renderer loss, graphics recovery and final close drain spare resources without crash/orphan.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T036",
+      "slice": "H03",
+      "requirement": "EF-H03",
+      "level": "application",
+      "name": "Long-run resource bound",
+      "expected": "1,000 internal prepare/adopt/retire cycles have bounded views/listeners and no monotonic live-object growth.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T037",
+      "slice": "H04",
+      "requirement": "EF-H04",
+      "level": "unit",
+      "name": "Statistics integrity",
+      "expected": "Known sample vectors yield correct nearest-rank p50/p95; missing samples/errors cannot be dropped silently.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T038",
+      "slice": "H04",
+      "requirement": "EF-H04",
+      "level": "application",
+      "name": "Readiness separation",
+      "expected": "Native start input, engine ready and website-ready signals are not conflated.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T039",
+      "slice": "H04",
+      "requirement": "EF-H04",
+      "level": "inspection",
+      "name": "Benchmark reproducibility",
+      "expected": "Output includes exact source/build/environment, order, raw samples, hit/miss reasons and honest memory method.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T040",
+      "slice": "H05",
+      "requirement": "EF-H05",
+      "level": "application",
+      "name": "No premature host exposure",
+      "expected": "An unclaimed spare produces no mapped native host, switcher result or grouping transaction.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T041",
+      "slice": "H05",
+      "requirement": "EF-H05",
+      "level": "application",
+      "name": "Window claim",
+      "expected": "Claim maps one usable page with correct privacy/profile and no blank-flash fallback duplication.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T042",
+      "slice": "H05",
+      "requirement": "EF-H05",
+      "level": "native",
+      "name": "Native map correctness",
+      "expected": "Actual Wayland/compositor verifies no warm map/hide event or stolen focus; lack of environment blocks this gate.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T043",
+      "slice": "H06",
+      "requirement": "EF-H06",
+      "level": "benchmark",
+      "name": "Latency budget",
+      "expected": "Primary p95 meets >=15% and >=15ms improvement; input-ready/cold misses regress <=5%.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T044",
+      "slice": "H06",
+      "requirement": "EF-H06",
+      "level": "benchmark",
+      "name": "Idle-memory budget",
+      "expected": "Incremental process-tree PSS <=96MiB, no sustained refill CPU and no retained-view growth.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T045",
+      "slice": "H06",
+      "requirement": "EF-H06",
+      "level": "native",
+      "name": "Real-machine qualification",
+      "expected": "Native performance results on this machine with actual hardware/Qt/GPU/compositor recorded; no claim of two-machine coverage or constrained laptop unless actually measured. Offscreen data cannot qualify native performance.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T046",
+      "slice": "P00a",
+      "requirement": "EF-P00",
+      "level": "application",
+      "name": "Authority proof",
+      "expected": "The native boundary obtains main-frame origin/context independent of page claims and isolates transport from ordinary worlds.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T047",
+      "slice": "P00b",
+      "requirement": "EF-P00",
+      "level": "application",
+      "name": "Cross-document rejection",
+      "expected": "Old requests/replies fail after same-URL replacement and BFCache transitions; source-frame confusion fails.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T048",
+      "slice": "P00c",
+      "requirement": "EF-P00",
+      "level": "inspection",
+      "name": "Reviewed feasible route",
+      "expected": "Independent reviewer traces the actual public API path and identifies every unresolved primitive before real credentials.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T049",
+      "slice": "P01",
+      "requirement": "EF-P01",
+      "level": "build",
+      "name": "Independent locked build",
+      "expected": "Helper builds with recorded toolchain and exact source pin without importing its graph into Ferric root lockfile.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T050",
+      "slice": "P01",
+      "requirement": "EF-P01",
+      "level": "inspection",
+      "name": "Dependency/toolchain inventory",
+      "expected": "Required system libraries, Rust floor, license/PSL sources and unavailable capabilities are explicit.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T051",
+      "slice": "P01",
+      "requirement": "EF-P01",
+      "level": "unit",
+      "name": "Protocol skeleton closes unknown input",
+      "expected": "Temporary stub rejects unsupported/unknown operations and is marked not implemented, never success.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T052",
+      "slice": "P02a",
+      "requirement": "EF-P02",
+      "level": "unit",
+      "name": "Closed authority types",
+      "expected": "Untrusted options cannot construct or overwrite verified origin/profile/document lease.",
+      "result": "not_run",
+      "binding": "Closed owner/lease authority and explicitly pending bounded RP candidate tests. Full parent RP, public suffix/sibling, IDN/default port authorization remains P06 T064/T065 via pinned library and maintained PSL before QR/network; no candidate is an admitted credential."
+    },
+    {
+      "id": "T053",
+      "slice": "P02b",
+      "requirement": "EF-P02",
+      "level": "unit",
+      "name": "Exactly-once races",
+      "expected": "Abort/deadline/result/navigation permutations produce one terminal effect for the original owner.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T054",
+      "slice": "P02c",
+      "requirement": "EF-P02",
+      "level": "unit",
+      "name": "Admission isolation",
+      "expected": "Busy/background/unqualified requests cannot replace an existing prompt or authorize another profile.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T055",
+      "slice": "P03",
+      "requirement": "EF-P03",
+      "level": "application",
+      "name": "Production isolation",
+      "expected": "MainWorld and ordinary userscripts cannot enumerate/call the credential object or BrowserUi.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T056",
+      "slice": "P03",
+      "requirement": "EF-P03",
+      "level": "application",
+      "name": "Live-document binding",
+      "expected": "Same-URL reload, replaced renderer and close-before-response cannot bind an old ceremony.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T057",
+      "slice": "P03",
+      "requirement": "EF-P03",
+      "level": "application",
+      "name": "No spare authority",
+      "expected": "Prepared/unassigned views never install/activate a credential channel or acquire a ceremony.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T058",
+      "slice": "P04",
+      "requirement": "EF-P04",
+      "level": "application",
+      "name": "Binary fidelity",
+      "expected": "ArrayBuffer/typed-array/DataView offsets and omitted/null semantics preserve exact challenge and IDs.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T059",
+      "slice": "P04",
+      "requirement": "EF-P04",
+      "level": "application",
+      "name": "Hostile payloads",
+      "expected": "Forged origin/tab fields, oversized/nested messages and prototype tricks cannot cross the authority boundary.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T060",
+      "slice": "P04",
+      "requirement": "EF-P04",
+      "level": "application",
+      "name": "Native passthrough",
+      "expected": "Password/non-public-key, subframe and conditional paths retain original behaviour without recursive shim calls.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T061",
+      "slice": "P05b2",
+      "requirement": "EF-P05",
+      "level": "application",
+      "name": "Process failure cases",
+      "expected": "Start/crash/truncated/oversized/output-after-terminal helper cases settle correctly without UI hangs. Real native deadline expiry also settles once and reaps through the actual application route under private fixed test time configuration; production timeout is not increased.",
+      "result": "not_run",
+      "binding": "CTest everyday_T061_helper_process_failures; credential_process_app_tests QtTest slot processFailures through actual production controller/QML/app route."
+    },
+    {
+      "id": "T062",
+      "slice": "P05b2",
+      "requirement": "EF-P05",
+      "level": "application",
+      "name": "Owned cancellation",
+      "expected": "Cancel terminates only this child, reaps it and rejects late results without killing unrelated processes.",
+      "result": "not_run",
+      "binding": "CTest everyday_T062_helper_owned_cancel; credential_process_app_tests QtTest slot ownedCancellation through actual production controller/QML/app route."
+    },
+    {
+      "id": "T063",
+      "slice": "P05b2",
+      "requirement": "EF-P05",
+      "level": "application",
+      "name": "Secret-free diagnostics",
+      "expected": "Injected secret markers in input/stdout/stderr never appear in ordinary logs/exports/argv.",
+      "result": "not_run",
+      "binding": "CTest everyday_T063_helper_secret_free_diagnostics; credential_process_app_tests QtTest slot secretFreeDiagnostics through actual production controller/QML/app route."
+    },
+    {
+      "id": "T064",
+      "slice": "P06",
+      "requirement": "EF-P06",
+      "level": "unit",
+      "name": "Origin/RP correctness",
+      "expected": "Parent domains only where valid, public suffix/unrelated sibling/opaque/IDN edge cases are correctly accepted/rejected.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T065",
+      "slice": "P06",
+      "requirement": "EF-P06",
+      "level": "unit",
+      "name": "Missing PSL fail-closed",
+      "expected": "No usable PSL results in unavailable without QR, network or skipped RP checking.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T066",
+      "slice": "P06",
+      "requirement": "EF-P06",
+      "level": "unit",
+      "name": "Semantic preservation",
+      "expected": "Challenge/UV/attachment/credential lists survive preparation; unsupported requirements are not silently downgraded.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T067",
+      "slice": "P07b",
+      "requirement": "EF-P07",
+      "level": "unit",
+      "name": "Both operations implemented",
+      "expected": "Create and get execute distinct real library paths and return valid response envelopes, not static fixture credentials.",
+      "result": "not_run",
+      "binding": "hybrid::tests::t067_create_get_real_library_envelopes plus normal helper private-pipe/CLI contract tests."
+    },
+    {
+      "id": "T068",
+      "slice": "P07b",
+      "requirement": "EF-P07",
+      "level": "unit",
+      "name": "No implicit pairing persistence",
+      "expected": "Transient flow writes no pairing/credential metadata under a disposable filesystem observer.",
+      "result": "not_run",
+      "binding": "hybrid::tests::t068_transient_helper_writes_no_pairing_metadata with disposable helper filesystem observer and distinct virtual-authenticator state."
+    },
+    {
+      "id": "T069",
+      "slice": "P07b",
+      "requirement": "EF-P07",
+      "level": "unit",
+      "name": "Uncertain outcome safety",
+      "expected": "Disconnect after submission does not automatically repeat registration or silently try another provider.",
+      "result": "not_run",
+      "binding": "hybrid::tests::t069_uncertain_create_is_not_replayed after actual virtual create/reply loss; real CableChannel source replay audit, physical tunnel lifecycle separate."
+    },
+    {
+      "id": "T070",
+      "slice": "P08",
+      "requirement": "EF-P08",
+      "level": "application",
+      "name": "No proxy bypass",
+      "expected": "With required proxy/blocked-direct policy all traffic uses the allowed route or feature fails before connecting.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T071",
+      "slice": "P08",
+      "requirement": "EF-P08",
+      "level": "application",
+      "name": "Capability failures",
+      "expected": "Missing helper, PSL, Bluetooth or permission reports bounded unavailable while native auth still works.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T072",
+      "slice": "P08",
+      "requirement": "EF-P08",
+      "level": "unit",
+      "name": "Endpoint authority",
+      "expected": "Page options cannot nominate relay, proxy executable or arbitrary helper network destinations.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T073",
+      "slice": "P09",
+      "requirement": "EF-P09",
+      "level": "application",
+      "name": "Native positive path",
+      "expected": "A valid native test authenticator operation succeeds after chooser, not merely cancel tests.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T074",
+      "slice": "P09",
+      "requirement": "EF-P09",
+      "level": "application",
+      "name": "Provider exclusivity",
+      "expected": "One request cannot start native and phone concurrently; double Enter/callback cannot duplicate operation.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T075",
+      "slice": "P09",
+      "requirement": "EF-P09",
+      "level": "application",
+      "name": "Scope/focus safety",
+      "expected": "Prompt belongs to exact primary/secondary/popup page and safe cancellation returns focus correctly.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T076",
+      "slice": "P10",
+      "requirement": "EF-P10",
+      "level": "application",
+      "name": "Valid QR rendering",
+      "expected": "Valid matrix renders with quiet zone; oversized/malformed dimensions are rejected safely.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T077",
+      "slice": "P10",
+      "requirement": "EF-P10",
+      "level": "application",
+      "name": "Accessible safe controls",
+      "expected": "Safe cancel focus, Tab/Esc, large scale and screen-reader descriptions work without copying QR secrets.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T078",
+      "slice": "P10",
+      "requirement": "EF-P10",
+      "level": "application",
+      "name": "Background ownership",
+      "expected": "Changing windows cannot move the prompt/result to a different site or approve it via page shortcuts.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T079",
+      "slice": "P11",
+      "requirement": "EF-P11",
+      "level": "application",
+      "name": "Credential interface fidelity",
+      "expected": "Create/get result consumers see correct fields/bytes/methods and prototype behaviour, including modifying methods.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T080",
+      "slice": "P11",
+      "requirement": "EF-P11",
+      "level": "application",
+      "name": "Truthful capabilities",
+      "expected": "Phone availability does not claim platform/authofill/related-origin support; native probes remain meaningful.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T081",
+      "slice": "P11",
+      "requirement": "EF-P11",
+      "level": "application",
+      "name": "Extensions not fabricated",
+      "expected": "Unsupported extensions never report success and required semantics are not silently stripped.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T082",
+      "slice": "P12",
+      "requirement": "EF-P12",
+      "level": "application",
+      "name": "Replacement-document immunity",
+      "expected": "Old results cannot complete into same-URL replacement/BFCache/new renderer documents.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T083",
+      "slice": "P12",
+      "requirement": "EF-P12",
+      "level": "application",
+      "name": "Abort race completeness",
+      "expected": "Each race yields one promise completion, one helper teardown and no leaked modal/lease.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T084",
+      "slice": "P12",
+      "requirement": "EF-P12",
+      "level": "application",
+      "name": "Private/shutdown isolation",
+      "expected": "Private owner closure and application shutdown clear requests without interfering with another native authentication.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T085",
+      "slice": "P13",
+      "requirement": "EF-P13",
+      "level": "unit",
+      "name": "Independent verification positive",
+      "expected": "Known valid disposable create+get material passes a verifier independent of libwebauthn.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T086",
+      "slice": "P13",
+      "requirement": "EF-P13",
+      "level": "unit",
+      "name": "Verifier negative controls",
+      "expected": "Wrong challenge, origin, RP binding, signature or required UV fails.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T087",
+      "slice": "P13",
+      "requirement": "EF-P13",
+      "level": "inspection",
+      "name": "Fixture privacy/trust",
+      "expected": "Temporary TLS/account data is scoped and removed; no global certificate trust or personal account is required.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T088",
+      "slice": "P14",
+      "requirement": "EF-P14",
+      "level": "application",
+      "name": "Composed successful flow",
+      "expected": "Create and get traverse production bridge/helper protocol and verify at independent RP.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T089",
+      "slice": "P14",
+      "requirement": "EF-P14",
+      "level": "application",
+      "name": "Adversarial authority regression",
+      "expected": "Forged page origin/lease/frame/owner or stale completion never gains credential authority.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T090",
+      "slice": "P14",
+      "requirement": "EF-P14",
+      "level": "application",
+      "name": "Native/off regression",
+      "expected": "Default-off/native provider and unsupported frame requests behave correctly with no global API breakage.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T091",
+      "slice": "P15",
+      "requirement": "EF-P15",
+      "level": "fuzz",
+      "name": "Parser robustness",
+      "expected": "Recorded bounded fuzz runs produce no unhandled panic/unbounded allocation; found failures are fixed with seeds.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T092",
+      "slice": "P15",
+      "requirement": "EF-P15",
+      "level": "application",
+      "name": "Resource caps enforced",
+      "expected": "Oversized streams/QR/messages/request storms fail without GUI starvation or orphan helpers.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T093",
+      "slice": "P15",
+      "requirement": "EF-P15",
+      "level": "application",
+      "name": "Private data absence",
+      "expected": "Deliberate secret sentinels remain absent from all observed persistent/diagnostic sinks.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T094",
+      "slice": "P16",
+      "requirement": "EF-P16",
+      "level": "inspection",
+      "name": "Independent review identity",
+      "expected": "Reviewer differs from author and checks the integrated source, not just worker summaries.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T095",
+      "slice": "P16",
+      "requirement": "EF-P16",
+      "level": "application",
+      "name": "Security reproductions",
+      "expected": "Reviewer executes key wrong-origin/frame/document and egress regressions on the exact candidate.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T096",
+      "slice": "P16",
+      "requirement": "EF-P16",
+      "level": "inspection",
+      "name": "No unresolved blocker",
+      "expected": "Any unresolved authority/privacy/crypto integration issue leaves phone gated; report does not claim certification.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T097",
+      "slice": "P17",
+      "requirement": "EF-P17",
+      "level": "physical",
+      "name": "iPhone create+get",
+      "expected": "Actual iPhone registration and subsequent assertion verify at independent RP.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T098",
+      "slice": "P17",
+      "requirement": "EF-P17",
+      "level": "physical",
+      "name": "Android create+get",
+      "expected": "Actual Android registration and subsequent assertion verify at independent RP.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T099",
+      "slice": "P17",
+      "requirement": "EF-P17",
+      "level": "physical",
+      "name": "Native and failure controls",
+      "expected": "Real native security-key operation plus cancellation/proximity failure behaves safely; simulated devices do not pass this gate.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T100",
+      "slice": "W00",
+      "requirement": "EF-W00",
+      "level": "native",
+      "name": "Exact mapping proof",
+      "expected": "Concurrent same-PID/app windows, delayed maps and address reuse never correlate to the wrong host.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T101",
+      "slice": "W00",
+      "requirement": "EF-W00",
+      "level": "native",
+      "name": "Safe placement proof",
+      "expected": "Intended source/destination grouping succeeds on supported backend without moving neighbours or stealing background focus.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T102",
+      "slice": "W00",
+      "requirement": "EF-W00",
+      "level": "native",
+      "name": "Failure behaviour",
+      "expected": "Locked/missing/stale/unsupported cases leave a usable page with no unrelated compositor effects.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T103",
+      "slice": "W01a",
+      "requirement": "EF-W01",
+      "level": "unit",
+      "name": "Open intent mapping",
+      "expected": "Internal mode effects remain unchanged; window mode maps each explicit destination once with correct foreground intent.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T104",
+      "slice": "W01b",
+      "requirement": "EF-W01",
+      "level": "unit",
+      "name": "Privacy/context routing",
+      "expected": "Same labels do not collapse distinct scopes; route resolution precedes host allocation.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T105",
+      "slice": "W01c",
+      "requirement": "EF-W01",
+      "level": "unit",
+      "name": "Destructive scope",
+      "expected": "tab-close/pin/quit semantics never widen to all group members or all windows implicitly.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T106",
+      "slice": "W02",
+      "requirement": "EF-W02",
+      "level": "application",
+      "name": "One page per host",
+      "expected": "New-tab creates one complete native page host while internal mode remains tabbed.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T107",
+      "slice": "W02",
+      "requirement": "EF-W02",
+      "level": "application",
+      "name": "Full keyboard experience",
+      "expected": "Hints, grid, target search, scrolling, input and prompts work through production per-host controllers.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T108",
+      "slice": "W02",
+      "requirement": "EF-W02",
+      "level": "application",
+      "name": "Generic display fallback",
+      "expected": "Without Hyprland IPC, normal page-window browsing still works and grouping is explicitly unavailable.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T109",
+      "slice": "W03",
+      "requirement": "EF-W03",
+      "level": "application",
+      "name": "Command consistency",
+      "expected": "Next/prev/index/close/undo/pin yield documented semantics in internal and window modes.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T110",
+      "slice": "W03",
+      "requirement": "EF-W03",
+      "level": "application",
+      "name": "Last-page safety",
+      "expected": "Last-close policies, untouched start-page reuse and unfinished drafts remain correct.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T111",
+      "slice": "W03",
+      "requirement": "EF-W03",
+      "level": "application",
+      "name": "Stale close target",
+      "expected": "Closure/navigation race never closes another page or a mixed compositor group.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T112",
+      "slice": "W04",
+      "requirement": "EF-W04",
+      "level": "unit",
+      "name": "Bounded observations",
+      "expected": "Malformed/oversized/out-of-order event+snapshot streams cannot overgrow cache or authorize actions.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T113",
+      "slice": "W04",
+      "requirement": "EF-W04",
+      "level": "unit",
+      "name": "Reconnect invalidation",
+      "expected": "Changed instance and address reuse retire old mappings and pending requests.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T114",
+      "slice": "W04",
+      "requirement": "EF-W04",
+      "level": "unit",
+      "name": "Permission separation",
+      "expected": "Grouping does not silently enable workspace moves; disabled integration performs no new effects.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T115",
+      "slice": "W05",
+      "requirement": "EF-W05",
+      "level": "native",
+      "name": "Multiple same-process windows",
+      "expected": "All hosts map correctly despite concurrent creation, same titles and focus changes.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T116",
+      "slice": "W05",
+      "requirement": "EF-W05",
+      "level": "native",
+      "name": "Stale/reused client",
+      "expected": "Destroyed/reused native identifiers cannot acquire an old host binding.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T117",
+      "slice": "W05",
+      "requirement": "EF-W05",
+      "level": "native",
+      "name": "No presentation leak",
+      "expected": "Bootstrap identity never leaks private page data, becomes durable or produces visible unwanted flashes.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T118",
+      "slice": "W06",
+      "requirement": "EF-W06",
+      "level": "native",
+      "name": "Correct group positive path",
+      "expected": "New foreground page joins intended eligible source group under real supported compositor.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T119",
+      "slice": "W06",
+      "requirement": "EF-W06",
+      "level": "native",
+      "name": "Concurrent placement races",
+      "expected": "Two rapid creates, disappearing source and focus switch cannot group the wrong window.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T120",
+      "slice": "W06",
+      "requirement": "EF-W06",
+      "level": "native",
+      "name": "No collateral effects",
+      "expected": "Locked/mixed/neighbouring groups and uncertain timeouts never unlock, move or close unrelated windows.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T121",
+      "slice": "W07",
+      "requirement": "EF-W07",
+      "level": "native",
+      "name": "Background focus preservation",
+      "expected": "User focus/workspace stays unchanged during delayed/concurrent background opens.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T122",
+      "slice": "W07",
+      "requirement": "EF-W07",
+      "level": "application",
+      "name": "Popup opener correctness",
+      "expected": "window.open/auth child retains actual engine relationship and closes/routes safely.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T123",
+      "slice": "W07",
+      "requirement": "EF-W07",
+      "level": "native",
+      "name": "Standalone correctness",
+      "expected": "Explicit standalone window does not alter user group settings or ungroup another window.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T124",
+      "slice": "W08",
+      "requirement": "EF-W08",
+      "level": "native",
+      "name": "Observed order traversal",
+      "expected": "Manual group reorder is reflected in next/prev/index selection without stale internal order.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T125",
+      "slice": "W08",
+      "requirement": "EF-W08",
+      "level": "native",
+      "name": "Mixed-scope filtering",
+      "expected": "Foreign apps and differently scoped private/profile pages are not destructively controlled as Ferric tabs.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T126",
+      "slice": "W08",
+      "requirement": "EF-W08",
+      "level": "native",
+      "name": "No reconciliation fight",
+      "expected": "User regroup/activation refusal stays respected; no background restoration loop.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T127",
+      "slice": "W09",
+      "requirement": "EF-W09",
+      "level": "unit",
+      "name": "Backward compatibility",
+      "expected": "Old/no-hints/unknown-hints session files retain all page data and still open internally.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T128",
+      "slice": "W09",
+      "requirement": "EF-W09",
+      "level": "unit",
+      "name": "No transient authority persistence",
+      "expected": "Native addresses, auth/spare leases and private data are absent from serialized records.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T129",
+      "slice": "W09",
+      "requirement": "EF-W09",
+      "level": "unit",
+      "name": "Failure preservation",
+      "expected": "Malformed/partial schema upgrade preserves original session and exposes recovery choices.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T130",
+      "slice": "W10",
+      "requirement": "EF-W10",
+      "level": "application",
+      "name": "Bounded restore",
+      "expected": "Large internal session converts only after confirmation and does not create an uncontrolled burst.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T131",
+      "slice": "W10",
+      "requirement": "EF-W10",
+      "level": "application",
+      "name": "Cancel/restart recovery",
+      "expected": "Interrupted materialization retains all not-yet-opened pages and original backup.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T132",
+      "slice": "W10",
+      "requirement": "EF-W10",
+      "level": "application",
+      "name": "No replay side effects",
+      "expected": "Restoration never resubmits a form, reauthenticates or repeats a download/permission grant.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T133",
+      "slice": "W11",
+      "requirement": "EF-W11",
+      "level": "application",
+      "name": "Isolation despite same names",
+      "expected": "Pages with equal labels but different privacy/profile scope do not share grants/data/credentials.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T134",
+      "slice": "W11",
+      "requirement": "EF-W11",
+      "level": "application",
+      "name": "Prompt ownership",
+      "expected": "Permission/file/auth/download UI and results stay with captured source host through focus/closure races.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T135",
+      "slice": "W11",
+      "requirement": "EF-W11",
+      "level": "application",
+      "name": "Private identity preserved",
+      "expected": "Window and popup titles/header never lose private marker or expose private metadata through normal diagnostics.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T136",
+      "slice": "W12",
+      "requirement": "EF-W12",
+      "level": "application",
+      "name": "Unfocused visible page",
+      "expected": "Visible tiled page is not frozen merely because another window has focus.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T137",
+      "slice": "W12",
+      "requirement": "EF-W12",
+      "level": "application",
+      "name": "Unknown visibility safety",
+      "expected": "Missing compositor facts do not discard/freeze a potentially visible page.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T138",
+      "slice": "W12",
+      "requirement": "EF-W12",
+      "level": "application",
+      "name": "Existing blockers preserved",
+      "expected": "Media, capture, dirty form and active auth prevent inappropriate background suspension.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T139",
+      "slice": "W13",
+      "requirement": "EF-W13",
+      "level": "unit",
+      "name": "IPC loss degradation",
+      "expected": "Browser navigation remains usable and grouping becomes unavailable without queue growth.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T140",
+      "slice": "W13",
+      "requirement": "EF-W13",
+      "level": "native",
+      "name": "Safe reconnect",
+      "expected": "Fresh mapping is required; old addresses and pending operations cannot be replayed blindly.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T141",
+      "slice": "W13",
+      "requirement": "EF-W13",
+      "level": "inspection",
+      "name": "Honest display failure handling",
+      "expected": "Actual display-server death uses existing crash recovery, not a claimed live reconnection guarantee.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T142",
+      "slice": "W14",
+      "requirement": "EF-W14",
+      "level": "native",
+      "name": "Hyprland daily workflow",
+      "expected": "Full keyboard page tasks and grouped new/traverse/close/undo work on actual supported compositor.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T143",
+      "slice": "W14",
+      "requirement": "EF-W14",
+      "level": "native",
+      "name": "Focus and mixed desktop",
+      "expected": "Background opens and manual mixed groups/locks leave unrelated windows and workspaces untouched.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T144",
+      "slice": "W14",
+      "requirement": "EF-W14",
+      "level": "native",
+      "name": "Generic Wayland workflow",
+      "expected": "One-page windows remain useful without Hyprland; shutdown/recovery and first-host closure are correct.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T145",
+      "slice": "X00",
+      "requirement": "EF-X00",
+      "level": "application",
+      "name": "Feature matrix equivalence",
+      "expected": "Feature combinations preserve ordinary page behaviour with correct effective gating.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T146",
+      "slice": "X00",
+      "requirement": "EF-X00",
+      "level": "application",
+      "name": "Cross-feature owner races",
+      "expected": "Adopted pages, popup auth and regrouping cannot redirect pending operations to another owner.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T147",
+      "slice": "X00",
+      "requirement": "EF-X00",
+      "level": "application",
+      "name": "Stress teardown",
+      "expected": "Repeated combined cancel/close/recover drains views, helpers and modal leases without growing resources.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T148",
+      "slice": "X01",
+      "requirement": "EF-X01",
+      "level": "build",
+      "name": "Clean package layout",
+      "expected": "Installed application finds only the packaged helper with correct executable/version and PSL prerequisites.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T149",
+      "slice": "X01",
+      "requirement": "EF-X01",
+      "level": "inspection",
+      "name": "Complete provenance",
+      "expected": "Pinned root/helper dependencies and notices are included, with separate tested toolchain requirements.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T150",
+      "slice": "X01",
+      "requirement": "EF-X01",
+      "level": "application",
+      "name": "Missing/uninstall behaviour",
+      "expected": "Missing helper/PSL leaves native browsing usable; uninstall preserves all user data.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T151",
+      "slice": "X02",
+      "requirement": "EF-X02",
+      "level": "build",
+      "name": "Fresh CI builds real code",
+      "expected": "Clean pipeline builds root production library and separate helper with pinned dependencies.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T152",
+      "slice": "X02",
+      "requirement": "EF-X02",
+      "level": "application",
+      "name": "Complete suite discovery",
+      "expected": "Expected new+existing suites are discovered and execute; missing filter and skip-only runs fail.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T153",
+      "slice": "X02",
+      "requirement": "EF-X02",
+      "level": "inspection",
+      "name": "Evidence retained",
+      "expected": "Failures/timeouts upload bounded sanitized results and cannot masquerade as green physical qualification.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T154",
+      "slice": "X03",
+      "requirement": "EF-X03",
+      "level": "inspection",
+      "name": "References match registry",
+      "expected": "Generated docs are clean on regeneration and settings/command names match implementation.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T155",
+      "slice": "X03",
+      "requirement": "EF-X03",
+      "level": "application",
+      "name": "Diagnostic privacy",
+      "expected": "Feature reasons/versions are useful without raw private URLs/credential values.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T156",
+      "slice": "X03",
+      "requirement": "EF-X03",
+      "level": "inspection",
+      "name": "Rollback instructions",
+      "expected": "Disabling new switches/restoring internal mode preserves profiles, sessions and ordinary browser behaviour.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T157",
+      "slice": "X04",
+      "requirement": "EF-X04",
+      "level": "inspection",
+      "name": "Independent integrated assessment",
+      "expected": "Review uses current integrated source and requirements, not only worker reports.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T158",
+      "slice": "X04",
+      "requirement": "EF-X04",
+      "level": "application",
+      "name": "Regression continuity",
+      "expected": "Previously passing internal/secondary/portal/search/download/history suites remain passing.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T159",
+      "slice": "X04",
+      "requirement": "EF-X04",
+      "level": "inspection",
+      "name": "No hidden scope expansion",
+      "expected": "No daemon, personal data access, system config edits or unauthorized remote changes were introduced.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T160",
+      "slice": "X05",
+      "requirement": "EF-X05",
+      "level": "inspection",
+      "name": "Owned cleanup only",
+      "expected": "Source, .git, logs, dependency locks and unrelated sentinel directories are unchanged by cleanup.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T161",
+      "slice": "X05",
+      "requirement": "EF-X05",
+      "level": "build",
+      "name": "Reproducible rebuild",
+      "expected": "Clean owned build products regenerate the correct current production library/helper.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T162",
+      "slice": "X05",
+      "requirement": "EF-X05",
+      "level": "application",
+      "name": "No stale artifact testing",
+      "expected": "Integrated tests identify and exercise the rebuilt candidate, not a previous worktree artifact.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T163",
+      "slice": "X06",
+      "requirement": "EF-X06",
+      "level": "inspection",
+      "name": "Traceable completion",
+      "expected": "Every slice/case has accepted independent review and source-matching evidence; no stub/refusal-only substitutes.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T164",
+      "slice": "X06",
+      "requirement": "EF-X06",
+      "level": "inspection",
+      "name": "Capability truth",
+      "expected": "Hot benefits, phone devices/native fallback and actual grouping claims correspond to real evidence.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T165",
+      "slice": "X06",
+      "requirement": "EF-X06",
+      "level": "inspection",
+      "name": "Safe handover",
+      "expected": "Local changes are committed/recoverable with no unauthorized remote/system/user-profile modifications.",
+      "result": "not_run",
+      "binding": "Bind to actual test/suite/receipt during implementation; this is an acceptance specification, not an existing test."
+    },
+    {
+      "id": "T014c",
+      "slice": "F02c",
+      "requirement": "EF-F02",
+      "level": "component",
+      "name": "Implement SDK-qualified popup opener lifetime leases",
+      "expected": "All scoped lease/retirement identity, boundedness, positive and negative lifecycle cases pass using actual production source with zero skips.",
+      "result": "not_run",
+      "binding": "Existing profile-lifetime real-WebEngine component CTest everyday_T014c_popup_delegate_lifetime; QtTest slot popupDelegateLifetime. Actual production C++ and real native objects; not composed Ferric or physical.",
+      "superseded_by": [
+        "T014e1"
+      ],
+      "amendment": "A37"
+    },
+    {
+      "id": "T014d",
+      "slice": "F02d",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Wire popup adoption and retirement through native leases",
+      "expected": "All scoped lease/retirement identity, boundedness, positive and negative lifecycle cases pass using actual production source with zero skips.",
+      "result": "not_run",
+      "binding": "Existing production application CTest everyday_T014d_popup_retirement_leases plus unchanged T014a/T013/T015 affected regressions.",
+      "superseded_by": [
+        "T014e8"
+      ],
+      "amendment": "A37"
+    },
+    {
+      "id": "T061a",
+      "slice": "P05a",
+      "requirement": "EF-P05",
+      "level": "component",
+      "name": "Native helper supervisor lifecycle substrate",
+      "expected": "Actual production supervisor executes bounded private-pipe framing/failure/cancel/reap/late-event cases using owned fake subprocesses, with an unrelated child preserved; no skipped/zero-test pass. This does not replace T061-T063 application cases.",
+      "result": "not_run",
+      "binding": "CTest everyday_T061a_helper_supervisor_component; credential_process_tests QtTest slot helperSupervisor, linked to current production engine supervisor."
+    },
+    {
+      "id": "T067a",
+      "slice": "P07a",
+      "requirement": "EF-P07",
+      "level": "unit",
+      "name": "Shared real library operation core and supported test device",
+      "expected": "Real pinned make/get and IDL paths execute through the same production core using supported virtual library device, dynamic responses and actual local transient QR factory without egress. No static credentials, source-only pass or physical caBLE claim.",
+      "result": "not_run",
+      "binding": "hybrid::tests::t067a_supported_virtual_channel_executes_shared_operations, plus same-package-ID/dev-license-MSRV/normal-feature build reports."
+    },
+    {
+      "id": "T061b",
+      "slice": "P05b1",
+      "requirement": "EF-P05",
+      "level": "unit",
+      "name": "Strict bounded helper protocol without admission",
+      "expected": "Actual production decoder/encoder accepts exact valid frames and rejects malformed/unknown/duplicate/deep/oversized/id-mismatched data with bounded allocation, budgets and redacted errors; no native authority or actor transition is granted.",
+      "result": "not_run",
+      "binding": "Rust credential_protocol::tests::strict_helper_protocol_frames in the production engine module; not a copied model."
+    },
+    {
+      "id": "T061c",
+      "slice": "P05b1",
+      "requirement": "EF-P05",
+      "level": "component",
+      "name": "Private native Rust callback and non-admission bridge",
+      "expected": "Actual compiled supervisor/CXX/Rust decoder/per-owner GUI queue passes owned subprocess, cancellation/reap/deadline/weak-owner/stale/error/redaction cases. This bridge creates or advances no C08 actor and grants no admitted launch/credential delivery; it does not test real C08/RP/origin admission or refusal. No synthetic qualified actor or skipped/zero-test pass.",
+      "result": "not_run",
+      "binding": "CTest everyday_T061c_helper_native_rust_bridge; credential_process_bridge_tests QtTest nativeRustBridge. T061a regression required; no substitute for T061-T063 APP."
+    },
+    {
+      "id": "T014e0",
+      "slice": "F02e0",
+      "requirement": "EF-F02",
+      "level": "native",
+      "name": "Prove public Widgets page ownership and chrome feasibility",
+      "expected": "Use exact Qt6.11.2 QWebEnginePage/QWebEngineView and QQuickWidget in a standalone disposable fixture; no product factory replacement before this gate. Prove real top/child/grandchild adoption without reload, JS/document/opener continuity, true parent close/opener.closed and zero unique loopback navigation requests from the closed opener. Prove pointer/keyboard/focus on surviving descendants, private profile isolation, close permutations, failed adoption and final page/profile drain. Include QML chrome/overlay focus and dialog parenting feasibility. Run component reproduction plus actual native window/input checks on this machine; record exact provenance and distinguish Qt-generated from compositor-delivered input. A failed public ownership route blocks migration; do not restore tombstones or infer a Qt-fork exception.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e1",
+      "slice": "F02e1",
+      "requirement": "EF-F02",
+      "level": "component",
+      "name": "Implement public profile and page ownership",
+      "expected": "Implement explicit QWebEngineProfile and QWebEnginePage owners using public APIs, separate from presentation widgets; profile lifetime covers every page and active request. Own page/document/host generations; close invalidates pending callbacks and destroys the browsing context exactly once. Never retain a live closed opener to satisfy a native anchor. Test actual production owners: same-profile adoption, cross-profile rejection, delayed callbacks, true source close with surviving descendants and shutdown/drain. This replaces T014c lease-mechanism coverage, retaining ownership and resource invariants.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e2",
+      "slice": "F02e2",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Implement Widgets host with embedded QML chrome",
+      "expected": "Keep the existing QApplication and add WebEngineWidgets/QuickWidgets to the pinned SDK module graph. Embed reusable existing QML chrome in a Widgets host; preserve appearance, geometry and native dialog parent identity. Attach/detach the same owned QWebEnginePage for tab/window presentation. Host transfer preserves document state and never recreates a URL or admits a foreign profile. Request attach/detach through typed BrowserUi bridge operations keyed by opaque host/page-owner tokens and existing TabId plus page/document generation. Verify Rust validates live owner/profile/generation and reuses EngineEffect::ReparentView through the existing typed native-request projection; the projection carries captured document identity and tokens for stale rejection before host attachment. Stale, retired and foreign-profile requests produce no effect or attachment. Do not introduce a new core event/effect or parallel string command channel; if ReparentView cannot safely represent the operation, stop for another reviewed scope correction. Keep lifecycle policy outside QML; exercise focus, scale and safe host replacement.",
+      "result": "failed",
+      "binding": "A48 failed: run evidence/F02e2-a6/native/NATIVE_RUN-A48.json (SHA-256 e6b0695df918b20713c8c86d008e99c1ac3f7a68a8852fea40d37d2fd3ae9eb1); receipt evidence/F02e2-a6/native/T014e2-A48/receipt.json (SHA-256 2e35b498a9a5db8802bac48bf3f28fbfed17ace1ac70810170bcc6bc38d9f32a); CTest exit 8; QtTest 2 passed, 1 failed, 0 skipped; BrowserUi QML registration failed before page-reparent assertions.",
+      "superseded_by": [
+        "T014e2s"
+      ]
+    },
+    {
+      "id": "T014e2q",
+      "slice": "F02e2q",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Prove static CXX-Qt QML initialization constructs BrowserUi",
+      "expected": "Call the generated cxx_qt_init_crate_ferric_browser_engine_qt() initializer before QML use in a dedicated static-link test executable. Import io.github.ferricbrowser 1.0; assert QQmlComponent readiness and a non-null BrowserUi. Report component errors on failure. Do not run T014e2 or claim page-reparent behavior.",
+      "result": "not_run",
+      "binding": "Register exact static_qml_registration_tests executable and T014e2q CTest; run only this child test with nonzero discovery and zero skips on exact integrated source."
+    },
+    {
+      "id": "T014e2r",
+      "slice": "F02e2r",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Reparent the same public page across Widgets hosts with initialized QML registration",
+      "expected": "Call cxx_qt_init_crate_ferric_browser_engine_qt() after QApplication construction and before QTest/QML use. Run the distinct rustBrowserUiRequestReparentsSamePageAcrossHostsWithInitializer slot with the complete original page-reparent assertion body unchanged: same-page identity, attach/detach, stale and foreign-owner rejection, focus, and safe host replacement. Preserve the old T014e2 registration and failed result; never run T014e2 or its old slot.",
+      "result": "not_run",
+      "binding": "Register T014e2r as its own CTest entry invoking only the new QtTest slot; require nonzero discovery, exact-source receipts, one serial execution and zero skips.",
+      "superseded_by": [
+        "T014e2s"
+      ]
+    },
+    {
+      "id": "T014e3",
+      "slice": "F02e3",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Adapt navigation and isolated scripts to public pages",
+      "expected": "Route navigation, reload/history/search and existing isolated script execution through actual QWebEnginePage/mainFrame APIs with explicit document and owner guards. Preserve reserved script-world ownership, hint/script lifecycle and stale-callback rejection; never infer origin authority from URL or console messages. Test navigation failures/reload/history, same-document and cross-document callbacks, renderer death and script-world separation using real pages.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e4",
+      "slice": "F02e4",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Adapt profile services and page-owned prompts",
+      "expected": "Connect existing request interception, permissions, certificate/authentication, download attribution and prompt events to the public profile/page adapter and existing typed runtime service paths. Preserve native WebAuthn, captured owner/profile/privacy and default-deny behavior; no arbitrary page-supplied target or executable. Test primary/private service isolation, stale prompt completion, download source attribution and absence of unintended network or credential side effects.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e5",
+      "slice": "F02e5",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Adapt native input and auxiliary page UI",
+      "expected": "Route existing keyboard, pointer, hints and focus behavior to Widgets hosts without swallowing native page input. Preserve input modes, IME, accessibility, dialogs and DevTools ownership. Use supported native window parenting for auxiliary UI; no hidden substitute focus window or main-thread IPC. Run focus traversal, keyboard command/page typing, overlays, pointer, dialog return-focus and DevTools attach/detach on real hosts; separate synthetic component assertions from native input qualification.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e6",
+      "slice": "F02e6",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Connect primary composition and profile factories",
+      "expected": "Migrate primary composition, page/profile factory and resource registry to the public owner/host adapter while preserving typed core rows, session metadata and privacy boundaries. Keep the backend non-default until secondary/popup composition and final integration pass; never mix Quick-owned and Widgets-owned pages inside a live opener chain. Test primary navigation, page creation/closure, transfer rollback, profile shutdown and existing normal-browser behaviors with shipped resources.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e7",
+      "slice": "F02e7",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Connect secondary windows and real popup adoption",
+      "expected": "Migrate secondary, popup and auxiliary composition to the same public ownership model; capture source/page/profile/window at creation and preserve real popup WebContents adoption. Route close/transfer through once-only owner retirement; remove dependencies on retained source views and private Quick delegate metadata. Test foreground/background opens, nested popups, primary/secondary source closure, profile isolation, replacement hosts and child-before-parent/parent-before-child shutdown.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e8",
+      "slice": "F02e8",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Qualify production public-host replacement and retire leases",
+      "expected": "Retire obsolete Quick opener lease machinery after production public-host lifecycle tests pass; preserve generic profile drain functionality still used by production. Replace implementation-specific T014d harness with composed public-host assertions: no reload, true closed opener/no navigation, surviving native pointer/keyboard, profile/privacy, renderer replacement and resource drain. Rerun original T013/T014a/T015 behaviors and S01 baseline on the exact integrated production host; no unchanged old-source receipt substitutes for new-host qualification. Document actual public API ownership and rollout; default switch occurs only with all replacement components and full affected regression gates passing. No security, physical-device or numeric threshold waiver.",
+      "result": "not_run",
+      "binding": "Register exact executable/slot in the named harness; record actual assertions, nonzero discovery and zero skips. No source-only evidence."
+    },
+    {
+      "id": "T014e2s",
+      "slice": "F02e2s",
+      "requirement": "EF-F02",
+      "level": "application",
+      "name": "Reparent the same public page with production-driven bootstrap for both profiles",
+      "expected": "After QApplication construction and CXX-Qt initialization, create the BrowserUi used by the public page-host integration body. Drive asynchronous profile bootstrap for both the primary and later-created foreign BrowserUi through separate bounded, scoped poll_config() timers while the Qt event loop runs; stop/disconnect each timer before destroying its UI. Require a nonempty profile ID, positive tab_count and profile_bootstrap_pending == false for each UI; report profile ID, tab_count, pending, startup notice, status and poll invocation result on timeout. Then exercise the full same-page attach/detach and document-preservation path, stale/foreign owner rejection, focus, geometry, dialog parent identity and lifecycle assertions. Never fake readiness or weaken assertions.",
+      "result": "not_run",
+      "binding": "New A52 successor test. Register T014e2s as a distinct CTest entry invoking only the new QtTest slot. Require exact-source build/configure, integration target build, robust executable/link-order verification, nonzero discovery, one serial run with zero skips, and independent gate-evidence review before acceptance. T014e2 and T014e2r remain historical and execution-prohibited.",
+      "native_gate_sequence": [
+        "read-only-sdk-selection-preflight",
+        "exact-source-release-engine-build",
+        "public-page-host-harness-configure",
+        "integration-target-build",
+        "robust-executable-link-order-verification",
+        "nonzero-ctest-discovery",
+        "T014e2s-serial"
+      ]
+    },
+    {
+      "id": "T014e2i",
+      "slice": "F02e2i",
+      "requirement": "EF-F02",
+      "level": "unit",
+      "name": "Typed actual profile-session identity across all privacy modes",
+      "expected": "An opaque live ProfileInstanceId is distinct from optional durable ProfileId. Repeated reads and Arc clones/shared same-id+roots durable owners are stable; independent Ephemeral/Private sessions and different durable roots/ids differ; after all actual owners drop a new session has a new identity. Copied IDs cannot retain sessions/grants. BrowserApplication projection is None before activation and Some for Normal/Private/Ephemeral; optional durable IDs, storage roots, permission/download scope and privacy are unchanged.",
+      "result": "not_run",
+      "binding": "Bind every identity/lifetime/privacy case to real profile_instance_identity Rust unit functions and exact-source focused plus full ferric-browser-application --lib receipts. Nonzero execution, zero failures/skips, independent source/evidence review and serial integrated-source gates before acceptance; no Qt/native/physical qualification."
+    }
+  ],
+  "note": "Specifications with one receipt-bound historical failure recorded. No case is marked passed at authoring."
+}

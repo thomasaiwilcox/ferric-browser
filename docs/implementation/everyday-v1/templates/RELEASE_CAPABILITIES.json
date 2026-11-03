@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "source_sha": "REPLACE",
+  "capabilities": {
+    "hot_internal": {
+      "implementation": "not_started",
+      "qualification": "not_run",
+      "evidence": []
+    },
+    "hot_windows": {
+      "implementation": "not_started",
+      "qualification": "not_run",
+      "evidence": []
+    },
+    "phone_top_level": {
+      "implementation": "not_started",
+      "qualification": "not_run",
+      "evidence": []
+    },
+    "native_page_windows": {
+      "implementation": "not_started",
+      "qualification": "not_run",
+      "evidence": []
+    },
+    "hyprland_grouping": {
+      "implementation": "not_started",
+      "qualification": "not_run",
+      "evidence": []
+    }
+  },
+  "known_limitations": []
+}

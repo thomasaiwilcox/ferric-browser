@@ -15,7 +15,9 @@ mod command_schema;
 
 pub use command_codec::encode_command;
 pub use command_envelope::{CommandContext, CommandEnvelope, decode_command_envelope};
-pub use command_invocation::{CommandInvocation, decode_command_invocation};
+pub use command_invocation::{
+    CommandInvocation, decode_command_chain, decode_command_invocation, encode_command_chain,
+};
 pub use command_schema::{command_argument_names, validate_command_argument_fields};
 
 use std::{
@@ -213,6 +215,7 @@ struct EventQueue {
 }
 
 struct EventQueueState {
+    writing: bool,
     messages: VecDeque<Vec<u8>>,
     bytes: usize,
     closed: bool,
@@ -222,6 +225,7 @@ impl EventQueue {
     fn new() -> Self {
         Self {
             state: Mutex::new(EventQueueState {
+                writing: false,
                 messages: VecDeque::new(),
                 bytes: 0,
                 closed: false,
@@ -277,11 +281,24 @@ impl EventQueue {
         }
     }
 
+    fn written(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            state.writing = false;
+        }
+    }
+
+    fn pending(&self) -> bool {
+        self.state
+            .lock()
+            .is_ok_and(|state| state.writing || !state.messages.is_empty())
+    }
+
     fn take(&self, active: &std::sync::atomic::AtomicBool) -> Option<Vec<u8>> {
         let mut state = self.state.lock().ok()?;
         loop {
             if let Some(payload) = state.messages.pop_front() {
                 state.bytes = state.bytes.saturating_sub(payload.len());
+                state.writing = true;
                 return Some(payload);
             }
             if state.closed || !active.load(std::sync::atomic::Ordering::Acquire) {
@@ -305,6 +322,9 @@ pub fn subscribe_event_stream(
     stream: UnixStream,
     event_types: Option<Vec<String>>,
 ) -> Result<(), String> {
+    stream
+        .set_write_timeout(Some(Duration::from_secs(1)))
+        .map_err(|error| format!("could not bound IPC event writes: {error}"))?;
     let queue = Arc::new(EventQueue::new());
     let active = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let registry = EVENT_SUBSCRIBERS.get_or_init(|| Mutex::new(Vec::new()));
@@ -322,7 +342,9 @@ pub fn subscribe_event_stream(
         .spawn(move || {
             let mut stream = stream;
             while let Some(payload) = writer_queue.take(&writer_active) {
-                if write_frame(&mut stream, &payload).is_err() {
+                let result = write_event_frame(&mut stream, &payload);
+                writer_queue.written();
+                if result.is_err() {
                     writer_active.store(false, std::sync::atomic::Ordering::Release);
                     writer_queue.close();
                     break;
@@ -372,6 +394,55 @@ pub fn publish_event(notification: &EventNotification) {
         }
         deliver_event_to_subscriber(subscriber, notification, &payload)
     });
+}
+
+// SO_SNDTIMEO alone bounds each syscall. Carry one absolute deadline through
+// partial writes so a slow reader cannot repeatedly renew its shutdown lease.
+fn write_event_frame(stream: &mut UnixStream, payload: &[u8]) -> io::Result<()> {
+    let length = u32::try_from(payload.len())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "event frame too large"))?;
+    let deadline = Instant::now() + Duration::from_secs(1);
+    for mut remaining in [&length.to_be_bytes()[..], payload] {
+        while !remaining.is_empty() {
+            let Some(timeout) = deadline
+                .checked_duration_since(Instant::now())
+                .filter(|timeout| !timeout.is_zero())
+            else {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "event frame deadline elapsed",
+                ));
+            };
+            stream.set_write_timeout(Some(timeout))?;
+            match stream.write(remaining) {
+                Ok(0) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::WriteZero,
+                        "event stream closed",
+                    ));
+                }
+                Ok(written) => remaining = &remaining[written..],
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => (),
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether an admitted subscriber notification is queued or being written.
+/// Shutdown can poll this without blocking the GUI thread. Event writes have
+/// a bounded socket timeout, including when a subscriber stops reading.
+#[must_use]
+pub fn event_writes_pending() -> bool {
+    EVENT_SUBSCRIBERS.get().is_some_and(|registry| {
+        registry.lock().is_ok_and(|registry| {
+            registry.iter().any(|subscriber| {
+                subscriber.active.load(std::sync::atomic::Ordering::Acquire)
+                    && subscriber.queue.pending()
+            })
+        })
+    })
 }
 
 fn deliver_event_to_subscriber(
@@ -506,6 +577,7 @@ pub struct PublicError {
     code: ErrorCode,
     user_message: String,
     diagnostic_context: String,
+    accepted_commands: usize,
 }
 
 impl PublicError {
@@ -520,6 +592,7 @@ impl PublicError {
             code,
             user_message: user_message.into(),
             diagnostic_context: diagnostic_context.into(),
+            accepted_commands: 0,
         }
     }
 
@@ -549,15 +622,29 @@ impl PublicError {
         &self.diagnostic_context
     }
 
+    /// Records an already accepted prefix without claiming those commands
+    /// completed or were rolled back when a later command failed.
+    #[must_use]
+    pub fn after_accepted_commands(mut self, count: usize) -> Self {
+        self.accepted_commands = self.accepted_commands.saturating_add(count);
+        self
+    }
+
     /// Converts this error into the public protocol envelope before response
     /// redaction and correlation metadata are applied.
     #[must_use]
     pub fn into_protocol_error(self) -> ProtocolError {
+        let mut details = serde_json::Map::new();
+        if !self.diagnostic_context.is_empty() {
+            details.insert("diagnostic_context".into(), json!(self.diagnostic_context));
+        }
+        if self.accepted_commands > 0 {
+            details.insert("accepted_commands".into(), json!(self.accepted_commands));
+        }
         ProtocolError {
             code: self.code.as_str().into(),
             message: self.user_message,
-            details: (!self.diagnostic_context.is_empty())
-                .then(|| json!({"diagnostic_context": self.diagnostic_context})),
+            details: (!details.is_empty()).then_some(Value::Object(details)),
         }
     }
 }
@@ -760,6 +847,18 @@ impl Response {
         redact_value(&mut details);
         let Value::Object(mut details) = details else {
             unreachable!("error details are always converted to an object");
+        };
+        let (preserved, next_action) = if details
+            .get("accepted_commands")
+            .and_then(Value::as_u64)
+            .is_some_and(|count| count > 0)
+        {
+            (
+                "earlier commands were accepted; their effects may still be in progress",
+                "check the browser state before retrying the remaining commands",
+            )
+        } else {
+            (preserved, next_action)
         };
         details.insert(
             "correlation_id".into(),
@@ -1722,6 +1821,36 @@ mod tests {
     }
 
     #[test]
+    fn command_chain_failure_reports_only_accepted_commands() {
+        for count in [0, 1] {
+            let failure = PublicError::new(ErrorCode::NotFound, "Unknown setting.", "missing key")
+                .after_accepted_commands(count);
+            let error = Response::failure("chain", failure.into_protocol_error())
+                .error
+                .unwrap();
+            assert_eq!(error.code, "E_NOT_FOUND");
+            assert_eq!(error.message, "Unknown setting.");
+            let details = error.details.unwrap();
+            if count == 0 {
+                assert!(details.get("accepted_commands").is_none());
+                assert_eq!(details["preserved"], "existing state was left unchanged");
+            } else {
+                assert_eq!(details["accepted_commands"], count);
+                assert!(
+                    details["preserved"]
+                        .as_str()
+                        .unwrap()
+                        .contains("earlier commands were accepted")
+                );
+                assert_eq!(
+                    details["next_action"],
+                    "check the browser state before retrying the remaining commands"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn failure_response_redacts_sensitive_messages_and_details() {
         let response = Response::failure(
             "request-2",
@@ -1902,6 +2031,44 @@ mod tests {
         drop(client);
         drop(server);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn event_frame_deadline_bounds_a_backpressured_subscriber() {
+        let (mut writer, _reader) = UnixStream::pair().expect("owned socket pair");
+        writer.set_nonblocking(true).unwrap();
+        let filler = [0; 4096];
+        loop {
+            match writer.write(&filler) {
+                Ok(_) => (),
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                Err(error) => panic!("fill socket: {error}"),
+            }
+        }
+        writer.set_nonblocking(false).unwrap();
+        let started = Instant::now();
+        let error = write_event_frame(&mut writer, b"terminal receipt").unwrap_err();
+        assert!(matches!(
+            error.kind(),
+            io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+        ));
+        assert!(started.elapsed() < Duration::from_secs(3));
+    }
+
+    #[test]
+    fn event_queue_tracks_in_flight_writes_before_shutdown() {
+        let queue = EventQueue::new();
+        let active = std::sync::atomic::AtomicBool::new(true);
+        assert!(!queue.pending());
+        assert!(queue.push(vec![1]));
+        assert!(queue.pending());
+        assert_eq!(queue.take(&active), Some(vec![1]));
+        assert!(
+            queue.pending(),
+            "a dequeued event is still owned by the writer"
+        );
+        queue.written();
+        assert!(!queue.pending());
     }
 
     #[test]

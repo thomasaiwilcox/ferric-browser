@@ -30,7 +30,8 @@ impl Default for BrowserUiRust {
         let theme_palette = ThemePalette::default();
         let chrome_theme = theme_presentation::project(&theme_palette);
         let chrome_preferences = chrome_preferences::project(&Config::default());
-        let feature_preferences = feature_preferences::project(&Config::default());
+        let default_config = Config::default();
+        let feature_preferences = feature_preferences::project(&default_config, &default_config);
         let settings_config = serde_json::to_value(Config::default()).unwrap_or(Value::Null);
         let settings_rows = settings_presentation::project_variant(&settings_config);
         let empty_overrides_json =
@@ -62,6 +63,27 @@ impl Default for BrowserUiRust {
             binding_clock: Instant::now(),
             pending_engine_action: None,
             pending_engine_actions: VecDeque::new(),
+            page_window_preparing: false,
+            page_window_ordinary: false,
+            page_window_closing: false,
+            page_window_group: String::new(),
+            page_window_focus_lease: None,
+            accepted_page_gets: std::collections::HashMap::new(),
+            shutdown_session_lease: None,
+            shutdown_pages: None,
+            pending_page_session: None,
+            page_creation_publications: std::collections::VecDeque::new(),
+            page_creations: std::collections::HashMap::new(),
+            page_creation_focus_owned: false,
+            page_creation_presentation: None,
+            page_close_intent: None,
+            restored_page_windows: std::collections::HashMap::new(),
+            restored_page_group_ids: std::collections::HashMap::new(),
+            credential_policy_epoch: 1,
+            prepared_page_window: None,
+            prepared_page_releases: std::collections::HashMap::new(),
+            live_page_move: None,
+            prepared_live_page: None,
             pending_print: None,
             pending_print_private: false,
             pending_history_clear: None,
@@ -364,6 +386,28 @@ impl Default for BrowserUiRust {
             feature_link_cleaning_update_sha256: QString::from(
                 feature_preferences.link_cleaning_update_sha256,
             ),
+            feature_tabs_presentation_requested: QString::from(
+                feature_preferences.tabs_presentation_requested,
+            ),
+            feature_tabs_presentation_effective: QString::from(
+                feature_preferences.tabs_presentation_effective,
+            ),
+            feature_tabs_presentation_status: QString::from(
+                feature_preferences.tabs_presentation_status,
+            ),
+            feature_tabs_presentation_reason: QString::from(
+                feature_preferences.tabs_presentation_reason,
+            ),
+            feature_phone_passkeys_requested: QString::from(
+                feature_preferences.phone_passkeys_requested,
+            ),
+            feature_phone_passkeys_status: QString::from(feature_preferences.phone_passkeys_status),
+            feature_phone_passkeys_reason: QString::from(feature_preferences.phone_passkeys_reason),
+            feature_page_grouping_requested: QString::from(
+                feature_preferences.page_grouping_requested,
+            ),
+            feature_page_grouping_status: QString::from(feature_preferences.page_grouping_status),
+            feature_page_grouping_reason: QString::from(feature_preferences.page_grouping_reason),
             config_base_json: QString::from(
                 serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into()),
             ),

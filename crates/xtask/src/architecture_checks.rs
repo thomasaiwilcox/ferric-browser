@@ -643,6 +643,7 @@ pub(super) fn check_renderer_failure_contract() -> Result<(), String> {
     let root = Path::new("crates/ferric-browser-engine-qt/qml/components");
     let mut source = String::new();
     for module in [
+        "FerricPageView.qml",
         "FerricPrimaryBrowserWindow.qml",
         "FerricWindowLifecycleController.qml",
         "FerricPageServices.qml",

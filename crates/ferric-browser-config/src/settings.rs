@@ -480,6 +480,15 @@ pub(super) const SETTING_METADATA: &[SettingMetadata] = &[
         "normal"
     ),
     setting_metadata!(
+        "tabs.presentation",
+        "enum",
+        "internal",
+        GLOBAL_SCOPES,
+        "restart",
+        "qt-webengine",
+        "normal"
+    ),
+    setting_metadata!(
         "tabs.related_position",
         "enum",
         "after-opener",
@@ -505,6 +514,15 @@ pub(super) const SETTING_METADATA: &[SettingMetadata] = &[
         "live",
         "qt-webengine",
         "normal"
+    ),
+    setting_metadata!(
+        "passkeys.phone",
+        "enum",
+        "off",
+        GLOBAL_PROFILE_SCOPES,
+        "navigation",
+        "phone-auth-provider",
+        "sensitive"
     ),
     setting_metadata!(
         "session.restore",
@@ -861,6 +879,15 @@ pub(super) const SETTING_METADATA: &[SettingMetadata] = &[
         "hyprland.workspace_routing",
         "boolean",
         "false",
+        GLOBAL_SCOPES,
+        "live",
+        "hyprland",
+        "normal"
+    ),
+    setting_metadata!(
+        "hyprland.page_grouping",
+        "enum",
+        "off",
         GLOBAL_SCOPES,
         "live",
         "hyprland",

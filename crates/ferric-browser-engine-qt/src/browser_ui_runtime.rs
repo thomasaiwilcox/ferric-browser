@@ -600,6 +600,9 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn checkpoint_session(mut self: Pin<&mut Self>) -> bool {
+        if self.as_ref().rust().page_window_preparing || self.as_ref().rust().tab_ids.is_empty() {
+            return false;
+        }
         let now = elapsed_ms(self.as_ref().rust().binding_clock);
         let due = {
             let pinned = self.as_ref();
@@ -624,11 +627,15 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn wait_for_session_save(mut self: Pin<&mut Self>) -> bool {
+        self.as_mut().wait_for_session_saves(true)
+    }
+
+    fn wait_for_session_saves(mut self: Pin<&mut Self>, require_current: bool) -> bool {
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
             self.as_mut().poll_storage_library();
             if self.as_ref().rust().library.session_saves.is_empty() {
-                return !self.as_ref().rust().checkpoint.dirty;
+                return !require_current || !self.as_ref().rust().checkpoint.dirty;
             }
             if Instant::now() >= deadline {
                 self.set_status_text(QString::from(
@@ -685,6 +692,14 @@ impl qobject::BrowserUi {
         let Some(path) = self.as_ref().rust().session_path.clone() else {
             return false;
         };
+        // An automatic checkpoint or named save may already own the bounded
+        // save slot. Drain it, then capture a fresh aggregate: its older
+        // generation cannot replace the final shutdown snapshot.
+        if !self.as_ref().rust().library.session_saves.is_empty()
+            && !self.as_mut().wait_for_session_saves(false)
+        {
+            return false;
+        }
         if !self
             .as_mut()
             .request_session_snapshot_save("last-session", path, true)

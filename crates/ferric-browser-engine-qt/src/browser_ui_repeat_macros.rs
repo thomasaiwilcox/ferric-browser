@@ -111,6 +111,16 @@ impl qobject::BrowserUi {
             count,
             route: route.cloned(),
         };
+        if let Some(scope) = crate::page_window_undo::Scope::capture(self.as_ref().rust()) {
+            self.as_mut().refresh_ipc_owner();
+            if let Err(error) = crate::page_window_macros::note(&scope, recorded) {
+                self.as_mut().set_status_text(QString::from(error));
+            }
+            self.as_mut().clear_site_experiment_presentation();
+            self.as_mut().sync_macro_status_text();
+            super::live_ipc_owners::page_macros_changed(&scope);
+            return;
+        }
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -139,6 +149,9 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn execute_repeat_command(self: Pin<&mut Self>, command: &ParsedCommand) -> bool {
+        if self.as_ref().in_page_window_mode() {
+            return self.execute_page_recorded_workflow_local(command);
+        }
         let count = match command.arguments.as_slice() {
             [] => 1,
             [flag, value] if flag == "--count" => value
@@ -163,6 +176,18 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         commands: Vec<RepeatableCommand>,
     ) -> bool {
+        if self.as_ref().in_page_window_mode() {
+            return match self
+                .as_mut()
+                .execute_page_recorded_commands(commands, None, &mut None)
+            {
+                Ok(_) => true,
+                Err(error) => {
+                    self.set_status_text(QString::from(error.user_message()));
+                    false
+                }
+            };
+        }
         let chained = commands.len() > 1;
         for (index, recorded) in commands.into_iter().enumerate() {
             if index > 0 {
@@ -209,6 +234,33 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn execute_macro_command(mut self: Pin<&mut Self>, command: &ParsedCommand) -> bool {
+        if self.as_ref().in_page_window_mode() {
+            if command.name == "macro-play" {
+                return self.execute_page_recorded_workflow_local(command);
+            }
+            let result = (|| {
+                self.as_mut().refresh_ipc_owner();
+                let scope = crate::page_window_undo::Scope::capture(self.as_ref().rust())
+                    .ok_or("Macro state is unavailable for this window")?;
+                let message = match (command.name.as_str(), command.arguments.as_slice()) {
+                    ("macro-record", [register]) if valid_macro_register(register) => {
+                        crate::page_window_macros::begin(&scope, register)?;
+                        format!("Recording macro {register}")
+                    }
+                    ("macro-stop", []) => format!(
+                        "Recorded macro {}",
+                        crate::page_window_macros::stop(&scope)?
+                    ),
+                    _ => return Err("Use macro-record REGISTER or macro-stop".to_owned()),
+                };
+                super::live_ipc_owners::page_macros_changed(&scope);
+                Ok(message)
+            })();
+            let success = result.is_ok();
+            self.as_mut().sync_macro_status_text();
+            self.set_status_text(QString::from(result.unwrap_or_else(|error| error)));
+            return success;
+        }
         match command.name.as_str() {
             "macro-record" => {
                 let Some(register) = command.arguments.first() else {

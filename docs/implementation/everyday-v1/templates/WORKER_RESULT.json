@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "slice_id": "REPLACE",
+  "status": "submitted",
+  "attempt": 1,
+  "author": "REAL_AGENT_SESSION_ID",
+  "base_sha": "REPLACE",
+  "candidate_sha": "REPLACE",
+  "changed_paths": [],
+  "test_bindings": [],
+  "receipt_paths": [],
+  "unavailable": [],
+  "risks": [],
+  "integration_notes": []
+}

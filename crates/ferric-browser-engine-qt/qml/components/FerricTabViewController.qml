@@ -13,13 +13,61 @@ Item {
     required property var interceptor
     required property bool transientProfile
     property bool ready: true
+    property bool transferInProgress: false
+    property var pageWindowCoordinator: null
     property var tabViews: []
     property string tabIdentitySignature: ""
+    property bool restoreInProgress: false
     signal activity
     signal restored
 
     onReadyChanged: {
         if (ready) syncTabModel()
+    }
+
+    function restoreStagedLiveView(view) {
+        var saved = view ? view.liveTransferSource : null
+        if (!saved || saved.ui !== browserUi || saved.host !== browserHost || !saved.target) return false
+        var index = browserUi.tab_index_for_id(saved.target.tabId)
+        if (index < 0 || browserHost.runtimeReleased) return false
+        var stagedHost = view.viewHost
+        if (stagedHost && stagedHost !== browserHost && stagedHost.tabViewControllerObject)
+            stagedHost.tabViewControllerObject.tabViews = stagedHost.tabViewControllerObject.tabViews.filter(function(candidate) { return candidate !== view })
+        view.visible = false
+        view.stableTabId = saved.target.tabId
+        view.viewUi = browserUi
+        view.viewHost = browserHost
+        view.viewTabs = tabs
+        view.tabIndex = index
+        view.viewModel = tabs.get(index)
+        view.parent = viewParent
+        if (tabViews.indexOf(view) < 0)
+            tabViews = tabViews.slice(0,index).concat([view],tabViews.slice(index))
+        return true
+    }
+    function finishStagedLiveRollback(view) {
+        var saved = view ? view.liveTransferSource : null
+        if (!saved || saved.ui !== browserUi || saved.host !== browserHost) return false
+        var index = browserUi.tab_index_for_id(saved.target.tabId)
+        var target = index >= 0 ? browserUi.navigation_target_for_index(index) : null
+        var valid = !view.viewRetired && browserHost.runtimeReleased !== true
+            && browserUi.page_host_profile_id() === saved.profileId
+            && String(browserUi.context_name) === saved.context
+            && pageWindowCoordinator.sameTarget(target,saved.target)
+        view.liveTransferSource = null
+        if (valid) {
+            view.viewTransferPending = false
+            view.refreshPromptViewIdentity()
+            view.refreshDocumentOwnerAfterTransfer(saved.target)
+            view.visible = true
+            view.synchronizeContentHistory()
+        } else {
+            var resources = view.factory.rootWindow.profileResourceRegistry.forProfile(view.profile)
+            if (resources) resources.lifetime.releaseView(view)
+        }
+        transferInProgress = false
+        syncTabModel()
+        return valid
     }
 
     function refreshMetadata() {
@@ -70,11 +118,13 @@ Item {
     function syncTabModel() {
         // Profile bootstrap replaces the provisional reducer identities. Do
         // not create renderers or consume restore data until their owner is ready.
-        if (!ready || !viewFactory || !viewParent) return false
+        if (!ready || transferInProgress || !viewFactory || !viewParent) return false
         var pending = browserUi.take_session_restore_values()
         if (pending.length > 0) {
+            restoreInProgress = true
             controller.applyRestorePayload(pending, true)
         }
+        if (pageWindowCoordinator && !pageWindowCoordinator.prepare(controller)) return false
         var coreIds = []
         for (var coreIndex = 0; coreIndex < browserUi.tab_count; ++coreIndex) {
             coreIds.push(browserUi.tab_id_for_index(coreIndex))
@@ -130,7 +180,15 @@ Item {
                 }
             } else if (modelIndex < tabs.count
                        && String(tabs.get(modelIndex).tabId || "").length === 0) {
+                // A startup row has no live page identity yet. Initialize its
+                // settings from the adopted Core page before creating a view;
+                // prepared restores may carry settings unlike the placeholder.
+                var adopted = {}
+                try { adopted = JSON.parse(browserUi.tab_transfer_payload(wantedId)) } catch (error) {}
                 tabs.setProperty(modelIndex, "tabId", wantedId)
+                tabs.setProperty(modelIndex, "pinned", adopted.pinned === true)
+                tabs.setProperty(modelIndex, "muted", adopted.muted === true)
+                tabs.setProperty(modelIndex, "zoom", Number(adopted.zoom_hundredths || 100) / 100)
             } else {
                 // Native descriptors must be present before constructing the
                 // view: committing a placeholder can overwrite a queued undo
@@ -202,6 +260,9 @@ Item {
         for (var viewIndex = 0; viewIndex < tabViews.length; ++viewIndex) {
             tabViews[viewIndex].tabIndex = viewIndex
             tabViews[viewIndex].viewModel = tabs.get(viewIndex)
+            // Core may have replaced its owner before these indices became
+            // stable. Reassert the retained native view association now.
+            tabViews[viewIndex].refreshPromptViewIdentity()
         }
         if (tabViews.length !== tabs.count || tabs.count !== browserUi.tab_count) {
             browserUi.status_text = "The tabs couldn't be synchronized. Try reopening the window."
@@ -218,7 +279,10 @@ Item {
             }
         }
         refreshMetadata()
-        if (pending.length > 0) restored()
+        if (restoreInProgress) {
+            restoreInProgress = false
+            restored()
+        }
     }
 
 }

@@ -75,7 +75,7 @@ pub use mixed_policy::{
 };
 pub use model::reducer::{
     ClipboardEdit, Diagnostic, Effect, EngineEffect, Event, PersistEffect, ReduceError,
-    TabTransfer, Target, reduce,
+    TabTransfer, TabTransferIdentity, Target, reduce,
 };
 pub use model::{
     ApplicationState, ExistenceState, LoadingState, Mode, PrivacyKind, ProfileState, RendererState,

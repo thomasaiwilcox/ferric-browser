@@ -71,9 +71,37 @@ QtObject {
         if (!view || !host || !ui || host.runtimeReleased===true) return false
         if (host.profileBootstrapComplete===false) return false
         var group=forProfile(view.profile)
-        return !!group && group.lifetime.retainWindow(host,ui)
-                && group.lifetime.activateWindow(host)
-                && group.lifetime.adoptView(view,host,ui)
+        if (!group || !group.lifetime.retainWindow(host,ui)
+                || !group.lifetime.activateWindow(host)
+                || !group.lifetime.adoptView(view,host,ui)) return false
+        group.credentialIntegration.attachView(view)
+        return true
+    }
+
+    function acquirePopupOpenerLease(sourceView, targetView) {
+        if (!sourceView || !targetView || sourceView===targetView) return ""
+        var sourceGroup=forProfile(sourceView.profile)
+        var targetGroup=forProfile(targetView.profile)
+        if (!sourceGroup || sourceGroup!==targetGroup) return ""
+        return sourceGroup.lifetime.acquirePopupOpenerLease(sourceView,targetView)
+    }
+
+    function beginPopupOpenerLease(sourceView, leaseId) {
+        if (!sourceView || !leaseId) return false
+        var group=forProfile(sourceView.profile)
+        return !!group && group.lifetime.beginPopupOpenerLease(leaseId)
+    }
+
+    function confirmPopupOpenerLease(sourceView, leaseId) {
+        if (!sourceView || !leaseId) return false
+        var group=forProfile(sourceView.profile)
+        return !!group && group.lifetime.confirmPopupOpenerLease(leaseId)
+    }
+
+    function cancelPopupOpenerLease(sourceView, leaseId) {
+        if (!sourceView || !leaseId) return false
+        var group=forProfile(sourceView.profile)
+        return !!group && group.lifetime.cancelPopupOpenerLease(leaseId)
     }
 
     function releaseWindow(host) {

@@ -1,0 +1,4 @@
+# Run with --exclude-dev and `check advisories`. No test-fixture exceptions
+# apply to the helper's shipped dependency graph.
+[advisories]
+yanked = "deny"

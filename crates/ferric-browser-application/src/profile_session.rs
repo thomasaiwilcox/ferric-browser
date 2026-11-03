@@ -14,6 +14,32 @@ use std::{
 };
 use uuid::Uuid;
 
+/// Identifies one live profile session within this process.
+///
+/// The value carries no session ownership or persistence authority.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ProfileInstanceId(Uuid);
+
+#[cfg(test)]
+impl ProfileInstanceId {
+    pub(crate) fn synthetic_for_profile(profile: ferric_browser_core::ProfileId) -> Self {
+        let label = profile.to_string();
+        let sequence = label
+            .rsplit_once('-')
+            .expect("profile display form")
+            .1
+            .parse::<u128>()
+            .expect("numeric profile fixture");
+        Self(Uuid::from_u128(sequence))
+    }
+}
+
+impl fmt::Display for ProfileInstanceId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, formatter)
+    }
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum SessionScope {
     Durable { id: Uuid, roots: StorageRoots },
@@ -21,6 +47,7 @@ pub(crate) enum SessionScope {
 }
 
 pub(crate) struct Session {
+    pub(crate) instance_id: ProfileInstanceId,
     pub(crate) configuration: Arc<crate::profile_configuration::SharedConfiguration>,
     pub(crate) configuration_gate: Arc<std::sync::atomic::AtomicBool>,
     pub(crate) scope: SessionScope,
@@ -43,6 +70,10 @@ impl fmt::Debug for ProfileSession {
 }
 
 impl ProfileSession {
+    pub(crate) fn instance_id(&self) -> ProfileInstanceId {
+        self.0.instance_id
+    }
+
     pub(crate) fn new(activation: &ProfileActivation) -> Self {
         static SESSIONS: OnceLock<Mutex<Vec<Weak<Session>>>> = OnceLock::new();
 
@@ -66,6 +97,7 @@ impl ProfileSession {
             };
             let configuration = crate::profile_configuration::SharedConfiguration::for_root(root);
             Arc::new(Session {
+                instance_id: ProfileInstanceId(Uuid::new_v4()),
                 configuration_gate: configuration.gate.clone(),
                 configuration,
                 scope,

@@ -27,6 +27,7 @@ pub(super) struct ReportInput {
     pub profile: Option<Uuid>,
     pub config: Value,
     pub private: bool,
+    pub native_window: Option<crate::page_window_native::NativeWindowIdentity>,
 }
 
 impl ReportInput {
@@ -61,6 +62,19 @@ impl ReportInput {
         );
         snapshot["link_cleaning"] = link_cleaning_policy::diagnostic_snapshot(self.roots.as_ref());
         let config = serde_json::from_value::<Config>(self.config).unwrap_or_default();
+        snapshot["native_page_window_binding"] = if let Some(identity) = self.native_window {
+            match crate::hyprland::HyprlandAdapter::from_config(&config.hyprland)
+                .resolve_native_windows(std::slice::from_ref(&identity)) {
+                Ok(windows) => windows.into_iter().next().flatten().map_or_else(
+                    || json!({"status":"unavailable", "reason":"native window is not mapped"}),
+                    |window| json!({"status":"available", "instance":window.instance,
+                        "stable_id":window.stable_id, "native_owner_matched":window.identity == identity,
+                        "authority":"read-only correlation"})),
+                Err(error) => json!({"status":"unavailable", "reason":error.to_string()}),
+            }
+        } else {
+            json!({"status":"unavailable", "reason":"no qualified native mapping-time marker"})
+        };
         let contrast = load_theme_palette(&config.theme)
             .map(|palette| serde_json::to_value(theme_contrast_report(&palette)))
             .ok()
@@ -320,6 +334,7 @@ mod tests {
             profile: None,
             config: json!({}),
             private: false,
+            native_window: None,
         }
     }
     fn fake(job: Job) -> ReportCompletion {

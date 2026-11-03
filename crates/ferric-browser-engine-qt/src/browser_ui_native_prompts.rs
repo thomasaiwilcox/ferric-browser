@@ -185,6 +185,9 @@ impl qobject::BrowserUi {
         index: i32,
         view_identity: &QString,
     ) {
+        if self.as_ref().rust().page_window_preparing {
+            return;
+        }
         let identity = view_identity.to_string();
         if identity.is_empty() || identity.len() > 128 || identity.chars().any(char::is_control) {
             return;
@@ -196,8 +199,10 @@ impl qobject::BrowserUi {
                 .get_mut()
                 .interaction
                 .prompt_view_identities
-                .insert(tab, identity);
+                .insert(tab, identity.clone());
+            self.as_mut().bind_creation_view(tab, &identity);
         }
+        self.as_mut().refresh_ipc_owner();
     }
 
     pub(super) fn unregister_prompt_view_identity(
@@ -214,6 +219,8 @@ impl qobject::BrowserUi {
         if this.interaction.prompt_view_identities.get(&tab) == Some(&identity) {
             this.interaction.prompt_view_identities.remove(&tab);
         }
+        drop(rust);
+        self.as_mut().refresh_ipc_owner();
     }
 
     pub(super) fn begin_native_prompt_lease(

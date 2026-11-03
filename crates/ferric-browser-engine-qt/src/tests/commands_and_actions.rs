@@ -181,9 +181,10 @@ fn external_window_focus_reports_bounded_activation_outcome() {
     assert!(qml.contains("window.activateBrowserWindow(entry.host, sourceUi, operationId)"));
     let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     assert!(secondary.contains("executeWindowFocusAction(secondaryUi, action)"));
-    assert!(qml.contains("complete_window_focus(focusOperationId, \"activated\")"));
-    assert!(qml.contains("complete_window_focus(operationId, \"unknown\")"));
-    assert!(qml.contains("complete_window_focus(operationId, \"stale\")"));
+    assert!(qml.contains("function finishWindowActivation(state, receipt)"));
+    assert!(qml.contains("ui.complete_window_focus(state.operation, receipt === \"activated\""));
+    assert!(qml.contains("state.finished = true"));
+    assert!(qml.contains("window.pendingActivation === state"));
 }
 
 #[test]

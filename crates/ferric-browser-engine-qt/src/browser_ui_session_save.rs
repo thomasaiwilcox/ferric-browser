@@ -36,7 +36,8 @@ impl qobject::BrowserUi {
             .filter_map(|tab_id| {
                 let durable_id = tab_ids.get(tab_id).copied()?;
                 let tab = state.tabs().get(tab_id)?;
-                let url = tab.url.clone().unwrap_or_else(|| "about:blank".into());
+                let url = crate::browser_ui_page_get::session_url(rust, *tab_id)
+                    .unwrap_or_else(|| "about:blank".into());
                 Some(SnapshotTabInput {
                     id: durable_id,
                     url,
@@ -52,22 +53,30 @@ impl qobject::BrowserUi {
         let selected_tab = window
             .active_tab
             .and_then(|tab_id| tab_ids.get(&tab_id).copied());
+        let windows = if self.in_page_window_mode() {
+            let current = super::browser_ui_page_sessions::PageSessionOwner::capture(self)?;
+            super::live_ipc_owners::page_session_windows(&rust.window_token.to_string(), current)
+        } else {
+            vec![SnapshotWindowInput {
+                group: None,
+                context: window.context.clone(),
+                selected_tab,
+                workspace: None,
+                tabs,
+            }]
+        };
         let Ok(mut snapshot) = SessionSnapshot::new(
             rust.session_id,
             name,
             profile_id,
             state.revision(),
             unix_timestamp().to_string(),
-            vec![SnapshotWindowInput {
-                selected_tab,
-                workspace: None,
-                tabs,
-            }],
+            windows,
         ) else {
             return None;
         };
-        snapshot.closed_tabs = rust
-            .closed_tabs
+        snapshot.closed_tabs = self
+            .closed_page_descriptors(true)
             .iter()
             .filter(|closed| {
                 !closed.private && super::url_safety::is_safe_tab_descriptor(&closed.url)
@@ -78,6 +87,14 @@ impl qobject::BrowserUi {
                 url: closed.url.clone(),
                 title: closed.title.clone(),
                 closed_at: closed.closed_at,
+                context: closed
+                    .scope
+                    .as_ref()
+                    .and_then(|scope| scope.context.clone()),
+                group: closed
+                    .scope
+                    .as_ref()
+                    .and_then(|scope| Uuid::parse_str(&scope.group).ok()),
                 group_index: closed.group_index,
                 pinned: closed.pinned,
                 muted: closed.muted,
@@ -132,7 +149,7 @@ impl qobject::BrowserUi {
         };
         let result = self
             .as_mut()
-            .submit_storage_with_ticket(StorageRequest::SessionSave { path, snapshot });
+            .submit_storage_with_ticket(StorageRequest::session_save(path, snapshot));
         match result {
             Ok(ticket) => {
                 let mut rust = self.as_mut().rust_mut();

@@ -1,0 +1,25 @@
+{
+  "pack_id": "ferric-everyday-v1",
+  "pack_version": "1.0.0",
+  "date": "2026-10-24",
+  "repository_full_name": "thomasaiwilcox/ferric-browser",
+  "clone_url": "https://github.com/thomasaiwilcox/ferric-browser.git",
+  "branch": "main",
+  "authoring_sha": "e4aa108f9d63c99c3b3e977c2061d6d8dde48568",
+  "proposal_sha": "af30f6fb889ba694bf9fd2d71bbab3779427882e",
+  "execution_policy": "fetch latest main once, reconcile all drift in S00, freeze accepted integration baseline; never reset an existing checkout",
+  "third_party_candidate": {
+    "repository": "linux-credentials/libwebauthn",
+    "ref": "9c0e5f78ac445d35dca05170efbb0afefc5a89ae",
+    "package_path": "libwebauthn/Cargo.toml",
+    "version": "0.10.0",
+    "rust_version": "1.88",
+    "status": "source-inspected candidate, not compiled or security-certified"
+  },
+  "final_main_ref_recheck": {
+    "date": "2026-10-24",
+    "sha": "e4aa108f9d63c99c3b3e977c2061d6d8dde48568",
+    "result": "unchanged",
+    "method": "GitHub connector GET git/ref/heads/main"
+  }
+}

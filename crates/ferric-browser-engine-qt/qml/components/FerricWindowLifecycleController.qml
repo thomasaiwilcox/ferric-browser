@@ -18,6 +18,7 @@ import "../scripts/KeyboardPresentation.js" as KeyboardPresentation
 QtObject {
     required property var host
     readonly property var window: host
+    property int activationDepth: 0
 
     function statusBarVisibleForMode(mode) {
         return ChromePresentation.statusBarVisible(window.statusbarMode, mode)
@@ -755,139 +756,227 @@ QtObject {
         window.publishBrowserWindowRegistry()
     }
 
+    property var shutdownParticipants: []
+    property bool shutdownParticipantsStarted: false
+
+    function captureShutdownViewProof(host) {
+        var proof=[]
+        for (var i=0;i<host.tabViews.length;++i) {
+            var view=host.tabViewAt(i)
+            proof.push({view:view || null,profile:view ? view.profile : null,
+                    url:view ? String(view.url) : "",nativeUrl:view ? String(view.nativeUrl) : "",
+                    loading:view ? view.loading : false})
+        }
+        return proof
+    }
+    function shutdownViewProofCurrent(host, proof) {
+        if (!host || host.tabViews.length!==proof.length) return false
+        return proof.every(function(saved,index) {
+            var view=host.tabViewAt(index)
+            if (!saved.view) return !view
+            return !!view && typeof view.runJavaScript==="function" && view===saved.view
+                    && view.profile===saved.profile && view.viewHost===host
+                    && String(view.url)===saved.url && String(view.nativeUrl)===saved.nativeUrl
+                    && view.loading===saved.loading
+        })
+    }
+
+    function liveShutdownOwner(entry) {
+        return !!entry && !!entry.host && typeof entry.host.destroy === "function"
+                && !entry.host.runtimeReleaseComplete
+    }
+    function collectShutdownParticipants() {
+        var result=shutdownParticipants.filter(liveShutdownOwner)
+        function add(host,ui) {
+            if (!host || host===window || typeof host.destroy!=="function" || host.runtimeReleaseComplete) return
+            if (!result.some(function(entry) { return entry.host===host })) result.push({host:host,ui:ui})
+        }
+        var windows=window.browserWindowRegistry || []
+        for (var i=0;i<windows.length;++i) if (windows[i]) add(windows[i].host,windows[i].ui)
+        var popups=window.popupWindowRegistry || []
+        for (var j=0;j<popups.length;++j) if (popups[j]) add(popups[j].host,popups[j].ui)
+        var pending=window.pageWindowCoordinator.shutdownOwners()
+        for (var k=0;k<pending.length;++k) add(pending[k],pending[k].windowUi)
+        return result
+    }
+
     function shutdownParticipantCount() {
-        var count = 0
-        var windows = window.browserWindowRegistry || []
-        for (var i = 0; i < windows.length; ++i) {
-            if (windows[i] && windows[i].host && windows[i].host !== window) {
-                ++count
-            }
+        return collectShutdownParticipants().filter(liveShutdownOwner).length
+    }
+
+    function gateRegisteredShutdownOwners() {
+        window.pageCloseController.cancel()
+        window.browserUi.begin_shutdown_gate()
+        var entries=(window.browserWindowRegistry || []).concat(window.popupWindowRegistry || [])
+        for (var i=0;i<entries.length;++i) {
+            var entry=entries[i]
+            if (!liveShutdownOwner(entry) || entry.host===window) continue
+            entry.host.pageCloseController.cancel()
+            entry.ui.begin_shutdown_gate()
         }
-        var popups = window.popupWindowRegistry || []
-        for (var j = 0; j < popups.length; ++j) {
-            if (popups[j] && popups[j].host) {
-                ++count
-            }
-        }
-        return count
     }
 
     function abortApplicationShutdown() {
-        if (!window.applicationShutdownInProgress) {
-            return
-        }
-        window.applicationShutdownInProgress = false
-        window.applicationShutdownGeneration += 1
-        window.applicationShutdownStage = "Shutdown cancelled"
-        window.applicationShutdownForcePromptVisible = false
-        window.shutdownPageProbeGeneration += 1
+        if (!window.applicationShutdownInProgress) return
+        window.applicationShutdownInProgress=false
+        window.applicationShutdownCommitStarted=false
+        window.applicationShutdownRootPrepared=false
+        window.applicationShutdownGeneration+=1
+        window.applicationShutdownStage="Shutdown cancelled"
+        window.applicationShutdownForcePromptVisible=false
+        window.shutdownPageProbeGeneration+=1
         window.applicationShutdownTimer.stop()
         window.shutdownPageProbeTimer.stop()
         window.browserUi.end_shutdown_gate()
-        window.shutdownConfirmationVisible = false
-        window.shutdownPromptVisible = false
-        window.shutdownPagePromptVisible = false
-        var windows = window.browserWindowRegistry || []
-        for (var i = 0; i < windows.length; ++i) {
-            var host = windows[i] && windows[i].host
-            if (host && host !== window) {
-                host.windowCloseConfirmationVisible = false
-                host.windowShutdownPromptVisible = false
-                host.windowShutdownStoragePromptVisible = false
-                if (host.cancelPageStateProbe) {
-                    host.cancelPageStateProbe()
-                }
-            }
+        window.browserUi.abort_shutdown_session_snapshot()
+        window.shutdownPageViewProof=[]
+        window.shutdownConfirmationVisible=false
+        window.shutdownPromptVisible=false
+        window.shutdownPagePromptVisible=false
+        var participants=collectShutdownParticipants()
+        for (var i=0;i<participants.length;++i) {
+            var entry=participants[i]
+            if (!liveShutdownOwner(entry)) continue
+            entry.host.windowApplicationQuitPrepared=false
+            entry.host.windowShutdownPageViewProof=[]
+            entry.host.windowCloseConfirmationVisible=false
+            entry.host.windowShutdownPromptVisible=false
+            entry.host.windowShutdownStoragePromptVisible=false
+            entry.host.cancelPageStateProbe()
+            if (entry.ui) { entry.ui.end_shutdown_gate(); entry.ui.runtime_work_available() }
         }
-        var popups = window.popupWindowRegistry || []
-        for (var j = 0; j < popups.length; ++j) {
-            var popup = popups[j] && popups[j].host
-            if (popup) {
-                popup.windowCloseConfirmationVisible = false
-                popup.windowShutdownPromptVisible = false
-                if (popup.cancelPageStateProbe) {
-                    popup.cancelPageStateProbe()
-                }
-            }
-        }
-        window.browserUi.status_text = "Shutdown cancelled"
+        window.pageWindowCoordinator.resumeAfterAbortedShutdown()
+        for (var j=0;j<participants.length;++j)
+            if (liveShutdownOwner(participants[j]) && participants[j].host.windowPreparedPageMode)
+                participants[j].host.finishPreparedPageNavigation()
+        shutdownParticipants=[]
+        shutdownParticipantsStarted=false
+        window.browserUi.runtime_work_available()
+        window.browserUi.status_text="Shutdown cancelled"
     }
 
     function finishApplicationShutdown() {
-        if (!window.applicationShutdownInProgress
-                || window.shutdownParticipantCount() > 0) {
-            return
-        }
-        window.applicationShutdownStage = "Saving browser data"
-        if (!window.browserUi.flush_durable_state()) {
-            window.applicationShutdownStage = "Browser data couldn't be saved"
-            window.applicationShutdownForcePromptVisible = true
-            return
-        }
+        if (!window.applicationShutdownInProgress || window.shutdownParticipantCount()>0) return
+        window.browserUi.refresh_operations()
+        if (window.browserUi.page_closes_pending()) return
         if (!window.browserUi.request_shutdown()) {
-            window.applicationShutdownStage = "Shutdown couldn't finish"
-            window.applicationShutdownForcePromptVisible = true
+            window.applicationShutdownStage="Shutdown couldn't finish"
+            window.applicationShutdownForcePromptVisible=true
             return
         }
         window.applicationShutdownTimer.stop()
-        window.applicationShutdownInProgress = false
-        window.applicationShutdownForcePromptVisible = false
-        window.shutdownPageProbeGeneration += 1
-        window.shutdownApproved = true
+        window.applicationShutdownInProgress=false
+        window.applicationShutdownForcePromptVisible=false
+        window.shutdownPageProbeGeneration+=1
+        window.shutdownApproved=true
+        // Keep the snapshot lease through final QObject/worker teardown. Abort
+        // releases it explicitly; successful process shutdown releases its owner.
         Qt.quit()
     }
 
     function advanceApplicationShutdown() {
-        if (!window.applicationShutdownInProgress) {
-            window.applicationShutdownTimer.stop()
+        if (!window.applicationShutdownInProgress) { window.applicationShutdownTimer.stop(); return }
+        var elapsed=Date.now()-window.applicationShutdownStartedAt
+        // An approved close may be inside its synchronous Core/native release.
+        // Drain it before cancelling other plans or gating its exact owner.
+        if (window.browserUi.page_close_commits_pending()) {
+            window.applicationShutdownStage="Finishing approved page closes"
+            if (elapsed>=10000) window.applicationShutdownForcePromptVisible=true
             return
         }
-        var remaining = window.shutdownParticipantCount()
-        var elapsed = Date.now() - window.applicationShutdownStartedAt
-        window.applicationShutdownStage = remaining > 0
-                ? "Closing " + remaining + " browser window(s)"
-                : "Saving browser data"
-        if (remaining === 0) {
-            window.finishApplicationShutdown()
+        gateRegisteredShutdownOwners()
+        var settled=window.pageWindowCoordinator.stopForApplicationShutdown()
+        if (!settled) {
+            window.applicationShutdownStage="Finishing page ownership changes"
+            if (elapsed>=10000) window.applicationShutdownForcePromptVisible=true
             return
         }
-        if (elapsed >= 10000) {
-            window.applicationShutdownStage = "Waiting for " + remaining
-                    + " browser window(s) to finish closing"
-            window.applicationShutdownForcePromptVisible = true
+        if (!shutdownParticipantsStarted) {
+            if (!window.browserUi.begin_shutdown_session_snapshot()) {
+                window.applicationShutdownStage="Browser data couldn't be captured"
+                window.applicationShutdownForcePromptVisible=true
+                return
+            }
+            var starting=collectShutdownParticipants()
+            shutdownParticipants=starting
+            shutdownParticipantsStarted=true
+            // Gate every actual owner before starting any close probe. No close
+            // commits until every participant has resolved its decisions.
+            for (var i=0;i<starting.length;++i) {
+                if (!liveShutdownOwner(starting[i])) continue
+                starting[i].host.pageCloseController.cancel()
+                starting[i].ui.begin_shutdown_gate()
+            }
+            for (var j=0;j<starting.length;++j)
+                if (liveShutdownOwner(starting[j]) && !starting[j].host.windowShutdownApproved)
+                    starting[j].host.continueQuitRequest()
+            window.checkPageStateBeforeQuit()
+        }
+        if (!window.applicationShutdownInProgress) return
+        var participants=collectShutdownParticipants().filter(liveShutdownOwner)
+        shutdownParticipants=participants
+        if (!window.applicationShutdownCommitStarted) {
+            var ready=window.applicationShutdownRootPrepared
+                    && participants.every(function(entry) { return entry.host.windowApplicationQuitPrepared })
+            window.applicationShutdownStage=ready ? "Saving browser data" : "Resolving browser windows"
+            if (ready) {
+                // Flush every represented profile while all views still exist.
+                // Storage failure can therefore be cancelled before teardown.
+                for (var k=0;k<participants.length;++k) {
+                    if (!participants[k].ui.flush_durable_state()) {
+                        window.applicationShutdownStage="Browser data couldn't be saved"
+                        window.applicationShutdownForcePromptVisible=true
+                        return
+                    }
+                }
+                if (!window.browserUi.flush_durable_state()) {
+                    window.applicationShutdownStage="Browser data couldn't be saved"
+                    window.applicationShutdownForcePromptVisible=true
+                    return
+                }
+                if (!window.browserUi.shutdown_pages_current()
+                        || !window.shutdownViewProofCurrent(window,window.shutdownPageViewProof)
+                        || !participants.every(function(entry) {
+                            return entry.ui.shutdown_pages_current()
+                                    && window.shutdownViewProofCurrent(entry.host,entry.host.windowShutdownPageViewProof)
+                        })) {
+                    window.abortApplicationShutdown()
+                    window.browserUi.status_text="Pages changed during shutdown. Review them before quitting."
+                    return
+                }
+                window.applicationShutdownCommitStarted=true
+                for (var n=0;n<participants.length;++n)
+                    if (liveShutdownOwner(participants[n])) participants[n].host.finalizeQuit()
+            }
+        }
+        var remaining=window.shutdownParticipantCount()
+        if (window.applicationShutdownCommitStarted && remaining===0) { window.finishApplicationShutdown(); return }
+        if (elapsed>=10000) {
+            window.applicationShutdownStage="Waiting for browser windows to finish closing"
+            window.applicationShutdownForcePromptVisible=true
             window.applicationShutdownTimer.stop()
         }
     }
 
     function beginApplicationShutdown() {
-        if (window.applicationShutdownInProgress) {
-            return
-        }
-        if (!window.browserUi.begin_shutdown_gate()) {
-            window.browserUi.status_text = "Could not start the shutdown gate"
-            return
-        }
-        window.applicationShutdownInProgress = true
-        window.applicationShutdownForcePromptVisible = false
-        window.applicationShutdownStage = "Resolving browser windows"
-        window.applicationShutdownStartedAt = Date.now()
-        window.applicationShutdownGeneration += 1
-        var windows = (window.browserWindowRegistry || []).slice(0)
-        for (var i = 0; i < windows.length; ++i) {
-            var host = windows[i] && windows[i].host
-            if (host && host !== window && !host.windowShutdownApproved) {
-                host.continueQuitRequest()
-            }
-        }
-        var popups = (window.popupWindowRegistry || []).slice(0)
-        for (var j = 0; j < popups.length; ++j) {
-            var popup = popups[j] && popups[j].host
-            if (popup && !popup.windowShutdownApproved) {
-                popup.continueQuitRequest()
-            }
+        if (window.applicationShutdownInProgress) return
+        window.applicationShutdownInProgress=true
+        window.applicationShutdownCommitStarted=false
+        window.applicationShutdownRootPrepared=false
+        shutdownParticipants=[]
+        shutdownParticipantsStarted=false
+        window.applicationShutdownForcePromptVisible=false
+        window.applicationShutdownStage="Resolving browser windows"
+        window.applicationShutdownStartedAt=Date.now()
+        window.applicationShutdownGeneration+=1
+        if (!window.browserUi.page_close_commits_pending()) {
+            gateRegisteredShutdownOwners()
+            window.pageWindowCoordinator.stopForApplicationShutdown()
         }
         window.applicationShutdownTimer.restart()
-        window.advanceApplicationShutdown()
+        // Run after any enclosing native/QML ownership batch unwinds. The
+        // coordinator's actual dispatch depth also handles nested event loops.
+        Qt.callLater(function() { window.advanceApplicationShutdown() })
     }
 
     function forceApplicationShutdown() {
@@ -922,6 +1011,174 @@ QtObject {
         return window.runtime_windowRegistryController.ephemeralTokenForUi(ui)
     }
 
+    function activationCurrent(state) {
+        return state && !state.finished && window.pendingActivation === state
+            && window.pageFocusIntentCurrent(state.intent)
+            && (!state.closeNonce || pageCloseActivationCurrent(state))
+            && (!state.creationPresentation || state.presentationConsumed
+                || state.host.createdPagePresentationIntent() === state.intent)
+            && (!state.idleReveal || idleSurvivorCurrent(state))
+    }
+
+    function idleSurvivorCurrent(state) {
+        var entry=state.ui ? window.browserWindowEntryForUi(state.ui) : null
+        return !!entry && entry.host===state.host && !entry.host.runtimeReleased
+                && entry.host.profileBootstrapComplete && !window.applicationShutdownInProgress
+                && !window.liveWindowEntries().some(function(other) { return other.host!==state.host && other.host.visible })
+    }
+    function presentIdlePageSurvivor(entry) {
+        // A visibility repair does not supersede an admitted command's focus.
+        if (!entry || !entry.ui || !entry.host || window.pendingActivation || activationDepth>0) return false
+        var state={host:entry.host,ui:entry.ui,targetUi:null,operation:"",nonce:"",idleReveal:true,
+                   intent:window.currentPageFocusIntent(),workspace:"",finished:false}
+        if (!idleSurvivorCurrent(state)) return false
+        return publishActivation(state) && dispatchActivation(state)
+    }
+
+    function pageCloseActivationCurrent(state) {
+        var entry = state.ui ? window.browserWindowEntryForUi(state.ui) : null
+        return !!entry && entry.host === state.host
+                && state.ui.page_close_focus_intent(state.closeNonce) === state.intent
+    }
+
+    function presentPageCloseDecision(ui, host, nonce) {
+        var intent = ui ? ui.page_close_focus_intent(nonce) : ""
+        if (!intent) return false
+        var state = {host:host,ui:ui,targetUi:null,operation:"",nonce:"",closeNonce:nonce,
+                     intent:intent,workspace:"",finished:false}
+        return publishActivation(state) && dispatchActivation(state)
+    }
+
+    function presentCreatedPageDecision(ui, host, intent) {
+        if (!ui || !host || !intent) return false
+        var state = {host:host,ui:ui,targetUi:null,operation:"",nonce:"",
+                     creationPresentation:true,presentationConsumed:false,
+                     intent:intent,workspace:"",finished:false}
+        return publishActivation(state) && dispatchActivation(state)
+    }
+
+    function cancelPendingActivation(ui, operationId) {
+        var prior = window.pendingActivation
+        if (!prior) return
+        var unfinished = !prior.finished
+        prior.finished = true
+        window.activationOutcomeTimer.stop()
+        window.pendingActivation = null
+        if (unfinished && prior.ui && prior.operation.length > 0
+                && (prior.ui !== ui || prior.operation !== operationId))
+            prior.ui.complete_window_focus(prior.operation, "unknown")
+    }
+
+    function finishWindowActivation(state, receipt) {
+        if (!state || state.finished) return
+        if (!activationCurrent(state)) receipt = "unknown"
+        // Mark first: publishing retirement or delivering a receipt may
+        // synchronously start another activation from a different issuer.
+        state.finished = true
+        if (window.pendingActivation === state) {
+            window.activationOutcomeTimer.stop()
+            window.pendingActivation = null
+        }
+        var ui = state.ui
+        if (ui && state.operation.length > 0)
+            ui.complete_window_focus(state.operation, receipt === "activated" ? "activated" : receipt === "stale" ? "stale" : "unknown")
+        if (!window.pageFocusIntentCurrent(state.intent)) return
+        window.activationStatus = receipt === "activated" ? "activated" : "unknown"
+        if (!window.pageFocusIntentCurrent(state.intent) || !ui) return
+        ui.status_text = receipt === "activated" ? "Window activated" : receipt === "stale"
+            ? "Page focus request changed" : "Window activation outcome unknown; compositor may deny focus"
+        if (receipt === "stale" && window.pageFocusIntentCurrent(state.intent))
+            window.showCommandNotice("Page focus request changed. Try again.", true)
+        if (receipt === "activated" && window.pageFocusIntentCurrent(state.intent)
+                && state.workspace.length > 0 && state.host && state.host.active
+                && String(ui.context_workspace) === state.workspace)
+            ui.hyprland_route_workspace(state.workspace)
+    }
+
+    function publishActivation(state) {
+        if (!window.pageFocusIntentCurrent(state.intent)) { finishWindowActivation(state, "unknown"); return false }
+        cancelPendingActivation(state.ui, state.operation)
+        if (!window.pageFocusIntentCurrent(state.intent)) {
+            finishWindowActivation(state, "unknown")
+            return false
+        }
+        window.pendingActivation = state
+        if (!activationCurrent(state)) {
+            finishWindowActivation(state, "unknown")
+            return false
+        }
+        return true
+    }
+
+    function waitForActivation(state) {
+        if (!activationCurrent(state)) { finishWindowActivation(state, "unknown"); return }
+        window.activationStatus = "requested"
+        if (!activationCurrent(state)) { finishWindowActivation(state, "unknown"); return }
+        state.ui.status_text = "Window activation requested; waiting for compositor"
+        if (activationCurrent(state)) window.activationOutcomeTimer.restart()
+        else finishWindowActivation(state, "unknown")
+    }
+
+    function dispatchActivation(state) {
+        if (!activationCurrent(state)) { finishWindowActivation(state, "unknown"); return false }
+        if (activationDepth > 0) {
+            state.queued = true
+            window.activationStatus = "requested"
+            if (!activationCurrent(state)) return false
+            state.ui.status_text = "Window activation queued"
+            if (activationCurrent(state)) window.activationOutcomeTimer.restart()
+            return true
+        }
+        state.queued = false
+        window.activationOutcomeTimer.stop()
+        activationDepth += 1
+        try {
+            if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+            if (state.idleReveal) {
+                state.host.show()
+                if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+                finishWindowActivation(state,state.host.active ? "activated" : "unknown")
+            } else if (state.creationPresentation) {
+                state.presentationConsumed = true
+                var presented = state.host.presentCreatedPage()
+                if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+                finishWindowActivation(state,presented && state.host.active ? "activated" : "unknown")
+            } else if (state.nonce.length > 0) {
+                var admission = state.host.requestPageWindowFocus(state.ui,state.targetUi,state.nonce)
+                if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+                var receipt = admission === "requested" ? state.host.pageWindowFocusStatus(state.ui,state.targetUi,state.nonce) : "stale"
+                if (receipt === "requested") waitForActivation(state)
+                else finishWindowActivation(state,receipt)
+            } else {
+                state.host.show()
+                if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+                state.host.raise()
+                if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+                state.host.requestActivate()
+                if (!activationCurrent(state)) { finishWindowActivation(state,"unknown"); return false }
+                if (state.host.active) finishWindowActivation(state,"activated")
+                else waitForActivation(state)
+            }
+            return true
+        } catch (error) { finishWindowActivation(state,"unknown"); return false }
+        finally {
+            activationDepth -= 1
+            // show() may have started another intent before its own map commit.
+            // Drain only after the OUTERMOST native batch returns. No spinning
+            // callLater loop while a nested/modal event loop keeps it active.
+            if (activationDepth === 0) {
+                var next = window.pendingActivation
+                if (activationCurrent(next) && next.queued && !next.scheduled) {
+                    next.scheduled = true
+                    Qt.callLater(function() {
+                        next.scheduled = false
+                        if (activationCurrent(next)) dispatchActivation(next)
+                    })
+                }
+            }
+        }
+    }
+
     function executeWindowFocusAction(sourceUi, action) {
         var parts = action.split("\t")
         var target = parts.length >= 2 ? parts[1] : ""
@@ -932,43 +1189,25 @@ QtObject {
             if (operationId.length > 0) sourceUi.complete_window_focus(operationId, "stale")
             return
         }
+        var nonce = parts.length >= 4 ? parts[3] : ""
+        if (nonce.length > 0) {
+            var state = {host:entry.host,ui:sourceUi,targetUi:entry.ui,operation:operationId,
+                         nonce:nonce,intent:parts.length >= 5 ? parts[4] : "",workspace:"",finished:false}
+            if (publishActivation(state)) dispatchActivation(state)
+            return
+        }
         // The issuing UI owns the operation, even when another window receives focus.
         if (window.activateBrowserWindow(entry.host, sourceUi, operationId) && entry.host.active)
             sourceUi.status_text = "Window focused"
     }
 
-    function activateBrowserWindow(hostWindow, targetUi, operationId) {
-        if (!hostWindow) {
-            return false
-        }
+    function activateBrowserWindow(hostWindow, targetUi, operationId, requestedWorkspace) {
+        if (!hostWindow) return false
         var ui = targetUi || window.browserUi
         var focusOperationId = String(operationId || "")
-        try {
-            hostWindow.show()
-            hostWindow.raise()
-            hostWindow.requestActivate()
-            if (hostWindow.active) {
-                window.activationStatus = "activated"
-                if (focusOperationId.length > 0) {
-                    ui.complete_window_focus(focusOperationId, "activated")
-                }
-            } else {
-                window.activationStatus = "requested"
-                window.pendingActivationHost = hostWindow
-                window.pendingActivationUi = ui
-                window.pendingActivationOperationId = focusOperationId
-                ui.status_text = "Window activation requested; waiting for compositor"
-                window.activationOutcomeTimer.restart()
-            }
-            return true
-        } catch (error) {
-            window.activationStatus = "unknown"
-            ui.status_text = "Window activation outcome unknown"
-            if (focusOperationId.length > 0) {
-                ui.complete_window_focus(focusOperationId, "unknown")
-            }
-            return false
-        }
+        var state = {host:hostWindow,ui:ui,targetUi:null,operation:focusOperationId,nonce:"",
+                     intent:window.supersedePageWindowFocus(),workspace:String(requestedWorkspace || ""),finished:false}
+        return publishActivation(state) && dispatchActivation(state)
     }
 
     function focusNotificationOrigin(profileScope, origin) {
@@ -1213,17 +1452,14 @@ QtObject {
                 continue
             }
             if (!entry.host || entry.host.active !== true) {
-                window.pendingWorkspaceRouteHost = entry.host
-                window.pendingWorkspaceRouteUi = ui
-                window.pendingWorkspaceRoute = String(ui.context_workspace)
                 ui.status_text = "Workspace routing pending until the browser window is active"
-                window.activateBrowserWindow(entry.host, ui)
+                window.activateBrowserWindow(entry.host, ui, "", String(ui.context_workspace))
                 return false
             }
             var workspace = String(ui.context_workspace)
-            window.pendingWorkspaceRouteHost = null
-            window.pendingWorkspaceRouteUi = null
-            window.pendingWorkspaceRoute = ""
+            var intent = window.supersedePageWindowFocus()
+            cancelPendingActivation(ui, "")
+            if (!window.pageFocusIntentCurrent(intent) || !entry.host.active || String(ui.context_workspace) !== workspace) return false
             return ui.hyprland_route_workspace(workspace)
         }
         ui.status_text = "Workspace routing denied for an unregistered browser window"

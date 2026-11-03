@@ -4,13 +4,19 @@
 //! discovers the current instance sockets and sends bounded IPC requests when
 //! the user has enabled workspace routing.
 
+mod page_groups;
+mod queued_send;
+mod unix_deadline;
+pub(crate) use page_groups::{
+    GroupOutcome, GroupReply, ManagedCapability, ManagedRequest, ManagedRole,
+};
+pub(crate) use queued_send::QueuedSend;
+
 use ferric_browser_config::{HyprlandConfig, TriState};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt, fs,
-    io::{self, Read, Write},
     os::unix::fs::FileTypeExt,
-    os::unix::net::UnixStream,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -18,8 +24,6 @@ use std::{
 pub const FERRIC_BROWSER_DESKTOP_ID: &str = "io.github.ferricbrowser.FerricBrowser";
 
 const IO_TIMEOUT: Duration = Duration::from_millis(500);
-const MAX_CONNECT_ATTEMPTS: usize = 3;
-const CONNECT_BACKOFF: Duration = Duration::from_millis(20);
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_SIGNATURE_BYTES: usize = 128;
 const MAX_WORKSPACE_BYTES: usize = 128;
@@ -53,6 +57,8 @@ pub struct HyprlandAdapter {
     workspace_routing: bool,
     request_socket: Option<PathBuf>,
     event_socket: Option<PathBuf>,
+    #[cfg(test)]
+    test_instance_signature: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -130,6 +136,25 @@ impl HyprlandAdapter {
             workspace_routing: config.workspace_routing,
             request_socket,
             event_socket,
+            #[cfg(test)]
+            test_instance_signature: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn observation_test_adapter(
+        enabled: bool,
+        workspace_routing: bool,
+        request_socket: Option<std::path::PathBuf>,
+        event_socket: Option<std::path::PathBuf>,
+        test_instance_signature: Option<&str>,
+    ) -> Self {
+        Self {
+            enabled: if enabled { TriState::On } else { TriState::Off },
+            workspace_routing,
+            request_socket,
+            event_socket,
+            test_instance_signature: test_instance_signature.map(str::to_owned),
         }
     }
 
@@ -145,6 +170,7 @@ impl HyprlandAdapter {
             workspace_routing,
             request_socket: Some(request_socket),
             event_socket: Some(event_socket),
+            test_instance_signature: None,
         }
     }
 
@@ -282,36 +308,189 @@ impl HyprlandAdapter {
                 "Hyprland instance is not discoverable".into(),
             ));
         };
-        let mut stream = connect_with_backoff(path).map_err(|error| {
-            HyprlandError::Io(format!("Hyprland IPC connection failed: {error}"))
-        })?;
-        stream
-            .set_read_timeout(Some(IO_TIMEOUT))
-            .and_then(|()| stream.set_write_timeout(Some(IO_TIMEOUT)))
-            .map_err(|error| HyprlandError::Io(format!("Hyprland IPC setup failed: {error}")))?;
-        stream
-            .write_all(command.as_bytes())
-            .and_then(|()| stream.shutdown(std::net::Shutdown::Write))
-            .map_err(|error| HyprlandError::Io(format!("Hyprland IPC write failed: {error}")))?;
-        let mut response = Vec::new();
-        let mut buffer = [0_u8; 4096];
-        loop {
-            let read = stream
-                .read(&mut buffer)
-                .map_err(|error| HyprlandError::Io(format!("Hyprland IPC read failed: {error}")))?;
-            if read == 0 {
-                break;
-            }
-            if response.len().saturating_add(read) > MAX_RESPONSE_BYTES {
-                return Err(HyprlandError::Protocol(
-                    "Hyprland IPC response is too large".into(),
-                ));
-            }
-            response.extend_from_slice(&buffer[..read]);
-        }
+        let response =
+            unix_deadline::request(path, command.as_bytes(), MAX_RESPONSE_BYTES, IO_TIMEOUT)
+                .map_err(|error| {
+                    HyprlandError::Io(format!("Hyprland IPC request failed: {error}"))
+                })?;
         String::from_utf8(response).map_err(|error| {
             HyprlandError::Protocol(format!("Hyprland IPC response was not UTF-8: {error}"))
         })
+    }
+}
+
+impl HyprlandAdapter {
+    /// Read-only snapshot/event observation. This deliberately does not use
+    /// the workspace-routing permission bit: it never dispatches a command.
+    pub(super) fn observe_events(
+        &self,
+        session: &mut super::hyprland_events::ObservationSession,
+    ) -> super::hyprland_events::ObservationResult {
+        use super::hyprland_events::{
+            MAX_SNAPSHOT_BYTES, ObservationCapability as Capability, ObservationResult,
+        };
+
+        if self.enabled == TriState::Off {
+            return ObservationResult {
+                capability: Capability::Disabled,
+                state: None,
+            };
+        }
+        let (Some(request_path), Some(event_path)) =
+            (self.request_socket.as_ref(), self.event_socket.as_ref())
+        else {
+            session.cache.invalidate();
+            return ObservationResult {
+                capability: Capability::Unavailable,
+                state: None,
+            };
+        };
+        #[cfg(test)]
+        let signature = self
+            .test_instance_signature
+            .clone()
+            .unwrap_or_else(|| std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default());
+        #[cfg(not(test))]
+        let signature = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default();
+        let events = match session.read_events(Some(event_path)) {
+            Ok(events) => events,
+            Err(_) => {
+                session.cache.invalidate();
+                return ObservationResult {
+                    capability: Capability::Unavailable,
+                    state: None,
+                };
+            }
+        };
+        let version_bytes = match bounded_hyprland_request(request_path, b"j/version", 4096) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                session.cache.invalidate();
+                return ObservationResult {
+                    capability: Capability::Unavailable,
+                    state: None,
+                };
+            }
+        };
+        let version_value: serde_json::Value = match serde_json::from_slice(&version_bytes) {
+            Ok(value) => value,
+            Err(_) => {
+                session.cache.invalidate();
+                return ObservationResult {
+                    capability: Capability::InvalidData,
+                    state: None,
+                };
+            }
+        };
+        let version = HyprlandVersion {
+            branch: version_value
+                .get("branch")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned),
+            tag: version_value
+                .get("tag")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned),
+            commit: version_value
+                .get("commit")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned),
+        };
+        if version.branch.is_none() && version.tag.is_none() && version.commit.is_none() {
+            session.cache.invalidate();
+            return ObservationResult {
+                capability: Capability::UnsupportedVersion,
+                state: None,
+            };
+        }
+        let snapshot =
+            match bounded_hyprland_request(request_path, b"j/clients", MAX_SNAPSHOT_BYTES) {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    session.cache.invalidate();
+                    return ObservationResult {
+                        capability: Capability::Unavailable,
+                        state: None,
+                    };
+                }
+            };
+        match session
+            .cache
+            .observe(&signature, version, &snapshot, &events)
+        {
+            Ok(state) => {
+                let active_handle = state.active_address.as_deref().and_then(|address| {
+                    super::hyprland_events::ObservationCache::handle_for(&state, address)
+                });
+                let active_identity_is_current = state.active_address.is_none()
+                    || active_handle
+                        .as_ref()
+                        .is_some_and(|handle| session.cache.is_current(handle));
+                if active_identity_is_current {
+                    ObservationResult {
+                        capability: Capability::Available,
+                        state: Some(state),
+                    }
+                } else {
+                    session.cache.invalidate();
+                    ObservationResult {
+                        capability: Capability::InvalidData,
+                        state: None,
+                    }
+                }
+            }
+            Err(_) => {
+                session.cache.invalidate();
+                ObservationResult {
+                    capability: Capability::InvalidData,
+                    state: None,
+                }
+            }
+        }
+    }
+}
+
+fn bounded_hyprland_request(
+    path: &std::path::Path,
+    command: &[u8],
+    maximum: usize,
+) -> Result<Vec<u8>, std::io::Error> {
+    unix_deadline::request(path, command, maximum, Duration::from_millis(250))
+}
+
+#[cfg(test)]
+mod observation_permission_tests {
+    use super::{HyprlandAdapter, TriState};
+    use crate::hyprland_events::{ObservationCapability, ObservationSession};
+
+    #[test]
+    fn disabled_observation_returns_before_socket_access() {
+        let adapter = HyprlandAdapter {
+            enabled: TriState::Off,
+            workspace_routing: false,
+            request_socket: None,
+            event_socket: None,
+            test_instance_signature: None,
+        };
+        let mut session = ObservationSession::default();
+        let result = adapter.observe_events(&mut session);
+        assert_eq!(result.capability, ObservationCapability::Disabled);
+        assert!(result.state.is_none());
+    }
+
+    #[test]
+    fn read_only_observation_is_not_gated_by_workspace_routing() {
+        let adapter = HyprlandAdapter {
+            enabled: TriState::On,
+            workspace_routing: false,
+            request_socket: None,
+            event_socket: None,
+            test_instance_signature: None,
+        };
+        let mut session = ObservationSession::default();
+        let result = adapter.observe_events(&mut session);
+        assert_eq!(result.capability, ObservationCapability::Unavailable);
+        assert!(result.state.is_none());
     }
 }
 
@@ -329,31 +508,6 @@ fn parse_version_prefix(value: &str) -> Option<(u32, u32)> {
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next()?.parse().ok()?;
     Some((major, minor))
-}
-
-fn connect_with_backoff(path: &Path) -> io::Result<UnixStream> {
-    let mut last_error = None;
-    for attempt in 0..MAX_CONNECT_ATTEMPTS {
-        match UnixStream::connect(path) {
-            Ok(stream) => return Ok(stream),
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    io::ErrorKind::NotFound
-                        | io::ErrorKind::ConnectionRefused
-                        | io::ErrorKind::ConnectionAborted
-                        | io::ErrorKind::TimedOut
-                ) =>
-            {
-                last_error = Some(error);
-                if attempt + 1 < MAX_CONNECT_ATTEMPTS {
-                    std::thread::sleep(CONNECT_BACKOFF * (attempt as u32 + 1));
-                }
-            }
-            Err(error) => return Err(error),
-        }
-    }
-    Err(last_error.unwrap_or_else(|| io::Error::other("Hyprland IPC connection failed")))
 }
 
 fn parse_browser_client(client: RawClient) -> Option<BrowserClient> {
@@ -432,7 +586,13 @@ fn lua_string_literal(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, os::unix::net::UnixListener, sync::mpsc, thread};
+    use std::{
+        fs,
+        io::{Read, Write},
+        os::unix::net::UnixListener,
+        sync::mpsc,
+        thread,
+    };
     use uuid::Uuid;
 
     fn socket_pair() -> (PathBuf, PathBuf, PathBuf) {

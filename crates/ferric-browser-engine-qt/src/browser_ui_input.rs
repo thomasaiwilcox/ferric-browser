@@ -160,6 +160,14 @@ impl qobject::BrowserUi {
                         .pending_engine_action = Some(format!("command-prefill\t{prefill}"));
                     return;
                 }
+                if self.as_ref().in_page_window_mode()
+                    && super::browser_ui_page_windows::handles(&parsed)
+                {
+                    let _ = self
+                        .as_mut()
+                        .execute_counted_parsed_commands(vec![parsed], count);
+                    return;
+                }
                 if binding_uses_full_command_executor(&parsed) {
                     let _ = self.as_mut().execute_parsed_commands(vec![parsed]);
                     return;
@@ -292,12 +300,7 @@ impl qobject::BrowserUi {
             }
 
             let command = if prefix == "q" {
-                let recording = self
-                    .as_ref()
-                    .rust()
-                    .recording_macro
-                    .as_ref()
-                    .map(|(register, _)| register.clone());
+                let recording = crate::page_window_macros::recording_register(self.as_ref().rust());
                 if recording.as_deref() == Some(key) {
                     ParsedCommand {
                         name: "macro-stop".into(),
@@ -495,7 +498,8 @@ impl qobject::BrowserUi {
                 }
                 Some(
                     super::engine_requests::NativeRequest::Engine(_)
-                    | super::engine_requests::NativeRequest::View(_),
+                    | super::engine_requests::NativeRequest::View(_)
+                    | super::engine_requests::NativeRequest::ReparentView { .. },
                 ) => None,
                 None => this.pending_engine_action.take(),
             };
@@ -518,6 +522,17 @@ impl qobject::BrowserUi {
         if operation_id.is_empty() || operation_id.len() > 128 {
             return false;
         }
+        if let Some(reporter) = self
+            .as_ref()
+            .rust()
+            .page_window_focus_lease
+            .as_ref()
+            .and_then(|lease| lease.reporter.as_ref())
+            .filter(|reporter| reporter.id() == operation_id)
+        {
+            return crate::page_window_operations::focus_outcome(&outcome.to_string())
+                .is_some_and(|outcome| reporter.finish(outcome));
+        }
         let outcome = outcome.to_string();
         let status = match outcome.as_str() {
             "activated" => OperationUpdate::completed("activated"),
@@ -525,6 +540,10 @@ impl qobject::BrowserUi {
             "stale" => {
                 OperationUpdate::failed(FailureKind::StaleTarget, "activation target changed")
             }
+            "failed" => OperationUpdate::failed(
+                FailureKind::Engine,
+                "page command failed before activation",
+            ),
             _ => return false,
         };
         self.as_mut()

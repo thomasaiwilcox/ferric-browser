@@ -5,6 +5,7 @@
 #include <QTcpServer>
 #include <QTemporaryDir>
 #include <QVariant>
+#include <QPointer>
 #include <memory>
 
 // Production policy stays in the linked engine; this object only drives and
@@ -19,8 +20,11 @@ class ApplicationTests final : public QObject {
     QTcpServer server;
     QByteArray fixtureHtml;
     QHash<QByteArray, QByteArray> frameFixtures;
+    QHash<QByteArray, int> fixtureResponseDelays;
     QVariant scriptResult;
     bool scriptDone = false;
+    QPointer<QObject> setupWindow;
+    bool setupWindowDestroyed = false;
     int frameCallbackCount = 0;
     QString pageReceiver = "testWindow.activeWebView()";
     QVariant evaluate(const QString &source);
@@ -42,7 +46,14 @@ class ApplicationTests final : public QObject {
   public:
     Q_INVOKABLE void accept(const QVariant &value);
     Q_INVOKABLE void frameOperationComplete(const QVariant &value);
+    Q_INVOKABLE QObject *createObject(QObject *parent, const QVariantMap &properties);
+  public slots:
+    void destroySetupWindow();
   private slots:
+    void credentialViewAssociation_data();
+    void credentialViewAssociation();
+    void pageWindowPresentation_data();
+    void pageWindowPresentation();
     void repeatWindowRouting();
     void repeatKeyboardCount_data();
     void repeatKeyboardCount();
@@ -196,6 +207,7 @@ class ApplicationTests final : public QObject {
     void productPolishPopupSourceClose_data();
     void productPolishPopupSourceClose();
     void productPolishPopupCommands();
+    void productPolishPopupCommandsOpenerIdentity();
     void productPolishSecondaryHints_data();
     void productPolishSecondaryHints();
     void productPolishNewWindowRouting_data();
@@ -228,6 +240,8 @@ class ApplicationTests final : public QObject {
     void productPolishWindowClose_data();
     void productPolishWindowClose();
     void productPolishPopupScripts();
+    void productPolishDocumentIdleLifetime_data();
+    void productPolishDocumentIdleLifetime();
     void productPolishSiteLedger();
     void productPolishSessionPreview();
     void productPolishSessionSaveBackpressure();
@@ -269,6 +283,7 @@ class ApplicationTests final : public QObject {
     void clipboardPermissionOutcomes();
     void selectorReloadActivatesAtBoundary_data();
     void selectorReloadActivatesAtBoundary();
+    void requestedWindowPresentationRemainsPendingUntilRestart();
     void selectorReloadRejectsInvalidAndStaleCandidates();
     void selectorReloadTimeoutPreservesConfiguration();
     void selectorDiscoveryUsesProductionPolicy_data();
@@ -295,6 +310,7 @@ class ApplicationTests final : public QObject {
     void scopedHintAndSearchJourneys_data();
     void scopedHintAndSearchJourneys();
     void durablePersistenceFailurePreservesConfiguration();
+    void durablePersistenceFlushWaitsForPendingSave();
     void selectorValidationRejectsWholeCandidate();
     void productPolishSettingDurability();
 };

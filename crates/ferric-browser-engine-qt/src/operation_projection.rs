@@ -27,7 +27,14 @@ pub(super) fn operations_collection_value(
     Ok(json!({"operations": operation_rows(rust, params)?}))
 }
 
-fn operation_rows(rust: &BrowserUiRust, params: &Value) -> Result<Vec<Value>, String> {
+pub(super) struct OperationQuery<'a> {
+    pub(super) window: Option<&'a str>,
+    pub(super) requested: Option<&'a str>,
+    pub(super) include_stderr: bool,
+    pub(super) include_private: bool,
+}
+
+pub(super) fn operation_query(params: &Value) -> Result<OperationQuery<'_>, String> {
     let object = query_object(
         params,
         "operations.query",
@@ -40,19 +47,33 @@ fn operation_rows(rust: &BrowserUiRust, params: &Value) -> Result<Vec<Value>, St
             "cursor",
         ],
     )?;
-    if let Some(window) = query_optional_string(object, "operations.query", "window")?
+    let requested = query_optional_string(object, "operations.query", "operation_id")?;
+    if requested.is_some_and(str::is_empty) {
+        return Err("operations.query operation_id must be nonempty".into());
+    }
+    Ok(OperationQuery {
+        window: query_optional_string(object, "operations.query", "window")?,
+        requested,
+        include_stderr: query_bool_param(object, "operations.query", "include_stderr", false)?,
+        include_private: query_bool_param(object, "operations.query", "include_private", false)?,
+    })
+}
+
+fn operation_rows(rust: &BrowserUiRust, params: &Value) -> Result<Vec<Value>, String> {
+    let query = operation_query(params)?;
+    let OperationQuery {
+        requested,
+        include_stderr,
+        include_private,
+        ..
+    } = query;
+    if let Some(window) = query.window
         && !matches!(window, "active" | "last-focused")
         && ferric_browser_core::WindowId::from_display(window)
             .is_none_or(|id| Some(id) != rust.window)
     {
         return Err("The requested browser window is no longer available.".into());
     }
-    let requested = query_optional_string(object, "operations.query", "operation_id")?;
-    if requested.is_some_and(str::is_empty) {
-        return Err("operations.query operation_id must be nonempty".into());
-    }
-    let include_stderr = query_bool_param(object, "operations.query", "include_stderr", false)?;
-    let include_private = query_bool_param(object, "operations.query", "include_private", false)?;
     if include_private && !private_queries_enabled(rust) {
         return Err("Private operation queries are disabled by configuration.".into());
     }
@@ -63,7 +84,7 @@ fn operation_rows(rust: &BrowserUiRust, params: &Value) -> Result<Vec<Value>, St
             .is_none_or(|profile| profile.privacy.is_transient())
     });
     let window = rust.window.map_or_else(String::new, |id| id.to_string());
-    let rows = rust
+    let mut rows = rust
         .operation_records()
         .filter(|_| !transient || include_private)
         .filter(|record| requested.is_none_or(|requested| requested == record.id))
@@ -72,7 +93,12 @@ fn operation_rows(rust: &BrowserUiRust, params: &Value) -> Result<Vec<Value>, St
             value["window_id"] = Value::String(window.clone());
             value
         })
-        .collect();
+        .collect::<Vec<_>>();
+    rows.extend(crate::page_window_operations::rows(
+        params,
+        rust.window,
+        &[],
+    )?);
     Ok(rows)
 }
 

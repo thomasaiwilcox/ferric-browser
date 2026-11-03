@@ -1,12 +1,58 @@
 use super::engine_requests::NativeRequest;
 use super::{
-    CompletionCandidate, CompletionCategory, CxxQtType, DEFAULT_COMPLETION_LIMIT, Effect,
-    EngineEffect, Event, ExistenceState, JourneyEdgeKind, JourneyNodeId, LoadingState,
+    BrowserUiRust, CompletionCandidate, CompletionCategory, CxxQtType, DEFAULT_COMPLETION_LIMIT,
+    Effect, EngineEffect, Event, ExistenceState, JourneyEdgeKind, JourneyNodeId, LoadingState,
     MAX_JOURNEY_REDIRECT_HOPS, Mode, Pin, QString, SearchCase, TabId, TabTransfer, Target,
     ValidatedUrl, Value, complete, current_target, qobject, recordable_same_document_change,
     safe_ipc_url, sanitize_untrusted_title, scalar_cursor_to_utf16, setting_metadata_all,
     strip_url_fragment, utf16_cursor_to_scalar,
 };
+
+const MAX_PAGE_HOST_OWNER_BINDINGS: usize = 1_024;
+
+#[derive(Clone)]
+struct PageHostOwnerBinding {
+    ui: String,
+    profile: String,
+    owner: String,
+    tab: TabId,
+    generation: String,
+}
+
+std::thread_local! {
+    static PAGE_HOST_OWNER_BINDINGS: std::cell::RefCell<Vec<PageHostOwnerBinding>> = const {
+        std::cell::RefCell::new(Vec::new())
+    };
+}
+
+fn page_host_owner_binding_matches(ui: &str, profile: &str, owner: &str, target: &Target) -> bool {
+    PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+        bindings.borrow().iter().any(|binding| {
+            binding.ui == ui
+                && binding.profile == profile
+                && binding.owner == owner
+                && binding.tab == target.tab
+                && binding.generation == target.generation.to_string()
+        })
+    })
+}
+
+impl Drop for BrowserUiRust {
+    fn drop(&mut self) {
+        super::live_ipc_owners::forget_page_order(&self.tab_ids);
+        let ui = self.window_token.to_string();
+        PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+            bindings.borrow_mut().retain(|binding| binding.ui != ui);
+        });
+    }
+}
+
+impl BrowserUiRust {
+    pub(super) fn clear_owned_page_ids(&mut self) {
+        super::live_ipc_owners::forget_page_order(&self.tab_ids);
+        self.tab_ids.clear();
+    }
+}
 
 impl qobject::BrowserUi {
     #[allow(clippy::unused_self)]
@@ -233,6 +279,7 @@ impl qobject::BrowserUi {
             .reduce_event(Event::TransferTabIn {
                 window,
                 transfer: TabTransfer {
+                    identity: None,
                     url,
                     title,
                     loading,
@@ -272,6 +319,7 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Tab transfer source could not be released"));
             return false;
         }
+        super::live_ipc_owners::forget_page_order(&[tab]);
         let needs_fallback = self
             .as_ref()
             .rust()
@@ -321,6 +369,7 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Tab transfer rollback was rejected"));
             return false;
         }
+        super::live_ipc_owners::forget_page_order(&[tab]);
         let needs_fallback = self.as_ref().rust().window.is_some_and(|window| {
             self.as_ref()
                 .rust()
@@ -577,33 +626,33 @@ impl qobject::BrowserUi {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         for effect in effects {
-            if let Effect::Engine(effect) = effect {
-                if super::engine_requests::target(effect).is_some() {
-                    match effect {
-                        EngineEffect::ClearFindText { target } => {
-                            // Escape must also cancel searches not yet handed to
-                            // QML; otherwise they can reopen a retired session.
-                            this.pending_engine_actions.retain(|request| {
+            if let Effect::Engine(effect) = effect
+                && super::engine_requests::target(effect).is_some()
+            {
+                match effect {
+                    EngineEffect::ClearFindText { target } => {
+                        // Escape must also cancel searches not yet handed to
+                        // QML; otherwise they can reopen a retired session.
+                        this.pending_engine_actions.retain(|request| {
                                 !matches!(request, NativeRequest::Engine(EngineEffect::FindText { target: queued, .. }) if queued == target)
                             });
-                        }
-                        EngineEffect::FindText {
-                            target,
-                            new_search: true,
-                            ..
-                        } => {
-                            // Coalesce query edits, preserving explicit step
-                            // counts and intervening non-search command effects.
-                            while matches!(this.pending_engine_actions.back(), Some(NativeRequest::Engine(EngineEffect::FindText { target: queued, .. })) if queued == target)
-                            {
-                                let _ = this.pending_engine_actions.pop_back();
-                            }
-                        }
-                        _ => {}
                     }
-                    this.pending_engine_actions
-                        .push_back(NativeRequest::Engine(effect.clone()));
+                    EngineEffect::FindText {
+                        target,
+                        new_search: true,
+                        ..
+                    } => {
+                        // Coalesce query edits, preserving explicit step
+                        // counts and intervening non-search command effects.
+                        while matches!(this.pending_engine_actions.back(), Some(NativeRequest::Engine(EngineEffect::FindText { target: queued, .. })) if queued == target)
+                        {
+                            let _ = this.pending_engine_actions.pop_back();
+                        }
+                    }
+                    _ => {}
                 }
+                this.pending_engine_actions
+                    .push_back(NativeRequest::Engine(effect.clone()));
             }
         }
     }
@@ -659,7 +708,291 @@ impl qobject::BrowserUi {
             })
     }
 
+    pub(super) fn page_host_profile_id(&self) -> QString {
+        self.rust()
+            .state
+            .as_ref()
+            .and_then(ferric_browser_application::BrowserApplication::profile_instance_id)
+            .map_or_else(QString::default, |profile| {
+                QString::from(profile.to_string())
+            })
+    }
+
+    pub(super) fn register_page_host_owner(
+        &self,
+        tab: &QString,
+        profile_id: &QString,
+        host_token: &QString,
+        page_owner_token: &QString,
+    ) -> bool {
+        let rust = self.rust();
+        let ui = rust.window_token.to_string();
+        let profile = profile_id.to_string();
+        let owner = page_owner_token.to_string();
+        let host = host_token.to_string();
+        if ui.is_empty()
+            || profile.is_empty()
+            || owner.is_empty()
+            || owner.len() > 128
+            || owner.chars().any(char::is_control)
+            || host.is_empty()
+            || host.len() > 128
+            || host.chars().any(char::is_control)
+            || rust
+                .state
+                .as_ref()
+                .and_then(ferric_browser_application::BrowserApplication::profile_instance_id)
+                .is_none_or(|current| current.to_string() != profile)
+        {
+            return false;
+        }
+        let Some(tab_id) = TabId::from_display(&tab.to_string())
+            .filter(|candidate| rust.tab_ids.contains(candidate))
+        else {
+            return false;
+        };
+        let Some(target) = rust
+            .state
+            .as_ref()
+            .and_then(|state| state.capture_target(tab_id))
+        else {
+            return false;
+        };
+        if !qobject::ferric_public_page_host_tokens_live(
+            host_token,
+            page_owner_token,
+            profile_id,
+            true,
+        ) {
+            return false;
+        }
+        let already_registered = PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+            bindings
+                .borrow()
+                .iter()
+                .any(|binding| binding.owner == owner)
+        });
+        if already_registered {
+            return false;
+        }
+        PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+            let mut bindings = bindings.borrow_mut();
+            if bindings.len() >= MAX_PAGE_HOST_OWNER_BINDINGS {
+                return false;
+            }
+            bindings.push(PageHostOwnerBinding {
+                ui,
+                profile,
+                owner,
+                tab: target.tab,
+                generation: target.generation.to_string(),
+            });
+            true
+        })
+    }
+
+    pub(super) fn release_page_host_owner(
+        &self,
+        profile_id: &QString,
+        page_owner_token: &QString,
+    ) -> bool {
+        let ui = self.rust().window_token.to_string();
+        let profile = profile_id.to_string();
+        let owner = page_owner_token.to_string();
+        if ui.is_empty() || profile.is_empty() || owner.is_empty() || owner.len() > 128 {
+            return false;
+        }
+        PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+            let mut bindings = bindings.borrow_mut();
+            let original_len = bindings.len();
+            bindings.retain(|binding| {
+                binding.ui != ui || binding.profile != profile || binding.owner != owner
+            });
+            bindings.len() != original_len
+        })
+    }
+
+    pub(super) fn page_host_owner_matches_target(
+        &self,
+        page_owner_token: &QString,
+        profile_id: &QString,
+        tab: &QString,
+        generation: &QString,
+    ) -> bool {
+        let rust = self.rust();
+        let ui = rust.window_token.to_string();
+        let profile = profile_id.to_string();
+        let owner = page_owner_token.to_string();
+        let Some(tab) = TabId::from_display(&tab.to_string()) else {
+            return false;
+        };
+        rust.state
+            .as_ref()
+            .and_then(ferric_browser_application::BrowserApplication::profile_instance_id)
+            .is_some_and(|current| current.to_string() == profile)
+            && PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+                bindings.borrow().iter().any(|binding| {
+                    binding.ui == ui
+                        && binding.profile == profile
+                        && binding.owner == owner
+                        && binding.tab == tab
+                        && binding.generation == generation.to_string()
+                })
+            })
+    }
+
+    pub(super) fn attach_page_host(
+        mut self: Pin<&mut Self>,
+        tab: &QString,
+        profile_id: &QString,
+        host_token: &QString,
+        page_owner_token: &QString,
+    ) -> bool {
+        self.as_mut().queue_page_host_reparent(
+            tab,
+            profile_id,
+            host_token,
+            page_owner_token,
+            super::engine_requests::PageHostOperation::Attach,
+        )
+    }
+
+    pub(super) fn detach_page_host(
+        mut self: Pin<&mut Self>,
+        tab: &QString,
+        profile_id: &QString,
+        host_token: &QString,
+        page_owner_token: &QString,
+    ) -> bool {
+        self.as_mut().queue_page_host_reparent(
+            tab,
+            profile_id,
+            host_token,
+            page_owner_token,
+            super::engine_requests::PageHostOperation::Detach,
+        )
+    }
+
+    fn queue_page_host_reparent(
+        mut self: Pin<&mut Self>,
+        tab: &QString,
+        requested_profile_id: &QString,
+        host_token: &QString,
+        page_owner_token: &QString,
+        operation: super::engine_requests::PageHostOperation,
+    ) -> bool {
+        let this = self.as_ref();
+        let (target, profile_id, window) = {
+            let rust = this.rust();
+            let Some(tab) =
+                TabId::from_display(&tab.to_string()).filter(|tab| rust.tab_ids.contains(tab))
+            else {
+                return false;
+            };
+            let Some(profile_id) = rust
+                .state
+                .as_ref()
+                .and_then(ferric_browser_application::BrowserApplication::profile_instance_id)
+                .map(|profile| profile.to_string())
+            else {
+                return false;
+            };
+            if requested_profile_id.to_string() != profile_id {
+                return false;
+            }
+            let Some(window) = rust.window.as_ref().copied() else {
+                return false;
+            };
+            let Some(target) = rust
+                .state
+                .as_ref()
+                .and_then(|state| state.capture_target(tab))
+            else {
+                return false;
+            };
+            (target, profile_id, window)
+        };
+
+        let host = host_token.to_string();
+        let page_owner = page_owner_token.to_string();
+        if host.is_empty()
+            || host.len() > 128
+            || host.chars().any(char::is_control)
+            || page_owner.is_empty()
+            || page_owner.len() > 128
+            || page_owner.chars().any(char::is_control)
+        {
+            return false;
+        }
+        let ui = self.as_ref().rust().window_token.to_string();
+        if !page_host_owner_binding_matches(&ui, &profile_id, &page_owner, &target) {
+            return false;
+        }
+        let profile = QString::from(profile_id.as_str());
+        if !qobject::ferric_public_page_host_tokens_live(
+            host_token,
+            page_owner_token,
+            &profile,
+            operation.attaches(),
+        ) {
+            return false;
+        }
+
+        let effect = EngineEffect::ReparentView {
+            tab: target.tab,
+            generation: target.generation,
+            window,
+        };
+        self.as_mut().queue_pending_engine_action();
+        self.as_mut()
+            .rust_mut()
+            .pending_engine_actions
+            .push_back(NativeRequest::ReparentView {
+                effect,
+                target,
+                profile_id,
+                host_token: host,
+                page_owner_token: page_owner,
+                operation,
+            });
+        self.as_mut().runtime_work_available();
+        true
+    }
+
+    pub(super) fn native_page_for_request(&self, request: &super::QVariant) -> super::QVariant {
+        let Some(row) = request.value::<cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>>()
+        else {
+            return super::QVariant::default();
+        };
+        let text = |key: &str| {
+            row.get_or_default(&QString::from(key))
+                .value_or_default::<QString>()
+        };
+        let reparent = text("kind").to_string() == "reparent-view";
+        let owner = text(if reparent {
+            "pageOwnerToken"
+        } else {
+            "nativeOwner"
+        });
+        let tab = text("tabId");
+        let generation = text("generation");
+        if !self.request_target_current(&tab, &generation, &text("documentId"))
+            || !self.page_host_owner_matches_target(
+                &owner,
+                &self.page_host_profile_id(),
+                &tab,
+                &generation,
+            )
+        {
+            return super::QVariant::default();
+        }
+        qobject::ferric_public_page_for_request(request)
+    }
+
     pub(super) fn take_engine_request(mut self: Pin<&mut Self>) -> super::QVariant {
+        if self.as_ref().rust().page_window_preparing {
+            return super::QVariant::default();
+        }
         loop {
             let request = {
                 let mut rust = self.as_mut().rust_mut();
@@ -676,13 +1009,78 @@ impl qobject::BrowserUi {
                     .pop_front()
                     .expect("a typed request is queued")
             };
-            if request.captured_target().is_some_and(|target| {
+            let target_is_current = request.captured_target().is_some_and(|target| {
                 super::captured_target_is_current(self.as_ref().rust().state.as_ref(), target)
-            }) {
+            });
+            let native_owner_is_current = request.page_host_tokens().is_none_or(
+                |(profile_id, host_token, page_owner_token, attach)| {
+                    qobject::ferric_public_page_host_tokens_live(
+                        &QString::from(host_token),
+                        &QString::from(page_owner_token),
+                        &QString::from(profile_id),
+                        attach,
+                    )
+                },
+            );
+            let runtime_profile_is_current =
+                request
+                    .page_host_tokens()
+                    .is_none_or(|(profile_id, _, _, _)| {
+                        self.as_ref()
+                            .rust()
+                            .state
+                            .as_ref()
+                            .and_then(
+                                ferric_browser_application::BrowserApplication::profile_instance_id,
+                            )
+                            .is_some_and(|current| current.to_string() == profile_id)
+                    });
+            let ui = self.as_ref().rust().window_token.to_string();
+            let rust_owner_binding_is_current =
+                request
+                    .page_host_tokens()
+                    .is_none_or(|(profile_id, _, page_owner_token, _)| {
+                        request.captured_target().is_some_and(|target| {
+                            page_host_owner_binding_matches(
+                                &ui,
+                                profile_id,
+                                page_owner_token,
+                                &target,
+                            )
+                        })
+                    });
+            if target_is_current
+                && native_owner_is_current
+                && runtime_profile_is_current
+                && rust_owner_binding_is_current
+            {
                 if !self.as_ref().rust().pending_engine_actions.is_empty() {
                     self.as_mut().runtime_work_available();
                 }
-                return request.projection();
+                let projection = request.projection();
+                // A browser command may intentionally advance the target
+                // generation. Bind the existing native owner to that accepted
+                // target, before capturing the native document incarnation.
+                if let Some(target) = request
+                    .captured_target()
+                    .filter(|_| request.page_host_tokens().is_none())
+                {
+                    let native_owner = PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+                        let mut bindings = bindings.borrow_mut();
+                        let binding = bindings
+                            .iter_mut()
+                            .find(|binding| binding.ui == ui && binding.tab == target.tab)?;
+                        binding.generation = target.generation.to_string();
+                        Some(binding.owner.clone())
+                    });
+                    if let Some(owner) = native_owner {
+                        return qobject::ferric_public_page_capture_request(
+                            &QString::from(owner),
+                            &projection,
+                        );
+                    }
+                }
+                return projection;
             }
         }
     }
@@ -696,6 +1094,32 @@ impl qobject::BrowserUi {
             .engine_navigation_kinds
             .remove(&target.tab)
             .is_some_and(|(owner, history)| owner == target && history)
+    }
+
+    /// A native load also retires document work that has not been projected
+    /// yet. Stamping only when dequeuing would otherwise attach old intent to
+    /// the replacement document. Logical page transfers remain page-owned.
+    pub(super) fn retire_native_document_work(mut self: Pin<&mut Self>, target: super::Target) {
+        let ui = self.as_ref().rust().window_token.to_string();
+        let native = PAGE_HOST_OWNER_BINDINGS.with(|bindings| {
+            bindings
+                .borrow()
+                .iter()
+                .any(|binding| binding.ui == ui && binding.tab == target.tab)
+        });
+        if native {
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_engine_actions
+                .retain(|request| {
+                    matches!(
+                        request,
+                        NativeRequest::ReparentView { .. } | NativeRequest::Presentation(_)
+                    ) || request.captured_target() != Some(target)
+                });
+        }
     }
 
     pub(super) fn note_navigation_started(mut self: Pin<&mut Self>, target: Target, url: &str) {
@@ -1056,5 +1480,33 @@ impl qobject::BrowserUi {
         self.as_mut().set_initial_url(QString::from(&url));
         self.as_mut().set_page_title(QString::from(&title));
         self.as_mut().set_load_state(QString::from(&load_state));
+    }
+}
+
+#[cfg(test)]
+mod page_order_cleanup_tests {
+    use super::BrowserUiRust;
+    use crate::live_ipc_owners::{forget_page_order, page_order_rank_for_test, reserve_page_order};
+    use ferric_browser_core::TabId;
+
+    #[test]
+    fn transient_ids_are_forgotten_before_empty_owner_drop() {
+        let pages = [
+            TabId::from_display("tabid-18446744073709549001").unwrap(),
+            TabId::from_display("tabid-18446744073709549002").unwrap(),
+        ];
+        let survivor = TabId::from_display("tabid-18446744073709549003").unwrap();
+        reserve_page_order(&[pages[0], pages[1], survivor]);
+        let mut owner = BrowserUiRust::default();
+        owner.tab_ids = pages.to_vec();
+        owner.clear_owned_page_ids();
+        assert_eq!(owner.tab_ids, Vec::new());
+        for page in pages {
+            assert_eq!(page_order_rank_for_test(page), usize::MAX);
+        }
+        assert_ne!(page_order_rank_for_test(survivor), usize::MAX);
+        drop(owner);
+        assert_ne!(page_order_rank_for_test(survivor), usize::MAX);
+        forget_page_order(&[survivor]);
     }
 }

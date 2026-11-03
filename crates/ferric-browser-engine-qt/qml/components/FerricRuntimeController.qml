@@ -112,6 +112,11 @@ QtObject {
         if (index < 0 || !view) {
             return false
         }
+        if (window.browserUi.feature_tabs_presentation_effective === "windows"
+                && window.browserUi.tab_count === 1) {
+            window.close()
+            return true
+        }
         window.clearPageDialogForView(view)
         window.clearClientCertificateForView(view)
         window.clearCertificateErrorForView(view)
@@ -162,6 +167,14 @@ QtObject {
     }
 
     function executePendingEngineAction() {
+        // Window-mode handoff must inspect the still-owned native navigation
+        // intent before the single request consumer removes it from the queue.
+        if (window.browserUi.feature_tabs_presentation_effective === "windows") {
+            window.syncTabModel()
+            var expansion = window.pageWindowCoordinator.pendingExpansion
+            if (expansion && expansion.controller.browserUi === window.browserUi) return
+            if (window.pageWindowCoordinator.hasPendingFor(window.browserUi)) return
+        }
         if (EngineRequests.execute(window.browserUi.take_engine_request(), window.browserUi, window, window)) return
         var action = window.browserUi.take_engine_action()
         if (action.indexOf("command-prefill\t") === 0) {
@@ -192,6 +205,18 @@ QtObject {
         }
         if (action === "window-close-request") {
             window.beginQuitRequest(":window-close")
+            return
+        }
+        if (action.indexOf("command-error\t") === 0) {
+            window.showCommandNotice(action.split("\t").slice(1).join("\t"), true)
+            return
+        }
+        if (action.indexOf("window-page-close\t") === 0) {
+            window.pageCloseController.begin(action)
+            return
+        }
+        if (action.indexOf("window-live-transfer\t") === 0) {
+            window.pageWindowCoordinator.executeLivePageMove(window.browserUi,window,action)
             return
         }
         if (action.indexOf("window-focus\t") === 0) {
@@ -332,6 +357,12 @@ QtObject {
             var tabCloseCount = Number(tabCloseActiveParts[1])
             if (!Number.isFinite(tabCloseCount) || tabCloseCount < 1 || tabCloseCount > 100) {
                 window.browserUi.status_text = "Tab close count is invalid"
+                return
+            }
+            if (window.browserUi.feature_tabs_presentation_effective === "windows"
+                    && window.browserUi.tab_count === 1) {
+                if (!window.tabs.get(0).pinned) window.closeTabAtIndex(0)
+                else window.browserUi.status_text = "No unpinned tabs available to close"
                 return
             }
             var closedCount = 0
@@ -881,6 +912,9 @@ QtObject {
                     window, window.browserUi, window.activeWebView(), window.browserProfile,
                     window.profileName,
                     window.ephemeralInvocationToken, window.ephemeralProfile)
+        // Restored window-mode descriptors may have waited for this trusted
+        // profile/window registration before creating any page windows.
+        window.syncTabModel()
         if (window.startupContext.length > 0) {
             window.browserUi.set_context_entry_reuse(true)
             window.browserUi.execute_command("context-enter " + window.startupContext)

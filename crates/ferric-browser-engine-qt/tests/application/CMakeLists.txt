@@ -7,34 +7,41 @@ find_package(SQLite3 REQUIRED)
 if(NOT TARGET SQLite3::SQLite3) # CMake < 4.3
     add_library(SQLite3::SQLite3 ALIAS SQLite::SQLite3)
 endif()
-find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 WebEngineQuick Network DBus Test Widgets)
+find_package(Qt6 REQUIRED COMPONENTS WaylandClient WebChannel QuickWidgets WebEngineWidgets Quick QuickControls2 WebEngineQuick Network DBus Test Widgets)
 get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
 set(FERRIC_ENGINE_LIBRARY "${REPO_ROOT}/target/release/libferric_browser_engine_qt.a" CACHE FILEPATH "Cargo-built production engine")
+get_filename_component(FERRIC_ENGINE_DIRECTORY "${FERRIC_ENGINE_LIBRARY}" DIRECTORY)
+set(FERRIC_BROWSER_EXECUTABLE "${FERRIC_ENGINE_DIRECTORY}/ferric-browser" CACHE FILEPATH "Cargo-built production browser")
 # Exercise the Linux distribution default locally, too. The static engine must
 # precede its native shared-library dependencies so --as-needed retains them.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_link_options("LINKER:--as-needed")
 endif()
 add_executable(application_tests tst_application.cpp tst_permission_scope.cpp tst_notifications.cpp tst_file_choosers.cpp tst_action_feedback.cpp tst_hint_controls.cpp tst_navigation_usability.cpp tst_page_search.cpp tst_privacy_identity.cpp tst_live_titles.cpp tst_tab_recovery.cpp tst_last_tab_undo.cpp tst_open_targets.cpp tst_repeat.cpp tst_application.h)
-target_link_libraries(application_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+target_sources(application_tests PRIVATE tst_page_windows.cpp)
+target_link_libraries(application_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 add_executable(context_reload_tests tst_context_reload.cpp)
-target_link_libraries(context_reload_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+target_link_libraries(context_reload_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 # A separate, offscreen-only Qt input plugin lets the public CLI fixture
 # confirm its own Quit prompt without changing the production command contract.
 add_library(context_quit_test_plugin MODULE context_quit_test_plugin.cpp)
 target_link_libraries(context_quit_test_plugin PRIVATE Qt6::Quick Qt6::Test)
 set_target_properties(context_quit_test_plugin PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/plugins/generic")
 add_executable(switcher_tests tst_switcher.cpp)
-target_link_libraries(switcher_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+target_link_libraries(switcher_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 add_executable(downloads_tests tst_downloads.cpp)
 add_library(download_save_interposer SHARED download_save_interposer.cpp)
 target_link_libraries(download_save_interposer PRIVATE ${CMAKE_DL_LIBS})
 add_library(download_runtime_interposer SHARED download_runtime_interposer.cpp)
 add_dependencies(downloads_tests download_save_interposer download_runtime_interposer)
-target_link_libraries(downloads_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+target_link_libraries(downloads_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 add_executable(close_request_tests tst_close_requests.cpp)
-target_link_libraries(close_request_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+target_link_libraries(close_request_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 enable_testing()
+add_test(NAME application_credential_association COMMAND application_tests credentialViewAssociation)
+set_tests_properties(application_credential_association PROPERTIES TIMEOUT 180 LABELS "credential;wayland;qml")
+add_test(NAME application_page_windows COMMAND application_tests pageWindowPresentation)
+set_tests_properties(application_page_windows PROPERTIES TIMEOUT 600 LABELS "window;wayland;qml")
 add_test(NAME application_switcher_live_updates COMMAND application_tests productPolishSwitcherLiveUpdates)
 set_tests_properties(application_switcher_live_updates PROPERTIES TIMEOUT 180 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_test(NAME application_switcher_navigation COMMAND application_tests productPolishSwitcherNavigation)
@@ -60,6 +67,8 @@ set_tests_properties(application_stop_state PROPERTIES TIMEOUT 300 ENVIRONMENT "
 add_test(NAME application_form_reload COMMAND application_tests streamingFormReload)
 set_tests_properties(application_form_reload PROPERTIES TIMEOUT 300 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_test(NAME application_streaming_history COMMAND application_tests streamingHistoryTraversal)
+add_test(NAME application_shutdown_pending_save COMMAND application_tests durablePersistenceFlushWaitsForPendingSave)
+set_tests_properties(application_shutdown_pending_save PROPERTIES TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 set_tests_properties(application_streaming_history PROPERTIES TIMEOUT 360 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_test(NAME application_hint_controls COMMAND application_tests hintNativeControls hintNavigationLifecycle embeddedResourceParity realHintKeyboardActivation hintRefreshRetainsInput hintRefreshDoesNotAutoFollow hintConfirmationFreezesPendingRefresh scopedHintAndSearchJourneys)
 set_tests_properties(application_hint_controls PROPERTIES TIMEOUT 240 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
@@ -105,7 +114,7 @@ add_test(NAME application_session_recovery COMMAND ${CMAKE_COMMAND} -E env
     productPolishSessionRecoveryFailure productPolishSessionRecoveryCancellation)
 set_tests_properties(application_session_recovery PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_executable(notification_consent_tests tst_notification_consent.cpp)
-target_link_libraries(notification_consent_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+target_link_libraries(notification_consent_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 add_dependencies(notification_consent_tests notification_test_service)
 find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
 add_test(NAME application_settings_durability COMMAND "${DBUS_RUN_SESSION}"
@@ -114,10 +123,33 @@ add_test(NAME application_settings_durability COMMAND "${DBUS_RUN_SESSION}"
     FERRIC_SETTINGS_SYNC_FIXTURE=1 $<TARGET_FILE:application_tests> productPolishSettingDurability)
 set_tests_properties(application_settings_durability PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME application_credential_association_wayland COMMAND "${DBUS_RUN_SESSION}"
+    --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
+    ${CMAKE_COMMAND} -E env FERRIC_PORTAL_TEST_BUS=isolated "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../portal/run.py" "${CMAKE_CURRENT_BINARY_DIR}/portal"
+    tab_recovery credentialViewAssociation)
+set_tests_properties(application_credential_association_wayland PROPERTIES TIMEOUT 180)
+# Portable window-mode coverage uses the owned Qt compositor. The full
+# application_page_windows entry also exercises actual Hyprland grouping.
+# Existing-window focus, live transfer and workflow rows need its activation
+# support; the Qt compositor provides mapping-time focus only.
+add_test(NAME application_page_windows_portable COMMAND "${DBUS_RUN_SESSION}"
+    --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
+    ${CMAKE_COMMAND} -E env FERRIC_PORTAL_TEST_BUS=isolated FERRIC_TEST_UNTAGGED_WINDOWS=1 "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../portal/run.py" "${CMAKE_CURRENT_BINARY_DIR}/portal"
+    tab_recovery
+    pageWindowPresentation:foreground pageWindowPresentation:background
+    pageWindowPresentation:private pageWindowPresentation:factory-failure
+    pageWindowPresentation:preparation-shutdown
+    pageWindowPresentation:window-undo-peer pageWindowPresentation:window-close-cancel
+    pageWindowPresentation:session-aggregate pageWindowPresentation:session-peer-order
+    pageWindowPresentation:session-queued-get pageWindowPresentation:session-hidden-survivor
+    pageWindowPresentation:session-quit-cancel pageWindowPresentation:session-quit-approved-close)
+set_tests_properties(application_page_windows_portable PROPERTIES TIMEOUT 480)
 add_test(NAME application_startup_recovery_restart COMMAND "${DBUS_RUN_SESSION}"
     --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
     "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_startup_recovery.py"
-    "${CMAKE_CURRENT_BINARY_DIR}" "${REPO_ROOT}/target/release/ferric-browser")
+    "${CMAKE_CURRENT_BINARY_DIR}" "${FERRIC_BROWSER_EXECUTABLE}")
 set_tests_properties(application_startup_recovery_restart PROPERTIES TIMEOUT 180)
 add_test(NAME application_startup_recovery_wayland COMMAND "${DBUS_RUN_SESSION}"
     --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
@@ -219,7 +251,6 @@ add_test(NAME application_tab_focus_wayland COMMAND "${DBUS_RUN_SESSION}"
 set_tests_properties(application_tab_focus_wayland PROPERTIES TIMEOUT 210)
 add_test(NAME application_download_finalization COMMAND "${DBUS_RUN_SESSION}" --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf -- "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_download_finalization_probe.py" --executable $<TARGET_FILE:downloads_tests> --interposer $<TARGET_FILE:download_save_interposer>)
 set_tests_properties(application_download_finalization PROPERTIES TIMEOUT 100)
-set(FERRIC_BROWSER_EXECUTABLE "${REPO_ROOT}/target/release/ferric-browser" CACHE FILEPATH "Production browser for runtime-version admission regression")
 add_test(NAME application_journey_history COMMAND "${DBUS_RUN_SESSION}"
     --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
     "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_journey_history_probe.py"
@@ -265,6 +296,9 @@ set_tests_properties(application_product_polish PROPERTIES TIMEOUT 600 ENVIRONME
 add_test(NAME application_deferred_requests COMMAND application_tests deferredNativeRequestsKeepCapturedTargets)
 set_tests_properties(application_deferred_requests PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 
+add_test(NAME application_document_idle COMMAND application_tests productPolishDocumentIdleLifetime)
+set_tests_properties(application_document_idle PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
 add_test(NAME application_repeat COMMAND application_tests repeatAdmission repeatCommonCommands repeatKeyboardCount repeatWindowRouting)
 set_tests_properties(application_repeat PROPERTIES TIMEOUT 240 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 
@@ -300,3 +334,11 @@ add_test(NAME application_repeat_cli COMMAND "${DBUS_RUN_SESSION}"
     "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_repeat.py"
     --browser "${FERRIC_BROWSER_EXECUTABLE}" --output "${CMAKE_CURRENT_BINARY_DIR}/repeat-cli")
 set_tests_properties(application_repeat_cli PROPERTIES TIMEOUT 180)
+
+# Everyday v1 acceptance inventory.  These invoke the existing production
+# BrowserUi/WebEngine test executable, which links the Cargo-built engine and
+# its shipped QML resources.  Keep this registration additive to the baseline.
+add_subdirectory(../everyday everyday)
+
+include("${CMAKE_CURRENT_LIST_DIR}/../EngineArchive.cmake")
+ferric_require_current_engine_archive("${FERRIC_ENGINE_LIBRARY}")

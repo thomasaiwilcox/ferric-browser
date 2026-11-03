@@ -18,6 +18,7 @@ pub fn ipc_event_type(event: &Event) -> &'static str {
         | Event::OpenTabWithNavigation { .. }
         | Event::OpenPopup { .. }
         | Event::MoveTab { .. }
+        | Event::ReorderTabs { .. }
         | Event::TransferTabOut { .. }
         | Event::TransferTabIn { .. }
         | Event::SetTabPinned { .. }
@@ -93,6 +94,9 @@ pub fn ipc_event_payload(observation: &RuntimeObservation) -> Value {
             index,
         } => serde_json::json!({
             "tab": tab_payload(observation, *tab), "to_window_id": to_window.to_string(), "index": index
+        }),
+        Event::ReorderTabs { window, tabs } => serde_json::json!({
+            "window_id": window.to_string(), "order": tabs.iter().map(ToString::to_string).collect::<Vec<_>>()
         }),
         Event::TransferTabIn { window, .. } => {
             serde_json::json!({ "window_id": window.to_string() })

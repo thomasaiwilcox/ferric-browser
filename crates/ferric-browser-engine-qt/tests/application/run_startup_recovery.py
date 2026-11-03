@@ -145,7 +145,7 @@ def scenario(build, browser, startup):
             named = wait(lambda: next(base.rglob("after-recovery.json"), None), "named recovery save")
             saved = json.loads(named.read_text())
             assert sorted(addresses(saved)) == sorted(expected), saved
-            assert saved["schema_version"] == 4 and saved["recovered_session_ids"], saved
+            assert saved["schema_version"] == 6 and saved["recovered_session_ids"], saved
             # Wait for the merged current generation before another forced
             # exit. Its ancestry must suppress the retained older files.
             wait(lambda: checkpoint_urls(expected, True), "merged durable checkpoint")

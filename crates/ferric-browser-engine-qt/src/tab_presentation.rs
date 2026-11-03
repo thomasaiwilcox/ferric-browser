@@ -78,6 +78,7 @@ impl qobject::BrowserUi {
                 i32::try_from(this.tab_ids.len()).unwrap_or(i32::MAX),
             )
         };
+        self.as_ref().get_ref().reserve_page_order();
         self.as_mut().set_tab_count(count);
         self.as_mut().set_active_tab_properties(index, active_tab);
         self.as_mut().sync_context_metadata();
@@ -113,6 +114,7 @@ impl qobject::BrowserUi {
             this.interaction.focus_observations.clear();
             this.interaction.focus_suppressions.clear();
         }
+        self.as_ref().get_ref().reserve_page_order();
         self.as_mut().set_tab_count(tab_count);
         if let Some(tab) = active_tab {
             self.as_mut().set_active_tab_properties(active_index, tab);
@@ -120,6 +122,27 @@ impl qobject::BrowserUi {
             self.as_mut().set_active_tab_index(0);
         }
         self.as_mut().sync_context_metadata();
+    }
+
+    pub(super) fn reserve_page_order(&self) {
+        let rust = self.rust();
+        if !self.in_page_window_mode() || !rust.page_window_ordinary || rust.page_window_preparing {
+            return;
+        }
+        let pages = rust
+            .tab_ids
+            .iter()
+            .copied()
+            .filter(|tab| {
+                !rust.popup_tab_ids.contains(tab)
+                    && rust
+                        .state
+                        .as_ref()
+                        .and_then(|state| state.tabs().get(tab))
+                        .is_some_and(|page| page.existence == super::ExistenceState::Live)
+            })
+            .collect::<Vec<_>>();
+        super::live_ipc_owners::reserve_page_order(&pages);
     }
 
     pub(super) fn sync_context_metadata(mut self: Pin<&mut Self>) {

@@ -1,7 +1,39 @@
 use super::{
     CxxQtType, Event, ExistenceState, IpcRoute, ParsedCommand, Pin, QString, ResourceLifecycle,
-    Uuid, Value, hyprland, is_bounded_untrusted_text, qobject, typed_ipc_command,
+    TabId, Uuid, Value, WindowId, hyprland, is_bounded_untrusted_text, qobject, typed_ipc_command,
 };
+
+fn tab_pin_command_event(
+    state: &ferric_browser_application::BrowserApplication,
+    window: WindowId,
+    tab_ids: &[TabId],
+    command: &ParsedCommand,
+) -> Result<Event, String> {
+    if command.name != "tab-pin" || !(1..=2).contains(&command.arguments.len()) {
+        return Err("tab-pin requires a stable tab ID and accepts at most one state".into());
+    }
+    let id = &command.arguments[0];
+    if id.is_empty() || id.len() > 128 || id.chars().any(char::is_control) {
+        return Err("tab action ID is invalid".into());
+    }
+    let tab = tab_ids
+        .iter()
+        .copied()
+        .find(|tab| tab.to_string() == *id)
+        .ok_or_else(|| "tab action target is stale or outside this window".to_owned())?;
+    let tab_state = state
+        .tabs()
+        .get(&tab)
+        .filter(|tab| tab.existence == ExistenceState::Live && tab.window == window)
+        .ok_or_else(|| "tab action target is stale or outside this window".to_owned())?;
+    let pinned = match command.arguments.get(1).map(String::as_str) {
+        None | Some("toggle") => !tab_state.pinned,
+        Some("on") => true,
+        Some("off") => false,
+        Some(_) => return Err("tab-pin state must be on, off, or toggle".into()),
+    };
+    Ok(Event::SetTabPinned { tab, pinned })
+}
 
 impl qobject::BrowserUi {
     pub(super) fn tab_pinned_at(&self, index: i32) -> bool {
@@ -46,6 +78,7 @@ impl qobject::BrowserUi {
             this.tab_ids.push(tab);
             this.tab = Some(tab);
         }
+        self.as_ref().get_ref().reserve_page_order();
         let index = i32::try_from(index).unwrap_or(i32::MAX);
         self.as_mut()
             .set_tab_count(i32::try_from(count).unwrap_or(i32::MAX));
@@ -59,12 +92,29 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Unknown tab"));
             return -1;
         };
+        self.as_mut().set_tab_pinned_target(tab, pinned)
+    }
+
+    fn set_tab_pinned_target(mut self: Pin<&mut Self>, tab: TabId, pinned: bool) -> i32 {
         match self
             .as_mut()
             .reduce_event(Event::SetTabPinned { tab, pinned })
         {
             Ok(_) => {
-                self.as_mut().sync_tab_order_from_core();
+                let synchronized = if self.as_ref().in_page_window_mode() {
+                    match self.as_mut().synchronize_local_page_order() {
+                        Ok(synchronized) => synchronized,
+                        Err(error) => {
+                            self.set_status_text(QString::from(error));
+                            return -1;
+                        }
+                    }
+                } else {
+                    false
+                };
+                if !synchronized {
+                    self.as_mut().sync_tab_order_from_core();
+                }
                 self.as_mut().set_status_text(QString::from(if pinned {
                     "Tab pinned"
                 } else {
@@ -377,6 +427,9 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn close_tab(mut self: Pin<&mut Self>, index: i32) -> bool {
+        if !crate::browser_ui_page_close::allows_close(self.as_ref().get_ref(), Some(index)) {
+            return false;
+        }
         let Some(target) = self.as_ref().get_ref().target_for_index(index) else {
             self.set_status_text(QString::from("Tab is no longer live"));
             return false;
@@ -490,6 +543,35 @@ impl qobject::BrowserUi {
         command: &ParsedCommand,
         operation_id: Option<&str>,
     ) -> Result<Value, String> {
+        if command.name == "tab-pin" {
+            let event = {
+                let binding = self.as_ref();
+                let rust = binding.rust();
+                let state = rust
+                    .state
+                    .as_ref()
+                    .ok_or_else(|| "core state unavailable".to_owned())?;
+                let window = rust
+                    .window
+                    .ok_or_else(|| "tab pinning requires a live window".to_owned())?;
+                tab_pin_command_event(state, window, &rust.tab_ids, command)?
+            };
+            let (tab, pinned) = match event {
+                Event::SetTabPinned { tab, pinned } => (tab, pinned),
+                _ => unreachable!("tab-pin routing creates only SetTabPinned"),
+            };
+            let new_index = self.as_mut().set_tab_pinned_target(tab, pinned);
+            if new_index < 0 {
+                return Err("tab pinning was rejected".into());
+            }
+            return Ok(serde_json::json!({
+                "status": "accepted",
+                "action": "pin",
+                "tab_id": tab.to_string(),
+                "pinned": pinned,
+                "index": new_index
+            }));
+        }
         let (id, direction) = if command.name == "tab-move"
             && command.arguments.first().map(String::as_str) == Some("--context")
         {
@@ -770,35 +852,6 @@ impl qobject::BrowserUi {
                     "index": new_index
                 }))
             }
-            "tab-pin" => {
-                if direction.len() > 1 {
-                    return Err("tab-pin accepts at most one state".into());
-                }
-                let currently_pinned = self
-                    .as_ref()
-                    .rust()
-                    .state
-                    .as_ref()
-                    .and_then(|state| state.tabs().get(&tab))
-                    .is_some_and(|tab| tab.pinned);
-                let pinned = match direction.first().map(String::as_str) {
-                    None | Some("toggle") => !currently_pinned,
-                    Some("on") => true,
-                    Some("off") => false,
-                    Some(_) => return Err("tab-pin state must be on, off, or toggle".into()),
-                };
-                let new_index = self.as_mut().set_tab_pinned(index, pinned);
-                if new_index < 0 {
-                    return Err("tab pinning was rejected".into());
-                }
-                Ok(serde_json::json!({
-                    "status": "accepted",
-                    "action": "pin",
-                    "tab_id": id,
-                    "pinned": pinned,
-                    "index": new_index
-                }))
-            }
             _ => Err("unsupported tab action".into()),
         }
     }
@@ -1002,5 +1055,79 @@ impl qobject::BrowserUi {
             }
             _ => Err("unsupported command action".into()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ferric_browser_config::Config;
+    use ferric_browser_core::{Event, PrivacyKind};
+    use ferric_browser_runtime::RuntimeInput;
+
+    #[test]
+    fn tab_pin_command_event_targets_only_the_requested_live_tab_in_its_window() {
+        let (mut state, first_window, first_tab) =
+            ferric_browser_application::BrowserApplication::bootstrap(
+                Config::default(),
+                PrivacyKind::Normal,
+                "default",
+            )
+            .expect("bootstrap browser application");
+        state
+            .dispatch_runtime(RuntimeInput::Lifecycle(Event::OpenTab {
+                window: first_window,
+            }))
+            .expect("second tab");
+        let profile = state.windows()[&first_window].profile;
+        state
+            .dispatch_runtime(RuntimeInput::Lifecycle(Event::CreateWindow { profile }))
+            .expect("second window");
+        let second_window = *state
+            .windows()
+            .keys()
+            .find(|window| **window != first_window)
+            .expect("second window ID");
+        state
+            .dispatch_runtime(RuntimeInput::Lifecycle(Event::OpenTab {
+                window: second_window,
+            }))
+            .expect("foreign window tab");
+
+        let first_window_tabs = state.windows()[&first_window].tabs.clone();
+        let foreign_tab = state.windows()[&second_window].tabs[0];
+        let command = crate::parse_chain(
+            &format!("tab-pin {} on", first_window_tabs[1]),
+            ferric_browser_core::ParseInput::Cli,
+        )
+        .expect("parse tab-pin")
+        .remove(0);
+        let event = tab_pin_command_event(&state, first_window, &first_window_tabs, &command)
+            .expect("route tab-pin to requested tab");
+        assert_eq!(
+            event,
+            Event::SetTabPinned {
+                tab: first_window_tabs[1],
+                pinned: true,
+            }
+        );
+        state
+            .dispatch_runtime(RuntimeInput::Lifecycle(event))
+            .expect("apply tab pin");
+        assert_eq!(state.tabs().get(&first_tab).unwrap().window, first_window);
+        assert!(!state.tabs()[&first_window_tabs[0]].pinned);
+        assert!(state.tabs()[&first_window_tabs[1]].pinned);
+        assert!(!state.tabs()[&foreign_tab].pinned);
+
+        let foreign_command = crate::parse_chain(
+            &format!("tab-pin {foreign_tab} on"),
+            ferric_browser_core::ParseInput::Cli,
+        )
+        .expect("parse foreign tab-pin")
+        .remove(0);
+        assert!(
+            tab_pin_command_event(&state, first_window, &first_window_tabs, &foreign_command)
+                .is_err()
+        );
     }
 }

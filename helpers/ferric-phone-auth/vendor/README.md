@@ -1,0 +1,139 @@
+# libwebauthn
+
+A Linux-native implementation of FIDO2 and FIDO U2F Platform API, fully written in Rust.
+
+This library supports multiple transports (see [Transports](#Transports) for a list) via a pluggable interface, making it easy to add additional backends.
+
+## Credentials for Linux Project
+
+This repository is now part of the [Credentials for Linux][linux-credentials] project, and was previously known as **xdg-credentials-portal**.
+
+The [Credentials for Linux][linux-credentials] project aims to offer FIDO2 platform functionality (FIDO U2F, and WebAuthn) on Linux, over a [D-Bus Portal interface][xdg-portal].
+
+_Looking for the D-Bus API proposal?_ Check out [credentialsd][credentialsd].
+
+## Features
+
+- FIDO U2F
+  - 🟢 Registration (U2F_REGISTER)
+  - 🟢 Authentication (U2F_AUTHENTICATE)
+  - 🟢 Version (U2F_VERSION)
+- FIDO2
+  - 🟢 Create credential
+  - 🟢 Verify assertion
+  - 🟢 Biometric user verification
+  - 🟢 Discoverable credentials (resident keys)
+  - 🟢 Related origins (WebAuthn L3 §5.11)
+- FIDO2 to FIDO U2F downgrade
+  - 🟢 Basic functionality
+  - 🟢 Support for excludeList and pre-flight requests
+- PIN/UV Protocols
+  - 🟢 PIN/UV Auth Protocol One
+  - 🟢 PIN/UV Auth Protocol Two
+- PIN/UV Operations
+  - 🟢 GetPinToken
+  - 🟢 GetPinUvAuthTokenUsingPinWithPermissions
+  - 🟢 GetPinUvAuthTokenUsingUvWithPermissions
+  - 🟢 Persistent pinUvAuthToken for read-only credential management (pcmr, CTAP 2.2+)
+- [Passkey Authentication][passkeys]
+  - 🟢 Discoverable credentials (resident keys)
+  - 🟢 Hybrid transport (caBLE v2): QR-initiated transactions
+  - 🟢 Hybrid transport (caBLE v2): State-assisted transactions (remember this phone)
+  - 🟢 Hybrid transport (CTAP 2.3): direct BLE L2CAP data channel, QR-initiated, no tunnel server
+
+## Runtime requirements
+
+Validating the relying party ID against the calling origin requires the [Public Suffix List][psl]. The built-in `SystemPublicSuffixList::auto()` loader reads it from the standard system path, probing the binary `.dafsa` format first and falling back to the text `.dat` format. The `publicsuffix` package on Debian/Ubuntu ships both. On Fedora the binary `.dafsa` file is shipped by `publicsuffix-list-dafsa` (a transitive dependency of `libpsl`, so usually already installed), while the text `.dat` file requires the optional `publicsuffix-list` package. On Arch only the text `.dat` format is packaged. Callers wiring their own list don't need a system package.
+
+## Transports
+
+|                              | FIDO U2F              | WebAuthn (FIDO2)      |
+| ---------------------------- | --------------------- | --------------------- |
+| **USB (HID)**                | 🟢 Supported (hidapi) | 🟢 Supported (hidapi) |
+| **Bluetooth Low Energy**     | 🟢 Supported (bluez)  | 🟢 Supported (bluez)  |
+| **NFC** [^nfc-optin]         | 🟢 Supported (pcsc or libnfc) | 🟢 Supported (pcsc or libnfc) |
+| **TPM 2.0 (Platform)**       | 🟠 Planned ([#4][#4]) | 🟠 Planned ([#4][#4]) |
+| **Hybrid (caBLE v2, cloud-assisted)** | N/A          | 🟢 Supported          |
+| **CTAP 2.3 hybrid (QR-initiated, BLE only)**    | N/A                   | 🟢 Supported          |
+
+USB, BLE, and the two hybrid transports build with the default features. NFC is
+opt-in: the crate ships with `default = []` for the NFC stack, so enable the
+`nfc-backend-pcsc` feature (pure userspace, recommended) or `nfc-backend-libnfc`
+(requires the `libnfc` system library) to compile it in.
+
+[^nfc-optin]: Off by default. Enable `nfc-backend-pcsc` and/or `nfc-backend-libnfc`.
+
+## Example programs
+
+Examples live in [`libwebauthn/examples/`](libwebauthn/examples) and are grouped by purpose:
+`ceremony/` for register and authenticate flows, `features/` for per-feature demos
+(extensions, preflight, PRF, device selection), and `management/` for CTAP2 admin
+operations. All examples share helpers from `examples/common/`.
+
+The basic ceremony examples (register + authenticate) cover all transports. The
+WebAuthn examples consume and emit JSON per the [WebAuthn IDL][webauthn].
+
+| Transport                        | FIDO U2F                                                                                                                 | WebAuthn (FIDO2) [^ro]                                                                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **USB (HID)**                    | `cargo run --example u2f_hid`                                                                                            | `cargo run --example webauthn_hid`                                                                                                            |
+| **Bluetooth (BLE)**              | `cargo run --example u2f_ble`                                                                                            | `cargo run --example webauthn_ble`                                                                                                            |
+| **NFC** [^nfc]                   | `cargo run --features nfc-backend-pcsc --example u2f_nfc`<br>`cargo run --features nfc-backend-libnfc --example u2f_nfc` | `cargo run --features nfc-backend-pcsc --example webauthn_nfc`<br>`cargo run --features nfc-backend-libnfc --example webauthn_nfc` |
+| **Hybrid (caBLE v2 + CTAP 2.3)** | —                                                                                                                        | `cargo run --example webauthn_cable`                                                                                                          |
+| **Hybrid (caBLE v2)**            | —                                                                                                                        | `cargo run --example webauthn_cable_wss`                                                                                                      |
+
+[^nfc]: `nfc-backend-pcsc` is pure userspace and recommended on most systems. `nfc-backend-libnfc` requires the `libnfc` system library. Both can be enabled together; the first FIDO device found by either backend is used.
+
+[^ro]: The ceremony examples run with related origins disabled (they are same-origin, so it never applies). The bundled reqwest-backed [related-origins](https://www.w3.org/TR/webauthn-3/#sctn-related-origins) source is shown in the `webauthn_related_origins_hid` example below, behind the optional `reqwest-related-origins-source` feature. Consumers that ship their own HTTP stack can implement `HttpClient` or `RelatedOriginsSource` directly.
+
+Additional HID-only examples cover specific FIDO2 features and authenticator management:
+
+```
+# WebAuthn extension and preflight demos
+$ cargo run --example webauthn_extensions_hid
+$ cargo run --example webauthn_preflight_hid
+$ cargo run --example webauthn_prf_hid
+$ cargo run --example prf_replay -- CREDENTIAL_ID FIRST_PRF_INPUT
+$ cargo run --example device_selection_hid
+
+# Related origins (reqwest-backed well-known fetch)
+$ cargo run --features reqwest-related-origins-source --example webauthn_related_origins_hid
+
+# CTAP2 authenticator management
+$ cargo run --example change_pin_hid
+$ cargo run --example bio_enrollment_hid
+$ cargo run --example authenticator_config_hid
+$ cargo run --example cred_management_hid
+$ cargo run --example persistent_cred_management_hid
+```
+
+## Minimum Supported Rust Version (MSRV)
+
+libwebauthn uses Rust edition 2021 and tracks recent stable Rust. CI builds and
+tests on the current stable toolchain. There is no separate older MSRV floor: if
+a recent stable `rustc` builds the crate, it is supported.
+
+## License
+
+Licensed under the GNU Lesser General Public License v2.1 or later
+(`LGPL-2.1-or-later`). See [COPYING](COPYING) for the full text.
+
+## Contributing
+
+We welcome contributions!
+
+Join the discussion on Matrix at `#credentials-for-linux:matrix.org`.
+
+If you don't know where to start, check out the _Issues_ tab.
+
+[xdg-portal]: https://flatpak.github.io/xdg-desktop-portal/portal-docs.html
+[linux-credentials]: https://github.com/linux-credentials
+[credentialsd]: https://github.com/linux-credentials/credentialsd
+[webauthn]: https://www.w3.org/TR/webauthn/
+[passkeys]: https://fidoalliance.org/passkeys/
+[#10]: https://github.com/linux-credentials/libwebauthn/issues/10
+[#3]: https://github.com/linux-credentials/libwebauthn/issues/3
+[#4]: https://github.com/linux-credentials/libwebauthn/issues/4
+[#17]: https://github.com/linux-credentials/libwebauthn/issues/17
+[#18]: https://github.com/linux-credentials/libwebauthn/issues/18
+[#31]: https://github.com/linux-credentials/libwebauthn/issues/31
+[psl]: https://publicsuffix.org/

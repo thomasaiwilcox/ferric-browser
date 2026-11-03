@@ -1,0 +1,13 @@
+# C10 — Exact compositor identity and capability gate
+
+Extend existing `hyprland.rs` and its background-worker transport. Define semantic operations (observe host/group, activate exact host, place a newly created page relative to a captured source); these are not invented Hyprland commands. Check installed version/capabilities and the supported IPC/dispatcher semantics before implementation. No synchronous subprocess/socket work on the GUI thread.
+
+Bind a native host incarnation to compositor instance epoch and the exact observed client identity (supported stable ID/address). A PID, application ID, active Ferric window, page title, Qt winId or xdg_foreign export handle alone is not that binding. KWindowSystem's existing parent export remains for its documented purpose; do not repurpose it as a guessed Hyprland address.
+
+W00 evaluates public per-window identity routes on the installed stack. If unavailable, the only pre-authorized fallback to investigate is a browser-generated unguessable bootstrap marker placed before first mapping and matched against immutable initial metadata plus expected app/PID/instance. Page titles must not be exposed until binding completes, private labels remain visible, and the marker never becomes a persistent user identifier. Prove no flicker, ambiguous matches, spoof/reuse or wrong-window correlation. Do not implement a heuristic “first matching new window”.
+
+Current documented group entry can be direction/focus dependent. Do not assume a native address-to-address group join exists. The proof must show an exact, serialized placement with revalidation on that backend, under simultaneous creates, focus changes, delayed maps, locks and mixed-app neighbours. Where a public exact route cannot be proven, leave automatic grouping unavailable and retain generic native page windows. This is a blocked grouping capability, not completed Ohm-like grouping.
+
+Capture source window/group at intent time. Every request has its own native token and exact destination. No global “next window” flag or global autogroup reconfiguration. Unknown backend/version, disconnected socket, stale source, locked group or inconclusive result yields a recoverable standalone page and visible bounded feedback, not collateral window movement.
+
+A timeout after a potentially delivered non-idempotent toggle is uncertain. Observe state before deciding whether another operation is appropriate; never blindly replay. Do not steal focus to simplify placement, unlock a user group or move the user’s workspaces. Positive actual Hyprland qualification is separate from fake IPC-server unit tests and nested Weston tests.

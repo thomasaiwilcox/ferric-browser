@@ -192,56 +192,84 @@ fn cli_cleanup_does_not_replace_the_remote_failure() {
 }
 
 #[test]
-fn cli_partial_chains_report_admission_without_claiming_rollback() {
-    for startup in [false, true] {
-        let expected = failure(ErrorCode::Busy);
-        let sent = expected.clone();
-        let mut accepted = 0;
-        let peer = Peer::start(2, move |request| {
-            if let Some(response) = hello(&request) {
-                return Some(response);
-            }
-            accepted += 1;
-            Some(if accepted == 1 {
-                Response::success(request.id, serde_json::json!({"status":"accepted"}))
-            } else {
-                Response {
-                    id: request.id,
-                    result: None,
-                    error: Some(sent.clone()),
-                }
-            })
-        });
-        let options = CliOptions::default();
-        let error = if startup {
-            forward_open(
-                &peer.paths,
-                "https://first.test",
-                &["https://second.test".into()],
-                None,
-                false,
-                &options,
-            )
-        } else {
-            forward_command(&peer.paths, "reload ;; reload", None, &options)
+fn cli_partial_startup_inputs_report_admission_without_claiming_rollback() {
+    let expected = failure(ErrorCode::Busy);
+    let sent = expected.clone();
+    let mut accepted = 0;
+    let peer = Peer::start(2, move |request| {
+        if let Some(response) = hello(&request) {
+            return Some(response);
         }
-        .unwrap_err();
-        assert_eq!(error.status(), 6);
-        let protocol = error.into_protocol();
-        let details = protocol.details.unwrap();
-        assert_eq!(details["accepted_requests"], 1);
+        accepted += 1;
+        Some(if accepted == 1 {
+            Response::success(request.id, serde_json::json!({"status":"accepted"}))
+        } else {
+            Response {
+                id: request.id,
+                result: None,
+                error: Some(sent.clone()),
+            }
+        })
+    });
+    let options = CliOptions::default();
+    let error = forward_open(
+        &peer.paths,
+        "https://first.test",
+        &["https://second.test".into()],
+        None,
+        false,
+        &options,
+    )
+    .unwrap_err();
+    assert_eq!(error.status(), 6);
+    let protocol = error.into_protocol();
+    let details = protocol.details.unwrap();
+    assert_eq!(details["accepted_requests"], 1);
+    assert_eq!(
+        details["correlation_id"],
+        expected.details.unwrap()["correlation_id"]
+    );
+    assert!(
+        details["preserved"]
+            .as_str()
+            .unwrap()
+            .contains("earlier requests were accepted")
+    );
+    peer.finish();
+}
+
+#[test]
+fn cli_sends_a_typed_chain_as_one_admission() {
+    let peer = Peer::start(1, move |request| {
+        if let Some(response) = hello(&request) {
+            return Some(response);
+        }
+        assert_eq!(request.method, "command.execute");
+        let commands = ferric_browser_ipc::decode_command_chain(&request.params).unwrap();
+        assert_eq!(commands.len(), 2);
+        assert_eq!(commands[0].command.name, "tab-next");
+        assert_eq!(commands[1].command.name, "reload");
         assert_eq!(
-            details["correlation_id"],
-            expected.details.unwrap()["correlation_id"]
+            commands[0].envelope.context.window.as_deref(),
+            Some("active")
         );
-        assert!(
-            details["preserved"]
-                .as_str()
-                .unwrap()
-                .contains("earlier requests were accepted")
+        assert_eq!(
+            commands[1].envelope.context.window.as_deref(),
+            Some("active")
         );
-        peer.finish();
-    }
+        Some(Response::success(
+            request.id,
+            serde_json::json!({"status":"accepted"}),
+        ))
+    });
+    forward_command(
+        &peer.paths,
+        "tab-next ;; reload",
+        Some("active"),
+        &CliOptions::default(),
+    )
+    .unwrap();
+    peer.finish();
 }
 
 #[test]

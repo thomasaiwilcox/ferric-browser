@@ -5,6 +5,9 @@ use super::{
 };
 use std::io::Write;
 
+const HYPRLAND_OBSERVATION_BASE_BACKOFF: Duration = Duration::from_secs(1);
+const HYPRLAND_OBSERVATION_MAX_BACKOFF: Duration = Duration::from_secs(30);
+
 pub(super) struct PrintWorker {
     inner: SingleFlightWorker<PathBuf, Result<PathBuf, String>>,
 }
@@ -23,6 +26,9 @@ pub(super) struct NetworkPolicyWorker {
 }
 
 pub(super) enum HyprlandRequest {
+    Observe {
+        config: HyprlandConfig,
+    },
     RouteWorkspace {
         config: HyprlandConfig,
         workspace: String,
@@ -37,6 +43,7 @@ pub(super) enum HyprlandRequest {
 }
 
 pub(super) enum HyprlandResponse {
+    Observe(super::hyprland_events::ObservationResult),
     RouteWorkspace(Result<(), String>),
     MoveActiveWindow(Result<(), String>),
     BrowserClients(Result<Vec<hyprland::BrowserClient>, String>),
@@ -44,37 +51,82 @@ pub(super) enum HyprlandResponse {
 
 pub(super) struct HyprlandWorker {
     inner: SingleFlightWorker<HyprlandRequest, HyprlandResponse>,
+    observed_state: Option<super::hyprland_events::ObservedState>,
+    observation_backoff: Duration,
+    next_observation_at: Instant,
+    observations_enabled: bool,
+    disconnect_pending: bool,
 }
 
 impl HyprlandWorker {
     pub(super) fn spawn() -> Result<Self, String> {
+        let observation = std::sync::Arc::new(std::sync::Mutex::new(
+            super::hyprland_events::ObservationSession::default(),
+        ));
+        let worker_observation = observation.clone();
         let inner =
-            SingleFlightWorker::spawn("ferric-browser-hyprland-ipc", |request| match request {
-                HyprlandRequest::RouteWorkspace { config, workspace } => {
-                    let adapter = hyprland::HyprlandAdapter::from_config(&config);
-                    HyprlandResponse::RouteWorkspace(
-                        adapter
-                            .route_workspace(&workspace)
-                            .map_err(|error| error.to_string()),
-                    )
-                }
-                HyprlandRequest::MoveActiveWindow { config, workspace } => {
-                    let adapter = hyprland::HyprlandAdapter::from_config(&config);
-                    HyprlandResponse::MoveActiveWindow(
-                        adapter
-                            .move_active_window_to_workspace(&workspace)
-                            .map_err(|error| error.to_string()),
-                    )
-                }
-                HyprlandRequest::BrowserClients { config } => {
-                    let adapter = hyprland::HyprlandAdapter::from_config(&config);
-                    HyprlandResponse::BrowserClients(
-                        adapter.browser_clients().map_err(|error| error.to_string()),
-                    )
-                }
-            })
+            SingleFlightWorker::spawn(
+                "ferric-browser-hyprland-ipc",
+                move |request| match request {
+                    HyprlandRequest::Observe { config } => {
+                        let mut session = match worker_observation.lock() {
+                            Ok(session) => session,
+                            Err(_) => {
+                                return HyprlandResponse::Observe(
+                                super::hyprland_events::ObservationResult {
+                                    capability:
+                                        super::hyprland_events::ObservationCapability::Unavailable,
+                                    state: None,
+                                },
+                            );
+                            }
+                        };
+                        if config.enabled == ferric_browser_config::TriState::Off {
+                            session.disconnect();
+                            return HyprlandResponse::Observe(
+                                super::hyprland_events::ObservationResult {
+                                    capability:
+                                        super::hyprland_events::ObservationCapability::Disabled,
+                                    state: None,
+                                },
+                            );
+                        }
+                        let adapter = hyprland::HyprlandAdapter::from_config(&config);
+                        HyprlandResponse::Observe(adapter.observe_events(&mut session))
+                    }
+                    HyprlandRequest::RouteWorkspace { config, workspace } => {
+                        let adapter = hyprland::HyprlandAdapter::from_config(&config);
+                        HyprlandResponse::RouteWorkspace(
+                            adapter
+                                .route_workspace(&workspace)
+                                .map_err(|error| error.to_string()),
+                        )
+                    }
+                    HyprlandRequest::MoveActiveWindow { config, workspace } => {
+                        let adapter = hyprland::HyprlandAdapter::from_config(&config);
+                        HyprlandResponse::MoveActiveWindow(
+                            adapter
+                                .move_active_window_to_workspace(&workspace)
+                                .map_err(|error| error.to_string()),
+                        )
+                    }
+                    HyprlandRequest::BrowserClients { config } => {
+                        let adapter = hyprland::HyprlandAdapter::from_config(&config);
+                        HyprlandResponse::BrowserClients(
+                            adapter.browser_clients().map_err(|error| error.to_string()),
+                        )
+                    }
+                },
+            )
             .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            observed_state: None,
+            observation_backoff: HYPRLAND_OBSERVATION_BASE_BACKOFF,
+            next_observation_at: Instant::now(),
+            observations_enabled: false,
+            disconnect_pending: false,
+        })
     }
 
     pub(super) fn request(&mut self, request: HyprlandRequest) -> Result<(), SubmitError> {
@@ -83,8 +135,90 @@ impl HyprlandWorker {
 
     pub(super) fn poll(&mut self) -> Option<HyprlandResponse> {
         match self.inner.poll() {
+            WorkerPoll::Ready(HyprlandResponse::Observe(result)) => {
+                if let Some(state) = result.state.as_ref() {
+                    let is_newer = self.observed_state.as_ref().is_none_or(|current| {
+                        state.instance_epoch > current.instance_epoch
+                            || (state.instance_epoch == current.instance_epoch
+                                && state.sequence >= current.sequence)
+                    });
+                    if is_newer {
+                        self.observed_state = Some(state.clone());
+                    }
+                } else {
+                    self.observed_state = None;
+                }
+                let disabled_while_enabled = result.capability
+                    == super::hyprland_events::ObservationCapability::Disabled
+                    && self.observations_enabled;
+                self.observation_backoff = match &result.capability {
+                    super::hyprland_events::ObservationCapability::Available => {
+                        HYPRLAND_OBSERVATION_BASE_BACKOFF
+                    }
+                    super::hyprland_events::ObservationCapability::Disabled => {
+                        if disabled_while_enabled {
+                            HYPRLAND_OBSERVATION_BASE_BACKOFF
+                        } else {
+                            HYPRLAND_OBSERVATION_MAX_BACKOFF
+                        }
+                    }
+                    super::hyprland_events::ObservationCapability::UnsupportedVersion
+                    | super::hyprland_events::ObservationCapability::Unavailable
+                    | super::hyprland_events::ObservationCapability::InvalidData => self
+                        .observation_backoff
+                        .saturating_mul(2)
+                        .min(HYPRLAND_OBSERVATION_MAX_BACKOFF),
+                };
+                self.next_observation_at = if disabled_while_enabled {
+                    Instant::now()
+                } else {
+                    Instant::now() + self.observation_backoff
+                };
+                Some(HyprlandResponse::Observe(result))
+            }
             WorkerPoll::Ready(response) => Some(response),
             WorkerPoll::Pending | WorkerPoll::Stopped => None,
+        }
+    }
+
+    pub(super) fn request_observation_if_due(&mut self, config: HyprlandConfig) {
+        let now = Instant::now();
+        let enabled = config.enabled != ferric_browser_config::TriState::Off;
+        if enabled != self.observations_enabled {
+            self.observations_enabled = enabled;
+            self.observation_backoff = HYPRLAND_OBSERVATION_BASE_BACKOFF;
+            self.next_observation_at = now;
+            self.disconnect_pending = !enabled;
+        }
+
+        if !enabled {
+            self.observed_state = None;
+            if self.disconnect_pending
+                && now >= self.next_observation_at
+                && !self.inner.is_pending()
+            {
+                let submitted = self.request(HyprlandRequest::Observe { config }).is_ok();
+                if submitted {
+                    self.disconnect_pending = false;
+                } else {
+                    self.next_observation_at = now + self.observation_backoff;
+                }
+            }
+            return;
+        }
+
+        self.disconnect_pending = false;
+        if now < self.next_observation_at || self.inner.is_pending() {
+            return;
+        }
+        if self.request(HyprlandRequest::Observe { config }).is_ok() {
+            self.next_observation_at = now + self.observation_backoff;
+        } else {
+            self.observation_backoff = self
+                .observation_backoff
+                .saturating_mul(2)
+                .min(HYPRLAND_OBSERVATION_MAX_BACKOFF);
+            self.next_observation_at = now + self.observation_backoff;
         }
     }
 

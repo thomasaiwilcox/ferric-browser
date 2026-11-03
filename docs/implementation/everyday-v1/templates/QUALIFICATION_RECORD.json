@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "level": "native|physical|benchmark",
+  "source_sha": "REPLACE",
+  "passed": false,
+  "operator": "REPLACE",
+  "recorded_at": "REPLACE",
+  "environment": {
+    "os": "REPLACE",
+    "qt": "REPLACE",
+    "compositor": "REPLACE",
+    "execution_kind": "REPLACE"
+  },
+  "devices": [],
+  "observations": [],
+  "linked_receipts": [],
+  "limitations": [],
+  "note": "Record actual observations only. This template is not qualification."
+}

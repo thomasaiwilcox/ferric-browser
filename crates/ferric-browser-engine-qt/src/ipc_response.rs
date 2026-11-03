@@ -95,18 +95,10 @@ pub(super) fn ipc_command_failure_with_context(
     error: impl Into<PublicError>,
     command_context: Value,
 ) -> Response {
-    let error = error.into();
-    Response::failure(
-        id,
-        ProtocolError {
-            code: error.code().as_str().into(),
-            message: error.user_message().into(),
-            details: Some(serde_json::json!({
-                "command_context": command_context,
-                "diagnostic_context": error.diagnostic_context(),
-            })),
-        },
-    )
+    let mut error = error.into().into_protocol_error();
+    let details = error.details.get_or_insert_with(|| serde_json::json!({}));
+    details["command_context"] = command_context;
+    Response::failure(id, error)
 }
 
 pub(super) fn action_failure_category(code: ErrorCode) -> &'static str {

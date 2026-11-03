@@ -33,23 +33,44 @@ impl qobject::BrowserUi {
             },
         )?;
         if expanded.len() != 1 {
-            let mut result = serde_json::json!({"status": "accepted"});
-            let mut operations = Vec::new();
-            for command in expanded {
-                // Each asynchronous command owns its own admission. Reusing
-                // the envelope ID would let the first completion terminate
-                // unrelated work or replace its cancellation authority.
-                result = self
-                    .as_mut()
-                    .execute_ipc_command_with_operation(command, route, None)?;
-                if let Some(id) = result.get("operation_id").and_then(Value::as_str) {
-                    operations.push(id.to_owned());
-                }
-            }
-            result["operation_ids"] = serde_json::json!(operations);
-            return Ok(result);
+            return self.execute_page_window_ipc_chain(expanded, route, operation_id);
         }
         let command = expanded.into_iter().next().expect("one expanded command");
+        if self.as_ref().in_page_window_mode()
+            && (matches!(
+                command.name.as_str(),
+                "repeat" | "macro-play" | "command-execute"
+            ) || (command.name == "action" && crate::parse_action_invocation(&command).is_ok()))
+        {
+            let wrapper = command.clone();
+            let mut result = self.execute_page_workflow(
+                vec![crate::RepeatableCommand {
+                    command,
+                    count: 1,
+                    route: Some(route.clone()),
+                }],
+                operation_id,
+                &mut None,
+            )?;
+            if wrapper.name == "action" {
+                let (_, id) =
+                    crate::parse_action_invocation(&wrapper).map_err(PublicError::engine)?;
+                // A registered subject/verb may have taken precedence.
+                if result.get("action_id").is_none() {
+                    result["action_id"] = Value::String(id);
+                }
+            } else if wrapper.name == "command-execute" {
+                let mut outer = serde_json::json!({"status":"accepted", "action":"execute",
+                    "command_id":wrapper.arguments[0], "result":result});
+                for field in ["operation_id", "pending"] {
+                    if let Some(value) = outer["result"].get(field).cloned() {
+                        outer[field] = value;
+                    }
+                }
+                result = outer;
+            }
+            return Ok(result);
+        }
         if let Some(result) = self.as_mut().dispatch_support_command(&command, route) {
             return result;
         }
@@ -89,6 +110,26 @@ impl qobject::BrowserUi {
             self.as_ref().validate_ipc_route_public(route)?;
             return self.execute_context_delete_command(&command);
         }
+        if self.as_ref().in_page_window_mode()
+            && super::browser_ui_page_creation::handles(&command, Some(route))
+        {
+            return self.execute_page_window_ipc_creation(
+                &command,
+                route,
+                Vec::new(),
+                operation_id,
+                &mut None,
+            );
+        }
+        if self.as_ref().in_page_window_mode() && command.name == "tab-close" {
+            return self.execute_page_window_ipc_close(
+                &command,
+                route,
+                Vec::new(),
+                operation_id,
+                &mut None,
+            );
+        }
         let result =
             self.as_mut()
                 .execute_adapter_ipc_command(command.clone(), route, operation_id)?;
@@ -97,6 +138,9 @@ impl qobject::BrowserUi {
         // immediately or after confirmation; recording here would duplicate it.
         if result.get("pending").and_then(Value::as_str) != Some("context-route")
             && result.get("requires_confirmation").and_then(Value::as_bool) != Some(true)
+            && !(self.as_ref().in_page_window_mode()
+                && (super::browser_ui_page_windows::handles(&command)
+                    || super::browser_ui_page_mutations::handles(&command)))
             && !(command.name == "open"
                 && command.arguments.first().map(String::as_str) == Some("--clean-link"))
         {
@@ -209,12 +253,41 @@ impl qobject::BrowserUi {
         )
     }
 
+    pub(super) fn dispatch_planned_new_tab_open(
+        self: Pin<&mut Self>,
+        input: &str,
+        route: &IpcRoute,
+        foreground: bool,
+        operation_id: Option<&str>,
+    ) -> Result<Value, String> {
+        self.as_ref()
+            .validate_ipc_route_public(route)
+            .map_err(|error| error.to_string())?;
+        self.dispatch_tab_open_ipc_command(
+            planned_tab_open_command(input, foreground),
+            route,
+            operation_id,
+        )
+    }
+
     pub(super) fn dispatch_tab_open_ipc_command(
         mut self: Pin<&mut Self>,
         command: ParsedCommand,
         route: &IpcRoute,
         operation_id: Option<&str>,
     ) -> Result<Value, String> {
+        if self.as_ref().in_page_window_mode() && route.context.is_none() && route.profile.is_none()
+        {
+            return self
+                .execute_page_window_ipc_creation(
+                    &command,
+                    route,
+                    Vec::new(),
+                    operation_id,
+                    &mut None,
+                )
+                .map_err(|error| error.to_string());
+        }
         let dispatch = {
             let binding = self.as_ref();
             let rust = binding.rust();
@@ -259,3 +332,19 @@ impl qobject::BrowserUi {
         }))
     }
 }
+
+pub(super) fn planned_tab_open_command(input: &str, foreground: bool) -> ParsedCommand {
+    let mut arguments = Vec::new();
+    if !foreground {
+        arguments.push("--background".into());
+    }
+    arguments.extend(["--".into(), input.to_owned()]);
+    ParsedCommand {
+        name: "tab-open".into(),
+        arguments,
+    }
+}
+
+#[cfg(test)]
+#[path = "tests/page_presentation.rs"]
+mod page_presentation_tests;

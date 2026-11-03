@@ -27,6 +27,8 @@ pub(super) fn parse_cli(arguments: &[String]) -> Result<(CliOptions, CliAction),
             "--software-rendering" => {
                 return Err("--software-rendering may be specified only once".into());
             }
+            "--direct-network" if !options.direct_network => options.direct_network = true,
+            "--direct-network" => return Err("--direct-network may be specified only once".into()),
             "--basedir" if options.basedir.is_none() => {
                 options.basedir = Some(next_cli_value(arguments, &mut index, argument)?);
             }
@@ -292,13 +294,13 @@ pub(super) fn open_from_values(
     for additional in &additional_inputs {
         validate_cli_text(additional, "additional open input")?;
     }
-    if let Some(target) = target.as_ref() {
-        if !matches!(
+    if let Some(target) = target.as_ref()
+        && !matches!(
             target.as_str(),
             "current" | "tab" | "tab-bg" | "window" | "private-window"
-        ) {
-            return Err("--target must be current, tab, tab-bg, window, or private-window".into());
-        }
+        )
+    {
+        return Err("--target must be current, tab, tab-bg, window, or private-window".into());
     }
     validate_open_target(target.as_deref(), clean_link).map_err(str::to_owned)?;
     Ok(CliAction::Open {

@@ -194,19 +194,17 @@ pub(super) fn forward_command(
             Ok(params)
         })
         .collect::<Result<Vec<_>, CliError>>()?;
-    for (accepted, params) in parameters.into_iter().enumerate() {
-        let response = instance_request(
-            paths,
-            &Request {
-                id: format!("command-{}", Uuid::new_v4()),
-                method: "command.execute".into(),
-                params,
-            },
-        )
-        .map_err(|error| error.after_accepted("command", accepted))?;
-        if let Some(error) = response.error {
-            return Err(CliError::Protocol(error).after_accepted("command", accepted));
-        }
+    let params = ferric_browser_ipc::encode_command_chain(parameters).map_err(CliError::invalid)?;
+    let response = instance_request(
+        paths,
+        &Request {
+            id: format!("command-{}", Uuid::new_v4()),
+            method: "command.execute".into(),
+            params,
+        },
+    )?;
+    if let Some(error) = response.error {
+        return Err(CliError::Protocol(error));
     }
     crate::cli_output::line(format_args!(
         "Command accepted by the running Ferric Browser instance"

@@ -1,0 +1,1183 @@
+{
+  "schema_version": 1,
+  "run_id": null,
+  "execution_baseline_sha": null,
+  "integration_sha": null,
+  "active_locks": {},
+  "slices": {
+    "S00": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "S01": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F00": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F01": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02a": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02b": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F03": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F04": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F05": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "H00": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "H01": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "H02": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "H03": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "H04": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "H05": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "H06": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P00": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P00a": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P00b": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P00c": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P01": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P02": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P03": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P04": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P05": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P06": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P07": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P08": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P09": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P10": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P11": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P12": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P13": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P14": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P15": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P16": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P17": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W00": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W01": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W02": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W03": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W04": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W05": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W06": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W07": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W08": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W09": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W10": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W11": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W12": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W13": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W14": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "X00": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "X01": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "X02": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "X03": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "X04": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "X05": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "X06": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F01b": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F01c": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W01a": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W01b": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "W01c": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02b1": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02b2": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02b2a": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02b2b": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "H00a": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "H00b": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "H00c": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P02a": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P02b": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P02c": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02c": {
+      "status": "superseded",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null,
+      "supersession": {
+        "amendment": "A37",
+        "superseded_by": [
+          "F02e1"
+        ]
+      }
+    },
+    "F02d": {
+      "status": "superseded",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null,
+      "supersession": {
+        "amendment": "A37",
+        "superseded_by": [
+          "F02e8"
+        ]
+      }
+    },
+    "P05a": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P05b": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P07a": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P07b": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P05b1": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "P05b2": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e0": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e1": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e2": {
+      "status": "failed",
+      "attempts": 6,
+      "author": "/root/f02e2_a6_worker",
+      "reviewer": "/root/d28_review",
+      "evidence": "evidence/F02e2-a6/native/NATIVE_RUN-A48.json",
+      "blocker": "A48 terminal failure remains failed at 6/6; A52 authorizes only F02e2s/T014e2s after independent review.",
+      "terminal_failure": {
+        "result": "failed",
+        "attempts": 6,
+        "test_id": "T014e2",
+        "run_path": "evidence/F02e2-a6/native/NATIVE_RUN-A48.json",
+        "run_sha256": "e6b0695df918b20713c8c86d008e99c1ac3f7a68a8852fea40d37d2fd3ae9eb1",
+        "receipt_path": "evidence/F02e2-a6/native/T014e2-A48/receipt.json",
+        "receipt_sha256": "2e35b498a9a5db8802bac48bf3f28fbfed17ace1ac70810170bcc6bc38d9f32a"
+      },
+      "supersession": {
+        "amendment": "A52",
+        "superseded_by": [
+          "F02e2s"
+        ],
+        "transition": "pending_successor_acceptance"
+      },
+      "superseded_by": [
+        "F02e2s"
+      ]
+    },
+    "F02e2q": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e3": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e4": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e5": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e6": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e7": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e8": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": null
+    },
+    "F02e2r": {
+      "status": "not_started",
+      "attempts": 0,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": "A50 attempt 3/3 and A51 T014e2r continuation are failed and immutable; A52 successor F02e2s is the only authorized recovery.",
+      "continuation_policy": {
+        "amendment": "A51",
+        "continuation_of_amendment": "A50",
+        "continuation_of_attempt": 3,
+        "attempt_limit": 3,
+        "attempt_increment": false,
+        "candidate": {
+          "source_sha": "c6e29480e08f5e7a1ba54319ec2f2fe932d1f366",
+          "source_tree": "f5b7696b1c08d115ba435a521fc2a47fa128f538"
+        },
+        "artifacts": {
+          "target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2r-a3-qt6112-qmake",
+          "integration_executable_sha256": "da48cdbb935bb128d017c699d91b82dcc802d42e810f90014571f47ecf0b69f5",
+          "ctest_file_sha256": "306e7c47fd6d018083285d5e049d55ffe942b8c14e35a218485dc2cdcfbfacb1",
+          "link_command_sha256": "efb4315b0c4db1c233254d8d6fcde88498e738ae0c3bc377f245e69dd8344821"
+        },
+        "preserved_A50_run": {
+          "path": "evidence/F02e2r-a3/native/NATIVE_RUN-A50-a3.json",
+          "sha256": "69c220a114afb4a05da8dfcf5458292db6d954305cf6900ac4cc8f07111c0906",
+          "result": "failed"
+        },
+        "preserved_A50_lease_closure": {
+          "path": "evidence/F02e2r-a3/native/NATIVE_LEASE_CLOSED-A50-a3.json",
+          "sha256": "c6e059a05d0ba4271400c1dbaf4723818f05b7abf0c3901cfc0605954ce48739"
+        },
+        "allowed_tests": [
+          "T014e2r"
+        ],
+        "allowed_gates": [
+          "read-only exact-source/artifact/hash verification",
+          "nonzero CTest discovery requiring T014e2r",
+          "one serial T014e2r run with zero skips",
+          "independent A51 gate-evidence review"
+        ],
+        "prohibited": [
+          "source changes",
+          "engine or harness rebuild",
+          "CMake reconfigure",
+          "artifact substitution",
+          "attempt 4",
+          "T014e2",
+          "any additional product test"
+        ],
+        "activation": "Only after the independently accepted A51 amendment is integrated and pack validation passes."
+      },
+      "superseded_by": [
+        "F02e2s"
+      ],
+      "supersession": {
+        "amendment": "A52",
+        "superseded_by": [
+          "F02e2s"
+        ],
+        "transition": "pending_successor_acceptance"
+      }
+    },
+    "F02e2s": {
+      "status": "failed",
+      "attempts": 4,
+      "author": "/root/f02e2s_a4_worker",
+      "reviewer": null,
+      "evidence": null,
+      "blocker": "A55 sole source4 terminated before pinned repair: rejected oversized source request and subsequent truncated source output. Actual33270/96000 bytes and4 payloads retained. No correction/retry/attempt5 authorized.",
+      "attempt_budget": 4,
+      "scope_amendment": "A52",
+      "test_id": "T014e2s",
+      "base_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+      "base_tree": "6c46cb7fc9847fbeb2704c95a5e87b52973d5da6",
+      "allowed_paths": [
+        "crates/ferric-browser-engine-qt/src/public_page_host.h",
+        "crates/ferric-browser-engine-qt/src/public_page_host.cpp",
+        "crates/ferric-browser-engine-qt/qml/components/FerricWidgetChrome.qml",
+        "crates/ferric-browser-engine-qt/src/bridge.rs",
+        "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+        "crates/ferric-browser-engine-qt/src/engine_requests.rs",
+        "crates/ferric-browser-engine-qt/build.rs",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/CMakeLists.txt",
+        "crates/ferric-browser-engine-qt/tests/public-page-host/tst_public_page_host_integration.cpp",
+        "crates/ferric-browser-engine-qt/src/browser_ui_input.rs"
+      ],
+      "locks": [
+        "public-page-host",
+        "bridge",
+        "test-registration",
+        "browser-ui-input"
+      ],
+      "packet": "packets/F02e2s-a4-A55.md",
+      "packet_sha256": "aee0198e1e8dbad715d5d1acbdaf9a40e544b6380572914851d07475f936b0d3",
+      "pack_revision_sha": "372c248fbf800bf8179c9a6f3f0d2740de5db69d",
+      "pack_revision_tree": "92e90b035d6f4d0b4d1af41ff0fcd07744b873f0",
+      "source_changes_authorized": false,
+      "native_work_authorized_after_independent_source_review": false,
+      "native_lease_active": false,
+      "fresh_target_pattern": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2s-aN-qt6112-qmake",
+      "review_requirement": "Independent source review must accept the exact candidate before native qualification.",
+      "worker": "/root/f02e2s_a4_worker",
+      "worktree": "/home/tom/Projects/ferric-everyday-work/worktrees/F02e2s-a4",
+      "branch": "work/everyday-v1-F02e2s-a4",
+      "assigned_at_utc": "2026-10-27T14:29:03.854259+00:00",
+      "heartbeat_at_utc": "2026-10-27T14:29:03.854259+00:00",
+      "assignment": "evidence/F02e2s-a4/ASSIGNMENT.json",
+      "assignment_sha256": "7a5103862c103006d003fb96fe11f9b3225ec73272fb06ca5bb5012c37bc0e26",
+      "native_work_authorized": false,
+      "source_review_status": "not_started_source_worker_failed",
+      "source_manifest": null,
+      "source_manifest_sha256": null,
+      "worker_result": "evidence/F02e2s-a4/WORKER_RESULT.json",
+      "worker_result_sha256": "1dd6b782a1dc40706cecb465ca7f1cbb992394823941e01715d50a5d3d27fe50",
+      "source_budget": "evidence/F02e2s-a4/SOURCE_BUDGET.json",
+      "source_budget_sha256": "289d27da831d943b9b40f70b81e331562bf3a7f7e234a79e0832b4c7549c32fd",
+      "submitted_at_utc": "2026-10-27T07:41:44Z",
+      "source_review": null,
+      "source_review_sha256": null,
+      "source_review_budget": "evidence/F02e2s-a3/SOURCE_REVIEW_BUDGET_A53.json",
+      "source_review_budget_sha256": "0fc628dd0b06c217a0dc682dda08bf3df71437be5bfed92ec395fbe6ad18ea97",
+      "native_worktree": null,
+      "integration_branch": "work/everyday-v1-integration-A52-F02e2s-a1",
+      "integrated_source_review_status": "not_started_A55",
+      "integrated_source_review": null,
+      "integrated_source_review_sha256": null,
+      "source_format_receipt": "evidence/F02e2s-a1/source-format/receipt.json",
+      "source_format_receipt_sha256": "13ae3f1da080ccf4ead633d1d6beb556f227fc83c3fc74d59ac2860a64ca8d0a",
+      "native_runner_review_status": "not_started_A55",
+      "native_runner_review": null,
+      "native_runner_review_sha256": null,
+      "native_command_manifest": null,
+      "native_command_manifest_sha256": null,
+      "native_target": "/home/tom/Projects/ferric-everyday-work/builds/native-F02e2s-a4-qt6112-qmake",
+      "attempt_stage": "failed_source_retrieval_terminal_A55",
+      "attempt_history": {
+        "1": {
+          "result": "failed_setup_before_compile",
+          "run_result": "evidence/F02e2s-a1/native/NATIVE_RUN-A52-a1.json",
+          "run_result_sha256": "b41bbe860a0d5c845d952bf5447aaee47ab1e56da7b7c0c59a35e39d7dff06b4",
+          "closure_record": "evidence/F02e2s-a1/native/NATIVE_LEASE_CLOSED-A52-a1.json",
+          "closure_record_sha256": "331bbf0b036c239ecacbd2728cc6e8a1d56aef6072a608b40a30c1dbab7ff613",
+          "reconciliation": "evidence/F02e2s-a1/SETUP_FAILURE_RECONCILIATION.json",
+          "reconciliation_sha256": "9109accc206820db6a476d729c961603df89822702164375746551e9c74944a5"
+        },
+        "2": {
+          "result": "failed_primary_profile_identity",
+          "native_run": "evidence/F02e2s-a2/native/NATIVE_RUN-A52-a2.json",
+          "native_run_sha256": "c95650d7caf8967b352a6dbc09d810df3a1596a215bc19cdcdcf13e525f2d6a9",
+          "lease_closure": "evidence/F02e2s-a2/native/NATIVE_LEASE_CLOSED-A52-a2.json",
+          "lease_closure_sha256": "fab15750237db01424cfc05aad311f8d1ae2771dd929329b4519d00c0bdebb82",
+          "failure_diagnosis": "evidence/F02e2s-a2/FAILURE_DIAGNOSIS.json",
+          "failure_diagnosis_sha256": "5f77cc14548cee50327b71526c826ecfb30cd8e15f806c425d8509ad240f8597"
+        },
+        "3": {
+          "result": "source_request_changes_no_native_execution",
+          "candidate_sha": "62c226582c4b7cd50d162b1109f884cba0246bf0",
+          "candidate_tree": "d2ad031ccd9ed37dc9dc370c081e9c684111ab01",
+          "source_review": "evidence/F02e2s-a3/SOURCE_REVIEW_A53.json",
+          "source_review_sha256": "677c7f0d91605a1299d85faae161fcf3aec7cd3547df4ef09400ab6d65939ae8",
+          "worker_result": "evidence/F02e2s-a3/continued-worker/final/WORKER_RESULT.json",
+          "worker_result_sha256": "456a3281666919e531a17cc10d0a1264ba18dfee1797a66dbe856aee4a707612",
+          "source_budget": "evidence/F02e2s-a3/continued-worker/final/SOURCE_BUDGET.json",
+          "source_budget_sha256": "2e73096fba0b5554dd96532886baec2fff29267782e7e9f9fed192528e74d6c7",
+          "source_read_log": "evidence/F02e2s-a3/continued-worker/SOURCE_READ_LOG.json",
+          "source_read_log_sha256": "3f004c55672631786f1d0d57b87f6c2221412fcafb604cabc5201bc3000caada",
+          "verified_source_read_bytes": 95242,
+          "finding": "A53-SR2-001",
+          "native_gates_run": false
+        },
+        "4": {
+          "attempt": 4,
+          "result": "failed_terminal",
+          "assignment_sha256": "7a5103862c103006d003fb96fe11f9b3225ec73272fb06ca5bb5012c37bc0e26",
+          "terminal": {
+            "path": "evidence/F02e2s-a4/TERMINAL.json",
+            "sha256": "8ce5459499a222cb596630e6195df78746a6ee3fe1b5199e062bbec35a025bef"
+          },
+          "source_read_log": "evidence/F02e2s-a4/worker/SOURCE_READ_LOG.json",
+          "source_read_log_sha256": "08c47439f19b980862fdfc729e74f1882a0ecb2007451d2f9b6ab67695af452e",
+          "verified_source_read_bytes": 33270,
+          "source_payloads": 4,
+          "worker_report_reconciled": true,
+          "patch_applied": false,
+          "native_gates_run": false,
+          "base_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+          "staged_reapply_tree_preserved": "d2ad031ccd9ed37dc9dc370c081e9c684111ab01"
+        }
+      },
+      "attempt2_reason": "Coordinator-only mixed-registry repair; reviewed product source unchanged; new native qualification attempt, no attempt1 replay.",
+      "native_work_started": false,
+      "scope_amendment_request": "evidence/F02e2s-a3/SCOPE_AMENDMENT_REQUEST.json",
+      "scope_amendment_request_sha256": "32b97deb0c2a59e74f4dd65097a60d4c65bd8133b28cae814ed75807d7dad378",
+      "staged_reapply_tree": "bd0b6d35940d240f1ccdde17fdb495a6fedf45c6",
+      "continuation_A53": {
+        "prerequisite": "F02e2i",
+        "reserved_attempt": 3,
+        "phase": "source_review_failed",
+        "attempt_reset": false,
+        "attempt4_authorized": false,
+        "accepted_prerequisite_sha": "a2b39ea649a9664572081eaead771c3db7a0b943",
+        "accepted_prerequisite_tree": "6c46cb7fc9847fbeb2704c95a5e87b52973d5da6"
+      },
+      "preserved_failures_A53": {
+        "attempt1": {
+          "run": "evidence/F02e2s-a1/native/NATIVE_RUN-A52-a1.json",
+          "run_sha256": "b41bbe860a0d5c845d952bf5447aaee47ab1e56da7b7c0c59a35e39d7dff06b4",
+          "closure": "evidence/F02e2s-a1/native/NATIVE_LEASE_CLOSED-A52-a1.json",
+          "closure_sha256": "331bbf0b036c239ecacbd2728cc6e8a1d56aef6072a608b40a30c1dbab7ff613"
+        },
+        "attempt2": {
+          "run": "evidence/F02e2s-a2/native/NATIVE_RUN-A52-a2.json",
+          "run_sha256": "c95650d7caf8967b352a6dbc09d810df3a1596a215bc19cdcdcf13e525f2d6a9",
+          "closure": "evidence/F02e2s-a2/native/NATIVE_LEASE_CLOSED-A52-a2.json",
+          "closure_sha256": "fab15750237db01424cfc05aad311f8d1ae2771dd929329b4519d00c0bdebb82"
+        }
+      },
+      "scope_request_A53": {
+        "path": "evidence/F02e2s-a3/SCOPE_AMENDMENT_REQUEST.json",
+        "sha256": "32b97deb0c2a59e74f4dd65097a60d4c65bd8133b28cae814ed75807d7dad378"
+      },
+      "source_budget_carry_forward_A53": {
+        "path": "evidence/F02e2s-a3/SOURCE_READ_RECONSTRUCTION-r2.json",
+        "sha256": "d9701edcd18c6594c940b5a945afbd9ba0c429a075f8b87227651f8fef892364",
+        "used_bytes": 75678,
+        "hard_limit_bytes": 96000,
+        "soft_limit_bytes": 48000,
+        "remaining_hard_bytes": 20322,
+        "scope": "same reserved F02e2s source attempt3; no reset"
+      },
+      "continuation_packet_A53": {
+        "path": "packets/F02e2s-A53-resume-template.md",
+        "sha256": "de9617a1d3e7b0c41114dbe3c5132992c34d17e5dbbd6897891aef115633b6b0",
+        "utf8_bytes": 23912,
+        "dispatch_status": "template_only_until_assignment_and_prerequisites_accepted"
+      },
+      "preserved_qualifier_fields_before_A53_continuation": {
+        "source_review": "evidence/F02e2s-a1/SOURCE_REVIEW_d28.json",
+        "source_review_sha256": "ee544f7e9abacaecc44979131f2f16afa7f9e58b9ca86fbd615ff4cdab178740",
+        "integrated_source_review": "evidence/F02e2s-a1/INTEGRATED_SOURCE_REVIEW_d28.json",
+        "integrated_source_review_sha256": "c994a0746e660555793c2c674d0f4256b6a8446f937696ff78b761b255925b66",
+        "native_runner_review": "evidence/F02e2s-a2/NATIVE_RUNNER_REVIEW_final.json",
+        "native_runner_review_sha256": "c30c4ef2678aed47f4e4d1190a3e2ef59156590133318507b34322fded4f256a",
+        "native_command_manifest": "evidence/F02e2s-a2/NATIVE_COMMANDS-A52-a2.json",
+        "native_command_manifest_sha256": "8e15458ef468f468b2e2844c2243970e487f65d2fdcec278633eb7a7cb0513c9",
+        "source_manifest": "evidence/F02e2s-a1/SOURCE_MANIFEST.json",
+        "source_manifest_sha256": "ed9523ad73a042d2b9a46b9c129602ea9eccfa4e05132f4f2c7b728e6bc53669",
+        "worker_result": "evidence/F02e2s-a3/WORKER_RESULT.json",
+        "worker_result_sha256": "553ef71d346a5ba46d2a289f9d684024cc02493cd7c6b70243eadfb900393a02",
+        "source_budget": "evidence/F02e2s-a3/SOURCE_BUDGET.json",
+        "source_budget_sha256": "f2bc7d0543b4a6f2e494940901f32ce800e217d82823765b33b110559e22baef"
+      },
+      "native_source_sha": null,
+      "native_source_tree": null,
+      "source_sha": null,
+      "source_tree": null,
+      "compile_test_authorized": false,
+      "continuation_assignment_A53": {
+        "path": "evidence/F02e2s-a3/CONTINUATION_ASSIGNMENT-A53.json",
+        "sha256": "0ff69d3ff4a913005215cbff4222d6af8160513d829e57ceb9206fc6beb07bf0"
+      },
+      "verified_source_read_bytes": 33270,
+      "implementation_sha": null,
+      "implementation_tree": null,
+      "source_read_log": "evidence/F02e2s-a4/worker/SOURCE_READ_LOG.json",
+      "source_read_log_sha256": "08c47439f19b980862fdfc729e74f1882a0ecb2007451d2f9b6ab67695af452e",
+      "test_helper_repair_amendment": "A55",
+      "source_repair_A55_authority": {
+        "pack_commit": "372c248fbf800bf8179c9a6f3f0d2740de5db69d",
+        "pack_tree": "92e90b035d6f4d0b4d1af41ff0fcd07744b873f0",
+        "pack_worktree": "/home/tom/Projects/ferric-everyday-work/worktrees/A55-proposal",
+        "review": "evidence/A55/PACK_IMPLEMENTATION_REVIEW_FINAL.json",
+        "review_sha256": "b180e909027edca69e3337e61ed9583770a13e61795ec0f07d67078aa2bcf972",
+        "pack_checks": {
+          "tool_tests": {
+            "path": "evidence/A55/checks-r3/tool_tests/receipt.json",
+            "sha256": "9047f70000bd57d09db1a9501972660b56576aec8bb7e39a56948a4fd63b9241"
+          },
+          "pack_validation": {
+            "path": "evidence/A55/checks-r3/pack_validation/receipt.json",
+            "sha256": "ba72f7df576edfc67ac93393568e8f202615918dcbdc389c3d1b5829d29e6846"
+          },
+          "checksums": {
+            "path": "evidence/A55/checks-r3/checksums/receipt.json",
+            "sha256": "6679184736580e10923e89500e6eddedfb99bd8112bb88bdf7c77db591468a4f"
+          }
+        }
+      },
+      "source_repair_A55": {
+        "phase": "terminal_failed",
+        "failed_attempts_preserved": 3,
+        "source4_assigned": true,
+        "attempt5_authorized": false,
+        "source3_budget_preserved": 95242,
+        "accepted_pack_commit": "372c248fbf800bf8179c9a6f3f0d2740de5db69d",
+        "repair_patch": {
+          "path": "evidence/A55/TEST_HELPER_LIFETIME_REPAIR.diff",
+          "sha256": "b22e3d7a316578a32510a632672ec3db9d65a76865badc23b932d32551b52277",
+          "bytes": 3285
+        },
+        "source4_terminal": true
+      },
+      "lifecycle_A55": {
+        "path": "evidence/F02e2s-a4/ATTEMPT_LIFECYCLE.jsonl",
+        "sha256": "24def2d824f67a38c2375965f15ebd17c95786bf30ca57c30a6756e1463731a4",
+        "events": 2,
+        "phase": "terminal_failed"
+      },
+      "gate_evidence_review": null,
+      "gate_evidence_review_sha256": null,
+      "closed_at_utc": "2026-10-27T14:32:11.050738+00:00"
+    },
+    "F02e2i": {
+      "status": "failed",
+      "attempts": 3,
+      "author": null,
+      "reviewer": null,
+      "evidence": null,
+      "blocker": "A54 preserves exhausted source3; one exact test-only repair4 requires accepted pack and a fresh recorded assignment. No reset/source5/retry.",
+      "source_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+      "source_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+      "attempt_history": {
+        "1": {
+          "result": "source_request_changes_no_compilation",
+          "candidate_sha": "1d309eda2a4d6c24f00c7245e6f3294d43bc54b2",
+          "candidate_tree": "f26be2f2047464170439ebf996b97af49f52b4f5",
+          "source_review": "evidence/F02e2i-a1/SOURCE_REVIEW.json",
+          "source_review_sha256": "05d9976be82cb075019741f1cdf8ca234628ff3d40c82aa2e2de1ec4d7cec6ea",
+          "worker_result": "evidence/F02e2i-a1/WORKER_RESULT.json",
+          "worker_result_sha256": "d319d8cefa569593444c86407eaf79142e660e0dbe5f617c13da3c835b3374e7",
+          "budget_disposition": "Original uncertain records retained; no exact bound or qualification inferred. wc values were overcharged; intermediate diff/search outputs not all saved.",
+          "source_budget": "evidence/F02e2i-a1/SOURCE_BUDGET.json",
+          "source_budget_sha256": "be215acef9c6c8aae67225251828217e12ec2e06debc492bb26c2652aa6c9c18"
+        },
+        "2": {
+          "result": "source_request_changes_no_compilation",
+          "candidate_sha": "672018c484ebc49bbfa03d6fb5425a54fb4345be",
+          "candidate_tree": "1b56c25301b81e123d1fa3e48ca5f93c707604c8",
+          "source_review": "evidence/F02e2i-a2/SOURCE_REVIEW.json",
+          "source_review_sha256": "ca21affa30f98a78a900d448078e91a890dacbe59f1c52682c9b7cca8f8a439a",
+          "worker_result": "evidence/F02e2i-a2/WORKER_RESULT.json",
+          "worker_result_sha256": "af211f4c4bc66a74ee155988e665c4e082f1344a94dcfaa6ce38d249fda2dbbe",
+          "source_budget": "evidence/F02e2i-a2/SOURCE_BUDGET.json",
+          "source_budget_sha256": "0c2c6d034e73735b254fb4811242f66e59b91c372f379d2edf4739e7e07c12e3",
+          "verified_source_read_bytes": 90967,
+          "remaining_required_repairs": [
+            "A53-A2-R1",
+            "A53-A2-R2",
+            "A53-A2-R3"
+          ]
+        },
+        "3": {
+          "result": "source_request_changes_no_compilation",
+          "candidate_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+          "candidate_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+          "source_review": "evidence/F02e2i-a3/SOURCE_REVIEW.json",
+          "source_review_sha256": "887f96f3adf26f246fc1f56648fb77dc2a000cdc1e7426552de3d02ab00bd24c",
+          "worker_result": "evidence/F02e2i-a3/WORKER_RESULT.json",
+          "worker_result_sha256": "32f816c8ca67b9aba3f2e008b08db692c3dd37bb95aa3b858f52209e4e749ccb",
+          "source_budget": "evidence/F02e2i-a3/SOURCE_BUDGET.json",
+          "source_budget_sha256": "adeaf24f42613114078be737858e75d746b59e92f0bc5258cf9ee8a21c9f583a",
+          "source_read_log": "evidence/F02e2i-a3/SOURCE_READ_LOG.json",
+          "source_read_log_sha256": "92ef9998daea50ea60eefb8896d27c2769f33fb634ec65cd434a2a17173efb39",
+          "verified_source_read_bytes": 72767
+        }
+      },
+      "preserved_source_failures_A54": {
+        "1": {
+          "attempt": 1,
+          "candidate_sha": "1d309eda2a4d6c24f00c7245e6f3294d43bc54b2",
+          "candidate_tree": "f26be2f2047464170439ebf996b97af49f52b4f5",
+          "state_record_sha256": "1f33bba9da4aeae99e7cb518fc0fc65b0d4261ddd02929b587d1ccd82281deaa",
+          "budget_uncertain": true
+        },
+        "2": {
+          "attempt": 2,
+          "candidate_sha": "672018c484ebc49bbfa03d6fb5425a54fb4345be",
+          "candidate_tree": "1b56c25301b81e123d1fa3e48ca5f93c707604c8",
+          "state_record_sha256": "e44822ec563707da87328426d54102636cbe8e8e81bdf51af234db3c6860ac9a",
+          "budget_uncertain": false
+        },
+        "3": {
+          "attempt": 3,
+          "candidate_sha": "ba665d9e80e585fd2b38ce11c63759c8514db0a3",
+          "candidate_tree": "717f8f17117968c591f3ca390e605f3ce53747d9",
+          "state_record_sha256": "0e5cc5a797dc83ad9ad3a49938ce36b3f7412f41c69ae90d67cc35ae5aba4e5e",
+          "budget_uncertain": false
+        }
+      }
+    }
+  }
+}

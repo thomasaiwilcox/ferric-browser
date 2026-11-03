@@ -4,6 +4,7 @@ use super::{
     start_nested_compositor, thread, visit_files, wait_for_wayland_socket,
 };
 use crate::desktop_tests::ChildGuard;
+use std::{collections::HashMap, process::Stdio};
 
 pub(super) fn run_qml_lint() -> Result<(), String> {
     let candidates = ["qmllint6", "qmllint", "/usr/lib/qt6/bin/qmllint"];
@@ -241,9 +242,10 @@ pub(super) fn run_native_insert_tests() -> Result<(), String> {
 }
 
 pub(super) fn prepare_application_tests() -> Result<(), String> {
-    run(
-        "cargo",
-        &[
+    // Cargo identifies the exact generated headers and archive for this build.
+    // Globbing target/*/build can select a stale ABI from another toolchain.
+    let output = Command::new("cargo")
+        .args([
             "build",
             "--release",
             "-p",
@@ -252,8 +254,19 @@ pub(super) fn prepare_application_tests() -> Result<(), String> {
             "ferric-browser",
             "--locked",
             "--offline",
-        ],
-    )?;
+            "--message-format=json",
+        ])
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|error| format!("failed to build the application engine: {error}"))?;
+    let paths = application_build_paths(&output.stdout);
+    if !output.status.success() {
+        return Err(format!(
+            "application engine build failed: {}",
+            output.status
+        ));
+    }
+    let (archive, includes) = paths?;
     run(
         "cmake",
         &[
@@ -261,6 +274,12 @@ pub(super) fn prepare_application_tests() -> Result<(), String> {
             "crates/ferric-browser-engine-qt/tests/application",
             "-B",
             "target/application-tests",
+            &format!("-DFERRIC_ENGINE_LIBRARY={}", archive.display()),
+            &format!("-DFERRIC_ENGINE_CXX_INCLUDE_DIR={}", includes.display()),
+            &format!(
+                "-DFERRIC_BROWSER_EXECUTABLE={}",
+                archive.with_file_name("ferric-browser").display()
+            ),
         ],
     )?;
     run(
@@ -268,6 +287,55 @@ pub(super) fn prepare_application_tests() -> Result<(), String> {
         &["--build", "target/application-tests", "--parallel", "2"],
     )?;
     Ok(())
+}
+
+fn application_build_paths(output: &[u8]) -> Result<(PathBuf, PathBuf), String> {
+    let mut build_scripts = HashMap::new();
+    let mut engine = None;
+    for line in output
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+    {
+        let message: serde_json::Value = serde_json::from_slice(line)
+            .map_err(|error| format!("invalid Cargo build message: {error}"))?;
+        if let Some(rendered) = message["message"]["rendered"].as_str() {
+            eprint!("{rendered}");
+        }
+        let Some(package) = message["package_id"].as_str() else {
+            continue;
+        };
+        match message["reason"].as_str() {
+            Some("build-script-executed") => {
+                if let Some(directory) = message["out_dir"].as_str() {
+                    build_scripts.insert(package.to_owned(), PathBuf::from(directory));
+                }
+            }
+            Some("compiler-artifact")
+                if message["target"]["name"] == "ferric_browser_engine_qt" =>
+            {
+                let archive = message["filenames"]
+                    .as_array()
+                    .and_then(|files| {
+                        files
+                            .iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .find(|path| {
+                                Path::new(path)
+                                    .file_name()
+                                    .is_some_and(|name| name == "libferric_browser_engine_qt.a")
+                            })
+                    })
+                    .ok_or("Cargo did not report the engine static archive")?;
+                engine = Some((package.to_owned(), PathBuf::from(archive)));
+            }
+            _ => {}
+        }
+    }
+    let (package, archive) = engine.ok_or("Cargo did not report an engine artifact")?;
+    let directory = build_scripts
+        .remove(&package)
+        .ok_or("Cargo did not report the engine's generated-header directory")?;
+    Ok((archive, directory.join("cxxqtbuild/include")))
 }
 
 pub(super) fn run_application_tests() -> Result<(), String> {
@@ -349,5 +417,41 @@ pub(super) fn run_wayland_application_tests() -> Result<(), String> {
         )),
         (Err(error), _) | (_, Err(error)) => Err(error),
         (Ok(()), Ok(())) => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod build_path_tests {
+    use super::application_build_paths;
+    use std::path::PathBuf;
+
+    #[test]
+    fn generated_headers_must_belong_to_the_reported_engine_package() {
+        let artifact = serde_json::json!({
+            "reason": "compiler-artifact", "package_id": "engine-package",
+            "target": {"name": "ferric_browser_engine_qt"},
+            "filenames": ["/custom/release/libferric_browser_engine_qt.rlib",
+                          "/custom/release/libferric_browser_engine_qt.a"]
+        });
+        let foreign = serde_json::json!({
+            "reason": "build-script-executed", "package_id": "foreign-package",
+            "out_dir": "/stale/out"
+        });
+        let partial = format!("{artifact}\n{foreign}\n");
+        assert!(application_build_paths(partial.as_bytes()).is_err());
+        let engine = serde_json::json!({
+            "reason": "build-script-executed", "package_id": "engine-package",
+            "out_dir": "/custom/release/build/engine/out"
+        });
+        let complete = format!("{partial}{engine}\n");
+        assert_eq!(
+            application_build_paths(complete.as_bytes()).unwrap(),
+            (
+                PathBuf::from("/custom/release/libferric_browser_engine_qt.a"),
+                PathBuf::from("/custom/release/build/engine/out/cxxqtbuild/include")
+            )
+        );
+        assert!(application_build_paths(b"").is_err());
+        assert!(application_build_paths(b"not a Cargo message\n").is_err());
     }
 }

@@ -6,7 +6,7 @@ FerricBrowserWindow {
     id: popupWindow
     width: 1024
     height: 720
-    visible: profileBootstrapComplete
+    visible: profileBootstrapComplete && windowInitialVisible
     // Web titles can change after load; native pages keep their owned caption.
     readonly property string currentPageTitle: windowUi.display_page_title(
         activeView && activeView.nativeUrl.length === 0 ? activeView.title : windowUi.page_title)
@@ -15,9 +15,11 @@ FerricBrowserWindow {
            + (windowUi.context_name.length > 0
               ? " · " + (windowUi.context_label || windowUi.context_name) : "")
 
+    property bool popupOrdinaryPage: false
     property var popupRequest: null
     property var popupProfile: null
     property var popupOpenerUi: null
+    property var popupOpenerView: null
     readonly property var popupPermissionUi: windowUi
     property string popupJourneyToken: ""
     property bool popupPrivateProfile: false
@@ -29,8 +31,10 @@ FerricBrowserWindow {
     property string popupContextLabel: ""
 
     windowPopup: true
+    windowOrdinaryPage: popupOrdinaryPage
     windowPopupRequest: popupRequest
     windowPopupOpenerUi: popupOpenerUi
+    windowPopupOpenerView: popupOpenerView
     windowPopupToken: popupJourneyToken
     windowSharedProfile: popupProfile
     windowProfileName: popupProfileName
