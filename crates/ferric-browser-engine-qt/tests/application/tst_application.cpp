@@ -4752,6 +4752,10 @@ void ApplicationTests::productPolishWindowClose() {
 }
 
 void ApplicationTests::productPolishPopupScripts() {
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.refresh_userscript_inventory()").toBool());
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.userscript_inventory_pending").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.userscript_inventory_ready").toBool());
     // Install ordinary top-frame page scripts through the real manager. Both
     // phases must run after a popup's navigation has committed successfully.
     for (const auto &phase : {QString("document_end"), QString("document_idle")}) {
@@ -4766,8 +4770,10 @@ void ApplicationTests::productPolishPopupScripts() {
                         "page_world = true\nsource = \"" + name + ".js\"\n"
                         "matches = [\"http://127.0.0.1:*/*\"]\nrun_at = \"" + phase + "\"\n").toUtf8());
         manifest.close();
-        QVERIFY(evaluate("testWindow.browserUi.install_userscript_manifest(" +
-                         quoted(manifest.fileName()) + ")").toBool());
+        QTRY_VERIFY(!evaluate("testWindow.browserUi.userscript_inventory_pending").toBool());
+        QVERIFY2(evaluate("testWindow.browserUi.install_userscript_manifest(" +
+                          quoted(manifest.fileName()) + ")").toBool(),
+                 qPrintable(text("userscript_install_state")));
         QTRY_COMPARE(text("userscript_install_state"), QString("installed"));
     }
     evaluate("testWindow.safeMode=false;testWindow.userscriptsOff=false");
