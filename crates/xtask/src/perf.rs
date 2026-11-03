@@ -308,14 +308,19 @@ fn collect_hint_report(samples: usize) -> Value {
             HintInteraction::new(hints, "asdfghjkl".into(), HintAutoFollow::Never);
         for query in ["synthetic target 42", "st42", "CAFÉ 東京", "no-match-xyz"] {
             for _ in 0..10 {
-                black_box(interaction.handle(HintInteractionInput::SetText(query.into())));
+                black_box(
+                    black_box(&mut interaction).handle(HintInteractionInput::SetText(query.into())),
+                );
             }
             measurements.push(measure(
                 &format!("hint.rank.{count}.{query}"),
                 samples,
                 None,
                 || {
-                    black_box(interaction.handle(HintInteractionInput::SetText(query.into())));
+                    black_box(
+                        black_box(&mut interaction)
+                            .handle(HintInteractionInput::SetText(query.into())),
+                    );
                 },
             ));
         }

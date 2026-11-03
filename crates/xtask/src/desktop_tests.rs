@@ -1,8 +1,9 @@
 use super::{
     BufReader, Child, Command, Duration, Instant, Output, Path, PathBuf, Stdio, SystemTime,
     TcpStream, UNIX_EPOCH, check_accessibility_contract, check_compatibility_report, fs,
-    prepare_application_tests, run, run_application_tests, run_fuzz_smoke, run_native_insert_tests,
-    run_qml_ui_tests, run_wayland_application_tests, thread,
+    prepare_application_tests, run, run_application_tests, run_blocking_evidence_tests,
+    run_fuzz_smoke, run_native_insert_tests, run_qml_ui_tests, run_wayland_application_tests,
+    thread,
 };
 use std::{
     io::{BufRead as _, Read as _, Write as _},
@@ -93,6 +94,7 @@ pub(super) fn run_test(arguments: &[String]) -> Result<(), String> {
             Ok(())
         }
         "wayland" => run_wayland_smoke(),
+        "blocking-evidence" => run_blocking_evidence_tests(),
         "blocking" => run_blocking_smoke(),
         "config" => run_config_smoke(),
         "mpris" => run_mpris_smoke(),
