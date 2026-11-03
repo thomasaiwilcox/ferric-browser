@@ -87,3 +87,9 @@ cargo run --release -p xtask -- perf --samples 30 --output /tmp/ferric-browser-p
 cargo build --release -p ferric-browser --locked
 cargo run --release -p xtask -- perf --suite ui --samples 30
 ```
+
+## November 2026 investigation
+
+See [the findings register and current measurement contracts](performance-2026-11-03/README.md).
+The newer harness distinguishes independent UI repetitions from IPC samples and
+adds process-tree CPU, native threads, shutdown and configurable page workloads.

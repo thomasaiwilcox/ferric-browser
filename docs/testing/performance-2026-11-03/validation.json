@@ -1,0 +1,166 @@
+{
+  "baseline_commit": "6d02cfe642cdbdb21dd798d897643cafcaaee018",
+  "matcher_commit": "523c7d2",
+  "evidence_commit": "6d66449",
+  "measurement_commit": "78a219e",
+  "host": "Linux-7.2.11-arch1-1-x86_64-with-glibc2.44",
+  "qt": "6.12.0",
+  "qt_webengine": "6.12.0",
+  "commands": [
+    "cargo test -p xtask -p ferric-browser-core -p ferric-browser-application -p ferric-browser-runtime -p ferric-browser-storage -p ferric-browser-config -p ferric-browser-ipc --locked",
+    "cargo clippy -p xtask -p ferric-browser-core --all-targets --locked -- -D warnings",
+    "cargo fmt --all -- --check",
+    "cargo run -p xtask --locked -- check",
+    "cargo run -p xtask --locked -- test blocking-evidence",
+    "python3 -m unittest discover -s tools/performance -p test_*.py",
+    "node tools/performance/check_hint_instrumentation.cjs",
+    "cargo build --release -p ferric-browser -p xtask --locked",
+    "python3 tools/performance/benchmark_matcher.py --baseline 6d02cfe642cdbdb21dd798d897643cafcaaee018 --output target/perf-evidence/matcher-comparison.json",
+    "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu --js-flags=--expose-gc' target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf HintPerformance::test_T043_samples:100-100",
+    "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu --js-flags=--expose-gc' target/qml-tests/qml_tests -input /home/tom/Projects/ferric-everyday-work/repo/crates/ferric-browser-engine-qt/tests/qml ChromeInteractions::test_shared_command_dialog_supports_keyboard_and_mouse:default DownloadKeyboard::test_page_down_reads_a_visible_page",
+    "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu --js-flags=--expose-gc' target/qml-tests/qml_tests -input /home/tom/Projects/ferric-everyday-work/repo/crates/ferric-browser-engine-qt/tests/qml LibraryPolish::test_graph_first_page_after_font_and_window_changes LibraryPolish::test_journey_destination_survives_recycling"
+  ],
+  "checks": {
+    "pure-final-tests.log": {
+      "sha256": "bd961ea5f82e2800a9b4f8f3e3deab6efede2687679ac28c460dd6430019f558",
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.77s",
+        "test result: ok. 161 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.13s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "test result: ok. 69 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 178 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+        "test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s",
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 120 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s",
+        "test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ],
+      "status": "passed"
+    },
+    "pure-final-clippy.log": {
+      "sha256": "46c6b3f87951585686dfaf6275a5d996890ad42bf0539363e4aeae2da90befaf",
+      "summary": [
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.10s"
+      ],
+      "status": "passed"
+    },
+    "xtask-final-tests.log": {
+      "sha256": "f9ea5c8fd6f8f220d632676554901e163fbfe03a216a5e994d7ebd7e0b27a649",
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.96s",
+        "test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.84s"
+      ],
+      "status": "passed"
+    },
+    "measurement-tests.log": {
+      "sha256": "68898eef54d446b0db72cf52d92cedf4303d9e9cd2de712d10df9e4c98740008",
+      "summary": [
+        "Ran 4 tests in 0.233s"
+      ],
+      "status": "passed"
+    },
+    "instrumentation-tests.log": {
+      "sha256": "9565ab9566cdb93a5eaa061f42b0d7e55ccc42a77276aab86310f739a3ca3807",
+      "summary": [
+        "PASS: six collector families compile; stale instrumentation fails closed"
+      ],
+      "status": "passed"
+    },
+    "registered-evidence-tests.log": {
+      "sha256": "e62b3420832df75eab3668c1346a43f5481d8cc75d6cc7e757ded160bd93bdbb",
+      "summary": [
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.24s",
+        "100% tests passed out of 1"
+      ],
+      "status": "passed"
+    },
+    "release-build.log": {
+      "sha256": "bfa93153284e4b565b4699096f6fbddc6344a7241c945ac1746a18cf54eec06d",
+      "summary": [
+        "error: failed to run custom build command for `ferric-browser-engine-qt v0.1.0 (/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/crates/ferric-browser-engine-qt)`",
+        "  assertion `left == right` failed: Refresh the verified Qt download-source compatibility interface before changing the qualified QtWebEngine SDK",
+        "    left: \"6.12.0\"",
+        "   right: \"6.11.2\""
+      ],
+      "status": "blocked"
+    },
+    "xtask-check.log": {
+      "sha256": "d7b9c242025c274ee58d3c265557d654e8db8ddfb25fe066b29bb602f64ebb26",
+      "summary": [
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 46.06s",
+        "FAIL!  : ferric_qml_tests::ChromeInteractions::test_shared_command_dialog_supports_keyboard_and_mouse(default) 'verify()' returned FALSE. ()",
+        "FAIL!  : ferric_qml_tests::DownloadKeyboard::test_page_down_reads_a_visible_page() 'verify()' returned FALSE. ()",
+        "FAIL!  : ferric_qml_tests::LibraryPolish::test_graph_first_page_after_font_and_window_changes() 'verify()' returned FALSE. ()",
+        "FAIL!  : ferric_qml_tests::LibraryPolish::test_journey_destination_survives_recycling(tab) 'verify()' returned FALSE. ()",
+        "FAIL!  : ferric_qml_tests::LibraryPolish::test_journey_destination_survives_recycling(window) 'verify()' returned FALSE. ()",
+        "Fontconfig error: Cannot load default config file: File not found",
+        "Fontconfig error: Cannot load default config file: File not found",
+        "Totals: 1221 passed, 5 failed, 0 skipped, 0 blacklisted, 218624ms"
+      ],
+      "status": "failed"
+    },
+    "qml-baseline-failures.log": {
+      "sha256": "9619789e264f9b02aeee17d7770e17e2cfed7ed207915402863cd46ac2cf453a",
+      "summary": [
+        "FAIL!  : ferric_qml_tests::ChromeInteractions::test_shared_command_dialog_supports_keyboard_and_mouse(default) 'verify()' returned FALSE. ()",
+        "Totals: 5 passed, 1 failed, 0 skipped, 0 blacklisted, 9435ms"
+      ],
+      "status": "failed"
+    },
+    "qml-baseline-library.log": {
+      "sha256": "a642aeafcdea879cc4446f92e9375455d77f2049f41e52dca46c4818db605e9f",
+      "summary": [
+        "FAIL!  : ferric_qml_tests::LibraryPolish::test_graph_first_page_after_font_and_window_changes() 'verify()' returned FALSE. ()",
+        "FAIL!  : ferric_qml_tests::LibraryPolish::test_journey_destination_survives_recycling(window) 'verify()' returned FALSE. ()",
+        "Totals: 3 passed, 2 failed, 0 skipped, 0 blacklisted, 12075ms"
+      ],
+      "status": "failed"
+    },
+    "qml-instrumentation-test.log": {
+      "sha256": "5d6746c24f6497728da44c14bfa75b9d10595ee6f6a923f5f77a2131cbfea02f",
+      "summary": [
+        "Totals: 3 passed, 0 failed, 0 skipped, 0 blacklisted, 28477ms"
+      ],
+      "status": "passed"
+    },
+    "fmt.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "summary": [],
+      "status": "passed"
+    },
+    "qml-candidate-focused.log": {
+      "sha256": "614406c8d105f3ed363a8b256dfb3104e249bad4f50191fbfcf313bcc182ca2b",
+      "summary": [
+        "FAIL!  : ferric_qml_tests::DownloadKeyboard::test_page_down_reads_a_visible_page() 'verify()' returned FALSE. ()",
+        "FAIL!  : ferric_qml_tests::LibraryPolish::test_graph_first_page_after_font_and_window_changes() 'verify()' returned FALSE. ()",
+        "Totals: 9 passed, 2 failed, 0 skipped, 0 blacklisted, 12010ms"
+      ],
+      "status": "failed"
+    },
+    "ui-unavailable.log": {
+      "sha256": "ee967ac5ee81ff36c2fbec413819dd01a97d81758590922b867e9e7f615469c2",
+      "summary": [
+        "xtask: UI performance suite requires /home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/release/ferric-browser; build it with `cargo build --release -p ferric-browser -p xtask --locked`"
+      ],
+      "status": "blocked"
+    },
+    "final-harness-build.log": {
+      "sha256": "3a7904b0b5cdcbb8e08f33580565f1fb936ae459323dde3c283de0214164931d",
+      "summary": [
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 15.66s"
+      ],
+      "status": "passed"
+    }
+  },
+  "test_runner_commit": "98d0d1d",
+  "validated_source_commit": "737da06",
+  "measurement_followup_commits": [
+    "98d0d1d",
+    "737da06"
+  ]
+}
