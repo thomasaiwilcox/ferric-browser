@@ -52,9 +52,10 @@ Item {
     function hasLiveOwner() {
         var ui = liveUi()
         var index = liveTabIndex()
-        return !!ui && !!webView && index >= 0
-            && ui.tab_id_for_index(index) === webView.stableTabId
+        return !!webView && !!ui && index >= 0
+            && typeof ui.tab_id_for_index === "function"
             && webView.ownsLifecycleTab()
+            && ui.tab_id_for_index(index) === webView.stableTabId
     }
     onBrowserUiChanged: { invalidateHistoryProbe(); reportUndoFallback() }
     onTabIndexChanged: { invalidateHistoryProbe(); reportUndoFallback() }

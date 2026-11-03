@@ -41,6 +41,7 @@ WebEngineView {
                 function ownsLifecycleTab() {
                     var owner = lifecycleOwner()
                     return !viewRetired && owner.ui && owner.index >= 0
+                        && typeof owner.ui.tab_id_for_index === "function"
                         && owner.ui.tab_id_for_index(owner.index) === stableTabId
                 }
                 function refreshPromptViewIdentity() {
@@ -208,6 +209,7 @@ WebEngineView {
                 }
                 function ownsTab() {
                     return !viewRetired && !viewTransferPending && !!viewUi && tabIndex >= 0 && stableTabId.length > 0
+                        && typeof viewUi.tab_id_for_index === "function"
                         && viewUi.tab_id_for_index(tabIndex) === stableTabId
                 }
                 property var pageUserScriptNames: []
