@@ -6,12 +6,43 @@
 
 use super::{Pin, QString, Value, qobject};
 
-/// A ranked switcher row before pagination and JSON serialization.
+/// Owned row data. Construct the JSON payload only for the selected page.
+#[derive(Default)]
 pub(super) struct SwitcherCandidate {
     pub(super) rank: i64,
     pub(super) kind: String,
     pub(super) recency: i64,
-    pub(super) value: Value,
+    pub(super) id: String,
+    pub(super) label: String,
+    pub(super) secondary: String,
+    pub(super) profile: Option<String>,
+    pub(super) context: Option<(String, String)>,
+    pub(super) workspace: Option<String>,
+    pub(super) private: bool,
+    pub(super) generation: Option<u64>,
+    pub(super) fields: Vec<String>,
+    pub(super) actions: &'static [&'static str],
+}
+
+impl SwitcherCandidate {
+    pub(super) fn into_value(self, owner_token: &str) -> Value {
+        serde_json::json!({
+            "kind": self.kind,
+            "id": self.id,
+            "owner_token": owner_token,
+            "generation": self.generation,
+            "label": self.label,
+            "secondary": self.secondary.replace(['\n', '\r'], " "),
+            "profile": self.profile,
+            "context": self.context.map(|(id,name)| serde_json::json!({"id":id,"name":name})),
+            "workspace": self.workspace,
+            "privacy": if self.private { "private" } else { "normal" },
+            "recency": self.recency,
+            "rank": self.rank,
+            "match_fields": self.fields,
+            "actions": self.actions
+        })
+    }
 }
 
 fn compare_candidates(left: &SwitcherCandidate, right: &SwitcherCandidate) -> std::cmp::Ordering {
@@ -20,19 +51,14 @@ fn compare_candidates(left: &SwitcherCandidate, right: &SwitcherCandidate) -> st
         .cmp(&left.rank)
         .then_with(|| right.recency.cmp(&left.recency))
         .then_with(|| left.kind.cmp(&right.kind))
-        .then_with(|| {
-            left.value
-                .get("id")
-                .and_then(Value::as_str)
-                .cmp(&right.value.get("id").and_then(Value::as_str))
-        })
+        .then_with(|| left.id.cmp(&right.id))
 }
 
 pub(super) fn select_switcher_page(
     mut candidates: Vec<SwitcherCandidate>,
     offset: usize,
     limit: usize,
-) -> (usize, Vec<Value>) {
+) -> (usize, Vec<SwitcherCandidate>) {
     let total = candidates.len();
     let keep = offset.saturating_add(limit).min(total);
     if keep > 0 && keep < total {
@@ -42,12 +68,7 @@ pub(super) fn select_switcher_page(
     candidates.sort_by(compare_candidates);
     (
         total,
-        candidates
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .map(|candidate| candidate.value)
-            .collect(),
+        candidates.into_iter().skip(offset).take(limit).collect(),
     )
 }
 

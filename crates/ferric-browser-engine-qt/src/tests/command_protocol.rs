@@ -312,7 +312,8 @@ fn switcher_page_selection_preserves_order_and_total() {
         rank,
         kind: kind.to_owned(),
         recency,
-        value: serde_json::json!({"id": id}),
+        id: id.to_owned(),
+        ..SwitcherCandidate::default()
     };
     let (total, page) = select_switcher_page(
         vec![
@@ -328,9 +329,46 @@ fn switcher_page_selection_preserves_order_and_total() {
     assert_eq!(total, 5);
     let ids = page
         .iter()
-        .filter_map(|value| value.get("id").and_then(Value::as_str))
+        .map(|candidate| candidate.id.as_str())
         .collect::<Vec<_>>();
     assert_eq!(ids, vec!["b", "c"]);
+}
+
+#[test]
+fn selected_switcher_rows_preserve_wire_metadata_and_nulls() {
+    let candidate = SwitcherCandidate {
+        rank: 42,
+        recency: 123,
+        kind: "history".into(),
+        id: "page-1".into(),
+        label: "CAFÉ 東京".into(),
+        secondary: "line\nbreak\rreturn".into(),
+        profile: Some("Default".into()),
+        context: Some(("ctx-1".into(), "Work".into())),
+        workspace: Some("2".into()),
+        private: true,
+        generation: Some(7),
+        fields: vec!["Café".into()],
+        actions: &["open", "copy"],
+    };
+    assert_eq!(
+        candidate.into_value("owner-1"),
+        serde_json::json!({
+            "rank":42,"recency":123,"kind":"history","id":"page-1","label":"CAFÉ 東京",
+            "secondary":"line break return","profile":"Default","context":{"id":"ctx-1","name":"Work"},
+            "workspace":"2","privacy":"private","generation":7,"match_fields":["Café"],
+            "actions":["open","copy"],"owner_token":"owner-1"
+        })
+    );
+    let empty = SwitcherCandidate::default().into_value("owner-2");
+    for field in ["profile", "context", "workspace", "generation"] {
+        assert!(
+            empty.get(field).is_some_and(Value::is_null),
+            "{field} must remain present and null"
+        );
+    }
+    assert_eq!(empty["privacy"], "normal");
+    assert_eq!(empty["actions"], serde_json::json!([]));
 }
 
 #[test]
@@ -1500,18 +1538,42 @@ fn ipc_configuration_lifecycle_commands_use_typed_paths_and_no_arguments() {
 
 #[test]
 fn open_destinations_remain_distinct_through_interactive_and_ipc_decoding() {
-    for (target, expected) in [("current", IpcOpenTarget::Current), ("tab", IpcOpenTarget::Tab),
-        ("tab-bg", IpcOpenTarget::BackgroundTab), ("window", IpcOpenTarget::Window),
-        ("private-window", IpcOpenTarget::PrivateWindow)] {
-        let command = ParsedCommand { name: "open".into(), arguments: vec!["--target".into(), target.into(), "https://example.test/".into()] };
+    for (target, expected) in [
+        ("current", IpcOpenTarget::Current),
+        ("tab", IpcOpenTarget::Tab),
+        ("tab-bg", IpcOpenTarget::BackgroundTab),
+        ("window", IpcOpenTarget::Window),
+        ("private-window", IpcOpenTarget::PrivateWindow),
+    ] {
+        let command = ParsedCommand {
+            name: "open".into(),
+            arguments: vec![
+                "--target".into(),
+                target.into(),
+                "https://example.test/".into(),
+            ],
+        };
         let (_, interactive) = interactive_open_command(&command).unwrap().unwrap();
         let envelope = ferric_browser_ipc::encode_command(&command).unwrap();
         let (_, ipc) = typed_ipc_command(&envelope).unwrap();
         assert_eq!(interactive.open_target, expected);
         assert_eq!(ipc.open_target, expected);
     }
-    for arguments in [vec!["--clean-link", "https://example.test/"], vec!["--profile", "work", "https://example.test/"]] {
-        let command = ParsedCommand {name: "open".into(), arguments: arguments.into_iter().map(str::to_owned).collect()};
-        assert_eq!(interactive_open_command(&command).unwrap().unwrap().1.open_target, IpcOpenTarget::Current);
+    for arguments in [
+        vec!["--clean-link", "https://example.test/"],
+        vec!["--profile", "work", "https://example.test/"],
+    ] {
+        let command = ParsedCommand {
+            name: "open".into(),
+            arguments: arguments.into_iter().map(str::to_owned).collect(),
+        };
+        assert_eq!(
+            interactive_open_command(&command)
+                .unwrap()
+                .unwrap()
+                .1
+                .open_target,
+            IpcOpenTarget::Current
+        );
     }
 }
