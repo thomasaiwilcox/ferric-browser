@@ -19,11 +19,11 @@ const MAX_SAMPLES: usize = 1_000;
 const HISTORY_CANDIDATES: usize = 100_000;
 const UI_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const UI_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
-const UI_IDLE_WINDOW: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PerfSuite {
     Core,
+    Hints,
     Ui,
 }
 
@@ -31,6 +31,11 @@ enum PerfSuite {
 struct PerfOptions {
     suite: PerfSuite,
     samples: usize,
+    repetitions: usize,
+    idle_seconds: u64,
+    pages: usize,
+    presentation: String,
+    page_url: String,
     output: Option<PathBuf>,
 }
 
@@ -44,7 +49,8 @@ pub fn run(arguments: &[String]) -> Result<(), String> {
     let options = parse_arguments(arguments)?;
     let report = match options.suite {
         PerfSuite::Core => collect_core_report(options.samples),
-        PerfSuite::Ui => collect_ui_report(options.samples)?,
+        PerfSuite::Hints => collect_hint_report(options.samples),
+        PerfSuite::Ui => collect_ui_report(&options)?,
     };
     let serialized = serde_json::to_string_pretty(&report)
         .map_err(|error| format!("could not serialize performance report: {error}"))?;
@@ -75,24 +81,31 @@ pub fn run(arguments: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 fn parse_arguments(arguments: &[String]) -> Result<PerfOptions, String> {
     let mut suite = PerfSuite::Core;
     let mut suite_seen = false;
     let mut samples = DEFAULT_SAMPLES;
     let mut samples_seen = false;
+    let mut repetitions = None;
+    let mut idle_seconds = None;
+    let mut pages = None;
+    let mut presentation = None;
+    let mut page_url = None;
     let mut output = None;
     let mut index = 0;
     while index < arguments.len() {
         match arguments[index].as_str() {
             "--suite" => {
                 if suite_seen || index + 1 >= arguments.len() {
-                    return Err("perf accepts --suite core|ui at most once".into());
+                    return Err("perf accepts --suite core|hints|ui at most once".into());
                 }
                 suite_seen = true;
                 suite = match arguments[index + 1].as_str() {
                     "core" => PerfSuite::Core,
+                    "hints" => PerfSuite::Hints,
                     "ui" => PerfSuite::Ui,
-                    _ => return Err("perf --suite must be core or ui".into()),
+                    _ => return Err("perf --suite must be core, hints or ui".into()),
                 };
                 index += 2;
             }
@@ -111,6 +124,61 @@ fn parse_arguments(arguments: &[String]) -> Result<PerfOptions, String> {
                 }
                 index += 2;
             }
+            "--repetitions" | "--idle-seconds" => {
+                let flag = arguments[index].as_str();
+                let slot = if flag == "--repetitions" {
+                    &mut repetitions
+                } else {
+                    &mut idle_seconds
+                };
+                if slot.is_some() || index + 1 >= arguments.len() {
+                    return Err(format!("perf accepts {flag} N at most once"));
+                }
+                let value = arguments[index + 1]
+                    .parse::<u64>()
+                    .map_err(|_| format!("{flag} requires a positive integer"))?;
+                let maximum = if flag == "--repetitions" { 100 } else { 3600 };
+                if !(1..=maximum).contains(&value) {
+                    return Err(format!("{flag} must be between 1 and {maximum}"));
+                }
+                *slot = Some(value);
+                index += 2;
+            }
+            "--pages" => {
+                if pages.is_some() || index + 1 >= arguments.len() {
+                    return Err("perf accepts --pages N at most once".into());
+                }
+                let value = arguments[index + 1]
+                    .parse::<usize>()
+                    .map_err(|_| "--pages requires an integer")?;
+                if !(1..=20).contains(&value) {
+                    return Err("--pages must be between 1 and 20".into());
+                }
+                pages = Some(value);
+                index += 2;
+            }
+            "--presentation" | "--page-url" => {
+                let flag = arguments[index].as_str();
+                let slot = if flag == "--presentation" {
+                    &mut presentation
+                } else {
+                    &mut page_url
+                };
+                if slot.is_some() || index + 1 >= arguments.len() {
+                    return Err(format!("perf accepts {flag} VALUE at most once"));
+                }
+                let value = &arguments[index + 1];
+                if value.is_empty()
+                    || value.len() > 4096
+                    || value.chars().any(char::is_control)
+                    || flag == "--presentation"
+                        && !["internal", "windows"].contains(&value.as_str())
+                {
+                    return Err(format!("invalid {flag} value"));
+                }
+                *slot = Some(value.clone());
+                index += 2;
+            }
             "--output" => {
                 if output.is_some() || index + 1 >= arguments.len() {
                     return Err("perf accepts --output PATH at most once".into());
@@ -125,7 +193,21 @@ fn parse_arguments(arguments: &[String]) -> Result<PerfOptions, String> {
             other => return Err(format!("unknown perf option {other}")),
         }
     }
+    if suite != PerfSuite::Ui
+        && (repetitions.is_some()
+            || idle_seconds.is_some()
+            || pages.is_some()
+            || presentation.is_some()
+            || page_url.is_some())
+    {
+        return Err("UI workload options require --suite ui".into());
+    }
     Ok(PerfOptions {
+        repetitions: usize::try_from(repetitions.unwrap_or(1)).expect("bounded repetitions"),
+        idle_seconds: idle_seconds.unwrap_or(5),
+        pages: pages.unwrap_or(1),
+        presentation: presentation.unwrap_or_else(|| "internal".into()),
+        page_url: page_url.unwrap_or_else(|| "about:blank".into()),
         suite,
         samples,
         output,
@@ -163,7 +245,7 @@ fn collect_core_report(samples: usize) -> Value {
         }),
     ];
     json!({
-        "schema_version": 1,
+        "schema_version": 2,
         "suite": "core",
         "application": env!("CARGO_PKG_VERSION"),
         "timestamp_unix_seconds": SystemTime::now()
@@ -177,6 +259,7 @@ fn collect_core_report(samples: usize) -> Value {
             "parallelism": thread::available_parallelism()
                 .map_or(1, std::num::NonZeroUsize::get),
         },
+        "provenance": provenance(),
         "reference_environment": reference_environment(),
         "targets": {
             "command.parse_p95_us": 2_000.0,
@@ -195,6 +278,54 @@ fn collect_core_report(samples: usize) -> Value {
     })
 }
 
+fn collect_hint_report(samples: usize) -> Value {
+    use ferric_browser_core::{
+        HintAutoFollow, HintCandidate, HintGeometry, HintInteraction, HintInteractionInput,
+        HintKind, assign_labels,
+    };
+    let mut measurements = Vec::new();
+    for count in [100_u32, 500, 1000, 5000] {
+        let candidates = (0..count)
+            .map(|index| HintCandidate {
+                element_id: index + 1,
+                related_element_id: None,
+                kind: HintKind::Button,
+                frame_path: "0".into(),
+                frame_owner: String::new(),
+                text: format!("Synthetic target {index} CAFÉ 東京"),
+                href: None,
+                geometry: HintGeometry {
+                    x: f64::from(index % 25) * 20.0,
+                    y: f64::from(index / 25) * 20.0,
+                    width: 16.0,
+                    height: 16.0,
+                },
+                presentation: None,
+            })
+            .collect();
+        let hints = assign_labels(candidates).expect("bounded synthetic hints");
+        let mut interaction =
+            HintInteraction::new(hints, "asdfghjkl".into(), HintAutoFollow::Never);
+        for query in ["synthetic target 42", "st42", "CAFÉ 東京", "no-match-xyz"] {
+            for _ in 0..10 {
+                black_box(interaction.handle(HintInteractionInput::SetText(query.into())));
+            }
+            measurements.push(measure(
+                &format!("hint.rank.{count}.{query}"),
+                samples,
+                None,
+                || {
+                    black_box(interaction.handle(HintInteractionInput::SetText(query.into())));
+                },
+            ));
+        }
+    }
+    json!({ "schema_version": 2, "suite": "hints", "sample_count": samples,
+        "provenance": provenance(), "reference_environment": reference_environment(),
+        "method": {"warmups": 10, "boundary": "HintInteraction SetText; excludes setup, decoding, Qt and DOM"},
+        "measurements": measurements })
+}
+
 struct UiRun {
     child: Child,
     basedir: PathBuf,
@@ -208,7 +339,25 @@ impl Drop for UiRun {
     }
 }
 
-fn collect_ui_report(samples: usize) -> Result<Value, String> {
+fn collect_ui_report(options: &PerfOptions) -> Result<Value, String> {
+    let mut runs = Vec::with_capacity(options.repetitions);
+    for _ in 0..options.repetitions {
+        runs.push(collect_ui_run(options)?);
+    }
+    let mut report = runs[0].clone();
+    report["aggregation"] = json!(
+        "top-level measurements describe the first repetition; runs contains every independent repetition"
+    );
+    report["repetition_count"] = json!(options.repetitions);
+    report["runs"] = json!(runs);
+    report["provenance"] = provenance();
+    report["workload"] = json!({"pages": options.pages, "presentation": options.presentation, "url": options.page_url});
+    Ok(report)
+}
+
+fn collect_ui_run(options: &PerfOptions) -> Result<Value, String> {
+    let samples = options.samples;
+    let idle_window = Duration::from_secs(options.idle_seconds);
     if !cfg!(target_os = "linux") {
         return Err("perf --suite ui currently requires Linux /proc metrics".into());
     }
@@ -225,30 +374,71 @@ fn collect_ui_report(samples: usize) -> Result<Value, String> {
         ));
     }
 
-    let (mut run, startup_ms) = start_ui_run(&browser)?;
+    let (mut run, startup_ms) = start_ui_run(&browser, options)?;
+    let ready_started = Instant::now();
+    loop {
+        let tabs = browser_json(
+            &browser,
+            &run.basedir,
+            &["query", "tabs", "--format", "json"],
+        )?;
+        if page_workload_ready(&tabs, options.pages)? {
+            break;
+        }
+        if ready_started.elapsed() > Duration::from_secs(60) {
+            return Err("workload did not reach the requested settled page count".into());
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
     let browser_pid = run.child.id();
     let ipc_samples_us = collect_ipc_samples(&browser, &run.basedir, samples)?;
-    let (idle_elapsed, idle_cpu_percent) = measure_idle_cpu(browser_pid)?;
+    let idle = measure_idle_cpu(browser_pid, idle_window)?;
     let process_metrics = process_tree_metrics(browser_pid)?;
     let diagnostics = browser_json(&browser, &run.basedir, &["diagnostics", "--format", "json"])?;
     let runtime = diagnostics.get("runtime").cloned().unwrap_or(Value::Null);
-    shutdown_ui_run(&browser, &mut run)?;
+    let shutdown_ms = shutdown_ui_run(&browser, &mut run)?;
     let measurements = UiMeasurements {
         startup_ms,
         ipc_samples_us,
-        idle_elapsed,
-        idle_cpu_percent,
+        idle,
+        shutdown_ms,
         process_metrics,
         runtime,
     };
     Ok(ui_report(&browser, samples, &measurements))
 }
 
-fn start_ui_run(browser: &Path) -> Result<(UiRun, f64), String> {
+fn page_workload_ready(response: &Value, expected: usize) -> Result<bool, String> {
+    let rows = response
+        .get("tabs")
+        .and_then(Value::as_array)
+        .ok_or("workload readiness response omitted tabs")?;
+    if rows.len() > expected {
+        return Err("workload opened more pages than requested".into());
+    }
+    let mut settled = rows.len() == expected;
+    for row in rows {
+        match row.get("loading").and_then(Value::as_str) {
+            Some("idle" | "complete") => {}
+            Some("provisional" | "committed") => settled = false,
+            Some("failed" | "cancelled") => {
+                return Err("workload page failed or was cancelled".into());
+            }
+            _ => return Err("workload returned an unknown loading state".into()),
+        }
+    }
+    Ok(settled)
+}
+
+fn start_ui_run(browser: &Path, options: &PerfOptions) -> Result<(UiRun, f64), String> {
     let basedir = create_ui_basedir()?;
     let child = Command::new(browser)
         .arg("--basedir")
         .arg(&basedir)
+        .arg("--set")
+        .arg(format!("tabs.presentation={:?}", options.presentation))
+        .arg("open")
+        .args(std::iter::repeat_n(&options.page_url, options.pages))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -304,21 +494,92 @@ fn collect_ipc_samples(browser: &Path, basedir: &Path, samples: usize) -> Result
     Ok(measurements)
 }
 
-fn measure_idle_cpu(pid: u32) -> Result<(Duration, f64), String> {
-    thread::sleep(Duration::from_millis(250));
-    let ticks_before = process_cpu_ticks(pid)?;
-    let started = Instant::now();
-    thread::sleep(UI_IDLE_WINDOW);
-    let elapsed = started.elapsed();
-    let tick_delta = u32::try_from(process_cpu_ticks(pid)?.saturating_sub(ticks_before))
-        .map_err(|_| "browser CPU tick delta exceeded the measurement range".to_owned())?;
-    let tick_rate = u32::try_from(clock_ticks_per_second()?)
-        .map_err(|_| "CLK_TCK exceeded the measurement range".to_owned())?;
-    let percent = 100.0 * (f64::from(tick_delta) / f64::from(tick_rate)) / elapsed.as_secs_f64();
-    Ok((elapsed, percent))
+struct IdleMeasurement {
+    elapsed: Duration,
+    main_percent: f64,
+    tree_percent: Option<f64>,
+    appeared: usize,
+    disappeared: usize,
 }
 
-fn shutdown_ui_run(browser: &Path, run: &mut UiRun) -> Result<(), String> {
+fn measure_idle_cpu(pid: u32, window: Duration) -> Result<IdleMeasurement, String> {
+    thread::sleep(Duration::from_millis(250));
+    let before = cpu_snapshot(pid)?;
+    let root_before = process_cpu_ticks(pid)?;
+    let started = Instant::now();
+    thread::sleep(window);
+    let after = cpu_snapshot(pid)?;
+    let root_after = process_cpu_ticks(pid)?;
+    let elapsed = started.elapsed();
+    let tick_rate = u32::try_from(clock_ticks_per_second()?)
+        .map_err(|_| "CLK_TCK exceeded the measurement range".to_owned())?;
+    let percent = |ticks: u64| -> Result<f64, String> {
+        let ticks =
+            u32::try_from(ticks).map_err(|_| "CPU tick delta exceeded measurement range")?;
+        Ok(100.0 * f64::from(ticks) / f64::from(tick_rate) / elapsed.as_secs_f64())
+    };
+    let (ticks, appeared, disappeared) = cpu_delta(&before, &after);
+    Ok(IdleMeasurement {
+        elapsed,
+        main_percent: percent(root_after.saturating_sub(root_before))?,
+        // Endpoint snapshots cannot account for CPU used by exited children.
+        // Never report a partial sum as a complete tree measurement.
+        tree_percent: if disappeared == 0 {
+            Some(percent(ticks)?)
+        } else {
+            None
+        },
+        appeared,
+        disappeared,
+    })
+}
+
+fn cpu_delta(
+    before: &BTreeMap<(u32, u64), u64>,
+    after: &BTreeMap<(u32, u64), u64>,
+) -> (u64, usize, usize) {
+    let ticks = after
+        .iter()
+        .map(|(identity, ticks)| ticks.saturating_sub(*before.get(identity).unwrap_or(&0)))
+        .sum();
+    let appeared = after.keys().filter(|key| !before.contains_key(key)).count();
+    let disappeared = before.keys().filter(|key| !after.contains_key(key)).count();
+    (ticks, appeared, disappeared)
+}
+
+fn cpu_snapshot(root: u32) -> Result<BTreeMap<(u32, u64), u64>, String> {
+    let mut snapshot = BTreeMap::new();
+    for pid in process_tree_pids(root)? {
+        let Ok(stat) = fs::read_to_string(format!("/proc/{pid}/stat")) else {
+            return Err(format!(
+                "process {pid} disappeared during CPU snapshot; repeat the run"
+            ));
+        };
+        let (birth_ticks, ticks) = parse_cpu_stat(&stat)?;
+        snapshot.insert((pid, birth_ticks), ticks);
+    }
+    Ok(snapshot)
+}
+
+fn parse_cpu_stat(stat: &str) -> Result<(u64, u64), String> {
+    let fields = stat
+        .rsplit_once(')')
+        .ok_or("invalid /proc stat shape")?
+        .1
+        .split_whitespace()
+        .collect::<Vec<_>>();
+    let field = |index: usize| -> Result<u64, String> {
+        fields
+            .get(index)
+            .ok_or_else(|| "missing /proc stat field".to_owned())?
+            .parse()
+            .map_err(|_| "invalid /proc stat counter".into())
+    };
+    Ok((field(19)?, field(11)?.saturating_add(field(12)?)))
+}
+
+fn shutdown_ui_run(browser: &Path, run: &mut UiRun) -> Result<f64, String> {
+    let shutdown_started = Instant::now();
     let quit = Command::new(browser)
         .arg("--basedir")
         .arg(&run.basedir)
@@ -341,7 +602,7 @@ fn shutdown_ui_run(browser: &Path, run: &mut UiRun) -> Result<(), String> {
             .map_err(|error| format!("could not inspect Ferric Browser shutdown: {error}"))?
             .is_some()
         {
-            return Ok(());
+            return Ok(shutdown_started.elapsed().as_secs_f64() * 1000.0);
         }
         if started.elapsed() >= UI_SHUTDOWN_TIMEOUT {
             return Err(format!(
@@ -356,15 +617,15 @@ fn shutdown_ui_run(browser: &Path, run: &mut UiRun) -> Result<(), String> {
 struct UiMeasurements {
     startup_ms: f64,
     ipc_samples_us: Vec<f64>,
-    idle_elapsed: Duration,
-    idle_cpu_percent: f64,
+    idle: IdleMeasurement,
+    shutdown_ms: f64,
     process_metrics: ProcessTreeMetrics,
     runtime: Value,
 }
 
 fn ui_report(browser: &Path, samples: usize, measurements: &UiMeasurements) -> Value {
     json!({
-        "schema_version": 1,
+        "schema_version": 2,
         "suite": "ui",
         "application": env!("CARGO_PKG_VERSION"),
         "timestamp_unix_seconds": SystemTime::now()
@@ -379,23 +640,30 @@ fn ui_report(browser: &Path, samples: usize, measurements: &UiMeasurements) -> V
                 .map_or(1, std::num::NonZeroUsize::get),
             "browser": browser.file_name().and_then(|name| name.to_str()).unwrap_or("ferric-browser"),
         },
+        "provenance": provenance(),
         "reference_environment": reference_environment(),
         "method": {
             "startup_ready_boundary": "successful owner-IPC operations query",
-            "idle_window_seconds": measurements.idle_elapsed.as_secs_f64(),
+            "idle_window_seconds": measurements.idle.elapsed.as_secs_f64(),
             "ipc_sample_boundary": "fresh forwarding CLI process through decoded owner response",
             "memory": "sum of Linux smaps_rollup values across the browser process tree",
-            "notes": "The suite uses a disposable basedir, automatic Qt graphics selection, one blank tab, and closed DevTools."
+            "notes": "Disposable basedir, automatic Qt graphics selection, closed DevTools; see workload for page configuration."
         },
         "measurements": [
             {
                 "name": "startup.ipc_ready",
                 "value_ms": measurements.startup_ms,
             },
+            { "name": "shutdown", "value_ms": measurements.shutdown_ms },
+            { "name": "idle.process_tree_cpu",
+              "value_percent": measurements.idle.tree_percent,
+              "appeared": measurements.idle.appeared,
+              "disappeared": measurements.idle.disappeared,
+              "normalization": "one logical CPU = 100%; null if a process exited" },
             summarize_samples("ipc.forward", "microseconds", &measurements.ipc_samples_us),
             {
                 "name": "idle.main_cpu",
-                "value_percent": measurements.idle_cpu_percent,
+                "value_percent": measurements.idle.main_percent,
             },
             {
                 "name": "process_tree",
@@ -403,6 +671,8 @@ fn ui_report(browser: &Path, samples: usize, measurements: &UiMeasurements) -> V
                 "renderers": measurements.process_metrics.renderers,
                 "pss_kib": measurements.process_metrics.pss_kib,
                 "rss_kib": measurements.process_metrics.rss_kib,
+                "threads": measurements.process_metrics.threads,
+                "unavailable_memory_processes": measurements.process_metrics.unavailable_memory_processes,
             }
         ],
         "runtime": {
@@ -412,7 +682,7 @@ fn ui_report(browser: &Path, samples: usize, measurements: &UiMeasurements) -> V
             "software_rendering": measurements.runtime.get("software_rendering").cloned().unwrap_or(Value::Null),
         },
         "targets": {
-            "scope": "single blank tab on the current native desktop session; no fixed release thresholds are claimed"
+            "scope": "requested page workload on the current native desktop session; no fixed release thresholds are claimed"
         }
     })
 }
@@ -510,9 +780,11 @@ struct ProcessTreeMetrics {
     renderers: usize,
     pss_kib: u64,
     rss_kib: u64,
+    threads: u64,
+    unavailable_memory_processes: usize,
 }
 
-fn process_tree_metrics(root: u32) -> Result<ProcessTreeMetrics, String> {
+fn process_tree_pids(root: u32) -> Result<BTreeSet<u32>, String> {
     let mut parents = BTreeMap::new();
     for entry in fs::read_dir("/proc").map_err(|error| format!("could not scan /proc: {error}"))? {
         let entry = entry.map_err(|error| format!("could not enumerate /proc: {error}"))?;
@@ -548,17 +820,34 @@ fn process_tree_metrics(root: u32) -> Result<ProcessTreeMetrics, String> {
         }
     }
 
+    Ok(tree)
+}
+
+fn process_tree_metrics(root: u32) -> Result<ProcessTreeMetrics, String> {
+    let tree = process_tree_pids(root)?;
     let mut metrics = ProcessTreeMetrics {
         processes: 0,
         renderers: 0,
         pss_kib: 0,
         rss_kib: 0,
+        threads: 0,
+        unavailable_memory_processes: 0,
     };
     for pid in tree {
+        metrics.processes += 1;
+        if let Ok(status) = fs::read_to_string(format!("/proc/{pid}/status")) {
+            metrics.threads += status
+                .lines()
+                .find_map(|line| {
+                    line.strip_prefix("Threads:")
+                        .and_then(|value| value.trim().parse::<u64>().ok())
+                })
+                .unwrap_or(0);
+        }
         let Ok(rollup) = fs::read_to_string(format!("/proc/{pid}/smaps_rollup")) else {
+            metrics.unavailable_memory_processes += 1;
             continue;
         };
-        metrics.processes += 1;
         for line in rollup.lines() {
             let mut fields = line.split_whitespace();
             match (fields.next(), fields.next()) {
@@ -581,7 +870,7 @@ fn process_tree_metrics(root: u32) -> Result<ProcessTreeMetrics, String> {
             metrics.renderers += 1;
         }
     }
-    if metrics.processes == 0 {
+    if metrics.processes == metrics.unavailable_memory_processes {
         return Err("browser process tree disappeared before memory measurement".into());
     }
     Ok(metrics)
@@ -602,7 +891,7 @@ fn summarize_samples(name: &str, unit: &str, raw: &[f64]) -> Value {
         "unit": unit,
         "median": percentile(&sorted, 1, 2),
         "p95": percentile(&sorted, 19, 20),
-        "p99": percentile(&sorted, 99, 100),
+        "p99": (raw.len() >= 1000).then(|| percentile(&sorted, 99, 100)),
         "raw_samples": raw,
     })
 }
@@ -637,7 +926,7 @@ where
         "name": name,
         "median_us": percentile(&sorted, 1, 2),
         "p95_us": p95_us,
-        "p99_us": percentile(&sorted, 99, 100),
+        "p99_us": (raw.len() >= 1000).then(|| percentile(&sorted, 99, 100)),
         "target_p95_us": target_p95_us,
         "within_target": target_p95_us.is_none_or(|target| p95_us <= target),
         "raw_samples_us": raw,
@@ -648,8 +937,39 @@ fn percentile(sorted: &[f64], numerator: usize, denominator: usize) -> f64 {
     if sorted.is_empty() {
         return 0.0;
     }
-    let index = ((sorted.len() - 1) * numerator).div_ceil(denominator);
+    if numerator == 1 && denominator == 2 && sorted.len().is_multiple_of(2) {
+        return sorted[sorted.len() / 2 - 1].midpoint(sorted[sorted.len() / 2]);
+    }
+    let index = (sorted.len() * numerator)
+        .div_ceil(denominator)
+        .saturating_sub(1);
     sorted[index.min(sorted.len() - 1)]
+}
+
+fn provenance() -> Value {
+    fn command(program: &str, args: &[&str]) -> Option<String> {
+        let output = Command::new(program).args(args).output().ok()?;
+        output
+            .status
+            .success()
+            .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+    }
+    json!({
+        "source_commit": command("git", &["rev-parse", "HEAD"]),
+        "working_tree_status": command("git", &["status", "--porcelain"]),
+        "rustc": command("rustc", &["--version"]),
+        "kernel": command("uname", &["-srvm"]),
+        "distribution": fs::read_to_string("/etc/os-release").ok(),
+        "qt": command("pkg-config", &["--modversion", "Qt6Core"]),
+        "qt_webengine": command("pkg-config", &["--modversion", "Qt6WebEngineCore"]),
+        "rustflags": std::env::var("RUSTFLAGS").ok(),
+        "qpa_platform": std::env::var("QT_QPA_PLATFORM").ok(),
+        "quick_backend": std::env::var("QT_QUICK_BACKEND").ok(),
+        "scale_factor": std::env::var("QT_SCALE_FACTOR").ok(),
+        "chromium_flags": std::env::var("QTWEBENGINE_CHROMIUM_FLAGS").ok(),
+        "invocation": std::env::args().collect::<Vec<_>>(),
+        "source_note": "git describes the invoking checkout; build the binaries from this checkout before measuring"
+    })
 }
 
 fn reference_environment() -> Value {
@@ -730,6 +1050,94 @@ mod tests {
     }
 
     #[test]
+    fn ui_sampling_options_are_bounded_and_not_silently_ignored() {
+        let parse =
+            |args: &[&str]| parse_arguments(&args.iter().map(|s| (*s).into()).collect::<Vec<_>>());
+        let options = parse(&[
+            "--suite",
+            "ui",
+            "--repetitions",
+            "5",
+            "--idle-seconds",
+            "120",
+        ])
+        .unwrap();
+        assert_eq!((options.repetitions, options.idle_seconds), (5, 120));
+        for args in [
+            vec!["--repetitions", "5"],
+            vec!["--suite", "ui", "--idle-seconds", "0"],
+            vec!["--suite", "ui", "--repetitions", "101"],
+            vec!["--suite", "ui", "--idle-seconds", "3601"],
+            vec!["--suite", "ui", "--repetitions", "2", "--repetitions", "3"],
+        ] {
+            assert!(parse(&args).is_err(), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn page_readiness_uses_real_loading_states_and_rejects_failures() {
+        let response = |state: &str| serde_json::json!({"tabs": [{"loading": state}]});
+        for state in ["idle", "complete"] {
+            assert!(super::page_workload_ready(&response(state), 1).unwrap());
+        }
+        for state in ["provisional", "committed"] {
+            assert!(!super::page_workload_ready(&response(state), 1).unwrap());
+        }
+        for state in ["failed", "cancelled", "loading"] {
+            assert!(super::page_workload_ready(&response(state), 1).is_err());
+        }
+        assert!(!super::page_workload_ready(&response("complete"), 2).unwrap());
+        assert!(super::page_workload_ready(&serde_json::json!({}), 1).is_err());
+    }
+
+    #[test]
+    fn ui_workloads_require_valid_explicit_options() {
+        let parse =
+            |args: &[&str]| parse_arguments(&args.iter().map(|s| (*s).into()).collect::<Vec<_>>());
+        let options = parse(&[
+            "--suite",
+            "ui",
+            "--pages",
+            "20",
+            "--presentation",
+            "windows",
+        ])
+        .unwrap();
+        assert_eq!(options.pages, 20);
+        assert_eq!(options.presentation, "windows");
+        assert_eq!(options.page_url, "about:blank");
+        for args in [
+            vec!["--pages", "5"],
+            vec!["--suite", "ui", "--pages", "0"],
+            vec!["--suite", "ui", "--pages", "21"],
+            vec!["--suite", "ui", "--presentation", "invalid"],
+            vec!["--suite", "ui", "--page-url", "bad\nurl"],
+        ] {
+            assert!(parse(&args).is_err(), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn cpu_accounting_distinguishes_pid_reuse_and_new_children() {
+        use std::collections::BTreeMap;
+        let before = BTreeMap::from([((10, 100), 20), ((11, 101), 50)]);
+        let after = BTreeMap::from([((10, 100), 27), ((11, 200), 2), ((12, 201), 3)]);
+        assert_eq!(super::cpu_delta(&before, &after), (12, 2, 1));
+        let stat = "10 (name with ) spaces) S 1 0 0 0 0 0 0 0 0 0 20 3 0 0 0 0 0 0 12345";
+        assert_eq!(super::parse_cpu_stat(stat).unwrap(), (12345, 23));
+        assert!(super::parse_cpu_stat("bad stat").is_err());
+    }
+
+    #[test]
+    fn short_runs_do_not_claim_p99() {
+        assert!(super::summarize_samples("short", "us", &[1.0; 30])["p99"].is_null());
+        assert_eq!(
+            super::summarize_samples("long", "us", &[1.0; 1000])["p99"],
+            1.0
+        );
+    }
+
+    #[test]
     fn renderer_marker_search_is_byte_safe() {
         assert!(contains_bytes(
             b"QtWebEngineProcess\0--type=renderer\0",
@@ -741,7 +1149,7 @@ mod tests {
     #[test]
     fn percentile_uses_nearest_rank_on_sorted_samples() {
         let samples = [1.0, 2.0, 3.0, 4.0];
-        assert!((percentile(&samples, 1, 2) - 3.0).abs() < f64::EPSILON);
+        assert!((percentile(&samples, 1, 2) - 2.5).abs() < f64::EPSILON);
         assert!((percentile(&samples, 19, 20) - 4.0).abs() < f64::EPSILON);
         assert!(percentile(&[], 99, 100).abs() < f64::EPSILON);
     }

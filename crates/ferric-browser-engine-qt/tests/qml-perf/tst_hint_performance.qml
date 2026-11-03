@@ -144,9 +144,8 @@ TestCase {
         var profilesAncestorChain = source.indexOf("function ftStyleChainVisible(element,view,policy,cache){") >= 0
         if (profilesAncestorChain) {
             source = replaceOnce(source,
-                "if(state&&state[key]!==null){ftRememberStyleChain(cache,chain,key,state[key]);return state[key];}",
-                "if(state&&state[key]!==null){__profile.ancestor_chain_cache_hits++;"
-                    + "ftRememberStyleChain(cache,chain,key,state[key]);return state[key];}",
+                "if(ancestors&&ancestors.has(node)){",
+                "if(ancestors&&ancestors.has(node)){__profile.ancestor_chain_cache_hits++;",
                 "ancestor visibility cache")
         }
         var clippedRectSignature = source.indexOf(
@@ -239,7 +238,8 @@ TestCase {
     }
 
     function test_T043_samples_data() {
-        return [{tag: "500-80", count: 500, zoom: 0.8},
+        return [{tag: "100-100", count: 100, zoom: 1},
+                {tag: "500-80", count: 500, zoom: 0.8},
                 {tag: "500-100", count: 500, zoom: 1},
                 {tag: "500-125", count: 500, zoom: 1.25},
                 {tag: "1000-100", count: 1000, zoom: 1},
@@ -255,8 +255,12 @@ TestCase {
         tryVerify(function() { return page.loaded }, 10000)
         tryVerify(function() { return evaluate("document.body.dataset.ready") === "true" }, 10000)
 
-        var collector = profiledCollectorScript(BrowserScripts.hintCollector("buttons"))
+        var collector = BrowserScripts.hintCollector("buttons")
+        var profiledCollector = profiledCollectorScript(collector)
         var snapshot = evaluate(collector)
+        var profiledSnapshot = evaluate(profiledCollector)
+        compare(JSON.stringify(profiledSnapshot.candidates), JSON.stringify(snapshot.candidates),
+                "instrumentation preserves candidate identity, order and geometry")
         compare(snapshot.candidates.length, data.count)
         evaluate("window.__ferricBenchmarkClicks=0;"
                  + "document.querySelector('button').addEventListener('click',"
@@ -304,7 +308,7 @@ TestCase {
 
             samples.push({
                 browser_round_trip_ms: collected.round_trip_ms,
-                collector: value.profile,
+                collector: null, // stage profiling is sampled separately below
                 fresh_round_trip_ms: fresh.round_trip_ms,
                 preflight_round_trip_ms: preflight ? preflight.round_trip_ms : null,
                 action_round_trip_ms: action.round_trip_ms,
@@ -315,11 +319,26 @@ TestCase {
         }
         compare(evaluate("window.__ferricBenchmarkClicks"), 100,
                 "the measured action stage delivered exactly one click per sample")
+        for (var profileWarm = 0; profileWarm < 10; ++profileWarm)
+            compare(evaluate(profiledCollector).candidates.length, data.count)
+        var stageSamples = []
+        for (var profileSample = 0; profileSample < 100; ++profileSample) {
+            var profiled = runTimed(profiledCollector)
+            compare(profiled.value.candidates.length, data.count)
+            stageSamples.push({browser_round_trip_ms: profiled.round_trip_ms,
+                               stages: profiled.value.profile})
+        }
+        console.info("FERRIC_COLLECTOR_PROFILE_JSON " + JSON.stringify({
+            scenario: data.tag, instrumented: true, warmups: 10, samples: stageSamples,
+            note: "Stage timings overlap: local visibility includes hit testing and clipping."
+        }))
         console.info("FERRIC_PERFORMANCE_JSON " + JSON.stringify({
             scenario: data.tag,
             count: data.count,
             zoom: data.zoom,
             warmups: 10,
+            instrumented: false,
+            boundary: "page script dispatch through decoded callback; excludes Rust and overlay",
             samples: samples,
             user_agent: evaluate("navigator.userAgent"),
             viewport: evaluate("({width:innerWidth,height:innerHeight,"
