@@ -19,6 +19,7 @@ FerricBrowserWindow {
     property var popupRequest: null
     property var popupProfile: null
     property var popupOpenerUi: null
+    property var popupOpenerView: null
     readonly property var popupPermissionUi: windowUi
     property string popupJourneyToken: ""
     property bool popupPrivateProfile: false
@@ -33,6 +34,7 @@ FerricBrowserWindow {
     windowOrdinaryPage: popupOrdinaryPage
     windowPopupRequest: popupRequest
     windowPopupOpenerUi: popupOpenerUi
+    windowPopupOpenerView: popupOpenerView
     windowPopupToken: popupJourneyToken
     windowSharedProfile: popupProfile
     windowProfileName: popupProfileName

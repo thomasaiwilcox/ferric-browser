@@ -3018,7 +3018,7 @@ void ApplicationTests::productPolishPopupSourceClose() {
     QTRY_VERIFY(page("document.getElementById('blank')!==null && document.readyState==='complete'").toBool());
     QPointer<QQuickWindow> sourceWindow=qobject_cast<QQuickWindow *>(evaluate(source + ".host").value<QObject *>());
     QPointer<QObject> sourceUi=evaluate(source + ".ui").value<QObject *>();
-    auto sourceView=qobject_cast<QQuickItem *>(evaluate(pageReceiver).value<QObject *>());
+    QPointer<QQuickItem> sourceView=qobject_cast<QQuickItem *>(evaluate(pageReceiver).value<QObject *>());
     QVERIFY(sourceWindow && sourceView && sourceUi);
     sourceWindow->requestActivate();QTRY_VERIFY(sourceWindow->isActive());
     const auto point=page("(()=>{const r=document.getElementById('blank').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()").toList();
@@ -3031,6 +3031,8 @@ void ApplicationTests::productPolishPopupSourceClose() {
     QPointer<QQuickWebEngineProfile> profile=qobject_cast<QQuickWebEngineProfile *>(
         evaluate(popup + ".view.profile").value<QObject *>());
     QVERIFY(view && profile);
+    QTRY_COMPARE(evaluate("testWindow.profileResourceRegistry.forProfile(" + popup
+        + ".view.profile).lifetime.popupOpenerLeaseCount()").toInt(),1);
     QCOMPARE(profile->isOffTheRecord(),privateProfile || ephemeralProfile);
     QVERIFY(evaluate(popup + ".ui === " + popup + ".view.viewUi && "
         + popup + ".ui !== " + source + ".ui").toBool());
@@ -3049,6 +3051,9 @@ void ApplicationTests::productPolishPopupSourceClose() {
     QTRY_VERIFY(sourceWindow.isNull());
     QTRY_VERIFY(sourceUi.isNull());
     QTest::qWait(50);
+    QVERIFY2(sourceView,"Qt's adopted rendering delegate must retain its opener view");
+    QVERIFY(!sourceView->isVisible() && !sourceView->isEnabled());
+    QVERIFY(!sourceView->parentItem());
     QVERIFY2(profile,"A popup profile must survive destruction of its opener window");
     QVERIFY2(view,"A popup page must survive destruction of its opener window");
     QCOMPARE(evaluate("JSON.stringify(testWindow.profileResourceRegistry.forProfile(" + popup + ".view.profile).policySnapshot)").toString(),retainedPolicy);
@@ -3085,6 +3090,7 @@ void ApplicationTests::productPolishPopupSourceClose() {
     child->deleteLater();
     QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
     QTRY_VERIFY(view.isNull());
+    QTRY_VERIFY(sourceView.isNull());
     QTRY_VERIFY(profile.isNull());
     QTRY_VERIFY(popupUi.isNull());
     QTRY_COMPARE(evaluate("testWindow.profileResourceRegistry.groups.length").toInt(),1);
@@ -4778,6 +4784,41 @@ void ApplicationTests::productPolishPopupScripts() {
     QTRY_COMPARE(page("window.popup_document_idle || 0").toInt(), 1);
     evaluate("testWindow.popupWindowRegistry[0].host.destroy()");
     pageReceiver = "testWindow.activeWebView()";
+}
+
+void ApplicationTests::productPolishDocumentIdleLifetime_data() {
+    QTest::addColumn<QString>("change");
+    for (const auto &change : {"current", "navigation", "retirement", "destruction"})
+        QTest::newRow(change) << QString::fromLatin1(change);
+}
+
+void ApplicationTests::productPolishDocumentIdleLifetime() {
+    QFETCH(QString,change);
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError).*"));
+    const QString view="testWindow.activeWebView()";
+    evaluate(view + ".queueDocumentIdleScripts()");
+    QVERIFY(evaluate(view + ".pendingDocumentIdleScripts !== null").toBool());
+    if (change == "destruction") {
+        QPointer<QObject> guarded=evaluate(view).value<QObject *>();
+        // Destroy the real QML creation context before the zero-interval timer
+        // can run. Owned deferred work must not outlive that context.
+        engine.reset();
+        window=nullptr;
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        QTRY_VERIFY(guarded.isNull());
+        QTest::qWait(20);
+        return;
+    }
+    if (change == "navigation") {
+        const auto target=evaluate("JSON.stringify(" + view + ".pendingDocumentIdleScripts.target)").toString();
+        // A navigation intent allocates the replacement Target before the
+        // engine action runs; load notifications keep that captured identity.
+        evaluate("testWindow.browserUi.navigate(" + quoted(text("current_url") + "?replacement") + ")");
+        QVERIFY(evaluate("JSON.stringify(testWindow.browserUi.navigation_target_for_index(0))").toString()!=target);
+    } else if (change == "retirement")
+        evaluate(view + ".viewRetired=true");
+    QCOMPARE(evaluate(view + ".deliverDocumentIdleScripts()").toBool(),change == "current");
+    QVERIFY(!evaluate(view + ".deliverDocumentIdleScripts()").toBool());
 }
 
 void ApplicationTests::productPolishSiteLedger() {

@@ -239,6 +239,8 @@ class ApplicationTests final : public QObject {
     void productPolishWindowClose_data();
     void productPolishWindowClose();
     void productPolishPopupScripts();
+    void productPolishDocumentIdleLifetime_data();
+    void productPolishDocumentIdleLifetime();
     void productPolishSiteLedger();
     void productPolishSessionPreview();
     void productPolishSessionSaveBackpressure();

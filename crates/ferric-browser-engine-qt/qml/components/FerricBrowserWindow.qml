@@ -142,6 +142,7 @@ ApplicationWindow {
     property bool windowOrdinaryPage: !windowPopup
     property var windowPopupRequest: null
     property var windowPopupOpenerUi: null
+    property var windowPopupOpenerView: null
     property string windowPopupToken: ""
     FerricPopupOwnerBridge { id: popupOwnerBridge }
     function commitPreparedPage() { return popupOwnerBridge.commitPageWindow() }
@@ -2198,9 +2199,30 @@ function onContext_workspaceChanged() {
             }
             // WebEngine owns this first navigation. A pending model
             // initializer must not replace the adopted popup document.
+            // Qt 6.11.2 keeps the opener in the adopted rendering delegate.
+            // Pin its native lifetime before openIn can attach that delegate.
+            var opener=windowPopupOpenerView
+            var resources=rootWindow.profileResourceRegistry
+            var openerLease=resources.acquirePopupOpenerLease(opener,view)
+            if (!openerLease) {
+                rejectPopupAdmission()
+                return
+            }
+            if (!resources.beginPopupOpenerLease(opener,openerLease)) {
+                resources.cancelPopupOpenerLease(opener,openerLease)
+                rejectPopupAdmission()
+                return
+            }
             view.contentInitialized = true
             request.openIn(view)
             windowPopupRequest=null
+            windowPopupOpenerView=null
+            if (!resources.confirmPopupOpenerLease(opener,openerLease)) {
+                // Once adoption starts, retirement releases the lease only
+                // after the native delegates have actually been destroyed.
+                rejectPopupAdmission()
+                return
+            }
             popupRequestAdopted=true
             secondaryWindow.visible=popupRequestAdopted && profileBootstrapComplete && windowInitialVisible
             return

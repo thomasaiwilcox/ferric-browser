@@ -296,6 +296,9 @@ set_tests_properties(application_product_polish PROPERTIES TIMEOUT 600 ENVIRONME
 add_test(NAME application_deferred_requests COMMAND application_tests deferredNativeRequestsKeepCapturedTargets)
 set_tests_properties(application_deferred_requests PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 
+add_test(NAME application_document_idle COMMAND application_tests productPolishDocumentIdleLifetime)
+set_tests_properties(application_document_idle PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
 add_test(NAME application_repeat COMMAND application_tests repeatAdmission repeatCommonCommands repeatKeyboardCount repeatWindowRouting)
 set_tests_properties(application_repeat PROPERTIES TIMEOUT 240 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 

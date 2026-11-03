@@ -35,6 +35,13 @@ static archive and generated CXX-Qt include directory from Cargo's build
 messages to CMake. This also supports a custom `CARGO_TARGET_DIR`; it avoids
 selecting headers from a stale build directory.
 
+`application_document_idle` checks deferred page userscripts against the current
+navigation, retirement and destruction of the real QML context. The popup script
+checks in `application_product_polish` require both end and idle scripts to run
+once. Its opener-close rows also check that the hidden, disabled opener view is
+retained while Qt's adopted rendering delegates need it, then released when the
+popup closes, for regular, private and temporary profiles.
+
 CI runs `application_page_windows_portable` and
 `application_credential_association_wayland` against the owned Qt compositor.
 The former covers page creation, close, undo and session shutdown.

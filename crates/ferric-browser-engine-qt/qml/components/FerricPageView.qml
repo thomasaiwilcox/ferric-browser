@@ -72,12 +72,14 @@ WebEngineView {
                 }
                 onTabIndexChanged: refreshPromptViewIdentity()
                 onViewUiChanged: {
+                    cancelDocumentIdleScripts()
                     documentRequestOwner = ({})
                     documentTitleTarget = null
                     refreshPromptViewIdentity()
                     if (resourceTracked) factory.rootWindow.profileResourceRegistry.trackView(webView,viewHost,viewUi)
                 }
                 onViewHostChanged: {
+                    cancelDocumentIdleScripts()
                     documentRequestOwner = ({})
                     if (resourceTracked) factory.rootWindow.profileResourceRegistry.trackView(webView,viewHost,viewUi)
                 }
@@ -155,9 +157,46 @@ WebEngineView {
                 property bool viewTransientProfile: factory.rootWindow.temporaryProfile
                 property bool viewTransferred: false
                 property bool viewRetired: false
-                onViewRetiredChanged: { if (resourceTracked) refreshPromptViewIdentity() }
+                onViewRetiredChanged: {
+                    if (viewRetired) cancelDocumentIdleScripts()
+                    if (resourceTracked) refreshPromptViewIdentity()
+                }
                 property var documentRequestOwner: ({})
                 property var documentTitleTarget: null
+                property var pendingDocumentIdleScripts: null
+                Timer {
+                    id: documentIdleTimer
+                    interval: 0
+                    onTriggered: webView.deliverDocumentIdleScripts()
+                }
+                function cancelDocumentIdleScripts() {
+                    documentIdleTimer.stop()
+                    pendingDocumentIdleScripts = null
+                }
+                function queueDocumentIdleScripts() {
+                    cancelDocumentIdleScripts()
+                    if (!ownsTab()) return
+                    pendingDocumentIdleScripts = {
+                        ui: viewUi, host: viewHost, profile: viewProfile,
+                        target: viewUi.navigation_target_for_index(tabIndex),
+                        url: webView.url.toString(), transient: viewTransientProfile
+                    }
+                    documentIdleTimer.start()
+                }
+                function deliverDocumentIdleScripts() {
+                    var pending = pendingDocumentIdleScripts
+                    cancelDocumentIdleScripts()
+                    if (!pending || !pending.target || !factory || !factory.rootWindow
+                            || factory.rootWindow.runtimeDisposing || !ownsTab() || loading
+                            || nativeUrl.length > 0 || viewUi !== pending.ui || viewHost !== pending.host
+                            || !viewHost || viewHost.runtimeReleased || profile !== pending.profile
+                            || viewTransientProfile !== pending.transient || url.toString() !== pending.url
+                            || !viewUi.request_target_current(pending.target.tabId,
+                                pending.target.generation, pending.target.documentId)) return false
+                    factory.rootWindow.injectPageUserscripts(
+                        pending.ui, webView, pending.url, pending.transient, "document_idle")
+                    return true
+                }
                 property string creationLoadReceipt: ""
                 property var creationLoadProfile: null
                 function publishPageTitle() {
@@ -332,6 +371,7 @@ WebEngineView {
                     if (nativeContent.settleBeforeUnloadLoading(stage, loadRequest)) return
                     if (nativeContent.blockedReloadLoading(stage)) return
                     if (loadRequest.status === WebEngineView.LoadStartedStatus) {
+                        cancelDocumentIdleScripts()
                         documentRequestOwner = ({})
                         documentTitleTarget = null
                     }
@@ -389,11 +429,6 @@ WebEngineView {
                             viewUi, webView, webView.url.toString(), viewTransientProfile,
                             "document_end")
                         factory.rootWindow.injectCosmeticRules(viewUi, webView)
-                        Qt.callLater(function() {
-                            factory.rootWindow.injectPageUserscripts(
-                                viewUi, webView, webView.url.toString(), viewTransientProfile,
-                                "document_idle")
-                        })
                         if (viewTabs && tabIndex >= 0) {
                             viewUi.navigation_completed_for(tabIndex)
                         } else {
@@ -403,6 +438,7 @@ WebEngineView {
                                 creationLoadProfile === webView.profile && webView.profile === viewProfile)
                         creationLoadReceipt = ""
                         documentTitleTarget = viewUi.navigation_target_for_index(tabIndex)
+                        queueDocumentIdleScripts()
                         publishPageTitle()
                         if (viewUi === factory.primaryUi
                                 && tabIndex === viewUi.active_tab_index) {
@@ -559,6 +595,7 @@ WebEngineView {
                         popupJourneyToken: popupToken,
                         popupProfile: viewProfile,
                         popupOpenerUi: viewUi,
+                        popupOpenerView: webView,
                         popupContextName: viewUi.context_name,
                         popupContextLabel: viewUi.context_label,
                         popupPrivateProfile: viewTransientProfile,
