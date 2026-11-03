@@ -676,7 +676,8 @@ fn ui_report(browser: &Path, samples: usize, measurements: &UiMeasurements) -> V
                 "renderers": measurements.process_metrics.renderers,
                 "pss_kib": measurements.process_metrics.pss_kib,
                 "rss_kib": measurements.process_metrics.rss_kib,
-                "threads": measurements.process_metrics.threads,
+                "threads": (measurements.process_metrics.unavailable_thread_processes == 0).then_some(measurements.process_metrics.threads),
+                "unavailable_thread_processes": measurements.process_metrics.unavailable_thread_processes,
                 "unavailable_memory_processes": measurements.process_metrics.unavailable_memory_processes,
             }
         ],
@@ -787,6 +788,7 @@ struct ProcessTreeMetrics {
     rss_kib: u64,
     threads: u64,
     unavailable_memory_processes: usize,
+    unavailable_thread_processes: usize,
 }
 
 fn process_tree_pids(root: u32) -> Result<BTreeSet<u32>, String> {
@@ -837,17 +839,22 @@ fn process_tree_metrics(root: u32) -> Result<ProcessTreeMetrics, String> {
         rss_kib: 0,
         threads: 0,
         unavailable_memory_processes: 0,
+        unavailable_thread_processes: 0,
     };
     for pid in tree {
         metrics.processes += 1;
-        if let Ok(status) = fs::read_to_string(format!("/proc/{pid}/status")) {
-            metrics.threads += status
-                .lines()
-                .find_map(|line| {
+        let thread_count = fs::read_to_string(format!("/proc/{pid}/status"))
+            .ok()
+            .and_then(|status| {
+                status.lines().find_map(|line| {
                     line.strip_prefix("Threads:")
                         .and_then(|value| value.trim().parse::<u64>().ok())
                 })
-                .unwrap_or(0);
+            });
+        if let Some(count) = thread_count {
+            metrics.threads += count;
+        } else {
+            metrics.unavailable_thread_processes += 1;
         }
         let Ok(rollup) = fs::read_to_string(format!("/proc/{pid}/smaps_rollup")) else {
             metrics.unavailable_memory_processes += 1;
@@ -1131,6 +1138,23 @@ mod tests {
         let stat = "10 (name with ) spaces) S 1 0 0 0 0 0 0 0 0 0 20 3 0 0 0 0 0 0 12345";
         assert_eq!(super::parse_cpu_stat(stat).unwrap(), (12345, 23));
         assert!(super::parse_cpu_stat("bad stat").is_err());
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn reads_live_linux_process_counters() {
+        let pid = std::process::id();
+        let snapshot = super::cpu_snapshot(pid).unwrap();
+        assert!(
+            snapshot
+                .keys()
+                .any(|(member, birth)| *member == pid && *birth > 0)
+        );
+        let metrics = super::process_tree_metrics(pid).unwrap();
+        assert!(metrics.processes >= 1);
+        assert!(metrics.threads >= 1);
+        assert!(metrics.pss_kib > 0);
+        assert_eq!(metrics.unavailable_thread_processes, 0);
     }
 
     #[test]
