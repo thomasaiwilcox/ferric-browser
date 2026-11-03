@@ -38,6 +38,17 @@ TestCase {
     }
     function state(rows,active){return {mode:"label",prefix:"",matching_labels:rows.map(function(r){return r.label}),active_label:active||""}}
     function row(label,x,y,w,h,id){return {label:label,text:"Control "+id,action:"Activate",kind:"button",element_id:id,frame_path:"0",x:x,y:y,width:w,height:h}}
+    function test_viewport_identity_changes_only_with_normalized_dimensions() {
+        var current = {width:640, height:480}
+        verify(Presentation.viewportSnapshot({width:"640",height:480},current) === current)
+        var resized = Presentation.viewportSnapshot({width:800,height:480},current)
+        compare(resized.width,800); compare(resized.height,480)
+        verify(resized !== current)
+        var empty = Presentation.viewportSnapshot({width:Infinity,height:-1},current)
+        compare(empty.width,0);compare(empty.height,0)
+        verify(Presentation.viewportSnapshot(null,empty) === empty)
+        verify(Presentation.viewportSnapshot({width:640,height:480},empty) !== empty)
+    }
     function cleanup(){overlay.hintsVisible=false;overlay.hintResults=[];overlay.hintsVisible=true}
     function test_metadata_badge_does_not_cover_title_data() {
         return [{tag:"small",scale:0.75},{tag:"default",scale:1},{tag:"large",scale:1.25}]

@@ -1,5 +1,16 @@
 .pragma library
 
+// Preserve the viewport value when a fresh collection has identical dimensions.
+// This suppresses a redundant layout of the previous candidate set.
+function viewportSnapshot(viewport, previous) {
+    var width = Number(viewport && viewport.width || 0)
+    var height = Number(viewport && viewport.height || 0)
+    width = Number.isFinite(width) && width > 0 ? width : 0
+    height = Number.isFinite(height) && height > 0 ? height : 0
+    if (previous && previous.width === width && previous.height === height) return previous
+    return {width: width, height: height}
+}
+
 // Presentation only. Labels still resolve through the current Rust Hint session.
 function identity(row) {
     return JSON.stringify([String(row.label), String(row.frame_owner || ""), String(row.frame_path || ""),
