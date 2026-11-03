@@ -918,6 +918,7 @@ void ApplicationTests::streamingFormReload() {
 
 void ApplicationTests::keyboardGuideOwner_data() {
     navigationFailureRecovery_data();
+    QTest::newRow("secondary-slow-frame") << QString("secondary");
 }
 
 void ApplicationTests::keyboardGuideOwner() {
@@ -935,6 +936,10 @@ void ApplicationTests::keyboardGuideOwner() {
     }
     QString owner = "testWindow", ui = "testWindow.browserUi";
     const auto initial = text("current_url");
+    // Keep the top-level document loading beyond the default QTRY deadline.
+    // A new host must finish its intended navigation before guide input starts.
+    if (QString::fromLatin1(QTest::currentDataTag()) == "secondary-slow-frame")
+        fixtureResponseDelays.insert("/child.html", 5500);
     if (hostKind == "secondary" || hostKind == "private") {
         evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"
             + quoted(initial) + ",windowProfileName:'guide-fixture',windowPrivateProfile:"
@@ -951,8 +956,17 @@ void ApplicationTests::keyboardGuideOwner() {
         ui = "testWindow.popupWindowRegistry[0].ui";
         pageReceiver = "testWindow.popupWindowRegistry[0].view";
     }
-    QTRY_VERIFY(evaluate(owner + ".profileBootstrapComplete && !" + ui
-        + ".profile_bootstrap_pending && !!" + pageReceiver + " && !" + pageReceiver + ".loading").toBool());
+    const auto expectedUrl = hostKind == "popup"
+        ? QUrl(initial).resolved(QUrl("/popup.html")).toString() : initial;
+    // Match the primary fixture's load budget. A newly allocated view can be
+    // idle before its startup navigation, so require the intended document and
+    // its completed load before polling JavaScript or sending guide input.
+    QTRY_VERIFY2_WITH_TIMEOUT(evaluate(owner + ".profileBootstrapComplete && !" + ui
+        + ".profile_bootstrap_pending && !!" + pageReceiver + " && " + pageReceiver
+        + ".url.toString() === " + quoted(expectedUrl) + " && !" + pageReceiver
+        + ".loading && " + ui + ".load_state === 'complete'").toBool(),
+        qPrintable(evaluate("JSON.stringify({url:" + pageReceiver + ".url.toString(),loading:"
+            + pageReceiver + ".loading,state:" + ui + ".load_state})").toString()), 15000);
     QTRY_VERIFY(page("document.readyState==='complete'").toBool());
     if (hostKind != "primary") evaluate("testWindow.showBindingHelp('primary draft')");
     auto host = qobject_cast<QQuickWindow *>(evaluate(owner).value<QObject *>());

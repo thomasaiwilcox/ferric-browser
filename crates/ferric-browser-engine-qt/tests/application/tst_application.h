@@ -20,6 +20,7 @@ class ApplicationTests final : public QObject {
     QTcpServer server;
     QByteArray fixtureHtml;
     QHash<QByteArray, QByteArray> frameFixtures;
+    QHash<QByteArray, int> fixtureResponseDelays;
     QVariant scriptResult;
     bool scriptDone = false;
     QPointer<QObject> setupWindow;

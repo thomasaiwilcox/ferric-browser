@@ -212,11 +212,19 @@ void ApplicationTests::init() {
                               "window."
                               "trust=event.isTrusted'>Frame control</button>")
                         : fixtureHtml;
-                socket->write(
+                const auto response =
                     "HTTP/1.1 200 OK\r\nContent-Type: text/html; "
                     "charset=utf-8\r\nConnection: close\r\nContent-Length: " +
-                    QByteArray::number(body.size()) + "\r\n\r\n" + body);
-                socket->disconnectFromHost();
+                    QByteArray::number(body.size()) + "\r\n\r\n" + body;
+                const auto sendResponse = [socket, response] {
+                    socket->write(response);
+                    socket->disconnectFromHost();
+                };
+                const auto delay = fixtureResponseDelays.value(path);
+                if (delay > 0)
+                    QTimer::singleShot(delay, socket, sendResponse);
+                else
+                    sendResponse();
             });
             connect(socket, &QTcpSocket::disconnected, socket,
                     &QObject::deleteLater);
@@ -367,6 +375,7 @@ void ApplicationTests::init() {
 void ApplicationTests::cleanup() {
     engine.reset();
     frameFixtures.clear();
+    fixtureResponseDelays.clear();
     server.close();
     server.disconnect(this);
     window = nullptr;
