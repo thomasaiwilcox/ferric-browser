@@ -429,6 +429,13 @@ fn collect_ui_run(options: &PerfOptions, plugin_dir: &Path) -> Result<Value, Str
         thread::sleep(Duration::from_millis(100));
     }
     let workload_ready_ms = startup_ms + ready_started.elapsed().as_secs_f64() * 1000.0;
+    // Stop startup confirmation before any steady-state measurements. A
+    // changed production limit may legitimately have needed no confirmation.
+    match fs::remove_file(run.basedir.join("confirm-page-windows")) {
+        Ok(()) => thread::sleep(Duration::from_millis(50)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("could not disarm fixture expansion: {error}")),
+    }
     let browser_pid = run.child.id();
     let ipc_samples_us = collect_ipc_samples(&browser, &run.basedir, samples)?;
     let idle = measure_idle_cpu(browser_pid, idle_window)?;
@@ -442,6 +449,7 @@ fn collect_ui_run(options: &PerfOptions, plugin_dir: &Path) -> Result<Value, Str
         startup_ms,
         workload_ready_ms,
         quit_confirmed: run.basedir.join("quit-confirmed").is_file(),
+        expansion_confirmed: run.basedir.join("page-windows-confirmed").is_file(),
         ipc_samples_us,
         idle,
         shutdown_ms,
@@ -485,6 +493,16 @@ fn start_ui_run(
         "Ferric performance fixture only.\n",
     )
     .map_err(|error| format!("could not mark the owned performance profile: {error}"))?;
+    if options.presentation == "windows" && options.pages > 12 {
+        fs::write(
+            basedir.join("confirm-page-windows"),
+            format!(
+                "Open up to {} performance fixture page windows.\n",
+                options.pages
+            ),
+        )
+        .map_err(|error| format!("could not authorize owned window expansion: {error}"))?;
+    }
     let mut plugin_paths = vec![plugin_dir.to_path_buf()];
     if let Some(existing) = std::env::var_os("QT_PLUGIN_PATH") {
         plugin_paths.extend(std::env::split_paths(&existing));
@@ -501,6 +519,7 @@ fn start_ui_run(
         .env("QT_PLUGIN_PATH", plugins)
         .env("QT_QPA_GENERIC_PLUGINS", "ferricperfquitfixture")
         .env("FERRIC_PERF_QUIT_ROOT", &basedir)
+        .env("FERRIC_PERF_EXPECTED_PAGES", options.pages.to_string())
         .arg("open")
         .args(std::iter::repeat_n(&options.page_url, options.pages))
         .stdin(Stdio::null())
@@ -688,6 +707,7 @@ struct UiMeasurements {
     startup_ms: f64,
     workload_ready_ms: f64,
     quit_confirmed: bool,
+    expansion_confirmed: bool,
     ipc_samples_us: Vec<f64>,
     idle: IdleMeasurement,
     shutdown_ms: Option<f64>,
@@ -727,7 +747,8 @@ fn ui_report(browser: &Path, samples: usize, measurements: &UiMeasurements) -> V
                 "name": "startup.ipc_ready",
                 "value_ms": measurements.startup_ms,
             },
-            { "name": "workload.ready", "value_ms": measurements.workload_ready_ms },
+            { "name": "workload.ready", "value_ms": measurements.workload_ready_ms,
+              "owned_expansion_confirmed": measurements.expansion_confirmed },
             { "name": "shutdown", "value_ms": measurements.shutdown_ms,
               "owned_quit_confirmed": measurements.quit_confirmed,
               "error": measurements.shutdown_error,
@@ -832,9 +853,14 @@ fn browser_json_response(
 }
 
 fn busy_response(status: Option<i32>, stderr: &[u8]) -> bool {
-    status == Some(6) && serde_json::from_slice::<Value>(stderr).is_ok_and(|value| {
-        value.get("error").and_then(|error| error.get("code")).and_then(Value::as_str) == Some("E_BUSY")
-    })
+    status == Some(6)
+        && serde_json::from_slice::<Value>(stderr).is_ok_and(|value| {
+            value
+                .get("error")
+                .and_then(|error| error.get("code"))
+                .and_then(Value::as_str)
+                == Some("E_BUSY")
+        })
 }
 
 fn fixture_stderr(basedir: &Path) -> String {
@@ -1153,7 +1179,10 @@ mod tests {
         let busy = br#"{"error":{"code":"E_BUSY"}}"#;
         assert!(super::busy_response(Some(6), busy));
         assert!(!super::busy_response(Some(1), busy));
-        assert!(!super::busy_response(Some(6), br#"{"error":{"code":"E_DENIED"}}"#));
+        assert!(!super::busy_response(
+            Some(6),
+            br#"{"error":{"code":"E_DENIED"}}"#
+        ));
         assert!(!super::busy_response(Some(6), b"malformed E_BUSY"));
         assert!(!super::busy_response(None, busy));
     }
