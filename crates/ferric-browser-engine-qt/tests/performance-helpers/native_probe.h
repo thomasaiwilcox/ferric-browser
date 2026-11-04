@@ -21,6 +21,7 @@ class OwnedNativeProbe final : public QObject {
     QSet<QQuickWindow *> observed;
     QPointer<QQuickWindow> subject;
     QPointer<QObject> chooser;
+    QMetaObject::Connection operationFrame;
     QElapsedTimer elapsed, idle;
     quint64 wakeups = 0;
     int sequence = 0;
@@ -43,13 +44,14 @@ class OwnedNativeProbe final : public QObject {
             qFatal("Could not write native performance evidence");
     }
     void reply(QJsonObject result) {
+        QObject::disconnect(operationFrame);
         result.insert("sequence", sequence);
         result.insert("operation", pending);
         result.insert("windows", windows().size());
         pending.clear();
         write("native-response.json", result);
     }
-    void frame(QQuickWindow *window) {
+    void frame(QQuickWindow *window, bool freshOperation = false) {
         if (!window->isVisible() || !window->isExposed()) return;
         const auto tag = window->property("pageWindowTag").toString();
         rendered.insert(tag);
@@ -62,7 +64,7 @@ class OwnedNativeProbe final : public QObject {
             write("native-startup.json", {{"windows", live.size()}, {"boundary", "all page windows exposed and frameSwapped delivered on GUI thread"}});
         }
         if ((pending == "create" && !original.contains(tag))
-            || ((pending == "role" || pending == "surface") && subject == window)) {
+            || (freshOperation && (pending == "role" || pending == "surface") && subject == window)) {
             const double milliseconds = elapsed.nsecsElapsed() / 1000000.0;
             subject = window;
             reply({{"ok", true}, {"milliseconds", milliseconds}, {"tag", tag}});
@@ -138,8 +140,21 @@ class OwnedNativeProbe final : public QObject {
             subject->hide();
             if (pending == "surface") subject->destroy();
             subject->show();
-            if (subject->property("pageWindowTag").toString() != tag || subject->property("pageGroupId") != group)
+            if (subject->property("pageWindowTag").toString() != tag || subject->property("pageGroupId") != group) {
                 reply({{"ok", false}, {"error", "logical identity changed during native recreation"}});
+                return;
+            }
+            // A queued frame from before hide/destroy cannot complete a new
+            // operation. Only emissions after this connection was installed
+            // can witness the replacement, and old queued deliveries carry
+            // their original command sequence.
+            const QPointer<QQuickWindow> guarded(subject);
+            const int admittedSequence = sequence;
+            operationFrame = connect(subject, &QQuickWindow::frameSwapped, this,
+                [this, guarded, admittedSequence] {
+                    if (guarded && sequence == admittedSequence) frame(guarded, true);
+                }, Qt::QueuedConnection);
+            subject->requestUpdate();
             return;
         }
         reply({{"ok", false}, {"error", "unsuitable native performance request"}});
