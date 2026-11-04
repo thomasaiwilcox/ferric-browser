@@ -1,0 +1,10 @@
+{
+  "product_commit": "240565c5d09372b077a59e2ee4376b561a6527ae",
+  "browser_sha256": "7a3d66a003bcd7339c5101faf1ffc822ab498ead04e75c9ddc0dd7d4a271fefd",
+  "harness_sha256": "46a98abfd9430dac9817e9b10548c1aeab148aed568331ad6c4109c20b679227",
+  "harness_source_commit": "8f67af0",
+  "engine_archive": "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/perf-artifacts/storage/release/libferric_browser_engine_qt.a",
+  "engine_include": "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/qt611/release/build/ferric-browser-engine-qt-30e8a2ad789541bf/out/cxxqtbuild/include",
+  "sdk": "Qt/QtWebEngine 6.11.2",
+  "profile": "release"
+}

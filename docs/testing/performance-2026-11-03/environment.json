@@ -1,0 +1,70 @@
+{
+  "reference_environment": {
+    "cpu_governor": "powersave",
+    "cpu_model": "Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz",
+    "memory": "MemTotal:       16122132 kB",
+    "wayland_display": "perf"
+  },
+  "build": {
+    "browser": "ferric-browser",
+    "os": "linux",
+    "parallelism": 4,
+    "profile": "release",
+    "target": "x86_64"
+  },
+  "runtime": {
+    "gpu_driver": {
+      "provenance": "runtime-sysfs",
+      "reason": "Linux DRM sysfs reported the bound graphics driver",
+      "status": "available",
+      "value": "i915"
+    },
+    "graphics_backend": {
+      "provenance": "runtime-qt",
+      "reason": "reported by QQuickWindow::graphicsApi",
+      "status": "available",
+      "value": "opengl"
+    },
+    "software_rendering": {
+      "provenance": "observed",
+      "reason": "software-rendering mode was not requested",
+      "status": "not-active",
+      "value": "qualified graphics path"
+    },
+    "window_system": {
+      "provenance": "runtime-qt",
+      "reason": "reported by QGuiApplication::platformName",
+      "status": "available",
+      "value": "wayland"
+    }
+  },
+  "host": {
+    "kernel": "Linux 7.2.11-arch1-1 #1 SMP PREEMPT_DYNAMIC Fri, 16 Oct 2026 00:28:58 +0000 x86_64",
+    "distribution": "NAME=\"Omarchy\"\nPRETTY_NAME=\"Omarchy\"\nID=omarchy\nID_LIKE=arch\nBUILD_ID=\"4.0.6\"\nVERSION_ID=\"4.0.6\"\nANSI_COLOR=\"38;2;158;206;106\"\nHOME_URL=\"https://omarchy.org/\"\nDOCUMENTATION_URL=\"https://learn.omacom.io/2/the-omarchy-manual\"\nSUPPORT_URL=\"https://discord.gg/tXFUdasqhY\"\nBUG_REPORT_URL=\"https://github.com/basecamp/omarchy/issues\"\nLOGO=omarchy\n",
+    "qt": "6.11.2",
+    "qt_webengine": "6.11.2",
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)"
+  },
+  "release_profile": "Cargo release: opt-level3 (default), debug2, panic=abort; test harness uses unwind as required by Cargo",
+  "gpu_fixture": "owned headless Weston15,1280x960,Intel HD620,Mesa26.2.5 OpenGL ES3.2; native QtQuick RHI OpenGL",
+  "native_query_fixture": "offscreen QtQuick software; excludes visible frame painting",
+  "source_baseline": "6d02cfe642cdbdb21dd798d897643cafcaaee018",
+  "host_configuration_changes": false,
+  "limitations": [
+    "shared development host, powersave governor, not fixed clocks",
+    "endpoint CPU omits children exited before sampling",
+    "shutdown failure preserved as null on baseline and candidate"
+  ],
+  "cxx_compiler": "c++ (GCC) 16.2.1 20260810",
+  "sdk_modules": {
+    "Qt": "6.11.2",
+    "QtWebEngine": "6.11.2",
+    "QtWayland": "6.11.2",
+    "KWindowSystem": "6.28.0"
+  },
+  "build_launchers": {
+    "pre_workers_worker_only_pagination": "default c++ resolving to /usr/bin/c++",
+    "storage_final_and_validation": "ccache4.14.2 /usr/bin/c++; task-local target/ccache; same underlying compiler and profile",
+    "build_jobs": "2 during paired native/Cargo builds; final release build4; no compilation during performance sampling"
+  }
+}
