@@ -1572,7 +1572,10 @@ Ferric.FerricBrowserWindow {
                                 fixtureOk = fixtureOk && native->generation() == 0;
                                 if (scenario.contains("-surface-")) victim->destroy();
                                 victim->show();
-                                fixtureOk = fixtureOk && QTest::qWaitForWindowExposed(victim, 500);
+                                // Role creation and tagging are synchronous.
+                                // Do not enter a nested event loop before the
+                                // resolver reply: its 500 ms I/O budget must
+                                // reach the native-generation dispatch check.
                                 fixtureOk = fixtureOk && native->generation() > admitted && native->tagSubmitted()
                                     && victim->property("pageWindowTag") == tag && victim->property("pageGroupId") == group;
                                 // Republish current owners before releasing the
