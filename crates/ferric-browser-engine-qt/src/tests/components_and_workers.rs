@@ -943,7 +943,7 @@ fn config_reload_worker_loads_and_validates_off_thread() {
     let path = directory.join("config.toml");
     fs::write(&path, "schema_version = 3\n[ui]\nfont_size_pt = 11.0\n").expect("worker config");
 
-    let mut worker = ConfigReloadWorker::spawn().expect("config worker");
+    let mut worker = ConfigReloadWorker::new();
     worker
         .request(path.clone(), "default".into())
         .expect("reload request");
@@ -1031,7 +1031,7 @@ fn config_write_worker_creates_private_non_overwriting_file() {
     let path = directory.join("export.toml");
     let contents = b"[ui]\nfont_size_pt = 11.0\n";
 
-    let mut worker = ConfigWriteWorker::spawn().expect("config writer");
+    let mut worker = ConfigWriteWorker::new();
     worker
         .request(path.clone(), contents.to_vec())
         .expect("write request");
@@ -1084,7 +1084,7 @@ fn editor_write_worker_creates_private_scratch_file_off_thread() {
     ));
     let path = directory.join("editor").join("scratch.txt");
     let contents = b"editor text";
-    let mut worker = EditorWriteWorker::spawn().expect("editor writer");
+    let mut worker = EditorWriteWorker::new();
     worker
         .request(path.clone(), contents.to_vec())
         .expect("scratch request");
@@ -1126,7 +1126,7 @@ fn profile_delete_worker_removes_data_and_registry_off_thread() {
     fs::create_dir_all(&profile_data).expect("profile data");
     fs::write(profile_data.join("marker"), b"delete me").expect("profile marker");
 
-    let mut worker = ProfileDeleteWorker::spawn().expect("profile delete worker");
+    let mut worker = ProfileDeleteWorker::new();
     worker
         .request_create(
             roots.clone(),
@@ -1215,7 +1215,7 @@ fn profile_list_worker_reads_registry_off_thread() {
         .create("worker-list", "Worker list", ProfilePrivacy::Normal)
         .expect("profile record");
 
-    let mut worker = ProfileListWorker::spawn().expect("profile list worker");
+    let mut worker = ProfileListWorker::new();
     worker.request(roots.clone()).expect("list request");
     let result = (0..100).find_map(|_| {
         let value = worker.poll();
@@ -1316,7 +1316,7 @@ fn profile_preview_worker_reads_delete_metadata_off_thread() {
         .create("worker-preview", "Worker preview", ProfilePrivacy::Normal)
         .expect("profile record");
 
-    let mut worker = ProfilePreviewWorker::spawn().expect("profile preview worker");
+    let mut worker = ProfilePreviewWorker::new();
     worker
         .request(roots.clone(), "worker-preview".into())
         .expect("preview request");

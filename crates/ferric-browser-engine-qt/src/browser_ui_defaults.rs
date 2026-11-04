@@ -54,6 +54,7 @@ impl Default for BrowserUiRust {
             learning_mode: false,
             view_alive: true,
             state,
+            runtime_waker: None,
             window,
             tab,
             registry,

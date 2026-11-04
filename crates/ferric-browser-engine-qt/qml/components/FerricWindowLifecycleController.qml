@@ -1516,10 +1516,11 @@ QtObject {
     function refreshBlockingEvidence() {
         var blockedRequests = Number(window.requestInterceptor.blockedCount)
         var unknownRequests = Number(window.requestInterceptor.unknownContextCount)
-        window.browserUi.publish_blocking_live_counts(
-                    blockedRequests, unknownRequests, window.activeBlockedRequestCount)
         var activeView = window.activeWebView()
         var activeHost = activeView && activeView.url ? activeView.url.host : ""
+        window.browserUi.publish_blocking_live_counts(
+                    blockedRequests, unknownRequests,
+                    Number(window.requestInterceptor.blockedSiteCount(activeHost)))
         window.browserUi.set_blocking_active_evidence(
                     window.requestInterceptor.blockedRequestExplanationFields(activeHost),
                     window.requestInterceptor.blockedRequestDecisionFields(activeHost))

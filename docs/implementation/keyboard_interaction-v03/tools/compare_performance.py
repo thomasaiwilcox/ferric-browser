@@ -23,7 +23,11 @@ def read_rows(path, overlay_only=False):
                 result[key] = row
     if overlay_only:
         result = {key: row for key, row in result.items() if key[0] == 'overlay'}
-    assert len(result) == (3 if overlay_only else 9), ('missing scenarios', path, list(result))
+    required = {('overlay', 'overlay-500-' + zoom) for zoom in ('80', '100', '125')}
+    if not overlay_only:
+        required |= {('collector', name) for name in ('500-80', '500-100', '500-125', '1000-100', '5000-100', '1000-mutation')}
+    assert required <= result.keys(), ('missing scenarios', path, list(result))
+    assert result.keys() <= required | {('collector', '100-100')}, ('unknown scenarios', path, list(result))
     return result
 
 
@@ -47,13 +51,14 @@ def main():
         assert (old['count'], old['zoom'], old['viewport']) == (new['count'], new['zoom'], new['viewport'])
         if key[0] == 'collector':
             assert old['user_agent'] == new['user_agent']
+            assert old.get('instrumented', True) == new.get('instrumented', True), 'cannot compare instrumented and uninstrumented latency'
             stages = [name for name in old['samples'][0] if name.endswith('_ms')]
             sources = [(name, [x[name] for x in old['samples'] if x[name] is not None],
                         [x[name] for x in new['samples'] if x[name] is not None]) for name in stages]
             sources.extend(('collector.' + name,
                             [x['collector'][name] for x in old['samples']],
                             [x['collector'][name] for x in new['samples']])
-                           for name in old['samples'][0]['collector'] if name.endswith('_ms'))
+                           for name in (old['samples'][0].get('collector') or {}) if name.endswith('_ms'))
         else:
             sources = [(name, old[name], new[name]) for name in ('time_to_visible_ms', 'layout_compute_ms')]
         for stage, a, b in sources:

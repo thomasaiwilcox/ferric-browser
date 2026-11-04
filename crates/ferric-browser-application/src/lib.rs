@@ -798,6 +798,17 @@ impl BrowserApplication {
         )
     }
 
+    /// Installs a nonblocking notification for newly admitted durable work.
+    /// The owner must continue polling while `storage_work_pending` is true.
+    pub fn set_storage_waker(&mut self, wake: std::sync::Arc<dyn Fn() + Send + Sync>) {
+        self.storage.set_waker(wake);
+    }
+
+    #[must_use]
+    pub fn storage_work_pending(&self) -> bool {
+        self.storage.has_work()
+    }
+
     /// Polls storage lifecycle events in the adapter-facing representation.
     #[must_use]
     pub fn poll_storage_effects(&mut self) -> Vec<StorageEffect> {
@@ -1570,6 +1581,57 @@ mod tests {
         );
         drop(application);
         fs::remove_dir_all(root).expect("remove test storage directory");
+    }
+
+    #[test]
+    fn storage_wakes_only_its_owner_and_remains_pending_until_every_effect_is_delivered() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let root = std::env::temp_dir().join(format!("ferric-storage-wake-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let mut owner = BrowserApplication::new(Config::default());
+        let mut other = BrowserApplication::new(Config::default());
+        owner.open_storage(root.join("owner.sqlite3")).unwrap();
+        other.open_storage(root.join("other.sqlite3")).unwrap();
+        let notifications = std::sync::Arc::new(AtomicUsize::new(0));
+        let counter = notifications.clone();
+        owner.set_storage_waker(std::sync::Arc::new(move || {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }));
+        assert!(!owner.storage_work_pending());
+        assert_eq!(notifications.load(Ordering::Relaxed), 0);
+        for _ in 0..2 {
+            owner
+                .submit_storage(StorageRequest::Library { limit: 1 })
+                .unwrap();
+        }
+        assert!(owner.storage_work_pending());
+        assert!(!other.storage_work_pending());
+        assert_eq!(notifications.load(Ordering::Relaxed), 2);
+        assert_eq!(wait_for_storage_effects(&mut owner, 2).len(), 2);
+        assert!(!owner.storage_work_pending());
+        other
+            .submit_storage(StorageRequest::Library { limit: 1 })
+            .unwrap();
+        assert_eq!(notifications.load(Ordering::Relaxed), 2);
+        wait_for_storage_effects(&mut other, 1);
+        owner
+            .submit_storage(StorageRequest::Library { limit: 1 })
+            .unwrap();
+        owner.close_storage();
+        assert!(
+            owner.storage_work_pending(),
+            "retirement effects must still be delivered"
+        );
+        assert_eq!(owner.poll_storage_effects().len(), 1);
+        assert!(!owner.storage_work_pending());
+        assert!(
+            owner
+                .submit_storage(StorageRequest::Library { limit: 1 })
+                .is_err()
+        );
+        assert_eq!(notifications.load(Ordering::Relaxed), 3);
+        drop((owner, other));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

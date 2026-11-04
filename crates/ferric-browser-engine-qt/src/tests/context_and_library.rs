@@ -1166,7 +1166,11 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("begin_shutdown_gate"));
     assert!(qml.contains("force_quit"));
     assert!(qml.contains("flush_durable_state"));
-    assert!(qml.contains("poll_storage_library"));
+    let primary = include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml");
+    let scheduler = include_str!("../../qml/components/FerricStoragePollScheduler.qml");
+    assert!(primary.contains("FerricStoragePollScheduler {"));
+    assert!(scheduler.contains("entry.ui.poll_storage_library()"));
+    assert!(scheduler.contains("entry.ui.storage_library_delay_ms()"));
     assert!(qml.contains("storageLibraryPollTimer"));
     assert!(qml.contains("request_session_preview"));
     assert!(qml.contains("request_named_session_load"));

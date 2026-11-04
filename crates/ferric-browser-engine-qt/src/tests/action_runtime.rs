@@ -756,7 +756,28 @@ fn ipc_query_boundaries_reject_unknown_and_mistyped_fields() {
 fn qml_idle_path_is_event_driven_and_devtools_are_lazy() {
     let qml = QML_SOURCE;
     let script = BROWSER_SCRIPT_SOURCE;
-    assert!(qml.contains("onRuntime_work_available: window.scheduleRuntimeWork(0)"));
+    for (source, runtime_wake, storage_wake) in [
+        (
+            include_str!("../../qml/components/FerricPrimaryBrowserWindow.qml"),
+            "window.scheduleRuntimeWork(0)",
+            "window.scheduleStorageWork()",
+        ),
+        (
+            include_str!("../../qml/components/FerricBrowserWindow.qml"),
+            "secondaryWindow.scheduleRuntimeWork(0)",
+            "rootWindow.scheduleStorageWork()",
+        ),
+    ] {
+        let handler = source
+            .split("onRuntime_work_available:")
+            .nth(1)
+            .expect("runtime completion wake handler")
+            .split('}')
+            .next()
+            .expect("wake handler body");
+        assert!(handler.contains(runtime_wake));
+        assert!(handler.contains(storage_wake));
+    }
     assert!(qml.contains("id: runtimeWorkTimer"));
     assert!(qml.contains("repeat: false"));
     assert!(qml.contains("browserUi.maintenance_delay_ms()"));

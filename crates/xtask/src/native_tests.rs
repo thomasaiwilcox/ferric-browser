@@ -197,6 +197,30 @@ pub(super) fn run_profile_lifetime_tests() -> Result<(), String> {
     )
 }
 
+pub(super) fn run_blocking_evidence_tests() -> Result<(), String> {
+    run(
+        "cmake",
+        &[
+            "-S",
+            "crates/ferric-browser-engine-qt/tests/blocking-evidence",
+            "-B",
+            "target/blocking-evidence",
+        ],
+    )?;
+    run(
+        "cmake",
+        &["--build", "target/blocking-evidence", "--parallel", "2"],
+    )?;
+    run(
+        "ctest",
+        &[
+            "--test-dir",
+            "target/blocking-evidence",
+            "--output-on-failure",
+        ],
+    )
+}
+
 pub(super) fn run_download_source_tests() -> Result<(), String> {
     run(
         "cmake",

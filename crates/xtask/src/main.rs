@@ -16,9 +16,9 @@ mod documentation;
 use documentation::{check_generated_docs, generate_user_docs};
 mod native_tests;
 use native_tests::{
-    prepare_application_tests, run_application_tests, run_download_source_tests,
-    run_native_insert_tests, run_profile_lifetime_tests, run_qml_lint, run_qml_ui_tests,
-    run_wayland_application_tests,
+    prepare_application_tests, run_application_tests, run_blocking_evidence_tests,
+    run_download_source_tests, run_native_insert_tests, run_profile_lifetime_tests, run_qml_lint,
+    run_qml_ui_tests, run_wayland_application_tests,
 };
 mod architecture_checks;
 use architecture_checks::{
@@ -89,6 +89,8 @@ fn main() {
             println!("  Validate the browser-owned QML accessibility contract markers.");
             println!("cargo xtask test wayland");
             println!("  Run the bounded disposable nested-Wayland startup smoke test.");
+            println!("cargo xtask test blocking-evidence");
+            println!("  Run isolated native evidence batching and QML binding regressions.");
             println!("cargo xtask test blocking");
             println!("  Run the real Qt/WebEngine cached-list block/exception smoke.");
             println!("cargo xtask test config");
@@ -104,10 +106,10 @@ fn main() {
             println!("cargo xtask docs");
             println!("  Generate user command and configuration documentation from registries.");
             println!(
-                "cargo run --release -p xtask -- perf [--suite core|ui] [--samples N] [--output PATH]"
+                "cargo run --release -p xtask -- perf [--suite core|hints|ui] [--samples N] [--output PATH]"
             );
             println!(
-                "  Measure optimized core latency or disposable live UI/process-tree performance."
+                "  UI options: --repetitions N --idle-seconds N --pages 1..20 --presentation internal|windows --page-url URL."
             );
             println!("cargo xtask fixture-server [--bind ADDRESS] [--once] [--https]");
             println!("  Run the bounded loopback HTTP fixture server (or its dev HTTPS wrapper).");

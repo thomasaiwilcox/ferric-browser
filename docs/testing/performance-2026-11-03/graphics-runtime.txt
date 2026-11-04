@@ -1,0 +1,12 @@
+weston.log:
+[17:20:01.728] EGL version: 1.5
+[17:20:01.738] GL version: OpenGL ES 3.2 Mesa 26.2.5-arch1.1
+[17:20:01.738] GLSL version: OpenGL ES GLSL ES 3.20
+[17:20:01.738] GL renderer: Mesa Intel(R) HD Graphics 620 (KBL GT2)
+[17:20:01.774] Using GL renderer
+final-overlay-gpu.log:
+qt.rhi.general: OpenGL VENDOR: Intel RENDERER: Mesa Intel(R) HD Graphics 620 (KBL GT2) VERSION: 4.6 (Compatibility Profile) Mesa 26.2.5-arch1.1
+  Graphics API debug/validation layers: 0
+qt.rhi.general: OpenGL VENDOR: Intel RENDERER: Mesa Intel(R) HD Graphics 620 (KBL GT2) VERSION: 4.6 (Compatibility Profile) Mesa 26.2.5-arch1.1
+  Graphics API debug/validation layers: 0
+qt.rhi.general: OpenGL VENDOR: Intel RENDERER: Mesa Intel(R) HD Graphics 620 (KBL GT2) VERSION: 4.6 (Compatibility Profile) Mesa 26.2.5-arch1.1

@@ -137,7 +137,7 @@ impl qobject::BrowserUi {
                        recency: i64,
                        generation: Option<u64>,
                        fields: Vec<String>,
-                       actions: &[&str]| {
+                       actions: &'static [&'static str]| {
             if let Some(scope) = private_scope
                 && !matches!(kind, "command" | "action")
                 && profile.as_deref() != Some(scope)
@@ -157,27 +157,20 @@ impl qobject::BrowserUi {
                 current_context,
                 context.as_ref().map(|(_, name)| name.as_str()),
             ));
-            let value = serde_json::json!({
-                "kind": kind,
-                "id": id,
-                "owner_token": self.rust().window_token.to_string(),
-                "generation": generation,
-                "label": label,
-                "secondary": secondary.replace(['\n', '\r'], " "),
-                "profile": profile,
-                "context": context.as_ref().map(|(id, name)| serde_json::json!({"id": id, "name": name})),
-                "workspace": workspace,
-                "privacy": if private { "private" } else { "normal" },
-                "recency": recency,
-                "rank": rank,
-                "match_fields": fields,
-                "actions": actions
-            });
             candidates.push(SwitcherCandidate {
                 rank,
                 kind: kind.to_owned(),
                 recency,
-                value,
+                id,
+                label,
+                secondary,
+                profile,
+                context,
+                workspace,
+                private,
+                generation,
+                fields,
+                actions,
             });
         };
 
@@ -421,7 +414,7 @@ impl qobject::BrowserUi {
                 .iter()
                 .filter(|candidate| candidate.matches_scope(scope))
             {
-                let actions: &[&str] = match candidate.kind.as_str() {
+                let actions: &'static [&'static str] = match candidate.kind.as_str() {
                     "history" => &["open"],
                     "bookmark" | "quickmark" => &["open", "delete"],
                     "download" => &["show", "open"],
@@ -568,7 +561,12 @@ impl qobject::BrowserUi {
                 );
             }
         }
-        let (total, results) = select_switcher_page(candidates, offset, limit);
+        let (total, page) = select_switcher_page(candidates, offset, limit);
+        let owner_token = self.rust().window_token.to_string();
+        let results = page
+            .into_iter()
+            .map(|candidate| candidate.into_value(&owner_token))
+            .collect::<Vec<_>>();
         Ok(serde_json::json!({
             "sequence": self.rust().ipc_sequence,
             "scope": scope,

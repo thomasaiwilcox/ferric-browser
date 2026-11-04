@@ -92,35 +92,34 @@ pub fn rank(query: &[String], id: &str, label: &str, fields: &[String]) -> Optio
 }
 
 fn fuzzy_subsequence_score(term: &str, field: &str) -> Option<i64> {
-    let term_chars = term.chars().collect::<Vec<_>>();
-    if term_chars.is_empty() {
+    let mut remaining = term.chars();
+    let Some(mut expected) = remaining.next() else {
         return Some(0);
-    }
-    let field_chars = field
-        .chars()
-        .take(MAX_FUZZY_FIELD_CHARS)
-        .collect::<Vec<_>>();
-    let mut matched = 0;
+    };
     let mut first = None;
-    let mut previous = None;
+    let mut previous_match = None;
+    let mut previous_character: Option<char> = None;
     let mut gaps = 0_usize;
     let mut boundary_bonus = 0_i64;
-    for (index, character) in field_chars.iter().copied().enumerate() {
-        if character != term_chars[matched] {
+    for (index, character) in field.chars().take(MAX_FUZZY_FIELD_CHARS).enumerate() {
+        let preceding = previous_character;
+        previous_character = Some(character);
+        if character != expected {
             continue;
         }
         if first.is_none() {
             first = Some(index);
         }
-        if index == 0 || !field_chars[index - 1].is_alphanumeric() {
+        if preceding.is_none_or(|preceding| !preceding.is_alphanumeric()) {
             boundary_bonus = boundary_bonus.saturating_add(8);
         }
-        if let Some(previous) = previous {
+        if let Some(previous) = previous_match {
             gaps = gaps.saturating_add(index.saturating_sub(previous + 1));
         }
-        previous = Some(index);
-        matched += 1;
-        if matched == term_chars.len() {
+        previous_match = Some(index);
+        if let Some(next) = remaining.next() {
+            expected = next;
+        } else {
             let penalty = first.unwrap_or_default().saturating_add(gaps).min(99);
             let base = 100 - i64::try_from(penalty).unwrap_or(99);
             return Some(base.saturating_add(boundary_bonus).min(100));
@@ -132,6 +131,76 @@ fn fuzzy_subsequence_score(term: &str, field: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::{MAX_SWITCHER_QUERY_TERMS, fuzzy_subsequence_score, rank, tokenize_query};
+
+    // The previous vector-based implementation is an independent compatibility
+    // oracle for the streaming scan, including Unicode indices and scan limits.
+    fn reference_fuzzy_score(term: &str, field: &str) -> Option<i64> {
+        let term_chars = term.chars().collect::<Vec<_>>();
+        if term_chars.is_empty() {
+            return Some(0);
+        }
+        let field_chars = field
+            .chars()
+            .take(super::MAX_FUZZY_FIELD_CHARS)
+            .collect::<Vec<_>>();
+        let mut matched = 0;
+        let mut first = None;
+        let mut previous = None;
+        let mut gaps = 0_usize;
+        let mut boundary_bonus = 0_i64;
+        for (index, character) in field_chars.iter().copied().enumerate() {
+            if character != term_chars[matched] {
+                continue;
+            }
+            if first.is_none() {
+                first = Some(index);
+            }
+            if index == 0 || !field_chars[index - 1].is_alphanumeric() {
+                boundary_bonus = boundary_bonus.saturating_add(8);
+            }
+            if let Some(previous) = previous {
+                gaps = gaps.saturating_add(index.saturating_sub(previous + 1));
+            }
+            previous = Some(index);
+            matched += 1;
+            if matched == term_chars.len() {
+                let penalty = first.unwrap_or_default().saturating_add(gaps).min(99);
+                let base = 100 - i64::try_from(penalty).unwrap_or(99);
+                return Some(base.saturating_add(boundary_bonus).min(100));
+            }
+        }
+        None
+    }
+    #[test]
+    fn streaming_fuzzy_matches_reference_scores() {
+        let mut fields = vec![String::new()];
+        for _ in 0..5 {
+            let previous = fields.clone();
+            for prefix in previous {
+                for character in ['a', 'b', 'é', '-', ' '] {
+                    fields.push(format!("{prefix}{character}"));
+                }
+            }
+        }
+        fields.sort();
+        fields.dedup();
+        fields.extend([
+            "x".repeat(4095) + "é",
+            "x".repeat(4096) + "é",
+            "東京 İß🙂".into(),
+        ]);
+        for field in &fields {
+            for term in [
+                "", "a", "ab", "ba", "é", "aé", "éa", "a b", "-", "東京", "🙂", "xxx",
+            ] {
+                assert_eq!(
+                    fuzzy_subsequence_score(term, field),
+                    reference_fuzzy_score(term, field),
+                    "{term:?} / {field:?}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn tokenization_is_unicode_aware_and_bounded() {

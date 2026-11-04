@@ -884,8 +884,8 @@ ApplicationWindow {
         var hostValue = view && view.url ? view.url.host : ""
         var host = hostValue === undefined || hostValue === null
                 ? "" : String(hostValue)
-        var counts = requestInterceptor.blockedSiteCounts || ({})
-        return host.length > 0 && counts[host] !== undefined ? Number(counts[host]) : 0
+        var revision = requestInterceptor.evidenceRevision
+        return host.length > 0 ? Number(requestInterceptor.blockedSiteCount(host)) : 0
     }
     readonly property int browserScriptWorld: WebEngineScript.ApplicationWorld
     readonly property string browserScriptBundleVersion: "1"
@@ -916,9 +916,7 @@ ApplicationWindow {
         adblockEngineHandle: browserUi.blocking_adblock_handle
         bypassSites: browserUi.blocking_bypass_sites
         securityDenyHosts: browserUi.blocking_security_deny_hosts
-        onBlockedCountChanged: window.refreshBlockingEvidence()
-        onUnknownContextCountChanged: window.refreshBlockingEvidence()
-        onBlockedSiteCountsChanged: window.refreshBlockingEvidence()
+        onEvidenceChanged: window.refreshBlockingEvidence()
     }
 
     function refreshBlockingEvidence() { return runtimeBase.refreshBlockingEvidence() }
@@ -983,28 +981,18 @@ ApplicationWindow {
         onTriggered: window.requestLinkCleaningUpdate(true)
     }
 
-    Timer {
+    FerricStoragePollScheduler {
         id: storageLibraryPollTimer
-        interval: 50
-        repeat: true
-        // Completion belongs to every durable window, including destinations
-        // opened from a private primary window.
-        running: !window.temporaryProfile || window.liveWindowEntries().some(function(entry) {
+        // The primary owns polling for all durable destinations, including
+        // destinations opened from a private primary window.
+        enabled: !window.temporaryProfile || window.liveWindowEntries().some(function(entry) {
             return entry && entry.ui && !entry.privateProfile && !entry.ephemeralProfile
         })
-        onTriggered: {
-            var entries = window.liveWindowEntries() || []
-            if (entries.length === 0) {
-                entries = [{ ui: browserUi }]
-            }
-            var consumed = false
-            for (var i = 0; i < entries.length; ++i) {
-                var entry = entries[i]
-                if (entry && entry.ui && !entry.privateProfile && !entry.ephemeralProfile
-                        && entry.ui.poll_storage_library()) {
-                    consumed = true
-                }
-            }
+        entries: function() {
+            var live = window.liveWindowEntries() || []
+            return live.length > 0 ? live : [{ ui: browserUi }]
+        }
+        onPolled: function(consumed) {
             if (consumed && window.switcherVisible) {
                 window.requestSwitcherLiveRefresh()
             }
@@ -1136,7 +1124,10 @@ ApplicationWindow {
         id: browserUi
         page_window_ordinary: true
         status_text: "Ready"
-        onRuntime_work_available: window.scheduleRuntimeWork(0)
+        onRuntime_work_available: {
+            window.scheduleRuntimeWork(0)
+            window.scheduleStorageWork()
+        }
         onSwitcher_sources_changed: {
             if (window.switcherVisible) window.requestSwitcherLiveRefresh()
         }
@@ -3358,6 +3349,10 @@ GridLayout {
     function applyRestorePayload(payload, hasModeLine) { return runtimeSurface.applyRestorePayload(payload, hasModeLine) }
 
     function syncTabModel() { return runtimeSurface.syncTabModel() }
+
+    function scheduleStorageWork() {
+        storageLibraryPollTimer.wake()
+    }
 
     function scheduleRuntimeWork(delay) { return runtimeSurface.scheduleRuntimeWork(delay) }
 

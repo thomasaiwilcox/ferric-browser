@@ -177,7 +177,7 @@ impl qobject::BrowserUi {
     /// snapshot is immutable and profile-local, so the worker can safely
     /// prepare the query-facing rows without touching Qt or SQLite.
     pub(super) fn request_switcher_library_index(mut self: Pin<&mut Self>) {
-        let (snapshot, revision, profile_name, result_slot, cancel) = {
+        let (snapshot, revision, profile_name, result_slot, cancel, wake) = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             let transient = this.state.as_ref().and_then(|state| {
@@ -220,6 +220,7 @@ impl qobject::BrowserUi {
                 this.profile_name.clone(),
                 Arc::clone(&this.library.switcher_library_index_result),
                 cancel,
+                this.runtime_waker.clone(),
             )
         };
         let spawned = thread::Builder::new()
@@ -228,6 +229,11 @@ impl qobject::BrowserUi {
                 let index = build_switcher_library_index(&snapshot, profile_name, &cancel);
                 if let Ok(mut pending) = result_slot.lock() {
                     *pending = Some(SwitcherLibraryIndexResult { revision, index });
+                }
+                // Notify after releasing the slot lock. Late/stale results
+                // still pass the existing revision/profile checks on delivery.
+                if let Some(wake) = wake {
+                    wake();
                 }
             });
         if spawned.is_err() {
@@ -323,6 +329,36 @@ impl qobject::BrowserUi {
                 false
             }
         }
+    }
+
+    // Keep the existing 50 ms completion bound while any application or adapter
+    // work is outstanding. The idle fallback also retains worker recovery.
+    pub(super) fn storage_library_delay_ms(&self) -> i32 {
+        let rust = self.rust();
+        let library = &rust.library;
+        let pending = rust
+            .state
+            .as_ref()
+            .is_some_and(BrowserApplication::storage_work_pending)
+            || library.start_read_pending
+            || library.start_write_pending
+            || library.favourite_feedback.is_some()
+            || !library.mark_feedback_tickets.is_empty()
+            || rust.command_history_write_pending
+            || !rust.queued_command_history.is_empty()
+            || rust.journey_read_pending
+            || rust.pending_history_clear.is_some()
+            || library.start_refresh_requested
+            || library.storage_library_refresh_again
+            || library.storage_library_read_state.is_pending()
+            || library.switcher_library_index_building
+            || rust.session_catalog_read_state.is_pending()
+            || library.session_names_refresh_again
+            || !library.session_restores.is_empty()
+            || !library.session_saves.is_empty()
+            || library.session_checkpoint_clear_pending
+            || library.storage_flush_pending;
+        if pending { 50 } else { 1000 }
     }
 
     pub(super) fn poll_storage_library(mut self: Pin<&mut Self>) -> bool {

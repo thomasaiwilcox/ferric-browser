@@ -126,14 +126,17 @@ Item {
         }
         if (pageWindowCoordinator && !pageWindowCoordinator.prepare(controller)) return false
         var coreIds = []
+        var coreIdLookup = Object.create(null)
         for (var coreIndex = 0; coreIndex < browserUi.tab_count; ++coreIndex) {
-            coreIds.push(browserUi.tab_id_for_index(coreIndex))
+            var coreId = browserUi.tab_id_for_index(coreIndex)
+            coreIds.push(coreId)
+            coreIdLookup[coreId] = true
         }
         // Retire removed renderers before deleting their ListModel rows.
         // Qt may deliver engine notifications while those rows are invalidated.
         for (var retiring = 0; retiring < tabViews.length; ++retiring) {
             var oldView = tabViews[retiring]
-            if (oldView.stableTabId.length > 0 && coreIds.indexOf(oldView.stableTabId) < 0) {
+            if (oldView.stableTabId.length > 0 && coreIdLookup[oldView.stableTabId] !== true) {
                 oldView.viewRetired = true
                 oldView.viewModel = ({ loaded:false, url:"", muted:false, zoom:1.0 })
             }

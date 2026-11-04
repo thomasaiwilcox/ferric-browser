@@ -1,8 +1,9 @@
 use super::{
     BufReader, Child, Command, Duration, Instant, Output, Path, PathBuf, Stdio, SystemTime,
     TcpStream, UNIX_EPOCH, check_accessibility_contract, check_compatibility_report, fs,
-    prepare_application_tests, run, run_application_tests, run_fuzz_smoke, run_native_insert_tests,
-    run_qml_ui_tests, run_wayland_application_tests, thread,
+    prepare_application_tests, run, run_application_tests, run_blocking_evidence_tests,
+    run_fuzz_smoke, run_native_insert_tests, run_qml_ui_tests, run_wayland_application_tests,
+    thread,
 };
 use std::{
     io::{BufRead as _, Read as _, Write as _},
@@ -93,6 +94,7 @@ pub(super) fn run_test(arguments: &[String]) -> Result<(), String> {
             Ok(())
         }
         "wayland" => run_wayland_smoke(),
+        "blocking-evidence" => run_blocking_evidence_tests(),
         "blocking" => run_blocking_smoke(),
         "config" => run_config_smoke(),
         "mpris" => run_mpris_smoke(),
@@ -396,6 +398,35 @@ pub(super) fn run_wayland_input_qualification() -> Result<(), String> {
     run_nested_wayland_smoke(&browser_build_executable("release"), true)
 }
 
+// Initialize only a newly created, owned fixture through the public CLI.
+// Seeding files before this step would correctly trip the unknown-layout guard.
+fn initialize_smoke_base(executable: &Path, base: &Path) -> Result<(), String> {
+    let output = Command::new(executable)
+        .arg("--basedir")
+        .arg(base)
+        .args([
+            "--instance",
+            "smoke-init",
+            "query",
+            "active-tab",
+            "--format",
+            "json",
+        ])
+        .output()
+        .map_err(|error| format!("could not initialize smoke fixture roots: {error}"))?;
+    let no_instance = serde_json::from_slice::<serde_json::Value>(&output.stderr)
+        .is_ok_and(|value| value["error"]["code"].as_str() == Some("E_NO_INSTANCE"));
+    if output.status.code() == Some(3) && no_instance {
+        Ok(())
+    } else {
+        Err(format!(
+            "fresh smoke fixture initialization did not reach the no-owner boundary: status={}; stderr={}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 pub(super) fn run_config_smoke() -> Result<(), String> {
     check_nested_wayland_requirements()?;
@@ -409,15 +440,19 @@ pub(super) fn run_config_smoke() -> Result<(), String> {
         ));
     }
 
-    let base = DisposableDirectory::new("ferric-browser-config")?;
+    let base = DisposableDirectory::new("fb-cfg")?;
+    initialize_smoke_base(executable, base.path())?;
     let config = base.path().join("config/config.toml");
     fs::create_dir_all(config.parent().expect("config parent"))
         .map_err(|error| format!("could not create config smoke directory: {error}"))?;
-    fs::write(&config, "[ui]\nfont_size_pt = 11.0\n")
+    fs::write(&config, "schema_version = 3\n[ui]\nfont_size_pt = 11.0\n")
         .map_err(|error| format!("could not write config smoke config: {error}"))?;
     let query_config = base.path().join("config/query.toml");
-    fs::write(&query_config, "[ui]\nfont_size_pt = 10.0\n")
-        .map_err(|error| format!("could not write config smoke query config: {error}"))?;
+    fs::write(
+        &query_config,
+        "schema_version = 3\n[ui]\nfont_size_pt = 10.0\n",
+    )
+    .map_err(|error| format!("could not write config smoke query config: {error}"))?;
 
     let mut fixture = start_nested_fixture_server()?;
     let fixture_url = read_fixture_url(&mut fixture)?;
@@ -435,7 +470,7 @@ pub(super) fn run_config_smoke() -> Result<(), String> {
             format!("could not protect config Wayland runtime directory: {error}")
         })?;
     }
-    let display = format!("wayland-ferric-browser-config-{run_id}");
+    let display = "wayland-ferric".to_owned();
     let result = (|| {
         let mut compositor = start_nested_compositor(&runtime_dir, &display)?;
         let socket = runtime_dir.join(&display);
@@ -464,8 +499,11 @@ pub(super) fn run_config_smoke() -> Result<(), String> {
 
         thread::sleep(Duration::from_secs(2));
         let replacement = config.with_extension("toml.next");
-        fs::write(&replacement, "[ui]\nfont_size_pt = 13.0\n")
-            .map_err(|error| format!("could not stage config replacement: {error}"))?;
+        fs::write(
+            &replacement,
+            "schema_version = 3\n[ui]\nfont_size_pt = 13.0\n",
+        )
+        .map_err(|error| format!("could not stage config replacement: {error}"))?;
         fs::rename(&replacement, &config)
             .map_err(|error| format!("could not atomically replace config: {error}"))?;
 
@@ -590,13 +628,14 @@ pub(super) fn run_blocking_smoke() -> Result<(), String> {
         ));
     }
 
-    let base = DisposableDirectory::new("ferric-browser-blocking")?;
+    let base = DisposableDirectory::new("fb-block")?;
+    initialize_smoke_base(executable, base.path())?;
     let config = base.path().join("config/config.toml");
     fs::create_dir_all(config.parent().expect("config parent"))
         .map_err(|error| format!("could not create blocking smoke config: {error}"))?;
     fs::write(
         &config,
-        "[blocking]\nenabled = true\nnetwork_filtering = true\ncosmetic_filtering = false\nlists = [\"easylist\"]\n",
+        "schema_version = 3\n[blocking]\nenabled = true\nnetwork_filtering = true\ncosmetic_filtering = false\nlists = [\"easylist\"]\n",
     )
     .map_err(|error| format!("could not write blocking smoke config: {error}"))?;
     let list = base.path().join("cache/blocklists/easylist.txt");
@@ -633,7 +672,7 @@ pub(super) fn run_blocking_smoke() -> Result<(), String> {
             format!("could not protect blocking Wayland runtime directory: {error}")
         })?;
     }
-    let display = format!("wayland-ferric-browser-blocking-{run_id}");
+    let display = "wayland-ferric".to_owned();
     let mut application_output = String::new();
     let result = (|| {
         let mut compositor = start_nested_compositor(&runtime_dir, &display)?;
@@ -918,6 +957,10 @@ pub(super) fn start_nested_compositor(
     ChildGuard::spawn(
         Command::new("weston")
             .arg("--backend=headless-backend.so")
+            .arg(format!(
+                "--log={}",
+                runtime_dir.join("weston.log").display()
+            ))
             .arg(format!("--socket={display}"))
             .arg("--idle-time=0")
             .arg("--no-config")
@@ -943,7 +986,15 @@ pub(super) fn wait_for_wayland_socket(
             .map_err(|error| format!("could not poll nested Weston compositor: {error}"))?
             .is_some()
         {
-            return Err("nested Weston compositor exited before creating its socket".to_owned());
+            let log = socket
+                .parent()
+                .map(|directory| directory.join("weston.log"));
+            let details = log
+                .and_then(|path| fs::read_to_string(path).ok())
+                .unwrap_or_default();
+            return Err(format!(
+                "nested Weston compositor exited before creating its socket: {details}"
+            ));
         }
         thread::sleep(Duration::from_millis(50));
     }

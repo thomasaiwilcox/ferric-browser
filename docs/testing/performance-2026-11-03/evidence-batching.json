@@ -1,0 +1,12 @@
+{
+  "production_commit": "6d66449",
+  "method": "100 isolated notification batches, 100 scheduleEvidenceChanged admissions per batch, QSignalSpy counts; blocked policy decision excluded from diagnostic-count experiment",
+  "counts": {
+    "admissions": 10000,
+    "legacy_property_signals": 300,
+    "aggregate_expensive_refresh_triggers": 100,
+    "relative_refresh_trigger_change_percent": -66.66666666666667
+  },
+  "fixture_source_sha256": "143a8b9dc4fbcb9ea98b909de3cd21ac497d2dae4d5a3b16110b39ff76835eef",
+  "qualification": "native evidence CTest passed; actual cached-list blocking smoke separately passed; validation.json contains commands/outcomes"
+}

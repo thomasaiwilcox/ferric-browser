@@ -1,6 +1,7 @@
 #include "../../src/gui_application.h"
 #include <QApplication>
 #include <QDir>
+#include <QDateTime>
 #include <QDirIterator>
 #include <QDBusInterface>
 #include <QDBusReply>
@@ -17,6 +18,7 @@
 #include <QQmlComponent>
 #include <QPointer>
 #include <QQmlContext>
+#include <QtQml/qqml.h>
 #include <QQmlExpression>
 #include <QQmlIncubationController>
 #include <QQuickItem>
@@ -559,6 +561,9 @@ class SwitcherTests final : public QObject {
         }
     }
     void init() {
+        if (QString::fromLatin1(QTest::currentTestFunction()) == "performanceLargeHistory"
+            && qEnvironmentVariable("FERRIC_PERF_SWITCHER") != "1")
+            QSKIP("Opt-in release performance fixture");
         QTest::failOnWarning(QRegularExpression(
             "qrc:/qt/qml/io/github/ferricbrowser/.*(ReferenceError|TypeError|Binding loop)"));
         QVERIFY(directory.isValid());
@@ -611,6 +616,117 @@ class SwitcherTests final : public QObject {
         closeWindow();
         server.close();
         server.disconnect(this);
+    }
+    // Explicit performance run only; uses the real public QML -> Rust projection.
+    void performanceLargeHistory() {
+        if (qEnvironmentVariable("FERRIC_PERF_SWITCHER") != "1")
+            QSKIP("Opt-in release performance fixture");
+        QObject *storageTimer = nullptr;
+        for (auto object : window->findChildren<QObject *>()) {
+            for (auto context = qmlContext(object); context; context = context->parentContext()) {
+                if (context->nameForObject(object) == "storageLibraryPollTimer") {
+                    storageTimer = object;
+                    break;
+                }
+            }
+            if (storageTimer) break;
+        }
+        QVERIFY2(storageTimer, "production storage timer was not found in its QML context");
+        QSignalSpy polls(storageTimer, SIGNAL(triggered()));
+        QVERIFY(polls.isValid());
+        // The visible Switcher republishes after a consumed storage poll. This
+        // fixture measures the public projection without opening its surface.
+        auto awaitSources = [&] {
+            int observed = polls.count();
+            QElapsedTimer deadline; deadline.start();
+            while (evaluate("testWindow.browserUi.switcher_sources_pending").toBool()
+                   && deadline.elapsed() < 10000) {
+                QTest::qWait(1);
+                if (polls.count() != observed) {
+                    observed = polls.count();
+                    evaluate("testWindow.browserUi.switcher_query('', 'history')");
+                }
+            }
+            return !evaluate("testWindow.browserUi.switcher_sources_pending || testWindow.browserUi.switcher_sources_failed").toBool();
+        };
+        QVERIFY(evaluate("testWindow.browserUi.switcher_query('', 'history')").toBool());
+        QVERIFY2(awaitSources(), "initial history read/index did not publish readiness");
+        QTest::qWait(500);
+        polls.clear();
+        QElapsedTimer idle; idle.start();
+        QTest::qWait(5000);
+        const double idleMs = idle.nsecsElapsed()/1000000.0;
+        const int idlePolls = polls.count();
+        QVERIFY(idlePolls > 0);
+        const int idlePeriod = storageTimer->property("interval").toInt();
+        QJsonArray refreshSamples;
+        for (int sample=-10; sample<100; ++sample) {
+            QElapsedTimer refresh; refresh.start();
+            QVERIFY(evaluate("testWindow.browserUi.refresh_switcher_sources('history')").toBool());
+            QVERIFY2(awaitSources(), "admitted refresh/index did not publish readiness");
+            const double elapsed = refresh.nsecsElapsed()/1000000.0;
+            QVERIFY2(elapsed < 500, "idle polling must not delay admitted refresh/index completion");
+            if (sample>=0) refreshSamples.append(elapsed);
+        }
+        qInfo().noquote() << "FERRIC_STORAGE_POLL_PERFORMANCE_JSON" << QJsonDocument(QJsonObject{
+            {"durable_owners",1},{"idle_ms",idleMs},{"idle_period_ms",idlePeriod},
+            {"idle_poll_calls",idlePolls},{"refresh_ms",refreshSamples},{"warmups",10},
+            {"boundary","real primary storage timer; admitted empty history read and index completion"}
+        }).toJson(QJsonDocument::Compact);
+        QDirIterator files(QFileInfo(configPath).absolutePath() + "/data", {"browser.sqlite"},
+                           QDir::Files, QDirIterator::Subdirectories);
+        QVERIFY(files.hasNext());
+        sqlite3 *database = nullptr;
+        QCOMPARE(sqlite3_open_v2(QFile::encodeName(files.next()).constData(), &database,
+                                 SQLITE_OPEN_READWRITE, nullptr), SQLITE_OK);
+        auto close = qScopeGuard([&] { sqlite3_close(database); });
+        sqlite3_busy_timeout(database, 2000);
+        int seeded = 0;
+        for (int count : {1000, 10000, 100000}) {
+            QCOMPARE(sqlite3_exec(database, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr), SQLITE_OK);
+            sqlite3_stmt *insert = nullptr;
+            QCOMPARE(sqlite3_prepare_v2(database,
+                "INSERT INTO pages(normalized_url,safe_title,first_visit,last_visit,visit_count) "
+                "VALUES(?1,'Performance history fixture with Unicode café 東京',?2,?2,1)",
+                -1, &insert, nullptr), SQLITE_OK);
+            for (int index = seeded; index < count; ++index) {
+                const auto url = QByteArray("https://performance.example.test/history/") + QByteArray::number(index);
+                QCOMPARE(sqlite3_bind_text(insert, 1, url.constData(), -1, SQLITE_TRANSIENT), SQLITE_OK);
+                QCOMPARE(sqlite3_bind_int64(insert, 2, QDateTime::currentSecsSinceEpoch()-100000+index), SQLITE_OK);
+                QCOMPARE(sqlite3_step(insert), SQLITE_DONE);
+                QCOMPARE(sqlite3_reset(insert), SQLITE_OK);
+            }
+            sqlite3_finalize(insert);
+            QCOMPARE(sqlite3_exec(database,
+                "INSERT INTO visits(page_id,committed_at,transition) SELECT p.id,p.last_visit,'typed' "
+                "FROM pages p WHERE p.normalized_url LIKE 'https://performance.example.test/history/%' "
+                "AND p.id NOT IN (SELECT page_id FROM visits)",
+                nullptr, nullptr, nullptr), SQLITE_OK);
+            QCOMPARE(sqlite3_exec(database, "COMMIT", nullptr, nullptr, nullptr), SQLITE_OK);
+            seeded = count;
+            QElapsedTimer load; load.start();
+            QVERIFY(evaluate("testWindow.browserUi.refresh_switcher_sources('history')").toBool());
+            QVERIFY2(awaitSources(), "seeded history did not publish readiness");
+            const double refreshMs = load.nsecsElapsed()/1000000.0;
+            QJsonArray uncached, cached;
+            for (int sample = -10; sample < 100; ++sample) {
+                // Both terms match every retained row; changing the query defeats the result cache.
+                const auto query = sample % 2 ? "performance" : "history";
+                QElapsedTimer timer; timer.start();
+                QVERIFY(evaluate("testWindow.browserUi.switcher_query('"+QString(query)+"','history')").toBool());
+                const auto elapsed = timer.nsecsElapsed()/1000000.0;
+                if (sample >= 0) uncached.append(elapsed);
+                QVERIFY(evaluate("testWindow.browserUi.switcher_result_ids.length > 0").toBool());
+                timer.restart();
+                QVERIFY(evaluate("testWindow.browserUi.switcher_query('"+QString(query)+"','history')").toBool());
+                if (sample >= 0) cached.append(timer.nsecsElapsed()/1000000.0);
+            }
+            qInfo().noquote() << "FERRIC_SWITCHER_PERFORMANCE_JSON" << QJsonDocument(QJsonObject{
+                {"database_rows",count},{"library_limit",1000},{"refresh_ms",refreshMs},
+                {"warmups",10},{"uncached_ms",uncached},{"cached_ms",cached},
+                {"boundary","public switcher_query through typed Qt result publication; synthetic local history"}
+            }).toJson(QJsonDocument::Compact);
+        }
     }
     void tabKeyboardContinuity_data() {
         QTest::addColumn<QString>("hostKind");

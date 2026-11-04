@@ -1,0 +1,197 @@
+Representative original monolithic failure (assertion unchanged):
+FAIL!  : ApplicationTests::pageWindowPresentation(session-quit-approved-close) Compared values are not the same
+   Actual   (evaluate("testWindow.pageWindowTagRequested").toBool())    : 0
+   Expected (!qEnvironmentVariableIsSet("FERRIC_TEST_UNTAGGED_WINDOWS")): 1
+   Loc: [/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/crates/ferric-browser-engine-qt/tests/application/tst_page_windows.cpp(154)]
+
+application-offscreen-full.log:
+FAIL!  : ApplicationTests::pageWindowPresentation(session-quit-approved-close) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-quit-publication-cancel) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-quit-stale-root) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-quit-stale-peer) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-quit-queued-root) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-quit-queued-peer) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-hidden-survivor) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-hidden-survivor-reentrant) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-quit-peers) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-quit-cancel) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-quit-prepared) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-quit-live) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-quit-rollback) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-peer-order) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-peer-queued-get) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-live-stopped) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-queued-get) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-prepared-gap) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-prepared-destroy) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-publish-destroy) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-focus-reentrant) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-encoded) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-failed) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-open-route) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-open-background) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-foreground) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-background) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-fallback) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-background-fallback) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-recorded) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-stale) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-blank) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(creation-start) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-close-focus-reentrant) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-close-root-probe) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-close-cancel) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-close-partial) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-close-tail) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-close-retired) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-close-stale) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-close-native-facts) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-close-fallback) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-close-fallback-role) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-close-pinned) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-undo-peer) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-undo-primary) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-undo-private-expiry) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-undo-private-root-last) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-undo-cancel) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-undo-context) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-order) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-order-fallback) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-order-fallback-pin) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-native-identity) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-focus-lease) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-focus-stale) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-focus-expired) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-focus-reentrant) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-focus-route) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-focus-publication) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-native-grouping) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-grouping-order) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-grouping-focus) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-grouping-order-stale) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-grouping-unrelated-map) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-grouping-private-map) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-grouping-auto-off) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-grouping-detach) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-grouping-context) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-grouping-stale) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-grouping-profile) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-grouping-delay) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-grouping-stale-create) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-live-detach) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-live-give) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-live-rollback) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-live-cancel) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-live-identity) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-live-extra-page) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-live-setup-destroy) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-live-reorder) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-live-source-close) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-live-source-close-last) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-live-completion-nav) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-live-registration-retry) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-regroup-peer-focus) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-regroup) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-regroup-stale) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-regroup-background) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-regroup-pin) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-mutations) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-mutation-navigation) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-mutation-discard) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-chain-workflows) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-chain-multi-hop) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-chain-failure) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-chain-discard) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(popup-tab-group) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(popup-background) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(popup-window) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(popup-dialog) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(window-selection) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(session-aggregate) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(foreground) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(background) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(preparation-registration-retry) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(preparation-source-retire) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(preparation-publish-destroy) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(preparation-publish-navigation) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(preparation-publish-profile) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(preparation-setup-error) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(preparation-setup-destroy) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(preparation-focus) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(preparation-navigation) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(preparation-shutdown) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(activation-context) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(standalone) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(private) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(first-host-close) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(first-page-tab-close) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(last-page-close) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(last-page-close-cancel) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(factory-failure) Compared values are not the same
+FAIL!  : ApplicationTests::pageWindowPresentation(expansion-cancel) Compared values are not the same
+SKIP   : ApplicationTests::productPolishSessionRecoveryCancellation(escape-while-reading) Use application_session_recovery with its owned read barrier
+SKIP   : ApplicationTests::productPolishSessionRecoveryCancellation(n-while-reading) Use application_session_recovery with its owned read barrier
+SKIP   : ApplicationTests::productPolishSessionRecoveryCancellation(alt-d-while-reading) Use application_session_recovery with its owned read barrier
+SKIP   : ApplicationTests::productPolishStartupRecovery(new-tab-during-read) Use application_startup_recovery with its owned read barrier
+
+00.log:
+Totals: 42 passed, 0 failed, 0 skipped, 0 blacklisted, 90877ms
+
+01.log:
+SKIP   : ApplicationTests::productPolishNativeNotifications(primary) Run application_native_notifications: requires the isolated test bus
+SKIP   : ApplicationTests::productPolishNativeNotifications(secondary) Run application_native_notifications: requires the isolated test bus
+SKIP   : ApplicationTests::productPolishNativeNotifications(private) Run application_native_notifications: requires the isolated test bus
+SKIP   : ApplicationTests::productPolishNativeNotifications(required-portal) Run application_native_notifications: requires the isolated test bus
+SKIP   : ApplicationTests::productPolishNativeNotifications(service-error) Run application_native_notifications: requires the isolated test bus
+SKIP   : ApplicationTests::productPolishNativeNotifications(page-close) Run application_native_notifications: requires the isolated test bus
+SKIP   : ApplicationTests::productPolishNativeNotifications(owner-close) Run application_native_notifications: requires the isolated test bus
+Totals: 29 passed, 0 failed, 7 skipped, 0 blacklisted, 77484ms
+
+02.log:
+Totals: 31 passed, 0 failed, 0 skipped, 0 blacklisted, 64863ms
+
+03.log:
+SKIP   : ApplicationTests::crossOriginFrameLifetimeCycles() Opt-in 1000-cycle frame lifetime check
+Totals: 75 passed, 0 failed, 1 skipped, 0 blacklisted, 122079ms
+
+04.log:
+SKIP   : ApplicationTests::clipboardWaylandTransport() requires the isolated Wayland clipboard runner
+Totals: 14 passed, 0 failed, 1 skipped, 0 blacklisted, 27510ms
+
+05.log:
+Totals: 38 passed, 0 failed, 0 skipped, 0 blacklisted, 103788ms
+
+06.log:
+Totals: 17 passed, 0 failed, 0 skipped, 0 blacklisted, 29037ms
+
+07.log:
+Totals: 35 passed, 0 failed, 0 skipped, 0 blacklisted, 124185ms
+
+08.log:
+Totals: 22 passed, 0 failed, 0 skipped, 0 blacklisted, 46718ms
+
+09.log:
+Totals: 23 passed, 0 failed, 0 skipped, 0 blacklisted, 55457ms
+
+10.log:
+Totals: 13 passed, 0 failed, 0 skipped, 0 blacklisted, 38557ms
+
+11.log:
+Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 34827ms
+
+12.log:
+Totals: 13 passed, 0 failed, 0 skipped, 0 blacklisted, 27586ms
+
+13.log:
+Totals: 17 passed, 0 failed, 0 skipped, 0 blacklisted, 34114ms
+
+14.log:
+FAIL!  : ApplicationTests::staleSelectorCallbackCannotPublish() 'evaluate("testWindow.browserUi.set_runtime_setting('content.zoom','" "1.2',true)") .toBool()' returned FALSE. ()
+SKIP   : ApplicationTests::productionHintLifetimeCycles() separate opt-in application_lifetime gate
+Totals: 13 passed, 1 failed, 1 skipped, 0 blacklisted, 59793ms
+
+15.log:
+Totals: 15 passed, 0 failed, 0 skipped, 0 blacklisted, 34360ms
+
+selector-rerun.log:
+Totals: 6 passed, 0 failed, 0 skipped, 0 blacklisted, 11274ms

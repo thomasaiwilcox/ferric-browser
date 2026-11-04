@@ -1,0 +1,1901 @@
+{
+  "completed_utc": "2026-11-04T00:17:09.150838+00:00",
+  "baseline": "6d02cfe642cdbdb21dd798d897643cafcaaee018",
+  "latest_remote_main": "6d02cfe642cdbdb21dd798d897643cafcaaee018",
+  "branch": "perf/measured-efficiency",
+  "validation_source_commit": "ecbb0fe4fe1e99516b18c9d300637c5a414979f3",
+  "frozen_product_commit": "5dfc36eca091a0957f226c8a4f57f6a0e68ffac4",
+  "source_equivalence": "later001c38b changes Rust test assertions;316f442 changes xtask smoke fixtures; ecbb0fe changes only a native selector test; production browser source equals frozen5dfc36e",
+  "sdk": "Qt/QtWebEngine6.11.2,matchingQtWayland6.11.2,KWindowSystem6.28.0; guardunchanged",
+  "original_checkout_clean": true,
+  "commands": [
+    {
+      "label": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 7.718010194017552,
+      "log": "fmt.log"
+    },
+    {
+      "label": "check",
+      "command": [
+        "cargo",
+        "check",
+        "--release",
+        "--workspace",
+        "--all-features",
+        "--locked"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 299.9860118300421,
+      "log": "check.log"
+    },
+    {
+      "label": "clippy-rerun",
+      "source_commit": "001c38bb07f5e65791e9d830b978c8b4967f1229",
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "returncode": 0,
+      "log": "clippy-rerun.log",
+      "finished_utc": "2026-11-03T23:07:16.147228+00:00",
+      "note": "rerun after test-only scheduler source-contract update; includes waiting for shared debug build lock"
+    },
+    {
+      "label": "release-tests-rerun",
+      "source_commit": "001c38b",
+      "product_code_equivalent_to": "5dfc36e",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "--workspace",
+        "--locked"
+      ],
+      "returncode": 0,
+      "passed_total": 1302,
+      "ignored_total": 2,
+      "result_rows": [
+        [
+          119,
+          0,
+          0
+        ],
+        [
+          162,
+          0,
+          0
+        ],
+        [
+          5,
+          0,
+          0
+        ],
+        [
+          69,
+          0,
+          0
+        ],
+        [
+          178,
+          0,
+          0
+        ],
+        [
+          568,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          40,
+          0,
+          0
+        ],
+        [
+          13,
+          0,
+          0
+        ],
+        [
+          120,
+          0,
+          0
+        ],
+        [
+          28,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "log": "release-tests-rerun.log",
+      "finished_utc": "2026-11-03T22:52:22.392327+00:00",
+      "prior_attempt": "two source-contract assertions updated for extracted storage scheduler; no production source changes"
+    },
+    {
+      "label": "project-gate",
+      "command": [
+        "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/qt611/release/xtask",
+        "check",
+        "--locked",
+        "--offline"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 1330.5084087150171,
+      "log": "project-gate.log"
+    },
+    {
+      "label": "adapter",
+      "command": [
+        "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/qt611/release/xtask",
+        "test",
+        "adapter"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 613.7412087160628,
+      "log": "adapter.log"
+    },
+    {
+      "label": "config-rerun",
+      "source_commit": "316f442462622a7f3336228eb15eee3fdf9a789d",
+      "product_code_equivalent_to": "5dfc36e",
+      "command": [
+        "dbus-run-session",
+        "--",
+        "target/qt611/release/xtask",
+        "test",
+        "config"
+      ],
+      "returncode": 0,
+      "log": "config-rerun.log",
+      "finished_utc": "2026-11-03T23:27:03.691820+00:00",
+      "prior_attempt": "fixture pre-created unmarked data roots; config lacked v3 document markers; blocking socket path was108bytes. Fixed fixtures use public CLI initialization, schema-v3 documents and a short socket name. Production guard unchanged."
+    },
+    {
+      "label": "blocking-rerun",
+      "source_commit": "316f442462622a7f3336228eb15eee3fdf9a789d",
+      "product_code_equivalent_to": "5dfc36e",
+      "command": [
+        "dbus-run-session",
+        "--",
+        "target/qt611/release/xtask",
+        "test",
+        "blocking"
+      ],
+      "returncode": 0,
+      "log": "blocking-rerun.log",
+      "finished_utc": "2026-11-03T23:27:03.696668+00:00",
+      "prior_attempt": "fixture pre-created unmarked data roots; config lacked v3 document markers; blocking socket path was108bytes. Fixed fixtures use public CLI initialization, schema-v3 documents and a short socket name. Production guard unchanged."
+    },
+    {
+      "label": "blocking-evidence",
+      "command": [
+        "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/qt611/release/xtask",
+        "test",
+        "blocking-evidence"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 1.1147232360672206,
+      "log": "blocking-evidence.log"
+    },
+    {
+      "label": "instrumentation",
+      "command": [
+        "node",
+        "tools/performance/check_hint_instrumentation.cjs"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.21423217200208455,
+      "log": "instrumentation.log"
+    },
+    {
+      "label": "measurement-tests",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/performance",
+        "-p",
+        "test_*.py"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.37734247802291065,
+      "log": "measurement-tests.log"
+    }
+  ],
+  "corrected_attempts": [
+    {
+      "label": "release-tests",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "--workspace",
+        "--locked"
+      ],
+      "returncode": 101,
+      "elapsed_seconds": 692.6248690749053,
+      "log": "release-tests.log"
+    },
+    {
+      "label": "config",
+      "command": [
+        "dbus-run-session",
+        "--",
+        "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/qt611/release/xtask",
+        "test",
+        "config"
+      ],
+      "returncode": 1,
+      "elapsed_seconds": 170.127365524997,
+      "log": "config.log"
+    },
+    {
+      "label": "blocking",
+      "command": [
+        "dbus-run-session",
+        "--",
+        "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/qt611/release/xtask",
+        "test",
+        "blocking"
+      ],
+      "returncode": 1,
+      "elapsed_seconds": 0.29709160898346454,
+      "log": "blocking.log"
+    }
+  ],
+  "corrected_attempt_notes": [
+    "release:two static source-location/syntax assertions updated to actual scheduler delegation and both wake paths",
+    "config/blocking:public CLI initializes fresh fixture roots before seeding schema3 files; Wayland socket shortened from108bytes; data guard unchanged"
+  ],
+  "release_tests": {
+    "label": "release-tests-rerun",
+    "source_commit": "001c38b",
+    "product_code_equivalent_to": "5dfc36e",
+    "command": [
+      "cargo",
+      "test",
+      "--release",
+      "--workspace",
+      "--locked"
+    ],
+    "returncode": 0,
+    "passed_total": 1302,
+    "ignored_total": 2,
+    "result_rows": [
+      [
+        119,
+        0,
+        0
+      ],
+      [
+        162,
+        0,
+        0
+      ],
+      [
+        5,
+        0,
+        0
+      ],
+      [
+        69,
+        0,
+        0
+      ],
+      [
+        178,
+        0,
+        0
+      ],
+      [
+        568,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        1
+      ],
+      [
+        40,
+        0,
+        0
+      ],
+      [
+        13,
+        0,
+        0
+      ],
+      [
+        120,
+        0,
+        0
+      ],
+      [
+        28,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "log": "release-tests-rerun.log",
+    "finished_utc": "2026-11-03T22:52:22.392327+00:00",
+    "prior_attempt": "two source-contract assertions updated for extracted storage scheduler; no production source changes"
+  },
+  "project_gate": {
+    "source_commit": "001c38b",
+    "rust_passed": 1302,
+    "rust_ignored": 2,
+    "qml_passed": 1231,
+    "qml_failed": 0,
+    "native_profile_lifetime_suites": 2,
+    "native_download_source_suites": 1,
+    "test_result_rows": [
+      [
+        119,
+        0,
+        0
+      ],
+      [
+        162,
+        0,
+        0
+      ],
+      [
+        5,
+        0,
+        0
+      ],
+      [
+        69,
+        0,
+        0
+      ],
+      [
+        178,
+        0,
+        0
+      ],
+      [
+        568,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        1
+      ],
+      [
+        40,
+        0,
+        0
+      ],
+      [
+        13,
+        0,
+        0
+      ],
+      [
+        120,
+        0,
+        0
+      ],
+      [
+        28,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ]
+  },
+  "native": {
+    "product_commit": "5dfc36eca091a0957f226c8a4f57f6a0e68ffac4",
+    "selected_tests": [
+      "application_offscreen",
+      "application_switcher",
+      "application_page_windows_portable",
+      "application_session_recovery",
+      "application_startup_recovery",
+      "application_startup_recovery_restart",
+      "application_tab_recovery",
+      "application_shutdown_pending_save",
+      "application_settings_durability",
+      "application_streaming_history",
+      "application_download_finalization",
+      "application_download_runtime_guard",
+      "application_downloads",
+      "application_context_reload",
+      "application_close_requests",
+      "application_hint_controls",
+      "application_file_chooser_privacy",
+      "application_privacy_identity",
+      "application_frame_dpr2",
+      "application_deferred_requests",
+      "application_document_idle"
+    ],
+    "scope": "portable/offscreen application, privacy, ownership, hint/frame preflight, storage, download, session, shutdown and configuration regressions; actual Hyprland grouping and physical-input qualification excluded",
+    "started_utc": "2026-11-03T23:17:31.859469+00:00",
+    "commands": [
+      {
+        "label": "native-ctest",
+        "command": [
+          "dbus-run-session",
+          "--",
+          "ctest",
+          "--test-dir",
+          "target/application-tests-worker",
+          "--output-on-failure",
+          "--output-junit",
+          "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/perf-evidence/qualified/final-native-validation/native-ctest.xml",
+          "--parallel",
+          "2",
+          "-R",
+          "^(application_offscreen|application_switcher|application_page_windows_portable|application_session_recovery|application_startup_recovery|application_startup_recovery_restart|application_tab_recovery|application_shutdown_pending_save|application_settings_durability|application_streaming_history|application_download_finalization|application_download_runtime_guard|application_downloads|application_context_reload|application_close_requests|application_hint_controls|application_file_chooser_privacy|application_privacy_identity|application_frame_dpr2|application_deferred_requests|application_document_idle)$"
+        ],
+        "returncode": 8,
+        "elapsed_seconds": 1791.6155209519202,
+        "log": "native-ctest.log"
+      },
+      {
+        "label": "ipc",
+        "command": [
+          "dbus-run-session",
+          "--",
+          "python3",
+          "crates/ferric-browser-engine-qt/tests/application/run_ipc_probe.py",
+          "--executable",
+          "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/perf-artifacts/final/release/ferric-browser"
+        ],
+        "returncode": 0,
+        "elapsed_seconds": 3.5822030709823593,
+        "log": "ipc.log"
+      },
+      {
+        "label": "window_ipc",
+        "command": [
+          "dbus-run-session",
+          "--",
+          "python3",
+          "crates/ferric-browser-engine-qt/tests/application/run_window_ipc_probe.py",
+          "--executable",
+          "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/perf-artifacts/final/release/ferric-browser"
+        ],
+        "returncode": 0,
+        "elapsed_seconds": 5.094824319006875,
+        "log": "window_ipc.log"
+      }
+    ],
+    "finished_utc": "2026-11-03T23:47:32.153821+00:00",
+    "selected_suites_passed": [
+      "application_privacy_identity",
+      "application_tab_recovery",
+      "application_streaming_history",
+      "application_shutdown_pending_save",
+      "application_hint_controls",
+      "application_close_requests",
+      "application_switcher",
+      "application_file_chooser_privacy",
+      "application_startup_recovery",
+      "application_session_recovery",
+      "application_settings_durability",
+      "application_page_windows_portable",
+      "application_startup_recovery_restart",
+      "application_download_finalization",
+      "application_download_runtime_guard",
+      "application_downloads",
+      "application_context_reload",
+      "application_frame_dpr2",
+      "application_deferred_requests",
+      "application_document_idle"
+    ],
+    "monolithic_qualification_failure": {
+      "suite": "application_offscreen",
+      "timeout_seconds": 1200,
+      "assertion_family": "124 pageWindowPresentation Wayland-tag expectations under offscreen; expectation remains unchanged",
+      "full_log_failure_categories": {
+        "pageWindowPresentation": 124
+      }
+    },
+    "remaining_function_batches": {
+      "product_commit": "5dfc36e",
+      "method": "continue application functions not already covered by PASS/SKIP from the monolithic attempt or dedicated suites; eight functions per process, two independent owned fixture processes; pageWindowPresentation needs Wayland/Hyprland and its portable owned-Wayland subset passed",
+      "functions": [
+        "keyboardGuideOwner",
+        "navigationJourneys",
+        "spawnCommandModeValidation",
+        "scrollTargetCommandChain",
+        "productPolishPendingPermissionPolicy",
+        "productPolishPermissionQueueBound",
+        "productPolishPermissionCapacity",
+        "productPolishPopupDurableWork",
+        "productPolishPermissionReadiness",
+        "productPolishPermissionRevocationScope",
+        "productPolishPermissionResetOwner",
+        "productPolishPermissionResetQueue",
+        "productPolishNotificationResetScope",
+        "productPolishNativeNotifications",
+        "productPolishCopyFeedback",
+        "productPolishActionFeedback",
+        "productPolishSecondarySelectionCommand",
+        "actionAvailabilityFeedback",
+        "productPolishConfigurationFeedback",
+        "productPolishRegisteredActionFeedback",
+        "productPolishHintActionFeedback",
+        "productPolishRapidDownloadRejection",
+        "productPolishExternalActionFeedback",
+        "crossOriginFrameInvalidation",
+        "crossOriginFrameLifetimeCycles",
+        "crossOriginFrameOperationLifetimes",
+        "stretchedPostTitleKeyboardNavigation",
+        "hintCollisionCyclesActualMarkers",
+        "rapidHintRejectsConsumedReplay",
+        "clipboardNativeEditing",
+        "clipboardChrome",
+        "clipboardMenus",
+        "clipboardSelectionOwnership",
+        "clipboardShortcutOverride",
+        "clipboardWaylandTransport",
+        "clipboardSelectionControls",
+        "clipboardSelectionChangedRejects",
+        "clipboardSelectionLifetimeCycles",
+        "clipboardHeldBrowserGesture",
+        "clipboardOtherWindows",
+        "productPolishPagePrompts",
+        "productPolishWindowPrompts",
+        "productPolishTlsPrompt",
+        "productPolishCertificateGuards",
+        "productPolishIdentityWindows",
+        "productPolishPromptTeardown",
+        "productPolishHttpAuthentication",
+        "productPolishFileChooser",
+        "productPolishDownloadSelectionFailure",
+        "productPolishDownloadIdentity",
+        "productPolishWebAuthStates",
+        "productPolishNavigationFailure",
+        "productPolishManagementSurfaces",
+        "productPolishWindowSettings",
+        "productPolishNativePageHistory",
+        "productPolishSecondaryHistoryCommands",
+        "productPolishTransferredSourceClose",
+        "productPolishPopupSourceClose",
+        "productPolishPopupCommands",
+        "productPolishPopupCommandsOpenerIdentity",
+        "productPolishSecondaryHints",
+        "productPolishNewWindowRouting",
+        "productPolishNewWindows",
+        "productPolishStartupCleanLink",
+        "productPolishCleanLinkOwner",
+        "productPolishDevToolsOwner",
+        "productPolishInteractiveNewWindow",
+        "productPolishSessionPermissionSharing",
+        "productPolishCombinedSessionPermissionReset",
+        "productPolishContextCatalogBootstrap",
+        "productPolishContextCatalogRetainedAfterFailedProfile",
+        "productPolishProvisionalTransferFallback",
+        "productPolishSecondaryTabs",
+        "productPolishSecondaryManagers",
+        "productPolishIndependentWindowInput",
+        "productPolishPermissionWindowOwnership",
+        "productPolishOverlappingModalInput",
+        "productPolishUserscriptFeedback",
+        "productPolishWindowClose",
+        "productPolishPopupScripts",
+        "productPolishSiteLedger",
+        "productPolishSessionPreview",
+        "productPolishSessionSaveBackpressure",
+        "productPolishManagerFeedback",
+        "productPolishLibrary",
+        "productPolishPrivateLibrary",
+        "productPolishStartupProblems",
+        "productPolishProfileRecovery",
+        "productPolishFailedProfileDiagnostics",
+        "productPolishDiagnosticOwners",
+        "productPolishDiagnosticReport",
+        "productPolishDiagnosticLifecycle",
+        "productPolishLocalFilePaths",
+        "productPolishUnavailableStorage",
+        "productPolishBookmarkTransfer",
+        "startupAndConfigPublication",
+        "reservedCommandRecovery",
+        "mixedReservedKeysAndUnmappedDelivery",
+        "heldPageKeyRetainsOwnerAcrossPolicyChange",
+        "nativePointerRequiresLocalEntryAndClicksOnce",
+        "nativePointerControlFamilies",
+        "nativePointerFrameAndShadow",
+        "nativePopupActionIsOneTransport",
+        "popupWithoutUserActivationIsDenied",
+        "fullscreenApiOutcomes",
+        "clipboardPermissionOutcomes",
+        "selectorReloadActivatesAtBoundary",
+        "requestedWindowPresentationRemainsPendingUntilRestart",
+        "selectorReloadRejectsInvalidAndStaleCandidates",
+        "selectorReloadTimeoutPreservesConfiguration",
+        "selectorDiscoveryUsesProductionPolicy",
+        "startupSelectorValidation",
+        "staleSelectorCallbackCannotPublish",
+        "unavailableSelectorDocumentTimesOut",
+        "productionHintLifetimeCycles",
+        "scopedGridNativeCoordinates",
+        "mixedPageKeysAndBrowserSequence",
+        "pointerConfigurationInvalidatesHeldConfirmation",
+        "rendererLossCancelsHeldConfirmation",
+        "pointerObservationIntervalExperiment",
+        "pointerInvalidationBeforeRelease",
+        "targetSearchNeedsConfirmation",
+        "promptAcceptCancelAndNestedRestoration",
+        "stalePromptCannotRestoreAfterConfigChange",
+        "passThroughDocumentBoundaries",
+        "scopedGridResetAndInvalidation",
+        "durablePersistenceFailurePreservesConfiguration",
+        "selectorValidationRejectsWholeCandidate"
+      ],
+      "already_completed": [
+        "bottomChromeOverlay",
+        "cleanupTestCase",
+        "credentialViewAssociation",
+        "crossOriginConsentHints",
+        "deferredNativeRequestsKeepCapturedTargets",
+        "durablePersistenceFlushWaitsForPendingSave",
+        "embeddedResourceParity",
+        "hintConfirmationFreezesPendingRefresh",
+        "hintNativeControls",
+        "hintNavigationLifecycle",
+        "hintRefreshDoesNotAutoFollow",
+        "hintRefreshRetainsInput",
+        "initTestCase",
+        "navigationFailureRecovery",
+        "pageSearchCancellationAndBindings",
+        "pageSearchCrossOriginFrames",
+        "pageSearchDirection",
+        "pageSearchEditorPreedit",
+        "pageSearchFeedback",
+        "pageSearchFollowing",
+        "pageSearchNativeText",
+        "pageWindowPresentation",
+        "productPolishDocumentIdleLifetime",
+        "productPolishLastTabUndo",
+        "productPolishLiveTitles",
+        "productPolishOpenTargets",
+        "productPolishPrivacyIdentity",
+        "productPolishSessionRecoveryCancellation",
+        "productPolishSessionRecoveryFailure",
+        "productPolishSettingDurability",
+        "productPolishStartupRecovery",
+        "productPolishStopState",
+        "productPolishSwitcherLiveUpdates",
+        "productPolishSwitcherNavigation",
+        "productPolishTabRecovery",
+        "productPolishTabRecoveryCheckpoint",
+        "realHintKeyboardActivation",
+        "repeatAdmission",
+        "repeatCommonCommands",
+        "repeatKeyboardCount",
+        "repeatWindowRouting",
+        "scopedHintAndSearchJourneys",
+        "streamingFormReload",
+        "streamingHistoryTraversal",
+        "urlCopyStatusBar"
+      ],
+      "batches": [
+        {
+          "index": 0,
+          "functions": [
+            "keyboardGuideOwner",
+            "navigationJourneys",
+            "spawnCommandModeValidation",
+            "scrollTargetCommandChain",
+            "productPolishPendingPermissionPolicy",
+            "productPolishPermissionQueueBound",
+            "productPolishPermissionCapacity",
+            "productPolishPopupDurableWork"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "keyboardGuideOwner",
+            "navigationJourneys",
+            "spawnCommandModeValidation",
+            "scrollTargetCommandChain",
+            "productPolishPendingPermissionPolicy",
+            "productPolishPermissionQueueBound",
+            "productPolishPermissionCapacity",
+            "productPolishPopupDurableWork"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 90.99700535298325,
+          "failures": [],
+          "log": "remaining-batches/00.log"
+        },
+        {
+          "index": 1,
+          "functions": [
+            "productPolishPermissionReadiness",
+            "productPolishPermissionRevocationScope",
+            "productPolishPermissionResetOwner",
+            "productPolishPermissionResetQueue",
+            "productPolishNotificationResetScope",
+            "productPolishNativeNotifications",
+            "productPolishCopyFeedback",
+            "productPolishActionFeedback"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "productPolishPermissionReadiness",
+            "productPolishPermissionRevocationScope",
+            "productPolishPermissionResetOwner",
+            "productPolishPermissionResetQueue",
+            "productPolishNotificationResetScope",
+            "productPolishNativeNotifications",
+            "productPolishCopyFeedback",
+            "productPolishActionFeedback"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 77.61974964698311,
+          "failures": [],
+          "log": "remaining-batches/01.log"
+        },
+        {
+          "index": 2,
+          "functions": [
+            "productPolishSecondarySelectionCommand",
+            "actionAvailabilityFeedback",
+            "productPolishConfigurationFeedback",
+            "productPolishRegisteredActionFeedback",
+            "productPolishHintActionFeedback",
+            "productPolishRapidDownloadRejection",
+            "productPolishExternalActionFeedback",
+            "crossOriginFrameInvalidation"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "productPolishSecondarySelectionCommand",
+            "actionAvailabilityFeedback",
+            "productPolishConfigurationFeedback",
+            "productPolishRegisteredActionFeedback",
+            "productPolishHintActionFeedback",
+            "productPolishRapidDownloadRejection",
+            "productPolishExternalActionFeedback",
+            "crossOriginFrameInvalidation"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 64.97553928906564,
+          "failures": [],
+          "log": "remaining-batches/02.log"
+        },
+        {
+          "index": 3,
+          "functions": [
+            "crossOriginFrameLifetimeCycles",
+            "crossOriginFrameOperationLifetimes",
+            "stretchedPostTitleKeyboardNavigation",
+            "hintCollisionCyclesActualMarkers",
+            "rapidHintRejectsConsumedReplay",
+            "clipboardNativeEditing",
+            "clipboardChrome",
+            "clipboardMenus"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "crossOriginFrameLifetimeCycles",
+            "crossOriginFrameOperationLifetimes",
+            "stretchedPostTitleKeyboardNavigation",
+            "hintCollisionCyclesActualMarkers",
+            "rapidHintRejectsConsumedReplay",
+            "clipboardNativeEditing",
+            "clipboardChrome",
+            "clipboardMenus"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 122.17501206696033,
+          "failures": [],
+          "log": "remaining-batches/03.log"
+        },
+        {
+          "index": 4,
+          "functions": [
+            "clipboardSelectionOwnership",
+            "clipboardShortcutOverride",
+            "clipboardWaylandTransport",
+            "clipboardSelectionControls",
+            "clipboardSelectionChangedRejects",
+            "clipboardSelectionLifetimeCycles",
+            "clipboardHeldBrowserGesture",
+            "clipboardOtherWindows"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "clipboardSelectionOwnership",
+            "clipboardShortcutOverride",
+            "clipboardWaylandTransport",
+            "clipboardSelectionControls",
+            "clipboardSelectionChangedRejects",
+            "clipboardSelectionLifetimeCycles",
+            "clipboardHeldBrowserGesture",
+            "clipboardOtherWindows"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 27.60367873404175,
+          "failures": [],
+          "log": "remaining-batches/04.log"
+        },
+        {
+          "index": 5,
+          "functions": [
+            "productPolishPagePrompts",
+            "productPolishWindowPrompts",
+            "productPolishTlsPrompt",
+            "productPolishCertificateGuards",
+            "productPolishIdentityWindows",
+            "productPolishPromptTeardown",
+            "productPolishHttpAuthentication",
+            "productPolishFileChooser"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "productPolishPagePrompts",
+            "productPolishWindowPrompts",
+            "productPolishTlsPrompt",
+            "productPolishCertificateGuards",
+            "productPolishIdentityWindows",
+            "productPolishPromptTeardown",
+            "productPolishHttpAuthentication",
+            "productPolishFileChooser"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 103.936903008027,
+          "failures": [],
+          "log": "remaining-batches/05.log"
+        },
+        {
+          "index": 6,
+          "functions": [
+            "productPolishDownloadSelectionFailure",
+            "productPolishDownloadIdentity",
+            "productPolishWebAuthStates",
+            "productPolishNavigationFailure",
+            "productPolishManagementSurfaces",
+            "productPolishWindowSettings",
+            "productPolishNativePageHistory",
+            "productPolishSecondaryHistoryCommands"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "productPolishDownloadSelectionFailure",
+            "productPolishDownloadIdentity",
+            "productPolishWebAuthStates",
+            "productPolishNavigationFailure",
+            "productPolishManagementSurfaces",
+            "productPolishWindowSettings",
+            "productPolishNativePageHistory",
+            "productPolishSecondaryHistoryCommands"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 29.164521747035906,
+          "failures": [],
+          "log": "remaining-batches/06.log"
+        },
+        {
+          "index": 7,
+          "functions": [
+            "productPolishTransferredSourceClose",
+            "productPolishPopupSourceClose",
+            "productPolishPopupCommands",
+            "productPolishPopupCommandsOpenerIdentity",
+            "productPolishSecondaryHints",
+            "productPolishNewWindowRouting",
+            "productPolishNewWindows",
+            "productPolishStartupCleanLink"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "productPolishTransferredSourceClose",
+            "productPolishPopupSourceClose",
+            "productPolishPopupCommands",
+            "productPolishPopupCommandsOpenerIdentity",
+            "productPolishSecondaryHints",
+            "productPolishNewWindowRouting",
+            "productPolishNewWindows",
+            "productPolishStartupCleanLink"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 124.35359756695107,
+          "failures": [],
+          "log": "remaining-batches/07.log"
+        },
+        {
+          "index": 8,
+          "functions": [
+            "productPolishCleanLinkOwner",
+            "productPolishDevToolsOwner",
+            "productPolishInteractiveNewWindow",
+            "productPolishSessionPermissionSharing",
+            "productPolishCombinedSessionPermissionReset",
+            "productPolishContextCatalogBootstrap",
+            "productPolishContextCatalogRetainedAfterFailedProfile",
+            "productPolishProvisionalTransferFallback"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "productPolishCleanLinkOwner",
+            "productPolishDevToolsOwner",
+            "productPolishInteractiveNewWindow",
+            "productPolishSessionPermissionSharing",
+            "productPolishCombinedSessionPermissionReset",
+            "productPolishContextCatalogBootstrap",
+            "productPolishContextCatalogRetainedAfterFailedProfile",
+            "productPolishProvisionalTransferFallback"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 46.83578943600878,
+          "failures": [],
+          "log": "remaining-batches/08.log"
+        },
+        {
+          "index": 9,
+          "functions": [
+            "productPolishSecondaryTabs",
+            "productPolishSecondaryManagers",
+            "productPolishIndependentWindowInput",
+            "productPolishPermissionWindowOwnership",
+            "productPolishOverlappingModalInput",
+            "productPolishUserscriptFeedback",
+            "productPolishWindowClose",
+            "productPolishPopupScripts"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "productPolishSecondaryTabs",
+            "productPolishSecondaryManagers",
+            "productPolishIndependentWindowInput",
+            "productPolishPermissionWindowOwnership",
+            "productPolishOverlappingModalInput",
+            "productPolishUserscriptFeedback",
+            "productPolishWindowClose",
+            "productPolishPopupScripts"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 55.609627355937846,
+          "failures": [],
+          "log": "remaining-batches/09.log"
+        },
+        {
+          "index": 10,
+          "functions": [
+            "productPolishSiteLedger",
+            "productPolishSessionPreview",
+            "productPolishSessionSaveBackpressure",
+            "productPolishManagerFeedback",
+            "productPolishLibrary",
+            "productPolishPrivateLibrary",
+            "productPolishStartupProblems",
+            "productPolishProfileRecovery"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "productPolishSiteLedger",
+            "productPolishSessionPreview",
+            "productPolishSessionSaveBackpressure",
+            "productPolishManagerFeedback",
+            "productPolishLibrary",
+            "productPolishPrivateLibrary",
+            "productPolishStartupProblems",
+            "productPolishProfileRecovery"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 38.65424432896543,
+          "failures": [],
+          "log": "remaining-batches/10.log"
+        },
+        {
+          "index": 11,
+          "functions": [
+            "productPolishFailedProfileDiagnostics",
+            "productPolishDiagnosticOwners",
+            "productPolishDiagnosticReport",
+            "productPolishDiagnosticLifecycle",
+            "productPolishLocalFilePaths",
+            "productPolishUnavailableStorage",
+            "productPolishBookmarkTransfer",
+            "startupAndConfigPublication"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "productPolishFailedProfileDiagnostics",
+            "productPolishDiagnosticOwners",
+            "productPolishDiagnosticReport",
+            "productPolishDiagnosticLifecycle",
+            "productPolishLocalFilePaths",
+            "productPolishUnavailableStorage",
+            "productPolishBookmarkTransfer",
+            "startupAndConfigPublication"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 34.940982588916086,
+          "failures": [],
+          "log": "remaining-batches/11.log"
+        },
+        {
+          "index": 12,
+          "functions": [
+            "reservedCommandRecovery",
+            "mixedReservedKeysAndUnmappedDelivery",
+            "heldPageKeyRetainsOwnerAcrossPolicyChange",
+            "nativePointerRequiresLocalEntryAndClicksOnce",
+            "nativePointerControlFamilies",
+            "nativePointerFrameAndShadow",
+            "nativePopupActionIsOneTransport",
+            "popupWithoutUserActivationIsDenied"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "reservedCommandRecovery",
+            "mixedReservedKeysAndUnmappedDelivery",
+            "heldPageKeyRetainsOwnerAcrossPolicyChange",
+            "nativePointerRequiresLocalEntryAndClicksOnce",
+            "nativePointerControlFamilies",
+            "nativePointerFrameAndShadow",
+            "nativePopupActionIsOneTransport",
+            "popupWithoutUserActivationIsDenied"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 27.687886583036743,
+          "failures": [],
+          "log": "remaining-batches/12.log"
+        },
+        {
+          "index": 13,
+          "functions": [
+            "fullscreenApiOutcomes",
+            "clipboardPermissionOutcomes",
+            "selectorReloadActivatesAtBoundary",
+            "requestedWindowPresentationRemainsPendingUntilRestart",
+            "selectorReloadRejectsInvalidAndStaleCandidates",
+            "selectorReloadTimeoutPreservesConfiguration",
+            "selectorDiscoveryUsesProductionPolicy",
+            "startupSelectorValidation"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "fullscreenApiOutcomes",
+            "clipboardPermissionOutcomes",
+            "selectorReloadActivatesAtBoundary",
+            "requestedWindowPresentationRemainsPendingUntilRestart",
+            "selectorReloadRejectsInvalidAndStaleCandidates",
+            "selectorReloadTimeoutPreservesConfiguration",
+            "selectorDiscoveryUsesProductionPolicy",
+            "startupSelectorValidation"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 34.2107914040098,
+          "failures": [],
+          "log": "remaining-batches/13.log"
+        },
+        {
+          "index": 14,
+          "functions": [
+            "staleSelectorCallbackCannotPublish",
+            "unavailableSelectorDocumentTimesOut",
+            "productionHintLifetimeCycles",
+            "scopedGridNativeCoordinates",
+            "mixedPageKeysAndBrowserSequence",
+            "pointerConfigurationInvalidatesHeldConfirmation",
+            "rendererLossCancelsHeldConfirmation",
+            "pointerObservationIntervalExperiment"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "staleSelectorCallbackCannotPublish",
+            "unavailableSelectorDocumentTimesOut",
+            "productionHintLifetimeCycles",
+            "scopedGridNativeCoordinates",
+            "mixedPageKeysAndBrowserSequence",
+            "pointerConfigurationInvalidatesHeldConfirmation",
+            "rendererLossCancelsHeldConfirmation",
+            "pointerObservationIntervalExperiment"
+          ],
+          "returncode": 1,
+          "elapsed_seconds": 59.872278624912724,
+          "failures": [
+            "FAIL!  : ApplicationTests::staleSelectorCallbackCannotPublish() 'evaluate(\"testWindow.browserUi.set_runtime_setting('content.zoom','\" \"1.2',true)\") .toBool()' returned FALSE. ()"
+          ],
+          "log": "remaining-batches/14.log"
+        },
+        {
+          "index": 15,
+          "functions": [
+            "pointerInvalidationBeforeRelease",
+            "targetSearchNeedsConfirmation",
+            "promptAcceptCancelAndNestedRestoration",
+            "stalePromptCannotRestoreAfterConfigChange",
+            "passThroughDocumentBoundaries",
+            "scopedGridResetAndInvalidation",
+            "durablePersistenceFailurePreservesConfiguration",
+            "selectorValidationRejectsWholeCandidate"
+          ],
+          "command": [
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "pointerInvalidationBeforeRelease",
+            "targetSearchNeedsConfirmation",
+            "promptAcceptCancelAndNestedRestoration",
+            "stalePromptCannotRestoreAfterConfigChange",
+            "passThroughDocumentBoundaries",
+            "scopedGridResetAndInvalidation",
+            "durablePersistenceFailurePreservesConfiguration",
+            "selectorValidationRejectsWholeCandidate"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 34.44588802801445,
+          "failures": [],
+          "log": "remaining-batches/15.log"
+        }
+      ],
+      "started_utc": "2026-11-03T23:51:20.524119+00:00",
+      "finished_utc": "2026-11-03T23:59:33.432186+00:00"
+    },
+    "corrected_selector_fixture": {
+      "started_utc": "2026-11-04T00:03:12.292779+00:00",
+      "production_source_commit": "5dfc36e",
+      "source_commit_before_fixture_fix": "316f442",
+      "archive": "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/qt611/release/libferric_browser_engine_qt.a",
+      "archive_sha256": "c744dcf93610ff980fbc738d2d9c4abef23832fc245e74c276cccc379743d866",
+      "frozen_archive_sha256": "07a48103d91ea8c0742fc90cc5e2dc8775803ad694e25319d33b77e7f1b74ff1",
+      "include": "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/qt611/release/build/ferric-browser-engine-qt-30e8a2ad789541bf/out/cxxqtbuild/include",
+      "commands": [
+        {
+          "label": "selector-cmake",
+          "command": [
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/perf-artifacts/with_cached_sdk.sh",
+            "cmake",
+            "-S",
+            "crates/ferric-browser-engine-qt/tests/application",
+            "-B",
+            "target/application-tests-worker",
+            "-DFERRIC_ENGINE_LIBRARY=/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/qt611/release/libferric_browser_engine_qt.a",
+            "-DFERRIC_ENGINE_CXX_INCLUDE_DIR=/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/qt611/release/build/ferric-browser-engine-qt-30e8a2ad789541bf/out/cxxqtbuild/include"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 1.5862493820022792,
+          "log": "selector-cmake.log"
+        },
+        {
+          "label": "selector-build",
+          "command": [
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/perf-artifacts/with_cached_sdk.sh",
+            "cmake",
+            "--build",
+            "target/application-tests-worker",
+            "--target",
+            "application_tests",
+            "--parallel",
+            "2"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 154.66461525310297,
+          "log": "selector-build.log"
+        },
+        {
+          "label": "selector-rerun",
+          "command": [
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/perf-artifacts/with_cached_sdk.sh",
+            "dbus-run-session",
+            "--",
+            "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/application-tests-worker/application_tests",
+            "staleSelectorCallbackCannotPublish",
+            "unavailableSelectorDocumentTimesOut",
+            "selectorReloadRejectsInvalidAndStaleCandidates",
+            "selectorValidationRejectsWholeCandidate"
+          ],
+          "returncode": 0,
+          "elapsed_seconds": 11.390936909010634,
+          "log": "selector-rerun.log"
+        }
+      ],
+      "finished_utc": "2026-11-04T00:06:06.678171+00:00"
+    },
+    "coverage": {
+      "application_functions_listed": 171,
+      "function_statuses": {
+        "credentialViewAssociation": [
+          "PASS"
+        ],
+        "pageWindowPresentation": [
+          "FAIL!",
+          "PASS"
+        ],
+        "repeatWindowRouting": [
+          "PASS"
+        ],
+        "repeatKeyboardCount": [
+          "PASS"
+        ],
+        "repeatAdmission": [
+          "PASS"
+        ],
+        "repeatCommonCommands": [
+          "PASS"
+        ],
+        "productPolishOpenTargets": [
+          "PASS"
+        ],
+        "productPolishLastTabUndo": [
+          "PASS"
+        ],
+        "productPolishTabRecoveryCheckpoint": [
+          "PASS"
+        ],
+        "productPolishTabRecovery": [
+          "PASS"
+        ],
+        "productPolishSessionRecoveryFailure": [
+          "PASS"
+        ],
+        "productPolishSessionRecoveryCancellation": [
+          "PASS",
+          "SKIP"
+        ],
+        "productPolishStartupRecovery": [
+          "PASS",
+          "SKIP"
+        ],
+        "productPolishStopState": [
+          "PASS"
+        ],
+        "productPolishSwitcherLiveUpdates": [
+          "PASS"
+        ],
+        "productPolishSwitcherNavigation": [
+          "PASS"
+        ],
+        "productPolishLiveTitles": [
+          "PASS"
+        ],
+        "productPolishPrivacyIdentity": [
+          "PASS"
+        ],
+        "pageSearchFollowing": [
+          "PASS"
+        ],
+        "pageSearchFeedback": [
+          "PASS"
+        ],
+        "pageSearchDirection": [
+          "PASS"
+        ],
+        "pageSearchEditorPreedit": [
+          "PASS"
+        ],
+        "pageSearchNativeText": [
+          "PASS"
+        ],
+        "pageSearchCrossOriginFrames": [
+          "PASS"
+        ],
+        "pageSearchCancellationAndBindings": [
+          "PASS"
+        ],
+        "urlCopyStatusBar": [
+          "PASS"
+        ],
+        "bottomChromeOverlay": [
+          "PASS"
+        ],
+        "navigationFailureRecovery": [
+          "PASS"
+        ],
+        "streamingFormReload": [
+          "PASS"
+        ],
+        "streamingHistoryTraversal": [
+          "PASS"
+        ],
+        "keyboardGuideOwner": [
+          "PASS"
+        ],
+        "hintNavigationLifecycle": [
+          "PASS"
+        ],
+        "navigationJourneys": [
+          "PASS"
+        ],
+        "spawnCommandModeValidation": [
+          "PASS"
+        ],
+        "scrollTargetCommandChain": [
+          "PASS"
+        ],
+        "deferredNativeRequestsKeepCapturedTargets": [
+          "PASS"
+        ],
+        "productPolishPendingPermissionPolicy": [
+          "PASS"
+        ],
+        "productPolishPermissionQueueBound": [
+          "PASS"
+        ],
+        "productPolishPermissionCapacity": [
+          "PASS"
+        ],
+        "productPolishPopupDurableWork": [
+          "PASS"
+        ],
+        "productPolishPermissionReadiness": [
+          "PASS"
+        ],
+        "productPolishPermissionRevocationScope": [
+          "PASS"
+        ],
+        "productPolishPermissionResetOwner": [
+          "PASS"
+        ],
+        "productPolishPermissionResetQueue": [
+          "PASS"
+        ],
+        "productPolishNotificationResetScope": [
+          "PASS"
+        ],
+        "productPolishNativeNotifications": [
+          "SKIP"
+        ],
+        "productPolishCopyFeedback": [
+          "PASS"
+        ],
+        "productPolishActionFeedback": [
+          "PASS"
+        ],
+        "productPolishSecondarySelectionCommand": [
+          "PASS"
+        ],
+        "actionAvailabilityFeedback": [
+          "PASS"
+        ],
+        "productPolishConfigurationFeedback": [
+          "PASS"
+        ],
+        "productPolishRegisteredActionFeedback": [
+          "PASS"
+        ],
+        "productPolishHintActionFeedback": [
+          "PASS"
+        ],
+        "productPolishRapidDownloadRejection": [
+          "PASS"
+        ],
+        "productPolishExternalActionFeedback": [
+          "PASS"
+        ],
+        "crossOriginConsentHints": [
+          "PASS"
+        ],
+        "crossOriginFrameInvalidation": [
+          "PASS"
+        ],
+        "crossOriginFrameLifetimeCycles": [
+          "SKIP"
+        ],
+        "crossOriginFrameOperationLifetimes": [
+          "PASS"
+        ],
+        "embeddedResourceParity": [
+          "PASS"
+        ],
+        "stretchedPostTitleKeyboardNavigation": [
+          "PASS"
+        ],
+        "hintConfirmationFreezesPendingRefresh": [
+          "PASS"
+        ],
+        "hintCollisionCyclesActualMarkers": [
+          "PASS"
+        ],
+        "rapidHintRejectsConsumedReplay": [
+          "PASS"
+        ],
+        "hintRefreshRetainsInput": [
+          "PASS"
+        ],
+        "hintRefreshDoesNotAutoFollow": [
+          "PASS"
+        ],
+        "clipboardNativeEditing": [
+          "PASS"
+        ],
+        "clipboardChrome": [
+          "PASS"
+        ],
+        "clipboardMenus": [
+          "PASS"
+        ],
+        "clipboardSelectionOwnership": [
+          "PASS"
+        ],
+        "clipboardShortcutOverride": [
+          "PASS"
+        ],
+        "clipboardWaylandTransport": [
+          "SKIP"
+        ],
+        "clipboardSelectionControls": [
+          "PASS"
+        ],
+        "clipboardSelectionChangedRejects": [
+          "PASS"
+        ],
+        "clipboardSelectionLifetimeCycles": [
+          "PASS"
+        ],
+        "clipboardHeldBrowserGesture": [
+          "PASS"
+        ],
+        "clipboardOtherWindows": [
+          "PASS"
+        ],
+        "productPolishPagePrompts": [
+          "PASS"
+        ],
+        "productPolishWindowPrompts": [
+          "PASS"
+        ],
+        "productPolishTlsPrompt": [
+          "PASS"
+        ],
+        "productPolishCertificateGuards": [
+          "PASS"
+        ],
+        "productPolishIdentityWindows": [
+          "PASS"
+        ],
+        "productPolishPromptTeardown": [
+          "PASS"
+        ],
+        "productPolishHttpAuthentication": [
+          "PASS"
+        ],
+        "productPolishFileChooser": [
+          "PASS"
+        ],
+        "productPolishDownloadSelectionFailure": [
+          "PASS"
+        ],
+        "productPolishDownloadIdentity": [
+          "PASS"
+        ],
+        "productPolishWebAuthStates": [
+          "PASS"
+        ],
+        "productPolishNavigationFailure": [
+          "PASS"
+        ],
+        "productPolishManagementSurfaces": [
+          "PASS"
+        ],
+        "productPolishWindowSettings": [
+          "PASS"
+        ],
+        "productPolishNativePageHistory": [
+          "PASS"
+        ],
+        "productPolishSecondaryHistoryCommands": [
+          "PASS"
+        ],
+        "productPolishTransferredSourceClose": [
+          "PASS"
+        ],
+        "productPolishPopupSourceClose": [
+          "PASS"
+        ],
+        "productPolishPopupCommands": [
+          "PASS"
+        ],
+        "productPolishPopupCommandsOpenerIdentity": [
+          "PASS"
+        ],
+        "productPolishSecondaryHints": [
+          "PASS"
+        ],
+        "productPolishNewWindowRouting": [
+          "PASS"
+        ],
+        "productPolishNewWindows": [
+          "PASS"
+        ],
+        "productPolishStartupCleanLink": [
+          "PASS"
+        ],
+        "productPolishCleanLinkOwner": [
+          "PASS"
+        ],
+        "productPolishDevToolsOwner": [
+          "PASS"
+        ],
+        "productPolishInteractiveNewWindow": [
+          "PASS"
+        ],
+        "productPolishSessionPermissionSharing": [
+          "PASS"
+        ],
+        "productPolishCombinedSessionPermissionReset": [
+          "PASS"
+        ],
+        "productPolishContextCatalogBootstrap": [
+          "PASS"
+        ],
+        "productPolishContextCatalogRetainedAfterFailedProfile": [
+          "PASS"
+        ],
+        "productPolishProvisionalTransferFallback": [
+          "PASS"
+        ],
+        "productPolishSecondaryTabs": [
+          "PASS"
+        ],
+        "productPolishSecondaryManagers": [
+          "PASS"
+        ],
+        "productPolishIndependentWindowInput": [
+          "PASS"
+        ],
+        "productPolishPermissionWindowOwnership": [
+          "PASS"
+        ],
+        "productPolishOverlappingModalInput": [
+          "PASS"
+        ],
+        "productPolishUserscriptFeedback": [
+          "PASS"
+        ],
+        "productPolishWindowClose": [
+          "PASS"
+        ],
+        "productPolishPopupScripts": [
+          "PASS"
+        ],
+        "productPolishDocumentIdleLifetime": [
+          "PASS"
+        ],
+        "productPolishSiteLedger": [
+          "PASS"
+        ],
+        "productPolishSessionPreview": [
+          "PASS"
+        ],
+        "productPolishSessionSaveBackpressure": [
+          "PASS"
+        ],
+        "productPolishManagerFeedback": [
+          "PASS"
+        ],
+        "productPolishLibrary": [
+          "PASS"
+        ],
+        "productPolishPrivateLibrary": [
+          "PASS"
+        ],
+        "productPolishStartupProblems": [
+          "PASS"
+        ],
+        "productPolishProfileRecovery": [
+          "PASS"
+        ],
+        "productPolishFailedProfileDiagnostics": [
+          "PASS"
+        ],
+        "productPolishDiagnosticOwners": [
+          "PASS"
+        ],
+        "productPolishDiagnosticReport": [
+          "PASS"
+        ],
+        "productPolishDiagnosticLifecycle": [
+          "PASS"
+        ],
+        "productPolishLocalFilePaths": [
+          "PASS"
+        ],
+        "productPolishUnavailableStorage": [
+          "PASS"
+        ],
+        "productPolishBookmarkTransfer": [
+          "PASS"
+        ],
+        "startupAndConfigPublication": [
+          "PASS"
+        ],
+        "reservedCommandRecovery": [
+          "PASS"
+        ],
+        "realHintKeyboardActivation": [
+          "PASS"
+        ],
+        "hintNativeControls": [
+          "PASS"
+        ],
+        "mixedReservedKeysAndUnmappedDelivery": [
+          "PASS"
+        ],
+        "heldPageKeyRetainsOwnerAcrossPolicyChange": [
+          "PASS"
+        ],
+        "nativePointerRequiresLocalEntryAndClicksOnce": [
+          "PASS"
+        ],
+        "nativePointerControlFamilies": [
+          "PASS"
+        ],
+        "nativePointerFrameAndShadow": [
+          "PASS"
+        ],
+        "nativePopupActionIsOneTransport": [
+          "PASS"
+        ],
+        "popupWithoutUserActivationIsDenied": [
+          "PASS"
+        ],
+        "fullscreenApiOutcomes": [
+          "PASS"
+        ],
+        "clipboardPermissionOutcomes": [
+          "PASS"
+        ],
+        "selectorReloadActivatesAtBoundary": [
+          "PASS"
+        ],
+        "requestedWindowPresentationRemainsPendingUntilRestart": [
+          "PASS"
+        ],
+        "selectorReloadRejectsInvalidAndStaleCandidates": [
+          "PASS"
+        ],
+        "selectorReloadTimeoutPreservesConfiguration": [
+          "PASS"
+        ],
+        "selectorDiscoveryUsesProductionPolicy": [
+          "PASS"
+        ],
+        "startupSelectorValidation": [
+          "PASS"
+        ],
+        "staleSelectorCallbackCannotPublish": [
+          "FAIL!",
+          "PASS"
+        ],
+        "unavailableSelectorDocumentTimesOut": [
+          "PASS"
+        ],
+        "productionHintLifetimeCycles": [
+          "SKIP"
+        ],
+        "scopedGridNativeCoordinates": [
+          "PASS"
+        ],
+        "mixedPageKeysAndBrowserSequence": [
+          "PASS"
+        ],
+        "pointerConfigurationInvalidatesHeldConfirmation": [
+          "PASS"
+        ],
+        "rendererLossCancelsHeldConfirmation": [
+          "PASS"
+        ],
+        "pointerObservationIntervalExperiment": [
+          "PASS"
+        ],
+        "pointerInvalidationBeforeRelease": [
+          "PASS"
+        ],
+        "targetSearchNeedsConfirmation": [
+          "PASS"
+        ],
+        "promptAcceptCancelAndNestedRestoration": [
+          "PASS"
+        ],
+        "stalePromptCannotRestoreAfterConfigChange": [
+          "PASS"
+        ],
+        "passThroughDocumentBoundaries": [
+          "PASS"
+        ],
+        "scopedGridResetAndInvalidation": [
+          "PASS"
+        ],
+        "scopedHintAndSearchJourneys": [
+          "PASS"
+        ],
+        "durablePersistenceFailurePreservesConfiguration": [
+          "PASS"
+        ],
+        "durablePersistenceFlushWaitsForPendingSave": [
+          "PASS"
+        ],
+        "selectorValidationRejectsWholeCandidate": [
+          "PASS"
+        ],
+        "productPolishSettingDurability": [
+          "PASS"
+        ]
+      },
+      "note": "data rows may have both pass and skip; this is function coverage, not an invented unique assertion/test count; pageWindowPresentation has separate portable owned-Wayland coverage",
+      "skip_only_functions": [
+        "productPolishNativeNotifications",
+        "crossOriginFrameLifetimeCycles",
+        "clipboardWaylandTransport",
+        "productionHintLifetimeCycles"
+      ],
+      "functions_with_at_least_one_pass": 167
+    },
+    "status": "20 dedicated native suites and both release IPC probes passed; remaining offscreen-suitable functions covered in bounded batches with corrected selector fixture; monolithic timeout/backend failure remains recorded"
+  },
+  "fixture_followup": {
+    "commit": "316f442",
+    "clippy": "cargo clippy -p xtask --all-targets --all-features --locked -- -D warnings passed",
+    "tests": "cargo test --release -p xtask --locked:28 passed"
+  },
+  "known_limitations": [
+    "GPU multiwindow Quit fixture times out on baseline and variants; latency null; no forced-kill shutdown success claimed",
+    "headless owned display/QtButton.click does not qualify physical input or actual Hyprland grouping",
+    "synthetic workloads and about:blank, not live-site speed or energy measurements",
+    "original monolithic native offscreen run failed/timed out; dedicated and bounded reruns do not erase that qualification failure"
+  ],
+  "not_changed": [
+    "security enforcement/activation preflight",
+    "profile and native-page ownership invariants",
+    "SDK compatibility guard",
+    "dependencies and host configuration"
+  ]
+}

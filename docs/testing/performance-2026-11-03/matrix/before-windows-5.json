@@ -1,0 +1,516 @@
+{
+  "aggregation": "top-level measurements describe the first repetition; runs contains every independent repetition",
+  "application": "0.1.0",
+  "build": {
+    "browser": "ferric-browser",
+    "os": "linux",
+    "parallelism": 4,
+    "profile": "release",
+    "target": "x86_64"
+  },
+  "measurements": [
+    {
+      "name": "startup.ipc_ready",
+      "value_ms": 2336.455489
+    },
+    {
+      "name": "workload.ready",
+      "value_ms": 3917.1322250000003
+    },
+    {
+      "cleanup": "owned fixture is terminated after a failed shutdown; failure is not a successful latency sample",
+      "confirmation": "test-only Qt button click after measurement; helper dormant until authorization",
+      "error": "Ferric Browser did not exit within 30 seconds: qt.qpa.services: Failed to register with host portal QDBusError(\"org.freedesktop.portal.Error.Failed\", \"Could not register app ID: Connection already associated with an application ID\")\nperf quit confirmation delivered\nperf shutdown state \"\" QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(bool, true) QVariant(bool, false)\nperf shutdown state \"\" QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(bool, true) QVariant(bool, false)\nperf shutdown state \"\" QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(bool, true) QVariant(bool, false)\nperf shutdown state \"\" QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(bool, true) QVariant(bool, false)\nperf shutdown state \"ferric_browserWindow\" QVariant(bool, false) QVariant(bool, true) QVariant(QString, \"Saving browser data\") QVariant(bool, false) QVariant(Invalid) QVariant(Invalid)\n",
+      "name": "shutdown",
+      "owned_quit_confirmed": true,
+      "value_ms": null
+    },
+    {
+      "appeared": 0,
+      "disappeared": 0,
+      "name": "idle.process_tree_cpu",
+      "normalization": "one logical CPU = 100%; null if a process exited",
+      "value_percent": 18.786713859363548
+    },
+    {
+      "median": 67692.5,
+      "name": "ipc.forward",
+      "p95": 89360.54699999999,
+      "p99": null,
+      "raw_samples": [
+        79190.728,
+        71993.887,
+        99654.777,
+        83530.592,
+        81791.846,
+        89360.54699999999,
+        76564.504,
+        71529.614,
+        75850.88600000001,
+        70559.31999999999,
+        66357.03199999999,
+        67686.31,
+        67232.45899999999,
+        68471.269,
+        64804.195999999996,
+        62189.060999999994,
+        65106.238999999994,
+        64467.097,
+        67626.527,
+        72695.096,
+        67698.69,
+        64315.242999999995,
+        65191.708,
+        64681.14599999999,
+        63264.827999999994,
+        72161.691,
+        65507.81,
+        63596.77099999999,
+        66765.322,
+        68228.09300000001
+      ],
+      "unit": "microseconds"
+    },
+    {
+      "name": "idle.main_cpu",
+      "value_percent": 18.68678453032438
+    },
+    {
+      "name": "process_tree",
+      "processes": 14,
+      "pss_kib": 459307,
+      "renderers": 10,
+      "rss_kib": 1489312,
+      "threads": 211,
+      "unavailable_memory_processes": 0,
+      "unavailable_thread_processes": 0
+    }
+  ],
+  "method": {
+    "idle_window_seconds": 10.007072094,
+    "ipc_sample_boundary": "fresh forwarding CLI process through decoded owner response",
+    "memory": "sum of Linux smaps_rollup values across the browser process tree",
+    "notes": "Disposable basedir, automatic Qt graphics selection, closed DevTools; see workload for page configuration.",
+    "startup_ready_boundary": "successful owner-IPC operations query"
+  },
+  "provenance": {
+    "chromium_flags": null,
+    "distribution": "NAME=\"Omarchy\"\nPRETTY_NAME=\"Omarchy\"\nID=omarchy\nID_LIKE=arch\nBUILD_ID=\"4.0.6\"\nVERSION_ID=\"4.0.6\"\nANSI_COLOR=\"38;2;158;206;106\"\nHOME_URL=\"https://omarchy.org/\"\nDOCUMENTATION_URL=\"https://learn.omacom.io/2/the-omarchy-manual\"\nSUPPORT_URL=\"https://discord.gg/tXFUdasqhY\"\nBUG_REPORT_URL=\"https://github.com/basecamp/omarchy/issues\"\nLOGO=omarchy\n",
+    "invocation": [
+      "target/perf-artifacts/pre-workers/release/xtask",
+      "perf",
+      "--suite",
+      "ui",
+      "--samples",
+      "30",
+      "--repetitions",
+      "2",
+      "--pages",
+      "5",
+      "--presentation",
+      "windows",
+      "--idle-seconds",
+      "10",
+      "--quit-plugin-dir",
+      "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/performance-helpers/plugins",
+      "--output",
+      "target/perf-evidence/qualified/before-windows-5.json"
+    ],
+    "kernel": "Linux 7.2.11-arch1-1 #1 SMP PREEMPT_DYNAMIC Fri, 16 Oct 2026 00:28:58 +0000 x86_64",
+    "qpa_platform": "wayland",
+    "qt": "6.11.2",
+    "qt_webengine": "6.11.2",
+    "quick_backend": null,
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "rustflags": null,
+    "scale_factor": null,
+    "source_commit": "9ddc98d0d51ed44e207ba20993f47859302b6a17",
+    "source_note": "git describes the invoking checkout; build the binaries from this checkout before measuring",
+    "working_tree_status": "M crates/ferric-browser-application/src/lib.rs\n M crates/ferric-browser-application/src/storage.rs\n M crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml\n M crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml\n M crates/ferric-browser-engine-qt/src/bridge.rs\n M crates/ferric-browser-engine-qt/src/browser_ui_defaults.rs\n M crates/ferric-browser-engine-qt/src/browser_ui_library.rs\n M crates/ferric-browser-engine-qt/src/browser_ui_maintenance.rs\n M crates/ferric-browser-engine-qt/src/browser_ui_profile_setup.rs\n M crates/ferric-browser-engine-qt/src/lib.rs\n M crates/ferric-browser-engine-qt/tests/application/tst_switcher.cpp\n M crates/ferric-browser-engine-qt/tests/blocking-evidence/CMakeLists.txt\n M crates/xtask/src/perf.rs\n?? crates/ferric-browser-engine-qt/qml/components/FerricStoragePollScheduler.qml\n?? crates/ferric-browser-engine-qt/tests/blocking-evidence/hostname_perf.cpp\n?? crates/ferric-browser-engine-qt/tests/performance-helpers/\n?? crates/ferric-browser-engine-qt/tests/qml-perf/tst_tab_reconciliation_performance.qml\n?? crates/ferric-browser-engine-qt/tests/qml/tst_storage_poll_scheduler.qml\n?? tools/performance/with_qt611.sh"
+  },
+  "reference_environment": {
+    "cpu_governor": "powersave",
+    "cpu_model": "Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz",
+    "memory": "MemTotal:       16122132 kB",
+    "wayland_display": "perf"
+  },
+  "repetition_count": 2,
+  "runs": [
+    {
+      "application": "0.1.0",
+      "build": {
+        "browser": "ferric-browser",
+        "os": "linux",
+        "parallelism": 4,
+        "profile": "release",
+        "target": "x86_64"
+      },
+      "measurements": [
+        {
+          "name": "startup.ipc_ready",
+          "value_ms": 2336.455489
+        },
+        {
+          "name": "workload.ready",
+          "value_ms": 3917.1322250000003
+        },
+        {
+          "cleanup": "owned fixture is terminated after a failed shutdown; failure is not a successful latency sample",
+          "confirmation": "test-only Qt button click after measurement; helper dormant until authorization",
+          "error": "Ferric Browser did not exit within 30 seconds: qt.qpa.services: Failed to register with host portal QDBusError(\"org.freedesktop.portal.Error.Failed\", \"Could not register app ID: Connection already associated with an application ID\")\nperf quit confirmation delivered\nperf shutdown state \"\" QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(bool, true) QVariant(bool, false)\nperf shutdown state \"\" QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(bool, true) QVariant(bool, false)\nperf shutdown state \"\" QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(bool, true) QVariant(bool, false)\nperf shutdown state \"\" QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(bool, true) QVariant(bool, false)\nperf shutdown state \"ferric_browserWindow\" QVariant(bool, false) QVariant(bool, true) QVariant(QString, \"Saving browser data\") QVariant(bool, false) QVariant(Invalid) QVariant(Invalid)\n",
+          "name": "shutdown",
+          "owned_quit_confirmed": true,
+          "value_ms": null
+        },
+        {
+          "appeared": 0,
+          "disappeared": 0,
+          "name": "idle.process_tree_cpu",
+          "normalization": "one logical CPU = 100%; null if a process exited",
+          "value_percent": 18.786713859363548
+        },
+        {
+          "median": 67692.5,
+          "name": "ipc.forward",
+          "p95": 89360.54699999999,
+          "p99": null,
+          "raw_samples": [
+            79190.728,
+            71993.887,
+            99654.777,
+            83530.592,
+            81791.846,
+            89360.54699999999,
+            76564.504,
+            71529.614,
+            75850.88600000001,
+            70559.31999999999,
+            66357.03199999999,
+            67686.31,
+            67232.45899999999,
+            68471.269,
+            64804.195999999996,
+            62189.060999999994,
+            65106.238999999994,
+            64467.097,
+            67626.527,
+            72695.096,
+            67698.69,
+            64315.242999999995,
+            65191.708,
+            64681.14599999999,
+            63264.827999999994,
+            72161.691,
+            65507.81,
+            63596.77099999999,
+            66765.322,
+            68228.09300000001
+          ],
+          "unit": "microseconds"
+        },
+        {
+          "name": "idle.main_cpu",
+          "value_percent": 18.68678453032438
+        },
+        {
+          "name": "process_tree",
+          "processes": 14,
+          "pss_kib": 459307,
+          "renderers": 10,
+          "rss_kib": 1489312,
+          "threads": 211,
+          "unavailable_memory_processes": 0,
+          "unavailable_thread_processes": 0
+        }
+      ],
+      "method": {
+        "idle_window_seconds": 10.007072094,
+        "ipc_sample_boundary": "fresh forwarding CLI process through decoded owner response",
+        "memory": "sum of Linux smaps_rollup values across the browser process tree",
+        "notes": "Disposable basedir, automatic Qt graphics selection, closed DevTools; see workload for page configuration.",
+        "startup_ready_boundary": "successful owner-IPC operations query"
+      },
+      "provenance": {
+        "chromium_flags": null,
+        "distribution": "NAME=\"Omarchy\"\nPRETTY_NAME=\"Omarchy\"\nID=omarchy\nID_LIKE=arch\nBUILD_ID=\"4.0.6\"\nVERSION_ID=\"4.0.6\"\nANSI_COLOR=\"38;2;158;206;106\"\nHOME_URL=\"https://omarchy.org/\"\nDOCUMENTATION_URL=\"https://learn.omacom.io/2/the-omarchy-manual\"\nSUPPORT_URL=\"https://discord.gg/tXFUdasqhY\"\nBUG_REPORT_URL=\"https://github.com/basecamp/omarchy/issues\"\nLOGO=omarchy\n",
+        "invocation": [
+          "target/perf-artifacts/pre-workers/release/xtask",
+          "perf",
+          "--suite",
+          "ui",
+          "--samples",
+          "30",
+          "--repetitions",
+          "2",
+          "--pages",
+          "5",
+          "--presentation",
+          "windows",
+          "--idle-seconds",
+          "10",
+          "--quit-plugin-dir",
+          "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/performance-helpers/plugins",
+          "--output",
+          "target/perf-evidence/qualified/before-windows-5.json"
+        ],
+        "kernel": "Linux 7.2.11-arch1-1 #1 SMP PREEMPT_DYNAMIC Fri, 16 Oct 2026 00:28:58 +0000 x86_64",
+        "qpa_platform": "wayland",
+        "qt": "6.11.2",
+        "qt_webengine": "6.11.2",
+        "quick_backend": null,
+        "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+        "rustflags": null,
+        "scale_factor": null,
+        "source_commit": "9ddc98d0d51ed44e207ba20993f47859302b6a17",
+        "source_note": "git describes the invoking checkout; build the binaries from this checkout before measuring",
+        "working_tree_status": "M crates/ferric-browser-application/src/lib.rs\n M crates/ferric-browser-application/src/storage.rs\n M crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml\n M crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml\n M crates/ferric-browser-engine-qt/src/bridge.rs\n M crates/ferric-browser-engine-qt/src/browser_ui_defaults.rs\n M crates/ferric-browser-engine-qt/src/browser_ui_library.rs\n M crates/ferric-browser-engine-qt/src/browser_ui_maintenance.rs\n M crates/ferric-browser-engine-qt/src/browser_ui_profile_setup.rs\n M crates/ferric-browser-engine-qt/src/lib.rs\n M crates/ferric-browser-engine-qt/tests/application/tst_switcher.cpp\n M crates/ferric-browser-engine-qt/tests/blocking-evidence/CMakeLists.txt\n M crates/xtask/src/perf.rs\n?? crates/ferric-browser-engine-qt/qml/components/FerricStoragePollScheduler.qml\n?? crates/ferric-browser-engine-qt/tests/blocking-evidence/hostname_perf.cpp\n?? crates/ferric-browser-engine-qt/tests/performance-helpers/\n?? crates/ferric-browser-engine-qt/tests/qml-perf/tst_tab_reconciliation_performance.qml\n?? crates/ferric-browser-engine-qt/tests/qml/tst_storage_poll_scheduler.qml\n?? tools/performance/with_qt611.sh"
+      },
+      "reference_environment": {
+        "cpu_governor": "powersave",
+        "cpu_model": "Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz",
+        "memory": "MemTotal:       16122132 kB",
+        "wayland_display": "perf"
+      },
+      "runtime": {
+        "gpu_driver": {
+          "provenance": "runtime-sysfs",
+          "reason": "Linux DRM sysfs reported the bound graphics driver",
+          "status": "available",
+          "value": "i915"
+        },
+        "graphics_backend": {
+          "provenance": "runtime-qt",
+          "reason": "reported by QQuickWindow::graphicsApi",
+          "status": "available",
+          "value": "opengl"
+        },
+        "software_rendering": {
+          "provenance": "observed",
+          "reason": "software-rendering mode was not requested",
+          "status": "not-active",
+          "value": "qualified graphics path"
+        },
+        "window_system": {
+          "provenance": "runtime-qt",
+          "reason": "reported by QGuiApplication::platformName",
+          "status": "available",
+          "value": "wayland"
+        }
+      },
+      "sample_count": 30,
+      "schema_version": 2,
+      "suite": "ui",
+      "targets": {
+        "scope": "requested page workload on the current native desktop session; no fixed release thresholds are claimed"
+      },
+      "timestamp_unix_seconds": 1793730482
+    },
+    {
+      "application": "0.1.0",
+      "build": {
+        "browser": "ferric-browser",
+        "os": "linux",
+        "parallelism": 4,
+        "profile": "release",
+        "target": "x86_64"
+      },
+      "measurements": [
+        {
+          "name": "startup.ipc_ready",
+          "value_ms": 2297.7133
+        },
+        {
+          "name": "workload.ready",
+          "value_ms": 3881.738626
+        },
+        {
+          "cleanup": "owned fixture is terminated after a failed shutdown; failure is not a successful latency sample",
+          "confirmation": "test-only Qt button click after measurement; helper dormant until authorization",
+          "error": "Ferric Browser did not exit within 30 seconds: perf quit confirmation delivered\nperf shutdown state \"\" QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(bool, true) QVariant(bool, false)\nperf shutdown state \"\" QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(bool, true) QVariant(bool, false)\nperf shutdown state \"\" QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(bool, true) QVariant(bool, false)\nperf shutdown state \"\" QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(Invalid) QVariant(bool, true) QVariant(bool, false)\nperf shutdown state \"ferric_browserWindow\" QVariant(bool, false) QVariant(bool, true) QVariant(QString, \"Saving browser data\") QVariant(bool, false) QVariant(Invalid) QVariant(Invalid)\n",
+          "name": "shutdown",
+          "owned_quit_confirmed": true,
+          "value_ms": null
+        },
+        {
+          "appeared": 0,
+          "disappeared": 0,
+          "name": "idle.process_tree_cpu",
+          "normalization": "one logical CPU = 100%; null if a process exited",
+          "value_percent": 18.886332691931923
+        },
+        {
+          "median": 67918.52100000001,
+          "name": "ipc.forward",
+          "p95": 95336.878,
+          "p99": null,
+          "raw_samples": [
+            99370.29699999999,
+            76952.172,
+            81330.48599999999,
+            85159.068,
+            95336.878,
+            86872.927,
+            90393.33300000001,
+            70287.923,
+            68491.19900000001,
+            67299.439,
+            73992.27399999999,
+            67919.304,
+            64921.383,
+            61960.432,
+            66504.009,
+            65525.954,
+            65927.07100000001,
+            65631.325,
+            73560.425,
+            62690.911,
+            65888.17,
+            65094.53599999999,
+            69165.027,
+            67041.139,
+            66276.423,
+            67917.73800000001,
+            68205.09,
+            65520.812999999995,
+            61953.068,
+            69642.503
+          ],
+          "unit": "microseconds"
+        },
+        {
+          "name": "idle.main_cpu",
+          "value_percent": 18.786405005731226
+        },
+        {
+          "name": "process_tree",
+          "processes": 14,
+          "pss_kib": 456616,
+          "renderers": 10,
+          "rss_kib": 1487748,
+          "threads": 209,
+          "unavailable_memory_processes": 0,
+          "unavailable_thread_processes": 0
+        }
+      ],
+      "method": {
+        "idle_window_seconds": 10.007236613,
+        "ipc_sample_boundary": "fresh forwarding CLI process through decoded owner response",
+        "memory": "sum of Linux smaps_rollup values across the browser process tree",
+        "notes": "Disposable basedir, automatic Qt graphics selection, closed DevTools; see workload for page configuration.",
+        "startup_ready_boundary": "successful owner-IPC operations query"
+      },
+      "provenance": {
+        "chromium_flags": null,
+        "distribution": "NAME=\"Omarchy\"\nPRETTY_NAME=\"Omarchy\"\nID=omarchy\nID_LIKE=arch\nBUILD_ID=\"4.0.6\"\nVERSION_ID=\"4.0.6\"\nANSI_COLOR=\"38;2;158;206;106\"\nHOME_URL=\"https://omarchy.org/\"\nDOCUMENTATION_URL=\"https://learn.omacom.io/2/the-omarchy-manual\"\nSUPPORT_URL=\"https://discord.gg/tXFUdasqhY\"\nBUG_REPORT_URL=\"https://github.com/basecamp/omarchy/issues\"\nLOGO=omarchy\n",
+        "invocation": [
+          "target/perf-artifacts/pre-workers/release/xtask",
+          "perf",
+          "--suite",
+          "ui",
+          "--samples",
+          "30",
+          "--repetitions",
+          "2",
+          "--pages",
+          "5",
+          "--presentation",
+          "windows",
+          "--idle-seconds",
+          "10",
+          "--quit-plugin-dir",
+          "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/performance-helpers/plugins",
+          "--output",
+          "target/perf-evidence/qualified/before-windows-5.json"
+        ],
+        "kernel": "Linux 7.2.11-arch1-1 #1 SMP PREEMPT_DYNAMIC Fri, 16 Oct 2026 00:28:58 +0000 x86_64",
+        "qpa_platform": "wayland",
+        "qt": "6.11.2",
+        "qt_webengine": "6.11.2",
+        "quick_backend": null,
+        "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+        "rustflags": null,
+        "scale_factor": null,
+        "source_commit": "9ddc98d0d51ed44e207ba20993f47859302b6a17",
+        "source_note": "git describes the invoking checkout; build the binaries from this checkout before measuring",
+        "working_tree_status": "M crates/ferric-browser-application/src/lib.rs\n M crates/ferric-browser-application/src/storage.rs\n M crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml\n M crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml\n M crates/ferric-browser-engine-qt/src/bridge.rs\n M crates/ferric-browser-engine-qt/src/browser_ui_defaults.rs\n M crates/ferric-browser-engine-qt/src/browser_ui_library.rs\n M crates/ferric-browser-engine-qt/src/browser_ui_maintenance.rs\n M crates/ferric-browser-engine-qt/src/browser_ui_profile_setup.rs\n M crates/ferric-browser-engine-qt/src/lib.rs\n M crates/ferric-browser-engine-qt/tests/application/tst_switcher.cpp\n M crates/ferric-browser-engine-qt/tests/blocking-evidence/CMakeLists.txt\n M crates/xtask/src/perf.rs\n?? crates/ferric-browser-engine-qt/qml/components/FerricStoragePollScheduler.qml\n?? crates/ferric-browser-engine-qt/tests/blocking-evidence/hostname_perf.cpp\n?? crates/ferric-browser-engine-qt/tests/performance-helpers/\n?? crates/ferric-browser-engine-qt/tests/qml-perf/tst_tab_reconciliation_performance.qml\n?? crates/ferric-browser-engine-qt/tests/qml/tst_storage_poll_scheduler.qml\n?? tools/performance/with_qt611.sh"
+      },
+      "reference_environment": {
+        "cpu_governor": "powersave",
+        "cpu_model": "Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz",
+        "memory": "MemTotal:       16122132 kB",
+        "wayland_display": "perf"
+      },
+      "runtime": {
+        "gpu_driver": {
+          "provenance": "runtime-sysfs",
+          "reason": "Linux DRM sysfs reported the bound graphics driver",
+          "status": "available",
+          "value": "i915"
+        },
+        "graphics_backend": {
+          "provenance": "runtime-qt",
+          "reason": "reported by QQuickWindow::graphicsApi",
+          "status": "available",
+          "value": "opengl"
+        },
+        "software_rendering": {
+          "provenance": "observed",
+          "reason": "software-rendering mode was not requested",
+          "status": "not-active",
+          "value": "qualified graphics path"
+        },
+        "window_system": {
+          "provenance": "runtime-qt",
+          "reason": "reported by QGuiApplication::platformName",
+          "status": "available",
+          "value": "wayland"
+        }
+      },
+      "sample_count": 30,
+      "schema_version": 2,
+      "suite": "ui",
+      "targets": {
+        "scope": "requested page workload on the current native desktop session; no fixed release thresholds are claimed"
+      },
+      "timestamp_unix_seconds": 1793730529
+    }
+  ],
+  "runtime": {
+    "gpu_driver": {
+      "provenance": "runtime-sysfs",
+      "reason": "Linux DRM sysfs reported the bound graphics driver",
+      "status": "available",
+      "value": "i915"
+    },
+    "graphics_backend": {
+      "provenance": "runtime-qt",
+      "reason": "reported by QQuickWindow::graphicsApi",
+      "status": "available",
+      "value": "opengl"
+    },
+    "software_rendering": {
+      "provenance": "observed",
+      "reason": "software-rendering mode was not requested",
+      "status": "not-active",
+      "value": "qualified graphics path"
+    },
+    "window_system": {
+      "provenance": "runtime-qt",
+      "reason": "reported by QGuiApplication::platformName",
+      "status": "available",
+      "value": "wayland"
+    }
+  },
+  "sample_count": 30,
+  "schema_version": 2,
+  "suite": "ui",
+  "targets": {
+    "scope": "requested page workload on the current native desktop session; no fixed release thresholds are claimed"
+  },
+  "timestamp_unix_seconds": 1793730482,
+  "workload": {
+    "pages": 5,
+    "presentation": "windows",
+    "url": "about:blank"
+  }
+}

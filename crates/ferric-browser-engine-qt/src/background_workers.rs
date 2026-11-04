@@ -266,8 +266,8 @@ impl NetworkPolicyWorker {
 }
 
 impl EditorWriteWorker {
-    pub(super) fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
+    pub(super) fn new() -> Self {
+        let inner = SingleFlightWorker::deferred(
             "ferric-browser-editor-writer",
             |(path, bytes): (PathBuf, Vec<u8>)| {
                 (|| {
@@ -293,9 +293,8 @@ impl EditorWriteWorker {
                     Ok(path)
                 })()
             },
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
+        );
+        Self { inner }
     }
 
     pub(super) fn request(&mut self, path: PathBuf, bytes: Vec<u8>) -> Result<(), String> {
@@ -321,8 +320,8 @@ impl EditorWriteWorker {
 }
 
 impl PrintWorker {
-    pub(super) fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn("ferric-browser-print-submit", |path: PathBuf| {
+    pub(super) fn new() -> Self {
+        let inner = SingleFlightWorker::deferred("ferric-browser-print-submit", |path: PathBuf| {
             let mut command = Command::new("lp");
             command
                 .arg(&path)
@@ -357,9 +356,8 @@ impl PrintWorker {
                     }
                 }
             }
-        })
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
+        });
+        Self { inner }
     }
 
     pub(super) fn request(&mut self, path: PathBuf) -> Result<(), String> {

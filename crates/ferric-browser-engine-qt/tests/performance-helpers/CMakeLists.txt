@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(ferric_performance_helpers LANGUAGES CXX)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_CXX_STANDARD 17)
+find_package(Qt6 REQUIRED COMPONENTS Quick)
+add_library(ferric_perf_quit_plugin MODULE quit_plugin.cpp)
+target_link_libraries(ferric_perf_quit_plugin PRIVATE Qt6::Quick)
+set_target_properties(ferric_perf_quit_plugin PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/plugins/generic")

@@ -1,0 +1,25 @@
+{
+  "started_utc": "2026-11-04T00:06:11.355319+00:00",
+  "command": [
+    "/home/tom/Projects/ferric-everyday-work/perf-measured-efficiency/target/perf-artifacts/with_cached_sdk.sh",
+    "python3",
+    "tools/performance/benchmark_ui_pair.py",
+    "--baseline",
+    "target/perf-artifacts/projection/release",
+    "--candidate",
+    "target/perf-artifacts/storage/release",
+    "--plugin-dir",
+    "target/performance-helpers/plugins",
+    "--pages",
+    "20",
+    "--presentation",
+    "windows",
+    "--idle-seconds",
+    "20",
+    "--output",
+    "target/perf-evidence/qualified/storage-cpu-paired-20.json"
+  ],
+  "method": "isolated storage-scheduler before/after; five alternating process pairs; no compiler or native test job during samples",
+  "finished_utc": "2026-11-04T00:16:37.178813+00:00",
+  "returncode": 0
+}

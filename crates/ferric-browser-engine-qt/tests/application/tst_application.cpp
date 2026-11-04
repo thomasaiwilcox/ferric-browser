@@ -1381,10 +1381,18 @@ void ApplicationTests::staleSelectorCallbackCannotPublish() {
             .object();
     const auto generation = pending.value("generation").toString();
     QVERIFY(!generation.isEmpty());
-    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('content.zoom','"
-                     "1.2',true)")
-                .toBool());
+    // The management surface rejects a second pending settings action. A
+    // command can supersede the configuration while validation is outstanding;
+    // its old callback must still be unable to publish.
+    QVERIFY(!evaluate("testWindow.browserUi.set_runtime_setting('content.zoom','"
+                      "1.2',true)")
+                 .toBool());
+    QVERIFY(text("runtime_setting_error").contains("still pending"));
+    QVERIFY(command("set --temp content.zoom=1.2"));
     const auto accepted = text("config_json");
+    QCOMPARE(QJsonDocument::fromJson(accepted.toUtf8()).object()
+                 .value("content").toObject().value("zoom").toDouble(),
+             1.2);
     evaluate("testWindow.browserUi.complete_selector_validation(" +
              quoted(generation) + ",'{\"ok\":true}')");
     QCOMPARE(text("config_json"), accepted);

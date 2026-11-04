@@ -1,0 +1,7 @@
+{
+  "frozen_harness_build_source": "8f67af0e53faf3cbe114de059b266d004f1e2a2c",
+  "equivalent_reachable_source": "5dfc36eca091a0957f226c8a4f57f6a0e68ffac4",
+  "xtask_tree_sha1": "889caaa70ead3fde0eb69840aacccc3ce9acef07",
+  "meaning": "entire xtask crate tree identical in both commits; later316f442 changes smoke fixtures only; performance suite source unchanged",
+  "perf_source_sha256": "6e33c2306064122cefcdfbc1b7c8c01558ddcacf91cd32c443c6f61671c27339"
+}

@@ -3,6 +3,7 @@ import QtQuick.Controls
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
 import "../scripts/TargetSearchPresentation.js" as TargetSearchPresentation
+import "../scripts/HintPresentation.js" as HintPresentation
 
 // One page-interaction workspace per native window. Rust retains selection,
 // permits and action authority; this object owns its view leases and presentation.
@@ -477,14 +478,8 @@ Item {
             var wasTruncated = window.hintCollectionTruncated
             window.hintCollectionTruncated = !!(value && value.truncated)
             var collectedViewport = value && value.viewport ? value.viewport : ({})
-            var collectedWidth = Number(collectedViewport.width || 0)
-            var collectedHeight = Number(collectedViewport.height || 0)
-            window.hintViewport = ({
-                width: Number.isFinite(collectedWidth) && collectedWidth > 0
-                       ? collectedWidth : 0,
-                height: Number.isFinite(collectedHeight) && collectedHeight > 0
-                        ? collectedHeight : 0
-            })
+            var viewportSnapshot = HintPresentation.viewportSnapshot(collectedViewport, window.hintViewport)
+            if (viewportSnapshot !== window.hintViewport) window.hintViewport = viewportSnapshot
             var payload = value && value.candidates !== undefined
                     ? {candidates: value.candidates,
                        selector_revision: value.selector_revision}

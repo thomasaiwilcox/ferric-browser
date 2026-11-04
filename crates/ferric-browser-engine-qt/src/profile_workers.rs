@@ -86,8 +86,8 @@ pub(super) fn profile_from_list_values(values: &str, name: &str) -> Option<(Stri
 }
 
 impl ProfileDeleteWorker {
-    pub(super) fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
+    pub(super) fn new() -> Self {
+        let inner = SingleFlightWorker::deferred(
             "ferric-browser-profile-mutator",
             |request: ProfileMutation| {
                 (|| match request {
@@ -131,9 +131,8 @@ impl ProfileDeleteWorker {
                     }
                 })()
             },
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
+        );
+        Self { inner }
     }
 
     pub(super) fn request_create(
@@ -190,9 +189,9 @@ impl ProfileDeleteWorker {
 }
 
 impl ProfileListWorker {
-    pub(super) fn spawn() -> Result<Self, String> {
+    pub(super) fn new() -> Self {
         let inner =
-            SingleFlightWorker::spawn("ferric-browser-profile-reader", |roots: StorageRoots| {
+            SingleFlightWorker::deferred("ferric-browser-profile-reader", |roots: StorageRoots| {
                 ProfileRegistry::open(&roots)
                     .map(|registry| {
                         registry
@@ -205,9 +204,8 @@ impl ProfileListWorker {
                             .join("\n")
                     })
                     .map_err(|error| format!("profile registry unavailable: {error}"))
-            })
-            .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
+            });
+        Self { inner }
     }
 
     pub(super) fn request(&mut self, roots: StorageRoots) -> Result<(), String> {
@@ -233,13 +231,12 @@ impl ProfileListWorker {
 }
 
 impl ProfilePreviewWorker {
-    pub(super) fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
+    pub(super) fn new() -> Self {
+        let inner = SingleFlightWorker::deferred(
             "ferric-browser-profile-preview-reader",
             |(roots, name): (StorageRoots, String)| profile_delete_preview_text(&roots, &name),
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
+        );
+        Self { inner }
     }
 
     pub(super) fn request(&mut self, roots: StorageRoots, name: String) -> Result<(), String> {
