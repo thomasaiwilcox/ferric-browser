@@ -64,8 +64,8 @@ Performance must use the existing harness conventions: five alternating
 independent process pairs, ten warmups, 100 latency samples, one/twenty-window
 startup, recreation and idle measurements. No compilation during measurements.
 Baseline-only idle repetitions must establish variability first. An ordinary
-latency increase exceeding both 5% and 1 ms fails qualification. No measurements
-have yet been claimed for this migration.
+latency increase exceeding both 5% and 1 ms fails qualification. Only diagnostic pilot receipts exist; no official performance qualification
+has been claimed for this migration.
 
 ## Dependency inventory
 
@@ -117,8 +117,8 @@ native/portal CTests passing. `sanitizers-final.{log,xml}` records all five
 native/control CTests passing under AddressSanitizer and UndefinedBehaviorSanitizer,
 including graceful compositor teardown and leak detection. A single narrow
 suppression matches Qt 6.11.2's `QWaylandDisplay::createSurface` allocation,
-reproduced by the Qt-only successive-window control. The final run reports one
-96-byte allocation in each native variant and two in the Qt-only control.
+reproduced by the Qt-only successive-window control. Runs reproduce the same
+96-byte Qt allocation in bridge variants and one or two in the Qt-only control.
 The native churn run does not accumulate these allocations across recreations.
 Export objects, subscriptions,
 the context and owned fixture allocations remain checked. The unchanged
@@ -127,76 +127,138 @@ baseline chooser separately reproduced Qt GUI/Wayland backing-store leaks.
 Native proof has passed; this permits dependent migration. It does not replace
 the complete product, installed-runtime, Rust freshness and performance gates.
 
-## Current source and completed build gates
+## Current implementation and bound source
 
-The current product/test/qualification source is
-`2a765e2143ea5bc8046a7fb1b82e2319b2a055b1`. Later evidence-only documentation
-commits do not change the qualification input manifest. The protocol context,
-generation-bound chooser, tagging and Rust freshness implementation are in
-place. Current production and native targets, CI, packaging and SDK wrappers
-have no KDE discovery or linkage. The historical implementation-pack validators
-remain unchanged; the successor is `ferric.kde-free-wayland.v2`.
+The current product, test and qualification input revision is
+`1257101f6eead8e369d2ced87fd773ad6850da5b`. Documentation-only commits do not
+change the qualification input manifest. The six ordered work packages have
+implementation commits on `migration/kde-free-wayland`; the final qualification
+package remains incomplete. No merge or replacement of the user installation
+has occurred.
 
-An isolated release rebuild completed in 14 minutes 44 seconds with KDE package
-files and the historical local prefix unavailable, networking disabled, and
-host files read-only outside the declared build/cache directories. Only test
-fixture inputs changed during that build; compiled product inputs were
-unchanged. The final source-bound revalidation passes with the same namespace
-policy. Its inventory and exact command are in
-`target/kde-free-evidence/qualified-final/fresh-build*`.
+The owned protocol context, generation-bound chooser, tagging and Rust native
+witnesses are implemented. Production and native targets, CI, packaging and SDK
+wrappers no longer discover, fetch or link KDE components. Historical
+implementation-pack validators and accepted KF6 receipts remain unchanged. The
+current qualification successor is `ferric.kde-free-wayland.v2`; no final v2
+qualification receipt has been issued.
 
-The actual package recipe staged 41 files under
-`target/kde-free-install-qualified`, including the separately built helper and
-protocol licenses/provenance. The installed helper check passes. The release
-and installed browser have the same SHA-256:
+The explicitly unqualified [progress manifest](kde-removal-2026-11-04/progress.json)
+records exact source, artifact and receipt hashes. Complete local evidence is in
+`target/kde-free-evidence/qualified-1257101`. Earlier failed attempts, setup
+failures and receipts under other input revisions are retained separately.
+
+## Completed verification
+
+An initial clean isolated release rebuild took 14 minutes 44 seconds. Its mount
+namespace made installed KDE package files and the historical local prefix
+unavailable, disabled networking, and kept host files read-only outside declared
+build/cache directories. Production inputs have not changed since that build.
+The final source-bound revalidation uses the same namespace policy and passes.
+The actual package recipe stages 41 files, including the separately isolated
+helper build, protocol notices and provenance. The installed helper check passes.
+The current staging directory is `target/kde-free-install-1257101`.
+
+The release and installed browser have SHA-256
 `fdd8955dc8f5ec84e5316b4d57e9665887f883b9a96f3675a8c6002fea36bb4e`.
-This staging does not replace the user's installation.
+Static inspection finds no KDE or unresolved shared libraries, no KDE symbols,
+and one definition of each required linked protocol interface. The installed
+browser passes actual window creation, role/surface recreation, a real GTK
+portal chooser, cancellation and clean shutdown. Window-mode and file-dialog
+process maps use the qualified Qt libraries and contain no KDE components. The
+GTK backend is independently inspected; these are installed-product receipts.
 
-All four requested workspace checks pass on that exact source. The repository
-gate includes 1,231 passing QML cases. Five native/control CTests, three portal
-CTests and five ASan/UBSan CTests pass with fresh source-bound receipts in
-`qualified-final`. The sanitizer command explicitly enables leak detection and
-uses only the documented Qt surface suppression; the first unsuppressed failure
-is retained. The typed native snapshot and private generation witness do not
-change persistent data or the serializable compositor identity shape.
+| Gate | Current-source result |
+| --- | --- |
+| `cargo fmt --all -- --check` | Pass |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | Pass |
+| `cargo test --workspace --locked` | 1,304 passes; two existing ignored tests |
+| `cargo xtask check` | Pass, including 1,231 QML cases |
+| Standalone native/control CTests | Five pass, zero skips |
+| Production portal CTests | Three pass, zero skips |
+| ASan/UBSan native/control CTests | Five pass, leak detection enabled with the narrow Qt-only suppression |
+| Application inventory | All 78 entries have actual successful results on unchanged source, including the complete reruns described below |
+| Explicit QML run | 1,231 passes, zero skips |
+| Wayland entry point | Pass; its nested Weston input probe explicitly reports not run because virtual keyboard support is absent |
+| Blocking entry point | Pass, including actual blocked/exception behaviour |
+| Qualification-tool unit tests | 15 passes |
 
-## Baseline comparison and test corrections
+The Wayland smoke result is not proof of native keyboard input. The owned
+protocol fixture separately proves real Qt surface/role access, tags before the
+initial commit, shared exports, cancellation, late completion, recreation,
+missing globals, shutdown and churn. These tagging tests use no untagged override.
 
-The quiet baseline comparison passes all nine remaining application/portal
-entries: page search, chooser backend/privacy, portable windows, download
-finalization/runtime guard/downloads, portal download history and portal browser.
-The 108.8-second page-search pass distinguishes the earlier compilation-loaded
-timeout from a migration regression.
+The application report preserves the original 78-entry run and its failures.
+Two live entries initially failed the initial seat-probe activation precondition;
+complete unchanged-source reruns pass all seven focus-freshness and nine
+identity/grouping rows. A controlled initial pointer position is recorded in
+those commands; the harness makes no focus requests during the test bodies.
+Together with the four owned source/peer recreation rows and five grouping
+fence rows, all 25 native-only rows have actual Wayland coverage.
 
-Public-page-host tests have three distinct requirements. `qualify.py` executes
-the complete discovered inventory as logical offscreen components, captured
-commands on the owned Wayland compositor with its disposable clipboard, and
-actual Hyprland input on the inherited session. The latter needs the existing
-`FERRIC_TEST_HYPRLAND_RUNTIME_DIR` setting and passes in the baseline. The small
-owned compositor does not implement arbitrary desktop activation policies;
-running the whole suite there is not valid native-input qualification. Initial
-live-desktop and headless-compositor setup failures remain recorded.
+The initial full offscreen aggregate reports 895 passes, one five-second
+navigation-recovery deadline failure and 40 scoped skips. The failing row passes
+on its targeted retry. The subsequent complete serial aggregate rerun reports
+896 passes, zero failures and the same 40 skips. Twenty-five skips are native
+rows covered by the dedicated Wayland entries; the other 15 retain their existing
+separate-scope requirements. Portable/offscreen success is not tagging proof.
+The separate 1,000-cycle hint-lifetime entry initially observed 9,171 to 9,172 Qt
+objects; its complete serial rerun reports 9,171 before and after, with all
+JavaScript hint resources released. No assertion was relaxed and no source
+changed between these runs.
 
-The frozen baseline reproducibly fails the existing
-`siblingPolicyChangeRevokesTheSharedProfilesCapturedRequest` assertion after
-policy invalidation. Its result remains nonzero. The v2 verifier permits a
-public-host baseline comparison only with the frozen starting revision, the
-same complete scoped harness, matching Qt library hashes, original executable
-references and assertion sources identical in Git and the candidate. It checks
-exact assertion messages/locations, complete test inventories, unchanged Qt
-row counts and zero skips. New bridge, freshness, runtime and performance
-failures cannot use this exception. Fourteen policy/verifier self-tests pass.
+`application-final-complete.json` and its fresh JUnit report derive coverage only
+from actual successful complete CTest entries. The recipe checks the same source
+before/after each run, the entire discovered inventory, all native row results,
+and the original failure fingerprints against the untruncated transcript. All
+original failed reports and logs remain intact; this is not a claim that the
+first uninterrupted run had zero failures.
 
-The initial 76-entry candidate application run passed 73 entries. Its failures
-were the missing CLI executable setup, a synthetic offscreen rename-navigation
-case also failing in the baseline, and the full aggregate's twenty-minute
-timeout. The CLI now points directly to the staged product. Synthetic Tab
-delivery waits for rendered delegate incubation; both manager-form rows pass
-in the targeted eight-second check. Offscreen window assertions now expect no
-Wayland tag submission. The full aggregate retains individual assertion/function
-deadlines and has a two-hour outer budget so every function can run.
+## Remaining qualification blocker
 
-The final complete application pass is running. The remaining public-host,
-everyday, explicit QML, Wayland/blocking, installed GTK runtime and paired
-performance receipts are still pending. No complete product qualification is
-claimed until these gates and the successor verifier finish.
+The inherited desktop is securely locked. Read-only Omarchy lock-service IPC
+reports `locked=true`, `sessionLocked=true` and `secure=true`; logind's separate
+`LockedHint` is false and did not reveal this condition. The service's direct
+protocol state explains why accepted compositor focus requests cannot activate
+new test windows. The unchanged frozen baseline now fails the same native-input
+activation assertion as the candidate. Earlier pointer-only explanations were
+incomplete; no desktop focus automation was established.
+
+The current public-page-host report contains the known baseline credential
+policy failure and an additional native-input activation failure. The latter
+cannot use the baseline exception. The current everyday report passes 15 of 17
+entries, including T100; T101 and T102 fail their owned-focus preconditions.
+Their operation assertions are not bypassed. The final seven-row live product
+run also remains pending. These gates require an unlocked session.
+
+The frozen baseline's reproducible credential failure is
+`siblingPolicyChangeRevokesTheSharedProfilesCapturedRequest`. Its command keeps
+its actual nonzero status. The v2 verifier permits only this public-host baseline
+comparison, with the original revision, matching SDK hashes, original binaries,
+identical assertion sources, complete scoped inventories and exact failure
+fingerprints. Native input, new bridge/freshness work, runtime and performance
+cannot be exempted. Candidate public-host qualification is therefore still
+blocked by the additional native-input failure.
+
+A nested session using the exact same Hyprland binary was attempted with an
+owned temporary configuration, isolated D-Bus, disabled session/environment
+management and physical DRM session acquisition. It did not provide a usable nested output/keyboard
+and is not qualification evidence. Its owned processes were stopped. No user
+desktop packages or compositor configuration were changed, and no unlock was
+attempted.
+
+The six-workload performance pilot completes for both frozen products, including
+twenty exposed, rendered windows, actual creation/recreation and idle. Restored
+background pages normally stay unmapped; the explicit native fixture maps only
+committed, registered owners for the twenty-window workload. Its bounded startup
+work stops before idle sampling. The pilot is diagnostic and cannot qualify
+performance. The required five alternating process pairs, ten warmups and 100
+latency samples have not run. No performance-regression or final qualification
+claim is made.
+
+The user has been asked to unlock the desktop and choose whether to allow a
+temporary, process-owned idle inhibitor for the several-hour measurement run.
+A transparent, input-free, timer-free inhibitor fixture is prepared but has not
+been launched. It would release its Wayland resource when its process exits and
+would not change desktop configuration. Until those remaining receipts and the
+successor verifier pass, this branch remains unqualified.

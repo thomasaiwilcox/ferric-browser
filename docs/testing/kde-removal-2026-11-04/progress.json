@@ -1,0 +1,235 @@
+{
+  "schema": "ferric.kde-removal-progress.v1",
+  "qualified": false,
+  "source_revision": "1257101f6eead8e369d2ced87fd773ad6850da5b",
+  "source_inputs_sha256": "111f07ede765513f18812b323444c16428a734531542ddb2900c06d86ab6f9bd",
+  "installed_browser": {
+    "path": "target/kde-free-install-1257101/usr/bin/ferric-browser",
+    "sha256": "fdd8955dc8f5ec84e5316b4d57e9665887f883b9a96f3675a8c6002fea36bb4e"
+  },
+  "sdk_receipt": {
+    "path": "target/kde-free-evidence/qualified-1257101/sdk.json",
+    "sha256": "f87734f28390d98e9fb29d5ae38a2022860a3ca8b076615c15b3236b695c2fe1"
+  },
+  "runs": {
+    "fmt": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/fmt.json",
+        "sha256": "0baa45117396d5cf1f2efc7048f12d48350032134466e8dacea769eb7c45c1ac"
+      },
+      "returncode": 0,
+      "seconds": 8.71850334003102
+    },
+    "clippy": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/clippy.json",
+        "sha256": "3657c7b2ee0707ad71947a09762b6f782c108f68c6bcd78b9dbcbf2bac1dfc93"
+      },
+      "returncode": 0,
+      "seconds": 1.1331370490370318
+    },
+    "rust": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/rust.json",
+        "sha256": "f266bc1bd85b38c52e5a78a510f21cab85c1b90f8804e14bdadbd45df57926f3"
+      },
+      "returncode": 0,
+      "seconds": 27.631694716052152
+    },
+    "xtask": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/xtask.json",
+        "sha256": "bd528b008fad974dd0833a7a10ad42c2e95fb1958a54fbbe0e13385cc24ca1b0"
+      },
+      "returncode": 0,
+      "seconds": 272.5183575550327
+    },
+    "fresh-build": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/fresh-build.json",
+        "sha256": "9806a07b9fb58e75c60409c21bba31148f08062f1515b3a87ca0190e91735351"
+      },
+      "returncode": 0,
+      "seconds": 1.8803653620416299
+    },
+    "install": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/install.json",
+        "sha256": "000064e9174f738d3694c9dfbbbeb48f89027623892ba38d452b0727ce08e1ab"
+      },
+      "returncode": 0,
+      "seconds": 8.276486549060792
+    },
+    "native": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/native.json",
+        "sha256": "4340d160658899a3436ac9cab24101f764b18182af9c27e33d4a9ec72f1dd52f"
+      },
+      "returncode": 0,
+      "seconds": 6.314003025065176,
+      "cases": 5,
+      "failed": []
+    },
+    "portal": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/portal.json",
+        "sha256": "a97e4b5f355bae5be27f477efcd62b14f5e75cbe537183cc3423623af21ceeb6"
+      },
+      "returncode": 0,
+      "seconds": 5.637782041914761,
+      "cases": 3,
+      "failed": []
+    },
+    "sanitizers": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/sanitizers.json",
+        "sha256": "e6f25e315e90ea11bcb89917329abfac8534216c1488d4aab4b0fc7c7ace96f9"
+      },
+      "returncode": 0,
+      "seconds": 9.801717261085287,
+      "cases": 5,
+      "failed": []
+    },
+    "application-final-complete": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/application-final-complete.json",
+        "sha256": "1e5c19900815845a0bf4e021520aba67c280b0df0af34b193bc8b5ebef9bd200"
+      },
+      "returncode": 0,
+      "seconds": 0.34194134396966547,
+      "cases": 78,
+      "failed": []
+    },
+    "public-page-host": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/public-page-host.json",
+        "sha256": "7f45b7d0fc1a3373120f5f2b9e3f48149668bf996a7e75a9dd68015947d74258"
+      },
+      "returncode": 8,
+      "seconds": 93.59336415305734,
+      "cases": 21,
+      "failed": [
+        "quick_credential_public_surface",
+        "public_page_host_native_input"
+      ]
+    },
+    "everyday": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/everyday.json",
+        "sha256": "8e0a41e688924740548fc779f1a8c05a0611208fde92846037cea190e18ca7ea"
+      },
+      "returncode": 8,
+      "seconds": 200.31280173605774,
+      "cases": 17,
+      "failed": [
+        "everyday_T101_hyprland_identity_grouping",
+        "everyday_T102_hyprland_identity_grouping"
+      ]
+    },
+    "qml": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/qml.json",
+        "sha256": "3947405cde291c5e6450d8a04e978c04d1623eb579d332fb878139356a4dd1bb"
+      },
+      "returncode": 0,
+      "seconds": 148.2478232959984,
+      "cases": 1231,
+      "failed": []
+    },
+    "wayland": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/wayland.json",
+        "sha256": "6e37bff78f6d41ec15f7991f8edd9285cf55ea69a6655ca293e2f1aaa716748c"
+      },
+      "returncode": 0,
+      "seconds": 12.78731061401777
+    },
+    "blocking": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/blocking.json",
+        "sha256": "7d802d623cbbc9608058007491b1a59b4fa77b1210ce06c2b75dfcdc139d64df"
+      },
+      "returncode": 0,
+      "seconds": 2.827382758958265
+    },
+    "runtime-exercise": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/runtime-exercise.json",
+        "sha256": "d11903425108ea6b732cc0fbcaed016022d7becec64baacec667cb2353f4ac3f"
+      },
+      "returncode": 0,
+      "seconds": 16.60678175406065
+    },
+    "performance-pilot": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/performance-pilot.json",
+        "sha256": "f4e1580e24fcd6aa6f171910cff221e330605c373ae0ab8eece6c6e166ad314f"
+      },
+      "returncode": 0,
+      "seconds": 274.50370224996004
+    },
+    "baseline-control": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/baseline-control.json",
+        "sha256": "0091599463cf8abbc0a2d37fa2f255a7cd6aa7985aedf5b647494983e16d2f14"
+      },
+      "returncode": 8,
+      "seconds": 120.9353527209023,
+      "cases": 21,
+      "failed": [
+        "quick_credential_public_surface"
+      ]
+    },
+    "baseline-input-current-seat": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/baseline-input-current-seat.json",
+        "sha256": "4be671c1c26e6c48bf47df70db2241ac9519ebdcc93ba6497e78d8a96e4cc6a1"
+      },
+      "returncode": 1,
+      "seconds": 5.3319990610470995,
+      "cases": 3,
+      "failed": [
+        "nativeInput"
+      ]
+    }
+  },
+  "application_attempts": {
+    "path": "target/kde-free-evidence/qualified-1257101/application-attempts-complete.json",
+    "sha256": "9a8b0f94c207bff8ef9352a681d0aa94777d12e498ad20b33a7023d84ebe5957"
+  },
+  "initial_application_transcript": {
+    "path": "target/kde-free-evidence/qualified-1257101/application-initial-full.json",
+    "sha256": "96224fd782ef86674733a83dca1720e15e7931cefe218f4e172a043c329ca1a4"
+  },
+  "runtime_phases": [
+    {
+      "path": "target/kde-free-evidence/qualified-1257101/runtime-window-mode.json",
+      "sha256": "51addc1dea924851a65909655dc3059634aea37a3868b9ce96172e5655d86e4e"
+    },
+    {
+      "path": "target/kde-free-evidence/qualified-1257101/runtime-file-dialog.json",
+      "sha256": "be73d93de3725fa13d4c2f815813ec3937db340c412939e3f11c64d0fa86070a"
+    }
+  ],
+  "static_dependency_inspection": {
+    "path": "target/kde-free-evidence/qualified-1257101/static-closure.json",
+    "sha256": "5ad0d06efd6040e30622a72fed84183eafea39145e573cf3f5410ef973b8130f"
+  },
+  "blocker": {
+    "kind": "secure-desktop-lock",
+    "evidence": {
+      "path": "target/kde-free-evidence/qualified-1257101/desktop-lock.json",
+      "sha256": "fe69f51c35b80f2892c011e62b7299f2567a827a9917a070bce1eadf6637f34d"
+    },
+    "native_input_current_baseline_also_fails": true,
+    "pending": [
+      "unlocked public native input",
+      "T101 and T102 focus preconditions",
+      "final seven-row live Hyprland run",
+      "five-pair performance comparison",
+      "successor final verification"
+    ]
+  },
+  "full_performance": null,
+  "method": "Progress evidence only. This is not a ferric.kde-free-wayland.v2 qualification receipt; that verifier must reject incomplete qualification. Original failures remain unchanged; application coverage combines complete source-identical successful entry reruns with every other original successful entry."
+}
