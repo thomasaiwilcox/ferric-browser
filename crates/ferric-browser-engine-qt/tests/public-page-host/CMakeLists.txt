@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.21)
-project(ferric_public_page_host LANGUAGES CXX)
+project(ferric_public_page_host LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
+find_package(Qt6GuiPrivate 6.11.2 EXACT REQUIRED)
+find_package(Qt6 6.11.2 EXACT REQUIRED COMPONENTS WaylandClient)
+include(../../protocols/Protocols.cmake)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -12,7 +15,6 @@ find_package(Qt6 6.11.2 EXACT REQUIRED COMPONENTS WaylandClient
 find_package(SQLite3 REQUIRED)
 find_program(FERRIC_TEST_OPENSSL openssl REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-find_package(KF6WindowSystem 6.28 REQUIRED)
 
 set(FERRIC_ENGINE_LIBRARY "" CACHE FILEPATH "Exact Cargo-built Ferric Qt engine archive")
 
@@ -88,7 +90,7 @@ if(BUILD_TESTING)
         "${FERRIC_ENGINE_LIBRARY}"
         SQLite::SQLite3
         Qt6::Quick Qt6::Widgets Qt6::QuickControls2 Qt6::QuickWidgets Qt6::DBus
-        Qt6::WebEngineWidgets Qt6::WaylandClient Qt6::WebChannel KF6::WindowSystem
+        Qt6::WebEngineWidgets Qt6::WaylandClient Qt6::WebChannel PkgConfig::FERRIC_WAYLAND_CLIENT
         Qt6::Core Qt6::Gui Qt6::Network Qt6::WebEngineCore Qt6::WebEngineQuick
         Qt6::Test)
     add_test(NAME T014e1_public_page_owner COMMAND public_page_owner_tests)
@@ -99,7 +101,7 @@ if(BUILD_TESTING)
     target_link_libraries(static_qml_registration_tests PRIVATE
         "${FERRIC_ENGINE_LIBRARY}"
         SQLite::SQLite3
-        KF6::WindowSystem
+        PkgConfig::FERRIC_WAYLAND_CLIENT
         Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickControls2
         Qt6::QuickWidgets Qt6::Network Qt6::DBus
         Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::WebEngineWidgets Qt6::WaylandClient Qt6::WebChannel Qt6::Test)
@@ -113,7 +115,7 @@ if(BUILD_TESTING)
     target_link_libraries(quick_credential_surface_tests PRIVATE ${_public_page_owner_links})
     target_link_libraries(public_page_host_integration_tests PRIVATE
         ${_public_page_owner_links}
-        KF6::WindowSystem
+        PkgConfig::FERRIC_WAYLAND_CLIENT
         Qt6::QuickWidgets
         Qt6::WebEngineWidgets)
     target_include_directories(public_page_host_integration_tests PRIVATE

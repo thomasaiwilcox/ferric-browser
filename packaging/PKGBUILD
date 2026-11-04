@@ -19,7 +19,7 @@ depends=(
   'qt6-wayland'
   'qt6-webengine>=6.11'
   'qt6-webchannel>=6.11'
-  'kwindowsystem>=6.28'
+  'wayland'
 )
 makedepends=(
   'desktop-file-utils'
@@ -106,6 +106,11 @@ package() {
     "${pkgdir}/usr/share/licenses/${pkgname}/QtWebEngine-interface-NOTICE"
   install -Dm644 crates/ferric-browser-engine-qt/src/qt_compat/provenance.toml \
     "${pkgdir}/usr/share/doc/${pkgname}/qt-interface-provenance.toml"
+  for protocol in crates/ferric-browser-engine-qt/protocols/*.xml; do
+    install -Dm644 "$protocol" "${pkgdir}/usr/share/licenses/${pkgname}/protocols/$(basename "$protocol")"
+  done
+  install -Dm644 crates/ferric-browser-engine-qt/protocols/provenance.json \
+    "${pkgdir}/usr/share/doc/${pkgname}/wayland-protocol-provenance.json"
   install -Dm644 docs/DEVELOPMENT_SPEC.md \
     "${pkgdir}/usr/share/doc/${pkgname}/DEVELOPMENT_SPEC.md"
   install -Dm644 docs/user/grid-navigation.md \

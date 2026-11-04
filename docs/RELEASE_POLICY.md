@@ -46,3 +46,11 @@ Each release record should include the review date, supported package/version,
 advisory sources checked, unresolved risks, decision owner, and links to the
 qualification and compatibility reports. Do not invent signatures, maintainer
 identities, or advisory conclusions when the evidence is unavailable.
+
+The owned Wayland integration requires the `ferric.kde-free-wayland.v2`
+qualification in `tools/qualification/kde_free.py`. A release must pass its
+source, private SDK header, pinned protocol, installed/runtime closure,
+lifecycle, functional and performance gates. The earlier everyday-v1 KF6
+schemas qualify their historical implementations only. SDK updates must
+requalify the Qt native lifecycle interface and pre-mapping request ordering.
+Required KDE dependencies need explicit user approval before introduction.

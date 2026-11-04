@@ -115,7 +115,8 @@ target_link_libraries(everyday_T061a_helper_supervisor_component PRIVATE ${_ferr
 # engine or modify compositor configuration.
 add_executable(everyday_compositor_identity_fixture tst_compositor_identity.cpp)
 target_link_libraries(everyday_compositor_identity_fixture PRIVATE
-    KF6::WindowSystem Qt6::Core Qt6::Gui)
+    Qt6::Core Qt6::Gui)
+ferric_native_wayland(everyday_compositor_identity_fixture)
 
 foreach(_case IN ITEMS T100 T101 T102)
     add_test(NAME everyday_${_case}_hyprland_identity_grouping

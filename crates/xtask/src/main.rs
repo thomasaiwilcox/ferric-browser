@@ -124,6 +124,19 @@ fn main() {
 }
 
 fn run_check() -> Result<(), String> {
+    run("python3", &["tools/qualification/kde_free.py", "policy"])?;
+    run(
+        "python3",
+        &[
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tools/qualification",
+            "-p",
+            "test_*.py",
+        ],
+    )?;
     let command_registry = CommandRegistry::default_v1();
     ActionRegistry::default_v1()
         .validate_against_commands(&command_registry)

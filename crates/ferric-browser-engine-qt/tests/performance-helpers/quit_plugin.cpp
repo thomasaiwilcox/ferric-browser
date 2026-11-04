@@ -11,6 +11,8 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTimer>
+#include <algorithm>
+#include "native_probe.h"
 
 class OwnedPerfQuit final : public QObject {
     const QString root;
@@ -144,6 +146,8 @@ public:
         });
         connect(&timer, &QTimer::timeout, this, [this] { poll(); });
         QTimer::singleShot(0, this, [this] { if (expansionAuthorized()) timer.start(); });
+        if (qEnvironmentVariable("FERRIC_PERF_NATIVE_PROBE") == "1")
+            new OwnedNativeProbe(root, expectedPages, this);
     }
 };
 class PerfQuitPlugin final : public QGenericPlugin {

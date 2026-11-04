@@ -1,4 +1,4 @@
-#include <KWaylandExtras>
+#include "../../src/native_wayland.h"
 
 #include <QGuiApplication>
 #include <QEvent>
@@ -117,7 +117,7 @@ class Fixture final : public QObject {
     window->setFlags(Qt::Window);
     window->setTitle(QStringLiteral("Ferric W00 test-owned window"));
     window->resize(480, 320);
-    KWaylandExtras::setXdgToplevelTag(window.get(), tag);
+    FerricWaylandWindow::prepare(window.get(), tag);
     PaintedWindow *const rawWindow = window.get();
     m_windows.emplace(key, std::move(window));
     QTimer::singleShot(delayMs, rawWindow, [this, key, rawWindow] {
@@ -179,10 +179,13 @@ int main(int argc, char **argv) {
       appId != QStringLiteral("ferric-w00-neighbor-proof"))
     return 2;
   QGuiApplication::setDesktopFileName(appId);
+  ferric_initialize_wayland();
   Fixture fixture;
   emitEvent({{QStringLiteral("event"), QStringLiteral("ready")},
              {QStringLiteral("platform"), QGuiApplication::platformName()}});
-  return app.exec();
+  const int result = app.exec();
+  ferric_shutdown_wayland();
+  return result;
 }
 
 #include "tst_compositor_identity.moc"
