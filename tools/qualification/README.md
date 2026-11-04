@@ -70,7 +70,10 @@ idle repetitions for both CPU and GUI event-dispatcher wakeups. Run
 `tools/performance/kde_free_pair.py` with the same test-only performance plugin
 for both frozen products. It follows the existing alternating paired harness
 conventions and measures actual product windows. Startup samples launch new
-processes; recreation alternates real role and surface transitions. Compilation
+processes. Restored background pages normally remain unmapped; the native
+fixture explicitly shows only committed, registered owners to exercise twenty
+mapped windows, and stops its bounded startup work before idle sampling.
+Recreation alternates real role and surface transitions. Compilation
 must be quiescent. The verifier rejects latency increases
 exceeding both 5% and 1 ms and idle increases above the measured baseline range;
 unresolved variability is not qualification.

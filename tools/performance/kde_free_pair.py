@@ -84,7 +84,8 @@ class Product:
              "open", *(["about:blank"] * pages)], env=env, stdin=subprocess.DEVNULL,
             stdout=self.stream, stderr=subprocess.STDOUT)
         try:
-            self.startup = wait_for(lambda: self.read("native-startup.json"), self.child)
+            self.startup = wait_for(lambda: self.read("native-startup.json"), self.child,
+                                    timeout=120 if pages > 1 else 40)
             self.startup["milliseconds"] = (time.perf_counter_ns() - started) / 1e6
             self.startup["pid"] = self.child.pid
             if self.startup["windows"] != pages:
@@ -240,7 +241,7 @@ def main():
               "candidate_artifact": qualification.reference(args.candidate),
               "probe": qualification.reference(args.probe),
               "pilot": args.pilot, "workloads": {},
-              "method": "same test-only plugin; all native page windows exposed/frameSwapped; GUI dispatcher awake events, no added idle timer; five alternating independent process blocks; each startup sample launches a new product process"}
+              "method": "same test-only plugin explicitly maps committed registered background page owners; all native page windows exposed/frameSwapped; GUI dispatcher awake events, no added idle timer; five alternating independent process blocks; each startup sample launches a new product process"}
     for name in workloads:
         rows = []
         for pair in range(pairs):
