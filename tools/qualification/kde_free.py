@@ -304,8 +304,8 @@ def verify(path):
             names = {case.get("name") for case in cases}
             if name == "native" and not {"native_wayland_full", "native_wayland_no_tags", "native_wayland_no_exporter", "native_wayland_neither"} <= names:
                 raise ValueError("Missing native protocol/lifecycle variants")
-            if name == "application" and "application_native_freshness" not in names:
-                raise ValueError("Missing actual Qt source/peer freshness regression")
+            if name == "application" and not {"application_native_freshness", "application_native_focus_freshness", "application_native_grouping_behaviour", "application_grouping_fences"} <= names:
+                raise ValueError("Missing actual Qt source/peer, focus or grouping coverage")
     phases = set()
     for ref in receipt["runtime"]:
         run = json.loads(checked(ref).read_text())

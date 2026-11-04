@@ -171,6 +171,32 @@ add_test(NAME application_native_focus_freshness COMMAND application_tests
 set_tests_properties(application_native_focus_freshness PROPERTIES TIMEOUT 180
     ENVIRONMENT "QT_QPA_PLATFORM=wayland;QT_QPA_PLATFORMTHEME=" LABELS "window;wayland;hyprland")
 
+# Together with the four freshness and seven focus rows above, these cover
+# every native-only page-window row omitted by the offscreen aggregate.
+add_test(NAME application_grouping_fences COMMAND "${DBUS_RUN_SESSION}"
+    --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
+    ${CMAKE_COMMAND} -E env FERRIC_PORTAL_TEST_BUS=isolated "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../portal/run.py" "${CMAKE_CURRENT_BINARY_DIR}/portal"
+    tab_recovery
+    pageWindowPresentation:window-grouping-order-stale
+    pageWindowPresentation:window-grouping-stale
+    pageWindowPresentation:window-grouping-profile
+    pageWindowPresentation:window-grouping-delay
+    pageWindowPresentation:window-grouping-stale-create)
+set_tests_properties(application_grouping_fences PROPERTIES TIMEOUT 240)
+add_test(NAME application_native_grouping_behaviour COMMAND application_tests
+    pageWindowPresentation:window-native-identity
+    pageWindowPresentation:window-native-grouping
+    pageWindowPresentation:window-grouping-order
+    pageWindowPresentation:window-grouping-focus
+    pageWindowPresentation:window-grouping-unrelated-map
+    pageWindowPresentation:window-grouping-private-map
+    pageWindowPresentation:window-grouping-auto-off
+    pageWindowPresentation:window-grouping-detach
+    pageWindowPresentation:window-grouping-context)
+set_tests_properties(application_native_grouping_behaviour PROPERTIES TIMEOUT 300
+    ENVIRONMENT "QT_QPA_PLATFORM=wayland;QT_QPA_PLATFORMTHEME=" LABELS "window;wayland;hyprland")
+
 add_test(NAME application_startup_recovery_restart COMMAND "${DBUS_RUN_SESSION}"
     --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
     "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_startup_recovery.py"
