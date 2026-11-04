@@ -1621,7 +1621,7 @@ Ferric.FerricBrowserWindow {
             // -peer rows recreate the root, a non-source participant.
             QCOMPARE(QGuiApplication::focusWindow(), childWindow);
             evaluate("testWindow.browserUi.refresh_ipc_owner()");
-            evaluate(entry + ".ui.poll_ipc()");
+            evaluate(entry + ".ui.poll_config()");
             QCOMPARE(evaluate(entry + ".ui.maintenance_delay_ms()").toInt(), 50);
         }
         QTRY_VERIFY_WITH_TIMEOUT(injected, 10000);
