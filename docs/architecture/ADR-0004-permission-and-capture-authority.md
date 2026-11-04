@@ -65,6 +65,10 @@ attribution or physical desktop notification interaction requirements.
 
 ## File chooser cancellation and window parenting
 
+The window-export implementation choice below is superseded by
+[ADR-0021](ADR-0021-owned-wayland-integration.md). Its request authority,
+cancellation, shared-parent lifetime and fallback requirements remain in force.
+
 Qt 6.11.2's desktop portal file dialog does not send `Request.Close` when the
 application hides or retires it. A private-bus test reproduced this with the
 actual Qt platform theme. File selection therefore uses a browser-owned Qt
