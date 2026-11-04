@@ -27,6 +27,15 @@ the shared-library closure. Run with non-KDE portal backends. Do not treat a
 standalone fixture as the installed product or static inspection as runtime
 exercise.
 
+The public-page-host fixtures require an active native window. Run their CTest
+inventory through `tests/public-page-host/run_owned.py` (under the engine crate),
+passing `--compositor BUILD/portal_compositor -- ctest --test-dir HOST_BUILD ...`.
+Wrap that command in `dbus-run-session
+--config-file=crates/ferric-browser-engine-qt/tests/application/notification-test-bus.conf
+-- env FERRIC_PORTAL_TEST_BUS=isolated ...`. This reuses the owned Qt compositor
+and its automatic seat focus with isolated runtime/config/cache/data directories;
+it does not rely on the user's desktop granting focus to a new test process.
+
 The top-level JSON has schema `ferric.kde-free-wayland.v2`, `source` (the complete
 snapshot), `sdk`, `installed_artifact`, `runs`, `runtime` and
 `performance`. Evidence references have `path` and `sha256`. The exact required
