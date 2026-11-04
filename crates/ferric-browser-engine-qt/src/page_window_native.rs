@@ -35,7 +35,7 @@ impl NativePageHost {
             .is_ok_and(|authority| self.matches(&authority, false))
     }
     /// An admitted hidden target may create exactly its first successor role
-    /// during show(). The predecessor is recorded in the synchronous native
+    /// during `show()`. The predecessor is recorded in the synchronous native
     /// callback, so reentrant creation/destruction cannot hide an intervening role.
     pub(crate) fn current_after_show(&self) -> bool {
         authority()
