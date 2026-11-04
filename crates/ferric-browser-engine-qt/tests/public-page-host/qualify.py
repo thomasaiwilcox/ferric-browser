@@ -51,7 +51,7 @@ def main():
         result = subprocess.run(command, env=environment)
         code = code or result.returncode
         attempts.append({"scope": name, "command": command, "returncode": result.returncode,
-                         "platform": environment.get("QT_QPA_PLATFORM", "owned Wayland"),
+                         "platform": "wayland" if prefix else environment["QT_QPA_PLATFORM"],
                          "report": str(report)})
         for case in ET.parse(report).getroot().iter("testcase"):
             name = case.get("name")
