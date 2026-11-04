@@ -18,15 +18,15 @@ impl NativePageHost {
     pub(crate) fn capture(ui: &crate::qobject::BrowserUi) -> Option<Self> {
         let tag = crate::qobject::ferric_browser_page_window_marker(ui).to_string();
         let uuid = crate::Uuid::parse_str(tag.strip_prefix("ferric-page-")?).ok()?;
-        let snapshot = crate::qobject::ferric_browser_native_page_window_identity(ui);
         if uuid.is_nil() || tag != format!("ferric-page-{uuid}") {
             return None;
         }
         let authority = authority().lock().ok()?;
+        let state = authority.0.get(&tag).copied().unwrap_or_default();
         Some(Self {
-            last_generation: authority.0.get(&tag).map_or(0, |state| state.last),
+            last_generation: state.last,
             tag,
-            generation: snapshot.valid.then_some(snapshot.generation),
+            generation: (state.current != 0).then_some(state.current),
         })
     }
     pub(crate) fn current(&self) -> bool {
