@@ -1614,6 +1614,14 @@ Ferric.FerricBrowserWindow {
         });
         QVERIFY(command("set --temp hyprland.page_grouping=auto"));
         QVERIFY(evaluate(entry + ".ui.execute_command('set --temp hyprland.page_grouping=auto')").toBool());
+        if (nativeStale) {
+            // Both policies were off before this synchronous setup. Publish
+            // the peer, then admit on the root before either QML work timer
+            // runs: the -peer rows must invalidate a non-source participant.
+            evaluate(entry + ".ui.refresh_ipc_owner()");
+            evaluate("testWindow.browserUi.poll_ipc()");
+            QCOMPARE(evaluate("testWindow.browserUi.maintenance_delay_ms()").toInt(), 50);
+        }
         QTRY_VERIFY_WITH_TIMEOUT(injected, 10000);
         QVERIFY(fixtureOk);
         if (nativeStale) {
