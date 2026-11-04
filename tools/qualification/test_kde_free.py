@@ -83,6 +83,59 @@ class QualificationTests(unittest.TestCase):
             with patch.object(module, "snapshot", return_value={}), self.assertRaises(ValueError):
                 module.verify(path)
 
+    def idle_comparison(self, root, candidate_cpu):
+        artifact = root / "product"
+        artifact.write_bytes(b"policy fixture, not a qualification artifact")
+        ref, source = module.reference(artifact), {"sha256": "fixture"}
+        workloads = {}
+        for name in ["startup-1", "startup-20", "creation", "recreation", "idle-1", "idle-20"]:
+            idle = name.startswith("idle")
+            rows = []
+            for pair in range(5):
+                for label in ["baseline", "candidate"]:
+                    values = [{"tree_cpu_percent": candidate_cpu if label == "candidate" else 2,
+                               "gui_wakeups_per_second": 10}] if idle else [
+                        {"milliseconds": 1, "operation": "role" if index % 2 else "surface"}
+                        for index in range(100)]
+                    path = root / f"{name}-{pair}-{label}.json"
+                    path.write_text(json.dumps({"source": source, "artifact": ref, "probe": ref,
+                        "label": label, "pair": pair, "workload": name, "warmups": 10,
+                        "samples": 100, "values": values, "started_ns": 1000 + pair,
+                        "warmup_values": [] if idle else [{"milliseconds": 1}] * 10,
+                        "processes": [{"pid": i + 1} for i in range(110 if name.startswith("startup") else 1)]}))
+                    rows.append(module.reference(path))
+            entry = {"raw_receipts": rows, "metrics": {"milliseconds": {"baseline": 1, "candidate": 1}}}
+            if idle:
+                repetitions, cpus, wakeups = [], [], []
+                for index in range(5):
+                    cpu, awake = 2 + index / 10, 10 + index
+                    path = root / f"{name}-repeat-{index}.json"
+                    path.write_text(json.dumps({"source": source, "artifact": ref, "probe": ref,
+                        "label": "baseline", "pair": f"repeat-{index}", "workload": name,
+                        "baseline_repetition": True, "processes": [{"pid": index + 1}],
+                        "finished_ns": index + 10,
+                        "values": [{"tree_cpu_percent": cpu, "gui_wakeups_per_second": awake}]}))
+                    repetitions.append(module.reference(path)); cpus.append(cpu); wakeups.append(awake)
+                entry["metrics"] = {
+                    field: {"baseline": 2 if field == "tree_cpu_percent" else 10,
+                            "candidate": candidate_cpu if field == "tree_cpu_percent" else 10,
+                            "baseline_repetitions": samples, "baseline_raw_receipts": repetitions}
+                    for field, samples in [("tree_cpu_percent", cpus), ("gui_wakeups_per_second", wakeups)]}
+            workloads[name] = entry
+        return {"schema": module.SCHEMA, "candidate_source": source,
+                "baseline_artifact": ref, "candidate_artifact": ref, "probe": ref,
+                "pairs": 5, "warmups": 10, "samples": 100, "pilot": False,
+                "workloads": workloads}, source, ref
+
+    def test_idle_decrease_below_baseline_variability_is_allowed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            module.verify_performance(*self.idle_comparison(Path(folder), 1.5))
+
+    def test_idle_increase_above_baseline_variability_requires_resolution(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaisesRegex(ValueError, "Unresolved idle variability/regression"):
+                module.verify_performance(*self.idle_comparison(Path(folder), 2.5))
+
     def test_raw_performance_regression_cannot_be_hidden_by_summary(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

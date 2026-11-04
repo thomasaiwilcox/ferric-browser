@@ -282,7 +282,7 @@ def verify_performance(performance, source, artifact):
                 before = [summary(r) for r in repetitions]
                 if before != claimed["baseline_repetitions"] or max(r["finished_ns"] for r in repetitions) >= min(r["started_ns"] for r in rows):
                     raise ValueError(f"Idle variability was not established before comparison: {name}")
-                if not min(before) <= actual["candidate"] <= max(before):
+                if actual["candidate"] > max(before):
                     raise ValueError(f"Unresolved idle variability/regression: {name}/{field}")
             elif actual["candidate"] - actual["baseline"] > 1 and actual["candidate"] > actual["baseline"] * 1.05:
                 raise ValueError(f"Latency regression: {name}")

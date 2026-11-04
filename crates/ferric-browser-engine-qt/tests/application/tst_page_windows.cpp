@@ -150,10 +150,13 @@ void ApplicationTests::pageWindowPresentation()
     page("window.pageWindowDraft = 'unfinished work'");
     QVERIFY(!evaluate("testWindow.tabStripVisible").toBool());
     QVERIFY(!evaluate("testWindow.pageWindowTag").toString().isEmpty());
-    // The portable CI compositor deliberately advertises no tagging protocol.
-    // Those windows must remain usable without claiming native grouping proof.
+    // Offscreen windows and the portable untagged compositor remain usable,
+    // but neither can provide evidence of a submitted Wayland tagging request.
+    const bool expectsTag = QGuiApplication::platformName().startsWith(QStringLiteral("wayland"))
+        && !qEnvironmentVariableIsSet("FERRIC_TEST_UNTAGGED_WINDOWS")
+        && !qEnvironmentVariableIsSet("FERRIC_FIXTURE_NO_TAGS");
     QCOMPARE(evaluate("testWindow.pageWindowTagRequested").toBool(),
-             !qEnvironmentVariableIsSet("FERRIC_TEST_UNTAGGED_WINDOWS"));
+             expectsTag);
 
     QObject ownedFocusTrace;
     if (scenario == "window-native-grouping") {

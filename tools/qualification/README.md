@@ -47,7 +47,7 @@ for both frozen products. It follows the existing alternating paired harness
 conventions and measures actual product windows. Startup samples launch new
 processes; recreation alternates real role and surface transitions. Compilation
 must be quiescent. The verifier rejects latency increases
-exceeding both 5% and 1 ms and idle results outside the measured baseline range;
+exceeding both 5% and 1 ms and idle increases above the measured baseline range;
 unresolved variability is not qualification.
 
 Finally, `verify RECEIPT.json` rejects incomplete, stale, failed or changed
