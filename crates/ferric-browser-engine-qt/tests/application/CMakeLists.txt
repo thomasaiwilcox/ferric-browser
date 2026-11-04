@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
-project(ferric_application_tests LANGUAGES CXX)
+project(ferric_application_tests LANGUAGES C CXX)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_CXX_STANDARD 17)
-find_package(KF6WindowSystem 6.28 REQUIRED)
+find_package(Qt6GuiPrivate 6.11.2 EXACT REQUIRED)
+find_package(Qt6 6.11.2 EXACT REQUIRED COMPONENTS WaylandClient)
+include(../../protocols/Protocols.cmake)
 find_package(SQLite3 REQUIRED)
 if(NOT TARGET SQLite3::SQLite3) # CMake < 4.3
     add_library(SQLite3::SQLite3 ALIAS SQLite::SQLite3)
@@ -19,24 +21,24 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 add_executable(application_tests tst_application.cpp tst_permission_scope.cpp tst_notifications.cpp tst_file_choosers.cpp tst_action_feedback.cpp tst_hint_controls.cpp tst_navigation_usability.cpp tst_page_search.cpp tst_privacy_identity.cpp tst_live_titles.cpp tst_tab_recovery.cpp tst_last_tab_undo.cpp tst_open_targets.cpp tst_repeat.cpp tst_application.h)
 target_sources(application_tests PRIVATE tst_page_windows.cpp)
-target_link_libraries(application_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+target_link_libraries(application_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 add_executable(context_reload_tests tst_context_reload.cpp)
-target_link_libraries(context_reload_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+target_link_libraries(context_reload_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 # A separate, offscreen-only Qt input plugin lets the public CLI fixture
 # confirm its own Quit prompt without changing the production command contract.
 add_library(context_quit_test_plugin MODULE context_quit_test_plugin.cpp)
 target_link_libraries(context_quit_test_plugin PRIVATE Qt6::Quick Qt6::Test)
 set_target_properties(context_quit_test_plugin PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/plugins/generic")
 add_executable(switcher_tests tst_switcher.cpp)
-target_link_libraries(switcher_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+target_link_libraries(switcher_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 add_executable(downloads_tests tst_downloads.cpp)
 add_library(download_save_interposer SHARED download_save_interposer.cpp)
 target_link_libraries(download_save_interposer PRIVATE ${CMAKE_DL_LIBS})
 add_library(download_runtime_interposer SHARED download_runtime_interposer.cpp)
 add_dependencies(downloads_tests download_save_interposer download_runtime_interposer)
-target_link_libraries(downloads_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+target_link_libraries(downloads_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 add_executable(close_request_tests tst_close_requests.cpp)
-target_link_libraries(close_request_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+target_link_libraries(close_request_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 enable_testing()
 add_test(NAME application_credential_association COMMAND application_tests credentialViewAssociation)
 set_tests_properties(application_credential_association PROPERTIES TIMEOUT 180 LABELS "credential;wayland;qml")
@@ -80,11 +82,13 @@ add_test(NAME application_switcher COMMAND switcher_tests)
 set_tests_properties(application_switcher PROPERTIES TIMEOUT 360 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_subdirectory(../portal portal)
 add_executable(file_chooser_backend_tests tst_file_chooser_backend.cpp ../../src/native_file_chooser.cpp ../../src/native_file_chooser.h ../../src/portal_file_request.cpp ../../src/portal_file_request.h ../../src/gui_application.cpp ../../src/gui_application.h ../../src/local_file_url.cpp ../../src/local_file_url.h)
-target_link_libraries(file_chooser_backend_tests PRIVATE KF6::WindowSystem Qt6::DBus Qt6::Widgets Qt6::Quick Qt6::Qml Qt6::Test)
+target_link_libraries(file_chooser_backend_tests PRIVATE PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Widgets Qt6::Quick Qt6::Qml Qt6::Test)
+ferric_native_wayland(file_chooser_backend_tests)
 add_test(NAME application_file_chooser_backend COMMAND file_chooser_backend_tests)
 set_tests_properties(application_file_chooser_backend PROPERTIES TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=")
 add_executable(file_chooser_privacy_tests tst_file_chooser_privacy.cpp ../../src/native_file_chooser.cpp ../../src/native_file_chooser.h ../../src/portal_file_request.cpp ../../src/portal_file_request.h ../../src/gui_application.cpp ../../src/gui_application.h ../../src/local_file_url.cpp ../../src/local_file_url.h)
-target_link_libraries(file_chooser_privacy_tests PRIVATE KF6::WindowSystem Qt6::DBus Qt6::Widgets Qt6::Quick Qt6::Qml Qt6::Test)
+target_link_libraries(file_chooser_privacy_tests PRIVATE PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Widgets Qt6::Quick Qt6::Qml Qt6::Test)
+ferric_native_wayland(file_chooser_privacy_tests)
 add_test(NAME application_file_chooser_privacy COMMAND file_chooser_privacy_tests)
 set_tests_properties(application_file_chooser_privacy PROPERTIES TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=")
 add_test(NAME application_action_feedback COMMAND application_tests spawnCommandModeValidation scrollTargetCommandChain productPolishActionFeedback productPolishConfigurationFeedback productPolishSecondarySelectionCommand actionAvailabilityFeedback productPolishRegisteredActionFeedback productPolishHintActionFeedback productPolishRapidDownloadRejection productPolishExternalActionFeedback)
@@ -114,7 +118,7 @@ add_test(NAME application_session_recovery COMMAND ${CMAKE_COMMAND} -E env
     productPolishSessionRecoveryFailure productPolishSessionRecoveryCancellation)
 set_tests_properties(application_session_recovery PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_executable(notification_consent_tests tst_notification_consent.cpp)
-target_link_libraries(notification_consent_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets KF6::WindowSystem Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+target_link_libraries(notification_consent_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 add_dependencies(notification_consent_tests notification_test_service)
 find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
 add_test(NAME application_settings_durability COMMAND "${DBUS_RUN_SESSION}"
@@ -135,7 +139,7 @@ set_tests_properties(application_credential_association_wayland PROPERTIES TIMEO
 # support; the Qt compositor provides mapping-time focus only.
 add_test(NAME application_page_windows_portable COMMAND "${DBUS_RUN_SESSION}"
     --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
-    ${CMAKE_COMMAND} -E env FERRIC_PORTAL_TEST_BUS=isolated FERRIC_TEST_UNTAGGED_WINDOWS=1 "${Python3_EXECUTABLE}"
+    ${CMAKE_COMMAND} -E env FERRIC_PORTAL_TEST_BUS=isolated FERRIC_TEST_UNTAGGED_WINDOWS=1 FERRIC_FIXTURE_NO_TAGS=1 "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../portal/run.py" "${CMAKE_CURRENT_BINARY_DIR}/portal"
     tab_recovery
     pageWindowPresentation:foreground pageWindowPresentation:background
@@ -146,6 +150,27 @@ add_test(NAME application_page_windows_portable COMMAND "${DBUS_RUN_SESSION}"
     pageWindowPresentation:session-queued-get pageWindowPresentation:session-hidden-survivor
     pageWindowPresentation:session-quit-cancel pageWindowPresentation:session-quit-approved-close)
 set_tests_properties(application_page_windows_portable PROPERTIES TIMEOUT 480)
+add_test(NAME application_native_freshness COMMAND "${DBUS_RUN_SESSION}"
+    --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
+    ${CMAKE_COMMAND} -E env FERRIC_PORTAL_TEST_BUS=isolated "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../portal/run.py" "${CMAKE_CURRENT_BINARY_DIR}/portal"
+    tab_recovery
+    pageWindowPresentation:window-native-stale-role-source
+    pageWindowPresentation:window-native-stale-role-peer
+    pageWindowPresentation:window-native-stale-surface-source
+    pageWindowPresentation:window-native-stale-surface-peer)
+set_tests_properties(application_native_freshness PROPERTIES TIMEOUT 240)
+add_test(NAME application_native_focus_freshness COMMAND application_tests
+    pageWindowPresentation:window-focus-native-role-source
+    pageWindowPresentation:window-focus-native-role-peer
+    pageWindowPresentation:window-focus-native-surface-source
+    pageWindowPresentation:window-focus-native-surface-peer
+    pageWindowPresentation:window-focus-native-hidden-peer
+    pageWindowPresentation:window-focus-native-hidden-gap-peer
+    pageWindowPresentation:window-focus-native-reentrant-peer)
+set_tests_properties(application_native_focus_freshness PROPERTIES TIMEOUT 180
+    ENVIRONMENT "QT_QPA_PLATFORM=wayland;QT_QPA_PLATFORMTHEME=" LABELS "window;wayland;hyprland")
+
 add_test(NAME application_startup_recovery_restart COMMAND "${DBUS_RUN_SESSION}"
     --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
     "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_startup_recovery.py"

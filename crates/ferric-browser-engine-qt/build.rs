@@ -85,12 +85,6 @@ fn main() {
     let qrc_path = manifest_path.with_file_name("browser_script_manifest.qrc");
     write_manifest_qrc(&qrc_path, &manifest_path, &resources);
 
-    // Retained until the following tagging migration package.
-    let window_system = pkg_config::Config::new()
-        .atleast_version("6.28")
-        .cargo_metadata(false)
-        .probe("KF6WindowSystem")
-        .expect("KWindowSystem is temporarily required by the old tag provider");
     let wayland_client = pkg_config::Config::new()
         .atleast_version("1.20")
         .cargo_metadata(false)
@@ -126,9 +120,6 @@ fn main() {
     #[allow(unsafe_code)]
     let builder = unsafe {
         builder.cc_builder(|cc| {
-            for path in &window_system.include_paths {
-                cc.include(path);
-            }
             cc.include(&protocol_dir);
             cc.include(&gui_private);
             cc.include(&webengine_private);
@@ -161,13 +152,6 @@ fn main() {
         println!("cargo:rustc-link-search=native={}", path.display());
     }
     for library in &wayland_client.libs {
-        println!("cargo:rustc-link-lib={library}");
-    }
-
-    for path in &window_system.link_paths {
-        println!("cargo:rustc-link-search=native={}", path.display());
-    }
-    for library in &window_system.libs {
         println!("cargo:rustc-link-lib={library}");
     }
 
