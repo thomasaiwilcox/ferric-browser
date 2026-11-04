@@ -1,7 +1,7 @@
 #include "native_file_chooser.h"
 #include "gui_application.h"
 #include "local_file_url.h"
-#include <KWaylandExtras>
+#include "native_wayland.h"
 #include <QApplication>
 #include <QDir>
 #include <QFileSystemModel>
@@ -170,6 +170,7 @@ FerricNativeFileChooser::FerricNativeFileChooser(QObject *parent)
   });
 }
 FerricNativeFileChooser::~FerricNativeFileChooser() {
+  retireParentExport();
   disconnect(ownerDestroyed_);
   if (dialog_)
     disconnect(dialog_.get(), nullptr, this, nullptr);
@@ -310,46 +311,59 @@ void FerricNativeFileChooser::preparePortal() {
   const auto generation = generation_;
   const QPointer<QWindow> owner = owner_;
   auto intent = intent_;
-  auto watcher = new QFutureWatcher<QString>(this);
-  parentExport_ = watcher;
-  connect(
-      watcher, &QFutureWatcher<QString>::finished, this,
-      [this, watcher, generation, owner, intent]() mutable {
-        const auto future = watcher->future();
-        if (parentExport_ == watcher)
-          parentExport_ = nullptr;
-        watcher->deleteLater();
-        if (!active_ || generation != generation_ ||
-            !parentDeadline_.isActive() || !owner || owner_ != owner)
-          return;
+  nativeOwner_ = FerricWaylandWindow::prepare(owner);
+  nativeGeneration_ = nativeOwner_ ? nativeOwner_->generation() : 0;
+  if (!nativeGeneration_) {
+    if (requestRequired_)
+      complete(FerricPortalFileRequest::Unavailable, {},
+               tr("The system file chooser could not attach to this window. Try again."));
+    else openWidget();
+    return;
+  }
+  nativeInvalidated_ = connect(nativeOwner_, &FerricWaylandWindow::invalidated, this,
+      [this, generation](quint64 invalidated) {
+        if (!active_ || generation != generation_ || invalidated != nativeGeneration_) return;
+        // Retire the existing actor, including delayed method replies. Native
+        // invalidation never reparents a request or starts another chooser.
+        if (portal_) {
+          disconnect(portal_, nullptr, this, nullptr);
+          portal_->cancel();
+          portal_ = nullptr;
+        }
+        complete(FerricPortalFileRequest::Cancelled);
+      }, Qt::DirectConnection);
+  auto subscription = nativeOwner_->exportToplevel(this);
+  parentExport_ = subscription;
+  connect(subscription, &FerricWaylandExport::completed, this,
+      [this, subscription, generation, nativeGeneration = nativeGeneration_, owner, intent](const FerricExportResult &result) mutable {
+        if (parentExport_ == subscription) parentExport_ = nullptr;
+        subscription->deleteLater();
+        if (!active_ || generation != generation_ || !parentDeadline_.isActive()
+            || !owner || owner_ != owner || !nativeOwner_
+            || nativeOwner_->generation() != nativeGeneration || result.generation != nativeGeneration) return;
         parentDeadline_.stop();
-        const auto handle = !future.isCanceled() && future.resultCount() == 1
-                                ? future.result()
-                                : QString{};
-        if (handle.isEmpty()) {
+        if (result.status != FerricExportStatus::Success || result.handle.isEmpty()) {
           if (requestRequired_)
-            complete(
-                FerricPortalFileRequest::Unavailable, {},
-                tr("The system file chooser could not attach to this window. "
-                   "Check your desktop portal settings and try again."));
-          else
-            openWidget();
+            complete(FerricPortalFileRequest::Unavailable, {},
+                     tr("The system file chooser could not attach to this window. "
+                        "Check your desktop portal settings and try again."));
+          else openWidget();
           return;
         }
-        intent.parentHandle = QStringLiteral("wayland:") + handle;
+        intent.parentHandle = QStringLiteral("wayland:") + result.handle;
         openPortal(intent);
       });
   parentDeadline_.start(5000);
-  // KWindowSystem caches one export on the native owner. Keep that export
-  // until the window dies: unexporting it per request would invalidate
-  // another simultaneous chooser attached to the same window.
-  watcher->setFuture(KWaylandExtras::exportToplevel(owner));
 }
 void FerricNativeFileChooser::retireParentExport() {
   parentDeadline_.stop();
+  disconnect(nativeInvalidated_);
+  nativeOwner_ = nullptr;
+  nativeGeneration_ = 0;
   if (!parentExport_)
     return;
   disconnect(parentExport_, nullptr, this, nullptr);
+  parentExport_->cancel();
   parentExport_->deleteLater();
   parentExport_ = nullptr;
 }

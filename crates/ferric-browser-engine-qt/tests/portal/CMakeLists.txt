@@ -11,7 +11,6 @@ find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
 find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
 find_program(DBUS_SEND dbus-send REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-find_package(KF6WindowSystem 6.28 REQUIRED)
 find_package(Qt6GuiPrivate 6.11.2 EXACT REQUIRED)
 include(../../protocols/Protocols.cmake)
 
@@ -26,7 +25,7 @@ add_executable(portal_file_chooser_tests tst_portal_file_chooser.cpp ${TRANSPORT
     ../../src/native_file_chooser.cpp ../../src/native_file_chooser.h
     ../../src/local_file_url.cpp ../../src/local_file_url.h
     ../../src/gui_application.cpp ../../src/gui_application.h)
-target_link_libraries(portal_file_chooser_tests PRIVATE KF6::WindowSystem Qt6::DBus Qt6::Test Qt6::Quick Qt6::Widgets PkgConfig::FERRIC_WAYLAND_CLIENT)
+target_link_libraries(portal_file_chooser_tests PRIVATE Qt6::DBus Qt6::Test Qt6::Quick Qt6::Widgets PkgConfig::FERRIC_WAYLAND_CLIENT)
 ferric_native_wayland(portal_file_chooser_tests)
 
 add_executable(portal_compositor compositor.cpp $<TARGET_OBJECTS:ferric_wayland_protocols>)

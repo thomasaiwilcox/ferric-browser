@@ -2,8 +2,8 @@
 #define FERRIC_NATIVE_FILE_CHOOSER_H
 
 #include "portal_file_request.h"
+#include "native_wayland.h"
 #include <QFileDialog>
-#include <QFutureWatcher>
 #include <QPointer>
 #include <QTimer>
 #include <QUrl>
@@ -103,7 +103,10 @@ private:
   quint64 generation_ = 0;
   QString backend_;
   QTimer parentDeadline_;
-  QPointer<QFutureWatcher<QString>> parentExport_;
+  QPointer<FerricWaylandExport> parentExport_;
+  QPointer<FerricWaylandWindow> nativeOwner_;
+  QMetaObject::Connection nativeInvalidated_;
+  quint64 nativeGeneration_ = 0;
   QPointer<FerricPortalFileRequest> portal_;
   FerricPortalFileRequest::Options intent_;
   int requestOptions_ = 0;

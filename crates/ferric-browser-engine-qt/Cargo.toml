@@ -29,6 +29,7 @@ toml.workspace = true
 uuid.workspace = true
 
 [build-dependencies]
+cc.workspace = true
 cxx-qt-build.workspace = true
 pkg-config.workspace = true
 
