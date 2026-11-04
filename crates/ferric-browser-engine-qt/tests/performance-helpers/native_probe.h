@@ -154,7 +154,7 @@ class OwnedNativeProbe final : public QObject {
                 [this, guarded, admittedSequence] {
                     if (guarded && sequence == admittedSequence) frame(guarded, true);
                 }, Qt::QueuedConnection);
-            subject->requestUpdate();
+            subject->update();
             return;
         }
         reply({{"ok", false}, {"error", "unsuitable native performance request"}});
@@ -175,6 +175,25 @@ protected:
         return false;
     }
 public:
+    void prepareStartup() {
+        if (startupRecorded || expected <= 1) return;
+        // Restored background pages intentionally stay unmapped in the product.
+        // This explicitly requested native-window workload maps only committed,
+        // registered fixture owners. Reuse the bounded startup-confirmation
+        // timer; no maintenance or focus requests continue into idle sampling.
+        QList<QPointer<QQuickWindow>> candidates;
+        for (auto candidate : QGuiApplication::allWindows())
+            if (auto window = qobject_cast<QQuickWindow *>(candidate)) candidates.append(window);
+        for (auto window : candidates) {
+            if (!window || window->isVisible() || window->property("runtimeReleased").toBool()) continue;
+            if (window->property("windowPreparedPageCommitted").toBool()
+                && window->property("windowPreparedPageCorePublished").toBool()
+                && window->property("windowPreparedOwnerRegistered").toBool()) {
+                window->show();
+                if (window) window->update();
+            }
+        }
+    }
     OwnedNativeProbe(const QString &path, int pages, QObject *parent)
         : QObject(parent), root(path), expected(pages) {
         qGuiApp->installEventFilter(this);
