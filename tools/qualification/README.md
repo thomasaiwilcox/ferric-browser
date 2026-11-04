@@ -27,23 +27,39 @@ the shared-library closure. Run with non-KDE portal backends. Do not treat a
 standalone fixture as the installed product or static inspection as runtime
 exercise.
 
-The public-page-host fixtures require an active native window. Run their CTest
-inventory through `tests/public-page-host/run_owned.py` (under the engine crate),
-passing `--compositor BUILD/portal_compositor -- ctest --test-dir HOST_BUILD ...`.
-Wrap that command in `dbus-run-session
---config-file=crates/ferric-browser-engine-qt/tests/application/notification-test-bus.conf
--- env FERRIC_PORTAL_TEST_BUS=isolated ...`. This reuses the owned Qt compositor
-and its automatic seat focus with isolated runtime/config/cache/data directories;
-it does not rely on the user's desktop granting focus to a new test process.
+Run the complete public-page-host inventory with its `qualify.py --build
+HOST_BUILD --compositor BUILD/portal_compositor --report REPORT.xml`. It runs
+logical component tests offscreen, the captured-command test with the owned
+Wayland compositor's disposable clipboard, and compositor-delivered input on
+the inherited live Hyprland session. The last scope sets the existing test's
+required `FERRIC_TEST_HYPRLAND_RUNTIME_DIR`. Separate raw reports and a combined
+report preserve every discovered test and its actual result. Offscreen success
+is not evidence of native input or tagging. `run_owned.py` also supports selected
+Wayland fixture cases; the small owned compositor does not implement every
+window-manager activation policy and cannot replace the live Hyprland test.
 
 The top-level JSON has schema `ferric.kde-free-wayland.v2`, `source` (the complete
 snapshot), `sdk`, `installed_artifact`, `runs`, `runtime` and
-`performance`. Evidence references have `path` and `sha256`. The exact required
+`performance`, and `baseline` (a reference or null). Evidence references have
+`path` and `sha256`. The exact required
 run inventory is `REQUIRED_RUNS` in the verifier. Every source manifest must
-match, and every command must have succeeded. Functional/native receipts must
+match. Every new native, workspace, installed-product and performance gate must
+pass. Functional/native receipts must
 cover every scenario in the migration acceptance table, including actual Qt
 recreation, non-source participant freshness and untagged fallback. Passing a
 portable window test is not evidence of tagging.
+
+The starting revision can have existing failures; retain their nonzero exit
+statuses and original logs. Only the public-page-host comparison can retain a
+baseline failure. Its control uses `ferric.kde-removal-baseline.v1`, the frozen
+`dc9bf4f` revision, a complete run under the same qualification harness, exact
+Qt library hashes, original assertion-source references and baseline executable
+references. The verifier checks assertion sources against both Git and the
+candidate, compares complete test inventories, requires unchanged Qt test-row
+counts and zero skips, and rejects any new failing assertion or changed failure
+message/location. Its final result explicitly lists preserved failures. A
+baseline comparison never turns a failed command into a successful receipt and
+cannot exempt the new bridge, lifetime, native freshness or runtime gates.
 
 Performance evidence contains `candidate_source`, `pairs: 5`, `warmups: 10`,
 `samples: 100` and `workloads` for startup at one/twenty windows, creation,

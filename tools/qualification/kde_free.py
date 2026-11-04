@@ -166,10 +166,85 @@ def runtime(args):
                           re.findall(r"lib(Qt6\w+)\.so\.6\s+=>\s+(\S+)", closure)}}
 
 
+def qt_result(case):
+    output = case.findtext("system-out", "")
+    totals = re.findall(r"Totals: (\d+) passed, (\d+) failed, (\d+) skipped", output)
+    if len(totals) != 1 or int(totals[0][2]):
+        raise ValueError("A baseline comparison requires complete Qt results without skips")
+    failures = []
+    for block in re.findall(r"(?m)^FAIL!\s+: ([^\n]+)\n(.*?Loc: \[[^\n]+\])", output, re.S):
+        location = re.search(r"Loc: \[(?:.*?/)?(crates/[^\]]+)\]", block[1])
+        if not location:
+            raise ValueError("Baseline assertion has no repository source location")
+        details = block[1][:block[1].index("Loc:")].strip()
+        failures.append((block[0].strip(), details, location[1]))
+    passed, failed, _ = map(int, totals[0])
+    if len(failures) != failed:
+        raise ValueError("Incomplete baseline assertion inventory")
+    return set(failures), passed + failed
+
+
+def compare_baseline(report, baseline):
+    current = {case.get("name"): case for case in report.iter("testcase")}
+    control = {case.get("name"): case for case in baseline.iter("testcase")}
+    if not current or set(current) != set(control):
+        raise ValueError("Baseline/candidate test inventories differ")
+    retained = []
+    for name, case in current.items():
+        if list(case.iter("error")) + list(case.iter("skipped")):
+            raise ValueError("Errors or skips cannot be accepted as baseline failures")
+        old = control[name]
+        if old.find("failure") is not None:
+            previous, previous_count = qt_result(old)
+            failures, count = qt_result(case)
+            if count != previous_count or not failures <= previous:
+                raise ValueError("New assertion failure or reduced Qt test coverage: " + name)
+            if failures:
+                retained.append(name)
+        elif case.find("failure") is not None:
+            raise ValueError("New failing test: " + name)
+    return retained
+
+
+def baseline_control(ref, source, sdk_receipt):
+    if ref is None:
+        return None
+    control = json.loads(checked(ref).read_text())
+    if control["schema"] != "ferric.kde-removal-baseline.v1" or control["source_revision"] != "dc9bf4f047121bc399b0a87ceb451d58e0c8fd74":
+        raise ValueError("Wrong baseline schema")
+    run = json.loads(checked(control["run"]).read_text())
+    if run["schema"] != SCHEMA or run["source"] != source or run["source_after"] != source or run.get("capture_errors"):
+        raise ValueError("Stale/incomplete baseline harness receipt")
+    checked(run["log"])
+    report = ET.parse(checked(run["test_report"])).getroot()
+    if run["returncode"] not in {0, 8}:
+        raise ValueError("Baseline control did not complete its CTest inventory")
+    libraries = control["sdk_libraries"]
+    for name, library in sdk_receipt["libraries"].items():
+        checked(libraries[name])
+        if libraries[name]["sha256"] != library["sha256"]:
+            raise ValueError("Baseline used a different Qt SDK")
+    for artifact in control["artifacts"]:
+        checked(artifact)
+    for relative, original in control["assertion_sources"].items():
+        checked(original)
+        expected = subprocess.check_output(["git", "show", control["source_revision"] + ":" + relative], cwd=ROOT)
+        if hashlib.sha256(expected).hexdigest() != original["sha256"] or source["inputs"].get(relative) != original["sha256"]:
+            raise ValueError("Baseline exceptions require unchanged assertion sources")
+    for case in report.iter("testcase"):
+        if list(case.iter("error")) + list(case.iter("skipped")):
+            raise ValueError("Baseline control has errors or skips")
+        if case.find("failure") is not None:
+            failures, _ = qt_result(case)
+            if any(location.rsplit("(", 1)[0] not in control["assertion_sources"] for _, _, location in failures):
+                raise ValueError("Missing baseline assertion source provenance")
+    return report
+
+
 def verify(path):
     receipt = json.loads(path.read_text())
     source = snapshot()
-    if set(receipt) != {"schema", "source", "sdk", "installed_artifact", "runs", "runtime", "performance"}:
+    if set(receipt) != {"schema", "source", "sdk", "installed_artifact", "runs", "runtime", "performance", "baseline"}:
         raise ValueError("Wrong v2 receipt fields; historical KF6 fields are not v2 evidence")
     if receipt["schema"] != SCHEMA or receipt["source"] != source:
         raise ValueError("Wrong schema or source manifest")
@@ -184,13 +259,18 @@ def verify(path):
         raise ValueError("Incomplete generated protocol inventory")
     for generated in sdk_receipt["generated"]:
         checked(generated)
+    baseline = baseline_control(receipt["baseline"], source, sdk_receipt)
+    preserved_failures = []
     artifact = checked(receipt["installed_artifact"])
     if set(receipt["runs"]) != REQUIRED_RUNS:
         raise ValueError("Incomplete qualification run inventory")
     for name, ref in receipt["runs"].items():
         run = json.loads(checked(ref).read_text())
-        if run["schema"] != SCHEMA or run["source"] != source or run["source_after"] != source or run["returncode"] != 0 or run.get("capture_errors"):
+        if run["schema"] != SCHEMA or run["source"] != source or run["source_after"] != source or run.get("capture_errors"):
             raise ValueError(f"Failed or stale run: {name}")
+        known_baseline = name == "public-page-host" and baseline is not None
+        if run["returncode"] != 0 and not (known_baseline and run["returncode"] == 8):
+            raise ValueError(f"Failed run: {name}")
         checked(run["log"])
         command = run["command"]
         if name == "fmt" and command != ["cargo", "fmt", "--all", "--", "--check"]:
@@ -209,8 +289,12 @@ def verify(path):
             # The named run also supplies a hashed nonempty JUnit/CTest report.
             report = ET.parse(checked(run["test_report"])).getroot()
             cases = list(report.iter("testcase"))
-            if not cases or any(list(case.iter("failure")) + list(case.iter("error")) + list(case.iter("skipped")) for case in cases):
+            if not cases or any(list(case.iter("error")) + list(case.iter("skipped")) for case in cases):
                 raise ValueError(f"Failed, skipped or empty test inventory: {name}")
+            if known_baseline:
+                preserved_failures = compare_baseline(report, baseline)
+            elif any(list(case.iter("failure")) for case in cases):
+                raise ValueError(f"Failed test inventory: {name}")
             names = {case.get("name") for case in cases}
             if name == "native" and not {"native_wayland_full", "native_wayland_no_tags", "native_wayland_no_exporter", "native_wayland_neither"} <= names:
                 raise ValueError("Missing native protocol/lifecycle variants")
@@ -233,7 +317,9 @@ def verify(path):
         raise ValueError("Exercise both file dialogs and window mode")
     verify_performance(json.loads(checked(receipt["performance"]).read_text()), source,
                        receipt["installed_artifact"])
-    return policy()
+    result = policy()
+    result["preserved_baseline_failures"] = preserved_failures
+    return result
 
 
 def verify_performance(performance, source, artifact):

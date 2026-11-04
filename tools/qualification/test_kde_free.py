@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("kde_free", Path(__file__).with_name("kde_free.py"))
@@ -82,6 +83,35 @@ class QualificationTests(unittest.TestCase):
             path.write_text(json.dumps({"schema": 1, "KF6WindowSystem": "passed"}))
             with patch.object(module, "snapshot", return_value={}), self.assertRaises(ValueError):
                 module.verify(path)
+
+    def qt_report(self, message="'request()' returned FALSE. ()", passed=28):
+        suite = ET.Element("testsuite")
+        case = ET.SubElement(suite, "testcase", name="existing_component")
+        ET.SubElement(case, "failure", message="Failed")
+        ET.SubElement(case, "system-out").text = (
+            "FAIL!  : ExistingTests::policy() " + message + "\n"
+            "   Loc: [/control/source/crates/example/test.cpp(42)]\n"
+            f"Totals: {passed} passed, 1 failed, 0 skipped, 0 blacklisted, 1ms\n")
+        return suite
+
+    def test_baseline_comparison_preserves_actual_failure(self):
+        self.assertEqual(module.compare_baseline(self.qt_report(), self.qt_report()),
+                         ["existing_component"])
+
+    def test_baseline_cannot_exempt_a_new_assertion_failure(self):
+        with self.assertRaisesRegex(ValueError, "New assertion failure"):
+            module.compare_baseline(self.qt_report("'new_generation()' returned FALSE. ()"),
+                                    self.qt_report())
+
+    def test_baseline_cannot_hide_reduced_test_coverage(self):
+        with self.assertRaisesRegex(ValueError, "reduced Qt test coverage"):
+            module.compare_baseline(self.qt_report(passed=27), self.qt_report())
+
+    def test_baseline_cannot_hide_a_new_skip(self):
+        report = self.qt_report()
+        ET.SubElement(report.find("testcase"), "skipped")
+        with self.assertRaisesRegex(ValueError, "Errors or skips"):
+            module.compare_baseline(report, self.qt_report())
 
     def idle_comparison(self, root, candidate_cpu):
         artifact = root / "product"
