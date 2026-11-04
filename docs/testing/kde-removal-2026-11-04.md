@@ -69,7 +69,7 @@ have yet been claimed for this migration.
 
 ## Dependency inventory
 
-| Scope | Current dependency and migration requirement |
+| Scope | Starting dependency and migration requirement |
 | --- | --- |
 | Production | `build.rs` discovers/links KF6WindowSystem; `native_file_chooser.cpp` exports with KWaylandExtras; `page_window_identity.cpp` tags with KWaylandExtras. Replace only after native proof. |
 | Native suites | Application, portal, QML runner and public-page-host CMake targets discover/link KF6; everyday standalone compositor identity fixture directly calls KDE tagging. Migrate all to the shared owned bridge. |
@@ -117,10 +117,86 @@ native/portal CTests passing. `sanitizers-final.{log,xml}` records all five
 native/control CTests passing under AddressSanitizer and UndefinedBehaviorSanitizer,
 including graceful compositor teardown and leak detection. A single narrow
 suppression matches Qt 6.11.2's `QWaylandDisplay::createSurface` allocation,
-reproduced by the Qt-only successive-window control. It is a constant 96-byte
-SDK allocation, not a per-cycle accumulation. Export objects, subscriptions,
+reproduced by the Qt-only successive-window control. The final run reports one
+96-byte allocation in each native variant and two in the Qt-only control.
+The native churn run does not accumulate these allocations across recreations.
+Export objects, subscriptions,
 the context and owned fixture allocations remain checked. The unchanged
 baseline chooser separately reproduced Qt GUI/Wayland backing-store leaks.
 
 Native proof has passed; this permits dependent migration. It does not replace
 the complete product, installed-runtime, Rust freshness and performance gates.
+
+## Current source and completed build gates
+
+The current product/test/qualification source is
+`2a765e2143ea5bc8046a7fb1b82e2319b2a055b1`. Later evidence-only documentation
+commits do not change the qualification input manifest. The protocol context,
+generation-bound chooser, tagging and Rust freshness implementation are in
+place. Current production and native targets, CI, packaging and SDK wrappers
+have no KDE discovery or linkage. The historical implementation-pack validators
+remain unchanged; the successor is `ferric.kde-free-wayland.v2`.
+
+An isolated release rebuild completed in 14 minutes 44 seconds with KDE package
+files and the historical local prefix unavailable, networking disabled, and
+host files read-only outside the declared build/cache directories. Only test
+fixture inputs changed during that build; compiled product inputs were
+unchanged. The final source-bound revalidation passes with the same namespace
+policy. Its inventory and exact command are in
+`target/kde-free-evidence/qualified-final/fresh-build*`.
+
+The actual package recipe staged 41 files under
+`target/kde-free-install-qualified`, including the separately built helper and
+protocol licenses/provenance. The installed helper check passes. The release
+and installed browser have the same SHA-256:
+`fdd8955dc8f5ec84e5316b4d57e9665887f883b9a96f3675a8c6002fea36bb4e`.
+This staging does not replace the user's installation.
+
+All four requested workspace checks pass on that exact source. The repository
+gate includes 1,231 passing QML cases. Five native/control CTests, three portal
+CTests and five ASan/UBSan CTests pass with fresh source-bound receipts in
+`qualified-final`. The sanitizer command explicitly enables leak detection and
+uses only the documented Qt surface suppression; the first unsuppressed failure
+is retained. The typed native snapshot and private generation witness do not
+change persistent data or the serializable compositor identity shape.
+
+## Baseline comparison and test corrections
+
+The quiet baseline comparison passes all nine remaining application/portal
+entries: page search, chooser backend/privacy, portable windows, download
+finalization/runtime guard/downloads, portal download history and portal browser.
+The 108.8-second page-search pass distinguishes the earlier compilation-loaded
+timeout from a migration regression.
+
+Public-page-host tests have three distinct requirements. `qualify.py` executes
+the complete discovered inventory as logical offscreen components, captured
+commands on the owned Wayland compositor with its disposable clipboard, and
+actual Hyprland input on the inherited session. The latter needs the existing
+`FERRIC_TEST_HYPRLAND_RUNTIME_DIR` setting and passes in the baseline. The small
+owned compositor does not implement arbitrary desktop activation policies;
+running the whole suite there is not valid native-input qualification. Initial
+live-desktop and headless-compositor setup failures remain recorded.
+
+The frozen baseline reproducibly fails the existing
+`siblingPolicyChangeRevokesTheSharedProfilesCapturedRequest` assertion after
+policy invalidation. Its result remains nonzero. The v2 verifier permits a
+public-host baseline comparison only with the frozen starting revision, the
+same complete scoped harness, matching Qt library hashes, original executable
+references and assertion sources identical in Git and the candidate. It checks
+exact assertion messages/locations, complete test inventories, unchanged Qt
+row counts and zero skips. New bridge, freshness, runtime and performance
+failures cannot use this exception. Fourteen policy/verifier self-tests pass.
+
+The initial 76-entry candidate application run passed 73 entries. Its failures
+were the missing CLI executable setup, a synthetic offscreen rename-navigation
+case also failing in the baseline, and the full aggregate's twenty-minute
+timeout. The CLI now points directly to the staged product. Synthetic Tab
+delivery waits for rendered delegate incubation; both manager-form rows pass
+in the targeted eight-second check. Offscreen window assertions now expect no
+Wayland tag submission. The full aggregate retains individual assertion/function
+deadlines and has a two-hour outer budget so every function can run.
+
+The final complete application pass is running. The remaining public-host,
+everyday, explicit QML, Wayland/blocking, installed GTK runtime and paired
+performance receipts are still pending. No complete product qualification is
+claimed until these gates and the successor verifier finish.
