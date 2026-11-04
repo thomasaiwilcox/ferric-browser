@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "upstream": "https://gitlab.freedesktop.org/wayland/wayland-protocols",
+  "revision": "1.46",
+  "archive_url": "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/1.46/downloads/wayland-protocols-1.46.tar.xz",
+  "archive_sha256": "fd0de056a895fa48bd1aa5f0b8dfeed454101b88bc7e1c61a953422eb71db167",
+  "license": "MIT; copyright and complete permission notices retained in each unmodified XML",
+  "inputs": [
+    {
+      "file": "xdg-foreign-unstable-v2.xml",
+      "upstream_path": "unstable/xdg-foreign/xdg-foreign-unstable-v2.xml",
+      "sha256": "625d83fbb068f48e69e739eafde507f10cdfe7480146f3ac10af9a2ddf551c80"
+    },
+    {
+      "file": "xdg-toplevel-tag-v1.xml",
+      "upstream_path": "staging/xdg-toplevel-tag/xdg-toplevel-tag-v1.xml",
+      "sha256": "bde3615b434a237388c5592028345eef185ab1e7ade9023dd2413a4b2c56ab9f"
+    },
+    {
+      "file": "xdg-shell.xml",
+      "upstream_path": "stable/xdg-shell/xdg-shell.xml",
+      "sha256": "5084e76386f6c3959bee957a784c57de204be0de3f57533ce07b4be0617b171a"
+    }
+  ]
+}

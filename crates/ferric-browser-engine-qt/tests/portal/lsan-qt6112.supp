@@ -1,0 +1,5 @@
+# Qt 6.11.2 leaves a wl_surface proxy after successive QRasterWindow lifetimes.
+# Reproduced by native_qt_lifecycle_control, which contains no Ferric bridge.
+# Match only the SDK-owned surface allocation; owned exports, subscriptions,
+# lifecycle states and protocol globals remain subject to leak checking.
+leak:QtWaylandClient::QWaylandDisplay::createSurface
