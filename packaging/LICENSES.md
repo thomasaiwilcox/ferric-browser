@@ -16,6 +16,7 @@ the exact locked graph and installed package metadata before publication.
 | QtWebEngine 6.11.2 profile interface | nullable download-source compatibility check | LGPL-3.0-only; unmodified interface, full license, NOTICE and source/hash provenance in `crates/ferric-browser-engine-qt/src/qt_compat`; license/NOTICE/provenance installed by the package recipe |
 | freedesktop wayland-protocols 1.46 | owned Wayland export and toplevel tagging bindings | MIT; complete upstream notices retained in pinned XML and installed protocol provenance |
 | pkg-config | build-time discovery of system libraries | MIT OR Apache-2.0 crate notice |
+| cc | build-time C compilation of generated Wayland protocol implementations | MIT OR Apache-2.0 crate notice |
 | Wayland client | required native window integration | installed distribution package notices |
 | Qt Gui 6.11.2 private headers | qualified native lifecycle interface | installed Qt LGPL/GPL notices; interface use isolated in `native_wayland.cpp` |
 | XDG portals / PipeWire | desktop services | installed distribution package notices |
