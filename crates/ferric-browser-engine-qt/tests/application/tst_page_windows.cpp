@@ -39,8 +39,13 @@ bool clickCloseDecision(QQuickWindow *host, bool proceed) {
     // A completed close can hide the host during the frame wait. It needs no
     // second decision; callers still verify final close/cancel outcomes.
     if (!ownedHost || !ownedHost->isVisible()) return true;
-    auto *button = findVisible(host->contentItem(), proceed ? "shutdownProceedButton" : "shutdownKeepButton");
-    if (!button) return false;
+    QPointer<QQuickItem> button;
+    if (!QTest::qWaitFor([&] {
+        if (!ownedHost || !ownedHost->isVisible()) return true;
+        button = findVisible(ownedHost->contentItem(), proceed ? "shutdownProceedButton" : "shutdownKeepButton");
+        return !button.isNull();
+    })) return false;
+    if (!ownedHost || !ownedHost->isVisible()) return true;
     QTest::mouseClick(host, Qt::LeftButton, Qt::NoModifier, button->mapToScene(button->boundingRect().center()).toPoint());
     return true;
 }
@@ -141,6 +146,10 @@ void ApplicationTests::pageWindowPresentation_data()
 void ApplicationTests::pageWindowPresentation()
 {
     QFETCH(QString, scenario);
+    if (!QGuiApplication::platformName().startsWith(QStringLiteral("wayland"))
+        && (scenario.startsWith("window-native-") || scenario.startsWith("window-focus-native-")
+            || scenario.startsWith("window-grouping-")))
+        QSKIP("Requires actual Wayland roles; run the native grouping/focus entries");
     QCOMPARE(text("feature_tabs_presentation_effective"), QStringLiteral("windows"));
     QPointer<QObject> sourceView(evaluate("testWindow.activeWebView()").value<QObject *>());
     QVERIFY(sourceView);
