@@ -115,7 +115,9 @@ class QualificationTests(unittest.TestCase):
                         "baseline_repetition": True, "processes": [{"pid": index + 1}],
                         "finished_ns": index + 10,
                         "values": [{"tree_cpu_percent": cpu, "gui_wakeups_per_second": awake}]}))
-                    repetitions.append(module.reference(path)); cpus.append(cpu); wakeups.append(awake)
+                    repetitions.append(module.reference(path))
+                    cpus.append(cpu)
+                    wakeups.append(awake)
                 entry["metrics"] = {
                     field: {"baseline": 2 if field == "tree_cpu_percent" else 10,
                             "candidate": candidate_cpu if field == "tree_cpu_percent" else 10,

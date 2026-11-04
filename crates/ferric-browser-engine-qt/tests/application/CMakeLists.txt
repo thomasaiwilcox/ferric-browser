@@ -295,10 +295,11 @@ set_tests_properties(application_native_notifications PROPERTIES TIMEOUT 180 ENV
 add_test(NAME application_context_reload COMMAND context_reload_tests)
 set_tests_properties(application_context_reload PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_test(NAME application_offscreen COMMAND application_tests)
-# This aggregate includes hundreds of cases, each creating a browser fixture.
-# Release builds exceed eight minutes on a two-core host even without failures;
-# keep per-assertion deadlines and give the complete suite its own outer budget.
-set_tests_properties(application_offscreen PROPERTIES TIMEOUT 1200 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+# This aggregate creates a browser fixture for every row across all functions.
+# The qualified debug build reaches streamingHistoryTraversal after twenty
+# minutes; that bound cannot cover the remaining functions. Keep individual
+# assertion/function deadlines and give the complete serial inventory two hours.
+set_tests_properties(application_offscreen PROPERTIES TIMEOUT 7200 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 
 add_test(NAME application_offscreen_dpr2 COMMAND application_tests scopedGridNativeCoordinates)
 set_tests_properties(application_offscreen_dpr2 PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QT_SCALE_FACTOR=2;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
