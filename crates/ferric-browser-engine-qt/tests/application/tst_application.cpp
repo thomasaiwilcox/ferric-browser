@@ -343,8 +343,13 @@ void ApplicationTests::init() {
     QVERIFY(window);
     engine->rootContext()->setContextProperty("testWindow", window);
     engine->rootContext()->setContextProperty("testProbe", this);
-    if (qEnvironmentVariable("FERRIC_PORTAL_TEST_BUS") == "isolated")
-        QVERIFY(!evaluate("testWindow.pageWindowTagRequested").toBool());
+    if (qEnvironmentVariable("FERRIC_PORTAL_TEST_BUS") == "isolated") {
+        const bool fixtureTags = QGuiApplication::platformName() == QStringLiteral("wayland")
+            && !qEnvironmentVariableIsSet("FERRIC_FIXTURE_NO_TAGS");
+        if (!fixtureTags) QVERIFY(!evaluate("testWindow.pageWindowTagRequested").toBool());
+        else if (window->isVisible())
+            QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.pageWindowTagRequested").toBool(), 1000);
+    }
     QTRY_VERIFY_WITH_TIMEOUT(
         evaluate("testWindow.activeWebView() !== null").toBool(), 10000);
     QTRY_VERIFY_WITH_TIMEOUT(
