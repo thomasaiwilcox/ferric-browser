@@ -57,9 +57,20 @@ def main():
                     raise RuntimeError("Ambiguous owned probe identity")
                 if child.poll() is not None:
                     break
-                subprocess.run(["hyprctl", "dispatch", "focuswindow",
-                                "address:" + owned[0]["address"]], check=True,
-                               stdout=subprocess.DEVNULL, timeout=2)
+                address = owned[0]["address"]
+                expression = (
+                    "return (function() local found={} for _,w in ipairs(hl.get_windows()) do "
+                    f"if tostring(w.address)=='{address}' and w.pid=={child.pid} "
+                    f"and w.title=='ferric-native-input-probe-{child.pid}' "
+                    "then found[#found+1]=w end end "
+                    "if #found~=1 then return 'reject-identity' end "
+                    "local result=hl.dispatch(hl.dsp.focus({window=found[1]})) "
+                    "return result and result.ok and 'requested' or 'rejected' end)()"
+                )
+                result = subprocess.check_output(["hyprctl", "repl", expression],
+                                                 text=True, timeout=2)
+                if result.strip().splitlines()[-1:] != ["requested"]:
+                    raise RuntimeError("Owned probe focus rejected: " + result)
                 print(json.dumps({"setup": "owned-initial-seat-probe", "pid": child.pid,
                                   "address": owned[0]["address"]}), flush=True)
                 admitted = True
