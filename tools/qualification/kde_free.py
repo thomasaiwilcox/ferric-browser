@@ -215,7 +215,11 @@ def baseline_control(ref, source, sdk_receipt):
     run = json.loads(checked(control["run"]).read_text())
     if run["schema"] != SCHEMA or run["source"] != source or run["source_after"] != source or run.get("capture_errors"):
         raise ValueError("Stale/incomplete baseline harness receipt")
+    runner = ["python3", "crates/ferric-browser-engine-qt/tests/public-page-host/qualify.py"]
+    if run["command"][:2] != runner:
+        raise ValueError("Baseline must use the complete scoped public-host harness")
     checked(run["log"])
+    checked(control["build_cache"])
     report = ET.parse(checked(run["test_report"])).getroot()
     if run["returncode"] not in {0, 8}:
         raise ValueError("Baseline control did not complete its CTest inventory")
@@ -281,6 +285,8 @@ def verify(path):
             raise ValueError("Incomplete workspace Rust test gate")
         if name == "xtask" and command != ["cargo", "xtask", "check"]:
             raise ValueError("Incomplete repository gate")
+        if name == "public-page-host" and command[:2] != ["python3", "crates/ferric-browser-engine-qt/tests/public-page-host/qualify.py"]:
+            raise ValueError("Public-host qualification must run every scoped test")
         if name in {"fresh-build", "install"}:
             checked(run["artifact"])
             if run["artifact"]["sha256"] != receipt["installed_artifact"]["sha256"]:
