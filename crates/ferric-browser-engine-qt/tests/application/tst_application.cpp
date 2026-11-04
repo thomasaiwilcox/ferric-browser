@@ -153,6 +153,7 @@ void ApplicationTests::initTestCase() {
     if (QGuiApplication::platformName() != "wayland")
         return;
     QQuickWindow probe;
+    probe.setTitle(QStringLiteral("ferric-native-input-probe-%1").arg(QCoreApplication::applicationPid()));
     probe.resize(320, 240);
     probe.show();
     probe.requestActivate();

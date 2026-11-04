@@ -34,7 +34,7 @@ bool clickCloseDecision(QQuickWindow *host, bool proceed) {
     QPointer<QQuickWindow> ownedHost(host);
     if (!ownedHost || !ownedHost->isVisible()) return true;
     QSignalSpy frame(host, &QQuickWindow::frameSwapped);
-    host->requestUpdate();
+    host->update();
     if (!QTest::qWaitFor([&] { return !ownedHost || !ownedHost->isVisible() || !frame.isEmpty(); })) return false;
     // A completed close can hide the host during the frame wait. It needs no
     // second decision; callers still verify final close/cancel outcomes.
@@ -46,7 +46,8 @@ bool clickCloseDecision(QQuickWindow *host, bool proceed) {
         return !button.isNull();
     })) return false;
     if (!ownedHost || !ownedHost->isVisible()) return true;
-    QTest::mouseClick(host, Qt::LeftButton, Qt::NoModifier, button->mapToScene(button->boundingRect().center()).toPoint());
+    if (!button) return false;
+    QTest::mouseClick(ownedHost, Qt::LeftButton, Qt::NoModifier, button->mapToScene(button->boundingRect().center()).toPoint());
     return true;
 }
 }

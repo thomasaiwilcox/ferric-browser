@@ -527,7 +527,7 @@ private slots:
         const QPoint clickPoint = pointerTarget->mapFrom(child->view,
             QPoint(point.value("x").toInt(), point.value("y").toInt()));
         QTest::mouseClick(pointerTarget, Qt::LeftButton, Qt::NoModifier, clickPoint);
-        QCOMPARE(js(child->page, "pointerCount").toInt(), 1);
+        QTRY_COMPARE(js(child->page, "pointerCount").toInt(), 1);
         // This is deliberately labelled QtTest synthetic input; compositor-delivered input
         // is reported separately in the run record and is never inferred from this event.
         pointerTarget->setFocus(Qt::OtherFocusReason);

@@ -194,6 +194,8 @@ def compare_baseline(report, baseline):
         if list(case.iter("error")) + list(case.iter("skipped")):
             raise ValueError("Errors or skips cannot be accepted as baseline failures")
         old = control[name]
+        if name == "public_page_host_native_input" and case.find("failure") is not None:
+            raise ValueError("Native input cannot use a baseline exception")
         if old.find("failure") is not None:
             previous, previous_count = qt_result(old)
             failures, count = qt_result(case)
@@ -239,7 +241,11 @@ def baseline_control(ref, source, sdk_receipt):
         if list(case.iter("error")) + list(case.iter("skipped")):
             raise ValueError("Baseline control has errors or skips")
         if case.find("failure") is not None:
+            if case.get("name") != "quick_credential_public_surface":
+                raise ValueError("Baseline control has an unqualified native/setup failure")
             failures, _ = qt_result(case)
+            if any(not message.startswith("QuickCredentialSurfaceTests::siblingPolicyChangeRevokesTheSharedProfilesCapturedRequest() ") for message, _, _ in failures):
+                raise ValueError("Baseline control has an unexpected component failure")
             if any(location.rsplit("(", 1)[0] not in control["assertion_sources"] for _, _, location in failures):
                 raise ValueError("Missing baseline assertion source provenance")
     return report

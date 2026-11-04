@@ -113,6 +113,12 @@ class QualificationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Errors or skips"):
             module.compare_baseline(report, self.qt_report())
 
+    def test_native_input_cannot_use_a_baseline_exception(self):
+        report = self.qt_report()
+        report.find("testcase").set("name", "public_page_host_native_input")
+        with self.assertRaisesRegex(ValueError, "Native input cannot"):
+            module.compare_baseline(report, report)
+
     def idle_comparison(self, root, candidate_cpu):
         artifact = root / "product"
         artifact.write_bytes(b"policy fixture, not a qualification artifact")

@@ -42,7 +42,8 @@ target_link_libraries(close_request_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6
 enable_testing()
 add_test(NAME application_credential_association COMMAND application_tests credentialViewAssociation)
 set_tests_properties(application_credential_association PROPERTIES TIMEOUT 180 LABELS "credential;wayland;qml")
-add_test(NAME application_page_windows COMMAND application_tests pageWindowPresentation)
+add_test(NAME application_page_windows COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/run_hyprland_activation.py" -- $<TARGET_FILE:application_tests> pageWindowPresentation)
 set_tests_properties(application_page_windows PROPERTIES TIMEOUT 600 LABELS "window;wayland;qml")
 add_test(NAME application_switcher_live_updates COMMAND application_tests productPolishSwitcherLiveUpdates)
 set_tests_properties(application_switcher_live_updates PROPERTIES TIMEOUT 180 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
@@ -160,7 +161,8 @@ add_test(NAME application_native_freshness COMMAND "${DBUS_RUN_SESSION}"
     pageWindowPresentation:window-native-stale-surface-source
     pageWindowPresentation:window-native-stale-surface-peer)
 set_tests_properties(application_native_freshness PROPERTIES TIMEOUT 240)
-add_test(NAME application_native_focus_freshness COMMAND application_tests
+add_test(NAME application_native_focus_freshness COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/run_hyprland_activation.py" -- $<TARGET_FILE:application_tests>
     pageWindowPresentation:window-focus-native-role-source
     pageWindowPresentation:window-focus-native-role-peer
     pageWindowPresentation:window-focus-native-surface-source
@@ -184,7 +186,8 @@ add_test(NAME application_grouping_fences COMMAND "${DBUS_RUN_SESSION}"
     pageWindowPresentation:window-grouping-delay
     pageWindowPresentation:window-grouping-stale-create)
 set_tests_properties(application_grouping_fences PROPERTIES TIMEOUT 240)
-add_test(NAME application_native_grouping_behaviour COMMAND application_tests
+add_test(NAME application_native_grouping_behaviour COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/run_hyprland_activation.py" -- $<TARGET_FILE:application_tests>
     pageWindowPresentation:window-native-identity
     pageWindowPresentation:window-native-grouping
     pageWindowPresentation:window-grouping-order
