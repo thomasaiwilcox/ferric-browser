@@ -191,6 +191,22 @@
       "failed": [
         "nativeInput"
       ]
+    },
+    "public-page-host-resumed": {
+      "path": "target/kde-free-evidence/qualified-1257101/public-page-host-resumed.json",
+      "sha256": "ceecb3c1833a134011270e97eb38f492b0a067aa55efee2f2e5a8ef678c56d5c"
+    },
+    "everyday-final-resumed": {
+      "path": "target/kde-free-evidence/qualified-1257101/everyday-final-resumed.json",
+      "sha256": "b6f77ed95c9d746fcb33d293c6c36acccc3ae2782e016b06c8e07fa7c36d9e67"
+    },
+    "hyprland-resumed": {
+      "path": "target/kde-free-evidence/qualified-1257101/hyprland-resumed.json",
+      "sha256": "7e8d1cdb2b0a78c3ea1d780a0431a1056503901cd41fb27e7a3767576b459fd3"
+    },
+    "public-input-resumed": {
+      "path": "target/kde-free-evidence/qualified-1257101/public-input-resumed.json",
+      "sha256": "c1354520243bb597eb0c3fa415e3ad4a276012678d317fa6706e2b3695617447"
     }
   },
   "application_attempts": {
@@ -218,18 +234,48 @@
   "blocker": {
     "kind": "secure-desktop-lock",
     "evidence": {
-      "path": "target/kde-free-evidence/qualified-1257101/desktop-lock.json",
-      "sha256": "fe69f51c35b80f2892c011e62b7299f2567a827a9917a070bce1eadf6637f34d"
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/performance-lock-interruption.json",
+      "sha256": "e771ec12819119891776eef386685b48e844704f60737eb7c2dae4a1568fe3b3"
     },
-    "native_input_current_baseline_also_fails": true,
+    "resolved_live_checks": [
+      "public native input",
+      "T101 and T102",
+      "final seven-row Hyprland product run"
+    ],
     "pending": [
-      "unlocked public native input",
-      "T101 and T102 focus preconditions",
-      "final seven-row live Hyprland run",
-      "five-pair performance comparison",
+      "unlocked uninterrupted five-pair performance comparison",
       "successor final verification"
     ]
   },
-  "full_performance": null,
-  "method": "Progress evidence only. This is not a ferric.kde-free-wayland.v2 qualification receipt; that verifier must reject incomplete qualification. Original failures remain unchanged; application coverage combines complete source-identical successful entry reruns with every other original successful entry."
+  "full_performance": {
+    "status": "interrupted-before-candidate-measurement",
+    "run": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/performance-run.json",
+      "sha256": "dc403cb229ba7bea273697f883325dbe3b0ce96e08b39fd8dea35a11a8e42575"
+    },
+    "raw_directory": "target/kde-free-performance-1257101",
+    "qualified": false
+  },
+  "method": "Progress evidence only. This is not a ferric.kde-free-wayland.v2 qualification receipt; that verifier must reject incomplete qualification. Original failures remain unchanged; application coverage combines complete source-identical successful entry reruns with every other original successful entry.",
+  "live_resumed": {
+    "path": "target/kde-free-evidence/qualified-1257101/live-resumed-complete.json",
+    "sha256": "bd65072303450296afb91f0576f1736fa623796b75cb9186750f4cf1d943263e"
+  },
+  "everyday_attempts": {
+    "path": "target/kde-free-evidence/qualified-1257101/everyday-attempts-resumed.json",
+    "sha256": "e2332ec45181ff6098da3da2285bb7b67e97a20e15dc8b85441198a24ee05b6d"
+  },
+  "temporary_inhibitor": {
+    "authorized": true,
+    "stopped": true,
+    "configuration_changed": false,
+    "evidence": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/performance-lock-interruption.json",
+      "sha256": "e771ec12819119891776eef386685b48e844704f60737eb7c2dae4a1568fe3b3"
+    }
+  },
+  "live_preflight": {
+    "path": "target/kde-free-evidence/qualified-1257101/live-preflight-resumed.json",
+    "sha256": "2aac57070456fb33e1d9fb39b277cdda33aa4b49308c028a160cd91f1cefdf20"
+  }
 }

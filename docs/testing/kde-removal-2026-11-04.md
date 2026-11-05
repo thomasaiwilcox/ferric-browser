@@ -64,8 +64,9 @@ Performance must use the existing harness conventions: five alternating
 independent process pairs, ten warmups, 100 latency samples, one/twenty-window
 startup, recreation and idle measurements. No compilation during measurements.
 Baseline-only idle repetitions must establish variability first. An ordinary
-latency increase exceeding both 5% and 1 ms fails qualification. Only diagnostic pilot receipts exist; no official performance qualification
-has been claimed for this migration.
+latency increase exceeding both 5% and 1 ms fails qualification. Diagnostic pilots
+and an interrupted baseline measurement attempt exist; no official performance
+qualification has been claimed for this migration.
 
 ## Dependency inventory
 
@@ -214,51 +215,70 @@ and the original failure fingerprints against the untruncated transcript. All
 original failed reports and logs remain intact; this is not a claim that the
 first uninterrupted run had zero failures.
 
-## Remaining qualification blocker
+## Live qualification resumed on 2026-11-05
 
-The inherited desktop is securely locked. Read-only Omarchy lock-service IPC
-reports `locked=true`, `sessionLocked=true` and `secure=true`; logind's separate
-`LockedHint` is false and did not reveal this condition. The service's direct
-protocol state explains why accepted compositor focus requests cannot activate
-new test windows. The unchanged frozen baseline now fails the same native-input
-activation assertion as the candidate. Earlier pointer-only explanations were
-incomplete; no desktop focus automation was established.
+The user unlocked the inherited desktop and requested another qualification
+attempt. The original, unmodified native keyboard-input entry now passes.
+T101 and T102 both pass their complete live operation assertions, including
+zero unintended focus events. All seven final product rows pass: native identity,
+native grouping, grouping focus, grouping order, focus lease, reentrant focus
+and private-window behaviour. Tagging tests use no untagged override and the
+activation harness makes no test-body focus requests.
 
-The current public-page-host report contains the known baseline credential
-policy failure and an additional native-input activation failure. The latter
-cannot use the baseline exception. The current everyday report passes 15 of 17
-entries, including T100; T101 and T102 fail their owned-focus preconditions.
-Their operation assertions are not bypassed. The final seven-row live product
-run also remains pending. These gates require an unlocked session.
+The complete 21-entry scoped public-page-host run now contains only the frozen
+baseline's reproducible credential failure,
+`siblingPolicyChangeRevokesTheSharedProfilesCapturedRequest`. Native keyboard
+input passes. The failing command retains its actual nonzero status. The v2
+verifier permits only this exact baseline comparison, with the original revision,
+matching SDK hashes, original binaries, identical assertion sources, complete
+scoped inventories and exact failure fingerprints. Native input, new bridge,
+freshness, runtime and performance gates cannot use this exception.
 
-The frozen baseline's reproducible credential failure is
-`siblingPolicyChangeRevokesTheSharedProfilesCapturedRequest`. Its command keeps
-its actual nonzero status. The v2 verifier permits only this public-host baseline
-comparison, with the original revision, matching SDK hashes, original binaries,
-identical assertion sources, complete scoped inventories and exact failure
-fingerprints. Native input, new bridge/freshness work, runtime and performance
-cannot be exempted. Candidate public-host qualification is therefore still
-blocked by the additional native-input failure.
+The 17-entry everyday report retains the original 15 successful entries and
+replaces only the two locked-desktop precondition failures with their actual
+successful complete reruns on unchanged source. Both original failed receipts
+remain intact. `everyday-attempts-resumed.json` records the recipe and provenance;
+`live-resumed-complete.json` records all four resumed live runs. Preflight verifies
+all 16 current-source functional, workspace, build and installation receipts.
 
-A nested session using the exact same Hyprland binary was attempted with an
-owned temporary configuration, isolated D-Bus, disabled session/environment
-management and physical DRM session acquisition. It did not provide a usable nested output/keyboard
-and is not qualification evidence. Its owned processes were stopped. No user
-desktop packages or compositor configuration were changed, and no unlock was
-attempted.
+The earlier blocker was the secure desktop lock: direct lock-service IPC
+reported its actual locked state even though logind's `LockedHint` was false.
+The frozen baseline reproduced the same activation failure while locked.
+No desktop focus automation was established. The attempted owned nested session
+did not provide usable input and contributes no qualification evidence. No
+user desktop configuration or packages were changed.
 
-The six-workload performance pilot completes for both frozen products, including
-twenty exposed, rendered windows, actual creation/recreation and idle. Restored
-background pages normally stay unmapped; the explicit native fixture maps only
-committed, registered owners for the twenty-window workload. Its bounded startup
-work stops before idle sampling. The pilot is diagnostic and cannot qualify
-performance. The required five alternating process pairs, ten warmups and 100
-latency samples have not run. No performance-regression or final qualification
-claim is made.
+## Performance qualification interrupted
 
-The user has been asked to unlock the desktop and choose whether to allow a
-temporary, process-owned idle inhibitor for the several-hour measurement run.
-A transparent, input-free, timer-free inhibitor fixture is prepared but has not
-been launched. It would release its Wayland resource when its process exits and
-would not change desktop configuration. Until those remaining receipts and the
-successor verifier pass, this branch remains unqualified.
+The six-workload pilot is diagnostic only. The required full run started on
+2026-11-05 against the frozen baseline and staged installed candidate. It uses
+five alternating independent process pairs, ten warmups and 100 latency samples,
+with baseline-only idle repetitions collected before candidate measurements.
+No compilation runs concurrently. Restored background pages normally stay
+unmapped; the native fixture maps only committed registered owners to exercise
+twenty exposed, rendered windows. Its bounded startup work stops before idle.
+
+The user explicitly authorized temporary idle inhibition. One process-owned,
+transparent, input-free, timer-free pixel held a Wayland idle inhibitor during
+testing; actual protocol creation and the owned layer were verified. It changed
+no desktop configuration. This external
+test resource uses the desktop's Quickshell; both measured products continue to
+use the qualified Qt 6.11.2 SDK. Its metadata and source are retained under
+`target/kde-free-idle-inhibitor`.
+
+At 05:38:23 UTC the desktop became securely locked again despite the active
+protocol inhibitor. The frozen baseline's shutdown confirmation could no longer
+complete; the measurement driver exited with status 1 after its 40-second
+shutdown deadline. Three baseline-only idle repetitions were written before the
+failure; no candidate measurement or completed comparison exists. The lock
+trigger is not established. Omarchy's own idle service reports its stay-awake
+state already enabled, so this evidence does not establish an ordinary idle
+timeout as the cause. No lock state or desktop setting was changed by testing.
+
+The failed run, raw files and environment samples are retained under
+`target/kde-free-performance-1257101` and the current evidence directory.
+`performance-lock-interruption.json` records the lock state, actual failed
+command and temporary resource provenance. The inhibitor process was stopped;
+no active owned layer remains. Hyprland still reports its retired layer snapshot
+with PID -1 while locked. The user has been asked to unlock again. Performance
+and final v2 verification remain pending; this branch remains unqualified.
