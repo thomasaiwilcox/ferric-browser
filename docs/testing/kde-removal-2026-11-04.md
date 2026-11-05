@@ -138,8 +138,8 @@ The current product, test and qualification input revision is
 `1257101f6eead8e369d2ced87fd773ad6850da5b`. Documentation-only commits do not
 change the qualification input manifest. The six ordered work packages have
 implementation commits on `migration/kde-free-wayland`; the final qualification
-package is complete. No merge or replacement of the user installation
-has occurred.
+package is complete. The qualified build has been installed per user for testing;
+the migration remains unmerged.
 
 The owned protocol context, generation-bound chooser, tagging and Rust native
 witnesses are implemented. Production and native targets, CI, packaging and SDK
@@ -401,3 +401,24 @@ The qualified matching Qt 6.11.2 private native-window header and pinned protoco
 inputs remain part of future SDK qualification under
 [ADR-0021](../architecture/ADR-0021-owned-wayland-integration.md). All six work
 packages are complete on the migration branch.
+
+## Installed system test
+
+On 2026-11-05 the qualified binary was installed in a versioned per-user release,
+and the normal CLI/desktop launcher was switched to it using Qt 6.11.2 without
+the previous KWindowSystem library/plugin prefix. The previous release and
+changed installed resources have a rollback copy. The
+[deployment summary](kde-removal-2026-11-04/deployment.json) records the exact
+binary hash and the local installation receipt hash.
+
+The normal launch mapped a native Wayland window with the existing GTK platform
+theme. A public CLI query succeeded; all four required Qt library hashes matched
+the qualified SDK, and runtime maps/shared-library inspection found no KDE
+components. The relocated phone-auth helper admitted a disposable request with
+network transports disabled, proving its installed suffix-data lookup. Host
+packages, profile configuration and default-browser ownership were not changed.
+
+The [frozen recipes](kde-removal-2026-11-04/recipes/README.md) preserve the exact
+complete-entry report assembly, idle reassessment and final receipt construction
+for review. Their manifest records original paths and checksums; current product,
+build and qualification tooling remains unchanged.

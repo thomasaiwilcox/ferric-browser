@@ -1,0 +1,25 @@
+{
+  "qualified_revision": "1257101f6eead8e369d2ced87fd773ad6850da5b",
+  "source_manifest_sha256": "111f07ede765513f18812b323444c16428a734531542ddb2900c06d86ab6f9bd",
+  "delivery_head": "533e67341e492c49b030a99426537876428d00e2",
+  "installed_utc": "20261105T172134Z",
+  "binary_sha256": "fdd8955dc8f5ec84e5316b4d57e9665887f883b9a96f3675a8c6002fea36bb4e",
+  "qt_sdk_version": "6.11.2",
+  "native_wayland": true,
+  "ipc_query_succeeded": true,
+  "required_qt_library_hashes_match": true,
+  "kde_components_loaded": false,
+  "gtk_platform_theme_loaded": true,
+  "relocated_helper": {
+    "returncode": 0,
+    "disabled_transport_admitted": true
+  },
+  "rollback_retained": true,
+  "profile_configuration_changed": false,
+  "default_browser_changed": false,
+  "system_packages_changed": false,
+  "local_receipt": {
+    "path": "target/kde-free-evidence/user-installation.json",
+    "sha256": "c22caff298a6954d1c59cad9e000ee2b167f394371a84ba3d045a5a4e378b8ff"
+  }
+}

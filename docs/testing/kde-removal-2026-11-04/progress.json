@@ -534,5 +534,13 @@
   "cleanup": {
     "path": "target/kde-free-evidence/qualified-1257101/cleanup-final.json",
     "sha256": "b5f79009e3c08822ad3e4538ab5039d05c5010688d661360c265bb708a27999a"
+  },
+  "system_test_deployment": {
+    "path": "docs/testing/kde-removal-2026-11-04/deployment.json",
+    "sha256": "0a5c3b5e2ced1a829afb758358eafcf5eee3a21448a4e459a61ededfc9078b0b"
+  },
+  "frozen_evidence_recipes": {
+    "path": "docs/testing/kde-removal-2026-11-04/recipes/manifest.json",
+    "sha256": "f7eaa59f338f9bc7b4ff44b07f29f664b7a81d6bb3faa437bc33009eda35e23b"
   }
 }
