@@ -119,17 +119,16 @@ private slots:
       matched = true;
     }
     QVERIFY(matched);
-    const auto prefix =
-        qEnvironmentVariable("FERRIC_TEST_WINDOW_SYSTEM_PREFIX");
-    if (!prefix.isEmpty()) {
-      QFile maps(QStringLiteral("/proc/self/maps"));
-      QVERIFY(maps.open(QIODevice::ReadOnly));
-      const auto loaded = maps.readAll();
-      QVERIFY(loaded.contains(
-          (prefix + "/lib/libKF6WindowSystem.so.6.28.0").toUtf8()));
-      QVERIFY(loaded.contains((prefix + "/lib/qt6/plugins/kf6/kwindowsystem/"
-                                        "KF6WindowSystemKWaylandPlugin.so")
-                                  .toUtf8()));
+    QFile maps(QStringLiteral("/proc/self/maps"));
+    QVERIFY(maps.open(QIODevice::ReadOnly));
+    const auto loaded = maps.readAll();
+    QVERIFY(!loaded.contains("libKF6"));
+    QVERIFY(!loaded.contains("/kf6/"));
+    QVERIFY(!loaded.contains("libKF5"));
+    if (const auto output = qEnvironmentVariable("FERRIC_NATIVE_RUNTIME_MAPS"); !output.isEmpty()) {
+      QFile receipt(output);
+      QVERIFY(receipt.open(QIODevice::WriteOnly));
+      QCOMPARE(receipt.write(loaded), loaded.size());
     }
     const auto literal =
         QUrl::fromLocalFile(QString::fromUtf8("/tmp/résumé + %2F#?.txt"));
@@ -214,6 +213,62 @@ private slots:
     QCOMPARE(current.selectedFile(), QUrl("file:///tmp/current.txt"));
     QCOMPARE(rejected.size(), 1);
     QCOMPARE(failed.size(), 0);
+  }
+  void nativeOwnerInvalidation_data() {
+    QTest::addColumn<bool>("required");
+    QTest::newRow("required") << true;
+    QTest::newRow("auto") << false;
+  }
+  void nativeOwnerInvalidation() {
+    QFETCH(bool, required);
+    configure({{"hold", true}});
+    const auto index = requests().size();
+    FerricNativeFileChooser chooser;
+    QSignalSpy accepted(&chooser, &FerricNativeFileChooser::accepted);
+    QSignalSpy rejected(&chooser, &FerricNativeFileChooser::rejected);
+    open(chooser, required);
+    QTRY_COMPARE(requests().size(), index + 1);
+    owner.hide();
+    QVERIFY(!chooser.visible());
+    QTRY_COMPARE(rejected.size(), 1);
+    QTRY_VERIFY(row(index)["close_count"].toInt() >= 1);
+    owner.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&owner));
+    control->call("Release", row(index)["path"].toString(), true);
+    QCoreApplication::processEvents();
+    QCOMPARE(requests().size(), index + 1);
+    QCOMPARE(accepted.size(), 0);
+    QVERIFY(!hasWidget());
+  }
+  void nativeOwnerInvalidatedDuringExport() {
+    QDBusInterface compositor("org.ferricbrowser.ParentFixture", "/org/ferricbrowser/ParentFixture",
+                              "org.ferricbrowser.ParentFixture", QDBusConnection::sessionBus());
+    QDBusReply<QVariantList> before = compositor.call("Exports");
+    QVERIFY(before.isValid());
+    // A new actual role forces an uncached export.
+    owner.hide(); owner.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&owner));
+    compositor.call("HoldExports", true);
+    const auto index = requests().size();
+    FerricNativeFileChooser chooser;
+    QSignalSpy rejected(&chooser, &FerricNativeFileChooser::rejected);
+    open(chooser);
+    auto count = [&] { QDBusReply<QVariantList> r = compositor.call("Exports"); return r.value().size(); };
+    QTRY_COMPARE(count(), before.value().size() + 1);
+    // Queue a real handle on the old proxy, then invalidate before the GUI
+    // can apply it. The replacement may not receive that handle.
+    compositor.call("ReleaseExports");
+    owner.hide();
+    QVERIFY(!chooser.visible());
+    owner.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&owner));
+    QTRY_COMPARE(rejected.size(), 1);
+    QCOMPARE(requests().size(), index);
+    compositor.call("HoldExports", false);
+    open(chooser);
+    QTRY_COMPARE(requests().size(), index + 1);
+    QCOMPARE(count(), before.value().size() + 2);
+    chooser.close();
   }
   void ownerAndControllerDestruction_data() {
     QTest::addColumn<bool>("destroyOwner");

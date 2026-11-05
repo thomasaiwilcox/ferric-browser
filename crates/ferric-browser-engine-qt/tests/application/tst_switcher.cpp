@@ -1371,7 +1371,15 @@ class SwitcherTests final : public QObject {
             return false;
         };
         for (bool cancel : {true, false}) {
-            for (int step = 0; step < 40 && !atRename(); ++step) key(host, Qt::Key_Tab);
+            for (int step = 0; step < 40 && !atRename(); ++step) {
+                // Scrolling can incubate the next profile delegate. Synthetic
+                // key delivery is synchronous; let the rendered focus chain
+                // settle before injecting the next physical interaction.
+                QSignalSpy frame(host, &QQuickWindow::frameSwapped);
+                key(host, Qt::Key_Tab);
+                host->update();
+                QTRY_VERIFY(!frame.isEmpty());
+            }
             QVERIFY(atRename());
             key(host, Qt::Key_Return);
             auto rename = visual(host->contentItem(), "profileRenameInput");

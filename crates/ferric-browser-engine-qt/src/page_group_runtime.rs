@@ -3,7 +3,7 @@ use crate::hyprland::{
     GroupOutcome, GroupReply, HyprlandAdapter, ManagedCapability, ManagedRequest, ManagedRole,
     QueuedSend,
 };
-use crate::page_window_native::{NativeWindowIdentity, NativeWindowPresentation};
+use crate::page_window_native::{NativeWindowPresentation, NativeWindowWitness};
 use crate::page_window_undo::Scope;
 use crate::{CxxQtType, Pin, TabId, Uuid, qobject};
 use cxx_qt::{CxxQtThread, Threading};
@@ -24,7 +24,9 @@ struct Owner {
     scope_key: Uuid,
     page: TabId,
     pinned: bool,
-    native: NativeWindowIdentity,
+    // Zero suspends native eligibility while retaining logical readiness.
+    // Only current nonzero witnesses may enter an admission.
+    native: NativeWindowWitness,
     config: HyprlandConfig,
     thread: CxxQtThread<qobject::BrowserUi>,
     seen_active: bool,
@@ -53,7 +55,7 @@ struct Member {
     page: TabId,
     pinned: bool,
     order: usize,
-    native: NativeWindowIdentity,
+    native: NativeWindowWitness,
     scope: Scope,
     scope_key: Uuid,
     enabled: TriState,
@@ -80,11 +82,12 @@ struct Job {
 fn admit(token: &str) -> Option<Admission> {
     let owners = owners().lock().ok()?;
     let source = owners.get(token)?;
-    if !source.ready || owners.len() > 64 {
+    if !source.ready || !source.native.current() {
         return None;
     }
     let members = owners
         .iter()
+        .filter(|(_, owner)| owner.native.current())
         .map(|(token, owner)| {
             Some(Member {
                 token: token.clone(),
@@ -100,6 +103,9 @@ fn admit(token: &str) -> Option<Admission> {
             })
         })
         .collect::<Option<Vec<_>>>()?;
+    if members.len() > 64 {
+        return None;
+    }
     Some(Admission {
         scope: source.scope.clone(),
         scope_key: source.scope_key,
@@ -137,7 +143,7 @@ fn run(job: Job) -> Result<GroupReply, String> {
     let identities = admission
         .members
         .iter()
-        .map(|member| member.native.clone())
+        .map(|member| member.native.identity.clone())
         .collect::<Vec<_>>();
     let bindings = adapter
         .resolve_native_windows(&identities)
@@ -221,7 +227,7 @@ fn run(job: Job) -> Result<GroupReply, String> {
 
 struct Lease {
     capability: ManagedCapability,
-    witnesses: Vec<NativeWindowIdentity>,
+    witnesses: Vec<NativeWindowWitness>,
 }
 
 struct Attempt {
@@ -268,10 +274,22 @@ impl Coordinator {
                 if let Some(receipt) = reply.receipt {
                     self.leases
                         .retain(|lease| lease.capability.key != receipt.capability.key);
-                    if !receipt.members.is_empty() {
+                    let witnesses = receipt
+                        .members
+                        .iter()
+                        .map(|identity| {
+                            pending
+                                .admission
+                                .members
+                                .iter()
+                                .find(|member| &member.native.identity == identity)
+                                .map(|member| member.native.clone())
+                        })
+                        .collect::<Option<Vec<_>>>();
+                    if let Some(witnesses) = witnesses.filter(|members| !members.is_empty()) {
                         self.leases.push(Lease {
                             capability: receipt.capability,
-                            witnesses: receipt.members,
+                            witnesses,
                         });
                     }
                 }
@@ -299,10 +317,14 @@ impl Coordinator {
             }
         }
         if let Ok(mut owners) = owners().lock() {
-            self.leases.retain(|lease| {
-                owners
-                    .values()
-                    .any(|owner| lease.witnesses.contains(&owner.native))
+            self.leases.retain_mut(|lease| {
+                // Keep retirement authority only through surviving original
+                // native members. A replacement role never inherits a witness;
+                // it must enter a fresh admission before being added again.
+                lease.witnesses.retain(|witness| {
+                    witness.current() && owners.values().any(|owner| &owner.native == witness)
+                });
+                !lease.witnesses.is_empty()
             });
             RETAIN_ROLES.store(
                 self.pending.is_some() || !self.leases.is_empty(),
@@ -388,9 +410,24 @@ pub(crate) fn is_pending() -> bool {
 
 pub(crate) fn is_enabled() -> bool {
     RETAIN_ROLES.load(Ordering::Acquire)
-        || owners()
-            .lock()
-            .is_ok_and(|owners| owners.values().any(|owner| automatic(&owner.config)))
+        || owners().lock().is_ok_and(|owners| {
+            owners
+                .values()
+                .any(|owner| owner.native.current() && automatic(&owner.config))
+        })
+}
+
+/// Called directly by the native destruction signal, before another GUI action.
+pub(crate) fn invalidate_native(tag: &str, generation: u64) {
+    if let Ok(mut owners) = owners().lock() {
+        for owner in owners.values_mut() {
+            if owner.native.identity.tag == tag && owner.native.generation == generation {
+                // Preserve logical readiness/ownership while removing native
+                // eligibility synchronously. Generations never encode either.
+                owner.native.generation = 0;
+            }
+        }
+    }
 }
 
 pub(crate) fn release(token: &str) {
@@ -432,8 +469,6 @@ pub(crate) fn publish(ui: &qobject::BrowserUi) {
         if !automatic(&config) && !RETAIN_ROLES.load(Ordering::Acquire) {
             return None;
         }
-        let presentation = NativeWindowPresentation::capture(ui)?;
-        let native = presentation.identity;
         let snapshot = crate::browser_ui_page_windows::PageWindowSnapshot::capture(ui)?;
         let rust = ui.rust();
         let [page] = snapshot.pages.as_slice() else {
@@ -451,12 +486,33 @@ pub(crate) fn publish(ui: &qobject::BrowserUi) {
         {
             return None;
         }
+        let scope = Scope::capture(rust)?;
+        let Some(presentation) = NativeWindowPresentation::capture(ui) else {
+            let mut previous = owners().lock().ok()?.get(&token)?.clone();
+            let marker = crate::page_window_native::NativePageHost::capture(ui)?;
+            if previous.native.generation != 0
+                || previous.page != page.id
+                || previous.native.identity.tag != marker.tag
+            {
+                return None;
+            }
+            previous.scope = scope;
+            previous.config = config;
+            previous.pinned = page.pinned;
+            return Some(previous);
+        };
+        let native = NativeWindowWitness {
+            identity: presentation.identity,
+            generation: presentation.generation,
+        };
         let seen_active = presentation.active
             || owners().lock().ok()?.get(&token).is_some_and(|previous| {
-                previous.page == page.id && previous.native == native && previous.seen_active
+                previous.page == page.id
+                    && previous.native.identity == native.identity
+                    && previous.seen_active
             });
         Some(Owner {
-            scope: Scope::capture(rust)?,
+            scope,
             scope_key: Uuid::nil(),
             page: page.id,
             pinned: page.pinned,
@@ -485,9 +541,11 @@ pub(crate) fn publish(ui: &qobject::BrowserUi) {
 pub(crate) fn poll(mut ui: Pin<&mut qobject::BrowserUi>) {
     publish(ui.as_ref().get_ref());
     let token = ui.as_ref().rust().window_token.to_string();
-    let eligible = owners()
-        .lock()
-        .is_ok_and(|owners| owners.contains_key(&token));
+    let eligible = owners().lock().is_ok_and(|owners| {
+        owners
+            .get(&token)
+            .is_some_and(|owner| owner.native.current())
+    });
     let result = {
         let Ok(mut coordinator) = coordinator().lock() else {
             return;

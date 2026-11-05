@@ -2,47 +2,26 @@
 #include "ferric-browser-engine-qt/src/bridge.cxxqt.h"
 #include "ferric-browser-engine-qt/src/bridge.cxx.h"
 
-#include <KWaylandExtras>
+#include "native_wayland.h"
 #include <QGuiApplication>
 #include <QThread>
 #include <QJSValue>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QUuid>
-#include <QWaylandClientExtension>
-#include <wayland-client-core.h>
-
-namespace {
-// Observe the actual Qt connection's advertised globals. This observer does
-// not bind a protocol object or perform a blocking Wayland round trip.
-class ToplevelTagAvailability final : public QWaylandClientExtension {
-public:
-    ToplevelTagAvailability() : QWaylandClientExtension(1) {
-        setParent(qGuiApp);
-        initialize();
-    }
-    const wl_interface *extensionInterface() const override {
-        static const wl_interface descriptor{"xdg_toplevel_tag_manager_v1", 1, 0, nullptr, 0, nullptr};
-        return &descriptor;
-    }
-    void bind(wl_registry *, int, int version) override { setVersion(qMin(version, 1)); }
-};
-
-bool toplevelTagAvailable() {
-    static QPointer<ToplevelTagAvailability> available;
-    if (!available) available = new ToplevelTagAvailability;
-    return available->isActive();
-}
-}
 
 FerricPageWindowIdentity::FerricPageWindowIdentity(QObject *parent)
     : QObject(parent), tag_(QStringLiteral("ferric-page-")
         + QUuid::createUuid().toString(QUuid::WithoutBraces)) {}
 
+FerricPageWindowIdentity::~FerricPageWindowIdentity() {
+    ferric::page_windows::native_window_retired(tag_);
+}
+
 QWindow *FerricPageWindowIdentity::window() const { return window_; }
 QString FerricPageWindowIdentity::tag() const { return tag_; }
 bool FerricPageWindowIdentity::prepared() const { return prepared_ && window_; }
-bool FerricPageWindowIdentity::tagRequested() const { return prepared() && tagRequested_; }
+bool FerricPageWindowIdentity::tagRequested() const { return prepared() && native_ && native_->tagSubmitted(); }
 
 void FerricPageWindowIdentity::setWindow(QWindow *window)
 {
@@ -51,20 +30,28 @@ void FerricPageWindowIdentity::setWindow(QWindow *window)
     if (window_ || prepared_ || !window || window->isVisible()
         || window->thread() != QThread::currentThread()) return;
     window_ = window;
-    // KF 6.28 installs a surface-role callback that assumes the tag manager
-    // exists. Unsupported compositors must keep usable untagged windows.
-    if (QGuiApplication::platformName() == QStringLiteral("wayland") && toplevelTagAvailable()) {
-        KWaylandExtras::setXdgToplevelTag(window, tag_);
-        tagRequested_ = true;
+    native_ = FerricWaylandWindow::prepare(window, tag_);
+    if (native_) {
+        connect(native_, &FerricWaylandWindow::invalidated, this, [this](quint64 generation) {
+            ferric::page_windows::native_window_invalidated(tag_, generation);
+        }, Qt::DirectConnection);
+        connect(native_, &FerricWaylandWindow::changed, this, [this] {
+            ferric::page_windows::native_window_changed(tag_, native_->generation(), native_->tagSubmitted());
+            emit tagRequestedChanged();
+        }, Qt::DirectConnection);
+        ferric::page_windows::native_window_changed(tag_, native_->generation(), native_->tagSubmitted());
     }
     prepared_ = true;
     connect(window, &QObject::destroyed, this, [this] {
+        ferric::page_windows::native_window_retired(tag_);
         window_.clear();
         emit windowChanged();
         emit preparedChanged();
+        emit tagRequestedChanged();
     });
     emit windowChanged();
     emit preparedChanged();
+    emit tagRequestedChanged();
 }
 
 namespace {
@@ -159,20 +146,29 @@ QString FerricPageWindowIdentity::pageFocusStatus(QObject *issuerObject, QObject
         ? QStringLiteral("activated") : QStringLiteral("requested");
 }
 
-QStringList ferric_browser_native_page_window_identity(const BrowserUi &ui)
+ferric::page_windows::NativeWindowSnapshot ferric_browser_native_page_window_identity(const BrowserUi &ui)
 {
     if (QGuiApplication::platformName() != QStringLiteral("wayland")) return {};
     const auto host = actualHost(ui);
-    if (!host.marker || !host.window || !host.marker->tagRequested()) return {};
+    if (!host.marker || !host.window) return {};
+    const QPointer<FerricWaylandWindow> native = FerricWaylandWindow::prepare(host.window);
+    if (!native || !native->generation()) return {};
+    const auto generation = native->generation();
     const auto window = host.window;
+    const auto current = [&] {
+        return window && host.marker && native && native->generation() == generation;
+    };
     auto appId = QGuiApplication::desktopFileName();
     if (appId.isEmpty()) appId = QCoreApplication::applicationName();
     if (appId.endsWith(QStringLiteral(".desktop"))) appId.chop(8);
-    const bool foreground = window->property("windowPreparedPageActivateRequested").toBool()
-        || (!window->property("windowPreparedPageMode").toBool()
-            && window->property("windowInitialVisible").toBool());
+    const bool activateRequested = window->property("windowPreparedPageActivateRequested").toBool();
+    if (!current()) return {};
+    const bool preparedMode = window->property("windowPreparedPageMode").toBool();
+    if (!current()) return {};
+    const bool initiallyVisible = window->property("windowInitialVisible").toBool();
+    if (!current()) return {};
+    const bool foreground = activateRequested || (!preparedMode && initiallyVisible);
     const bool active = window->isActive() && QGuiApplication::focusWindow() == window;
-    return {host.marker->tag(), appId,
-            foreground ? QStringLiteral("foreground") : QStringLiteral("background"),
-            active ? QStringLiteral("active") : QStringLiteral("inactive")};
+    return {true, host.marker->tag().toStdString(), appId.toStdString(), generation,
+            foreground, active, native->tagSubmitted()};
 }

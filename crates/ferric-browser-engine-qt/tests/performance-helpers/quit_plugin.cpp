@@ -11,8 +11,11 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTimer>
+#include <algorithm>
+#include "native_probe.h"
 
 class OwnedPerfQuit final : public QObject {
+    OwnedNativeProbe *nativeProbe = nullptr;
     const QString root;
     const int expectedPages;
     QFileSystemWatcher watcher;
@@ -54,13 +57,14 @@ class OwnedPerfQuit final : public QObject {
             QObject::disconnect(frameConnection);
             presentedWindow = window; presentedDialog = dialog; presented = false;
             frameConnection = connect(window, &QQuickWindow::frameSwapped, this, [this] { presented = true; });
-            window->requestUpdate();
+            window->update();
             return false;
         }
-        if (!presented) window->requestUpdate();
+        if (!presented) window->update();
         return presented;
     }
     void poll() {
+        if (nativeProbe) nativeProbe->prepareStartup();
         const bool expansion = expansionAuthorized();
         if (!authorized() && !expansion) { timer.stop(); return; }
         if (expansion) {
@@ -144,6 +148,8 @@ public:
         });
         connect(&timer, &QTimer::timeout, this, [this] { poll(); });
         QTimer::singleShot(0, this, [this] { if (expansionAuthorized()) timer.start(); });
+        if (qEnvironmentVariable("FERRIC_PERF_NATIVE_PROBE") == "1")
+            nativeProbe = new OwnedNativeProbe(root, expectedPages, this);
     }
 };
 class PerfQuitPlugin final : public QGenericPlugin {

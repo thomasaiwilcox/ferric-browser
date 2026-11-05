@@ -86,6 +86,7 @@ pub(crate) struct Lease {
     issuer: Owner,
     target: Owner,
     target_marker: crate::page_window_native::NativePageHost,
+    issuer_marker: crate::page_window_native::NativePageHost,
     expires: Instant,
     used: AtomicBool,
 }
@@ -145,7 +146,8 @@ pub(super) fn prepare(
         nonce: Uuid::new_v4(),
         generation,
         target: target.clone(),
-        target_marker: owner.native_marker?,
+        target_marker: owner.native_marker?.current_snapshot()?,
+        issuer_marker: crate::page_window_native::NativePageHost::capture(ui)?,
         issuer,
         expires: Instant::now() + Duration::from_secs(2),
         used: AtomicBool::new(false),
@@ -171,7 +173,13 @@ pub(crate) fn validate_page_focus(
     let Some(lease) = issuer.rust().page_window_focus_lease.as_ref() else {
         return false;
     };
-    if !current(lease.generation)
+    if !lease.issuer_marker.current()
+        || !(if phase == 2 && lease.used.load(Ordering::Acquire) {
+            lease.target_marker.current_after_show()
+        } else {
+            lease.target_marker.current()
+        })
+        || !current(lease.generation)
         || nonce.to_string() != lease.nonce.to_string()
         || marker.to_string() != lease.target_marker.tag
         || Instant::now() > lease.expires

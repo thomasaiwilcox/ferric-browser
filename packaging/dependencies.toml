@@ -6,7 +6,7 @@ support_status = "development"
 family = "Qt 6"
 minimum_version = "6.11.2"
 model = "system-dynamic"
-qualification = "The native download-source guard is qualified for QtWebEngine 6.11.2 and needs matching private SDK headers. Refresh its verified interface and repeat release qualification before changing the SDK."
+qualification = "The download-source guard and owned Wayland bridge require Qt 6.11.2 and matching WebEngine, Core and Gui private SDK headers. Refresh its verified interface and repeat release qualification before changing the SDK."
 
 [required]
 arch_packages = [
@@ -18,7 +18,7 @@ arch_packages = [
   "qt6-wayland",
   "qt6-webengine>=6.11",
   "qt6-webchannel>=6.11",
-  "kwindowsystem>=6.28",
+  "wayland",
 ]
 
 qml_modules = [
@@ -46,9 +46,9 @@ qt_modules = [
 ]
 
 [build]
-arch_packages = ["desktop-file-utils", "git", "rust>=1.88", "pkgconf", "python"]
+arch_packages = ["desktop-file-utils", "git", "rust>=1.88", "pkgconf", "python", "wayland"]
 check_packages = ["dbus", "weston", "wayland", "wayland-protocols"]
-note = "desktop-file-utils is required by the package check phase; rust builds the locked application source; dbus and weston provide the disposable native-Wayland qualification harness."
+note = "wayland-scanner and Wayland client headers are required; protocol XML is pinned in the source tree. Matching Qt Gui private headers are mandatory. desktop-file-utils is required by the package check phase; rust builds the locked application source; dbus and weston provide the disposable native-Wayland qualification harness."
 
 [optional.portals]
 arch_packages = [

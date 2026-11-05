@@ -1,0 +1,26 @@
+{
+  "qualified_revision": "1257101f6eead8e369d2ced87fd773ad6850da5b",
+  "purpose": "Frozen copies of actual qualification evidence recipes; not active product/build inputs. Original logs and command receipts retain their original paths and hashes.",
+  "recipes": [
+    {
+      "original_path": "target/kde-free-evidence/assemble_application_complete_1257101.py",
+      "file": "assemble_application_complete_1257101.py",
+      "sha256": "0d8035215fc0e9019c8bc2b17c8255de131710e9296505facff3bc81da23e2c3"
+    },
+    {
+      "original_path": "target/kde-free-evidence/assemble_everyday_resumed_1257101.py",
+      "file": "assemble_everyday_resumed_1257101.py",
+      "sha256": "256beabca1622a11ec57d8ba6657dd32f1dba9f34f7df935775dae134a470abb"
+    },
+    {
+      "original_path": "target/kde-free-evidence/resolve_idle_mains_1257101.py",
+      "file": "resolve_idle_mains_1257101.py",
+      "sha256": "d9be57b1d4a40ac80d4f1a02756289eebd1aa1080d2ffd4e8612b01ea91664da"
+    },
+    {
+      "original_path": "target/kde-free-evidence/finalize_idle_resolution_1257101.py",
+      "file": "finalize_idle_resolution_1257101.py",
+      "sha256": "2e2f9e137b9901cf4f6de094095606c8b46d9bc529d90797838b42655c9b0261"
+    }
+  ]
+}

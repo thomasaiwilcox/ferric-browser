@@ -3,6 +3,12 @@
 **Status:** native proof qualified on the pinned stack; production grouping remains unqualified
 **Scope:** W00 candidate only. This does not authorize production grouping.
 
+The 2026-11-04 dependency migration replaces the fixture's KDE implementation
+with the owned bridge described in [ADR-0021](ADR-0021-owned-wayland-integration.md).
+Its process-local native generations supplement these compositor identity
+checks without changing the serialized identity. The qualification below
+remains historical evidence for its original implementation.
+
 ## Decision
 
 The proof fixture assigns a fresh, opaque xdg-toplevel tag to each owned

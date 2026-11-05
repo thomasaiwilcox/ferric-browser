@@ -1,4 +1,5 @@
 #include "gui_application.h"
+#include "native_wayland.h"
 #include <QApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -45,7 +46,10 @@ struct SessionUiPreferences {
 class FerricApplication final : private ApplicationArguments, private SessionUiPreferences, public QApplication {
 public:
     explicit FerricApplication(const QVector<QByteArray> &arguments)
-        : ApplicationArguments(arguments), QApplication(count, pointers.data()), preferencesReady(activate()) {}
+        : ApplicationArguments(arguments), QApplication(count, pointers.data()), preferencesReady(activate()) {
+        ferric_initialize_wayland();
+    }
+    ~FerricApplication() override { ferric_shutdown_wayland(); }
     const bool preferencesReady;
 };
 }

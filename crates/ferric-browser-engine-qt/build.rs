@@ -1,3 +1,4 @@
+use std::process::Command;
 use std::{env, fmt::Write as _, fs, path::Path, path::PathBuf};
 
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
@@ -40,6 +41,8 @@ const NATIVE_SOURCES: &[&str] = &[
     "src/notification_presenter.cpp",
     "src/native_file_chooser.h",
     "src/native_file_chooser.cpp",
+    "src/native_wayland.h",
+    "src/native_wayland.cpp",
     "src/portal_file_request.h",
     "src/portal_file_request.cpp",
     "src/gui_application.h",
@@ -82,10 +85,12 @@ fn main() {
     let qrc_path = manifest_path.with_file_name("browser_script_manifest.qrc");
     write_manifest_qrc(&qrc_path, &manifest_path, &resources);
 
-    let window_system = pkg_config::Config::new()
-        .atleast_version("6.28")
-        .probe("KF6WindowSystem")
-        .expect("KWindowSystem >= 6.28 is required for parented Wayland file choosers");
+    let wayland_client = pkg_config::Config::new()
+        .atleast_version("1.20")
+        .cargo_metadata(false)
+        .probe("wayland-client")
+        .expect("Wayland client development files are required");
+    let protocol_dir = generate_wayland_protocols();
     let (webengine_version, webengine_private) = qt_private_headers(
         "Qt6WebEngineCore",
         "QtWebEngineCore/private/qwebenginedownloadrequest_p.h",
@@ -95,6 +100,11 @@ fn main() {
         "Refresh the verified Qt download-source compatibility interface before changing the qualified QtWebEngine SDK"
     );
     let (_, core_private) = qt_private_headers("Qt6Core", "QtCore/private/qglobal_p.h");
+    let (gui_version, gui_private) = qt_private_headers("Qt6Gui", "QtGui/qpa/qplatformwindow_p.h");
+    assert_eq!(
+        gui_version, "6.11.2",
+        "Requalify the native Wayland lifecycle bridge before changing the Qt Gui SDK"
+    );
     let builder = CxxQtBuilder::new_qml_module(
         QmlModule::new("io.github.ferricbrowser").qml_files(qml_files),
     )
@@ -104,14 +114,14 @@ fn main() {
     .crate_include_root(None)
     .include_dir(".");
     // SAFETY: This adds discovered dependency and version-matching SDK include
-    // paths. Private Qt declarations are isolated in download_source.cpp.
+    // paths. Private Qt declarations are isolated in download_source.cpp and
+    // native_wayland.cpp.
     // It does not replace CXX-Qt's compiler, files, flags, or generated ABI.
     #[allow(unsafe_code)]
     let builder = unsafe {
         builder.cc_builder(|cc| {
-            for path in &window_system.include_paths {
-                cc.include(path);
-            }
+            cc.include(&protocol_dir);
+            cc.include(&gui_private);
             cc.include(&webengine_private);
             cc.include(&core_private);
             cc.include("src/qt_compat");
@@ -135,6 +145,49 @@ fn main() {
         .qt_module("DBus")
         .build()
         .export();
+
+    // Qt's SDK search paths must precede generic system library directories.
+    // Otherwise a host Qt installation can silently replace the qualified SDK.
+    for path in &wayland_client.link_paths {
+        println!("cargo:rustc-link-search=native={}", path.display());
+    }
+    for library in &wayland_client.libs {
+        println!("cargo:rustc-link-lib={library}");
+    }
+
+    // Scanner output is C: compiling it as C++ gives const protocol interface
+    // descriptors internal linkage. Keep one C implementation per executable.
+    cc::Build::new()
+        .files(
+            [
+                "xdg-foreign-unstable-v2",
+                "xdg-toplevel-tag-v1",
+                "xdg-shell",
+            ]
+            .map(|name| protocol_dir.join(format!("{name}-protocol.c"))),
+        )
+        .includes(&wayland_client.include_paths)
+        .compile("ferric_wayland_protocols");
+}
+
+fn generate_wayland_protocols() -> PathBuf {
+    println!("cargo:rerun-if-changed=protocols");
+    println!("cargo:rerun-if-env-changed=WAYLAND_SCANNER");
+    let scanner = env::var("WAYLAND_SCANNER").unwrap_or_else(|_| {
+        pkg_config::get_variable("wayland-scanner", "wayland_scanner")
+            .expect("Install wayland-scanner and its pkg-config development file")
+    });
+    let output = PathBuf::from(env::var_os("OUT_DIR").expect("Cargo OUT_DIR")).join("protocols");
+    let status = Command::new("python3")
+        .args(["protocols/generate.py", "--scanner", &scanner, "--output"])
+        .arg(&output)
+        .status()
+        .expect("Python 3 and wayland-scanner are required for pinned protocol generation");
+    assert!(
+        status.success(),
+        "Pinned Wayland protocol generation failed"
+    );
+    output
 }
 
 fn qt_private_headers(module: &str, required: &str) -> (String, PathBuf) {

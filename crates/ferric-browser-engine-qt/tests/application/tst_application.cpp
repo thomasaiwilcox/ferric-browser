@@ -153,6 +153,7 @@ void ApplicationTests::initTestCase() {
     if (QGuiApplication::platformName() != "wayland")
         return;
     QQuickWindow probe;
+    probe.setTitle(QStringLiteral("ferric-native-input-probe-%1").arg(QCoreApplication::applicationPid()));
     probe.resize(320, 240);
     probe.show();
     probe.requestActivate();
@@ -293,9 +294,8 @@ void ApplicationTests::init() {
         startupConfig = QString::fromUtf8(QJsonDocument(QJsonObject{
             {"schema_version",3}, {"hints",QJsonObject{{"selectors",policies}}}}).toJson(QJsonDocument::Compact));
     }
-    const auto storageBase = QDir::cleanPath(testName.startsWith("productPolish")
-        ? directory.filePath("durable-test/" + testName + "/" + QString::fromLatin1(QTest::currentDataTag()))
-        : directory.filePath("durable-test"));
+    const auto storageBase = QDir::cleanPath(directory.filePath(
+        "durable-test/" + testName + "/" + QString::fromLatin1(QTest::currentDataTag())));
     if (testName == "productPolishUnavailableStorage") {
         QVERIFY(QDir().mkpath(QFileInfo(storageBase).absolutePath()));
         QFile blockedRoot(storageBase);
@@ -343,8 +343,13 @@ void ApplicationTests::init() {
     QVERIFY(window);
     engine->rootContext()->setContextProperty("testWindow", window);
     engine->rootContext()->setContextProperty("testProbe", this);
-    if (qEnvironmentVariable("FERRIC_PORTAL_TEST_BUS") == "isolated")
-        QVERIFY(!evaluate("testWindow.pageWindowTagRequested").toBool());
+    if (qEnvironmentVariable("FERRIC_PORTAL_TEST_BUS") == "isolated") {
+        const bool fixtureTags = QGuiApplication::platformName() == QStringLiteral("wayland")
+            && !qEnvironmentVariableIsSet("FERRIC_FIXTURE_NO_TAGS");
+        if (!fixtureTags) QVERIFY(!evaluate("testWindow.pageWindowTagRequested").toBool());
+        else if (window->isVisible())
+            QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.pageWindowTagRequested").toBool(), 1000);
+    }
     QTRY_VERIFY_WITH_TIMEOUT(
         evaluate("testWindow.activeWebView() !== null").toBool(), 10000);
     QTRY_VERIFY_WITH_TIMEOUT(
@@ -884,7 +889,7 @@ void ApplicationTests::durablePersistenceFailurePreservesConfiguration() {
     QVERIFY(command("bind p hint --target pointer all"));
     const auto accepted = text("config_json");
     const auto path =
-        directory.filePath("durable-test/state/runtime-overrides.toml");
+        evaluate("testWindow.storageBasePath").toString() + "/state/runtime-overrides.toml";
     QFile file(path);
     QVERIFY(file.open(QIODevice::ReadOnly));
     const auto bytes = file.readAll();
@@ -971,7 +976,7 @@ void ApplicationTests::selectorValidationRejectsWholeCandidate() {
     // Selector policy is a reload-boundary setting. Saving it must not
     // silently change the current effective policy.
     QCOMPARE(text("config_json"), accepted);
-    QFile persisted(directory.filePath("durable-test/state/runtime-overrides.toml"));
+    QFile persisted(evaluate("testWindow.storageBasePath").toString() + "/state/runtime-overrides.toml");
     QVERIFY(persisted.open(QIODevice::ReadOnly));
     QVERIFY(persisted.readAll().contains("[data-ferric-owned]"));
     const auto saved = text("config_json");

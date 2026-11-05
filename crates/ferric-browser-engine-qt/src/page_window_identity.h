@@ -7,6 +7,7 @@
 #include <QStringList>
 #include <QWindow>
 #include <QtQml/qqmlregistration.h>
+#include "native_wayland.h"
 
 // A mapping-time correlation marker for an application-created window. The
 // compositor adapter must still corroborate exact ownership and stable ID.
@@ -16,9 +17,10 @@ class FerricPageWindowIdentity : public QObject {
     Q_PROPERTY(QWindow *targetWindow READ window WRITE setWindow NOTIFY windowChanged)
     Q_PROPERTY(QString tag READ tag CONSTANT)
     Q_PROPERTY(bool prepared READ prepared NOTIFY preparedChanged)
-    Q_PROPERTY(bool tagRequested READ tagRequested NOTIFY preparedChanged)
+    Q_PROPERTY(bool tagRequested READ tagRequested NOTIFY tagRequestedChanged)
 public:
     explicit FerricPageWindowIdentity(QObject *parent = nullptr);
+    ~FerricPageWindowIdentity() override;
     QWindow *window() const;
     void setWindow(QWindow *window);
     QString tag() const;
@@ -32,15 +34,17 @@ public:
 signals:
     void windowChanged();
     void preparedChanged();
+    void tagRequestedChanged();
 private:
     QPointer<QWindow> window_;
     QString tag_;
     bool prepared_ = false;
-    bool tagRequested_ = false;
+    QPointer<FerricWaylandWindow> native_;
 };
 
 class BrowserUi;
 // Private CXX read of the actual native owner and its mapping-time marker.
-QStringList ferric_browser_native_page_window_identity(const BrowserUi &ui);
+namespace ferric::page_windows { struct NativeWindowSnapshot; }
+ferric::page_windows::NativeWindowSnapshot ferric_browser_native_page_window_identity(const BrowserUi &ui);
 QString ferric_browser_page_window_marker(const BrowserUi &ui);
 #endif

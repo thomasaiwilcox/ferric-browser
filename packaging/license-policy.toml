@@ -1,6 +1,11 @@
 schema = 1
 
 [[dependency]]
+name = "cc"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io locked cc 1.4.6; C compilation for pinned Wayland protocol bindings"
+
+[[dependency]]
 name = "pkg-config"
 license = "MIT OR Apache-2.0"
 provenance = "crates.io locked system library discovery build dependency"

@@ -20,8 +20,9 @@ have separate configuration and qualification limits.
 ## Build and run
 
 Install Rust 1.88 or newer and the qualified Qt 6.11.2 SDK with QtWebEngine,
-Qt Widgets, Qt Declarative and Qt Wayland. You also need KWindowSystem 6.28
-or newer, pkg-config and a C++ toolchain. Then run:
+Qt Widgets, Qt Declarative and Qt Wayland, including version-matching Qt Gui,
+Core and WebEngine private headers. You also need Wayland client development
+files, `wayland-scanner`, Python 3, pkg-config and a C++ toolchain. Then run:
 
 ```sh
 cargo build --locked

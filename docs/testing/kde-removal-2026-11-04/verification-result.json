@@ -1,0 +1,7 @@
+{
+  "schema": "ferric.kde-free-wayland.v2",
+  "policy": "passed",
+  "preserved_baseline_failures": [
+    "quick_credential_public_surface"
+  ]
+}

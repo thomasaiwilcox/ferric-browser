@@ -13,9 +13,22 @@ pub(crate) use crate::page_window_focus::{
 };
 
 pub(crate) use crate::browser_ui_page_transfer::{PageRollbackProof, capture_page_rollback};
+pub(crate) use crate::page_window_native::{
+    native_window_changed, native_window_invalidated, native_window_retired,
+};
 
 #[cxx_qt::bridge]
 pub(crate) mod qobject {
+    #[namespace = "ferric::page_windows"]
+    struct NativeWindowSnapshot {
+        valid: bool,
+        tag: String,
+        app_id: String,
+        generation: u64,
+        foreground: bool,
+        active: bool,
+        tag_submitted: bool,
+    }
     #[namespace = "ferric::credentials"]
     struct NativeCredentialUpdate {
         kind: i32,
@@ -60,7 +73,7 @@ pub(crate) mod qobject {
         type QGuiApplication = cxx_qt_lib::QGuiApplication;
         type QVector_QByteArray = cxx_qt_lib::QVector<cxx_qt_lib::QByteArray>;
 
-        fn ferric_browser_native_page_window_identity(ui: &BrowserUi) -> QStringList;
+        fn ferric_browser_native_page_window_identity(ui: &BrowserUi) -> NativeWindowSnapshot;
         fn ferric_browser_page_window_marker(ui: &BrowserUi) -> QString;
 
         fn ferric_public_page_for_request(request: &QVariant) -> QVariant;
@@ -130,6 +143,12 @@ pub(crate) mod qobject {
     }
 
     extern "Rust" {
+        #[namespace = "ferric::page_windows"]
+        fn native_window_changed(tag: &QString, generation: u64, tag_submitted: bool);
+        #[namespace = "ferric::page_windows"]
+        fn native_window_invalidated(tag: &QString, generation: u64);
+        #[namespace = "ferric::page_windows"]
+        fn native_window_retired(tag: &QString);
         #[namespace = "ferric::page_windows"]
         type PageRollbackProof;
         #[namespace = "ferric::page_windows"]

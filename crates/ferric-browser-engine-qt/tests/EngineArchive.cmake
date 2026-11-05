@@ -17,6 +17,11 @@ if(DEFINED FERRIC_ARCHIVE_TO_CHECK)
         "${FERRIC_SOURCE_ROOT}/crates/ferric-browser-engine-qt/qml/*.qml"
         "${FERRIC_SOURCE_ROOT}/crates/ferric-browser-engine-qt/qml/*.js")
     list(APPEND inputs ${resources})
+    file(GLOB protocol_inputs LIST_DIRECTORIES FALSE
+        "${FERRIC_SOURCE_ROOT}/crates/ferric-browser-engine-qt/protocols/*.xml"
+        "${FERRIC_SOURCE_ROOT}/crates/ferric-browser-engine-qt/protocols/*.json"
+        "${FERRIC_SOURCE_ROOT}/crates/ferric-browser-engine-qt/protocols/generate.py")
+    list(APPEND inputs ${protocol_inputs})
     foreach(input IN LISTS inputs)
         if(EXISTS "${input}" AND "${input}" IS_NEWER_THAN "${FERRIC_ARCHIVE_TO_CHECK}")
             file(RELATIVE_PATH relative "${FERRIC_SOURCE_ROOT}" "${input}")

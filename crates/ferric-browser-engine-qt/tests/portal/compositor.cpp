@@ -1,4 +1,5 @@
-#include "foreign-server.h"
+#include "xdg-foreign-unstable-v2-server.h"
+#include "xdg-toplevel-tag-v1-server.h"
 #include <QBuffer>
 #include <QDBusConnection>
 #include <QEventLoop>
@@ -26,10 +27,21 @@
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-names.h>
 #include <cstring>
+#include <utility>
 
 // Test-only compositor: real wl_surface/xdg_toplevel resources, with a small
 // xdg_foreign_v2 exporter. Seat events target only its owned client surfaces;
 // this process has no connection to the user's display or input devices.
+class OwnedCompositor final : public QWaylandCompositor {
+protected:
+  QWaylandSeat *createSeat() override {
+    auto seat = QWaylandCompositor::createSeat();
+    // QWaylandSeat's compositor argument is not a QObject parent. Explicit
+    // ownership releases the seat/keymap before the display's teardown.
+    seat->setParent(this);
+    return seat;
+  }
+};
 struct Window {
   QString id;
   QPointer<QWaylandSurface> surface;
@@ -41,6 +53,9 @@ struct State {
   QList<Window> windows;
   QWaylandCompositor *compositor = nullptr;
   QVariantList exports;
+  QVariantList protocol;
+  bool holdExports = false;
+  QList<QPair<wl_resource *, QString>> heldExports;
   QHash<int, uint32_t> modifierMasks;
   QHash<QString, uint32_t> physicalKeys;
 };
@@ -130,12 +145,17 @@ void exportToplevel(wl_client *client, wl_resource *resource, uint32_t id,
       exported, &exportedImplementation, new Export{state, index},
       [](wl_resource *resource) {
         auto data = static_cast<Export *>(wl_resource_get_user_data(resource));
+        data->state->heldExports.removeIf([resource](const auto &item) { return item.first == resource; });
         auto row = data->state->exports[data->index].toMap();
         row["destroyed"] = true;
         data->state->exports[data->index] = row;
         delete data;
       });
-  zxdg_exported_v2_send_handle(exported, handle.toUtf8().constData());
+  if (state->holdExports) {
+    state->heldExports.append({exported, handle});
+    // Remove dead resources before the test releases delayed replies.
+    // The protocol logger independently retains their destruction receipt.
+  } else zxdg_exported_v2_send_handle(exported, handle.toUtf8().constData());
 }
 const struct zxdg_exporter_v2_interface exporterImplementation = {
     destroyResource, exportToplevel};
@@ -150,6 +170,38 @@ void bindExporter(wl_client *client, void *data, uint32_t version,
   wl_resource_set_implementation(resource, &exporterImplementation, data,
                                  nullptr);
 }
+void setTag(wl_client *, wl_resource *, wl_resource *, const char *) {}
+const struct xdg_toplevel_tag_manager_v1_interface tagImplementation = {
+    destroyResource, setTag, setTag};
+void bindTags(wl_client *client, void *, uint32_t version, uint32_t id) {
+  auto resource = wl_resource_create(client, &xdg_toplevel_tag_manager_v1_interface, qMin(version, 1U), id);
+  wl_resource_set_implementation(resource, &tagImplementation, nullptr, nullptr);
+}
+void recordProtocol(void *data, wl_protocol_logger_type direction, const wl_protocol_logger_message *message) {
+  if (direction != WL_PROTOCOL_LOGGER_REQUEST) return;
+  auto state = static_cast<State *>(data);
+  const QByteArray interface(wl_resource_get_class(message->resource));
+  const QByteArray request(message->message->name);
+  if (interface != "wl_surface" && interface != "xdg_surface" && interface != "xdg_toplevel"
+      && interface != "xdg_toplevel_tag_manager_v1" && interface != "wl_compositor") return;
+  if (request != "commit" && request != "attach" && request != "destroy" && request != "get_toplevel"
+      && request != "set_toplevel_tag" && request != "create_surface") return;
+  pid_t pid; uid_t uid; gid_t gid;
+  wl_client_get_credentials(wl_resource_get_client(message->resource), &pid, &uid, &gid);
+  QVariantMap row{{"interface", QString::fromLatin1(interface)}, {"request", QString::fromLatin1(request)},
+                  {"object", wl_resource_get_id(message->resource)}, {"pid", qlonglong(pid)}};
+  if (request == "create_surface" || request == "get_toplevel") row["new_id"] = message->arguments[0].n;
+  if (request == "get_toplevel") {
+    auto xdg = QWaylandXdgSurface::fromResource(message->resource);
+    if (xdg) row["surface"] = wl_resource_get_id(xdg->surface()->resource());
+  }
+  if (request == "set_toplevel_tag") {
+    row["role"] = wl_resource_get_id(reinterpret_cast<wl_resource *>(message->arguments[0].o));
+    row["tag"] = QString::fromUtf8(message->arguments[1].s);
+  }
+  if (request == "attach") row["buffer"] = message->arguments[0].o != nullptr;
+  state->protocol.append(row);
+}
 class Control final : public QObject {
   Q_OBJECT
   Q_CLASSINFO("D-Bus Interface", "org.ferricbrowser.ParentFixture")
@@ -157,6 +209,21 @@ public:
   explicit Control(State *state) : state(state) {}
 public slots:
   QVariantList Exports() { return state->exports; }
+  void Quit() { QTimer::singleShot(0, qApp, &QCoreApplication::quit); }
+  QVariantList Protocol() { return state->protocol; }
+  QVariantMap Resources() {
+    int exports = 0, roles = 0;
+    for (const auto &entry : state->exports)
+      if (!entry.toMap()["destroyed"].toBool()) ++exports;
+    for (const auto &top : state->tops) if (top) ++roles;
+    return {{"exports", exports}, {"roles", roles},
+            {"views", state->compositor->findChildren<QWaylandView *>().size()}};
+  }
+  void HoldExports(bool hold) { state->holdExports = hold; }
+  void ReleaseExports() {
+    const auto pending = std::exchange(state->heldExports, {});
+    for (const auto &item : pending) zxdg_exported_v2_send_handle(item.first, item.second.toUtf8().constData());
+  }
   QVariantList Windows() {
     QVariantList result;
     for (const auto &window : state->windows)
@@ -279,7 +346,7 @@ int main(int argc, char **argv) {
   if (qEnvironmentVariable("FERRIC_PORTAL_TEST_BUS") != "isolated")
     return 2;
   State state;
-  QWaylandCompositor compositor;
+  OwnedCompositor compositor;
   state.compositor = &compositor;
   compositor.setSocketName(qgetenv("FERRIC_PARENT_DISPLAY"));
   compositor.setUseHardwareIntegrationExtension(false);
@@ -296,6 +363,12 @@ int main(int argc, char **argv) {
         view->setPrimary();
         state.windows.append(Window{QUuid::createUuid().toString(QUuid::Id128),
                                     surface, top, view});
+        QObject::connect(top, &QObject::destroyed, &compositor,
+            [&, surface, guardedView = QPointer<QWaylandView>(view)] {
+              if (!state.tops.value(surface)) state.tops.remove(surface);
+              if (guardedView) delete guardedView.data();
+              state.windows.removeIf([](const Window &window) { return !window.top || !window.surface; });
+            });
         QObject::connect(
             surface, &QWaylandSurface::hasContentChanged, &compositor,
             [&, surface] {
@@ -314,10 +387,12 @@ int main(int argc, char **argv) {
   output.setCurrentMode(mode);
   compositor.setDefaultOutput(&output);
   compositor.create();
+  auto logger = wl_display_add_protocol_logger(compositor.display(), recordProtocol, &state);
   if (!initializeModifiers(&state)) return 5;
-  if (!wl_global_create(compositor.display(), &zxdg_exporter_v2_interface, 1,
+  if (!qEnvironmentVariableIsSet("FERRIC_FIXTURE_NO_EXPORTER") && !wl_global_create(compositor.display(), &zxdg_exporter_v2_interface, 1,
                         &state, bindExporter))
     return 3;
+  if (!qEnvironmentVariableIsSet("FERRIC_FIXTURE_NO_TAGS") && !wl_global_create(compositor.display(), &xdg_toplevel_tag_manager_v1_interface, 1, &state, bindTags)) return 3;
   Control control(&state);
   auto bus = QDBusConnection::sessionBus();
   if (!bus.registerService("org.ferricbrowser.ParentFixture") ||
@@ -338,6 +413,13 @@ int main(int argc, char **argv) {
       60000, qEnvironmentVariableIntValue("FERRIC_PORTAL_FIXTURE_LIFETIME_MS"),
       480000);
   QTimer::singleShot(lifetime, &app, &QCoreApplication::quit);
-  return app.exec();
+  const int result = app.exec();
+  frames.stop();
+  // Release client-owned protocol resources while State and the display are
+  // still alive, then drain Qt's deferred shell/surface object destruction.
+  for (auto client : compositor.clients()) compositor.destroyClient(client);
+  QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+  wl_protocol_logger_destroy(logger);
+  return result;
 }
 #include "compositor.moc"

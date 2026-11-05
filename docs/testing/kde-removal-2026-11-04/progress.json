@@ -1,0 +1,546 @@
+{
+  "schema": "ferric.kde-removal-progress.v1",
+  "qualified": true,
+  "source_revision": "1257101f6eead8e369d2ced87fd773ad6850da5b",
+  "source_inputs_sha256": "111f07ede765513f18812b323444c16428a734531542ddb2900c06d86ab6f9bd",
+  "installed_browser": {
+    "path": "target/kde-free-install-1257101/usr/bin/ferric-browser",
+    "sha256": "fdd8955dc8f5ec84e5316b4d57e9665887f883b9a96f3675a8c6002fea36bb4e"
+  },
+  "sdk_receipt": {
+    "path": "target/kde-free-evidence/qualified-1257101/sdk.json",
+    "sha256": "f87734f28390d98e9fb29d5ae38a2022860a3ca8b076615c15b3236b695c2fe1"
+  },
+  "application_attempts": {
+    "path": "target/kde-free-evidence/qualified-1257101/application-attempts-complete.json",
+    "sha256": "9a8b0f94c207bff8ef9352a681d0aa94777d12e498ad20b33a7023d84ebe5957"
+  },
+  "initial_application_transcript": {
+    "path": "target/kde-free-evidence/qualified-1257101/application-initial-full.json",
+    "sha256": "96224fd782ef86674733a83dca1720e15e7931cefe218f4e172a043c329ca1a4"
+  },
+  "runtime_phases": [
+    {
+      "path": "target/kde-free-evidence/qualified-1257101/runtime-window-mode.json",
+      "sha256": "51addc1dea924851a65909655dc3059634aea37a3868b9ce96172e5655d86e4e"
+    },
+    {
+      "path": "target/kde-free-evidence/qualified-1257101/runtime-file-dialog.json",
+      "sha256": "be73d93de3725fa13d4c2f815813ec3937db340c412939e3f11c64d0fa86070a"
+    }
+  ],
+  "static_dependency_inspection": {
+    "path": "target/kde-free-evidence/qualified-1257101/static-closure.json",
+    "sha256": "5ad0d06efd6040e30622a72fed84183eafea39145e573cf3f5410ef973b8130f"
+  },
+  "blocker": null,
+  "full_performance": {
+    "status": "qualified",
+    "comparison": {
+      "path": "docs/testing/kde-removal-2026-11-04/performance.json",
+      "sha256": "afaefb264b846b1d17b20863f84fc97e5ffd54da005b79eedae5381c4ce12b72"
+    },
+    "original_full_run": {
+      "path": "target/kde-free-evidence/qualified-1257101/performance-mains.json",
+      "sha256": "b09507a4fbdecca97e3e3ed3d8ec5f596bbca03ac30f537bfcce4a1c3592abf3"
+    },
+    "one_window_idle_resolution": {
+      "path": "target/kde-free-evidence/qualified-1257101/performance-idle-resolution.json",
+      "sha256": "7212481ec0feebff92270387c580434f40b23ee4e11929c7a90ce44491ff2e3c"
+    },
+    "original_variability_rejection": {
+      "path": "target/kde-free-evidence/qualified-1257101/postprocessing-mains-complete.json",
+      "sha256": "acbf6944822c0252459117818f9677ba36d74add75f879a2bca3eec8c48ca127"
+    },
+    "method": "Four original latency workloads and the passing original twenty-window idle workload are retained. Five fresh sixty-second baseline-only one-window idle controls immediately precede five new alternating one-window idle pairs. Original verifier and limits are unchanged.",
+    "metrics": {
+      "startup-1": {
+        "milliseconds": {
+          "baseline": 1275.597224,
+          "candidate": 1254.614702
+        }
+      },
+      "startup-20": {
+        "milliseconds": {
+          "baseline": 13416.874664,
+          "candidate": 13210.600123
+        }
+      },
+      "creation": {
+        "milliseconds": {
+          "baseline": 564.380591,
+          "candidate": 573.661639
+        }
+      },
+      "recreation": {
+        "milliseconds": {
+          "baseline": 96.166534,
+          "candidate": 96.649319
+        }
+      },
+      "idle-20": {
+        "tree_cpu_percent": {
+          "baseline": 14.58429190309349,
+          "candidate": 13.626979768584055,
+          "baseline_repetitions": [
+            11.131720766030961,
+            12.486340897120591,
+            14.024413911292426,
+            12.42694890696695,
+            13.127001014380935
+          ],
+          "baseline_raw_receipts": [
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-mains-1257101/idle-20-repeat-0-baseline.json",
+              "sha256": "ff0d14f820fd8a47f63482b1b24fed22b514ca880760bcb0a70bad82a56d19f2"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-mains-1257101/idle-20-repeat-1-baseline.json",
+              "sha256": "ce6129a5c73321dcdd4893e9d29b6e78ddb91ef2650d08cbc862751c32fd38da"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-mains-1257101/idle-20-repeat-2-baseline.json",
+              "sha256": "93fe9f0414daaf0f6543e06b3d1b08702f7f8ace34a41cf0e3ed9eec48017351"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-mains-1257101/idle-20-repeat-3-baseline.json",
+              "sha256": "4b3d3dd207275408cc07e4f33b4353a2668d2b96f8e044f72339cf755ad1b499"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-mains-1257101/idle-20-repeat-4-baseline.json",
+              "sha256": "b35109fa00c5450cac41c52149dd08315fea9d7f1cbd223a47e2bbe29ae61b9f"
+            }
+          ]
+        },
+        "gui_wakeups_per_second": {
+          "baseline": 87.88883920164601,
+          "candidate": 85.83700999367109,
+          "baseline_repetitions": [
+            81.36085068583104,
+            84.00231475282055,
+            94.86454709462147,
+            64.41069735473963,
+            75.83882159830031
+          ],
+          "baseline_raw_receipts": [
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-mains-1257101/idle-20-repeat-0-baseline.json",
+              "sha256": "ff0d14f820fd8a47f63482b1b24fed22b514ca880760bcb0a70bad82a56d19f2"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-mains-1257101/idle-20-repeat-1-baseline.json",
+              "sha256": "ce6129a5c73321dcdd4893e9d29b6e78ddb91ef2650d08cbc862751c32fd38da"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-mains-1257101/idle-20-repeat-2-baseline.json",
+              "sha256": "93fe9f0414daaf0f6543e06b3d1b08702f7f8ace34a41cf0e3ed9eec48017351"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-mains-1257101/idle-20-repeat-3-baseline.json",
+              "sha256": "4b3d3dd207275408cc07e4f33b4353a2668d2b96f8e044f72339cf755ad1b499"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-mains-1257101/idle-20-repeat-4-baseline.json",
+              "sha256": "b35109fa00c5450cac41c52149dd08315fea9d7f1cbd223a47e2bbe29ae61b9f"
+            }
+          ]
+        }
+      },
+      "idle-1": {
+        "tree_cpu_percent": {
+          "baseline": 0.7166090258739248,
+          "candidate": 0.7166127577642337,
+          "baseline_repetitions": [
+            0.7165990747364607,
+            0.7166135556318132,
+            0.6999284343013114,
+            0.6999249403198371,
+            0.7166039322447979
+          ],
+          "baseline_raw_receipts": [
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-idle-resolution-1257101/idle-1-repeat-0-baseline.json",
+              "sha256": "7a98908789d34ed10c7a76adbd1eefa78b419c598ad536f0916dc48b7e296883"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-idle-resolution-1257101/idle-1-repeat-1-baseline.json",
+              "sha256": "3236678c63d8efe47ba06946f346cf814fa6d37f11c51f27857792fa961f6014"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-idle-resolution-1257101/idle-1-repeat-2-baseline.json",
+              "sha256": "6b941837b4e899de3e0d30b9439adb3b5d07a4b62eb0a0e11b1a654869a4570a"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-idle-resolution-1257101/idle-1-repeat-3-baseline.json",
+              "sha256": "baecc2edde7fa9308ce1eecf2fc643c1035c32cdb5b70a325f7203ecc03b4491"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-idle-resolution-1257101/idle-1-repeat-4-baseline.json",
+              "sha256": "e6d19d81c6dfe8415b9f9fa58affa4809d0afd96a53d98da146f9dfeb98e35a3"
+            }
+          ]
+        },
+        "gui_wakeups_per_second": {
+          "baseline": 10.430133808084989,
+          "candidate": 10.364263997076204,
+          "baseline_repetitions": [
+            10.2638362092395,
+            10.513986398847461,
+            10.213595941386691,
+            10.64699379947438,
+            10.230655978848194
+          ],
+          "baseline_raw_receipts": [
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-idle-resolution-1257101/idle-1-repeat-0-baseline.json",
+              "sha256": "7a98908789d34ed10c7a76adbd1eefa78b419c598ad536f0916dc48b7e296883"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-idle-resolution-1257101/idle-1-repeat-1-baseline.json",
+              "sha256": "3236678c63d8efe47ba06946f346cf814fa6d37f11c51f27857792fa961f6014"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-idle-resolution-1257101/idle-1-repeat-2-baseline.json",
+              "sha256": "6b941837b4e899de3e0d30b9439adb3b5d07a4b62eb0a0e11b1a654869a4570a"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-idle-resolution-1257101/idle-1-repeat-3-baseline.json",
+              "sha256": "baecc2edde7fa9308ce1eecf2fc643c1035c32cdb5b70a325f7203ecc03b4491"
+            },
+            {
+              "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-performance-idle-resolution-1257101/idle-1-repeat-4-baseline.json",
+              "sha256": "e6d19d81c6dfe8415b9f9fa58affa4809d0afd96a53d98da146f9dfeb98e35a3"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "method": "Index of the actual ferric.kde-free-wayland.v2 qualification and successful verifier receipt. Earlier failed and setup runs are retained under earlier_runs and in local evidence; their statuses are unchanged. Application/everyday coverage preserves every original successful complete entry and uses only actual successful complete unchanged-source reruns for prior failures. The exact known public-host baseline failure remains explicit.",
+  "live_resumed": {
+    "path": "target/kde-free-evidence/qualified-1257101/live-resumed-complete.json",
+    "sha256": "bd65072303450296afb91f0576f1736fa623796b75cb9186750f4cf1d943263e"
+  },
+  "everyday_attempts": {
+    "path": "target/kde-free-evidence/qualified-1257101/everyday-attempts-resumed.json",
+    "sha256": "e2332ec45181ff6098da3da2285bb7b67e97a20e15dc8b85441198a24ee05b6d"
+  },
+  "temporary_inhibitor": {
+    "authorized": true,
+    "stopped": true,
+    "configuration_changed": false,
+    "cleanup": {
+      "path": "target/kde-free-evidence/qualified-1257101/cleanup-final.json",
+      "sha256": "b5f79009e3c08822ad3e4538ab5039d05c5010688d661360c265bb708a27999a"
+    }
+  },
+  "live_preflight": {
+    "path": "target/kde-free-evidence/qualified-1257101/live-preflight-resumed.json",
+    "sha256": "2aac57070456fb33e1d9fb39b277cdda33aa4b49308c028a160cd91f1cefdf20"
+  },
+  "earlier_runs": {
+    "fmt": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/fmt.json",
+        "sha256": "0baa45117396d5cf1f2efc7048f12d48350032134466e8dacea769eb7c45c1ac"
+      },
+      "returncode": 0,
+      "seconds": 8.71850334003102
+    },
+    "clippy": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/clippy.json",
+        "sha256": "3657c7b2ee0707ad71947a09762b6f782c108f68c6bcd78b9dbcbf2bac1dfc93"
+      },
+      "returncode": 0,
+      "seconds": 1.1331370490370318
+    },
+    "rust": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/rust.json",
+        "sha256": "f266bc1bd85b38c52e5a78a510f21cab85c1b90f8804e14bdadbd45df57926f3"
+      },
+      "returncode": 0,
+      "seconds": 27.631694716052152
+    },
+    "xtask": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/xtask.json",
+        "sha256": "bd528b008fad974dd0833a7a10ad42c2e95fb1958a54fbbe0e13385cc24ca1b0"
+      },
+      "returncode": 0,
+      "seconds": 272.5183575550327
+    },
+    "fresh-build": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/fresh-build.json",
+        "sha256": "9806a07b9fb58e75c60409c21bba31148f08062f1515b3a87ca0190e91735351"
+      },
+      "returncode": 0,
+      "seconds": 1.8803653620416299
+    },
+    "install": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/install.json",
+        "sha256": "000064e9174f738d3694c9dfbbbeb48f89027623892ba38d452b0727ce08e1ab"
+      },
+      "returncode": 0,
+      "seconds": 8.276486549060792
+    },
+    "native": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/native.json",
+        "sha256": "4340d160658899a3436ac9cab24101f764b18182af9c27e33d4a9ec72f1dd52f"
+      },
+      "returncode": 0,
+      "seconds": 6.314003025065176,
+      "cases": 5,
+      "failed": []
+    },
+    "portal": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/portal.json",
+        "sha256": "a97e4b5f355bae5be27f477efcd62b14f5e75cbe537183cc3423623af21ceeb6"
+      },
+      "returncode": 0,
+      "seconds": 5.637782041914761,
+      "cases": 3,
+      "failed": []
+    },
+    "sanitizers": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/sanitizers.json",
+        "sha256": "e6f25e315e90ea11bcb89917329abfac8534216c1488d4aab4b0fc7c7ace96f9"
+      },
+      "returncode": 0,
+      "seconds": 9.801717261085287,
+      "cases": 5,
+      "failed": []
+    },
+    "application-final-complete": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/application-final-complete.json",
+        "sha256": "1e5c19900815845a0bf4e021520aba67c280b0df0af34b193bc8b5ebef9bd200"
+      },
+      "returncode": 0,
+      "seconds": 0.34194134396966547,
+      "cases": 78,
+      "failed": []
+    },
+    "public-page-host": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/public-page-host.json",
+        "sha256": "7f45b7d0fc1a3373120f5f2b9e3f48149668bf996a7e75a9dd68015947d74258"
+      },
+      "returncode": 8,
+      "seconds": 93.59336415305734,
+      "cases": 21,
+      "failed": [
+        "quick_credential_public_surface",
+        "public_page_host_native_input"
+      ]
+    },
+    "everyday": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/everyday.json",
+        "sha256": "8e0a41e688924740548fc779f1a8c05a0611208fde92846037cea190e18ca7ea"
+      },
+      "returncode": 8,
+      "seconds": 200.31280173605774,
+      "cases": 17,
+      "failed": [
+        "everyday_T101_hyprland_identity_grouping",
+        "everyday_T102_hyprland_identity_grouping"
+      ]
+    },
+    "qml": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/qml.json",
+        "sha256": "3947405cde291c5e6450d8a04e978c04d1623eb579d332fb878139356a4dd1bb"
+      },
+      "returncode": 0,
+      "seconds": 148.2478232959984,
+      "cases": 1231,
+      "failed": []
+    },
+    "wayland": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/wayland.json",
+        "sha256": "6e37bff78f6d41ec15f7991f8edd9285cf55ea69a6655ca293e2f1aaa716748c"
+      },
+      "returncode": 0,
+      "seconds": 12.78731061401777
+    },
+    "blocking": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/blocking.json",
+        "sha256": "7d802d623cbbc9608058007491b1a59b4fa77b1210ce06c2b75dfcdc139d64df"
+      },
+      "returncode": 0,
+      "seconds": 2.827382758958265
+    },
+    "runtime-exercise": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/runtime-exercise.json",
+        "sha256": "d11903425108ea6b732cc0fbcaed016022d7becec64baacec667cb2353f4ac3f"
+      },
+      "returncode": 0,
+      "seconds": 16.60678175406065
+    },
+    "performance-pilot": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/performance-pilot.json",
+        "sha256": "f4e1580e24fcd6aa6f171910cff221e330605c373ae0ab8eece6c6e166ad314f"
+      },
+      "returncode": 0,
+      "seconds": 274.50370224996004
+    },
+    "baseline-control": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/baseline-control.json",
+        "sha256": "0091599463cf8abbc0a2d37fa2f255a7cd6aa7985aedf5b647494983e16d2f14"
+      },
+      "returncode": 8,
+      "seconds": 120.9353527209023,
+      "cases": 21,
+      "failed": [
+        "quick_credential_public_surface"
+      ]
+    },
+    "baseline-input-current-seat": {
+      "receipt": {
+        "path": "target/kde-free-evidence/qualified-1257101/baseline-input-current-seat.json",
+        "sha256": "4be671c1c26e6c48bf47df70db2241ac9519ebdcc93ba6497e78d8a96e4cc6a1"
+      },
+      "returncode": 1,
+      "seconds": 5.3319990610470995,
+      "cases": 3,
+      "failed": [
+        "nativeInput"
+      ]
+    },
+    "public-page-host-resumed": {
+      "path": "target/kde-free-evidence/qualified-1257101/public-page-host-resumed.json",
+      "sha256": "ceecb3c1833a134011270e97eb38f492b0a067aa55efee2f2e5a8ef678c56d5c"
+    },
+    "everyday-final-resumed": {
+      "path": "target/kde-free-evidence/qualified-1257101/everyday-final-resumed.json",
+      "sha256": "b6f77ed95c9d746fcb33d293c6c36acccc3ae2782e016b06c8e07fa7c36d9e67"
+    },
+    "hyprland-resumed": {
+      "path": "target/kde-free-evidence/qualified-1257101/hyprland-resumed.json",
+      "sha256": "7e8d1cdb2b0a78c3ea1d780a0431a1056503901cd41fb27e7a3767576b459fd3"
+    },
+    "public-input-resumed": {
+      "path": "target/kde-free-evidence/qualified-1257101/public-input-resumed.json",
+      "sha256": "c1354520243bb597eb0c3fa415e3ad4a276012678d317fa6706e2b3695617447"
+    }
+  },
+  "runs": {
+    "application": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/application-final-complete.json",
+      "sha256": "1e5c19900815845a0bf4e021520aba67c280b0df0af34b193bc8b5ebef9bd200"
+    },
+    "blocking": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/blocking.json",
+      "sha256": "7d802d623cbbc9608058007491b1a59b4fa77b1210ce06c2b75dfcdc139d64df"
+    },
+    "clippy": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/clippy.json",
+      "sha256": "3657c7b2ee0707ad71947a09762b6f782c108f68c6bcd78b9dbcbf2bac1dfc93"
+    },
+    "everyday": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/everyday-final-resumed.json",
+      "sha256": "b6f77ed95c9d746fcb33d293c6c36acccc3ae2782e016b06c8e07fa7c36d9e67"
+    },
+    "fmt": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/fmt.json",
+      "sha256": "0baa45117396d5cf1f2efc7048f12d48350032134466e8dacea769eb7c45c1ac"
+    },
+    "fresh-build": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/fresh-build.json",
+      "sha256": "9806a07b9fb58e75c60409c21bba31148f08062f1515b3a87ca0190e91735351"
+    },
+    "hyprland": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/hyprland-resumed.json",
+      "sha256": "7e8d1cdb2b0a78c3ea1d780a0431a1056503901cd41fb27e7a3767576b459fd3"
+    },
+    "install": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/install.json",
+      "sha256": "000064e9174f738d3694c9dfbbbeb48f89027623892ba38d452b0727ce08e1ab"
+    },
+    "native": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/native.json",
+      "sha256": "4340d160658899a3436ac9cab24101f764b18182af9c27e33d4a9ec72f1dd52f"
+    },
+    "portal": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/portal.json",
+      "sha256": "a97e4b5f355bae5be27f477efcd62b14f5e75cbe537183cc3423623af21ceeb6"
+    },
+    "public-page-host": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/public-page-host-resumed.json",
+      "sha256": "ceecb3c1833a134011270e97eb38f492b0a067aa55efee2f2e5a8ef678c56d5c"
+    },
+    "qml": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/qml.json",
+      "sha256": "3947405cde291c5e6450d8a04e978c04d1623eb579d332fb878139356a4dd1bb"
+    },
+    "rust": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/rust.json",
+      "sha256": "f266bc1bd85b38c52e5a78a510f21cab85c1b90f8804e14bdadbd45df57926f3"
+    },
+    "sanitizers": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/sanitizers.json",
+      "sha256": "e6f25e315e90ea11bcb89917329abfac8534216c1488d4aab4b0fc7c7ace96f9"
+    },
+    "wayland": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/wayland.json",
+      "sha256": "6e37bff78f6d41ec15f7991f8edd9285cf55ea69a6655ca293e2f1aaa716748c"
+    },
+    "xtask": {
+      "path": "/home/tom/Projects/ferric-everyday-work/repo/target/kde-free-evidence/qualified-1257101/xtask.json",
+      "sha256": "bd528b008fad974dd0833a7a10ad42c2e95fb1958a54fbbe0e13385cc24ca1b0"
+    }
+  },
+  "qualification": {
+    "path": "docs/testing/kde-removal-2026-11-04/qualification.json",
+    "sha256": "6b0e9a346137f63caaf421e6fbed1b6cc22ad550f38ef7ab757df010319d8254"
+  },
+  "verification": {
+    "path": "target/kde-free-evidence/qualified-1257101/verification.json",
+    "sha256": "8faca67b54fc6279af7ba7085499d97f020b06ad8352dc9cb6aca96326b41b2e"
+  },
+  "verification_result": {
+    "path": "docs/testing/kde-removal-2026-11-04/verification-result.json",
+    "sha256": "fe398b03cdf9257067d6e7da88a354becbddeedeec342aa98679f8597944b454"
+  },
+  "preserved_baseline_failures": [
+    "quick_credential_public_surface"
+  ],
+  "resolved_interruptions": [
+    {
+      "path": "target/kde-free-evidence/qualified-1257101/performance-lock-interruption.json",
+      "sha256": "e771ec12819119891776eef386685b48e844704f60737eb7c2dae4a1568fe3b3"
+    },
+    {
+      "path": "target/kde-free-evidence/qualified-1257101/performance-power-transition.json",
+      "sha256": "8e55b032221cf637794f6322fb8a7970deec0b65c4642b44164f94cc8238675c"
+    },
+    {
+      "path": "target/kde-free-evidence/qualified-1257101/lid-lock-cause.json",
+      "sha256": "289c6123aaee1fb2016ee09808599d005c12ce3d806aaa7f1c6f0884eeb1957e"
+    }
+  ],
+  "cleanup": {
+    "path": "target/kde-free-evidence/qualified-1257101/cleanup-final.json",
+    "sha256": "b5f79009e3c08822ad3e4538ab5039d05c5010688d661360c265bb708a27999a"
+  },
+  "system_test_deployment": {
+    "path": "docs/testing/kde-removal-2026-11-04/deployment.json",
+    "sha256": "0a5c3b5e2ced1a829afb758358eafcf5eee3a21448a4e459a61ededfc9078b0b"
+  },
+  "frozen_evidence_recipes": {
+    "path": "docs/testing/kde-removal-2026-11-04/recipes/manifest.json",
+    "sha256": "f7eaa59f338f9bc7b4ff44b07f29f664b7a81d6bb3faa437bc33009eda35e23b"
+  }
+}

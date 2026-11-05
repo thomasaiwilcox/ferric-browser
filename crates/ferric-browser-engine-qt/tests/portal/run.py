@@ -13,14 +13,31 @@ def start(stack, command, env):
     process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, text=True)
 
     def stop():
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=3)
-        process.stdout.close()
+        compositor = Path(command[0]).name == "portal_compositor"
+        failure = None
+        try:
+            if process.poll() is None:
+                if compositor:
+                    try:
+                        subprocess.run(["dbus-send", "--session", "--type=method_call", "--print-reply",
+                            "--dest=org.ferricbrowser.ParentFixture", "/org/ferricbrowser/ParentFixture",
+                            "org.ferricbrowser.ParentFixture.Quit"], env=env,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3, check=True)
+                    except (subprocess.SubprocessError, OSError) as error:
+                        failure = error
+                        process.terminate()
+                else:
+                    process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired as error:
+                    failure = error
+                    process.kill()
+                    process.wait(timeout=3)
+            if compositor and (failure is not None or process.returncode != 0):
+                raise RuntimeError(f"Owned compositor teardown failed: {process.returncode}") from failure
+        finally:
+            process.stdout.close()
 
     stack.callback(stop)
     readable, _, _ = select.select([process.stdout], [], [], 5)
@@ -34,7 +51,7 @@ def main():
         raise RuntimeError("Use the CTest entry, which creates an isolated bus")
     build = Path(sys.argv[1]).resolve()
     test = sys.argv[2]
-    if test not in {"request", "file_chooser", "browser", "command_editing", "keyboard_chrome", "chrome_overlay", "navigation_recovery", "keyboard_guide", "page_search", "privacy_identity", "live_titles", "switcher_navigation", "switcher_live_updates", "tab_recovery", "stop_state", "form_reload", "streaming_history"}:
+    if test not in {"request", "native", "qt_control", "file_chooser", "browser", "command_editing", "keyboard_chrome", "chrome_overlay", "navigation_recovery", "keyboard_guide", "page_search", "privacy_identity", "live_titles", "switcher_navigation", "switcher_live_updates", "tab_recovery", "stop_state", "form_reload", "streaming_history"}:
         raise ValueError("Unknown portal test")
     with tempfile.TemporaryDirectory(prefix="ferric-portal-") as temporary, ExitStack() as stack:
         env = os.environ.copy()
@@ -49,7 +66,7 @@ def main():
             path.mkdir(mode=0o700)
             env[variable] = str(path)
         env.update(QT_QPA_PLATFORMTHEME="", QT_QUICK_BACKEND="software")
-        if test in {"file_chooser", "browser", "command_editing", "keyboard_chrome", "chrome_overlay", "navigation_recovery", "keyboard_guide", "page_search", "privacy_identity", "live_titles", "switcher_navigation", "switcher_live_updates", "tab_recovery", "stop_state", "form_reload", "streaming_history"}:
+        if test in {"native", "qt_control", "file_chooser", "browser", "command_editing", "keyboard_chrome", "chrome_overlay", "navigation_recovery", "keyboard_guide", "page_search", "privacy_identity", "live_titles", "switcher_navigation", "switcher_live_updates", "tab_recovery", "stop_state", "form_reload", "streaming_history"}:
             env.update(WAYLAND_DISPLAY="ferric-portal-test", QT_QPA_PLATFORM="wayland",
                 QT_WAYLAND_DISABLE_WINDOWDECORATION="1")
             compositor_env = dict(env, QT_QPA_PLATFORM="offscreen",

@@ -1,5 +1,6 @@
 #include "tst_application.h"
 #include "owned_browser_keyboard.h"
+#include "../../src/native_wayland.h"
 #include <QQuickItem>
 #include <QQmlContext>
 #include <QQmlComponent>
@@ -33,14 +34,20 @@ bool clickCloseDecision(QQuickWindow *host, bool proceed) {
     QPointer<QQuickWindow> ownedHost(host);
     if (!ownedHost || !ownedHost->isVisible()) return true;
     QSignalSpy frame(host, &QQuickWindow::frameSwapped);
-    host->requestUpdate();
+    host->update();
     if (!QTest::qWaitFor([&] { return !ownedHost || !ownedHost->isVisible() || !frame.isEmpty(); })) return false;
     // A completed close can hide the host during the frame wait. It needs no
     // second decision; callers still verify final close/cancel outcomes.
     if (!ownedHost || !ownedHost->isVisible()) return true;
-    auto *button = findVisible(host->contentItem(), proceed ? "shutdownProceedButton" : "shutdownKeepButton");
+    QPointer<QQuickItem> button;
+    if (!QTest::qWaitFor([&] {
+        if (!ownedHost || !ownedHost->isVisible()) return true;
+        button = findVisible(ownedHost->contentItem(), proceed ? "shutdownProceedButton" : "shutdownKeepButton");
+        return !button.isNull();
+    })) return false;
+    if (!ownedHost || !ownedHost->isVisible()) return true;
     if (!button) return false;
-    QTest::mouseClick(host, Qt::LeftButton, Qt::NoModifier, button->mapToScene(button->boundingRect().center()).toPoint());
+    QTest::mouseClick(ownedHost, Qt::LeftButton, Qt::NoModifier, button->mapToScene(button->boundingRect().center()).toPoint());
     return true;
 }
 }
@@ -133,13 +140,17 @@ void ApplicationTests::durablePersistenceFlushWaitsForPendingSave()
 void ApplicationTests::pageWindowPresentation_data()
 {
     QTest::addColumn<QString>("scenario");
-    for (const auto *scenario : {"session-quit-approved-close", "session-quit-publication-cancel", "session-quit-stale-root", "session-quit-stale-peer", "session-quit-queued-root", "session-quit-queued-peer", "session-hidden-survivor", "session-hidden-survivor-reentrant", "session-quit-peers", "session-quit-cancel", "session-quit-prepared", "session-quit-live", "session-quit-rollback", "session-peer-order", "session-peer-queued-get", "session-live-stopped", "session-queued-get", "session-prepared-gap", "session-prepared-destroy", "creation-publish-destroy", "creation-focus-reentrant", "creation-encoded", "creation-failed", "creation-open-route", "creation-open-background", "creation-foreground", "creation-background", "creation-fallback", "creation-background-fallback", "creation-recorded", "creation-stale", "creation-blank", "creation-start", "window-close-focus-reentrant", "window-close-root-probe", "window-close-cancel", "window-close-partial", "window-close-tail", "window-close-retired", "window-close-stale", "window-close-native-facts", "window-close-fallback", "window-close-fallback-role", "window-close-pinned", "window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-registration-retry", "preparation-source-retire", "preparation-publish-destroy", "preparation-publish-navigation", "preparation-publish-profile", "preparation-setup-error", "preparation-setup-destroy", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
+    for (const auto *scenario : {"session-quit-approved-close", "session-quit-publication-cancel", "session-quit-stale-root", "session-quit-stale-peer", "session-quit-queued-root", "session-quit-queued-peer", "session-hidden-survivor", "session-hidden-survivor-reentrant", "session-quit-peers", "session-quit-cancel", "session-quit-prepared", "session-quit-live", "session-quit-rollback", "session-peer-order", "session-peer-queued-get", "session-live-stopped", "session-queued-get", "session-prepared-gap", "session-prepared-destroy", "creation-publish-destroy", "creation-focus-reentrant", "creation-encoded", "creation-failed", "creation-open-route", "creation-open-background", "creation-foreground", "creation-background", "creation-fallback", "creation-background-fallback", "creation-recorded", "creation-stale", "creation-blank", "creation-start", "window-close-focus-reentrant", "window-close-root-probe", "window-close-cancel", "window-close-partial", "window-close-tail", "window-close-retired", "window-close-stale", "window-close-native-facts", "window-close-fallback", "window-close-fallback-role", "window-close-pinned", "window-undo-peer", "window-undo-primary", "window-undo-private-expiry", "window-undo-private-root-last", "window-undo-cancel", "window-undo-context", "window-order", "window-order-fallback", "window-order-fallback-pin", "window-native-identity", "window-focus-lease", "window-focus-native-role-source", "window-focus-native-role-peer", "window-focus-native-surface-source", "window-focus-native-surface-peer", "window-focus-native-hidden-peer", "window-focus-native-hidden-gap-peer", "window-focus-native-reentrant-peer", "window-focus-stale", "window-focus-expired", "window-focus-reentrant", "window-focus-route", "window-focus-publication", "window-native-grouping", "window-grouping-order", "window-grouping-focus", "window-grouping-order-stale", "window-native-stale-role-source", "window-native-stale-role-peer", "window-native-stale-surface-source", "window-native-stale-surface-peer", "window-grouping-unrelated-map", "window-grouping-private-map", "window-grouping-auto-off", "window-grouping-detach", "window-grouping-context", "window-grouping-stale", "window-grouping-profile", "window-grouping-delay", "window-grouping-stale-create", "window-live-detach", "window-live-give", "window-live-rollback", "window-live-cancel", "window-live-identity", "window-live-extra-page", "window-live-setup-destroy", "window-live-reorder", "window-live-source-close", "window-live-source-close-last", "window-live-completion-nav", "window-live-registration-retry", "window-regroup-peer-focus", "window-regroup", "window-regroup-stale", "window-regroup-background", "window-regroup-pin", "window-mutations", "window-mutation-navigation", "window-mutation-discard", "window-chain-workflows", "window-chain-multi-hop", "window-chain-failure", "window-chain-discard", "popup-tab-group", "popup-background", "popup-window", "popup-dialog", "window-selection", "session-aggregate", "foreground", "background", "preparation-registration-retry", "preparation-source-retire", "preparation-publish-destroy", "preparation-publish-navigation", "preparation-publish-profile", "preparation-setup-error", "preparation-setup-destroy", "preparation-focus", "preparation-navigation", "preparation-shutdown", "activation-context", "standalone", "private", "first-host-close", "first-page-tab-close", "last-page-close", "last-page-close-cancel", "factory-failure", "expansion-cancel"})
         QTest::newRow(scenario) << QString::fromLatin1(scenario);
 }
 
 void ApplicationTests::pageWindowPresentation()
 {
     QFETCH(QString, scenario);
+    if (!QGuiApplication::platformName().startsWith(QStringLiteral("wayland"))
+        && (scenario.startsWith("window-native-") || scenario.startsWith("window-focus-native-")
+            || scenario.startsWith("window-grouping-")))
+        QSKIP("Requires actual Wayland roles; run the native grouping/focus entries");
     QCOMPARE(text("feature_tabs_presentation_effective"), QStringLiteral("windows"));
     QPointer<QObject> sourceView(evaluate("testWindow.activeWebView()").value<QObject *>());
     QVERIFY(sourceView);
@@ -149,10 +160,13 @@ void ApplicationTests::pageWindowPresentation()
     page("window.pageWindowDraft = 'unfinished work'");
     QVERIFY(!evaluate("testWindow.tabStripVisible").toBool());
     QVERIFY(!evaluate("testWindow.pageWindowTag").toString().isEmpty());
-    // The portable CI compositor deliberately advertises no tagging protocol.
-    // Those windows must remain usable without claiming native grouping proof.
+    // Offscreen windows and the portable untagged compositor remain usable,
+    // but neither can provide evidence of a submitted Wayland tagging request.
+    const bool expectsTag = QGuiApplication::platformName().startsWith(QStringLiteral("wayland"))
+        && !qEnvironmentVariableIsSet("FERRIC_TEST_UNTAGGED_WINDOWS")
+        && !qEnvironmentVariableIsSet("FERRIC_FIXTURE_NO_TAGS");
     QCOMPARE(evaluate("testWindow.pageWindowTagRequested").toBool(),
-             !qEnvironmentVariableIsSet("FERRIC_TEST_UNTAGGED_WINDOWS"));
+             expectsTag);
 
     QObject ownedFocusTrace;
     if (scenario == "window-native-grouping") {
@@ -1371,9 +1385,11 @@ Ferric.FerricBrowserWindow {
         QCOMPARE(result,QStringLiteral("passed"));
         return;
     }
-    if (scenario == "window-focus-lease" || scenario == "window-focus-stale" || scenario == "window-focus-expired" || scenario == "window-focus-reentrant") {
+    const bool nativeFocusStale = scenario.startsWith("window-focus-native-");
+    if (nativeFocusStale || scenario == "window-focus-lease" || scenario == "window-focus-stale" || scenario == "window-focus-expired" || scenario == "window-focus-reentrant") {
         QString newerHost, newerIssuer;
         QQuickWindow *newerWindow = nullptr;
+        if (scenario.startsWith("window-focus-native-hidden-") || scenario == "window-focus-native-reentrant-peer") childWindow->hide();
         if (scenario == "window-focus-reentrant") {
             for (int index=0;index<2;++index) {
                 QVERIFY(command("open --target window " + initial + "?focus-newer=" + QString::number(index)));
@@ -1406,7 +1422,43 @@ Ferric.FerricBrowserWindow {
         QCOMPARE(fields.size(),5);
         const auto request = childHost + ".requestPageWindowFocus(testWindow.browserUi," + entry + ".ui," + quoted(fields[3]) + ")";
         const auto status = childHost + ".pageWindowFocusStatus(testWindow.browserUi," + entry + ".ui," + quoted(fields[3]) + ")";
-        if (scenario == "window-focus-stale") {
+        if (scenario == "window-focus-native-reentrant-peer") {
+            auto native = FerricWaylandWindow::prepare(childWindow);
+            QCOMPARE(native->generation(), quint64(0));
+            bool recreated = false;
+            const auto hook = QObject::connect(native, &FerricWaylandWindow::changed, window, [&] {
+                if (!recreated && native->generation()) {
+                    recreated = true;
+                    childWindow->hide();
+                    childWindow->show();
+                }
+            }, Qt::DirectConnection);
+            const auto result = evaluate(request).toString();
+            QObject::disconnect(hook);
+            QVERIFY(recreated);
+            QCOMPARE(result, QStringLiteral("stale"));
+            QVERIFY(native->generation());
+        } else if (nativeFocusStale) {
+            auto victim = scenario.endsWith("-source") ? window : childWindow;
+            auto native = FerricWaylandWindow::prepare(victim);
+            const auto generation = native->generation();
+            const auto tag = victim->property("pageWindowTag");
+            const auto group = victim->property("pageGroupId");
+            victim->hide();
+            QCOMPARE(native->generation(), quint64(0));
+            if (scenario.contains("-surface-")) victim->destroy();
+            victim->show();
+            QVERIFY(QTest::qWaitForWindowExposed(victim));
+            QVERIFY(native->generation() > generation);
+            QVERIFY(native->tagSubmitted());
+            QCOMPARE(victim->property("pageWindowTag"), tag);
+            QCOMPARE(victim->property("pageGroupId"), group);
+            if (scenario == "window-focus-native-hidden-gap-peer") {
+                victim->hide();
+                QCOMPARE(native->generation(), quint64(0));
+            }
+            QCOMPARE(evaluate(request).toString(), QStringLiteral("stale"));
+        } else if (scenario == "window-focus-stale") {
             QVERIFY(evaluate(entry + ".ui.assign_window_context('changed')").toBool());
             QCOMPARE(evaluate(request).toString(),QStringLiteral("stale"));
             QCOMPARE(QGuiApplication::focusWindow(),window);
@@ -1441,7 +1493,8 @@ Ferric.FerricBrowserWindow {
         QCOMPARE(page("window.pageWindowDraft").toString(),QStringLiteral("unfinished work"));
         return;
     }
-    if (scenario == "window-grouping-stale" || scenario == "window-grouping-profile" || scenario == "window-grouping-delay" || scenario == "window-grouping-stale-create" || scenario == "window-grouping-order-stale") {
+    const bool nativeStale = scenario.startsWith("window-native-stale-");
+    if (nativeStale || scenario == "window-grouping-stale" || scenario == "window-grouping-profile" || scenario == "window-grouping-delay" || scenario == "window-grouping-stale-create" || scenario == "window-grouping-order-stale") {
         // This owned mock exercises GUI admission/lifecycle and stalled IPC.
         // Native Lua effects are qualified separately on the real compositor.
         QTemporaryDir runtime;
@@ -1459,7 +1512,7 @@ Ferric.FerricBrowserWindow {
         QVERIFY(server.listen(directory + "/.socket.sock"));
         qputenv("XDG_RUNTIME_DIR", runtime.path().toUtf8());
         qputenv("HYPRLAND_INSTANCE_SIGNATURE", instance.toUtf8());
-        bool injected = false, fixtureOk = true;
+        bool injected = false, fixtureOk = true, allowFreshNativeReply = false;
         int writes = 0, emptyConnections = 0;
         QPointer<QLocalSocket> heldReply;
         QByteArray createdCap, createdScope;
@@ -1519,7 +1572,35 @@ Ferric.FerricBrowserWindow {
                             output += QByteArray::number(index) + "|ok|" + QByteArray::number(100 + index)
                                 + "|0x" + QByteArray::number(4096 + index, 16);
                         }
-                        if (scenario == "window-grouping-order-stale") {
+                        if (nativeStale) {
+                            if (!injected) {
+                                injected = true;
+                                QWindow *victim = scenario.endsWith("-peer") ? window : childWindow;
+                                auto native = FerricWaylandWindow::prepare(victim);
+                                const auto admitted = native->generation();
+                                const auto tag = victim->property("pageWindowTag");
+                                const auto group = victim->property("pageGroupId");
+                                fixtureOk = admitted && native->tagSubmitted();
+                                victim->hide();
+                                fixtureOk = fixtureOk && native->generation() == 0;
+                                if (scenario.contains("-surface-")) victim->destroy();
+                                victim->show();
+                                // Role creation and tagging are synchronous.
+                                // Do not enter a nested event loop before the
+                                // resolver reply: its 500 ms I/O budget must
+                                // reach the native-generation dispatch check.
+                                fixtureOk = fixtureOk && native->generation() > admitted && native->tagSubmitted()
+                                    && victim->property("pageWindowTag") == tag && victim->property("pageGroupId") == group;
+                                // Republish current owners before releasing the
+                                // old resolution: absence from the registry alone
+                                // cannot satisfy this freshness regression.
+                                evaluate("testWindow.liveWindowEntries().forEach(function(e){e.ui.refresh_ipc_owner()})");
+                                // Deliver the captured resolution only after real Qt
+                                // recreation, then hold fresh retries. No production
+                                // synchronization hook or mocked generation is used.
+                                reply(output);
+                            } else if (allowFreshNativeReply) reply(output);
+                        } else if (scenario == "window-grouping-order-stale") {
                             if (!injected) {
                                 injected = true;
                                 fixtureOk = command("tab-move " + sourceId + " right ;; jseval --world page window.nativeOrderAdmissionChanged=1");
@@ -1546,9 +1627,29 @@ Ferric.FerricBrowserWindow {
         });
         QVERIFY(command("set --temp hyprland.page_grouping=auto"));
         QVERIFY(evaluate(entry + ".ui.execute_command('set --temp hyprland.page_grouping=auto')").toBool());
+        if (nativeStale) {
+            // Policies were off during initial mapping, so only the currently
+            // focused child has recorded foreground readiness. Publish both
+            // owners and admit on that child before QML work timers run. The
+            // -peer rows recreate the root, a non-source participant.
+            QCOMPARE(QGuiApplication::focusWindow(), childWindow);
+            evaluate("testWindow.browserUi.refresh_ipc_owner()");
+            evaluate(entry + ".ui.poll_config()");
+            QCOMPARE(evaluate(entry + ".ui.maintenance_delay_ms()").toInt(), 50);
+        }
         QTRY_VERIFY_WITH_TIMEOUT(injected, 10000);
         QVERIFY(fixtureOk);
-        if (scenario == "window-grouping-order-stale") {
+        if (nativeStale) {
+            QTRY_VERIFY_WITH_TIMEOUT(emptyConnections > 0, 10000);
+            QVERIFY(fixtureOk);
+            QCOMPARE(writes, 0);
+            QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(), 2);
+            // An obsolete operation must fail without disabling the same
+            // logical owners: a newly admitted operation can use replacement
+            // native roles, including a peer that has not regained focus.
+            allowFreshNativeReply = true;
+            QTRY_VERIFY_WITH_TIMEOUT(writes > 0, 10000);
+        } else if (scenario == "window-grouping-order-stale") {
             QTRY_VERIFY_WITH_TIMEOUT(emptyConnections > 0, 10000);
             QTRY_COMPARE(page("window.nativeOrderAdmissionChanged").toInt(), 1);
             QCOMPARE(writes, 0);

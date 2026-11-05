@@ -12,11 +12,21 @@ cmake --build target/portal-tests --parallel 2
 ctest --test-dir target/portal-tests --output-on-failure
 ```
 
-These tests need Qt Wayland Compositor, KWindowSystem >= 6.28, Wayland headers
-and scanner, libxkbcommon headers, wayland-protocols, and `dbus-run-session`. CI builds the pinned
-KWindowSystem dependency in a disposable prefix using
-`.github/ci/build-window-system.py`; the Arch package uses the system library.
+These tests need the qualified Qt 6.11.2 SDK with Qt Wayland Compositor and
+matching Qt Gui private headers, Wayland client/server headers and scanner,
+libxkbcommon headers, Python 3 and `dbus-run-session`. The protocol inputs are
+pinned in the repository and generated only in build directories. KDE libraries
+or plugins are not required. The native lifecycle suites run with both protocols,
+each missing separately, and both missing; they assert tags before the first
+surface commit without an untagged-window override.
 Real desktop portal focus/consent remains a separate qualification step.
+
+Current dependency and release qualification uses the KDE-free v2 successor:
+`python3 tools/qualification/kde_free.py policy` checks active dependency paths;
+`python3 tools/qualification/kde_free.py verify RECEIPT.json` checks complete
+source-bound SDK, protocol, functional, installed/runtime and performance
+evidence. See `tools/qualification/README.md`. The historical everyday-v1
+validators retain their original KF6 ABI/link requirements and accepted receipts.
 
 The application harness also builds `portal_browser` against the release engine
 archive and its compiled QML resources. This exercises uploads, picker recovery

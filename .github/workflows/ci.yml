@@ -36,7 +36,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y desktop-file-utils libnss3 libasound2t64 libpulse0 \
             libxkbfile1 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libxtst6 libxss1 \
-            fonts-dejavu-core cmake libsqlite3-dev libwayland-dev libxkbcommon-dev python3-venv
+            fonts-dejavu-core cmake libsqlite3-dev libwayland-dev libwayland-bin libxkbcommon-dev python3-venv
       - name: Install qualified Qt SDK
         uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
         with:
@@ -50,20 +50,20 @@ jobs:
           test "$("$QT_ROOT_DIR/bin/qmake" -query QT_VERSION)" = "$EXPECTED_QT_VERSION"
           echo "QMAKE=$QT_ROOT_DIR/bin/qmake" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
-      - name: Build qualified public Wayland window export library
+      - name: Configure native protocol SDK
         run: |
           python3 -m venv "$RUNNER_TEMP/ferric-build-tools"
-          "$RUNNER_TEMP/ferric-build-tools/bin/pip" install cmake==3.31.6 meson==1.7.2 ninja==1.11.1.4
-          export PATH="$RUNNER_TEMP/ferric-build-tools/bin:$PATH"
-          python3 .github/ci/build-window-system.py \
-            --work "$RUNNER_TEMP/ferric-window-system-build" \
-            --prefix "$RUNNER_TEMP/ferric-window-system"
+          "$RUNNER_TEMP/ferric-build-tools/bin/pip" install cmake==3.31.6 ninja==1.11.1.4
           echo "$RUNNER_TEMP/ferric-build-tools/bin" >> "$GITHUB_PATH"
-          echo "CMAKE_PREFIX_PATH=$RUNNER_TEMP/ferric-window-system:$QT_ROOT_DIR" >> "$GITHUB_ENV"
-          echo "PKG_CONFIG_PATH=$RUNNER_TEMP/ferric-window-system/lib/pkgconfig:$QT_ROOT_DIR/lib/pkgconfig" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/ferric-window-system/lib:$QT_ROOT_DIR/lib" >> "$GITHUB_ENV"
-          echo "QT_PLUGIN_PATH=$RUNNER_TEMP/ferric-window-system/lib/qt6/plugins:$QT_ROOT_DIR/plugins" >> "$GITHUB_ENV"
-          echo "FERRIC_TEST_WINDOW_SYSTEM_PREFIX=$RUNNER_TEMP/ferric-window-system" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$QT_ROOT_DIR/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$QT_ROOT_DIR/lib" >> "$GITHUB_ENV"
+          echo "QT_PLUGIN_PATH=$QT_ROOT_DIR/plugins" >> "$GITHUB_ENV"
+          pkg-config --exists wayland-client wayland-scanner
+          test -f "$QT_ROOT_DIR/include/QtGui/$EXPECTED_QT_VERSION/QtGui/qpa/qplatformwindow_p.h"
+        env:
+          EXPECTED_QT_VERSION: ${{ steps.qt-version.outputs.version }}
+      - name: Enforce KDE dependency policy
+        run: python3 tools/qualification/kde_free.py policy
       - name: Owned portal transport and native Wayland chooser regressions
         run: |
           cmake -S crates/ferric-browser-engine-qt/tests/portal -B target/portal-tests
@@ -80,7 +80,7 @@ jobs:
         # Bound this phase separately so a timeout leaves time to upload logs.
         timeout-minutes: 75
         run: |
-          ctest --test-dir target/application-tests --output-on-failure --output-junit "$RUNNER_TEMP/browser-surface-results.xml" -R '^(application_(page_windows_portable|credential_association_wayland|shutdown_pending_save|document_idle|product_polish|context_reload|switcher|close_requests|downloads|download_finalization|download_runtime_guard|notification_transport|native_notifications|notification_consent|file_chooser_backend|file_chooser_privacy|action_feedback|navigation_usability|navigation_recovery|navigation_recovery_wayland|keyboard_guide|keyboard_guide_wayland|live_titles|live_titles_wayland|privacy_identity|privacy_identity_wayland|switcher_live_updates|switcher_live_updates_wayland|switcher_navigation|switcher_navigation_wayland|bottom_chrome_wayland|form_reload|form_reload_wayland|streaming_history|streaming_history_wayland|journey_history|command_editing_wayland|keyboard_chrome_wayland|tab_focus_wayland|stop_state|stop_state_wayland|tab_recovery|tab_recovery_wayland|last_tab_undo|last_tab_undo_wayland|repeat|repeat_cli|open_targets|open_targets_wayland|open_targets_cli|cli_output|context_selection_cli|session_recovery|session_recovery_wayland|startup_recovery|startup_recovery_wayland|startup_recovery_restart|page_search|page_search_wayland|hint_controls|hint_controls_dpr2)|portal_(browser|download_history))$'
+          ctest --test-dir target/application-tests --output-on-failure --output-junit "$RUNNER_TEMP/browser-surface-results.xml" -R '^(application_(page_windows_portable|native_freshness|grouping_fences|credential_association_wayland|shutdown_pending_save|document_idle|product_polish|context_reload|switcher|close_requests|downloads|download_finalization|download_runtime_guard|notification_transport|native_notifications|notification_consent|file_chooser_backend|file_chooser_privacy|action_feedback|navigation_usability|navigation_recovery|navigation_recovery_wayland|keyboard_guide|keyboard_guide_wayland|live_titles|live_titles_wayland|privacy_identity|privacy_identity_wayland|switcher_live_updates|switcher_live_updates_wayland|switcher_navigation|switcher_navigation_wayland|bottom_chrome_wayland|form_reload|form_reload_wayland|streaming_history|streaming_history_wayland|journey_history|command_editing_wayland|keyboard_chrome_wayland|tab_focus_wayland|stop_state|stop_state_wayland|tab_recovery|tab_recovery_wayland|last_tab_undo|last_tab_undo_wayland|repeat|repeat_cli|open_targets|open_targets_wayland|open_targets_cli|cli_output|context_selection_cli|session_recovery|session_recovery_wayland|startup_recovery|startup_recovery_wayland|startup_recovery_restart|page_search|page_search_wayland|hint_controls|hint_controls_dpr2)|portal_(browser|download_history))$'
           python3 crates/ferric-browser-engine-qt/tests/application/run_ipc_probe.py
           python3 crates/ferric-browser-engine-qt/tests/application/run_startup_recovery_probe.py --executable target/release/ferric-browser --artifacts "$RUNNER_TEMP/startup-recovery-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           python3 crates/ferric-browser-engine-qt/tests/application/run_context_delete_probe.py
