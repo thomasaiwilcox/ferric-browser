@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HV2 mixed controls</title>
+  <style>
+    html, body { margin: 0; width: 800px; height: 600px; overflow: hidden; }
+    body { position: relative; font: 14px sans-serif; }
+    [data-hv2-id] { box-sizing: border-box; position: absolute; margin: 0; }
+    #link-primary { left: 20px; top: 20px; width: 120px; height: 28px; display: block; }
+    #button-primary { left: 20px; top: 64px; width: 96px; height: 30px; padding: 0; }
+    #input-search { left: 20px; top: 108px; width: 160px; height: 28px; padding: 2px 4px; }
+    #select-mode { left: 20px; top: 152px; width: 160px; height: 28px; }
+    #scroll-panel { left: 220px; top: 20px; width: 180px; height: 82px; overflow: auto; border: 1px solid #555; }
+    #scroll-content { position: static; width: 100%; height: 180px; padding: 4px; }
+    #proxy-editor { left: 220px; top: 128px; width: 180px; height: 68px; border: 1px solid #555; padding: 4px; }
+    #proxy-receiver { position: static; display: block; width: 168px; height: 44px; box-sizing: border-box; }
+    #frame-owner { left: 440px; top: 20px; width: 320px; height: 180px; border: 1px solid #555; }
+  </style>
+</head>
+<body data-hv2-ready="true">
+  <a id="link-primary" data-hv2-id="link.primary" href="/docs?from=hv2">Primary docs link</a>
+  <button id="button-primary" data-hv2-id="button.primary" type="button">Run action</button>
+  <input id="input-search" data-hv2-id="input.search" type="text" aria-label="Search field" value="ready">
+  <select id="select-mode" data-hv2-id="select.mode" aria-label="Mode selector">
+    <option value="one" selected>One</option>
+    <option value="two">Two</option>
+  </select>
+  <div id="scroll-panel" data-hv2-id="scroll.panel" aria-label="Scrollable panel">
+    <div id="scroll-content">Scrollable fixture content</div>
+  </div>
+  <div id="proxy-editor" data-hv2-id="proxy.editor" class="ace_editor" role="textbox" aria-label="Proxy editor">
+    <textarea id="proxy-receiver" data-hv2-id="proxy.receiver" class="ace_text-input" aria-label="Editor receiver">code</textarea>
+  </div>
+  <iframe id="frame-owner" data-hv2-id="frame.owner" title="Embedded fixture" srcdoc="__HV2_FRAME_SRC_DOC__"></iframe>
+</body>
+</html>

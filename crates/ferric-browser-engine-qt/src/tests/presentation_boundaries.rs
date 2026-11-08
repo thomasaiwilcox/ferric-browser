@@ -1593,15 +1593,15 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"27\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"28\""));
     assert!(
         BROWSER_SCRIPT_FACADE
             .contains(".import \"PageInteractionScripts.js\" as PageInteractionScripts")
     );
     assert!(BROWSER_SCRIPT_FACADE.contains("asset.VERSION !== PAGE_INTERACTION_VERSION"));
-    assert!(BROWSER_SCRIPT_FACADE.contains("var PAGE_INTERACTION_VERSION = \"7\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var PAGE_INTERACTION_VERSION = \"8\""));
     assert!(BROWSER_SCRIPT_FACADE.contains("script-version-mismatch"));
-    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"7\""));
+    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"8\""));
     let manifest: serde_json::Value = serde_json::from_str(BROWSER_SCRIPT_MANIFEST).unwrap();
     let entry = manifest["resources"]
         .as_array()
@@ -1653,7 +1653,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("function ftFocusEligible(element)"));
     assert!(script.contains("function ftHintPolicy(kind,family)"));
     assert!(script.contains("frame.contentWindow!==childView"));
-    assert!(script.contains("function ftHintDescription(el,family,linkSelector)"));
+    assert!(script.contains("function ftHintDescription(el,family,linkSelector,cache)"));
     assert!(script.contains("description.kind!==record.kind"));
     assert!(
         script.contains("if(s.elements&&typeof s.elements.clear==='function')s.elements.clear()")

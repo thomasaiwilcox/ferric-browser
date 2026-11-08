@@ -96,8 +96,8 @@ TestCase {
         source = replaceAll(source, "ftHintMatchesAny(el,scrollSelectors)",
                             "__profileMatch(el,scrollSelectors)")
         source = replaceAll(source,
-                            "ftHintDescription(el,candidateFamily,linkSelector)",
-                            "__profileDescription(el,candidateFamily,linkSelector)")
+                            "ftHintDescription(el,candidateFamily,linkSelector,visibilityStyleCache)",
+                            "__profileDescription(el,candidateFamily,linkSelector,visibilityStyleCache)")
         source = replaceAll(source,
                             "ftLocalVisible(el,ownerView,policy,visibilityStyleCache)",
                             "__profileLocalVisible(el,ownerView,policy,visibilityStyleCache)")
@@ -181,8 +181,8 @@ TestCase {
                 + "function __profileMatch(el,selected){const started=performance.now();"
                 + "try{return ftHintMatchesAny(el,selected);}"
                 + "finally{__profile.selector_match_ms+=performance.now()-started;}}"
-                + "function __profileDescription(el,family,link){const started=performance.now();"
-                + "try{return ftHintDescription(el,family,link);}"
+                + "function __profileDescription(el,family,link,cache){const started=performance.now();"
+                + "try{return ftHintDescription(el,family,link,cache);}"
                 + "finally{__profile.description_ms+=performance.now()-started;}}"
                 + "function __profileLocalVisible(el,view,policy){const started=performance.now();"
                 + "try{return ftLocalVisible.apply(null,arguments);}"

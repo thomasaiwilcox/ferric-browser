@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HV2 frame controls</title>
+  <style>
+    html, body { margin: 0; width: 320px; height: 160px; overflow: hidden; }
+    body { position: relative; font: 14px sans-serif; }
+    [data-hv2-id] { box-sizing: border-box; position: absolute; margin: 0; }
+    #frame-link { left: 16px; top: 16px; width: 120px; height: 24px; display: block; }
+    #frame-button { left: 16px; top: 54px; width: 100px; height: 28px; padding: 0; }
+    #frame-input { left: 16px; top: 94px; width: 150px; height: 24px; padding: 2px 4px; }
+  </style>
+</head>
+<body data-hv2-ready="true">
+  <a id="frame-link" data-hv2-id="frame.link" href="/frame-docs?from=hv2">Frame docs link</a>
+  <button id="frame-button" data-hv2-id="frame.button" type="button">Frame action</button>
+  <input id="frame-input" data-hv2-id="frame.input" type="text" aria-label="Frame field" value="inside">
+</body>
+</html>
