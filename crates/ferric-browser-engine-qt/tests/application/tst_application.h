@@ -268,6 +268,8 @@ class ApplicationTests final : public QObject {
     void realHintKeyboardActivation();
     void hintNativeControls_data();
     void hintNativeControls();
+    void hintEarlyInput_data();
+    void hintEarlyInput();
     void mixedReservedKeysAndUnmappedDelivery();
     void heldPageKeyRetainsOwnerAcrossPolicyChange();
     void nativePointerRequiresLocalEntryAndClicksOnce();

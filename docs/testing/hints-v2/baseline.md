@@ -35,3 +35,6 @@ inspection/candidate limits; no implementation-pack controller is required.
 
 The differential/performance suite is opt-in under `tests/qml-perf`, outside
 default functional discovery.
+
+[Early-input behavior and validation](early-input.md) describe the companion fix
+for keys typed before the first Rust hint session exists.

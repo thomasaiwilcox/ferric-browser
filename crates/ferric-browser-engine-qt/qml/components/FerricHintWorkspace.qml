@@ -16,6 +16,7 @@ Item {
     required property var appearance
     readonly property bool inputBlocked: hostWindow === rootWindow
         ? rootWindow.browserChromeInputActive : !hostWindow.browserKeyFocusActive
+    readonly property bool hintInputOwnerActive: hostWindow.active && hostWindow.browserKeyFocusActive
     readonly property var pendingContextMenuRequest:
         rootWindow.pendingContextMenuUi === browserUi ? rootWindow.pendingContextMenuRequest : null
     readonly property int browserScriptWorld: rootWindow.browserScriptWorld
@@ -46,6 +47,7 @@ Item {
     }
 
     property var hintResults: []
+    property string hintPresentationSessionId: ""
     property var hintViewport: ({ width: 0, height: 0 })
     property string hintInput: ""
     property var hintState: ({ mode: "label", prefix: "", query: "", matching_labels: [], active_label: "", remaining: 0, total: 0 })
@@ -60,6 +62,10 @@ Item {
     property bool hintRefreshPending: false
     property int hintCollectionEpoch: 0
     property var hintTrackingView: null
+    // Only input rejected because the initial Rust session does not yet exist.
+    // These are gestures, never guessed labels or retained selection authority.
+    property var pendingHintInputs: []
+    property var pendingHintInputView: null
     readonly property alias hintFrameProvider: hintFrameProviderObject
     property bool rapidHintConfirmationVisible: false
     property string activeHintScopeLeaseId: ""
@@ -67,9 +73,12 @@ Item {
     property var activeSpatialScopeView: null
     FerricHintFrameProvider { id: hintFrameProviderObject; browserWindow: window }
 
+    onHintInputOwnerActiveChanged: if (!hintInputOwnerActive) clearPendingHintInput()
+
     Connections {
         target: window.browserUi
         function onModeChanged() {
+            window.clearPendingHintInput()
             if (browserUi.mode === "hint") {
                 Qt.callLater(function() {
                     if (browserUi.mode === "hint") window.startHintCollection()
@@ -92,6 +101,7 @@ Item {
         }
     }
     onActiveViewChanged: {
+        clearPendingHintInput()
         if (hintTrackingView && activeView !== hintTrackingView) closeHints()
     }
     Component.onDestruction: {
@@ -522,6 +532,7 @@ Item {
             window.hintState = response.state || window.hintState
             window.hintInput = window.hintState.mode === "text"
                     ? "/" + window.hintState.query : window.hintState.prefix
+            window.hintPresentationSessionId = String(response.session_id || "")
             window.hintResults = response.hints
             if (window.hintState.refresh_required) {
                 browserUi.status_text = "New controls available—restart hints"
@@ -531,8 +542,16 @@ Item {
                 browserUi.status_text = truncationNotice
                 if (!wasTruncated) window.showCommandNotice(truncationNotice, false)
             }
-            if (response.first_label) {
-                Qt.callLater(function() { window.activateHint(String(response.first_label)) })
+            var replayedInput = window.replayPendingHintInput(collectionEpoch, view)
+            if (response.first_label && !replayedInput) {
+                var sessionId = window.hintPresentationSessionId
+                Qt.callLater(function() {
+                    if (window.hintCollectionEpoch === collectionEpoch
+                            && browserUi.mode === "hint" && window.activeWebView() === view
+                            && window.hintInputOwnerActive
+                            && window.hintPresentationSessionId === sessionId)
+                        window.activateHint(String(response.first_label))
+                })
             }
         })
     }
@@ -555,13 +574,56 @@ Item {
         })
     }
 
-    function applyHintInteraction(action, text) {
+    function clearPendingHintInput() {
+        window.pendingHintInputs = []
+        window.pendingHintInputView = null
+    }
+
+    function replayPendingHintInput(collectionEpoch, view) {
+        var inputs = window.pendingHintInputView === view ? window.pendingHintInputs : []
+        window.clearPendingHintInput()
+        for (var i = 0; i < inputs.length; ++i) {
+            if (window.hintCollectionEpoch !== collectionEpoch || browserUi.mode !== "hint"
+                    || window.activeWebView() !== view || window.hintTrackingView !== view
+                    || !window.hintInputOwnerActive
+                    || window.hintRefreshPending)
+                break
+            // A confirmation/auto-follow ends replay even if its asynchronous
+            // action leaves Hint mode visible until fresh validation finishes.
+            if (!window.applyHintInteraction(inputs[i].action, inputs[i].text, true)) break
+        }
+        return inputs.length > 0
+    }
+
+    function applyHintInteraction(action, text, replaying) {
+        var originalAction = action
+        // Interpret text at dispatch, after any preceding queued edit. In
+        // particular, spaces and a second slash belong to an early text query.
+        if (action === "character" && window.hintState.mode === "label") {
+            if (text === "/") action = "text-mode"
+            else if (text === " ") action = "rotate"
+        }
         var response = {}
         try {
             response = JSON.parse(browserUi.update_hint_interaction(action, text || ""))
         } catch (error) {
             return false
         }
+        if (response.error === "no-session" && !replaying
+                && browserUi.mode === "hint" && !browserUi.target_search_active
+                && window.hintInputOwnerActive
+                && window.activeWebView()
+                && ["character", "text-mode", "backspace", "clear", "next", "previous", "activate", "rotate"].indexOf(originalAction) >= 0) {
+            if (window.pendingHintInputs.length >= 256) {
+                window.closeHints()
+                window.showCommandNotice("Too much input while hints were loading. Start hints again.", true)
+                return false
+            }
+            window.pendingHintInputView = window.activeWebView()
+            window.pendingHintInputs.push({action:originalAction, text:text || ""})
+            return true
+        }
+        if (response.error) return false
         if (response.state) {
             window.hintState = response.state
             window.hintInput = response.state.mode === "text"
@@ -572,8 +634,10 @@ Item {
         }
         if (response.outcome === "activate") {
             window.activateHint(String(response.label || ""), "", true)
+            return !replaying
         } else if (response.outcome === "cancel") {
             window.closeHints()
+            return !replaying
         } else if (response.outcome === "rotate") {
             window.rotateHintCollision()
         }
@@ -628,6 +692,7 @@ Item {
     }
 
     function stopHintTracking() {
+        window.clearPendingHintInput()
         window.hintFrameProvider.stop()
         var view = window.hintTrackingView
         window.hintTrackingView = null
@@ -1343,6 +1408,7 @@ Item {
     Connections {
         target: browserUi
         function onTarget_search_activeChanged() {
+            window.clearPendingHintInput()
             var searchActive = browserUi.target_search_active
             window.hintCollectionEpoch += 1
             window.hintRefreshPending = false

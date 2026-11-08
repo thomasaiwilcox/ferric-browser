@@ -1774,7 +1774,7 @@ fn enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml() {
     let menu = include_str!("../../qml/components/FerricContextMenu.qml");
 
     assert!(qml.contains("update_hint_interaction(action, text || \"\")"));
-    assert!(surface.contains("hints.applyHintInteraction(\"text-mode\", \"\")"));
+    assert!(surface.contains("hints.applyHintInteraction(\"character\", logicalText)"));
     assert!(surface.contains("hints.applyHintInteraction(\"rotate\", \"\")"));
     assert!(qml.contains("return BrowserScripts.hintDirtyRevision()"));
     assert!(qml.contains("browserUi.mode !== \"hint\" || window.hintTrackingView !== view"));
