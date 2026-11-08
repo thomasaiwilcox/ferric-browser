@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; font: 14px sans-serif }
+  .row { margin: 2px 8px; padding: 2px 4px; transform: translate(2px, 1px) }
+  .clip { overflow: hidden; width: 180px; height: 32px }
+  .stretch { position: relative; display: block; width: 160px; height: 28px }
+  .stretch a { position: absolute; inset: 0 }
+  .stretch span { position: absolute; inset: 0 }
+  .contents { display: contents }
+  .wrap { width: 64px }
+  iframe { width: 180px; height: 28px }
+  [hidden] { display: none }
+</style>
+<div id="root">
+  <!-- comments and text are intentional inspection nodes -->
+  a long text node before candidates
+  <div class="row"><a data-hv2-id="adv.link" href="/same">Same destination</a></div>
+  <div class="row"><a data-hv2-id="adv.link2" href="/same">Same destination copy</a></div>
+  <div class="row" data-hv2-id="adv.dynamic" data-role="before">Dynamic</div>
+  <section id="has-parent" class="row"><span class="ancestor-marker"></span><button data-hv2-id="adv.has">Has selector target</button></section>
+  <div class="row"><details><summary data-hv2-id="adv.summary">More</summary><a href="/details">Details link</a></details></div>
+  <div class="row" data-hv2-id="adv.disabled"><button disabled>Disabled</button><button inert>Inert</button></div>
+  <div class="row clip" data-hv2-id="adv.clipped"><a href="/clipped">Clipped target</a></div>
+  <div class="row contents"><a data-hv2-id="adv.contents" href="/contents">Contents target</a></div>
+  <div class="row wrap"><a data-hv2-id="adv.fragments" href="/fragments">A wrapped inline link with enough words to occupy several separate visual lines.</a></div>
+  <div class="row stretch"><a data-hv2-id="adv.stretch" href="/stretch"><span>Stretched alias</span></a></div>
+  <div class="row" data-hv2-id="adv.proxy"><label for="check">Choice</label><input id="check" type="checkbox"></div>
+  <div class="row"><div class="ace_editor" data-hv2-id="adv.editor" role="textbox"><textarea data-hv2-id="adv.editor-receiver" class="ace_text-input" aria-label="Editor"></textarea></div></div>
+  <div class="row"><iframe data-hv2-id="adv.frame" title="Nested frame" srcdoc="<a data-hv2-id='frame.link' href='/inside'>Inside frame</a>"></iframe></div>
+</div>
+<script>
+  const host = document.createElement('div'); host.dataset.hv2Id = 'adv.shadow-host';
+  host.style.margin = '8px'; document.body.insertBefore(host, document.getElementById('root'));
+  const shadow = host.attachShadow({mode:'open'});
+  shadow.innerHTML = '<slot></slot><a data-hv2-id="adv.shadow-before" href="/shadow-before">Before-init shadow</a>';
+  const slotted = document.createElement('a'); slotted.dataset.hv2Id='adv.slot'; slotted.href='/slot'; slotted.textContent='Slotted'; host.append(slotted);
+  document.body.dataset.hv2Ready='true';
+</script>

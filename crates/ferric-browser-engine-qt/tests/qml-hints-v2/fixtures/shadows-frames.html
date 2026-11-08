@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>shadow-frame-topology</title>
+<div id="host" data-hv2-id="sf.host"><a slot="first" data-hv2-id="sf.slotted-one" href="/one">One</a><a slot="second" data-hv2-id="sf.slotted-two" href="/two">Two</a></div>
+<iframe id="frame" data-hv2-id="sf.frame" title="Frame" srcdoc="<a data-hv2-id='sf.frame-link' href='/frame'>Frame link</a>"></iframe>
+<script>
+ const host=document.getElementById('host'); const shadow=host.attachShadow({mode:'open'});
+ shadow.innerHTML='<slot name="first"></slot><a data-hv2-id="sf.shadow-initial" href="/initial">Initial shadow link</a>';
+ document.body.dataset.hv2Ready='true';
+</script>

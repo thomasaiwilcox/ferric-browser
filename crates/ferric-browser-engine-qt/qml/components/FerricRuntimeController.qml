@@ -812,10 +812,6 @@ QtObject {
                 }
             } else if (control && event.key === Qt.Key_Space) {
                 hints.applyHintInteraction("rotate", "")
-            } else if (logicalText === "/" && hints.hintState.mode === "label") {
-                hints.applyHintInteraction("text-mode", "")
-            } else if (logicalText === " " && hints.hintState.mode === "label") {
-                hints.applyHintInteraction("rotate", "")
             } else if (logicalText.length === 1) {
                 hints.applyHintInteraction("character", logicalText)
             }

@@ -1,0 +1,19 @@
+<!doctype html><meta charset="utf-8"><title>cap-boundary</title>
+<style>
+  #cap-root { position: fixed; left: 0; top: 0; display: flex; flex-wrap: wrap; width: 100px; align-content: flex-start }
+  #cap-root a { display: block; flex: 0 0 2px; width: 2px; height: 2px; overflow: hidden; font-size: 0; line-height: 0 }
+</style>
+<div id="cap-root"></div>
+<script>
+  const root = document.getElementById('cap-root');
+  // Put candidates first so the candidate cap is reached, then fill the
+  // remaining traversal with text and comment nodes for inspection accounting.
+  for (let i=0; i<5005; i++) {
+    const a=document.createElement('a'); a.href='/candidate/'+i; a.textContent='candidate '+i;
+    a.dataset.hv2Id='cap.'+i; root.appendChild(a);
+  }
+  const batch = document.createDocumentFragment();
+  for (let i=0; i<24995; i++) { batch.appendChild(document.createTextNode('x')); batch.appendChild(document.createComment('c')); }
+  root.appendChild(batch);
+  document.body.dataset.hv2Ready='true';
+</script>
