@@ -19,14 +19,11 @@ move to a different item within the same session.
 `youtube-browse.toml` covers browsing grids and search results.
 `youtube-watch.toml` replaces those collections on `/watch` with recommendations
 and admits the player's `j`, `k`, `l`, `m`, `f` and `c` keys while hints are open.
-Its `p` alias sends `k` for play/pause in Normal, Hint or passthrough, subject to
-native receiver admission. Direct Normal-mode delivery also needs the existing
-watch-scoped settings `input.shortcut_policy = "mixed"` and
-`input.page_keys = ["p"]`; the Interaction interchange file cannot carry ordinary
-settings. The installed setup configures those through the settings service.
-Normal-mode `f` still opens hints. With the page focused, press `p` directly;
-typing fields retain their normal input. On watch pages this deliberately
-replaces the `pp`/`pP` browser prefixes with the immediate `p` shortcut.
+Its `p` alias sends `k` for play/pause in Hint and explicit passthrough modes,
+subject to native receiver admission. Normal mode keeps the browser's `pp`/`pP`
+prefixes. The earlier watch-scoped Mixed admission for `p` is superseded by this
+Hint-only default; remove that admission when updating an older installed setup.
+Normal-mode `f` still opens hints.
 Inside ordinary hints, one admitted player shortcut returns to Normal after
 release. Thus `f`, then `p` changes playback and dismisses hints; `f`, then `f`
 changes fullscreen and dismisses hints. Use `;V` for consecutive player keys.

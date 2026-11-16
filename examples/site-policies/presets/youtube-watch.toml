@@ -1,6 +1,6 @@
 # Desktop watch pages: familiar player keys plus numbered recommendations.
 # Works alone; its collections/anchors replace youtube-browse's on /watch.
-# Opt-in. Normal p also needs watch-scoped Mixed admission. See README.md.
+# Opt-in. Player aliases apply in Hint and explicit passthrough modes. See README.md.
 format = "ferric-site-interaction"
 format_version = 1
 
@@ -47,4 +47,4 @@ path = "/watch"
 id = "play-pause"
 from = "p"
 to = "k"
-contexts = ["normal-page-key", "hint-page-key", "passthrough-once", "passthrough"]
+contexts = ["hint-page-key", "passthrough-once", "passthrough"]
