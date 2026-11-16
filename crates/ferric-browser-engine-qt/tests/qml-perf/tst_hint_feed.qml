@@ -46,10 +46,11 @@ TestCase {
         const before=builder(control),after=builder(candidate),samples=[]
         for(let i=0;i<5;i++) {
             page.loaded=false;page.loadHtml(fixtureText,'https://hint-feed.invalid/');tryVerify(function(){return page.loaded},10000);evaluate('scrollTo(0,0);true');wait(150)
-            const a=collect(before('actions',true),false)
+            const first=collect((i%2?after:before)('actions',true),false)
             // Reload again so the second source also observes a fresh document.
             page.loaded=false;page.loadHtml(fixtureText,'https://hint-feed.invalid/');tryVerify(function(){return page.loaded},10000);evaluate('scrollTo(0,0);true');wait(150)
-            const b=collect(after('actions',true),false)
+            const second=collect((i%2?before:after)('actions',true),false)
+            const a=i%2?second:first,b=i%2?first:second
             if(JSON.stringify(a.rows)!==JSON.stringify(b.rows))console.info('FRESH_DIFF '+JSON.stringify({a:a.rows.filter(x=>!b.rows.some(y=>JSON.stringify(x)===JSON.stringify(y))),b:b.rows.filter(x=>!a.rows.some(y=>JSON.stringify(x)===JSON.stringify(y))),scroll:evaluate('scrollY')}))
             compare(JSON.stringify(a.rows),JSON.stringify(b.rows),'fresh document coverage')
             samples.push({control_ms:a.ms,candidate_ms:b.ms})
