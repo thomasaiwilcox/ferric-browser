@@ -226,7 +226,7 @@ TestCase {
     function test_resume_uses_original_weak_inventory_and_candidate_indices_once(data) {
         var plan=request(),ordinary=prepare(plan)
         verify(typeof ordinary.interaction_pending==="string",JSON.stringify(ordinary))
-        compare(evaluate("(()=>{const p=window.__ferric_browserHintState.pendingInteraction;return p.roots.entries.every(entry=>entry.domain instanceof WeakRef&&entry.tree instanceof WeakRef&&entry.nodes.every(node=>node instanceof WeakRef))})()"),true)
+        compare(evaluate("(()=>{const p=window.__ferric_browserHintState.pendingInteraction;return p.roots.entries.every(entry=>entry.domain instanceof WeakRef&&entry.tree instanceof WeakRef&&entry.nodes.every(node=>node===null||node instanceof WeakRef))})()"),true)
         compare(evaluate("(()=>{document.createTreeWalker=function(){throw Error('unexpected-second-walk')};return true})()"),true)
         var completed=finish(plan,ordinary,undefined,undefined,data.omitCandidates)
         verify(!completed.error,JSON.stringify(completed))
@@ -243,6 +243,26 @@ TestCase {
         compare(evaluate("window.__ferric_browserHintState.pendingInteraction===null"),true)
         compare(finish(plan,ordinary).error,"stale-interaction-collection")
         compare(seal(completed),true,"A duplicate completion cannot clear the original completed graph")
+    }
+    function test_non_element_slots_preserve_positions_without_retaining_nodes() {
+        evaluate("document.getElementById('target').append(document.createTextNode(' extra'),document.createComment('comment'));true")
+        wait(60)
+        var plan=request(),ordinary=prepare(plan)
+        var inventory=evaluate("(()=>{const entries=window.__ferric_browserHintState.pendingInteraction.roots.entries;return entries.map(e=>({length:e.nodes.length,parents:e.parentIndices.length,empty:e.nodes.filter(n=>n===null).length,valid:e.nodes.every((n,i)=>n===null?e.parentIndices[i]===null:n instanceof WeakRef&&(i===0||e.nodes[e.parentIndices[i]] instanceof WeakRef))}))})()")
+        verify(inventory.length>0)
+        verify(inventory.some(e=>e.empty>=3),JSON.stringify(inventory))
+        for(var entry of inventory){compare(entry.length,entry.parents);verify(entry.valid)}
+        var completed=finish(plan,ordinary)
+        verify(!completed.error,JSON.stringify(completed))
+        compare(JSON.parse(completed.annotation_json).outcomes[0].result["anchor-observed"].targets.length,1)
+        compare(JSON.stringify(completed.candidates),JSON.stringify(ordinary.candidates))
+        compare(seal(completed),true)
+    }
+    function test_text_mutation_retires_sparse_inventory() {
+        var plan=request(),ordinary=prepare(plan)
+        evaluate("document.getElementById('target').firstChild.data='Changed name';true")
+        wait(60)
+        compare(finish(plan,ordinary).error,"stale-interaction-collection")
     }
     function seal(value,scope) {
         var annotation=JSON.parse(value.annotation_json)

@@ -29,6 +29,14 @@ function source() {
         while(entry.stack.length&&entry.stack[entry.stack.length-1]!==parent){
             entry.ends.set(entry.stack.pop(),entry.nodes.length);
         }
+        // Keep physical positions for inspection limits and search charges,
+        // but only elements can be selector roots/targets. Text and comments
+        // remain observed by document tracking and name evidence.
+        if(node.nodeType!==1){
+            entry.nodes.push(null);
+            if(entry.parentIndices)entry.parentIndices.push(null);
+            return;
+        }
         const index=entry.nodes.length;
         if(entry.indices){entry.parentIndices.push(entry.indices.get(parent));entry.indices.set(node,index);}
         entry.nodes.push(node);entry.stack.push(node);
@@ -56,6 +64,7 @@ function source() {
         return locations.get(root);
     }
     function inventoryNode(entry,index){
+        if(entry.nodes[index]===null)return null;
         if(!entry.weak)return entry.nodes[index];
         if(!entry.verified){
             const domain=WeakRef.prototype.deref.call(entry.domain),tree=WeakRef.prototype.deref.call(entry.tree);
@@ -141,7 +150,7 @@ function source() {
         for(let i=location.index+1;i<(exhaustive?end:entry.nodes.length);i++){
             charge();
             const node=inventoryNode(entry,i);
-            if(node.nodeType===1&&matches(node,selector,root)){
+            if(node&&node.nodeType===1&&matches(node,selector,root)){
                 found.push(node);
                 if(!all&&found.length===2)return {found:found,exhaustive:false};
             }
@@ -489,7 +498,7 @@ function source() {
             // Eligibility already conclusively excluded these from the final
             // ordinary rows. Unknown/capped work must still be matched. This
             // applies only to targets, never logical item/root enumeration.
-            if(node.nodeType===1&&(!context.knownExcluded||!context.knownExcluded(node))
+            if(node&&node.nodeType===1&&(!context.knownExcluded||!context.knownExcluded(node))
                 &&(!selector||matches(node,selector,root)))found.push(node);
         }
         return found;
@@ -690,7 +699,7 @@ function source() {
             if(count>50000||entry.weak||!entry.parentIndices||entry.parentIndices.length!==entry.nodes.length)stop('inspection-limit');
             entry.tree=new WeakRef(entry.domain.getRootNode());
             entry.domain=new WeakRef(entry.domain);
-            entry.nodes=entry.nodes.map(function(node){return new WeakRef(node);});
+            entry.nodes=entry.nodes.map(function(node){return node===null?null:new WeakRef(node);});
             entry.stack.length=0;
             entry.indices=null;
             entry.weak=true;
