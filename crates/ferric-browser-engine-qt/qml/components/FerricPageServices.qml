@@ -1029,7 +1029,14 @@ QtObject {
     function diagnosticsOwner(ui, host) {
         if (!ui) return null
         var owner = window.browserWindowEntryForUi(ui)
-        if (owner) return !host || owner.host === host ? owner : null
+        if (owner) {
+            if (host && owner.host !== host) return null
+            host = owner.host
+            if (!host || host.runtimeReleased === true || host.runtimeDisposing === true) return null
+            // Registration captures a view at window creation. Receiver proofs
+            // must belong to the page selected now, including after tab switches.
+            return Object.assign({}, owner, {view: host.activeWebView()})
+        }
         host = host || (ui === window.browserUi ? window : null)
         if (!host || host.runtimeReleased === true || host.runtimeDisposing === true) return null
         if (host === window ? ui !== window.browserUi
