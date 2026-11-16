@@ -514,14 +514,29 @@ Item {
                 return
             }
             if (value && value.error) {
-                if((value.error==="interaction-collection-stale"||value.retryable===true)
+                if((value.error==="interaction-collection-stale"||value.error==="frame-timeout"||value.retryable===true)
                         &&window.hintCollectionRetryCount===0) {
                     // Initial observers, navigation or a busy renderer can
                     // invalidate the first attempt. Capture one NEW request;
                     // the old inventory, receipts and grants are never reused.
                     window.hintCollectionRetryCount=1
-                    targetSearchRefreshTimer.interval=16
-                    targetSearchRefreshTimer.restart()
+                    if (value.cause === "frame-timeout" || value.error === "frame-timeout") {
+                        // Expiry abandons the result, not the renderer script.
+                        // Keep collection gated until that work settles, with a
+                        // bounded wait owned by this invocation and document.
+                        window.hintRefreshPending = true
+                        window.hintFrameProvider.nativeBroker.waitForPendingScripts(function(settled) {
+                            if (window.hintCollectionEpoch !== collectionEpoch
+                                    || browserUi.mode !== "hint" || window.hintTrackingView !== view) return
+                            window.hintRefreshPending = false
+                            if (!settled) { receive(value, request); return }
+                            targetSearchRefreshTimer.interval = 16
+                            targetSearchRefreshTimer.restart()
+                        })
+                    } else {
+                        targetSearchRefreshTimer.interval=16
+                        targetSearchRefreshTimer.restart()
+                    }
                     return
                 }
                 if(value.error==="interaction-collection-stale" && browserUi.hint_visible

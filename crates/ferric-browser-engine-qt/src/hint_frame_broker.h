@@ -116,6 +116,8 @@ public:
     Q_INVOKABLE void verifyFocusedLeaf(const QString &owner, const QJSValue &callback);
     Q_INVOKABLE void run(const QString &owner, const QString &script, const QJSValue &callback);
     Q_INVOKABLE void dispatch(const QString &owner, const QString &script, const QJSValue &callback);
+    // Wait only for scripts already outstanding; expiry does not cancel WebEngine.
+    Q_INVOKABLE void waitForPendingScripts(const QJSValue &callback);
     Q_INVOKABLE void clear();
     // Deliberately not Qt invokables: JSON/QML values cannot mint receipts.
     void captureDocument(const QString &owner, ReceiptCompletion completion, int timeoutMs = 1000,
@@ -179,6 +181,7 @@ public:
     int pendingScripts() const;
 signals:
     void leasesChanged();
+    void scriptSettled();
 private:
     void capturePageFocusAt(const QString &owner, int depth, const QString &script,
         const QDeadlineTimer &deadline, FocusCompletion completion);

@@ -70,6 +70,9 @@ void ApplicationTests::hintRequestWorkspaceCollection_data()
     QTest::newRow("foreign-shadow")<<true;
     QTest::newRow("ordinary-timeout")<<false;
     QTest::newRow("ordinary-timeout-twice")<<false;
+    QTest::newRow("ordinary-timeout-cancel")<<false;
+    QTest::newRow("ordinary-timeout-reentry")<<false;
+    QTest::newRow("ordinary-timeout-navigation")<<false;
     QTest::newRow("ordinary-evidence-limit")<<false;
 }
 
@@ -1247,6 +1250,25 @@ void ApplicationTests::hintRequestWorkspaceCollection()
     if(rootCase==QStringLiteral("shadow-slot"))
         QVERIFY(page("(()=>{const host=document.createElement('div');host.id='policy-shadow';host.style='position:fixed;left:530px;top:420px;width:300px;height:80px';host.attachShadow({mode:'open'}).innerHTML='<slot id=policy-slot name=target></slot>';const item=document.createElement('div');item.id='policy-slot-item';item.slot='target';item.style='width:300px;height:80px';item.innerHTML='<button id=policy-slot-button>Slotted policy action</button>';host.append(item);document.body.append(host);return true})()",1).toBool());
     QVERIFY(command("hint all"));
+    if (rootCase=="ordinary-timeout-cancel" || rootCase=="ordinary-timeout-reentry" || rootCase=="ordinary-timeout-navigation") {
+        QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.hintWorkspace.hintCollectionRetryCount===1 && testWindow.hintRefreshPending").toBool(), 2000);
+        key(Qt::Key_Escape);
+        if (rootCase=="ordinary-timeout-navigation") {
+            QVERIFY(command(QString("open http://127.0.0.1:%1/next").arg(server.serverPort())));
+            QTest::qWait(500);
+            QCOMPARE(text("mode"),QString("normal"));
+        } else if (rootCase=="ordinary-timeout-reentry") {
+            QVERIFY(command("hint all"));
+            QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.hintWorkspace.hintPresentationSessionId.length>0 && !testWindow.hintRefreshPending").toBool(), 5000);
+            QTest::qWait(200);
+            QCOMPARE(text("mode"),QString("hint"));
+        } else {
+            QTest::qWait(600);
+            QCOMPARE(text("mode"),QString("normal"));
+            QCOMPARE(page("window.collectionAttempts",1).toInt(),1);
+        }
+        return;
+    }
     if(rootCase=="ordinary-timeout-twice"||rootCase=="ordinary-evidence-limit") {
         const int attempts=rootCase=="ordinary-timeout-twice"?2:1;
         QTRY_COMPARE_WITH_TIMEOUT(page("window.collectionAttempts",1).toInt(),attempts,10000);
@@ -3735,4 +3757,44 @@ void ApplicationTests::sitePolicyDraftWorkflow()
     if(activate)QTRY_VERIFY(active().value("reload_revision").toString()!=originalReload);
     else QCOMPARE(active().value("reload_revision").toString(),originalReload);
     QCOMPARE(page("window.sitePolicyDocument").toString(),QString("original-document"));
+}
+
+void ApplicationTests::hintCollectionTimeoutSettlement_data()
+{
+    QTest::addColumn<QString>("scenario");
+    for (const auto *name : {"settles", "wait-bound", "clear", "new-invocation"})
+        QTest::newRow(name) << QString::fromLatin1(name);
+}
+
+void ApplicationTests::hintCollectionTimeoutSettlement()
+{
+    QFETCH(QString, scenario);
+    QVERIFY(page("document.body.innerHTML='<button>Collection target</button>';true").toBool());
+    QVERIFY(command("hint all"));
+    QVERIFY(!hintLabel("Collection target").isEmpty());
+    auto *workspace = evaluate("testWindow.hintWorkspace").value<QObject *>();
+    QVERIFY(workspace);
+    QVERIFY(suspendHintRefreshForAdapterFixture(workspace));
+    const auto owner = evaluate("testWindow.hintFrameProvider.rootOwner").toString();
+    QVERIFY(!owner.isEmpty());
+    frameCallbackCount = 0;
+    const int delay = scenario == "wait-bound" ? 2400 : 1400;
+    const auto script = QString("(()=>{const end=performance.now()+%1;while(performance.now()<end){};return true})()").arg(delay);
+    // The delivery expires at 1s. The recovery callback must follow actual
+    // engine settlement (or its own bound), rather than the delivery timeout.
+    evaluate("testWindow.hintFrameProvider.run(" + quoted(owner) + "," + quoted(script)
+        + ",function(v){testProbe.frameOperationComplete(v);testWindow.hintFrameProvider.nativeBroker.waitForPendingScripts(function(ok){testProbe.frameOperationComplete(ok)})})");
+    QTRY_COMPARE_WITH_TIMEOUT(frameCallbackCount, 1, 1250);
+    QCOMPARE(frameCallbackResult.toMap().value("error").toString(), QString("frame-timeout"));
+    if (scenario == "clear" || scenario == "new-invocation") key(Qt::Key_Escape);
+    QTRY_COMPARE_WITH_TIMEOUT(frameCallbackCount, 2, 1500);
+    QCOMPARE(frameCallbackResult.toBool(), scenario == "settles");
+    if (scenario == "new-invocation") {
+        QVERIFY(command("hint all"));
+        QVERIFY(!hintLabel("Collection target").isEmpty());
+        QTest::qWait(200);
+        QCOMPARE(text("mode"), QString("hint"));
+    }
+    QTest::qWait(500);
+    QCOMPARE(frameCallbackCount, 2);
 }

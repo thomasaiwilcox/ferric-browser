@@ -661,13 +661,18 @@ void FerricFrameBroker::evaluate(QWebEngineFrame frame, const QString &script,
     pending->timer = timer;
     pending_.append(pending);
     auto finish = [guard, generation, deadline, pending, dispatcher = dispatcher_](const QVariant &value, bool fromEngine) {
+        bool engineSettled = false;
         // Delivery expiry cannot cancel a script already queued in WebEngine.
         // Release its dispatch slot only when that native callback completes.
         if (!pending->engineFinished && (fromEngine || !pending->dispatched || !pending->frame.isValid())) {
             pending->engineFinished = true;
             dispatcher->finishOrdinary();
+            engineSettled = true;
         }
-        if (pending->delivered) return;
+        if (pending->delivered) {
+            if (engineSettled && guard) emit guard->scriptSettled();
+            return;
+        }
         pending->delivered = true;
         if (pending->timer) { pending->timer->stop(); pending->timer->deleteLater(); pending->timer.clear(); }
         auto completion = std::move(pending->completion);
@@ -703,6 +708,7 @@ void FerricFrameBroker::evaluate(QWebEngineFrame frame, const QString &script,
         }
         if (guard && guard->generation_ == generation && completion)
             completion(result);
+        if (engineSettled && guard) emit guard->scriptSettled();
     };
     connect(timer, &QTimer::timeout, this, [finish] { finish(failure("frame-timeout"), false); });
     if(deadline.hasExpired()){finish(failure("frame-timeout"),false);return;}
@@ -938,6 +944,35 @@ void FerricFrameBroker::run(const QString &owner, const QString &script, const Q
     execute(owner, script, callback, false);
 }
 
+void FerricFrameBroker::waitForPendingScripts(const QJSValue &callback) {
+    if (!callback.isCallable()) return;
+    QList<std::shared_ptr<Pending>> outstanding;
+    for (const auto &entry : std::as_const(pending_)) {
+        if (auto pending = entry.lock(); pending && pending->dispatched && !pending->engineFinished)
+            outstanding.append(std::move(pending));
+    }
+    if (outstanding.isEmpty()) { deliver(callback, true); return; }
+    const auto generation = generation_;
+    auto *timer = new QTimer(this);
+    timer->setSingleShot(true);
+    auto done = std::make_shared<bool>(false);
+    auto finish = [this, timer, callback, done](bool settled) {
+        if (std::exchange(*done, true)) return;
+        timer->stop();
+        timer->deleteLater();
+        deliver(callback, settled);
+    };
+    connect(this, &FerricFrameBroker::scriptSettled, timer,
+        [this, generation, outstanding, finish] {
+            if (generation_ != generation) { finish(false); return; }
+            if (std::all_of(outstanding.cbegin(), outstanding.cend(),
+                    [](const auto &pending) { return pending->engineFinished || !pending->frame.isValid(); }))
+                finish(true);
+        });
+    connect(timer, &QTimer::timeout, timer, [finish] { finish(false); });
+    timer->start(1000);
+}
+
 void FerricFrameBroker::dispatch(const QString &owner, const QString &script, const QJSValue &callback) {
     execute(owner, script, callback, true);
 }
@@ -997,6 +1032,8 @@ void FerricFrameBroker::clear() {
     if(!guard)return;
     frames_.clear();
     inspected_.clear();
+    emit scriptSettled();
+    if (!guard) return;
     emit leasesChanged();
 }
 

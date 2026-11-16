@@ -218,6 +218,8 @@ class ApplicationTests final : public QObject {
     void crossOriginFrameInvalidation();
     void crossOriginFrameLifetimeCycles();
     void crossOriginFrameOperationLifetimes();
+    void hintCollectionTimeoutSettlement_data();
+    void hintCollectionTimeoutSettlement();
     void crossOriginUnsupportedScopedActions_data();
     void crossOriginUnsupportedScopedActions();
     void crossOriginHostileFacetResults_data();
