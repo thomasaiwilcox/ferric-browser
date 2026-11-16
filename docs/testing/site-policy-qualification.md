@@ -1,4 +1,12 @@
-# Site Policy qualification — 15 November 2026
+# Site Policy qualification
+
+Current delivery update — 16 November 2026: the busy-page snapshot fix and
+permanent two-tab media regression are qualified in the
+[closeout report](hint-reliability-closeout-2026-11-16.md). That report records the
+current artifact, exact checks, diagnostic measurements and remaining limits.
+The acceptance inventory now maps concrete tests with scoped evidence. The
+15 November crash-focused results below remain historical artifact records;
+they are not a claim that every later source change reran every original gate.
 
 The crash-focused implementation pass is complete and independently reviewed.
 It mitigates a confirmed Qt 6.11.2 QML JIT corruption path and fixes shared modal
@@ -17,11 +25,11 @@ in the reviewed scope.
 
 The owner explicitly stopped further pursuit of the failed latency and
 5,000-target stress gates. Historical samples remain failed or unqualified.
-No performance pass is claimed for the interpreter build. Full completion of
-the original platform/package plan remains open; the delivery-scope question
-about the wider X11/layout matrix is awaiting the owner's answer.
+No performance pass is claimed for the interpreter build. The current delivery
+targets the qualified Qt 6.11.2 Wayland installation.
+The complete original X11/layout/package matrix remains unqualified.
 
-## Final artifact and checks
+## Historical artifact and checks — 15 November
 
 The production build uses the qualified Qt 6.11.2 SDK, matching private headers
 and owned QtWayland. The release binary is
@@ -35,7 +43,7 @@ The native test binary used for the final run is
 
 Evidence paths below are under `target/site-policy-p05-revalidation/`.
 
-| Final pre-PR check | Result | Evidence under `p17-final-quality-1/` |
+| Historical pre-PR check | Result | Evidence under `p17-final-quality-1/` |
 | --- | --- | --- |
 | Core, config, IPC, application and storage release Rust suites | 1,106 passed, 0 failed/ignored | `rust-tests.log`, `rust-results.json` |
 | Full QML suite after the nested-input fix | 1,319 passed, 0 failed/skipped | `qml.log`, `qml.xml` |
@@ -88,11 +96,14 @@ subsequent documentation changes are recorded separately.
   Prior US/GB/DE subsets retain their narrower recorded scope.
 - An installed Arch package, installed file-dialog flows and the complete
   installed accessibility matrix have not been qualified in this finish pass.
-- Live YouTube sidebar and Hint-context media checks remain open. Other live
-  examples were exercised on earlier binaries; no current-build live replay is
-  claimed. See [live verification](../../examples/site-policies/LIVE_VERIFICATION.md).
-- The original comprehensive acceptance inventory still has unmapped rows;
-  missing evidence is not a pass.
+- Installed YouTube Hint-context media was verified on the earlier tab-routing
+  build; the current closeout adds a permanent two-tab media fixture. Live sidebar
+  and other website/build combinations retain their recorded limits. See the
+  [tab-routing report](youtube-page-key-tab-routing-2026-11-16.md) and
+  [live verification](../../examples/site-policies/LIVE_VERIFICATION.md).
+- The acceptance inventory now maps concrete source/tests and separates Partial,
+  Open and scoped results. Unqualified clauses/platforms remain explicit; an old
+  planning status or an implemented test name alone is not execution evidence.
 
 Use [the user guide](../user/site-policies.md) and the opt-in examples for the
 implemented workflow. The full original P16/P17 exit gates remain unchecked.

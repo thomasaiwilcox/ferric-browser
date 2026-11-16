@@ -1,5 +1,11 @@
 # Binding implementation contracts
 
+Status note — 16 November 2026: phase-progress statements below are historical
+implementation checkpoints. Current delivery qualification is recorded in
+[the qualification index](site-policy-qualification.md) and the reconciled
+`site-policy-acceptance.json`; historical “pending” prose is not a current test
+inventory. The required contracts themselves are unchanged.
+
 This index freezes the required Section 3 boundaries for implementation and
 review. The authoritative detail is Section 3 of
 `../../../Ferric_Site_Policy_Advanced_Hints_Implementation_Plan.md` relative
