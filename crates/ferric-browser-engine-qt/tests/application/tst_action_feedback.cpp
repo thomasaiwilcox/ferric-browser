@@ -222,13 +222,17 @@ void ApplicationTests::productPolishHintActionFeedback() {
     QTRY_COMPARE(text("userscript_install_state"), QString("installed"));
     const auto expected = page("document.getElementById('same').href.split('#')[0]").toString();
     QVERIFY(command("set --temp hints.auto_follow=never"));
+    QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object()
+        .value("hints").toObject().value("auto_follow").toString(), QString("never"));
     QVERIFY(command("hint --target choose links"));
     const auto hint = hintLabel("Same document");
     QVERIFY(!hint.isEmpty());
     typeText(hint); key(Qt::Key_Return);
     int index = -1;
-    QTRY_VERIFY((index = evaluate("testWindow.contextMenuItems.findIndex(function(item){return item.actionId === "
-        + quoted(id) + " && item.enabled})").toInt()) >= 0);
+    QTRY_VERIFY2((index = evaluate("testWindow.contextMenuItems.findIndex(function(item){return item.actionId === "
+        + quoted(id) + " && item.enabled})").toInt()) >= 0,
+        qPrintable("mode=" + text("mode") + " status=" + text("status_text")
+            + " menu=" + evaluate("JSON.stringify(testWindow.contextMenuItems)").toString()));
     auto menu = window->findChild<QObject *>("contextMenuPopup");
     QVERIFY(menu);
     QTRY_VERIFY(menu->property("opened").toBool());
@@ -372,14 +376,32 @@ void ApplicationTests::productPolishConfigurationFeedback_data() {
     QTest::newRow("stop-chain")
         << QStringLiteral("get no.such.setting ;; open https://should-not-open.invalid/")
         << missing;
+    QTest::newRow("stop-after-successful-read")
+        << QStringLiteral("get content.zoom ;; get no.such.setting ;; open https://should-not-open.invalid/")
+        << missing;
     QTest::newRow("invalid-site-url")
         << QStringLiteral("get downloads.ask_destination --url file:///tmp/not-a-site")
         << QStringLiteral("Use an HTTP or HTTPS page address with --url.");
+    const auto panelArguments =
+        QStringLiteral("settings does not accept arguments. Use :settings to open it.");
+    QTest::newRow("read-action-local-failure")
+        << QStringLiteral("get content.zoom ;; action url copy ;; settings unexpected ;; open https://should-not-open.invalid/")
+        << panelArguments;
+    QTest::newRow("captured-read-local-failure")
+        << QStringLiteral("@captured-get@ ;; settings unexpected ;; open https://should-not-open.invalid/")
+        << panelArguments;
 }
 
 void ApplicationTests::productPolishConfigurationFeedback() {
     QFETCH(QString, request);
     QFETCH(QString, expected);
+    if (request.contains("@captured-get@")) {
+        QVERIFY(evaluate("testWindow.browserUi.switcher_query('get','commands')").toBool());
+        const auto id = evaluate("(function(){var ui=testWindow.browserUi;for(var i=0;i<ui.switcher_result_labels.length;++i)if(ui.switcher_result_labels[i]==='get')return ui.switcher_result_ids[i];return ''})()").toString();
+        QVERIFY(!id.isEmpty());
+        request.replace("@captured-get@", "command-execute " + id
+            + " '{\"key\":\"content.zoom\"}'");
+    }
     QTest::failOnWarning(QRegularExpression("TypeError|ReferenceError|Binding loop"));
     const auto original = text("current_url");
     const auto folder = evaluate("testWindow.browserUi.default_download_directory()").toString();

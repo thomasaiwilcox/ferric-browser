@@ -7,6 +7,21 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+const MAX_OPERATION_PAGE_BYTES: usize = 500 * 1024;
+
+fn bound_preview_result(value: &mut Value) {
+    if value.get("result").is_some()
+        && value.to_string().len() > MAX_OPERATION_PAGE_BYTES
+        && let Some(object) = value.as_object_mut()
+    {
+        object.remove("result");
+        object.insert("result_unavailable".into(), json!({
+            "reason":"preview-result-exceeds-operation-envelope",
+            "message":"The preview result is retained in the draft but exceeds the operation query envelope."
+        }));
+    }
+}
+
 pub(super) fn remember_operation_stderr(rust: &mut BrowserUiRust, id: &str, stderr: String) {
     if let Some(application) = rust.state.as_mut() {
         application.operations_mut().remember_stderr(id, stderr);
@@ -90,7 +105,20 @@ fn operation_rows(rust: &BrowserUiRust, params: &Value) -> Result<Vec<Value>, St
         .filter(|record| requested.is_none_or(|requested| requested == record.id))
         .map(|record| {
             let mut value = crate::browser_ui_operations::operation_value(record, include_stderr);
+            // Detailed preview output stays in the bounded draft store. Only
+            // an authorized exact-operation query receives its retained report.
+            if requested.is_some()
+                && record.state.is_terminal()
+                && let Some(receipt) = record.id.strip_prefix("op-").and_then(|id| {
+                    rust.state
+                        .as_ref()
+                        .and_then(|state| state.site_policy_preview_receipt(id).ok().flatten())
+                })
+            {
+                value["result"] = json!(receipt);
+            }
             value["window_id"] = Value::String(window.clone());
+            bound_preview_result(&mut value);
             value
         })
         .collect::<Vec<_>>();
@@ -152,7 +180,7 @@ pub(super) fn page_operations(
         let row_bytes = serde_json::to_vec(&row)
             .map_err(|error| error.to_string())?
             .len();
-        if values.len() == limit || bytes + row_bytes > 500 * 1024 {
+        if values.len() == limit || bytes + row_bytes > MAX_OPERATION_PAGE_BYTES {
             more = true;
             break;
         }
@@ -234,6 +262,27 @@ mod tests {
             assert!(operations_query_value(&rust, &json!({"include_private":"yes"})).is_err());
         }
     }
+    #[test]
+    fn oversized_preview_keeps_the_operation_and_reports_result_unavailability() {
+        let mut row = json!({"window_id":"windowid-1", "sequence":1,
+            "operation_id":"op-preview", "status":"completed", "result":{"observations":"x".repeat(600 * 1024)}});
+        bound_preview_result(&mut row);
+        let page = page_operations(vec![row], &json!({"operation_id":"op-preview"}), 1).unwrap();
+        let operation = &page["operations"][0];
+        assert_eq!(operation["operation_id"], "op-preview");
+        assert_eq!(operation["status"], "completed");
+        assert!(operation.get("result").is_none());
+        assert_eq!(
+            operation["result_unavailable"]["reason"],
+            "preview-result-exceeds-operation-envelope"
+        );
+        assert!(page["next_cursor"].is_null());
+        assert!(serde_json::to_vec(&page).unwrap().len() < MAX_OPERATION_PAGE_BYTES);
+        let mut small = json!({"result":{"valid":true}});
+        bound_preview_result(&mut small);
+        assert_eq!(small, json!({"result":{"valid":true}}));
+    }
+
     #[test]
     fn pagination_respects_order_cursor_and_encoded_byte_budget() {
         let rows = (0..200).rev().map(|sequence| json!({"window_id":"windowid-1",

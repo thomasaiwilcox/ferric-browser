@@ -7,6 +7,248 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn page_key_focus_observed_for(
+        mut self: Pin<&mut Self>,
+        index: i32,
+        url: &QString,
+        frame_path: &QString,
+        epoch: i32,
+        receipt: &QString,
+    ) {
+        if receipt.len() > 4096 {
+            return;
+        }
+        let Ok(receipt) =
+            serde_json::from_str::<super::focus_policy::FocusProbeReceipt>(&receipt.to_string())
+        else {
+            return;
+        };
+        let Some(target) = self.as_ref().target_for_index(index) else {
+            return;
+        };
+        if receipt.target.tab_id != target.tab.to_string()
+            || receipt.target.generation != target.generation.to_string()
+            || receipt.target.document_id != target.document.to_string()
+        {
+            return;
+        }
+        let Some(state) = receipt.state else {
+            if self.as_ref().rust().input_epoch == epoch
+                && self.as_ref().rust().active_tab_index == index
+                && self.as_ref().rust().current_url.to_string() == url.to_string()
+            {
+                let mut rust = self.as_mut().rust_mut();
+                let interaction = &mut rust.as_mut().get_mut().interaction;
+                interaction.page_key_focus_key = None;
+                for ((candidate, _), observation) in &mut interaction.focus_observations {
+                    if *candidate == index {
+                        observation.page_key = None;
+                    }
+                }
+            }
+            return;
+        };
+        if state.kind.len() > 32 || !(1..=1_000_000).contains(&state.sequence) {
+            return;
+        }
+        if receipt.receiver.is_none()
+            && self
+                .as_mut()
+                .retain_native_focus_generation(index, url, frame_path, epoch, &state)
+        {
+            return;
+        }
+        if let Some(receiver) = receipt.receiver.as_ref()
+            && !self.as_mut().accept_page_receiver_generation(
+                index,
+                url,
+                frame_path,
+                epoch,
+                state.sequence,
+                receiver,
+            )
+        {
+            return;
+        }
+        self.as_mut().page_focus_observed_for(
+            index,
+            url,
+            frame_path,
+            state.sequence,
+            epoch,
+            state.context,
+            state.editable,
+            state.user_activated,
+        );
+        // Mode projection can synchronously change epoch/owner. Such a result
+        // may update legacy focus behavior but cannot authorize a new route.
+        if self.as_ref().target_for_index(index) != Some(target)
+            || self.as_ref().rust().input_epoch != epoch
+        {
+            return;
+        }
+        let Some(receiver) = receipt.receiver else {
+            return;
+        };
+        if receiver.key.is_empty() || receiver.key.len() > 128 || receiver.origin.len() > 2048 {
+            return;
+        }
+        let mut rust = self.as_mut().rust_mut();
+        let interaction = &mut rust.as_mut().get_mut().interaction;
+        let key = (index, frame_path.to_string());
+        for ((candidate, path), observation) in &mut interaction.focus_observations {
+            if *candidate == index && path != &key.1 {
+                observation.page_key = None;
+            }
+        }
+        // Escape suppresses replay of legacy facts for automatic Insert entry.
+        // A freshly validated native noneditable receiver can still restore
+        // this epoch's routing facts without replaying that mode transition.
+        if state.focused
+            && !state.editable
+            && state.kind == "noneditable"
+            && interaction
+                .focus_observations
+                .get(&key)
+                .is_none_or(|old| old.epoch != epoch || old.url != url.to_string())
+        {
+            interaction.focus_observations.insert(
+                key.clone(),
+                FocusObservation {
+                    url: url.to_string(),
+                    sequence: state.sequence,
+                    epoch,
+                    context: state.context,
+                    editable: false,
+                    user_activated: state.user_activated,
+                    page_key: None,
+                    frame_document: Some(receiver.key.clone()),
+                },
+            );
+        }
+        if let Some(observation) =
+            interaction
+                .focus_observations
+                .get_mut(&key)
+                .filter(|observation| {
+                    observation.sequence == state.sequence
+                        && observation.epoch == epoch
+                        && observation.url == url.to_string()
+                })
+        {
+            observation.frame_document = Some(receiver.key.clone());
+            observation.page_key = Some(super::focus_policy::PageKeyFocus {
+                target,
+                focused: state.focused,
+                kind: state.kind,
+                receiver,
+            });
+        }
+        // Native publication above revokes every other receiver for this tab.
+        // Legacy observations remain intact; a stale key never grants a route.
+        interaction.page_key_focus_key = interaction
+            .focus_observations
+            .get(&key)
+            .and_then(|observation| observation.page_key.as_ref())
+            .map(|_| key);
+    }
+
+    fn retain_native_focus_generation(
+        mut self: Pin<&mut Self>,
+        index: i32,
+        url: &QString,
+        path: &QString,
+        epoch: i32,
+        state: &super::focus_policy::FocusProbeState,
+    ) -> bool {
+        let key = (index, path.to_string());
+        if !self.as_ref().page_key_routing_active()
+            || !self
+                .as_ref()
+                .rust()
+                .interaction
+                .focus_observations
+                .get(&key)
+                .is_some_and(|observation| {
+                    observation.epoch == epoch
+                        && observation.url == url.to_string()
+                        && observation.frame_document.is_some()
+                })
+        {
+            return false;
+        }
+        // Unassociated counters cannot be compared across documents. Unsafe
+        // legacy facts may revoke routing, but cannot overwrite the native
+        // generation/sequence or grant a receiver. A native probe restores it.
+        if (state.editable || !state.focused || state.kind != "noneditable")
+            && let Some(observation) = self
+                .as_mut()
+                .rust_mut()
+                .get_mut()
+                .interaction
+                .focus_observations
+                .get_mut(&key)
+        {
+            observation.page_key = None;
+        }
+        true
+    }
+
+    fn accept_page_receiver_generation(
+        mut self: Pin<&mut Self>,
+        index: i32,
+        url: &QString,
+        path: &QString,
+        epoch: i32,
+        sequence: i32,
+        receiver: &super::focus_policy::PageKeyReceiver,
+    ) -> bool {
+        let frame_path = path.to_string();
+        let current = self.as_ref();
+        let rust = current.rust();
+        if index != rust.active_tab_index
+            || epoch != rust.input_epoch
+            || rust.current_url.to_string() != url.to_string()
+            || !(1..=1_000_000).contains(&sequence)
+            || frame_path.is_empty()
+            || frame_path.len() > 128
+            || !frame_path
+                .chars()
+                .all(|character| character.is_ascii_digit() || character == '.')
+            || receiver.key.is_empty()
+            || receiver.key.len() > 128
+            || receiver.origin.len() > 2048
+        {
+            return false;
+        }
+        let key = (index, frame_path);
+        let previous = rust.interaction.focus_observations.get(&key);
+        let replaced = previous
+            .and_then(|observation| observation.frame_document.as_ref())
+            .is_some_and(|document| document != &receiver.key);
+        let ended_editing = replaced
+            && rust.core_mode == Mode::Insert
+            && previous.is_some_and(|observation| observation.editable);
+        if replaced {
+            let mut rust = self.as_mut().rust_mut();
+            rust.as_mut()
+                .get_mut()
+                .interaction
+                .focus_observations
+                .remove(&key);
+            rust.as_mut()
+                .get_mut()
+                .interaction
+                .focus_suppressions
+                .remove(&key);
+        }
+        if ended_editing {
+            self.as_mut().escape();
+            return false;
+        }
+        true
+    }
+
     // Qt invokables need a QObject receiver, including pure presentation helpers.
     #[allow(clippy::unused_self)]
     pub(super) fn prompt_origin(&self, url: &QString) -> QString {
@@ -118,6 +360,13 @@ impl qobject::BrowserUi {
         {
             return;
         }
+        let frame_document = self
+            .as_ref()
+            .rust()
+            .interaction
+            .focus_observations
+            .get(&key)
+            .and_then(|observation| observation.frame_document.clone());
         let context_ended = self
             .as_ref()
             .rust()
@@ -140,6 +389,8 @@ impl qobject::BrowserUi {
                     context,
                     editable,
                     user_activated,
+                    page_key: None,
+                    frame_document,
                 },
             );
         }
@@ -179,9 +430,343 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn update_current_url(mut self: Pin<&mut Self>, url: QString) {
-        let display = display_url(&url.to_string());
-        self.as_mut().set_current_url(url);
-        self.set_display_url(QString::from(display));
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .selected_context_projection_depth += 1;
+        self.as_mut().project_current_url(url);
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .selected_context_projection_depth -= 1;
+    }
+
+    fn project_current_url(mut self: Pin<&mut Self>, url: QString) {
+        let Some(input) = super::policy_refresh_capture::UrlProjectionInput::capture(
+            self.as_ref().get_ref(),
+            url,
+        ) else {
+            return;
+        };
+        let input = std::sync::Arc::new(input);
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .url_projection_input = Some(std::sync::Arc::clone(&input));
+        let current = |ui: &Self| {
+            input.is_current(ui)
+                && ui
+                    .rust()
+                    .url_projection_input
+                    .as_ref()
+                    .is_some_and(|latest| std::sync::Arc::ptr_eq(latest, &input))
+        };
+        macro_rules! notify {
+            ($effect:expr) => {{
+                if !current(self.as_ref().get_ref()) {
+                    return;
+                }
+                $effect;
+                if !current(self.as_ref().get_ref()) {
+                    return;
+                }
+            }};
+        }
+        let display = display_url(&input.url.to_string());
+        notify!(self.as_mut().request_interaction_policy_refresh());
+        notify!(self.as_mut().set_current_url(input.url.clone()));
+        notify!(self.as_mut().set_display_url(QString::from(display)));
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .completed_url_projection = Some(input);
+    }
+
+    /// Invalidation is synchronous; compilation belongs to the existing
+    /// runtime-work timer. Tab/settings bindings can reach here from key routing.
+    pub(super) fn request_interaction_policy_refresh(mut self: Pin<&mut Self>) {
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.interaction.interaction_policy_refresh_pending = true;
+            this.interaction.cached_hint_policies = None;
+            if let Some(state) = this.state.as_mut() {
+                state.invalidate_interaction_snapshot();
+            }
+        }
+        self.runtime_work_available();
+    }
+
+    pub(super) fn poll_interaction_policy_refresh(mut self: Pin<&mut Self>) {
+        // A synchronous Qt observer can poll while selected-tab properties
+        // are still being published. Leave that work pending until the outer
+        // projection finishes; this hook remains the sole cold preparation.
+        if self.as_ref().rust().selected_context_projection_depth != 0 {
+            return;
+        }
+        if self
+            .as_ref()
+            .rust()
+            .interaction
+            .interaction_policy_refresh_pending
+            && !self.as_ref().active_tab_projection_is_current()
+        {
+            self.as_mut().sync_active_tab_properties();
+            if !self.as_ref().active_tab_projection_is_current() {
+                return;
+            }
+        }
+        let pending = {
+            let mut rust = self.as_mut().rust_mut();
+            std::mem::take(
+                &mut rust
+                    .as_mut()
+                    .get_mut()
+                    .interaction
+                    .interaction_policy_refresh_pending,
+            )
+        };
+        if pending {
+            let url = self.as_ref().rust().current_url.to_string();
+            self.as_mut().refresh_current_interaction_policy(&url);
+        }
+    }
+
+    /// Consume only the current owner/window/tab/URL; no queued old capture can
+    /// republish a retired owner. Background settings queries never refresh it.
+    fn refresh_current_interaction_policy(mut self: Pin<&mut Self>, url: &str) {
+        let Some(capture) =
+            super::policy_refresh_capture::PolicyRefreshCapture::capture(self.as_ref().get_ref())
+        else {
+            self.as_mut().install_mixed_policy(
+                super::mixed_policy_runtime::MixedPolicyState::Unavailable(
+                    "the selected policy owner is unavailable".into(),
+                ),
+            );
+            return;
+        };
+        let snapshot = {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            match (this.state.as_mut(), this.window) {
+                (Some(state), Some(window)) => state.refresh_site_policy_snapshot(window, url),
+                _ => None,
+            }
+        };
+        // Only the selected App/Core scope can install window-wide Mixed
+        // routing. Per-view ordinary site-setting reads never publish it.
+        let mixed = snapshot
+            .as_ref()
+            .ok_or_else(|| "the selected page policy context is unavailable".to_owned())
+            .and_then(|_| {
+                let binding = self.as_ref();
+                let rust = binding.rust();
+                let state = rust
+                    .state
+                    .as_ref()
+                    .ok_or("application state is unavailable")?;
+                let tab = rust
+                    .window
+                    .and_then(|window| state.windows().get(&window))
+                    .and_then(|window| window.active_tab)
+                    .ok_or("the selected tab is unavailable")?;
+                if rust.tab != Some(tab)
+                    || usize::try_from(rust.active_tab_index)
+                        .ok()
+                        .and_then(|index| rust.tab_ids.get(index))
+                        != Some(&tab)
+                {
+                    return Err("the selected tab policy owner changed".into());
+                }
+                let layers = state.configuration_layers();
+                super::mixed_policy_runtime::resolve_for_layers(
+                    &layers.base,
+                    &layers.profile,
+                    &layers.runtime,
+                    &layers.command_line,
+                    &layers.temporary,
+                    state.configuration(),
+                    url,
+                )
+            });
+        self.as_mut().install_mixed_policy(
+            super::mixed_policy_runtime::MixedPolicyState::from_result(mixed),
+        );
+        // Qt notifications above can reenter tab/profile navigation. Its new
+        // pending work owns preparation; this snapshot cannot republish hints.
+        if !capture.is_current(self.as_ref().get_ref()) {
+            return;
+        }
+        let current = snapshot.as_ref().map(|snapshot| snapshot.revision());
+        let previous = self
+            .as_ref()
+            .rust()
+            .interaction
+            .compiled_interaction_revision;
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .interaction
+            .compiled_interaction_revision = current;
+        let meaning = |revision: ferric_browser_config::InteractionPolicyRevision| {
+            (
+                revision.profile,
+                revision.profile_revision,
+                revision.policy_revision,
+            )
+        };
+        if previous.map(meaning) != current.map(meaning) {
+            self.as_mut().note_hint_configuration_change();
+            if !capture.is_current(self.as_ref().get_ref()) {
+                return;
+            }
+        }
+        let Some(snapshot) = snapshot else {
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .interaction
+                .cached_hint_policies = None;
+            self.apply_hint_proxy_targets(ferric_browser_config::HintProxyTargets::Off);
+            return;
+        };
+        // The ordinary consumers remain independent of Interaction conflicts.
+        // Proxy failure closes proxies without replacing valid selectors.
+        match snapshot.discovery().proxy_targets() {
+            Ok(policy) => {
+                self.as_mut().apply_hint_proxy_targets(policy.clone());
+            }
+            Err(error) => {
+                self.as_mut()
+                    .apply_hint_proxy_targets(ferric_browser_config::HintProxyTargets::Off);
+                if !capture.is_current(self.as_ref().get_ref()) {
+                    return;
+                }
+                self.as_mut().set_status_text(QString::from(format!(
+                    "Hint proxy discovery unavailable: {error}"
+                )));
+            }
+        }
+        if !capture.is_current(self.as_ref().get_ref()) {
+            return;
+        }
+        let owner_revision = self.as_ref().rust().interaction.hint_configuration_revision;
+        let current_url = self.as_ref().rust().current_url.clone();
+        if self
+            .as_ref()
+            .rust()
+            .interaction
+            .cached_hint_policies
+            .as_ref()
+            .is_some_and(|cache| cache.matches(&snapshot, &current_url, owner_revision))
+        {
+            return;
+        }
+        let Ok(validated) = ferric_browser_core::ValidatedUrl::parse(url) else {
+            return;
+        };
+        let context = ferric_browser_application::SitePolicyMatchContext::for_url(&validated);
+        match super::hint_policy_cache::CachedHintPolicies::prepare(
+            snapshot,
+            context,
+            current_url,
+            owner_revision,
+        ) {
+            Ok(cache) => {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .interaction
+                    .cached_hint_policies = Some(cache);
+            }
+            Err(error) => {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .interaction
+                    .cached_hint_policies = None;
+                self.set_status_text(QString::from(format!(
+                    "Hint selectors unavailable: {error}"
+                )));
+            }
+        }
+    }
+
+    pub(super) fn interaction_policy_snapshot(&self) -> QString {
+        use ferric_browser_application::InteractionCompilationState;
+        let rust = self.rust();
+        let snapshot = rust.state.as_ref().and_then(|state| {
+            let url =
+                ferric_browser_core::ValidatedUrl::parse(rust.current_url.to_string()).ok()?;
+            let context = ferric_browser_config::SiteMatchContext::for_url(&url)?;
+            state.cached_interaction_snapshot(rust.window?, &context)
+        });
+        let mut value = if let Some(snapshot) = snapshot {
+            let revision = snapshot.revision();
+            serde_json::json!({
+                "state": match snapshot.state() {
+                    InteractionCompilationState::Disabled => "disabled",
+                    InteractionCompilationState::NoOp => "no-op",
+                    InteractionCompilationState::Conflicted => "conflicted",
+                    InteractionCompilationState::Ready => "ready",
+                },
+                "validation_stage": "source-compilation",
+                "configuration_revision": revision.configuration_revision.to_string(),
+                "profile_revision": revision.profile_revision.to_string(),
+                "policy_revision": revision.policy_revision.to_string(),
+                "reload_revision": snapshot.sources().reload_revision().to_string(),
+                "enabled": snapshot.policy().map(ferric_browser_config::EffectiveInteractionPolicy::enabled),
+                "anchors": snapshot.policy().map(|policy| policy.anchors().len()),
+                "anchor_source_revision": snapshot.policy()
+                    .and_then(|policy| policy.origin(ferric_browser_config::InteractionField::Anchors))
+                    .map(|origin| origin.source_revision().to_string()),
+                "diagnostic": snapshot.diagnostic(),
+                "native_page_keys": snapshot.policy().map(|policy| {
+                    policy.keys().capability_requirements().map(|requirement| {
+                        serde_json::json!({
+                            "syntax":"valid", "destination":requirement.destination().as_str(),
+                            "token_group":requirement.destination_class(), "context":requirement.context(),
+                            "receiver_scope":requirement.receiver_scope(),
+                            "qualification":crate::page_key_capabilities::current_assessment(
+                                requirement.destination(),requirement.source()!=requirement.destination(),
+                                requirement.context(),requirement.receiver_scope()),
+                            "authorization":"checked-on-physical-press"
+                        })
+                    }).collect::<Vec<_>>()
+                }),
+            })
+        } else {
+            serde_json::json!({
+                "state": "unavailable",
+                "validation_stage": "source-compilation",
+                "reason": rust.state.as_ref().and_then(ferric_browser_application::BrowserApplication::interaction_cache_unavailable)
+                    .map_or("context-not-current", |reason| match reason {
+                        ferric_browser_application::InteractionCacheUnavailable::OwnerNotReady => "owner-not-ready",
+                        ferric_browser_application::InteractionCacheUnavailable::UnsupportedContext => "unsupported-context",
+                        ferric_browser_application::InteractionCacheUnavailable::RevisionExhausted => "revision-exhausted",
+                        ferric_browser_application::InteractionCacheUnavailable::PendingRefresh => "pending-refresh",
+                        ferric_browser_application::InteractionCacheUnavailable::RejectedEngineContext => "rejected-engine-context",
+                    }),
+            })
+        };
+        value["compilations"] = serde_json::json!(
+            rust.state
+                .as_ref()
+                .map_or(
+                    0,
+                    ferric_browser_application::BrowserApplication::interaction_compilation_count
+                )
+                .to_string()
+        );
+        QString::from(value.to_string())
     }
 
     pub(super) fn refresh_site_status(mut self: Pin<&mut Self>) -> QString {
@@ -236,11 +821,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn site_doctor_proposal(self: Pin<&mut Self>) -> QString {
-        let proposal = self
-            .as_ref()
-            .rust()
-            .last_site_doctor_result
-            .clone()
+        let proposal = super::site_doctor_completion::proposal_projection(self.as_ref().rust())
             .unwrap_or_else(|| serde_json::json!({"state": "none"}));
         QString::from(
             serde_json::to_string_pretty(&proposal)
@@ -252,6 +833,35 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         proposal_id: &QString,
         confirmed: bool,
+    ) -> bool {
+        if !confirmed {
+            self.set_status_text(QString::from(
+                "Applying a Site Doctor fix requires explicit confirmation",
+            ));
+            return false;
+        }
+        match self.as_mut().queue_configuration_preparation(
+            super::browser_ui_configuration_preparation::DeferredConfigurationAction::SiteDoctor(
+                proposal_id.clone(),
+            ),
+            None,
+            &mut None,
+        ) {
+            Ok(_) => true,
+            Err(error) => {
+                self.set_status_text(QString::from(error));
+                false
+            }
+        }
+    }
+
+    pub(super) fn prepare_site_doctor_proposal(
+        mut self: Pin<&mut Self>,
+        proposal_id: &QString,
+        confirmed: bool,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> bool {
         if !confirmed {
             self.set_status_text(QString::from(
@@ -306,32 +916,25 @@ impl qobject::BrowserUi {
             ));
             return false;
         }
-        let before = proposal
-            .get("mutation")
-            .and_then(Value::as_object)
-            .and_then(|mutation| mutation.get("before"))
-            .and_then(Value::as_array)
-            .map(|values| {
-                values
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let after = proposal
-            .get("mutation")
-            .and_then(Value::as_object)
-            .and_then(|mutation| mutation.get("after"))
-            .and_then(Value::as_array)
-            .map(|values| {
-                values
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        if proposal.get("state").and_then(Value::as_str) != Some("pending-confirmation") {
+            self.set_status_text(QString::from(
+                "Run and review a new Site Doctor test before applying another fix.",
+            ));
+            return false;
+        }
+        let mutation = |key: &str| -> Option<Vec<String>> {
+            serde_json::from_value(proposal.get("mutation")?.get(key)?.clone()).ok()
+        };
+        let (Some(before), Some(after), Some(experiment)) = (
+            mutation("before"),
+            mutation("after"),
+            proposal.get("experiment_id").and_then(Value::as_str),
+        ) else {
+            self.set_status_text(QString::from(
+                "This Site Doctor proposal has an invalid mutation",
+            ));
+            return false;
+        };
         let Some(config) = self
             .as_ref()
             .rust()
@@ -355,28 +958,59 @@ impl qobject::BrowserUi {
                 toml_string_array_literal(&after)
             )],
         };
-        if let Err(error) = self.as_mut().execute_runtime_config_command(&command) {
-            self.set_status_text(QString::from(format!(
-                "Site Doctor durable fix was not applied: {error}"
-            )));
+        let Some(owner) = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .and_then(super::BrowserApplication::capture_configuration_request)
+        else {
+            return false;
+        };
+        let subject = super::site_doctor_completion::SiteDoctorSubject {
+            id: requested_id,
+            experiment: experiment.to_owned(),
+            origin: current_origin.unwrap_or_default(),
+            before,
+            after,
+            owner,
+        };
+        if !subject.matches(Some(&proposal)) {
+            self.set_status_text(QString::from(
+                "This Site Doctor proposal is no longer current",
+            ));
             return false;
         }
-        self.as_mut().reload_blocking_policy();
-        if let Some(result) = self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .last_site_doctor_result
-            .as_mut()
-            && let Some(object) = result.as_object_mut()
+        let (fix, completion) = super::site_doctor_completion::SiteDoctorFix::new(subject);
         {
-            object.insert("state".into(), Value::String("applied".into()));
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.site_doctor_fix = Some(fix);
+            if let Some(object) = this
+                .last_site_doctor_result
+                .as_mut()
+                .and_then(Value::as_object_mut)
+            {
+                object.insert("state".into(), Value::String("applying".into()));
+            }
         }
-        self.set_status_text(QString::from(
-            "Site Doctor blocker exception saved; policy reloaded",
-        ));
-        true
+        let result = self
+            .as_mut()
+            .prepare_runtime_config_command_with_post_action(
+                &command,
+                preparation,
+                Some(completion),
+            );
+        self.as_mut().poll_site_doctor_fix();
+        match result {
+            Ok(_) => true,
+            Err(error) => {
+                self.set_status_text(QString::from(format!(
+                    "Site Doctor durable fix was not applied: {error}"
+                )));
+                false
+            }
+        }
     }
 
     pub(super) fn site_data_clear_plan(self: Pin<&mut Self>, origin: &QString) -> QString {
@@ -770,8 +1404,9 @@ impl qobject::BrowserUi {
             .map(ToString::to_string)
             .collect::<Vec<_>>();
         let prior_bypass_sites = sites.clone();
+        let bypass_host = safe_site_host(&origin).unwrap_or_default();
         if kind == "blocking-bypass" {
-            if sites.iter().any(|site| site == &origin) {
+            if sites.iter().any(|site| site == &bypass_host) {
                 self.set_status_text(QString::from(
                     "The current site is already using a blocker bypass",
                 ));
@@ -785,7 +1420,7 @@ impl qobject::BrowserUi {
             }
         }
         if kind == "blocking-bypass" {
-            sites.push(origin.clone());
+            sites.push(bypass_host);
         }
         let id = format!("site-experiment-{}", Uuid::new_v4().simple());
         let created_at = Instant::now();
@@ -884,7 +1519,7 @@ impl qobject::BrowserUi {
                 .prior_bypass_sites
                 .iter()
                 .cloned()
-                .chain(std::iter::once(experiment.origin.clone()))
+                .chain(safe_site_host(&experiment.origin))
                 .collect::<Vec<_>>();
             if sites == temporary_state {
                 self.as_mut().set_blocking_bypass_sites(
@@ -908,8 +1543,9 @@ impl qobject::BrowserUi {
         if succeeded && same_tab && same_url {
             let proposal = if experiment.kind == "blocking-bypass" {
                 let mut durable_sites = experiment.prior_bypass_sites.clone();
-                if !durable_sites.contains(&experiment.origin) {
-                    durable_sites.push(experiment.origin.clone());
+                let host = safe_site_host(&experiment.origin).unwrap_or_default();
+                if !durable_sites.contains(&host) {
+                    durable_sites.push(host);
                 }
                 Some(serde_json::json!({
                     "id": format!("site-fix-{}", experiment.id),

@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native composed ancestry child</title>
+<script>
+addEventListener('DOMContentLoaded', () => {
+  const count = Number(new URLSearchParams(location.search).get('depth'));
+  let root = document.body;
+  for (let index = 0; index < count; index++) {
+    const host = document.createElement('ancestry-level');
+    host.id = 'root' + index;
+    host.style.display = 'block';
+    root.append(host);
+    root = host.attachShadow({mode: 'open'});
+  }
+  const target = document.createElement('a');
+  target.id = 'target';
+  target.href = '#target';
+  target.textContent = 'Original ancestry target';
+  root.append(target);
+  addEventListener('message', event => {
+    if (event.data === 'ancestry-focus') target.focus();
+  });
+});
+</script>

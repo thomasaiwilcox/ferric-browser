@@ -276,27 +276,16 @@ fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
     let keyboard_presentation = include_str!("../../qml/scripts/KeyboardPresentation.js");
     let qml = [QML_SOURCE, keyboard_presentation].concat();
     assert!(qml.contains("function logicalNormalKeyText(event)"));
-    assert!(qml.contains("event.key === Qt.Key_D"));
-    assert!(qml.contains("event.key === Qt.Key_U"));
-    assert!(qml.contains("return \"Ctrl+d\""));
-    assert!(qml.contains("return \"Ctrl+u\""));
-    assert!(qml.contains("return \"Ctrl+p\""));
-    assert!(keyboard_presentation.contains("\"Ctrl+Space\""));
-    assert!(keyboard_presentation.contains("\"Ctrl+Shift+Space\""));
-    assert!(qml.contains("return \"Ctrl+v\""));
-    assert!(qml.contains("return \"Ctrl+Shift+t\""));
-    assert!(qml.contains("return \"Alt+m\""));
-    assert!(qml.contains("return \"Ctrl+Alt+p\""));
-    assert!(qml.contains("return \"Ctrl+PgDown\""));
-    assert!(qml.contains("return \"Ctrl+F5\""));
-    assert!(qml.contains("return \"F11\""));
+    // Executable canonical-token and ownership cases live in the QML suites.
+    // This check enforces the shared adapter/resolver boundary, not a list of
+    // shortcuts or the spelling of individual return statements.
+    assert!(qml.contains("KeyboardPresentation.normalBrowserFallback(logicalText) || ui.key_has_binding(logicalText)"));
     assert!(qml.contains("browserUi.binding_overlay.length > 0"));
     assert!(qml.contains("event.modifiers & Qt.AltModifier"));
     assert!(qml.contains("event.modifiers & Qt.MetaModifier"));
     assert!(keyboard_presentation.contains("text = text || \"\""));
     assert!(qml.contains("KeyboardPresentation.logicalNormalKeyText(event)"));
-    assert!(keyboard_presentation.contains("return printableKey("));
-    assert!(qml.contains("event.text, event.key, shift, Qt.Key_A, Qt.Key_Z"));
+    assert!(keyboard_presentation.contains("printableKey(event.text, key, false"));
     assert!(qml.contains("ui.handle_key(logicalText)"));
     assert!(qml.contains("function handleBrowserKey(ui, host, event)"));
     assert!(qml.contains("ui.mixed_key_route(logicalText)"));
@@ -398,7 +387,9 @@ fn browser_key_router_filters_before_webengine_and_requires_explicit_acceptance(
     assert!(source.contains("event->type() == QEvent::ShortcutOverride"));
     assert!(source.contains("QGuiApplication::focusWindow() != targetWindow_"));
     assert!(source.contains("emit keyPressed("));
-    assert!(source.contains("pageOwnedCurrentEvent_"));
+    // Per-event admission and nested ownership behavior are exercised by the
+    // production C++ native-input-lifetime suite; private field names are not
+    // part of this QML/native interface contract.
     assert!(source.contains("return handled;"));
     assert!(source.contains("nativeScanCode()"));
     assert!(!source.contains("| quint64(quint32(keyEvent->modifiers()))"));
@@ -1092,7 +1083,7 @@ fn default_chrome_is_compact_modal_and_content_first() {
     assert!(qml.contains("visible: window.tabStripVisible"));
     assert!(qml.contains("text: (tabIndex + 1) + \"  \""));
     assert!(qml.contains("positionViewAtIndex(activeTabIndex, ListView.Contain)"));
-    assert!(status_bar.contains("text: ChromePresentation.inputModeLabel(statusBar.mode)"));
+    assert!(status_bar.contains("text: ChromePresentation.inputModeLabel(statusBar.mode, statusBar.rawPassthrough)"));
     assert!(status_bar.contains("id: statusUrl"));
     assert!(command_line.contains("id: commandPrefix"));
     assert!(command_line.contains("text: \":\""));
@@ -1386,7 +1377,8 @@ fn ephemeral_profile_uses_off_the_record_memory_only_setup() {
     assert!(source.contains("active_profile_is_transient"));
     assert!(source.contains("release_transient_resources"));
     assert!(source.contains("pending_profile_configuration = None"));
-    assert!(source.contains("request_profile_open(ProfileOpenRequest"));
+    assert!(source.contains("request_profile_open_for_validation(ProfileOpenRequest"));
+    assert!(!source.contains("request_profile_open(ProfileOpenRequest"));
     assert!(!source.contains("ProfileSetupWorker"));
     assert!(source.contains("network_policy_worker = None"));
     assert!(source.contains("set_blocking_rule_hosts(QStringList::default())"));
@@ -1584,7 +1576,8 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("return BrowserScripts.focusProbe()"));
     assert!(qml.contains("return BrowserScripts.focusObserverSource()"));
     assert!(qml.contains("return BrowserScripts.shutdownPageProbe()"));
-    assert!(qml.contains("return BrowserScripts.hintCollector(\n                    family, browserUi.hint_proxy_targets_enabled, selectorSnapshot,\n                    scopeLeaseId, includeFacets)"));
+    assert!(qml.contains("function hintCollectorScript(family, selectorSnapshot, scopeLeaseId, includeFacets, interactionRequest, deferInteraction, workBudget)"));
+    assert!(qml.contains("return BrowserScripts.hintCollector(\n                    family, browserUi.hint_proxy_targets_enabled, selectorSnapshot,\n                    scopeLeaseId, includeFacets, workBudget, interactionRequest, deferInteraction)"));
     assert!(qml.contains("return BrowserScripts.hintDirtyRevision()"));
     assert!(qml.contains("return BrowserScripts.hintStopTracking(scopeLeaseId)"));
     assert!(qml.contains("candidate, hintSelectorPolicySnapshot(browserUi.hint_family)"));
@@ -1593,15 +1586,17 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"28\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"30\""));
     assert!(
         BROWSER_SCRIPT_FACADE
             .contains(".import \"PageInteractionScripts.js\" as PageInteractionScripts")
     );
     assert!(BROWSER_SCRIPT_FACADE.contains("asset.VERSION !== PAGE_INTERACTION_VERSION"));
-    assert!(BROWSER_SCRIPT_FACADE.contains("var PAGE_INTERACTION_VERSION = \"8\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var PAGE_INTERACTION_VERSION = \"10\""));
     assert!(BROWSER_SCRIPT_FACADE.contains("script-version-mismatch"));
-    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"8\""));
+    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"10\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("function hintFinishInteraction(interactionRequest, pendingId, budget, omitCandidates)"));
+    assert!(BROWSER_SCRIPT_FACADE.contains("interactionScript(\"hintFinishInteraction\", [interactionRequest, pendingId, budget, omitCandidates])"));
     let manifest: serde_json::Value = serde_json::from_str(BROWSER_SCRIPT_MANIFEST).unwrap();
     let entry = manifest["resources"]
         .as_array()
@@ -1653,7 +1648,9 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("function ftFocusEligible(element)"));
     assert!(script.contains("function ftHintPolicy(kind,family)"));
     assert!(script.contains("frame.contentWindow!==childView"));
-    assert!(script.contains("function ftHintDescription(el,family,linkSelector,cache)"));
+    assert!(script.contains("function ftHintDescription(el,family,linkSelector,cache,evidence)"));
+    assert!(script.contains("function ftHintNameEvidence(element,visibleText)"));
+    assert!(script.contains("evidence.name=ftHintNameEvidence(el,kind!=='scrollable')"));
     assert!(script.contains("description.kind!==record.kind"));
     assert!(
         script.contains("if(s.elements&&typeof s.elements.clear==='function')s.elements.clear()")
@@ -1684,7 +1681,10 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("service_workers:'unavailable'"));
     assert!(script.contains("window.__ferric_browserFocusState"));
     assert!(script.contains("elements.length > 128"));
-    assert!(script.contains("function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget)"));
+    assert!(script.contains("function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget, interactionRequest, deferInteraction)"));
+    assert!(BROWSER_SCRIPT_FACADE.contains(
+        "[family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget, interactionRequest, deferInteraction]"
+    ));
     assert!(script.contains("function proxyPairValid(record,candidate,state)"));
     assert!(script.contains(".ace_editor[role="));
     assert!(script.contains("label.control!==control"));
@@ -1699,7 +1699,9 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("function cosmeticFilter(css)"));
     assert!(script.contains("out.length>=5000"));
     assert!(script.contains("depth>traversalDepthLimit"));
-    assert!(script.contains("Math.min(8, Number(budget && budget.depth"));
+    assert!(script.contains("var limits = {depth:8,inspections:50000,candidates:5000,predicate_steps:100000,annotation_bytes:2097152}"));
+    assert!(script.contains("!Number.isSafeInteger(budget[key]) || budget[key] < 0 || budget[key] > limits[key]"));
+    assert!(script.contains("invalid-collection-budget"));
     assert!(script.contains("r.bottom<=0||r.right<=0||r.top>=vh||r.left>=vw"));
     assert!(script.contains("x>=window.innerWidth||y>=window.innerHeight"));
     assert!(script.contains(
@@ -1774,7 +1776,8 @@ fn enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml() {
     let menu = include_str!("../../qml/components/FerricContextMenu.qml");
 
     assert!(qml.contains("update_hint_interaction(action, text || \"\")"));
-    assert!(surface.contains("hints.applyHintInteraction(\"character\", logicalText)"));
+    assert!(surface.contains("hints.applyHintInteraction(\"character\","));
+    assert!(surface.contains("ui.page_key_route(source)"));
     assert!(surface.contains("hints.applyHintInteraction(\"rotate\", \"\")"));
     assert!(qml.contains("return BrowserScripts.hintDirtyRevision()"));
     assert!(qml.contains("browserUi.mode !== \"hint\" || window.hintTrackingView !== view"));

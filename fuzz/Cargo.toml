@@ -8,10 +8,14 @@ edition = "2024"
 [package.metadata]
 cargo-fuzz = true
 
+[features]
+interaction-proof = ["dep:ferric-browser-engine-qt"]
+
 [dependencies]
 ferric-browser-application = { path = "../crates/ferric-browser-application" }
 ferric-browser-config = { version = "0.1.0", path = "../crates/ferric-browser-config" }
 ferric-browser-core = { version = "0.1.0", path = "../crates/ferric-browser-core" }
+ferric-browser-engine-qt = { version = "0.1.0", path = "../crates/ferric-browser-engine-qt", optional = true, features = ["fuzzing"] }
 ferric-browser-ipc = { version = "0.1.0", path = "../crates/ferric-browser-ipc" }
 ferric-browser-storage = { version = "0.1.0", path = "../crates/ferric-browser-storage" }
 libfuzzer-sys = "0.4"
@@ -50,6 +54,21 @@ bench = false
 [[bin]]
 name = "site_rule"
 path = "fuzz_targets/site_rule.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "interaction_policy"
+path = "fuzz_targets/interaction_policy.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "interaction_proof"
+path = "fuzz_targets/interaction_proof.rs"
+required-features = ["interaction-proof"]
 test = false
 doc = false
 bench = false
@@ -104,3 +123,9 @@ doc = false
 bench = false
 
 [workspace]
+
+# Keep the optional production-engine smoke on the shipping release profile.
+# Parser/assertion panics remain process failures, never accepted partial data.
+[profile.release]
+panic = "abort"
+debug = 2

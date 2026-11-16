@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use unicode_segmentation::UnicodeSegmentation;
+use crate::{LogicalKeyToken, LogicalKeyTokenError};
 
 use crate::Mode;
 
@@ -70,90 +70,6 @@ impl MixedPolicyLayer {
         }
     }
 }
-
-/// One validated logical key token, in the spelling produced by
-/// `KeyboardPresentation.logicalNormalKeyText`.
-///
-/// Tokens are layout-dependent logical values. They carry no physical scan
-/// code, key-down identity, or promise of layout-independent matching.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct LogicalKeyToken(String);
-
-impl LogicalKeyToken {
-    /// Parses a token accepted by the existing Normal-mode logical-key
-    /// canonicalizer. Reserved controls are rejected separately by the policy
-    /// layer so callers can report their specific reason.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`LogicalKeyTokenError`] when the input is empty, modifier-only,
-    /// a sequence, contains a disallowed control, exceeds the existing QML
-    /// text bound, or is not an emitted named token.
-    pub fn parse(value: &str) -> Result<Self, LogicalKeyTokenError> {
-        if value.is_empty() {
-            return Err(LogicalKeyTokenError::Empty);
-        }
-
-        if is_named_logical_token(value) {
-            return Ok(Self(value.to_owned()));
-        }
-
-        if is_modifier_only(value) {
-            return Err(LogicalKeyTokenError::ModifierOnly);
-        }
-        if value.contains('+') {
-            return Err(LogicalKeyTokenError::UnknownLogicalToken);
-        }
-
-        let utf16_units = value.encode_utf16().count();
-        if utf16_units > 4 {
-            return Err(LogicalKeyTokenError::TextTooLong);
-        }
-        if value
-            .chars()
-            .any(|character| u32::from(character) < 0x20 || character == '\u{7f}')
-        {
-            return Err(LogicalKeyTokenError::ControlCharacter);
-        }
-        if value.graphemes(true).count() != 1 {
-            return Err(LogicalKeyTokenError::MultiKeySequence);
-        }
-
-        Ok(Self(value.to_owned()))
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LogicalKeyTokenError {
-    Empty,
-    ModifierOnly,
-    MultiKeySequence,
-    ControlCharacter,
-    TextTooLong,
-    UnknownLogicalToken,
-}
-
-impl std::fmt::Display for LogicalKeyTokenError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::Empty => "key token is empty",
-            Self::ModifierOnly => "modifier-only tokens are not supported",
-            Self::MultiKeySequence => "page key must be one logical key gesture",
-            Self::ControlCharacter => "control characters are not valid page keys",
-            Self::TextTooLong => "logical key text exceeds four UTF-16 code units",
-            Self::UnknownLogicalToken => {
-                "key token is not emitted by the logical-key canonicalizer"
-            }
-        })
-    }
-}
-
-impl std::error::Error for LogicalKeyTokenError {}
 
 /// A fully resolved policy with the source of each effective setting.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -226,12 +142,6 @@ pub fn resolve_mixed_key_policy(
 
             let mut replacement = BTreeSet::new();
             for key in page_keys {
-                if is_reserved_page_key(key) {
-                    return Err(MixedPolicyError::ReservedPageKey {
-                        source,
-                        key: key.clone(),
-                    });
-                }
                 let token = LogicalKeyToken::parse(key).map_err(|reason| {
                     MixedPolicyError::InvalidPageKey {
                         source,
@@ -239,6 +149,12 @@ pub fn resolve_mixed_key_policy(
                         reason,
                     }
                 })?;
+                if is_reserved_page_key(token.as_str()) {
+                    return Err(MixedPolicyError::ReservedPageKey {
+                        source,
+                        key: key.clone(),
+                    });
+                }
                 if !replacement.insert(token.clone()) {
                     return Err(MixedPolicyError::DuplicatePageKey { source, key: token });
                 }
@@ -394,60 +310,6 @@ fn is_reserved_page_key(value: &str) -> bool {
     matches!(value, ":" | "Escape" | "Ctrl+Escape" | "Ctrl+Shift+Escape")
 }
 
-fn is_modifier_only(value: &str) -> bool {
-    if matches!(value, "Ctrl" | "Alt" | "Shift" | "Meta") {
-        return true;
-    }
-    let trimmed = value.trim_end_matches('+');
-    !trimmed.is_empty()
-        && value.contains('+')
-        && trimmed
-            .split('+')
-            .all(|part| matches!(part, "Ctrl" | "Alt" | "Shift" | "Meta"))
-}
-
-fn is_named_logical_token(value: &str) -> bool {
-    matches!(
-        value,
-        "Alt+m"
-            | "Escape"
-            | "Ctrl+Escape"
-            | "Ctrl+Shift+Escape"
-            | "Ctrl+Shift+v"
-            | "Ctrl+Alt+p"
-            | "Ctrl+Space"
-            | "Ctrl+Shift+Space"
-            | "Ctrl+^"
-            | "Ctrl+Shift+n"
-            | "Ctrl+Shift+t"
-            | "Ctrl+Shift+w"
-            | "Ctrl+c"
-            | "Ctrl+x"
-            | "Ctrl+b"
-            | "Ctrl+d"
-            | "Ctrl+f"
-            | "Ctrl+F5"
-            | "Ctrl+n"
-            | "Ctrl+u"
-            | "Ctrl+p"
-            | "Ctrl+q"
-            | "Ctrl+s"
-            | "Ctrl+Tab"
-            | "Ctrl+t"
-            | "Ctrl+v"
-            | "Ctrl+w"
-            | "Ctrl+PgDown"
-            | "Ctrl+PgUp"
-            | "F5"
-            | "F11"
-            | "Back"
-            | "Forward"
-    ) || matches!(
-        value,
-        "Alt+1" | "Alt+2" | "Alt+3" | "Alt+4" | "Alt+5" | "Alt+6" | "Alt+7" | "Alt+8" | "Alt+9"
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -511,7 +373,10 @@ mod tests {
             "😀",
             "e\u{301}",
         ] {
-            assert_eq!(LogicalKeyToken::parse(key).unwrap().as_str(), key);
+            assert_eq!(
+                LogicalKeyToken::parse(key).unwrap().as_str(),
+                if key == " " { "Space" } else { key }
+            );
         }
         assert_ne!(token("h"), token("H"));
         assert!(matches!(
@@ -526,7 +391,7 @@ mod tests {
 
     #[test]
     fn logical_token_parser_rejects_sequences_modifiers_controls_and_unknown_names() {
-        for key in ["gg", "g g", "Left", "AltGr+p"] {
+        for key in ["gg", "g g", "AltGr+p"] {
             let result = LogicalKeyToken::parse(key);
             assert!(result.is_err(), "unexpectedly accepted {key:?}");
         }
@@ -564,6 +429,27 @@ mod tests {
                 })
             );
         }
+    }
+
+    #[test]
+    fn canonical_aliases_cannot_duplicate_or_bypass_reserved_ownership() {
+        for aliases in [
+            ["Ctrl+P", "Ctrl+Shift+p"],
+            [" ", "Space"],
+            ["+", "Plus"],
+            ["Shift+Tab", "Backtab"],
+        ] {
+            let global = layer(Some("mixed"), Some(&aliases));
+            assert!(matches!(
+                resolve_mixed_key_policy(Some(&global), None, None, None),
+                Err(MixedPolicyError::DuplicatePageKey { .. })
+            ));
+        }
+        let global = layer(Some("mixed"), Some(&["Shift+Ctrl+Escape"]));
+        assert!(matches!(
+            resolve_mixed_key_policy(Some(&global), None, None, None),
+            Err(MixedPolicyError::ReservedPageKey { .. })
+        ));
     }
 
     #[test]

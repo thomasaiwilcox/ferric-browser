@@ -714,39 +714,62 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
     ) -> Result<(), String> {
-        let [mode] = command.arguments.as_slice() else {
-            return Err(
-                "mode-enter requires normal, insert, insert-locked, caret, passthrough, or passthrough-once".into(),
-            );
-        };
-        match mode.as_str() {
-            "normal" => self.escape(),
-            "insert" => self.enter_insert(),
-            "insert-locked" => self.enter_insert_mode(Mode::InsertLocked),
-            "caret" => self.enter_caret(),
-            "passthrough" | "pass-through" | "passthrough-once" | "pass-through-once" => {
+        let options = ferric_browser_core::parse_mode_enter(&command.arguments)
+            .map_err(|error| error.to_string())?;
+        if options.raw
+            && self
+                .as_ref()
+                .rust()
+                .interaction
+                .native_prompt_leases
+                .top()
+                .is_some()
+        {
+            return Err("Raw passthrough is unavailable while a native prompt owns input".into());
+        }
+        if options.raw
+            && !qobject::ferric_browser_can_enter_raw_passthrough(self.as_ref().get_ref())
+        {
+            return Err("Release transformed keys first, then retry raw passthrough; use Ctrl+Shift+Escape to capture a lost release".into());
+        }
+        match options.mode {
+            Mode::Normal => self.escape(),
+            Mode::Insert => self.enter_insert(),
+            Mode::InsertLocked => self.enter_insert_mode(Mode::InsertLocked),
+            Mode::Caret => self.enter_caret(),
+            mode @ (Mode::PassThrough | Mode::PassThroughOnce) => {
                 let Some(window) = self.as_ref().rust().window else {
                     return Err("no active window".into());
-                };
-                let mode = if mode.ends_with("-once") {
-                    Mode::PassThroughOnce
-                } else {
-                    Mode::PassThrough
                 };
                 self.as_mut()
                     .reduce_event(Event::PushMode { window, mode })
                     .map_err(|error| error.clone())?;
-                self.as_mut().set_core_mode(mode);
+                // Explicit page ownership needs a fresh focus receipt even
+                // when Escape suppressed automatic Insert reentry earlier.
+                {
+                    let mut rust = self.as_mut().rust_mut();
+                    let this = rust.as_mut().get_mut();
+                    let index = this.active_tab_index;
+                    this.interaction
+                        .focus_suppressions
+                        .retain(|(candidate, _), _| *candidate != index);
+                }
+                self.as_mut().set_core_mode_with_raw(mode, options.raw);
                 self.as_mut()
                     .set_mode(QString::from(super::ipc_mode_name(mode)));
-                self.as_mut()
-                    .set_status_text(QString::from(if mode == Mode::PassThroughOnce {
+                let status = match (mode, options.raw) {
+                    (Mode::PassThroughOnce, true) => {
+                        "Next key goes to the page raw · Ctrl+Esc: Normal"
+                    }
+                    (_, true) => "Keys go to the page raw · Ctrl+Esc: Normal",
+                    (Mode::PassThroughOnce, false) => {
                         "Next key goes to the page · Ctrl+Esc: Normal"
-                    } else {
-                        "Keys go to the page · Ctrl+Esc: Normal"
-                    }));
+                    }
+                    (_, false) => "Keys go to the page · Ctrl+Esc: Normal",
+                };
+                self.as_mut().set_status_text(QString::from(status));
             }
-            _ => return Err(format!("unknown mode: {mode}")),
+            _ => unreachable!("validated mode-enter target"),
         }
         Ok(())
     }

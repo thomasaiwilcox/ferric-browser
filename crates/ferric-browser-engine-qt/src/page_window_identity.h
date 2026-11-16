@@ -47,4 +47,5 @@ class BrowserUi;
 namespace ferric::page_windows { struct NativeWindowSnapshot; }
 ferric::page_windows::NativeWindowSnapshot ferric_browser_native_page_window_identity(const BrowserUi &ui);
 QString ferric_browser_page_window_marker(const BrowserUi &ui);
+bool ferric_browser_can_enter_raw_passthrough(const BrowserUi &ui);
 #endif

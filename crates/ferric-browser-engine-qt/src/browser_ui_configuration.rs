@@ -1,46 +1,150 @@
 use super::{
     ChromePreferences, Config, ConfigurationLayers, CxxQtType, Duration, FeaturePreferences,
-    Instant, ParsedCommand, Path, PathBuf, Pin, PortalCapabilities, PortalProbeWorker, QString,
-    RuntimeOverrides, Value, chrome_preferences, configured_bindings, desktop_portals,
+    FeedbackLane, FeedbackState, Instant, ParsedCommand, Path, PathBuf, Pin, PortalCapabilities,
+    PortalProbeWorker, QString, Value, chrome_preferences, configured_bindings, desktop_portals,
     feature_preferences, hyprland, is_bounded_untrusted_text, load_theme_palette,
     matching_site_rules, publish_ipc_event, qobject, safe_ipc_url, sanitize_process_stderr,
     setting_metadata, settings_presentation, theme_presentation, try_wait_editor_process,
 };
 
+use super::browser_ui_page_windows::PageSettingsCompletion;
+use super::configuration_completion::{ConfigurationCompletion, ConfigurationSaveOutcome};
+use ferric_browser_application::{NativeOperationOutcome, PreparedConfigurationUpdate};
 use ferric_browser_config::ConfigurationApplyBoundary;
 
 const SETTINGS_RELOAD_FAILED: &str = "Settings changes couldn't be loaded. Your current settings are still active. Open :diagnostics for details.";
 
 enum ConfigurationCommit<'a> {
-    Reload(Option<Box<ferric_browser_application::ContextReloadEffect>>),
-    Runtime(Option<(&'a Path, &'a RuntimeOverrides)>),
+    Reload(
+        Option<
+            Box<(
+                ferric_browser_application::PreparedConfigurationUpdate,
+                ferric_browser_application::ContextReloadEffect,
+            )>,
+        >,
+    ),
+    Runtime(
+        bool,
+        Option<&'a super::browser_ui_configuration_preparation::ConfigurationRequestOrigin>,
+        &'a mut Option<PageSettingsCompletion>,
+        Box<PreparedConfigurationUpdate>,
+    ),
     Persisted(Box<ferric_browser_application::PersistedConfigurationUpdate>),
+    CommittedPeer(Box<PreparedConfigurationUpdate>),
+    Activation(Box<PreparedConfigurationUpdate>),
+}
+
+impl super::BrowserUiRust {
+    pub(super) fn detach_configuration_publication(
+        &mut self,
+    ) -> Option<super::browser_ui_state::PendingConfigurationPublication> {
+        let pending = self
+            .configuration_io
+            .pending_configuration_publication
+            .take();
+        if let Some(state) = self.state.as_mut() {
+            state.detach_configuration_write_observer();
+        }
+        pending
+    }
 }
 
 impl qobject::BrowserUi {
-    pub(super) fn bind_configuration_operation(
+    pub(super) fn retire_configuration_observers(mut self: Pin<&mut Self>) {
+        self.as_mut().detach_site_policy_file();
+        let retired = {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.configuration_io.profile_request = std::sync::Arc::new(());
+            if let Some(state) = this.state.as_mut() {
+                state.retire_shared_policy_observer();
+            }
+            (
+                this.configuration_io.site_policy_activation.take(),
+                this.detach_configuration_publication(),
+                this.configuration_io.pending_selector_validation.take(),
+                this.pending_profile_configuration.take(),
+            )
+        };
+        self.as_mut().set_view_alive(false);
+        self.as_mut().set_site_policy_result(QString::default());
+        self.as_mut()
+            .set_selector_validation_request(QString::default());
+        // Reporting a detached native receipt may wake the original issuer.
+        // No Rust borrow or partially replaced application survives that wake.
+        drop(retired);
+    }
+
+    pub(super) fn bind_configuration_operation(self: Pin<&mut Self>, operation_id: &str) -> bool {
+        self.bind_configuration_operation_for_request(operation_id, None)
+    }
+
+    pub(super) fn bind_configuration_operation_for_request(
         mut self: Pin<&mut Self>,
         operation_id: &str,
+        request: Option<u64>,
     ) -> bool {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
+        if this
+            .operation(operation_id)
+            .is_none_or(|operation| operation.state.is_terminal())
+        {
+            return false;
+        }
         let committing = this
             .configuration_io
             .pending_configuration_publication
-            .is_some();
+            .as_ref()
+            .is_some_and(|pending| {
+                request.is_none_or(|request| {
+                    pending
+                        .origin
+                        .as_ref()
+                        .is_some_and(|origin| origin.generation == request)
+                })
+            });
         let pending = if let Some(pending) = this
             .configuration_io
             .pending_configuration_publication
             .as_mut()
+            .filter(|pending| {
+                request.is_none_or(|request| {
+                    pending
+                        .origin
+                        .as_ref()
+                        .is_some_and(|origin| origin.generation == request)
+                })
+            }) {
+            pending.operation_id = Some(operation_id.to_owned());
+            if let Some(origin) = pending.origin.as_mut() {
+                origin.operation_id = pending.operation_id.clone();
+            }
+            true
+        } else if let Some(pending) = this
+            .configuration_io
+            .pending_selector_validation
+            .as_mut()
+            .filter(|pending| {
+                request.is_none_or(|request| {
+                    pending
+                        .origin
+                        .as_ref()
+                        .map_or(pending.generation, |origin| origin.generation)
+                        == request
+                })
+            })
         {
             pending.operation_id = Some(operation_id.to_owned());
-            true
-        } else if let Some(pending) = this.configuration_io.pending_selector_validation.as_mut() {
-            pending.operation_id = Some(operation_id.to_owned());
+            if let Some(origin) = pending.origin.as_mut() {
+                origin.operation_id = pending.operation_id.clone();
+            }
             true
         } else {
             false
         };
+        let pending =
+            pending || super::browser_ui_site_policy::activation_pending(this, operation_id);
         if pending {
             this.set_operation(
                 operation_id.to_owned(),
@@ -54,12 +158,29 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn poll_peer_configuration(mut self: Pin<&mut Self>) {
-        if self
-            .as_ref()
-            .rust()
-            .configuration_io
-            .pending_selector_validation
-            .is_some()
+        {
+            let browser = self.as_ref();
+            let rust = browser.rust();
+            if let Some(state) = rust.state.as_ref() {
+                state.prepare_shared_policy_contexts();
+            }
+            if let Some(pending) = rust.pending_profile_configuration.as_ref() {
+                pending.state.prepare_shared_policy_contexts();
+            }
+            if let Some(pending) = rust.configuration_io.pending_selector_validation.as_ref()
+                && let super::browser_ui_state::PendingSelectorAction::Profile { pending, .. } =
+                    &pending.action
+            {
+                pending.state.prepare_shared_policy_contexts();
+            }
+        }
+        if self.as_ref().rust().profile_bootstrap_pending
+            || self
+                .as_ref()
+                .rust()
+                .configuration_io
+                .pending_selector_validation
+                .is_some()
             || self
                 .as_ref()
                 .rust()
@@ -75,15 +196,15 @@ impl qobject::BrowserUi {
         {
             return;
         }
-        let layers = self
+        let prepared = self
             .as_ref()
             .rust()
             .state
             .as_ref()
-            .map(super::BrowserApplication::peer_configuration_layers)
+            .map(super::BrowserApplication::prepare_committed_peer_configuration)
             .transpose();
-        let layers = match layers {
-            Ok(Some(Some(layers))) => layers,
+        let prepared = match prepared {
+            Ok(Some(Some(prepared))) => prepared,
             Ok(_) => return,
             Err(error) => {
                 self.as_mut()
@@ -91,24 +212,13 @@ impl qobject::BrowserUi {
                 return;
             }
         };
-        let candidate = layers.resolve().and_then(|config| {
-            serde_json::to_value(config)
-                .map_err(|error| ferric_browser_config::ConfigError::Validation(error.to_string()))
-        });
-        let result = candidate
-            .map_err(|error| error.to_string())
-            .and_then(|candidate| {
-                let persistent = layers.runtime.clone();
-                self.as_mut().validate_or_queue_runtime_config(
-                    candidate,
-                    layers,
-                    "Settings synchronized from another window".into(),
-                    persistent,
-                    None,
-                )
-            });
+        let result = self
+            .as_mut()
+            .validate_or_queue_committed_peer_configuration(prepared);
         if let Err(error) = result {
-            self.as_mut().report_config_reload_failure(&error, false);
+            self.as_mut().set_status_text(QString::from(format!(
+                "Shared settings reception postponed: {error}"
+            )));
         }
     }
 
@@ -136,7 +246,17 @@ impl qobject::BrowserUi {
             return;
         };
         let operation_id = pending.operation_id.clone();
+        let completion = pending.completion;
+        let mut post_action = pending.post_action;
         let setting_feedback = pending.setting_feedback;
+        let saved_outcome = result.as_ref().ok().map(|receipt| receipt.outcome.clone());
+        let durability_uncertain = matches!(
+            saved_outcome,
+            Some(ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(_))
+        );
+        if durability_uncertain && let Some(completion) = completion.as_ref() {
+            completion.note_durability_uncertainty();
+        }
         let result = result
             .map_err(|error| error.to_string())
             .and_then(|receipt| {
@@ -144,13 +264,64 @@ impl qobject::BrowserUi {
                     pending.candidate,
                     pending.layers,
                     Some(&pending.status),
-                    pending.fingerprint,
+                    pending.selectors,
                     ConfigurationCommit::Persisted(Box::new(receipt)),
+                    &mut post_action,
                 )
             });
+        // Replacement is irrevocable even if preparation/publication is now
+        // stale. Keep that outcome distinct from a pre-replacement failure.
+        if let (Err(error), Some(outcome)) = (&result, saved_outcome) {
+            if let Some(post_action) = post_action.take() {
+                self.as_mut().finish_configuration_completion(
+                    post_action,
+                    ConfigurationSaveOutcome::SavedInactive {
+                        durability_uncertain: matches!(
+                            outcome,
+                            ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(
+                                _
+                            )
+                        ),
+                    },
+                );
+            }
+            if let Some(completion) = completion {
+                completion.finish(NativeOperationOutcome::SettingsSavedReloadRequired {
+                    durability_uncertain: matches!(
+                        outcome,
+                        ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(_)
+                    ),
+                });
+            }
+            self.finish_saved_configuration_notice(operation_id, setting_feedback, &outcome, error);
+            return;
+        }
+        if let Some(post_action) = post_action.take() {
+            self.as_mut()
+                .finish_configuration_completion(post_action, ConfigurationSaveOutcome::Failed);
+        }
+        if let Some(completion) = completion {
+            completion.finish(if result.is_ok() {
+                NativeOperationOutcome::Applied
+            } else {
+                NativeOperationOutcome::Failed
+            });
+        }
         if let Some(operation_id) = operation_id {
             let update = match &result {
-                Ok(_) => crate::OperationUpdate::completed("settings persisted and published"),
+                Ok(_)
+                    if super::browser_ui_site_policy::activation_pending(
+                        self.as_ref().rust(),
+                        &operation_id,
+                    ) =>
+                {
+                    crate::OperationUpdate::running("site policy configuration activation")
+                }
+                Ok(_) => crate::OperationUpdate::completed(if durability_uncertain {
+                    "settings persisted and published with durability uncertainty"
+                } else {
+                    "settings persisted and published"
+                }),
                 Err(error) => {
                     crate::OperationUpdate::failed(crate::FailureKind::Config, error.clone())
                 }
@@ -170,49 +341,58 @@ impl qobject::BrowserUi {
         }
     }
 
+    fn finish_saved_configuration_notice(
+        mut self: Pin<&mut Self>,
+        operation_id: Option<String>,
+        feedback: Option<super::browser_ui_state::SettingFeedback>,
+        outcome: &ferric_browser_config::RuntimeOverrideWriteOutcome,
+        error: &str,
+    ) {
+        let message = settings_presentation::saved_configuration_status(outcome);
+        if let Some(operation_id) = operation_id {
+            let persistence = match outcome {
+                ferric_browser_config::RuntimeOverrideWriteOutcome::Durable => "durable",
+                ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(_) => {
+                    "durability-uncertain"
+                }
+            };
+            self.as_mut().rust_mut().as_mut().get_mut().set_operation(
+                operation_id,
+                crate::OperationUpdate::completed(format!(
+                    "saved-reload-required ({persistence}): {message} Reason: {error}"
+                )),
+            );
+        }
+        self.as_mut().set_status_text(QString::from(&message));
+        if let Some(feedback) = feedback
+            && self.as_ref().rust().setting_action_id == feedback.id
+            && self.as_ref().rust().setting_action_state.to_string() == "pending"
+        {
+            self.publish_management_feedback(
+                FeedbackLane::Setting,
+                FeedbackState::Succeeded,
+                &message,
+                error,
+            );
+        }
+    }
+
     pub(super) fn select_site_rule_settings(mut self: Pin<&mut Self>, url: &QString) -> bool {
-        let Some(config) = self
-            .as_ref()
-            .rust()
-            .state
-            .as_ref()
-            .map(|state| state.configuration().clone())
-        else {
+        let Some(projection) = self.as_ref().rust().state.as_ref().map(|state| {
+            super::site_rule_projection::resolve(state.configuration(), &url.to_string())
+        }) else {
             self.as_mut().set_status_text(QString::from(
                 "Site rules are unavailable while this window is closing.",
             ));
             return false;
         };
-        if !self
-            .as_mut()
-            .refresh_mixed_policy_for_url(&config, &url.to_string())
-        {
-            return false;
-        }
-        let mut javascript = None;
-        let mut images = None;
-        let mut force_dark = None;
-        let mut autoplay = None;
-        let mut zoom = None;
-        for rule in matching_site_rules(&config, &url.to_string()) {
-            for (key, value) in &rule.set {
-                match key.as_str() {
-                    "content.javascript" => javascript = value.as_bool(),
-                    "content.images" => images = value.as_bool(),
-                    "content.force_dark" => force_dark = value.as_bool(),
-                    "content.autoplay" => autoplay = value.as_str().map(ToOwned::to_owned),
-                    "content.zoom" => {
-                        zoom = value.as_float().or_else(|| {
-                            value
-                                .as_integer()
-                                .and_then(|value| i32::try_from(value).ok())
-                                .map(f64::from)
-                        });
-                    }
-                    _ => {}
-                }
-            }
-        }
+        let super::site_rule_projection::SiteRuleProjection {
+            javascript,
+            images,
+            force_dark,
+            autoplay,
+            zoom,
+        } = projection;
         self.as_mut()
             .set_site_rule_javascript_set(javascript.is_some());
         self.as_mut()
@@ -229,12 +409,6 @@ impl qobject::BrowserUi {
             .set_site_rule_autoplay(QString::from(autoplay.unwrap_or_default()));
         self.as_mut().set_site_rule_zoom_set(zoom.is_some());
         self.as_mut().set_site_rule_zoom(zoom.unwrap_or_default());
-        let proxy_targets_changed = self
-            .as_mut()
-            .update_hint_proxy_targets(&config, &url.to_string());
-        if proxy_targets_changed {
-            self.as_mut().note_hint_configuration_change();
-        }
         true
     }
 
@@ -292,24 +466,6 @@ impl qobject::BrowserUi {
         entry_mode
     }
 
-    pub(super) fn runtime_config_candidate(
-        &self,
-        runtime_overrides: &RuntimeOverrides,
-        temporary_overrides: &RuntimeOverrides,
-    ) -> Result<Value, String> {
-        let mut layers = self
-            .rust()
-            .state
-            .as_ref()
-            .ok_or_else(|| "application state is unavailable".to_owned())?
-            .configuration_layers()
-            .clone();
-        layers.runtime = runtime_overrides.clone();
-        layers.temporary = temporary_overrides.clone();
-        serde_json::to_value(layers.resolve().map_err(|error| error.to_string())?)
-            .map_err(|error| error.to_string())
-    }
-
     pub(super) fn report_config_reload_failure(
         mut self: Pin<&mut Self>,
         error: &str,
@@ -328,13 +484,35 @@ impl qobject::BrowserUi {
         }
     }
 
+    pub(super) fn commit_prepared_configuration_reload(
+        mut self: Pin<&mut Self>,
+        prepared: PreparedConfigurationUpdate,
+        selectors: super::selector_validation_receipts::SelectorValidationPublication,
+        status: &str,
+    ) -> Result<Value, String> {
+        let layers = prepared.policy_sources().desired_layers().clone();
+        let candidate = serde_json::to_value(layers.resolve().map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
+        self.as_mut().commit_validated_configuration(
+            candidate,
+            layers,
+            Some(status),
+            selectors,
+            ConfigurationCommit::Activation(Box::new(prepared)),
+            &mut None,
+        )
+    }
+
     pub(super) fn commit_reloaded_config(
         mut self: Pin<&mut Self>,
         candidate: Value,
         layers: ConfigurationLayers,
         status: Option<&str>,
-        fingerprint: String,
-        contexts: Option<ferric_browser_application::ContextReloadEffect>,
+        selectors: super::selector_validation_receipts::SelectorValidationPublication,
+        contexts: Option<(
+            ferric_browser_application::PreparedConfigurationUpdate,
+            ferric_browser_application::ContextReloadEffect,
+        )>,
     ) -> Result<Value, String> {
         let status = if status.is_none()
             && self.as_ref().rust().status_text.to_string() == SETTINGS_RELOAD_FAILED
@@ -347,8 +525,9 @@ impl qobject::BrowserUi {
             candidate,
             layers,
             status,
-            fingerprint,
+            selectors,
             ConfigurationCommit::Reload(contexts.map(Box::new)),
+            &mut None,
         )?;
         {
             let mut rust = self.as_mut().rust_mut();
@@ -362,20 +541,63 @@ impl qobject::BrowserUi {
         Ok(committed)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn commit_runtime_config_persisted(
         mut self: Pin<&mut Self>,
-        candidate: Value,
-        layers: ConfigurationLayers,
+        prepared: PreparedConfigurationUpdate,
         status: &str,
-        persistence: Option<(&Path, &RuntimeOverrides)>,
-        fingerprint: String,
+        persist: bool,
+        selectors: super::selector_validation_receipts::SelectorValidationPublication,
+        origin: Option<&super::browser_ui_configuration_preparation::ConfigurationRequestOrigin>,
+        mut completion: Option<PageSettingsCompletion>,
+        mut post_action: Option<ConfigurationCompletion>,
     ) -> Result<Value, String> {
+        let result = (|| {
+            let layers = prepared.policy_sources().desired_layers().clone();
+            let candidate =
+                serde_json::to_value(layers.resolve().map_err(|error| error.to_string())?)
+                    .map_err(|error| error.to_string())?;
+            self.as_mut().commit_validated_configuration(
+                candidate,
+                layers,
+                Some(status),
+                selectors,
+                ConfigurationCommit::Runtime(persist, origin, &mut completion, Box::new(prepared)),
+                &mut post_action,
+            )
+        })();
+        if let Some(post_action) = post_action {
+            self.as_mut()
+                .finish_configuration_completion(post_action, ConfigurationSaveOutcome::Failed);
+        }
+        if let Some(completion) = completion {
+            completion.finish(if result.is_ok() {
+                NativeOperationOutcome::Applied
+            } else {
+                NativeOperationOutcome::Failed
+            });
+        }
+        result
+    }
+
+    pub(super) fn commit_committed_peer_configuration(
+        mut self: Pin<&mut Self>,
+        prepared: PreparedConfigurationUpdate,
+        selectors: super::selector_validation_receipts::SelectorValidationPublication,
+    ) -> Result<Value, String> {
+        if !prepared.is_committed_peer_update() {
+            return Err("Shared settings adoption requires its exact committed preparation".into());
+        }
+        let layers = prepared.policy_sources().desired_layers().clone();
+        let candidate = serde_json::to_value(layers.resolve().map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
         self.as_mut().commit_validated_configuration(
             candidate,
             layers,
-            Some(status),
-            fingerprint,
-            ConfigurationCommit::Runtime(persistence),
+            Some("Settings synchronized from another window"),
+            selectors,
+            ConfigurationCommit::CommittedPeer(Box::new(prepared)),
+            &mut None,
         )
     }
 
@@ -384,29 +606,82 @@ impl qobject::BrowserUi {
         candidate: Value,
         layers: ConfigurationLayers,
         status: Option<&str>,
-        fingerprint: String,
+        selectors: super::selector_validation_receipts::SelectorValidationPublication,
         commit: ConfigurationCommit<'_>,
+        post_action: &mut Option<ConfigurationCompletion>,
     ) -> Result<Value, String> {
-        let (boundary, persistence, contexts, persisted) = match commit {
-            ConfigurationCommit::Reload(contexts) => (
-                ConfigurationApplyBoundary::Reload,
-                None,
-                contexts.map(|effect| *effect),
-                None,
-            ),
-            ConfigurationCommit::Runtime(persistence) => (
-                ConfigurationApplyBoundary::RuntimeUpdate,
-                persistence,
-                None,
-                None,
-            ),
-            ConfigurationCommit::Persisted(receipt) => (
-                ConfigurationApplyBoundary::RuntimeUpdate,
-                None,
-                None,
-                Some(*receipt),
-            ),
+        // Once admitted, the application's receipt governs publication.
+        // Proposal replacement retires an observer, never the saved write.
+        if post_action
+            .as_ref()
+            .filter(|completion| !completion.is_admitted())
+            .is_some_and(|completion| !completion.is_current(self.as_ref().rust()))
+        {
+            return Err("The configuration proposal or owner changed".into());
+        }
+        let committed_peer = matches!(&commit, ConfigurationCommit::CommittedPeer(_));
+        let admitted = matches!(
+            &commit,
+            ConfigurationCommit::CommittedPeer(_)
+                | ConfigurationCommit::Persisted(_)
+                | ConfigurationCommit::Reload(Some(_))
+        );
+        let origin = match &commit {
+            ConfigurationCommit::Runtime(_, origin, _, _) => origin.cloned(),
+            _ => None,
         };
+        if origin
+            .as_ref()
+            .is_some_and(|origin| !origin.is_current(self.as_ref().rust()))
+        {
+            return Err("A newer request replaced this settings preparation".into());
+        }
+        let (boundary, persistence, contexts, persisted, owned_preparation, mut completion) =
+            match commit {
+                ConfigurationCommit::Reload(contexts) => {
+                    let (prepared, effect) = contexts.map(|pair| *pair).unzip();
+                    (
+                        ConfigurationApplyBoundary::Reload,
+                        false,
+                        effect,
+                        None,
+                        prepared,
+                        None,
+                    )
+                }
+                ConfigurationCommit::Activation(prepared) => (
+                    ConfigurationApplyBoundary::Reload,
+                    false,
+                    None,
+                    None,
+                    Some(*prepared),
+                    None,
+                ),
+                ConfigurationCommit::Runtime(persistence, _, completion, prepared) => (
+                    ConfigurationApplyBoundary::RuntimeUpdate,
+                    persistence,
+                    None,
+                    None,
+                    Some(*prepared),
+                    Some(completion),
+                ),
+                ConfigurationCommit::Persisted(receipt) => (
+                    ConfigurationApplyBoundary::RuntimeUpdate,
+                    false,
+                    None,
+                    Some(*receipt),
+                    None,
+                    None,
+                ),
+                ConfigurationCommit::CommittedPeer(prepared) => (
+                    ConfigurationApplyBoundary::RuntimeUpdate,
+                    false,
+                    None,
+                    None,
+                    Some(*prepared),
+                    None,
+                ),
+            };
         let policy_layers = layers.clone();
         let previous_config = self
             .as_ref()
@@ -421,7 +696,12 @@ impl qobject::BrowserUi {
             .as_ref()
             .ok_or_else(|| "application state is unavailable".to_owned())?;
         let (prepared, write_outcome) = if let Some(receipt) = persisted {
+            if let Some(error) = receipt.publication_error {
+                return Err(error.to_string());
+            }
             (receipt.prepared, Some(receipt.outcome))
+        } else if let Some(prepared) = owned_preparation {
+            (prepared, None)
         } else {
             let prepared = match boundary {
                 ConfigurationApplyBoundary::RuntimeUpdate => {
@@ -432,26 +712,87 @@ impl qobject::BrowserUi {
             .map_err(|error| error.to_string())?;
             (prepared, None)
         };
+        let current_url = self.as_ref().rust().current_url.to_string();
+        let previous_selectors = state
+            .configuration_policy_sources()
+            .compile_hint_selectors(&current_url)
+            .ok();
         let snapshot = prepared.snapshot();
+        let (discovery_selectors, proxy_targets, discovery_error) = if committed_peer {
+            let sources = prepared.policy_sources();
+            let selectors = sources
+                .compile_hint_selectors(&current_url)
+                .map_err(|error| error.to_string());
+            let proxy = sources
+                .compile_hint_proxy_targets(&current_url)
+                .map_err(|error| error.to_string());
+            let diagnostic = selectors
+                .as_ref()
+                .err()
+                .or_else(|| proxy.as_ref().err())
+                .cloned();
+            (selectors.ok(), proxy.ok(), diagnostic)
+        } else {
+            let discovery = self.as_ref().validate_candidate_hint_discovery(&prepared)?;
+            (
+                Some(discovery.selectors),
+                Some(discovery.proxy_targets),
+                None,
+            )
+        };
+        let selector_policy_changed = discovery_selectors
+            .as_ref()
+            .is_none_or(|selectors| previous_selectors.as_ref() != Some(selectors));
         let active_settings = snapshot.effective;
         let requested_settings = policy_layers
             .resolve()
             .map_err(|error| format!("could not resolve requested configuration: {error}"))?;
         let active_config = serde_json::to_value(&active_settings)
             .map_err(|error| format!("could not serialize active configuration: {error}"))?;
-        let (candidate_mixed_policy, policy_changed) = self
+        let mixed_resolution = self
             .as_ref()
-            .resolve_candidate_mixed_policy(&active_config, &policy_layers)?;
-        if persistence.is_some() {
-            self.as_mut()
+            .resolve_candidate_mixed_policy(&active_config, &policy_layers);
+        // A fresh invalid proposal must fail before admission. Already admitted
+        // publication cannot be rolled back by a later context/projection error.
+        let candidate_mixed_policy = if admitted {
+            super::mixed_policy_runtime::MixedPolicyState::from_result(mixed_resolution)
+        } else {
+            super::mixed_policy_runtime::MixedPolicyState::Ready(mixed_resolution?)
+        };
+        let mixed_error = candidate_mixed_policy.error().map(str::to_owned);
+        if persistence {
+            if origin
+                .as_ref()
+                .is_some_and(|origin| !origin.is_current(self.as_ref().rust()))
+            {
+                return Err(
+                    "The settings request was replaced or cancelled before write admission".into(),
+                );
+            }
+            let (admitted_completion, observer) =
+                super::browser_ui_page_windows::AdmittedPageSettingsCompletion::observe(
+                    completion.as_mut().and_then(|completion| completion.take()),
+                );
+            let admission = self
+                .as_mut()
                 .rust_mut()
                 .as_mut()
                 .get_mut()
                 .state
                 .as_mut()
-                .ok_or_else(|| "application state is unavailable".to_owned())?
-                .request_configuration_write(prepared)
-                .map_err(|error| error.to_string())?;
+                .ok_or_else(|| "application state is unavailable".to_owned())
+                .and_then(|state| {
+                    state
+                        .request_configuration_write_with_observer(prepared, Some(observer))
+                        .map_err(|error| error.to_string())
+                });
+            if let Err(error) = admission {
+                admitted_completion.rejected();
+                return Err(error);
+            }
+            if let Some(post_action) = post_action.as_mut() {
+                post_action.admitted();
+            }
             self.as_mut()
                 .rust_mut()
                 .as_mut()
@@ -459,13 +800,26 @@ impl qobject::BrowserUi {
                 .configuration_io
                 .pending_configuration_publication =
                 Some(super::browser_ui_state::PendingConfigurationPublication {
-                    operation_id: None,
-                    setting_feedback: None,
+                    post_action: post_action.take(),
+                    completion: Some(admitted_completion),
+                    operation_id: origin
+                        .as_ref()
+                        .and_then(|origin| origin.operation_id.clone()),
+                    setting_feedback: origin
+                        .as_ref()
+                        .and_then(|origin| origin.setting_feedback.clone()),
+                    origin: origin.clone(),
                     candidate,
                     layers: policy_layers,
                     status: status.unwrap_or("Settings saved").to_owned(),
-                    fingerprint,
+                    selectors,
                 });
+            if let Some(origin) = origin.as_ref()
+                && let Some(operation) = origin.operation_id.as_ref()
+            {
+                self.as_mut()
+                    .bind_configuration_operation_for_request(operation, Some(origin.generation));
+            }
             self.as_mut()
                 .set_status_text(QString::from("Saving settings…"));
             self.as_mut().runtime_work_available();
@@ -494,8 +848,24 @@ impl qobject::BrowserUi {
             .transpose()
             .map_err(|error| format!("could not serialize context configuration: {error}"))?;
         let mut context_runtime_effects = Vec::new();
+        self.as_mut().request_interaction_policy_refresh();
+        let published_owner;
+        let policy_changed;
         {
             let mut rust = self.as_mut().rust_mut();
+            if post_action
+                .as_ref()
+                .filter(|completion| !completion.is_admitted())
+                .is_some_and(|completion| !completion.is_current(&rust))
+            {
+                return Err("The configuration proposal changed before publication".into());
+            }
+            if origin
+                .as_ref()
+                .is_some_and(|origin| !origin.is_current(&rust))
+            {
+                return Err("A newer request replaced this settings preparation".into());
+            }
             let state = rust
                 .as_mut()
                 .get_mut()
@@ -512,13 +882,19 @@ impl qobject::BrowserUi {
                     .publish_configuration_update(prepared, || Ok(()))
                     .map_err(|error| format!("configuration publication rejected: {error}"))?;
             }
+            published_owner = state.capture_configuration_request();
         }
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.config = active_config.clone();
             crate::page_window_operations::update_policy(this);
-            this.configuration_io.active_selector_fingerprint = fingerprint;
+            this.configuration_io.active_selector_fingerprint = selectors.fingerprint;
+            if let Some(state) = this.state.as_ref() {
+                this.configuration_io
+                    .selector_receipts
+                    .published(state, selectors.receipt);
+            }
             this.configuration_io.selector_config_revision = this
                 .configuration_io
                 .selector_config_revision
@@ -528,7 +904,7 @@ impl qobject::BrowserUi {
             this.runtime_overrides = policy_layers.runtime.clone();
             this.cli_overrides = policy_layers.command_line.clone();
             this.temporary_overrides = policy_layers.temporary.clone();
-            this.mixed_policy = candidate_mixed_policy;
+            policy_changed = this.replace_mixed_policy(candidate_mixed_policy);
             this.configuration_io.pending_config =
                 (!pending.is_empty()).then_some(candidate.clone());
             this.learning_mode = active_config
@@ -540,19 +916,12 @@ impl qobject::BrowserUi {
         }
         {
             let mut rust = self.as_mut().rust_mut();
-            rust.as_mut().get_mut().bindings = bindings;
+            rust.as_mut().get_mut().replace_input_bindings(bindings);
         }
-        self.as_mut()
-            .note_native_prompt_configuration_change(policy_changed);
+        let binding_context = self.as_ref().binding_context();
+        self.as_mut().input_bindings_changed(binding_context);
+        self.as_mut().note_native_prompt_configuration_change();
         if policy_changed {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            if let Some(bindings) = this.bindings.as_mut() {
-                bindings.reset();
-            }
-            this.macro_key_prefix = None;
-            this.macro_key_started_ms = None;
-            drop(rust);
             self.as_mut().set_binding_overlay(QString::default());
         }
         self.as_mut()
@@ -563,24 +932,23 @@ impl qobject::BrowserUi {
         self.as_mut()
             .update_feature_preferences_for_state(&active_settings, &requested_settings);
         self.as_mut().update_hint_preferences(&active_settings);
-        let current_url = self.as_ref().rust().current_url.to_string();
-        self.as_mut()
-            .update_hint_proxy_targets(&active_settings, &current_url);
+        let proxy_targets_changed = if let Some(policy) = proxy_targets {
+            self.as_mut().apply_hint_proxy_targets(policy)
+        } else {
+            self.as_mut().close_hint_proxy_targets()
+        };
         // The editors show committed choices, including values waiting for
         // reload or restart. Their apply-time labels describe the boundary.
         self.as_mut().update_settings_presentation(&candidate);
         self.as_mut().set_config_json(QString::from(config_json));
-        // A watch reconciliation or an unrelated peer binding update must not
-        // retire an in-flight collector. Only interaction policy changes revoke
-        // its configuration authority.
-        let hint_policy_changed = previous_config.as_ref().is_none_or(|previous| {
-            previous.hints != active_settings.hints
-                || previous.input != active_settings.input
-                || previous.site_rules != active_settings.site_rules
-        });
-        if hint_policy_changed {
-            self.as_mut().note_hint_configuration_change();
-        }
+        // Compare source-aware policy values: a no-op watched reload does not
+        // revoke authority, while source-only changes can matter even when
+        // flattened Config values happen to be equal.
+        self.as_mut().note_hint_policy_update(
+            previous_config.as_ref(),
+            &active_settings,
+            proxy_targets_changed || selector_policy_changed,
+        );
         let learning_mode = self.as_ref().rust().learning_mode;
         self.as_mut().set_learning_mode(learning_mode);
         self.as_mut().update_theme_palette(&candidate);
@@ -611,7 +979,7 @@ impl qobject::BrowserUi {
         };
         if let Some(status) = status {
             let status = settings_presentation::configuration_status(status, &pending);
-            let status = match &write_outcome {
+            let mut status = match &write_outcome {
                 Some(ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(
                     error,
                 )) => {
@@ -619,6 +987,14 @@ impl qobject::BrowserUi {
                 }
                 _ => status,
             };
+            if let Some(error) = discovery_error {
+                status.push_str("; current site controls unavailable: ");
+                status.push_str(&error);
+            }
+            if let Some(error) = mixed_error {
+                status.push_str("; Mixed input policy unavailable: ");
+                status.push_str(&error);
+            }
             self.as_mut().set_status_text(QString::from(status));
         }
         let mut rust = self.as_mut().rust_mut();
@@ -636,6 +1012,24 @@ impl qobject::BrowserUi {
         );
         drop(rust);
         crate::page_group_runtime::publish(self.as_ref().get_ref());
+        if let Some(post_action) = post_action.take() {
+            let durability_uncertain = matches!(
+                write_outcome,
+                Some(ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(_))
+            );
+            self.as_mut().finish_configuration_completion(
+                post_action,
+                match published_owner {
+                    Some(owner) => ConfigurationSaveOutcome::Published {
+                        owner: Box::new(owner),
+                        durability_uncertain,
+                    },
+                    None => ConfigurationSaveOutcome::SavedInactive {
+                        durability_uncertain,
+                    },
+                },
+            );
+        }
         Ok(active_config)
     }
 
@@ -735,12 +1129,20 @@ impl qobject::BrowserUi {
             .set_feature_page_grouping_reason(QString::from(preferences.page_grouping_reason));
     }
 
-    pub(super) fn update_hint_preferences(mut self: Pin<&mut Self>, config: &Config) {
+    pub(super) fn update_hint_preferences(self: Pin<&mut Self>, config: &Config) {
         let policy = if self.as_ref().rust().hint_rapid {
             &config.hints.rapid_unmatched
         } else {
             &config.hints.unmatched
         };
+        self.update_hint_display_preferences(policy, config.hints.marker_scale);
+    }
+
+    pub(super) fn update_hint_display_preferences(
+        mut self: Pin<&mut Self>,
+        policy: &ferric_browser_config::HintUnmatchedPolicy,
+        marker_scale: f64,
+    ) {
         let policy = match policy {
             ferric_browser_config::HintUnmatchedPolicy::Hide => "hide",
             ferric_browser_config::HintUnmatchedPolicy::Dim => "dim",
@@ -748,8 +1150,7 @@ impl qobject::BrowserUi {
         };
         self.as_mut()
             .set_hint_unmatched_policy(QString::from(policy));
-        self.as_mut()
-            .set_hint_marker_scale(config.hints.marker_scale);
+        self.set_hint_marker_scale(marker_scale);
     }
 
     pub(super) fn update_settings_presentation(mut self: Pin<&mut Self>, config: &Value) {
@@ -1027,11 +1428,9 @@ impl qobject::BrowserUi {
         }
         self.as_mut()
             .set_status_text(QString::from("Settings reload requested…"));
-        self.as_mut().poll_config();
-        let status = self.as_ref().rust().status_text.to_string();
-        if status.starts_with("Configuration reload rejected") {
-            return Err(status);
-        }
+        // A binding may request this while a previous worker result is ready.
+        // Its preparation/publication belongs to the real runtime turn.
+        self.as_mut().runtime_work_available();
         Ok(serde_json::json!({
             "status": "queued",
             "source": path

@@ -117,6 +117,74 @@ fn search_next_flags(tokens: &[&str]) -> &'static [&'static str] {
     }
 }
 
+fn mode_enter_values(tokens: &[&str]) -> &'static [&'static str] {
+    match tokens {
+        [_] => &[
+            "normal",
+            "insert",
+            "insert-locked",
+            "caret",
+            "passthrough",
+            "passthrough-once",
+        ],
+        [
+            _,
+            "passthrough" | "pass-through" | "passthrough-once" | "pass-through-once",
+        ] => &["--raw"],
+        _ => &[],
+    }
+}
+
+fn site_policy_values(tokens: &[&str]) -> &'static [&'static str] {
+    match tokens.first().copied() {
+        Some("site-policy") => match tokens.last().copied() {
+            Some("--url") => &[],
+            _ => &["--url"],
+        },
+        Some("site-policy-preview") => match tokens.last().copied() {
+            Some("--tab") => &[],
+            _ => &["--tab"],
+        },
+        Some("site-policy-list") => match tokens.last().copied() {
+            Some("--url") => &[],
+            _ => &["--url", "--all"],
+        },
+        Some("site-policy-explain") => match tokens.last().copied() {
+            Some("--source") => &["generated", "temporary"],
+            Some("--url" | "--id" | "--key" | "--code") => &[],
+            _ => &["--url", "--source", "--id", "--key", "--code"],
+        },
+        Some("site-policy-edit") => match tokens.last().copied() {
+            Some("--source") => &["generated", "temporary"],
+            Some("--enabled") => &["true", "false"],
+            Some("--id" | "--pattern" | "--priority" | "--draft" | "--revision") => &[],
+            _ => &[
+                "--source",
+                "--id",
+                "--new",
+                "--pattern",
+                "--priority",
+                "--remove-interaction",
+                "--enabled",
+                "--draft",
+                "--revision",
+                "--rebase",
+            ],
+        },
+        Some("site-policy-apply") => match tokens.last().copied() {
+            Some("--revision") => &[],
+            _ => &["--revision", "--activate"],
+        },
+        Some("site-policy-import") => &["--temp", "--replace-existing"],
+        Some("site-policy-export") => match tokens.last().copied() {
+            Some("--source") => &["generated", "temporary"],
+            Some("--id" | "--draft") => &[],
+            _ => &["--source", "--id", "--draft", "--overwrite"],
+        },
+        _ => &[],
+    }
+}
+
 fn enum_candidates(command_prefix: &str, prefix: &str) -> Option<Vec<CompletionCandidate>> {
     let tokens = command_prefix.split_ascii_whitespace().collect::<Vec<_>>();
     let command = tokens.first().copied().unwrap_or_default();
@@ -125,18 +193,19 @@ fn enum_candidates(command_prefix: &str, prefix: &str) -> Option<Vec<CompletionC
             &["current", "tab", "tab-bg", "window", "private-window"]
         } else {
             match command {
+                "site-policy-list"
+                | "site-policy"
+                | "site-policy-edit"
+                | "site-policy-apply"
+                | "site-policy-explain"
+                | "site-policy-import"
+                | "site-policy-export"
+                | "site-policy-preview" => site_policy_values(&tokens),
                 "fullscreen" | "caret-select" | "tab-mute" | "tab-pin" | "blocking-toggle" => {
                     &["on", "off", "toggle"]
                 }
                 "edit" => &["copy", "cut", "paste", "paste-plain"],
-                "mode-enter" => &[
-                    "normal",
-                    "insert",
-                    "insert-locked",
-                    "caret",
-                    "passthrough",
-                    "passthrough-once",
-                ],
+                "mode-enter" => mode_enter_values(&tokens),
                 "hint" => match tokens.last().copied() {
                     Some("--target") => &[
                         "current",

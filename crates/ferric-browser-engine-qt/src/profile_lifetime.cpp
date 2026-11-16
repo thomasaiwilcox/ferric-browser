@@ -208,6 +208,13 @@ bool FerricProfileLifetime::adoptView(QQuickItem *view, QObject *host,
     entry.incarnation = ++nextGeneration_;
     entry.windowGeneration = owner->generation;
     if (current == views_.end()) {
+        // Generic adoption updates owner properties before visual parenting.
+        // Observe again when the real scene window arrives; the consumer still
+        // requires currentView and its unchanged incarnation before any read.
+        connect(view, &QQuickItem::windowChanged, this, [this, view](QQuickWindow *) {
+            if (views_.contains(view) && !viewTransfers_.contains(view))
+                emit sitePolicyAssociationChanged(view);
+        });
         connect(view, &QObject::destroyed, this, [this, view] {
             const auto found = views_.find(view);
             if (found == views_.end())
@@ -253,6 +260,7 @@ bool FerricProfileLifetime::adoptView(QQuickItem *view, QObject *host,
     const QPointer<QQuickItem> observed(view);
     refresh();
     if (self && observed && self->tls_) self->tls_->observeView(observed);
+    if (self && observed) emit self->sitePolicyAssociationChanged(observed);
     return self && observed;
 }
 
@@ -867,6 +875,7 @@ bool FerricProfileLifetime::completeViewTransfer(ViewTransfer &handle) {
     removeViewTransfer(*transfer);
     if (self->tls_ && view) self->tls_->observeView(view);
     if (self) emit self->credentialTransportChanged();
+    if (self && view) emit self->sitePolicyAssociationChanged(view);
     return self && view;
 }
 
@@ -924,6 +933,7 @@ bool FerricProfileLifetime::cancelViewTransfer(const std::shared_ptr<ViewTransfe
     if (!restored && view) releaseView(view);
     if (restored && self && self->tls_ && view) self->tls_->observeView(view);
     if (restored && self) emit self->credentialTransportChanged();
+    if (restored && self && view) emit self->sitePolicyAssociationChanged(view);
     return restored && self && view;
 }
 

@@ -74,6 +74,14 @@ pub(crate) struct ActiveProfile {
 }
 
 impl ActiveProfile {
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub(crate) const fn privacy(&self) -> PrivacyKind {
+        self.privacy
+    }
+
     pub(crate) fn activate(generation: u64, activation: ProfileActivation) -> Self {
         let session = crate::profile_session::ProfileSession::new(&activation);
         Self {

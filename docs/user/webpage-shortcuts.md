@@ -3,6 +3,14 @@
 Focus the webpage or player, then choose how long to give it your keys.
 Neither entry command selects an arbitrary input or changes page focus.
 
+Site policies can also admit selected website shortcuts while ordinary hints
+are open. One successfully forwarded shortcut dismisses hints after its final
+key release and returns to Normal, just like completing a hint action. For
+example, a YouTube policy can make `f`, then `p` pause playback and dismiss
+hints, or `f`, then `f` enter fullscreen and dismiss hints. Blocked shortcuts
+leave hints intact; letters in a hint text query remain query input. Use `;V`
+when you want to keep sending website shortcuts.
+
 | Key in Normal mode | Indicator | Behavior |
 | --- | --- | --- |
 | `; V` | `PASS THROUGH` | Forward ordinary keys until Ctrl+Escape. |

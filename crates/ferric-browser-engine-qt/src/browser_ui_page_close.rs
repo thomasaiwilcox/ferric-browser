@@ -391,6 +391,9 @@ impl qobject::BrowserUi {
         mut commands: Vec<(ParsedCommand, crate::IpcRoute)>,
         operation: Option<&str>,
         handoff: &mut Option<PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<crate::Value, crate::PublicError> {
         if route.context.is_some() {
             return Err("context routing is not valid for page close".into());
@@ -413,6 +416,7 @@ impl qobject::BrowserUi {
             },
             operation,
             handoff,
+            preparation,
         )
         .map_err(Into::into)
     }
@@ -423,6 +427,9 @@ impl qobject::BrowserUi {
         continuation: PageContinuation,
         operation: Option<&str>,
         incoming: &mut Option<PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<crate::Value, String> {
         self.as_ref()
             .rust()
@@ -494,9 +501,12 @@ impl qobject::BrowserUi {
         }) {
             return Err("One of these pages already has a pending close".into());
         }
-        let handoff = self
-            .as_mut()
-            .prepare_page_handoff(incoming.clone(), &source, operation)?;
+        let handoff = self.as_mut().prepare_page_handoff(
+            incoming.clone(),
+            &source,
+            operation,
+            preparation,
+        )?;
         let requested = targets.len();
         registry.insert(
             nonce.clone(),

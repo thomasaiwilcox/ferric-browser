@@ -1,0 +1,23 @@
+{
+  "status": "prepared-not-applied-or-built",
+  "purpose": "Instrumented operation provenance only; no unprofiled timing qualification",
+  "revision": "f2c5d6deebd97eb861084503f25613a6a819949d",
+  "enabled_by": "FERRIC_P00_BROKER_TRACE",
+  "deadline_ms": 1000,
+  "mutations_per_sample": 1000,
+  "patch_sha256": "d037c0fb02d926899c358bdc8c6e0413e3a0293a9de154c2ab87aea67eba9aa4",
+  "inputs": {
+    "crates/ferric-browser-engine-qt/src/hint_frame_broker.cpp": {
+      "original_sha256": "f3c5b8eee8606c559dc7eb24ba30f8ee9fe6827ef1f4394e100784416740607b",
+      "diagnostic_sha256": "ae4aca8b94a02aec86f2997bb96effe4e4e5e5465511c379439a4392491b89a1"
+    },
+    "crates/ferric-browser-engine-qt/src/hint_frame_broker.h": {
+      "original_sha256": "586ae6bbf03451122109fd90e193c36acb19b601d69d0ef22ae0e4655e849738",
+      "diagnostic_sha256": "fb68658b0e0b0d93ab9c63ea66b8ca74a2d81b4378552f56154a50edd83c9292"
+    },
+    "crates/ferric-browser-engine-qt/qml/components/FerricHintFrameProvider.qml": {
+      "original_sha256": "856624857df69c486c260bcb697fa5ef1d7698ffa4a29b7e56c563d1f02cf680",
+      "diagnostic_sha256": "a63920823efd4ee500880dc12a504149ed54a2043bc39923767a12ccba2c210f"
+    }
+  }
+}

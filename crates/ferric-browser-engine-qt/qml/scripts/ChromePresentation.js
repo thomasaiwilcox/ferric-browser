@@ -213,6 +213,45 @@ function siteExperimentLabel(kind) {
     return typeof labels[kind] === "string" ? labels[kind] : "Temporary site test"
 }
 
+function siteDoctorProposalSummary(proposal) {
+    proposal = proposal || {}
+    var message
+    switch (proposal.state) {
+    case "pending-confirmation":
+        message = "The test suggests a content-blocking exception for " + (proposal.origin || "this site")
+            + ". Saving it allows this host's requests through content blocking. Site permissions and connection security stay unchanged."
+        break
+    case "preparing":
+        message = "Preparing the reviewed exception. Saving has not completed."
+        break
+    case "applying":
+        message = "Saving the reviewed exception; blocking-rule activation is not yet confirmed."
+        break
+    case "saved-policy-pending":
+        message = "The exception was saved; its blocking-rule update is pending."
+        break
+    case "applied":
+        message = "The exception was saved; matching blocking rules are active."
+        break
+    case "saved-policy-failed":
+        message = "The exception was saved, but blocking rules could not be activated. Review the settings before reloading blocking rules."
+        break
+    case "saved-policy-inactive":
+        message = "The exception was saved, but its blocking-rule update is no longer current. Review the settings before reloading blocking rules."
+        break
+    case "saved-configuration-inactive":
+        message = "The exception was saved, but its configuration could not be activated. Review and reload the configuration before testing this fix."
+        break
+    case "failed":
+        message = "No successful save receipt was received. Current blocking rules were retained."
+        break
+    default:
+        message = "Fix completion is unavailable. Check the saved configuration before trying again."
+    }
+    return message + (proposal.durability_uncertain === true
+        ? " Saving may not survive a system crash." : "")
+}
+
 function interactionDetails(status) {
     status = status || {}
     var focus = status.focus || {}, policy = status.shortcut_policy || {}
@@ -296,7 +335,8 @@ function passThroughMode(mode) {
     return mode === "pass-through" || mode === "pass-through-once"
 }
 
-function inputModeLabel(mode) {
+function inputModeLabel(mode, raw) {
+    if (raw && passThroughMode(mode)) return mode === "pass-through-once" ? "PASS NEXT KEY · RAW" : "PASS THROUGH · RAW"
     if (mode === "pass-through-once") return "PASS NEXT KEY"
     return mode.replace(/-/g, " ").toUpperCase()
 }
@@ -305,7 +345,11 @@ function inputModeHint(mode) {
     return passThroughMode(mode) ? "Ctrl+Esc: Normal" : ""
 }
 
-function inputModeDescription(mode) {
+function inputModeDescription(mode, raw) {
+    if (raw && passThroughMode(mode))
+        return mode === "pass-through-once"
+            ? "Next key goes to the webpage with remaps bypassed, then returns to Normal. Ctrl+Escape cancels."
+            : "Keys go to the webpage with remaps bypassed for this session. Ctrl+Escape returns to Normal."
     if (mode === "pass-through-once")
         return "Next key goes to the webpage, then returns to Normal. Ctrl+Escape cancels."
     if (mode === "pass-through")

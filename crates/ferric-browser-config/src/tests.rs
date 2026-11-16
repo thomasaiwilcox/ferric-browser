@@ -41,6 +41,7 @@ fn everyday_feature_settings_reject_invalid_grammar_and_site_overrides() {
     }
 
     let mut rule = SiteRule {
+        interaction: None,
         id: "feature-override".into(),
         pattern: "https://example.test/*".into(),
         priority: 0,
@@ -332,6 +333,7 @@ fn effective_selector_resolution_obeys_site_order_and_family_independence() {
     );
     config.site_rules = vec![
         SiteRule {
+            interaction: None,
             id: "first-layer".into(),
             pattern: "https://example.test/*".into(),
             priority: 1,
@@ -341,6 +343,7 @@ fn effective_selector_resolution_obeys_site_order_and_family_independence() {
             )]),
         },
         SiteRule {
+            interaction: None,
             id: "replace-layer".into(),
             pattern: "https://example.test/*".into(),
             priority: 2,
@@ -350,6 +353,7 @@ fn effective_selector_resolution_obeys_site_order_and_family_independence() {
             )]),
         },
         SiteRule {
+            interaction: None,
             id: "last-layer".into(),
             pattern: "https://example.test/*".into(),
             priority: 3,
@@ -525,6 +529,7 @@ fn one_site_rule_caps_selector_bytes_across_all_families() {
             .collect(),
     };
     let rule = SiteRule {
+        interaction: None,
         id: "bounded-selectors".into(),
         pattern: "https://example.test/*".into(),
         priority: 0,
@@ -716,18 +721,21 @@ fn site_rules_match_in_priority_and_source_order() {
     let config = Config {
         site_rules: vec![
             SiteRule {
+                interaction: None,
                 id: "later".into(),
                 pattern: "https://*.example.test/*".into(),
                 priority: 10,
                 set: BTreeMap::from([("content.zoom".into(), toml::Value::Float(1.25))]),
             },
             SiteRule {
+                interaction: None,
                 id: "base".into(),
                 pattern: "https://example.test/*".into(),
                 priority: 0,
                 set: BTreeMap::from([("content.zoom".into(), toml::Value::Float(1.1))]),
             },
             SiteRule {
+                interaction: None,
                 id: "override".into(),
                 pattern: "https://example.test/docs/*".into(),
                 priority: 0,
@@ -763,12 +771,14 @@ fn site_patterns_normalize_scheme_host_port_and_path() {
     let mut config = Config {
         site_rules: vec![
             SiteRule {
+                interaction: None,
                 id: "wildcard".into(),
                 pattern: "*://*.Example.test/*".into(),
                 priority: 0,
                 set: BTreeMap::new(),
             },
             SiteRule {
+                interaction: None,
                 id: "port".into(),
                 pattern: "https://example.test:8443/docs/*".into(),
                 priority: 0,
@@ -815,6 +825,7 @@ fn site_patterns_normalize_scheme_host_port_and_path() {
 fn site_rules_reject_unsafe_or_unknown_settings() {
     let mut config = Config::default();
     config.site_rules.push(SiteRule {
+        interaction: None,
         id: "docs".into(),
         pattern: "https://docs.example.test/*".into(),
         priority: 0,
@@ -846,6 +857,7 @@ fn mixed_input_settings_validate_atomically_at_global_and_site_scopes() {
     assert!(validate(&config).is_err(), "the 64-key bound is enforced");
 
     let mut rule = SiteRule {
+        interaction: None,
         id: "docs".into(),
         pattern: "https://docs.example.test/*".into(),
         priority: 0,
@@ -974,6 +986,7 @@ fn proxy_target_policy_is_typed_opt_in_and_uses_site_precedence() {
         },
         site_rules: vec![
             SiteRule {
+                interaction: None,
                 id: "docs-default".into(),
                 pattern: "https://example.test/*".into(),
                 priority: 1,
@@ -983,6 +996,7 @@ fn proxy_target_policy_is_typed_opt_in_and_uses_site_precedence() {
                 )]),
             },
             SiteRule {
+                interaction: None,
                 id: "docs-enabled".into(),
                 pattern: "https://example.test/editor/*".into(),
                 priority: 2,
@@ -1875,6 +1889,7 @@ fn reload_boundary_applies_rule_lists_and_defers_them_at_runtime() {
     let current = toml::Value::try_from(Config::default()).unwrap();
     let mut config = Config::default();
     config.site_rules.push(SiteRule {
+        interaction: None,
         id: "zoom".into(),
         pattern: "https://example.test/*".into(),
         priority: 0,

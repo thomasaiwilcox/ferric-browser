@@ -1,18 +1,22 @@
 use super::browser_ui_hint_pointer::HintPointerAction;
-use super::hint_payload::validate_hint_candidates_for_family;
+use super::hint_payload::{parse_hint_envelope, validate_hint_candidates_for_family};
 use super::hint_policy::{
     HintOptions, LocalInteractionOperation, LocalInteractionOwner, parse_hint_options,
 };
 use super::{
     CommandRegistry, CoreHintAutoFollow, CxxQtType, Event, HintInteraction, HintInteractionInput,
     HintInteractionOutcome, HintSession, HintTarget, Mode, ParsedCommand, Pin, QString, Value,
-    assign_labels_with_options, current_target, hint_json, parse_hint_payload, qobject,
+    assign_labels_with_options, current_target, hint_json, qobject,
 };
 
-use ferric_browser_config::{Config, HintSelectorFamily, resolve_hint_selector_policies};
+#[cfg(test)]
+use ferric_browser_application::ConfigurationPolicySources;
+#[cfg(test)]
+use ferric_browser_config::HintSelectorFamily;
 
+#[cfg(test)]
 pub(super) fn effective_hint_selector_snapshot(
-    config_json: &str,
+    sources: &ConfigurationPolicySources,
     url: &str,
     configuration_revision: u64,
     family: &str,
@@ -22,9 +26,9 @@ pub(super) fn effective_hint_selector_snapshot(
     {
         return Err(format!("unsupported hint selector family: {family}"));
     }
-    let config = serde_json::from_str::<Config>(config_json)
-        .map_err(|error| format!("effective configuration is unavailable: {error}"))?;
-    let policies = resolve_hint_selector_policies(&config, url)?;
+    let policies = sources
+        .compile_hint_selectors(url)
+        .map_err(|error| error.to_string())?;
     let revision_input = if let Some(selector_family) = selector_family {
         serde_json::to_vec(&(configuration_revision, url, selector_family, &policies))
     } else {
@@ -44,7 +48,78 @@ pub(super) fn effective_hint_selector_snapshot(
     }))
 }
 
+impl super::BrowserUiRust {
+    pub(super) fn retire_changed_hint_policy(
+        &mut self,
+        previous: Option<&ferric_browser_config::Config>,
+        active: &ferric_browser_config::Config,
+        discovery_changed: bool,
+    ) -> bool {
+        let changed = discovery_changed
+            || previous.is_none_or(|previous| {
+                previous.hints != active.hints
+                    || previous.input != active.input
+                    || previous.site_rules != active.site_rules
+            });
+        if changed {
+            self.retire_hint_policy();
+        }
+        changed
+    }
+
+    fn retire_hint_policy(&mut self) {
+        self.interaction.hint_request = None;
+        self.interaction.hint_configuration_revision = self
+            .interaction
+            .hint_configuration_revision
+            .saturating_add(1);
+        self.interaction.hint_session = None;
+        self.interaction.hint_interaction = None;
+        self.interaction.hint_loading_interaction = None;
+        self.interaction.initial_hint = None;
+        self.interaction.hint_policy_proof = None;
+        self.interaction.confirmed_hint_anchor = None;
+        self.interaction.pending_hint_scope_handoff = None;
+        self.interaction.active_hint_scope = None;
+        self.interaction.hint_consumed.clear();
+        self.pending_hint_action = None;
+        if let Some(action) = self.interaction.hint_pointer_action.as_mut() {
+            action.terminate();
+        }
+        self.interaction.hint_pointer_action = None;
+        self.interaction.hint_pointer_source = None;
+        self.interaction.pending_hint_palette_permit = None;
+        self.interaction.pending_grid_scope_permit = None;
+        self.interaction
+            .hint_local_interaction_authority
+            .clear_session_requests();
+    }
+}
+
 impl qobject::BrowserUi {
+    pub(super) fn current_hint_selector_snapshot(
+        &self,
+        family: &str,
+    ) -> Result<super::hint_policy_cache::CachedHintSelectorPolicy, String> {
+        let rust = self.rust();
+        let app = rust
+            .state
+            .as_ref()
+            .ok_or("application configuration is unavailable")?;
+        let cache = rust
+            .interaction
+            .cached_hint_policies
+            .as_ref()
+            .ok_or("site policy refresh is pending or selectors are unavailable")?;
+        cache.get(
+            app,
+            rust.window.ok_or("policy window is unavailable")?,
+            &rust.current_url,
+            rust.interaction.hint_configuration_revision,
+            family,
+        )
+    }
+
     pub(super) fn dispatch_hint_command(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
@@ -74,36 +149,66 @@ impl qobject::BrowserUi {
 
     pub(super) fn note_hint_configuration_change(mut self: Pin<&mut Self>) {
         let hint_mode_was_active = self.as_ref().rust().core_mode == Mode::Hint;
-        {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.interaction.hint_configuration_revision = this
-                .interaction
-                .hint_configuration_revision
-                .saturating_add(1);
-            this.interaction.hint_session = None;
-            this.interaction.hint_interaction = None;
-            this.interaction.pending_hint_scope_handoff = None;
-            this.interaction.active_hint_scope = None;
-            this.interaction.hint_consumed.clear();
-            this.pending_hint_action = None;
-            if let Some(action) = this.interaction.hint_pointer_action.as_mut() {
-                action.terminate();
-            }
-            this.interaction.hint_pointer_action = None;
-            this.interaction.hint_pointer_source = None;
-            this.interaction.pending_hint_palette_permit = None;
-            this.interaction.pending_grid_scope_permit = None;
-            this.interaction
-                .hint_local_interaction_authority
-                .clear_session_requests();
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .retire_hint_policy();
+        self.finish_hint_configuration_change(hint_mode_was_active);
+    }
+
+    pub(super) fn note_hint_policy_update(
+        mut self: Pin<&mut Self>,
+        previous: Option<&ferric_browser_config::Config>,
+        active: &ferric_browser_config::Config,
+        discovery_changed: bool,
+    ) {
+        let hint_mode_was_active = self.as_ref().rust().core_mode == Mode::Hint;
+        let changed = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .retire_changed_hint_policy(previous, active, discovery_changed);
+        if changed {
+            self.finish_hint_configuration_change(hint_mode_was_active);
         }
-        self.as_mut().set_hint_pointer_pending(false);
+    }
+
+    fn finish_hint_configuration_change(mut self: Pin<&mut Self>, hint_mode_was_active: bool) {
+        let Some(capture) =
+            super::policy_refresh_capture::PolicyRefreshCapture::capture(self.as_ref().get_ref())
+        else {
+            return;
+        };
+        macro_rules! notify {
+            ($effect:expr) => {{
+                if !capture.is_current(self.as_ref().get_ref()) {
+                    return;
+                }
+                $effect;
+                if !capture.is_current(self.as_ref().get_ref()) {
+                    return;
+                }
+            }};
+        }
         self.as_mut()
-            .set_hint_pointer_dispatch_request(QString::default());
-        self.as_mut().set_hint_pointer_mode(false);
-        self.as_mut()
-            .set_hint_pointer_state(QString::from("terminal"));
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .interaction
+            .interaction_policy_refresh_pending = true;
+        notify!(self.as_mut().runtime_work_available());
+        notify!(self.as_mut().set_hint_pointer_pending(false));
+        notify!(
+            self.as_mut()
+                .set_hint_pointer_dispatch_request(QString::default())
+        );
+        notify!(self.as_mut().set_hint_pointer_mode(false));
+        notify!(
+            self.as_mut()
+                .set_hint_pointer_state(QString::from("terminal"))
+        );
         if hint_mode_was_active {
             self.as_mut().cancel_hints();
         } else {
@@ -125,6 +230,7 @@ impl qobject::BrowserUi {
         first: bool,
         index: usize,
     ) {
+        self.as_mut().rust_mut().get_mut().interaction.hint_request = None;
         self.as_mut().set_hint_target(QString::from(target));
         self.as_mut().set_target_search_active(false);
         self.as_mut().set_target_search_scope(QString::from("all"));
@@ -138,10 +244,20 @@ impl qobject::BrowserUi {
         self.as_mut().set_hint_links_only(family == "links");
         self.as_mut().set_hint_family(QString::from(family));
         self.as_mut().set_hint_rapid(rapid);
-        if let Ok(config) =
-            serde_json::from_str::<super::Config>(&self.as_ref().rust().config_json.to_string())
-        {
-            self.as_mut().update_hint_preferences(&config);
+        let preferences = self.as_ref().rust().state.as_ref().map(|state| {
+            let hints = &state.configuration().hints;
+            (
+                if rapid {
+                    hints.rapid_unmatched.clone()
+                } else {
+                    hints.unmatched.clone()
+                },
+                hints.marker_scale,
+            )
+        });
+        if let Some((policy, scale)) = preferences {
+            self.as_mut()
+                .update_hint_display_preferences(&policy, scale);
         }
         target.clone_into(
             &mut self
@@ -161,13 +277,21 @@ impl qobject::BrowserUi {
             this.hint_index = index;
             this.hint_rapid_tabs_created = 0;
             this.interaction.hint_consumed.clear();
+            this.interaction.hint_session = None;
+            this.hint_values = QString::default();
             this.interaction.hint_interaction = None;
+            this.interaction.hint_loading_interaction = None;
+            this.interaction.initial_hint = None;
+            this.interaction.hint_policy_proof = None;
+            this.interaction.confirmed_hint_anchor = None;
             this.interaction.pending_hint_palette_permit = None;
             this.interaction.pending_grid_scope_permit = None;
             this.interaction
                 .hint_local_interaction_authority
                 .clear_session_requests();
         }
+        self.as_mut()
+            .set_hint_invocation(QString::from(super::Uuid::new_v4().to_string()));
         let window = self.as_ref().rust().window;
         if let Some(window) = window
             && self
@@ -217,6 +341,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn clear_hint_session_state(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().get_mut().interaction.hint_request = None;
         self.as_mut().set_target_search_active(false);
         self.as_mut().set_target_search_scope(QString::from("all"));
         self.as_mut().set_target_search_query(QString::default());
@@ -225,6 +350,10 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             this.interaction.hint_session = None;
             this.interaction.hint_interaction = None;
+            this.interaction.hint_loading_interaction = None;
+            this.interaction.initial_hint = None;
+            this.interaction.hint_policy_proof = None;
+            this.interaction.confirmed_hint_anchor = None;
             this.interaction.pending_hint_scope_handoff = None;
             this.interaction.active_hint_scope = None;
             this.interaction.hint_consumed.clear();
@@ -250,10 +379,26 @@ impl qobject::BrowserUi {
             .set_hint_pointer_state(QString::from("terminal"));
     }
 
-    pub(super) fn begin_hint_session(
+    pub(super) fn begin_hint_session(self: Pin<&mut Self>, candidates_json: &QString) -> QString {
+        self.begin_hint_session_checked(candidates_json, None)
+    }
+
+    pub(super) fn begin_hint_session_checked(
         mut self: Pin<&mut Self>,
         candidates_json: &QString,
+        proof: Option<super::interaction_proof::CheckedAnnotations>,
     ) -> QString {
+        if proof.is_none()
+            && self
+                .as_ref()
+                .rust()
+                .interaction
+                .hint_request
+                .as_ref()
+                .is_some_and(|request| request.requires_proof())
+        {
+            return QString::from(r#"{"error":"native-policy-evidence-required"}"#);
+        }
         if self.as_ref().rust().core_mode != Mode::Hint {
             self.as_mut().set_hint_mode();
         }
@@ -266,20 +411,15 @@ impl qobject::BrowserUi {
             String::new()
         };
         let configuration_revision = self.as_ref().rust().interaction.hint_configuration_revision;
-        let requested_scope_lease_id = serde_json::from_str::<Value>(&candidates_json.to_string())
-            .ok()
-            .and_then(|payload| {
-                payload
-                    .get("scope_lease_id")
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned)
-            });
-        let snapshot = match effective_hint_selector_snapshot(
-            &self.as_ref().rust().config_json.to_string(),
-            &self.as_ref().rust().current_url.to_string(),
-            configuration_revision,
-            &family,
-        ) {
+        let payload = match parse_hint_envelope(&candidates_json.to_string()) {
+            Ok(payload) => payload,
+            Err(error) => {
+                self.set_status_text(QString::from(format!("Hints rejected: {error}")));
+                return QString::from(serde_json::json!({"error": error}).to_string());
+            }
+        };
+        let requested_scope_lease_id = payload.scope_lease_id;
+        let snapshot = match self.as_ref().current_hint_selector_snapshot(&family) {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 self.set_status_text(QString::from(format!(
@@ -290,25 +430,9 @@ impl qobject::BrowserUi {
                 );
             }
         };
-        let expected_selector_revision = snapshot
-            .get("selector_revision")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let Some(selector_policy_revision) =
-            u64::from_str_radix(expected_selector_revision, 16).ok()
-        else {
-            self.set_status_text(QString::from(
-                "Hints rejected: invalid selector policy revision",
-            ));
-            return QString::from(
-                serde_json::json!({"error":"invalid-selector-policy-revision"}).to_string(),
-            );
-        };
-        let supplied_selector_revision =
-            serde_json::from_str::<Value>(&candidates_json.to_string())
-                .ok()
-                .and_then(|payload| payload.get("selector_revision").cloned())
-                .and_then(|value| value.as_str().map(ToOwned::to_owned));
+        let expected_selector_revision = snapshot.revision_hex.as_str();
+        let selector_policy_revision = snapshot.revision;
+        let supplied_selector_revision = payload.selector_revision;
         if supplied_selector_revision.as_deref() != Some(expected_selector_revision) {
             self.set_status_text(QString::from(
                 "Hints rejected: selector policy changed during collection",
@@ -342,13 +466,7 @@ impl qobject::BrowserUi {
             ));
             return QString::from(r#"{"error":"stale-scope"}"#);
         }
-        let mut candidates = match parse_hint_payload(&candidates_json.to_string()) {
-            Ok(candidates) => candidates,
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Hints rejected: {error}")));
-                return QString::from(serde_json::json!({"error": error}).to_string());
-            }
-        };
+        let mut candidates = payload.candidates;
         let candidate_validation = if target_search_active && family == "all" {
             let ordinary = candidates
                 .iter()
@@ -462,6 +580,24 @@ impl qobject::BrowserUi {
                 ferric_browser_config::HintAutoFollow::Never => CoreHintAutoFollow::Never,
             }
         };
+        let hint_first = self.as_ref().rust().hint_first;
+        let codebook = match proof
+            .as_ref()
+            .filter(|_| !hint_first)
+            .map(|proof| {
+                proof
+                    .policy_snapshot()
+                    .compile_hint_codebook(proof.family())
+            })
+            .transpose()
+        {
+            Ok(compiled) => compiled.flatten().map(|compiled| compiled.into_parts().2),
+            Err(error) => {
+                self.as_mut()
+                    .set_status_text(QString::from(format!("Hints unavailable: {error}")));
+                return QString::from(serde_json::json!({"error":error.to_string()}).to_string());
+            }
+        };
         let previous = self
             .as_ref()
             .rust()
@@ -474,15 +610,65 @@ impl qobject::BrowserUi {
                     && session.target.document == target.document
                     && session.configuration_revision == configuration_revision
                     && session.selector_policy_revision == selector_policy_revision
+                    && self.as_ref().rust().interaction.hint_policy_proof.is_some()
+                        == proof.is_some()
             })
             .and_then(|_| self.as_ref().rust().interaction.hint_interaction.clone());
         let refreshing = previous.is_some();
         let mut interaction = if let Some(mut previous) = previous {
+            if let Some(proof) = &proof {
+                let declarations: Vec<_> = previous
+                    .reservations()
+                    .iter()
+                    .map(|reservation| reservation.declaration().clone())
+                    .collect();
+                let live_slots = self
+                    .as_ref()
+                    .rust()
+                    .interaction
+                    .hint_policy_proof
+                    .as_ref()
+                    .map(|old| old.surviving_special_slots(proof, previous.reservations()))
+                    .unwrap_or_default();
+                let assignments =
+                    proof.special_assignments(&candidates, &declarations, Some(&live_slots));
+                for assignment in assignments {
+                    let unchanged = matches!(
+                        assignment.binding,
+                        ferric_browser_core::HintSpecialBinding::Live(_)
+                    );
+                    if !unchanged {
+                        previous.retire_reservation(
+                            assignment.slot,
+                            ferric_browser_core::HintReservationReason::Stale,
+                        );
+                    }
+                }
+            }
             if let Err(error) = previous.refresh(candidates) {
                 self.set_status_text(QString::from(format!("Hints rejected: {error}")));
                 return QString::from(serde_json::json!({"error":error.to_string()}).to_string());
             }
             previous
+        } else if let (Some(proof), Some(codebook)) = (&proof, codebook) {
+            let assignments = proof.special_assignments(&candidates, codebook.declarations(), None);
+            match HintInteraction::new_enhanced(
+                candidates,
+                codebook,
+                assignments,
+                ferric_browser_core::HintRetentionBudget::Bytes(
+                    super::interaction_proof::MAX_INTERACTION_ANNOTATION_BYTES,
+                ),
+            ) {
+                Ok(interaction) => interaction,
+                Err(error) => {
+                    self.as_mut()
+                        .set_status_text(QString::from(format!("Hints unavailable: {error}")));
+                    return QString::from(
+                        serde_json::json!({"error":error.to_string()}).to_string(),
+                    );
+                }
+            }
         } else {
             let labeled = match assign_labels_with_options(candidates, &alphabet, minimum_width) {
                 Ok(labeled) => labeled,
@@ -499,7 +685,6 @@ impl qobject::BrowserUi {
             interaction.handle(HintInteractionInput::SetText(preserved_query));
         }
         let labeled = interaction.hints().to_vec();
-        let hint_first = self.as_ref().rust().hint_first;
         let hint_index = self.as_ref().rust().hint_index;
         if hint_first && hint_index > labeled.len() {
             self.set_status_text(QString::from(format!(
@@ -511,23 +696,12 @@ impl qobject::BrowserUi {
                     .to_string(),
             );
         }
-        let first_label = if target_search_active || refreshing {
+        let first_label = if target_search_active || refreshing || hint_first {
             None
-        } else if hint_first {
-            labeled.get(hint_index - 1).map(|hint| hint.label.clone())
         } else {
             interaction.initial_activation().map(ToOwned::to_owned)
         };
-        let discovery_provenance = snapshot
-            .get("policies")
-            .and_then(|policies| policies.get(family.as_str()))
-            .and_then(|entry| entry.get("provenance"))
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .map(ToOwned::to_owned)
-            .collect();
+        let discovery_provenance = snapshot.provenance.to_vec();
         let session = HintSession::new_with_selector_policy(
             &mut ids,
             HintTarget {
@@ -588,7 +762,18 @@ impl qobject::BrowserUi {
                 },
             )
         };
+        let initial_candidate = if hint_first && !refreshing && !target_search_active {
+            labeled
+                .get(hint_index - 1)
+                .map(|hint| hint.candidate.clone())
+        } else {
+            None
+        };
+        let initial_selection = initial_candidate.as_ref().map(|_| serde_json::json!({
+            "session_id": session.id.to_string(), "candidate": serialized_hints[hint_index - 1].clone()
+        }));
         let result = serde_json::json!({
+            "initial_selection": initial_selection,
             "session_id": session.id.to_string(),
             "hints": serialized_hints,
             "state": hint_interaction_json(&interaction),
@@ -608,8 +793,13 @@ impl qobject::BrowserUi {
                 "terminal"
             });
             this.interaction.hint_ids = ids;
+            this.interaction.initial_hint =
+                initial_candidate.map(|candidate| (session.id, candidate));
+            this.interaction.hint_loading_interaction = None;
             this.interaction.hint_session = Some(session);
             this.interaction.hint_interaction = Some(interaction);
+            this.interaction.hint_policy_proof = proof.map(std::sync::Arc::new);
+            this.interaction.confirmed_hint_anchor = None;
             this.hint_values = QString::from(result["hints"].to_string());
             this.interaction.pending_hint_palette_permit = None;
             this.interaction.pending_grid_scope_permit = None;
@@ -632,12 +822,75 @@ impl qobject::BrowserUi {
         QString::from(result.to_string())
     }
 
+    pub(super) fn hint_input_context(&self) -> QString {
+        let rust = self.rust();
+        let Some(target) =
+            current_target(rust.state.as_ref(), rust.tab).filter(|_| rust.core_mode == Mode::Hint)
+        else {
+            return QString::default();
+        };
+        QString::from(
+            serde_json::json!([
+                rust.hint_invocation.to_string(),
+                target.tab.to_string(),
+                target.document.to_string(),
+                target.generation.to_string(),
+                rust.interaction.hint_configuration_revision.to_string(),
+                rust.binding_context.to_string(),
+                rust.interaction
+                    .active_hint_scope
+                    .as_ref()
+                    .map(|scope| &scope.lease_id)
+            ])
+            .to_string(),
+        )
+    }
+
+    pub(super) fn commit_hint_page_command(mut self: Pin<&mut Self>) -> QString {
+        let state = {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            let protected = this.core_mode != Mode::Hint
+                || this.target_search_active
+                || this.hint_pointer_mode && this.hint_pointer_state.to_string() != "selecting"
+                || this.interaction.pending_hint_palette_permit.is_some()
+                || this.interaction.pending_hint_scope_handoff.is_some()
+                || this.interaction.pending_grid_scope_permit.is_some();
+            if protected {
+                return QString::from(r#"{"ok":false}"#);
+            }
+            let interaction = this
+                .interaction
+                .hint_interaction
+                .as_mut()
+                .or(this.interaction.hint_loading_interaction.as_mut());
+            if let Some(interaction) = interaction {
+                if !interaction.clear_label_selection() {
+                    return QString::from(r#"{"ok":false}"#);
+                }
+                Some(hint_interaction_json(interaction))
+            } else {
+                None
+            }
+        };
+        self.as_mut().rust_mut().get_mut().interaction.initial_hint = None;
+        QString::from(serde_json::json!({"ok":true,"state":state}).to_string())
+    }
+
     pub(super) fn update_hint_interaction(
         mut self: Pin<&mut Self>,
         action: &QString,
         text: &QString,
     ) -> QString {
         let action = action.to_string();
+        if action == "discard-loading" {
+            self.as_mut()
+                .rust_mut()
+                .get_mut()
+                .interaction
+                .hint_loading_interaction = None;
+            return QString::from(r#"{"outcome":"discarded"}"#);
+        }
         let text = text.to_string();
         let input = match action.as_str() {
             "character" => text.chars().next().map(HintInteractionInput::Character),
@@ -662,8 +915,17 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             let Some(interaction) = this.interaction.hint_interaction.as_mut() else {
+                if this.core_mode == Mode::Hint && !this.target_search_active {
+                    let loading = this
+                        .interaction
+                        .hint_loading_interaction
+                        .get_or_insert_with(HintInteraction::loading);
+                    loading.handle(input);
+                    return QString::from(serde_json::json!({"error":"no-session","loading":true,"state":hint_interaction_json(loading)}).to_string());
+                }
                 return QString::from(r#"{"error":"no-session"}"#);
             };
+            this.interaction.initial_hint = None;
             let outcome = interaction.handle(input);
             (outcome, hint_interaction_json(interaction))
         };
@@ -695,8 +957,10 @@ impl qobject::BrowserUi {
             }
             HintInteractionOutcome::NoMatches => {
                 response["outcome"] = Value::String("no-matches".into());
-                self.as_mut()
-                    .set_status_text(QString::from("No hints match that input"));
+                let reason = response["state"]["unavailable_reason"]
+                    .as_str()
+                    .unwrap_or("No hints match that input");
+                self.as_mut().set_status_text(QString::from(reason));
             }
             HintInteractionOutcome::RotateCollision => {
                 response["outcome"] = Value::String("rotate".into());
@@ -740,23 +1004,28 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn hint_selector_policy(self: Pin<&mut Self>, family: &QString) -> QString {
-        let result = {
-            let binding = self.as_ref();
-            let rust = binding.rust();
-            effective_hint_selector_snapshot(
-                &rust.config_json.to_string(),
-                &rust.current_url.to_string(),
-                rust.interaction.hint_configuration_revision,
-                &family.to_string(),
-            )
-        };
+        let result = self
+            .as_ref()
+            .current_hint_selector_snapshot(&family.to_string());
         match result {
-            Ok(snapshot) => QString::from(snapshot.to_string()),
+            Ok(snapshot) => snapshot.serialized,
             Err(error) => {
+                let pending = {
+                    let binding = self.as_ref();
+                    let rust = binding.rust();
+                    rust.state.as_ref().is_some_and(|state| {
+                        state.interaction_cache_unavailable()
+                            == Some(ferric_browser_application::InteractionCacheUnavailable::PendingRefresh)
+                    }) || (rust.interaction.interaction_policy_refresh_pending
+                        && rust.interaction.cached_hint_policies.is_some())
+                };
+                if pending {
+                    return QString::from(r#"{"error":"selector-policy-pending"}"#);
+                }
                 self.set_status_text(QString::from(format!(
                     "Hint selectors unavailable: {error}"
                 )));
-                QString::default()
+                QString::from(r#"{"error":"selector-policy-unavailable"}"#)
             }
         }
     }
@@ -798,8 +1067,42 @@ impl qobject::BrowserUi {
 }
 
 fn hint_interaction_json(interaction: &HintInteraction) -> Value {
+    use ferric_browser_core::{
+        HintInteractionKind, HintReservationState, HintSelectionUnavailable,
+    };
     let snapshot = interaction.snapshot();
+    let reservations: Vec<_> = interaction.reservations().iter().map(|reservation| {
+        let declaration=reservation.declaration();
+        let (state,reason)=match reservation.state() {
+            HintReservationState::Live => ("live", ""),
+            HintReservationState::Unavailable(reason) => ("unavailable",hint_reservation_reason(reason)),
+            HintReservationState::Retired(reason) => ("retired",hint_reservation_reason(reason)),
+            HintReservationState::Consumed => ("consumed","Already used"),
+        };
+        serde_json::json!({"code":declaration.code,"rule_id":declaration.rule_id,"slot":declaration.slot,"state":state,"reason":reason})
+    }).collect();
+    let unavailable = match snapshot.unavailable_reason {
+        Some(HintSelectionUnavailable::Reservation { slot, .. }) => {
+            reservations.get(slot).map(|reservation| {
+                format!(
+                    "Code {}: {}",
+                    reservation["code"].as_str().unwrap_or_default(),
+                    reservation["reason"].as_str().unwrap_or_default()
+                )
+            })
+        }
+        Some(HintSelectionUnavailable::ConsumedLabel) => {
+            Some("That hint was already used; start hints again".into())
+        }
+        Some(HintSelectionUnavailable::RetiredLabel) => {
+            Some("That hint changed; start hints again".into())
+        }
+        _ => None,
+    };
     serde_json::json!({
+        "kind": match snapshot.kind {HintInteractionKind::Ordinary=>"ordinary",HintInteractionKind::Enhanced=>"enhanced",HintInteractionKind::UnavailableOnly=>"unavailable-only"},
+        "reservations": reservations,
+        "unavailable_reason": unavailable,
         "mode": match snapshot.mode {
             ferric_browser_core::HintInputMode::Label => "label",
             ferric_browser_core::HintInputMode::Text => "text",
@@ -814,11 +1117,23 @@ fn hint_interaction_json(interaction: &HintInteraction) -> Value {
     })
 }
 
+fn hint_reservation_reason(reason: ferric_browser_core::HintReservationReason) -> &'static str {
+    use ferric_browser_core::HintReservationReason;
+    match reason {
+        HintReservationReason::Missing => "Target absent",
+        HintReservationReason::Ambiguous => "More than one target",
+        HintReservationReason::Incomplete => "Target could not be proved",
+        HintReservationReason::AnchorShadowed => "Target uses an anchor code",
+        HintReservationReason::Stale => "Target changed; start hints again",
+        HintReservationReason::MeaningChanged => "Target meaning changed; start hints again",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
-    use ferric_browser_config::{HintSelectorMode, HintSelectorPolicy, SiteRule};
+    use ferric_browser_config::{Config, HintSelectorMode, HintSelectorPolicy, SiteRule};
     use ferric_browser_core::{DocumentId, HintKind, HintSessionId, IdSource, TabId, WindowId};
 
     use super::super::browser_ui_scope_handoff::{
@@ -883,31 +1198,23 @@ mod tests {
     #[test]
     fn selector_snapshot_binds_configuration_family_and_site_policy() {
         let config = Config::default();
-        let config_json = serde_json::to_string(&config).expect("serialize default config");
-        let all =
-            effective_hint_selector_snapshot(&config_json, "https://example.test/page", 7, "all")
-                .expect("default selector snapshot");
+        let app = ferric_browser_application::BrowserApplication::new(config.clone());
+        let sources = app.configuration_policy_sources();
+        let all = effective_hint_selector_snapshot(&sources, "https://example.test/page", 7, "all")
+            .expect("default selector snapshot");
         let repeated =
-            effective_hint_selector_snapshot(&config_json, "https://example.test/page", 7, "all")
+            effective_hint_selector_snapshot(&sources, "https://example.test/page", 7, "all")
                 .expect("repeat selector snapshot");
-        let buttons = effective_hint_selector_snapshot(
-            &config_json,
-            "https://example.test/page",
-            7,
-            "buttons",
-        )
-        .expect("button selector snapshot");
+        let buttons =
+            effective_hint_selector_snapshot(&sources, "https://example.test/page", 7, "buttons")
+                .expect("button selector snapshot");
         let next_configuration =
-            effective_hint_selector_snapshot(&config_json, "https://example.test/page", 8, "all")
+            effective_hint_selector_snapshot(&sources, "https://example.test/page", 8, "all")
                 .expect("new config revision snapshot");
         for family in ["actions", "focus"] {
-            let filtered = effective_hint_selector_snapshot(
-                &config_json,
-                "https://example.test/page",
-                7,
-                family,
-            )
-            .unwrap();
+            let filtered =
+                effective_hint_selector_snapshot(&sources, "https://example.test/page", 7, family)
+                    .unwrap();
             assert_eq!(filtered["family"], family);
             assert_eq!(filtered["policies"], all["policies"]);
             assert_ne!(filtered["selector_revision"], all["selector_revision"]);
@@ -921,6 +1228,7 @@ mod tests {
 
         let mut site_config = config;
         site_config.site_rules.push(SiteRule {
+            interaction: None,
             id: "custom-buttons".into(),
             pattern: "https://example.test/*".into(),
             priority: 1,
@@ -933,10 +1241,15 @@ mod tests {
                 .expect("serialize site policy"),
             )]),
         });
-        let site_json = serde_json::to_string(&site_config).expect("serialize site config");
-        let scoped =
-            effective_hint_selector_snapshot(&site_json, "https://example.test/page", 7, "buttons")
-                .expect("site selector snapshot");
+        let site_app = ferric_browser_application::BrowserApplication::new(site_config);
+        let site_sources = site_app.configuration_policy_sources();
+        let scoped = effective_hint_selector_snapshot(
+            &site_sources,
+            "https://example.test/page",
+            7,
+            "buttons",
+        )
+        .expect("site selector snapshot");
         assert_ne!(buttons["selector_revision"], scoped["selector_revision"]);
         assert_eq!(
             scoped["policies"]["buttons"]["policy"]["selectors"][0],
@@ -944,8 +1257,289 @@ mod tests {
         );
         assert_eq!(
             scoped["policies"]["buttons"]["provenance"][0],
-            "site-rule:custom-buttons"
+            "in-memory:site-rule:custom-buttons"
         );
+    }
+
+    #[test]
+    fn selector_snapshot_preserves_hint_owner_revision_and_pending_reload_boundary() {
+        use ferric_browser_application::{BrowserApplication, ConfigurationLayers};
+
+        let mut app = BrowserApplication::new(Config::default());
+        let mut layers = ConfigurationLayers::new(Config::default());
+        app.activate_configuration(layers.clone()).unwrap();
+        let initial = effective_hint_selector_snapshot(
+            &app.configuration_policy_sources(),
+            "https://example.test/page",
+            19,
+            "buttons",
+        )
+        .unwrap();
+        layers
+            .runtime
+            .set_literal(
+                "hints.selectors.buttons",
+                "{mode='replace',selectors=['.pending']}",
+            )
+            .unwrap();
+        app.update_configuration(layers.clone()).unwrap();
+        let pending = effective_hint_selector_snapshot(
+            &app.configuration_policy_sources(),
+            "https://example.test/page",
+            19,
+            "buttons",
+        )
+        .unwrap();
+        assert_eq!(initial, pending);
+        layers
+            .temporary
+            .set_literal("ui.font_size_pt", "18")
+            .unwrap();
+        app.update_configuration(layers.clone()).unwrap();
+        let unrelated = effective_hint_selector_snapshot(
+            &app.configuration_policy_sources(),
+            "https://example.test/page",
+            19,
+            "buttons",
+        )
+        .unwrap();
+        assert_eq!(unrelated, initial);
+        let prepared = app.prepare_configuration_reload(layers).unwrap();
+        app.publish_configuration_update(prepared, || Ok(()))
+            .unwrap();
+        let reloaded = effective_hint_selector_snapshot(
+            &app.configuration_policy_sources(),
+            "https://example.test/page",
+            19,
+            "buttons",
+        )
+        .unwrap();
+        assert_ne!(initial["selector_revision"], reloaded["selector_revision"]);
+        assert_eq!(reloaded["configuration_revision"], 19);
+        assert_eq!(
+            reloaded["policies"]["buttons"]["policy"]["selectors"],
+            serde_json::json!([".pending"])
+        );
+        let different_url = effective_hint_selector_snapshot(
+            &app.configuration_policy_sources(),
+            "https://different.test/page",
+            19,
+            "buttons",
+        )
+        .unwrap();
+        assert_ne!(
+            reloaded["selector_revision"],
+            different_url["selector_revision"]
+        );
+    }
+
+    #[test]
+    fn source_only_proxy_change_retires_existing_hint_authority() {
+        use ferric_browser_application::{BrowserApplication, ConfigurationLayers};
+        use ferric_browser_config::HintProxyTargets;
+
+        let mut base = Config::default();
+        base.site_rules.push(SiteRule {
+            id: "proxy".into(),
+            pattern: "https://example.test/*".into(),
+            priority: 0,
+            set: BTreeMap::from([(
+                "hints.proxy_targets".into(),
+                toml::Value::String("validated".into()),
+            )]),
+            interaction: None,
+        });
+        let mut layers = ConfigurationLayers::new(base);
+        let mut app = BrowserApplication::new(Config::default());
+        app.activate_configuration(layers.clone()).unwrap();
+        let previous = app.configuration().clone();
+        let previous_proxy = app
+            .configuration_policy_sources()
+            .compile_hint_proxy_targets("https://example.test/page")
+            .unwrap();
+        let (binding, session, _, _) = scope_handoff_fixture();
+        let mut rust = crate::BrowserUiRust::default();
+        rust.interaction.hint_configuration_revision = 23;
+        rust.interaction.hint_session = Some(session);
+        rust.interaction.active_hint_scope = Some(binding);
+        layers
+            .runtime
+            .set_literal("hints.proxy_targets", "'off'")
+            .unwrap();
+        app.update_configuration(layers).unwrap();
+        assert_eq!(app.configuration(), &previous);
+        let proxy = app
+            .configuration_policy_sources()
+            .compile_hint_proxy_targets("https://example.test/page")
+            .unwrap();
+        assert_eq!(previous_proxy, HintProxyTargets::Validated);
+        assert_eq!(proxy, HintProxyTargets::Off);
+        assert!(rust.retire_changed_hint_policy(
+            Some(&previous),
+            app.configuration(),
+            previous_proxy != proxy
+        ));
+        assert_eq!(rust.interaction.hint_configuration_revision, 24);
+        assert!(rust.interaction.hint_session.is_none());
+        assert!(rust.interaction.active_hint_scope.is_none());
+    }
+
+    #[test]
+    fn source_only_selector_reload_retires_existing_hint_authority() {
+        use ferric_browser_application::{BrowserApplication, ConfigurationLayers};
+
+        let mut base = Config::default();
+        base.hints.selectors.insert(
+            HintSelectorFamily::Buttons,
+            HintSelectorPolicy {
+                mode: HintSelectorMode::Replace,
+                selectors: vec![".base".into()],
+            },
+        );
+        base.site_rules.push(SiteRule {
+            id: "selectors".into(),
+            pattern: "https://example.test/*".into(),
+            priority: 0,
+            set: BTreeMap::from([(
+                "hints.selectors.buttons".into(),
+                toml::Value::try_from(HintSelectorPolicy {
+                    mode: HintSelectorMode::Replace,
+                    selectors: vec![".site".into()],
+                })
+                .unwrap(),
+            )]),
+            interaction: None,
+        });
+        let mut layers = ConfigurationLayers::new(base);
+        let mut app = BrowserApplication::new(Config::default());
+        app.activate_configuration(layers.clone()).unwrap();
+        let previous = app.configuration().clone();
+        let previous_sources = app.configuration_policy_sources();
+        layers
+            .runtime
+            .set_literal(
+                "hints.selectors.buttons",
+                "{mode='replace',selectors=['.base']}",
+            )
+            .unwrap();
+        let prepared = app.prepare_configuration_reload(layers).unwrap();
+        let selector_changed = previous_sources
+            .compile_hint_selectors("https://example.test/page")
+            .unwrap()
+            != prepared
+                .policy_sources()
+                .compile_hint_selectors("https://example.test/page")
+                .unwrap();
+        app.publish_configuration_update(prepared, || Ok(()))
+            .unwrap();
+        assert_eq!(app.configuration(), &previous);
+        assert_ne!(
+            previous_sources
+                .compile_hint_selectors("https://example.test/page")
+                .unwrap(),
+            app.configuration_policy_sources()
+                .compile_hint_selectors("https://example.test/page")
+                .unwrap()
+        );
+        let (_, session, _, _) = scope_handoff_fixture();
+        let mut rust = crate::BrowserUiRust::default();
+        rust.interaction.hint_configuration_revision = 23;
+        rust.interaction.hint_session = Some(session);
+        assert!(rust.retire_changed_hint_policy(
+            Some(&previous),
+            app.configuration(),
+            selector_changed
+        ));
+        assert_eq!(rust.interaction.hint_configuration_revision, 24);
+        assert!(rust.interaction.hint_session.is_none());
+    }
+
+    #[test]
+    fn unrelated_live_edit_retains_existing_hint_authority() {
+        use ferric_browser_application::{BrowserApplication, ConfigurationLayers};
+
+        let mut app = BrowserApplication::new(Config::default());
+        let previous = app.configuration().clone();
+        let previous_sources = app.configuration_policy_sources();
+        let mut layers = ConfigurationLayers::new(Config::default());
+        layers
+            .temporary
+            .set_literal("ui.font_size_pt", "18")
+            .unwrap();
+        app.update_configuration(layers).unwrap();
+        let selector_changed = previous_sources
+            .compile_hint_selectors("https://example.test/page")
+            .unwrap()
+            != app
+                .configuration_policy_sources()
+                .compile_hint_selectors("https://example.test/page")
+                .unwrap();
+        let (_, session, _, _) = scope_handoff_fixture();
+        let mut rust = crate::BrowserUiRust::default();
+        rust.interaction.hint_configuration_revision = 23;
+        rust.interaction.hint_session = Some(session);
+        assert!(!rust.retire_changed_hint_policy(
+            Some(&previous),
+            app.configuration(),
+            selector_changed
+        ));
+        assert_eq!(rust.interaction.hint_configuration_revision, 23);
+        assert!(rust.interaction.hint_session.is_some());
+    }
+
+    #[test]
+    fn identical_reload_retains_selector_snapshot_and_hint_authority() {
+        use ferric_browser_application::BrowserApplication;
+
+        let mut app = BrowserApplication::new(Config::default());
+        let previous = app.configuration().clone();
+        let previous_sources = app.configuration_policy_sources();
+        let before = effective_hint_selector_snapshot(
+            &previous_sources,
+            "https://example.test/page",
+            23,
+            "buttons",
+        )
+        .unwrap();
+        let prepared = app
+            .prepare_configuration_reload(app.configuration_layers().clone())
+            .unwrap();
+        assert_ne!(
+            previous_sources.reload_revision(),
+            prepared.policy_sources().reload_revision()
+        );
+        let selector_changed = previous_sources
+            .compile_hint_selectors("https://example.test/page")
+            .unwrap()
+            != prepared
+                .policy_sources()
+                .compile_hint_selectors("https://example.test/page")
+                .unwrap();
+        app.publish_configuration_update(prepared, || Ok(()))
+            .unwrap();
+        let (_, session, _, _) = scope_handoff_fixture();
+        let session_id = session.id;
+        let mut rust = crate::BrowserUiRust::default();
+        rust.interaction.hint_configuration_revision = 23;
+        rust.interaction.hint_session = Some(session);
+        assert!(!rust.retire_changed_hint_policy(
+            Some(&previous),
+            app.configuration(),
+            selector_changed
+        ));
+        assert_eq!(rust.interaction.hint_configuration_revision, 23);
+        assert_eq!(
+            rust.interaction.hint_session.as_ref().unwrap().id,
+            session_id
+        );
+        let after = effective_hint_selector_snapshot(
+            &app.configuration_policy_sources(),
+            "https://example.test/page",
+            23,
+            "buttons",
+        )
+        .unwrap();
+        assert_eq!(before, after);
     }
 
     #[test]

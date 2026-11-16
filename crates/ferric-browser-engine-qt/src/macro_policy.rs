@@ -57,6 +57,9 @@ mod tests {
             "spawn",
             "download-open",
             "site-data-clear",
+            "get",
+            "action",
+            "command-execute",
         ] {
             assert!(!is_repeatable_command(command), "{command} must not repeat");
         }

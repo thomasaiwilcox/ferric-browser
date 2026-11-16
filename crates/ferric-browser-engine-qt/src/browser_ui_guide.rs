@@ -294,6 +294,12 @@ impl qobject::BrowserUi {
             .as_ref()
             .map(super::BindingResolver::definitions)
             .unwrap_or_default();
+        let this = self.as_ref();
+        let layers = this.binding_layers();
+        let bindings = bindings
+            .iter()
+            .map(|binding| (binding, binding.canonical_keys()))
+            .collect::<Vec<_>>();
         let registry = self.as_ref().rust().registry.clone();
         let mut rows: Vec<GuideRow> = Vec::new();
         for command in registry.definitions() {
@@ -303,7 +309,7 @@ impl qobject::BrowserUi {
             let title = feature_title(&command.name, &command.description);
             let variants: Vec<_> = bindings
                 .iter()
-                .filter(|binding| {
+                .filter(|(binding, _)| {
                     parse_chain(&binding.command, ParseInput::Interactive).is_ok_and(|chain| {
                         chain.iter().any(|invocation| {
                             registry
@@ -315,7 +321,7 @@ impl qobject::BrowserUi {
                 .collect();
             let mut invocations: Vec<(String, String, String)> = variants
                 .iter()
-                .map(|binding| {
+                .map(|(binding, _)| {
                     (
                         binding.command.clone(),
                         binding.keys.join(" "),
@@ -363,14 +369,14 @@ impl qobject::BrowserUi {
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
-                let mut binding_notes = variants.iter().filter(|binding| binding.command == invocation && ipc_mode_name(binding.mode) == mode).map(|binding| {
+                let mut binding_notes = variants.iter().filter(|(binding, _)| binding.command == invocation && ipc_mode_name(binding.mode) == mode).map(|(binding, canonical_keys)| {
                     let mut notes = vec![format!("Active keys: {}", binding.keys.join(" "))];
-                    let layers = self.as_ref().binding_layer_provenance(&mode, &binding.keys.concat());
-                    if let Some(layers) = layers.as_array() {
+                    let provenance = layers.provenance(binding.mode, canonical_keys);
+                    if let Some(layers) = provenance.as_array() {
                         for layer in layers { notes.push(format!("{} layer: {}", layer["layer"].as_str().unwrap_or("configuration"), layer["status"].as_str().unwrap_or("contributing"))); }
                     }
-                    for other in &bindings {
-                        if other.mode == binding.mode && other.keys != binding.keys && (other.keys.starts_with(&binding.keys) || binding.keys.starts_with(&other.keys)) {
+                    for (other, other_keys) in &bindings {
+                        if other.mode == binding.mode && other_keys != canonical_keys && (other_keys.starts_with(canonical_keys) || canonical_keys.starts_with(other_keys)) {
                             notes.push(format!("Prefix conflict with {}: the configured keychain timeout decides the shorter match.", other.keys.join(" ")));
                         }
                     }
@@ -443,7 +449,7 @@ impl qobject::BrowserUi {
             mode: "pass-through, pass-through-once".into(),
             command: "Reserved recovery gesture".into(),
             summary: "Return to Normal mode from Pass-through.".into(),
-            details: "Ctrl+Escape is reserved and always returns to Normal. Ordinary Escape is sent to the webpage while Pass-through is active. Pass Next Key forwards one complete key gesture, including repeats and release, then returns to Normal.".into(),
+            details: "Use mode-enter passthrough --raw or mode-enter passthrough-once --raw to bypass remaps for one session. Release transformed keys first; Ctrl+Shift+Escape captures a cancelled source with a lost release, then explicitly retry raw entry. Ctrl+Escape is reserved and always returns to Normal. Ordinary Escape is sent to the webpage while Pass-through is active. Pass Next Key forwards one complete key gesture, including repeats and release, then returns to Normal. Mapped chords set event modifier flags without sending separate modifier presses and releases. Pages that track those physical transitions may not respond to a mapped chord.".into(),
             identity: "reserved-recovery".into(),
             explanation: "Ctrl+Escape always returns to Normal mode. Ordinary Escape is sent to the webpage while Pass-through is active. Pass Next Key forwards one complete key gesture, including repeats and release, then returns to Normal.".into(),
             arguments: String::new(),

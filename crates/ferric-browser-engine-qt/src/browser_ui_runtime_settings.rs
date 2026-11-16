@@ -2,9 +2,40 @@ use super::{CxxQtType, ParsedCommand, Pin, Value, qobject};
 
 impl qobject::BrowserUi {
     pub(super) fn execute_runtime_config_command(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         command: &ParsedCommand,
     ) -> Result<Value, String> {
+        self.queue_configuration_preparation(
+            super::browser_ui_configuration_preparation::DeferredConfigurationAction::Mutation(
+                command.clone(),
+            ),
+            None,
+            &mut None,
+        )
+    }
+
+    pub(super) fn prepare_runtime_config_command(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
+    ) -> Result<Value, String> {
+        self.as_mut()
+            .prepare_runtime_config_command_with_post_action(command, preparation, None)
+    }
+
+    pub(super) fn prepare_runtime_config_command_with_post_action(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
+        post_action: Option<super::site_doctor_completion::SiteDoctorCompletion>,
+    ) -> Result<Value, String> {
+        if preparation.is_some_and(|turn| !turn.is_current(self.as_ref().get_ref())) {
+            return Err("The settings owner changed during preparation".into());
+        }
         let mut temporary = false;
         let mut pattern = None;
         let mut positional = Vec::new();
@@ -39,14 +70,28 @@ impl qobject::BrowserUi {
             return Err("configuration key is empty, too long, or unsafe".into());
         }
 
-        let mut layers = self
-            .as_ref()
-            .rust()
-            .state
-            .as_ref()
-            .ok_or_else(|| "application state is unavailable".to_owned())?
-            .configuration_layers()
-            .clone();
+        let (saved, mut layers) = {
+            let browser = self.as_ref();
+            let state = browser
+                .rust()
+                .state
+                .as_ref()
+                .ok_or_else(|| "application state is unavailable".to_owned())?;
+            let saved = if !temporary && state.profile_snapshot().is_some() {
+                Some(
+                    state
+                        .capture_saved_runtime_edits()
+                        .map_err(|error| error.to_string())?,
+                )
+            } else {
+                None
+            };
+            let layers = saved.as_ref().map_or_else(
+                || state.configuration_layers().clone(),
+                |capture| capture.layers().clone(),
+            );
+            (saved, layers)
+        };
         let mut persistent = layers.runtime.clone();
         let mut temporary_layer = layers.temporary.clone();
         let changed = if command.name == "set" {
@@ -87,26 +132,25 @@ impl qobject::BrowserUi {
                     .map_err(|error| error.to_string())?
             }
         };
-        let candidate = self
-            .as_ref()
-            .runtime_config_candidate(&persistent, &temporary_layer)?;
+        layers.runtime = persistent;
+        layers.temporary = temporary_layer;
+        let prepared = {
+            let browser = self.as_ref();
+            let state = browser
+                .rust()
+                .state
+                .as_ref()
+                .ok_or_else(|| "application state is unavailable".to_owned())?;
+            if let Some(saved) = &saved {
+                state.prepare_saved_runtime_edits(saved, layers.runtime)
+            } else {
+                state.prepare_configuration_update(layers)
+            }
+            .map_err(|error| error.to_string())?
+        };
         let persistent_storage = !temporary
             && self.as_ref().rust().profile_persistence.is_durable()
             && self.as_ref().rust().storage_roots.is_some();
-        let persist_path = if persistent_storage {
-            Some(
-                self.as_ref()
-                    .rust()
-                    .storage_roots
-                    .as_ref()
-                    .map(|roots| roots.state.join("runtime-overrides.toml"))
-                    .ok_or_else(|| "runtime storage is unavailable".to_owned())?,
-            )
-        } else {
-            None
-        };
-        layers.runtime = persistent.clone();
-        layers.temporary = temporary_layer.clone();
         let scope = if temporary {
             "temporary"
         } else if persistent_storage {
@@ -128,13 +172,16 @@ impl qobject::BrowserUi {
             || format!("{action} {key} ({scope}){detail}"),
             |pattern| format!("{action} {key} for {pattern} ({scope}){detail}"),
         );
-        let Some(result) = self.as_mut().validate_or_queue_runtime_config(
-            candidate,
-            layers,
-            status,
-            persistent.clone(),
-            persist_path,
-        )?
+        let Some(result) = self
+            .as_mut()
+            .validate_or_queue_runtime_config_with_post_action(
+                prepared,
+                status,
+                persistent_storage,
+                preparation.map(|turn| &turn.origin),
+                post_action
+                    .map(super::configuration_completion::ConfigurationCompletion::SiteDoctor),
+            )?
         else {
             return Ok(serde_json::json!({
                 "status": "pending-validation",
@@ -149,12 +196,6 @@ impl qobject::BrowserUi {
             return Ok(
                 serde_json::json!({"status":"pending-persistence", "key": key, "scope":scope}),
             );
-        }
-        {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.runtime_overrides = persistent;
-            this.temporary_overrides = temporary_layer;
         }
         let value = key
             .split('.')

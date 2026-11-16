@@ -1,5 +1,4 @@
 use super::browser_ui_hint_selection::local_hint_owner;
-use super::browser_ui_navigation::effective_hint_selector_snapshot;
 use super::hint_policy::{HintScopePurpose, LocalInteractionOperation, LocalInteractionOwner};
 use super::{
     CxxQtType, Event, HintSession, LogicalRect, Mode, Pin, QString, SpatialOwner, SpatialScope,
@@ -332,21 +331,10 @@ impl qobject::BrowserUi {
         let browser_binding = self.as_ref();
         let rust = browser_binding.rust();
         let current_selector_policy_revision = {
-            let browser_binding = self.as_ref();
-            let rust = browser_binding.rust();
-            effective_hint_selector_snapshot(
-                &rust.config_json.to_string(),
-                &rust.current_url.to_string(),
-                rust.interaction.hint_configuration_revision,
-                &rust.hint_family.to_string(),
-            )
-            .ok()
-            .and_then(|snapshot| {
-                snapshot
-                    .get("selector_revision")
-                    .and_then(Value::as_str)
-                    .and_then(|revision| u64::from_str_radix(revision, 16).ok())
-            })
+            self.as_ref()
+                .current_hint_selector_snapshot(&rust.hint_family.to_string())
+                .ok()
+                .map(|snapshot| snapshot.revision)
         };
         let current_scope_lease_id = rust
             .interaction
@@ -376,8 +364,13 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             this.interaction.pending_hint_scope_handoff = None;
             this.interaction.active_hint_scope = Some(binding);
+            this.interaction.hint_request = None;
             this.interaction.hint_session = None;
             this.interaction.hint_interaction = None;
+            this.interaction.hint_loading_interaction = None;
+            this.interaction.initial_hint = None;
+            this.interaction.hint_policy_proof = None;
+            this.interaction.confirmed_hint_anchor = None;
             this.interaction.hint_consumed.clear();
             this.hint_values = QString::default();
             this.pending_hint_action = None;
@@ -453,19 +446,10 @@ impl qobject::BrowserUi {
         let current_selector_policy_revision = {
             let binding = self.as_ref();
             let rust = binding.rust();
-            effective_hint_selector_snapshot(
-                &rust.config_json.to_string(),
-                &rust.current_url.to_string(),
-                rust.interaction.hint_configuration_revision,
-                &rust.hint_family.to_string(),
-            )
-            .ok()
-            .and_then(|snapshot| {
-                snapshot
-                    .get("selector_revision")
-                    .and_then(Value::as_str)
-                    .and_then(|revision| u64::from_str_radix(revision, 16).ok())
-            })
+            self.as_ref()
+                .current_hint_selector_snapshot(&rust.hint_family.to_string())
+                .ok()
+                .map(|snapshot| snapshot.revision)
         };
         let binding_ref = self.as_ref();
         let rust = binding_ref.rust();
@@ -585,6 +569,7 @@ impl qobject::BrowserUi {
             frame_path: binding.frame_path.clone(),
             kind: binding.kind,
             configuration_revision: binding.owner.configuration_revision,
+            selector_family: binding.source_family.clone(),
             selector_policy_revision: binding.selector_policy_revision,
             scroll_revision: 0,
             css_viewport_width_bits: css_viewport_width.to_bits(),
@@ -670,8 +655,13 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             this.interaction.pending_hint_scope_handoff = None;
             this.interaction.active_hint_scope = None;
+            this.interaction.hint_request = None;
             this.interaction.hint_session = None;
             this.interaction.hint_interaction = None;
+            this.interaction.hint_loading_interaction = None;
+            this.interaction.initial_hint = None;
+            this.interaction.hint_policy_proof = None;
+            this.interaction.confirmed_hint_anchor = None;
             this.interaction.hint_consumed.clear();
             this.hint_values = QString::default();
             this.pending_hint_action = None;
@@ -715,6 +705,10 @@ impl qobject::BrowserUi {
         let this = rust.as_mut().get_mut();
         this.interaction.hint_session = None;
         this.interaction.hint_interaction = None;
+        this.interaction.hint_loading_interaction = None;
+        this.interaction.initial_hint = None;
+        this.interaction.hint_policy_proof = None;
+        this.interaction.confirmed_hint_anchor = None;
         this.interaction.hint_consumed.clear();
         "current".clone_into(&mut this.hint_rapid_target);
     }

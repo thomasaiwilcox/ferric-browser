@@ -274,6 +274,7 @@ fn snapshot_from_probes(compositor: Value, probes: ProbeFacts) -> Value {
                 "not-probed"
             ),
             "media_manifest": media_manifest(),
+            "page_keys": crate::page_key_capabilities::snapshot(None,None),
             "webauthn": fact(
                 "not-tested",
                 None,

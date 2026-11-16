@@ -14,6 +14,17 @@ pub struct BindingDefinition {
     pub command: String,
 }
 
+impl BindingDefinition {
+    /// Logical comparison keys, retaining opaque direct-API tokens exactly.
+    #[must_use]
+    pub fn canonical_keys(&self) -> Vec<String> {
+        self.keys
+            .iter()
+            .map(|key| canonical_binding_key(key))
+            .collect()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BindingError {
     EmptySequence,
@@ -25,38 +36,19 @@ pub enum BindingError {
 /// chains without turning a modified shortcut into printable characters.
 #[must_use]
 pub fn binding_key_tokens(value: &str) -> Option<Vec<String>> {
-    fn gesture(value: &str) -> bool {
-        crate::LogicalKeyToken::parse(value).is_ok()
-            || matches!(
-                value,
-                "Enter"
-                    | "Shift+Enter"
-                    | "Ctrl+Enter"
-                    | "Alt+Enter"
-                    | "Space"
-                    | "Backspace"
-                    | "Tab"
-                    | "Backtab"
-                    | "Left"
-                    | "Right"
-                    | "Up"
-                    | "Down"
-                    | "PgUp"
-                    | "PgDown"
-                    | "Home"
-                    | "End"
-                    | "Delete"
-                    | "Insert"
-            )
+    fn gesture(value: &str) -> Option<String> {
+        crate::LogicalKeyToken::parse(value)
+            .ok()
+            .map(|key| key.as_str().to_owned())
     }
     if value.is_empty() || value.len() > 128 || value.chars().any(char::is_control) {
         return None;
     }
-    if gesture(value) {
-        return Some(vec![value.to_owned()]);
+    if let Some(key) = gesture(value) {
+        return Some(vec![key]);
     }
-    let tokens = if value.contains(',') {
-        value.split(',').map(str::to_owned).collect::<Vec<_>>()
+    if value.contains(',') {
+        value.split(',').map(gesture).collect()
     } else {
         if ["Ctrl+", "Alt+", "Shift+", "Meta+"]
             .iter()
@@ -64,9 +56,15 @@ pub fn binding_key_tokens(value: &str) -> Option<Vec<String>> {
         {
             return None;
         }
-        value.chars().map(|key| key.to_string()).collect()
-    };
-    tokens.iter().all(|token| gesture(token)).then_some(tokens)
+        value.chars().map(|key| gesture(&key.to_string())).collect()
+    }
+}
+
+// Direct programmatic definitions historically accepted opaque tokens. Keep
+// those exact while sharing the logical gesture parser for recognized keys.
+fn canonical_binding_key(key: &str) -> String {
+    crate::LogicalKeyToken::parse(key)
+        .map_or_else(|_| key.to_owned(), |key| key.as_str().to_owned())
 }
 
 fn parse_binding_command(command: &str) -> Result<ParsedCommand, BindingError> {
@@ -111,6 +109,9 @@ pub enum BindingOutcome {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct TrieNode {
     command: Option<String>,
+    // Only aliased paths need extra presentation metadata. Matching and
+    // duplicate detection always use the canonical child keys.
+    authored_keys: Option<Vec<String>>,
     children: BTreeMap<String, TrieNode>,
 }
 
@@ -178,13 +179,15 @@ impl BindingTrie {
             trie.registry
                 .validate(&command, definition.mode)
                 .map_err(BindingError::UnknownCommand)?;
+            let canonical = definition.canonical_keys();
             let mut node = trie.roots.entry(definition.mode).or_default();
-            for key in &definition.keys {
+            for key in &canonical {
                 node = node.children.entry(key.clone()).or_default();
             }
             if node.command.is_some() {
-                return Err(BindingError::Duplicate(definition.keys));
+                return Err(BindingError::Duplicate(canonical));
             }
+            node.authored_keys = (canonical != definition.keys).then_some(definition.keys);
             node.command = Some(definition.command);
         }
         Ok(trie)
@@ -356,7 +359,7 @@ impl BindingTrie {
             if let Some(command) = node.command.as_ref() {
                 output.push(BindingDefinition {
                     mode,
-                    keys: keys.clone(),
+                    keys: node.authored_keys.as_ref().unwrap_or(keys).clone(),
                     command: command.clone(),
                 });
             }
@@ -371,6 +374,7 @@ impl BindingTrie {
         for (mode, root) in &self.roots {
             collect(*mode, &mut Vec::new(), root, &mut output);
         }
+        output.sort_by(|left, right| (left.mode, &left.keys).cmp(&(right.mode, &right.keys)));
         output
     }
 }
@@ -437,7 +441,7 @@ impl BindingResolver {
     pub fn has_initial_key(&self, key: &str) -> bool {
         self.trie
             .root(self.mode)
-            .is_some_and(|root| root.children.contains_key(key))
+            .is_some_and(|root| root.children.contains_key(&canonical_binding_key(key)))
     }
 
     /// Feeds one logical key token into the current mode's trie.
@@ -446,9 +450,10 @@ impl BindingResolver {
         if key.is_empty() {
             return BindingOutcome::Consumed;
         }
+        let key = canonical_binding_key(key);
 
-        if self.prefix.is_empty() && self.mode == Mode::Normal && self.is_count_key(key) {
-            self.count_digits.push_str(key);
+        if self.prefix.is_empty() && self.mode == Mode::Normal && self.is_count_key(&key) {
+            self.count_digits.push_str(&key);
             let count = self.count();
             self.deadline_ms = Some(now_ms.saturating_add(DEFAULT_CHORD_TIMEOUT_MS));
             return BindingOutcome::Pending {
@@ -460,7 +465,7 @@ impl BindingResolver {
         }
 
         let mut candidate = self.prefix.clone();
-        candidate.push(key.into());
+        candidate.push(key);
         let Some(node) = self.node(&candidate) else {
             self.reset();
             return BindingOutcome::Consumed;
@@ -590,6 +595,100 @@ mod tests {
         for value in ["", "Ctrl+unknown", "g,,g", "g\n"] {
             assert!(binding_key_tokens(value).is_none());
         }
+    }
+
+    #[test]
+    fn binding_tokens_canonicalize_equivalent_gestures() {
+        for (authored, canonical) in [
+            ("+", "Plus"),
+            ("Ctrl++", "Ctrl+Plus"),
+            ("Return", "Enter"),
+            ("PageUp", "PgUp"),
+            ("Shift+Tab", "Backtab"),
+            ("Shift+a", "A"),
+        ] {
+            assert_eq!(
+                binding_key_tokens(authored),
+                Some(vec![canonical.to_owned()])
+            );
+        }
+        assert_eq!(
+            binding_key_tokens("g,+"),
+            Some(vec!["g".into(), "Plus".into()])
+        );
+    }
+
+    #[test]
+    fn canonical_bindings_accept_equivalent_delivered_keys() {
+        for (authored, delivered) in [
+            ("Plus", "+"),
+            ("+", "Plus"),
+            ("Ctrl+Plus", "Ctrl++"),
+            ("Ctrl++", "Ctrl+Plus"),
+            ("Enter", "Return"),
+            ("PgUp", "PageUp"),
+            ("Backtab", "Shift+Tab"),
+            ("A", "Shift+a"),
+        ] {
+            let trie = BindingTrie::new(
+                CommandRegistry::default_v1(),
+                [binding(Mode::Normal, &[authored], "scroll down")],
+            )
+            .unwrap();
+            let mut resolver = BindingResolver::new(trie, Mode::Normal);
+            assert!(
+                resolver.has_initial_key(delivered),
+                "{authored} vs {delivered}"
+            );
+            assert_eq!(
+                resolver.feed(delivered, 0),
+                BindingOutcome::Execute {
+                    command: "scroll down".into(),
+                    count: 1,
+                },
+                "{authored} vs {delivered}"
+            );
+        }
+    }
+
+    #[test]
+    fn bindings_reject_post_normalization_duplicates() {
+        for (canonical, alias) in [
+            ("Plus", "+"),
+            ("Enter", "Return"),
+            ("PgUp", "PageUp"),
+            ("Backtab", "Shift+Tab"),
+        ] {
+            let result = BindingTrie::new(
+                CommandRegistry::default_v1(),
+                [
+                    binding(Mode::Normal, &[canonical], "scroll down"),
+                    binding(Mode::Normal, &[alias], "scroll up"),
+                ],
+            );
+            assert!(
+                matches!(result, Err(BindingError::Duplicate(keys)) if keys == [canonical]),
+                "equivalent binding tokens {canonical} / {alias} must conflict"
+            );
+        }
+    }
+
+    #[test]
+    fn direct_opaque_binding_tokens_retain_exact_identity() {
+        let trie = BindingTrie::new(
+            CommandRegistry::default_v1(),
+            [binding(Mode::Normal, &["opaque::key"], "scroll down")],
+        )
+        .unwrap();
+        let mut resolver = BindingResolver::new(trie, Mode::Normal);
+        assert!(resolver.has_initial_key("opaque::key"));
+        assert_eq!(
+            resolver.feed("opaque::key", 0),
+            BindingOutcome::Execute {
+                command: "scroll down".into(),
+                count: 1,
+            }
+        );
     }
 
     #[test]

@@ -774,6 +774,7 @@ impl qobject::BrowserUi {
         mut destination: Pin<&mut Self>,
         transfer: Option<TabTransfer>,
     ) -> Result<Target, String> {
+        destination.as_mut().ensure_owner_runtime_wake();
         let source = self.rust();
         if source.profile_bootstrap_pending
             || !source.view_alive
@@ -805,6 +806,10 @@ impl qobject::BrowserUi {
         let mut state = source_state
             .inherit_profile(runtime)
             .map_err(|error| error.to_string())?;
+        state.set_policy_owner_preparing(true);
+        if let Some(wake) = destination.as_ref().rust().runtime_waker.as_ref() {
+            state.set_storage_waker(std::sync::Arc::clone(wake));
+        }
         let mut effect = source
             .profile_open_effect
             .clone()
@@ -813,8 +818,8 @@ impl qobject::BrowserUi {
         effect.profile = state
             .profile_snapshot()
             .ok_or("the source profile is not ready")?;
-        effect.profile_overrides = source.profile_overrides.clone();
-        effect.runtime_overrides = source.runtime_overrides.clone();
+        effect.profile_overrides = state.configuration_layers().profile.clone();
+        effect.runtime_overrides = state.configuration_layers().runtime.clone();
         if let Some(transfer) = transfer {
             state
                 .dispatch_runtime(RuntimeInput::Lifecycle(Event::TransferTabIn {
@@ -839,24 +844,16 @@ impl qobject::BrowserUi {
         let target = state
             .capture_target(tab)
             .ok_or("the window page could not start")?;
-        let pending = PendingProfileConfiguration {
-            context_catalog_revision: source.context_catalog_revision,
-            private_profile: profile.privacy != PrivacyKind::Normal,
-            profile_name: source.profile_name.clone(),
-            storage_base: source.profile_storage_base.clone(),
-            state,
-            window,
-            tab,
-        };
+
         // Setters can synchronously notify QML. Own every source value before
         // the first notification; no source Rust borrow survives reentry.
         let config_json = source.config_json.clone();
         let config_base_json = source.config_base_json.clone();
+        let base_authored_input = source.base_authored_input.clone();
         let cli_overrides_json = source.cli_overrides_json.clone();
         let profile_overrides_json = source.profile_overrides_json.clone();
         let config_path = source.config_path.clone();
         let contexts_json = source.contexts_json.clone();
-        let temporary_overrides = source.temporary_overrides.clone();
         let private_start_state = source.private_start_state.clone();
         let session = (source_state.configuration().tabs.presentation
             == ferric_browser_config::TabsPresentation::Windows)
@@ -867,24 +864,73 @@ impl qobject::BrowserUi {
                     source.recovered_session_ids.clone(),
                 )
             });
-        destination.as_mut().set_config_json(config_json);
-        destination.as_mut().set_config_base_json(config_base_json);
-        destination
+        let context_catalog_revision = source.context_catalog_revision;
+        let private_profile = profile.privacy != PrivacyKind::Normal;
+        let profile_name = source.profile_name.clone();
+        let storage_base = source.profile_storage_base.clone();
+        let request = destination
             .as_mut()
-            .set_cli_overrides_json(cli_overrides_json);
-        destination
-            .as_mut()
-            .set_profile_overrides_json(profile_overrides_json);
-        destination.as_mut().set_config_path(config_path);
-        destination.as_mut().set_contexts_json(contexts_json);
-        destination.as_mut().set_profile_bootstrap_pending(true);
-        destination
-            .as_mut()
-            .finish_configure_profile(pending, Ok(effect));
+            .begin_profile_configuration_request()
+            .ok_or("The destination profile request was replaced or exhausted")?;
+        macro_rules! publish {
+            ($expression:expr) => {{
+                if !destination
+                    .as_ref()
+                    .profile_configuration_request_is_current(&request)
+                {
+                    return Err("The destination profile request changed".into());
+                }
+                $expression;
+                if !destination
+                    .as_ref()
+                    .profile_configuration_request_is_current(&request)
+                {
+                    return Err("The destination profile request changed".into());
+                }
+            }};
+        }
+
+        let pending = PendingProfileConfiguration {
+            request: std::sync::Arc::clone(&request),
+            selector_receipt: None,
+            selector_fingerprint: None,
+            context_catalog_revision,
+            private_profile,
+            profile_name,
+            storage_base,
+            state,
+            window,
+            tab,
+        };
+        {
+            let mut rust = destination.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.base_authored_input = base_authored_input;
+            this.startup_configuration_set = true;
+        }
+        publish!(destination.as_mut().set_config_json(config_json));
+        publish!(destination.as_mut().set_config_base_json(config_base_json));
+        publish!(
+            destination
+                .as_mut()
+                .set_cli_overrides_json(cli_overrides_json)
+        );
+        publish!(
+            destination
+                .as_mut()
+                .set_profile_overrides_json(profile_overrides_json)
+        );
+        publish!(destination.as_mut().set_config_path(config_path));
+        publish!(destination.as_mut().set_contexts_json(contexts_json));
+        publish!(destination.as_mut().set_profile_bootstrap_pending(true));
+        publish!(
+            destination
+                .as_mut()
+                .finish_configure_profile(pending, Ok(effect))
+        );
         {
             let mut rust = destination.as_mut().rust_mut();
             let child = rust.as_mut().get_mut();
-            child.temporary_overrides = temporary_overrides;
             child.private_start_state = private_start_state;
             if let Some((id, path, recovered)) = session {
                 child.session_id = id;
@@ -893,7 +939,7 @@ impl qobject::BrowserUi {
                 child.recovery_paths.clear();
             }
         }
-        destination.as_mut().sync_context_metadata();
+        publish!(destination.as_mut().sync_context_metadata());
         Ok(target)
     }
 }

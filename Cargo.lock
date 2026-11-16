@@ -382,8 +382,11 @@ name = "ferric-browser-config"
 version = "0.1.0"
 dependencies = [
  "ferric-browser-core",
+ "icu_normalizer",
  "serde",
+ "serde_json",
  "toml",
+ "url",
 ]
 
 [[package]]

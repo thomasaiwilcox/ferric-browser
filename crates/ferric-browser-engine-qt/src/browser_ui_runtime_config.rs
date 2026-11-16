@@ -1,11 +1,11 @@
 use super::browser_ui_state::PendingSelectorAction;
 use super::selector_validation::selector_validation_items;
 use super::{
-    Config, ConfigReadOperation, ConfigReloadWorker, ConfigWriteWorker, ConfigurationLayers,
-    CxxQtType, Duration, FeedbackLane, FeedbackState, HyprlandConfig, HyprlandResponse,
-    HyprlandWorker, Instant, NetworkPolicyWorker, ParseInput, ParsedCommand, PathBuf, Pin,
-    PortalProbeWorker, PrintWorker, ProfileDeleteWorker, ProfileListWorker, ProfileMutationResult,
-    ProfilePreviewWorker, QString, ReducedMotionProbeWorker, RuntimeOverrides, SiteExperiment,
+    ConfigReadOperation, ConfigReloadWorker, ConfigWriteWorker, ConfigurationLayers, CxxQtType,
+    Duration, FeedbackLane, FeedbackState, HyprlandConfig, HyprlandResponse, HyprlandWorker,
+    Instant, NetworkPolicyWorker, ParseInput, ParsedCommand, PathBuf, Pin, PortalProbeWorker,
+    PrintWorker, ProfileDeleteWorker, ProfileListWorker, ProfileMutationResult,
+    ProfilePreviewWorker, QString, ReducedMotionProbeWorker, SiteExperiment,
     SystemFontScaleProbeWorker, UserscriptManagerResult, Value, cleanup_print_artifact,
     configured_bindings, desktop_portals, desktop_preferences, parse_chain, parse_ipc_mode,
     profile_from_list_values, qobject, safe_ipc_url,
@@ -15,6 +15,8 @@ impl qobject::BrowserUi {
     pub(super) fn poll_config(mut self: Pin<&mut Self>) {
         crate::page_group_runtime::poll(self.as_mut());
         self.as_mut().poll_configuration_publication();
+        self.as_mut().poll_site_policy_activation();
+        self.as_mut().poll_configuration_preparation();
         self.as_mut().poll_peer_configuration();
         self.as_mut().expire_selector_validation();
         self.as_mut().poll_diagnostics();
@@ -133,6 +135,39 @@ impl qobject::BrowserUi {
                 },
             }
         }
+        let profile_candidate_result = {
+            let mut rust = self.as_mut().rust_mut();
+            rust.as_mut()
+                .get_mut()
+                .pending_profile_configuration
+                .as_mut()
+                .and_then(|pending| pending.state.poll_profile_candidate())
+        };
+        if let Some(result) = profile_candidate_result {
+            let pending = self
+                .as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_profile_configuration
+                .take();
+            if let Some(mut pending) = pending {
+                let temporary = self.as_ref().rust().temporary_overrides.clone();
+                let result = result.and_then(|candidate| {
+                    pending
+                        .state
+                        .prepare_profile_candidate_temporary(candidate, temporary)
+                });
+                match result {
+                    Ok(candidate) => self
+                        .as_mut()
+                        .queue_profile_selector_validation(pending, candidate),
+                    Err(error) => self
+                        .as_mut()
+                        .finish_configure_profile(pending, Err(error.to_string())),
+                }
+            }
+        }
         let profile_setup_result = {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut()
@@ -151,28 +186,7 @@ impl qobject::BrowserUi {
                 .take();
             if let Some(pending) = pending {
                 match result.map_err(|error| error.to_string()) {
-                    Ok(effect) => {
-                        // The Rust active base still contains safe defaults
-                        // during bootstrap. Validate the authored startup input,
-                        // not that prior active projection.
-                        let base = serde_json::from_str::<Config>(
-                            &self.as_ref().rust().config_base_json.to_string(),
-                        )
-                        .unwrap_or_default();
-                        let cli = serde_json::from_str::<RuntimeOverrides>(
-                            &self.as_ref().rust().cli_overrides_json.to_string(),
-                        )
-                        .unwrap_or_default();
-                        let layers = ConfigurationLayers {
-                            base,
-                            profile: effect.profile_overrides.clone(),
-                            runtime: effect.runtime_overrides.clone(),
-                            command_line: cli,
-                            temporary: self.as_ref().rust().temporary_overrides.clone(),
-                        };
-                        self.as_mut()
-                            .queue_profile_selector_validation(pending, effect, layers);
-                    }
+                    Ok(effect) => self.as_mut().finish_configure_profile(pending, Ok(effect)),
                     Err(error) => self.as_mut().finish_configure_profile(pending, Err(error)),
                 }
             }
@@ -186,50 +200,147 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .and_then(NetworkPolicyWorker::poll)
         };
-        if let Some(result) = network_policy_result {
-            let reload_requested = self
-                .as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .configuration_io
-                .network_policy_reload_pending;
-            self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .configuration_io
-                .network_policy_reload_pending = false;
-            match result {
-                Ok(policy) => {
-                    self.as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .profile_startup
-                        .network_result(None);
-                    self.as_mut().sync_profile_startup_notice();
-                    self.as_mut().apply_network_policy_snapshot(policy);
-                    if reload_requested {
-                        self.as_mut()
-                            .set_status_text(QString::from("Network filtering updated"));
+        if let Some((generation, result)) = network_policy_result {
+            let request = {
+                let mut rust = self.as_mut().rust_mut();
+                let io = &mut rust.as_mut().get_mut().configuration_io;
+                if io
+                    .network_policy_request
+                    .as_ref()
+                    .is_some_and(|request| request.generation == generation)
+                {
+                    io.network_policy_request.clone()
+                } else {
+                    None
+                }
+            };
+            if let Some(request) = request {
+                let current = request.profile_is_current(self.as_ref().rust())
+                    && self.as_ref().rust().state.as_ref().is_some_and(|state| {
+                        state.configuration_request_is_current(&request.owner)
+                    });
+                let loaded = result
+                    .as_ref()
+                    .is_ok_and(|policy| policy.compile_failures.is_empty());
+                let installed = if current {
+                    match result {
+                        Ok(policy) => {
+                            let valid = policy.compile_failures.is_empty();
+                            self.as_mut()
+                                .rust_mut()
+                                .as_mut()
+                                .get_mut()
+                                .profile_startup
+                                .network_result((!valid).then_some("blocklist compilation failed"));
+                            self.as_mut().sync_profile_startup_notice();
+                            let installed = self
+                                .as_mut()
+                                .apply_network_policy_snapshot(policy, &request);
+                            if installed && request.reload {
+                                self.as_mut()
+                                    .set_status_text(QString::from("Network filtering updated"));
+                            }
+                            installed
+                        }
+                        Err(error) => {
+                            self.as_mut()
+                                .rust_mut()
+                                .as_mut()
+                                .get_mut()
+                                .profile_startup
+                                .network_result(Some(&error));
+                            self.as_mut().sync_profile_startup_notice();
+                            if request.profile_is_current(self.as_ref().rust())
+                                && self.as_ref().rust().state.as_ref().is_some_and(|state| {
+                                    state.configuration_request_is_current(&request.owner)
+                                })
+                                && self
+                                    .as_ref()
+                                    .rust()
+                                    .configuration_io
+                                    .network_policy_request
+                                    .as_ref()
+                                    .is_some_and(|pending| pending.generation == generation)
+                            {
+                                self.as_mut().set_status_text(QString::from(
+                                    "Network filtering couldn't be prepared. Open :diagnostics for details."));
+                            }
+                            false
+                        }
+                    }
+                } else {
+                    false
+                };
+                self.as_mut()
+                    .finish_site_doctor_policy(generation, installed);
+                {
+                    let mut rust = self.as_mut().rust_mut();
+                    let io = &mut rust.as_mut().get_mut().configuration_io;
+                    if io
+                        .network_policy_request
+                        .as_ref()
+                        .is_some_and(|pending| pending.generation == generation)
+                    {
+                        io.network_policy_request = None;
                     }
                 }
-                Err(error) => {
-                    self.as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .profile_startup
-                        .network_result(Some(&error));
-                    self.as_mut().sync_profile_startup_notice();
-                    self.as_mut().set_status_text(QString::from(
-                        "Network filtering couldn't be prepared. Open :diagnostics for details.",
-                    ));
+                // An observable projection may have started a newer bootstrap.
+                if !request.reload
+                    && request.profile_is_current(self.as_ref().rust())
+                    && self
+                        .as_ref()
+                        .rust()
+                        .configuration_io
+                        .network_policy_request
+                        .is_none()
+                    && self
+                        .as_ref()
+                        .rust()
+                        .state
+                        .as_ref()
+                        .is_some_and(|state| state.configuration_request_is_current(&request.owner))
+                {
+                    self.as_mut().set_profile_bootstrap_pending(false);
+                } else if request.stale_bootstrap(self.as_ref().rust()) {
+                    // A peer configuration can publish during bootstrap. Only
+                    // replace a successfully loaded stale bootstrap snapshot;
+                    // never retry a failed worker or a durable fix here.
+                    let refresh = self
+                        .as_ref()
+                        .rust()
+                        .state
+                        .as_ref()
+                        .and_then(super::BrowserApplication::capture_configuration_request);
+                    let requested = loaded && self.as_mut().request_network_policy(false).is_ok();
+                    if !requested {
+                        self.as_mut()
+                            .rust_mut()
+                            .as_mut()
+                            .get_mut()
+                            .profile_startup
+                            .network_result(Some(
+                                "network bootstrap became stale and could not be refreshed",
+                            ));
+                        self.as_mut().sync_profile_startup_notice();
+                        let current = request.profile_is_current(self.as_ref().rust())
+                            && refresh.as_ref().is_some_and(|owner| {
+                                self.as_ref()
+                                    .rust()
+                                    .configuration_io
+                                    .network_policy_request
+                                    .is_none()
+                                    && self.as_ref().rust().state.as_ref().is_some_and(|state| {
+                                        state.configuration_request_is_current(owner)
+                                    })
+                            });
+                        if current {
+                            self.as_mut().set_profile_bootstrap_pending(false);
+                        }
+                    }
                 }
             }
-            self.as_mut().set_profile_bootstrap_pending(false);
         }
+        self.as_mut().poll_site_doctor_fix();
         let userscript_manager_result = {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut()
@@ -504,15 +615,29 @@ impl qobject::BrowserUi {
                 .and_then(ConfigWriteWorker::poll)
         };
         if let Some(result) = write_result {
-            match result {
-                Ok(result) => self.as_mut().set_status_text(QString::from(format!(
-                    "Configuration written to {} ({} bytes)",
-                    result.path.display(),
-                    result.bytes
-                ))),
-                Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                    "Configuration write failed: {error}"
-                ))),
+            if self
+                .as_ref()
+                .rust()
+                .configuration_io
+                .site_policy_file
+                .is_some()
+            {
+                self.as_mut().finish_site_policy_file(result);
+            } else {
+                match result {
+                    Ok(super::configuration_workers::ConfigWriteResult::Written {
+                        path,
+                        bytes,
+                    }) => self.as_mut().set_status_text(QString::from(format!(
+                        "Configuration written to {} ({} bytes)",
+                        path.display(),
+                        bytes
+                    ))),
+                    Err(error) => self.as_mut().set_status_text(QString::from(format!(
+                        "Configuration write failed: {error}"
+                    ))),
+                    Ok(_) => {}
+                }
             }
         }
         let print_result = {
@@ -619,12 +744,10 @@ impl qobject::BrowserUi {
         if let Some(result) = reload_result {
             match result {
                 Ok(result) if result.operation == ConfigReadOperation::Check => {
-                    let source_count = result.loaded.sources.len();
-                    if let Err(error) = self.as_mut().queue_config_check_validation(
-                        result.loaded.config,
-                        result.profiles_config,
-                        source_count,
-                    ) {
+                    if let Err(error) = self
+                        .as_mut()
+                        .queue_config_check_validation(result.loaded, result.profiles_config)
+                    {
                         self.as_mut().set_status_text(QString::from(format!(
                             "Configuration selector check failed: {error}"
                         )));
@@ -661,6 +784,7 @@ impl qobject::BrowserUi {
                     };
                     let layers = ConfigurationLayers {
                         base: result.loaded.config.clone(),
+                        base_authored: result.loaded.authored.clone(),
                         profile: profile_overrides.clone(),
                         runtime: self.as_ref().rust().runtime_overrides.clone(),
                         command_line: self.as_ref().rust().cli_overrides.clone(),
@@ -674,10 +798,21 @@ impl qobject::BrowserUi {
                         sources.extend(state.userscript_watch_sources());
                     }
                     let profiles_path = result.profiles_path;
+                    let receipt = self.as_ref().rust().state.as_ref().and_then(|state| {
+                        self.as_ref()
+                            .rust()
+                            .configuration_io
+                            .selector_receipts
+                            .matching(state, &layers)
+                    });
                     let publication = super::ConfigReloadPublication {
                         candidate,
                         layers,
-                        fingerprint: validation_fingerprint.clone(),
+                        selectors:
+                            super::selector_validation_receipts::SelectorValidationPublication {
+                                fingerprint: validation_fingerprint.clone(),
+                                receipt,
+                            },
                         path: path.clone(),
                         base_json,
                         profile_overrides,
@@ -694,13 +829,17 @@ impl qobject::BrowserUi {
                                 .configuration_io
                                 .active_selector_fingerprint
                     {
-                        self.as_mut().begin_selector_validation(
+                        if let Err(error) = self.as_mut().begin_selector_validation(
                             validation_fingerprint,
                             validation_items,
                             PendingSelectorAction::Reload {
                                 publication: Box::new(publication),
                             },
-                        );
+                            None,
+                            None,
+                        ) {
+                            self.as_mut().report_config_reload_failure(&error, announce);
+                        }
                         return;
                     }
                     if let Err(error) = self
@@ -834,6 +973,21 @@ impl qobject::BrowserUi {
         temporary: bool,
         reset: bool,
     ) -> bool {
+        let request = result
+            .as_ref()
+            .ok()
+            .and_then(|result| result.get("generation"))
+            .and_then(Value::as_str)
+            .and_then(|value| value.parse::<u64>().ok());
+        // A reentrant management action owns its own feedback. The earlier
+        // caller must not replace that newer pending lane on return.
+        if self.as_ref().rust().setting_action_state.to_string() == "pending"
+            || request.is_some_and(|request| {
+                self.as_ref().rust().configuration_io.selector_generation != request
+            })
+        {
+            return false;
+        }
         let scope = if temporary {
             "this window and session"
         } else {
@@ -876,10 +1030,20 @@ impl qobject::BrowserUi {
                 }
             ),
         };
+        if request.is_some_and(|request| {
+            self.as_ref().rust().configuration_io.selector_generation != request
+        }) {
+            self.as_mut().finish_setting_feedback(
+                Some(feedback),
+                Err("A newer request replaced this settings preparation"),
+            );
+            return false;
+        }
         match result {
             Ok(_) => {
                 self.as_mut().set_runtime_setting_error(QString::default());
-                self.as_mut().continue_setting_feedback(Some(feedback));
+                self.as_mut()
+                    .continue_setting_feedback_for_request(Some(feedback), request);
                 true
             }
             Err(error) => {
@@ -891,9 +1055,10 @@ impl qobject::BrowserUi {
         }
     }
 
-    pub(super) fn continue_setting_feedback(
+    pub(super) fn continue_setting_feedback_for_request(
         mut self: Pin<&mut Self>,
         feedback: Option<super::browser_ui_state::SettingFeedback>,
+        request: Option<u64>,
     ) {
         let Some(feedback) = feedback else { return };
         let synchronous = {
@@ -903,12 +1068,38 @@ impl qobject::BrowserUi {
                 .configuration_io
                 .pending_configuration_publication
                 .as_mut()
+                .filter(|pending| {
+                    request.is_none_or(|request| {
+                        pending
+                            .origin
+                            .as_ref()
+                            .is_some_and(|origin| origin.generation == request)
+                    })
+                })
             {
                 pending.setting_feedback = Some(feedback);
+                if let Some(origin) = pending.origin.as_mut() {
+                    origin.setting_feedback = pending.setting_feedback.clone();
+                }
                 None
-            } else if let Some(pending) = this.configuration_io.pending_selector_validation.as_mut()
+            } else if let Some(pending) = this
+                .configuration_io
+                .pending_selector_validation
+                .as_mut()
+                .filter(|pending| {
+                    request.is_none_or(|request| {
+                        pending
+                            .origin
+                            .as_ref()
+                            .map_or(pending.generation, |origin| origin.generation)
+                            == request
+                    })
+                })
             {
                 pending.setting_feedback = Some(feedback);
+                if let Some(origin) = pending.origin.as_mut() {
+                    origin.setting_feedback = pending.setting_feedback.clone();
+                }
                 None
             } else {
                 Some(feedback)
@@ -1001,19 +1192,41 @@ impl qobject::BrowserUi {
 
     #[allow(clippy::too_many_lines)]
     pub(super) fn execute_runtime_binding_command(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         command: &ParsedCommand,
     ) -> Result<Value, String> {
+        self.queue_configuration_preparation(
+            super::browser_ui_configuration_preparation::DeferredConfigurationAction::Mutation(
+                command.clone(),
+            ),
+            None,
+            &mut None,
+        )
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub(super) fn prepare_runtime_binding_command(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
+    ) -> Result<Value, String> {
+        if preparation.is_some_and(|turn| !turn.is_current(self.as_ref().get_ref())) {
+            return Err("The settings owner changed during preparation".into());
+        }
         let (mode_name, keychain, binding_command) = match command.name.as_str() {
             "bind" => {
                 let (mode_name, keychain, command_args) = match command.arguments.as_slice() {
-                    [keychain, command_args @ ..] if !command_args.is_empty() => {
-                        ("normal", keychain.as_str(), command_args)
-                    }
                     [flag, mode, keychain, command_args @ ..]
                         if flag == "--mode" && !command_args.is_empty() =>
                     {
                         (mode.as_str(), keychain.as_str(), command_args)
+                    }
+                    [keychain, command_args @ ..]
+                        if keychain != "--mode" && !command_args.is_empty() =>
+                    {
+                        ("normal", keychain.as_str(), command_args)
                     }
                     _ => return Err("bind accepts [--mode MODE] KEYCHAIN COMMAND".into()),
                 };
@@ -1022,7 +1235,7 @@ impl qobject::BrowserUi {
             }
             "unbind" => {
                 let (mode_name, keychain) = match command.arguments.as_slice() {
-                    [keychain] => ("normal", keychain.as_str()),
+                    [keychain] if keychain != "--mode" => ("normal", keychain.as_str()),
                     [flag, mode, keychain] if flag == "--mode" => {
                         (mode.as_str(), keychain.as_str())
                     }
@@ -1059,7 +1272,29 @@ impl qobject::BrowserUi {
             None
         };
 
-        let mut persistent = self.as_ref().rust().runtime_overrides.clone();
+        let (saved, mut layers) = {
+            let browser = self.as_ref();
+            let state = browser
+                .rust()
+                .state
+                .as_ref()
+                .ok_or_else(|| "application state is unavailable".to_owned())?;
+            let saved = if state.profile_snapshot().is_some() {
+                Some(
+                    state
+                        .capture_saved_runtime_edits()
+                        .map_err(|error| error.to_string())?,
+                )
+            } else {
+                None
+            };
+            let layers = saved.as_ref().map_or_else(
+                || state.configuration_layers().clone(),
+                |capture| capture.layers().clone(),
+            );
+            (saved, layers)
+        };
+        let mut persistent = layers.runtime.clone();
         persistent
             .set_binding(
                 mode_name,
@@ -1067,53 +1302,44 @@ impl qobject::BrowserUi {
                 binding_command.as_deref().unwrap_or_default(),
             )
             .map_err(|error| error.to_string())?;
-        let temporary_layer = self.as_ref().rust().temporary_overrides.clone();
-        let candidate = self
-            .as_ref()
-            .runtime_config_candidate(&persistent, &temporary_layer)?;
+        layers.runtime = persistent;
+        let prepared = {
+            let browser = self.as_ref();
+            let state = browser
+                .rust()
+                .state
+                .as_ref()
+                .ok_or_else(|| "application state is unavailable".to_owned())?;
+            if let Some(saved) = &saved {
+                state.prepare_saved_runtime_edits(saved, layers.runtime)
+            } else {
+                state.prepare_configuration_update(layers)
+            }
+            .map_err(|error| error.to_string())?
+        };
+        let desired = prepared.policy_sources();
+        let candidate = serde_json::to_value(
+            desired
+                .desired_layers()
+                .resolve()
+                .map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
         if configured_bindings(&self.as_ref().rust().registry, &candidate).is_none() {
             return Err("effective binding configuration is invalid".into());
         }
         let persistent_storage = self.as_ref().rust().profile_persistence.is_durable()
             && self.as_ref().rust().storage_roots.is_some();
-        let persist_path = if persistent_storage {
-            Some(
-                self.as_ref()
-                    .rust()
-                    .storage_roots
-                    .as_ref()
-                    .map(|roots| roots.state.join("runtime-overrides.toml"))
-                    .ok_or_else(|| "runtime storage is unavailable".to_owned())?,
-            )
-        } else {
-            None
-        };
-        let layers = ConfigurationLayers {
-            base: self
-                .as_ref()
-                .rust()
-                .state
-                .as_ref()
-                .ok_or("base configuration is unavailable")?
-                .configuration_layers()
-                .base
-                .clone(),
-            profile: self.as_ref().rust().profile_overrides.clone(),
-            runtime: persistent.clone(),
-            command_line: self.as_ref().rust().cli_overrides.clone(),
-            temporary: temporary_layer,
-        };
         let status = if binding_command.is_some() {
             "Binding saved".to_owned()
         } else {
             "Binding removed".to_owned()
         };
         let Some(result) = self.as_mut().validate_or_queue_runtime_config(
-            candidate,
-            layers,
+            prepared,
             status,
-            persistent.clone(),
-            persist_path,
+            persistent_storage,
+            preparation.map(|turn| &turn.origin),
         )?
         else {
             return Ok(serde_json::json!({
@@ -1125,11 +1351,6 @@ impl qobject::BrowserUi {
                 "scope": if persistent_storage { "persistent" } else { "memory-only" }
             }));
         };
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .runtime_overrides = persistent;
         Ok(serde_json::json!({
             "status": "accepted",
             "persistence": self.as_ref().rust().runtime_config_persistence,

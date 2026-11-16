@@ -1,0 +1,17 @@
+# Local noneditable receiver fixture only; no media playback is inferred.
+format = 'ferric-site-interaction'
+format_version = 1
+[[rules]]
+operation = 'upsert-interaction'
+id = 'fixture-player-remap'
+pattern = 'https://video.example.test/watch*'
+priority = 100
+[rules.interaction]
+enabled = true
+hint_page_keys = ['p', 'f']
+page_receiver = { scope = 'top-document' }
+[[rules.interaction.remaps]]
+id = 'play-on-p'
+from = 'p'
+to = 'k'
+contexts = ['passthrough-once', 'passthrough', 'hint-page-key']

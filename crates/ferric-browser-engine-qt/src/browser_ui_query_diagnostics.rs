@@ -93,11 +93,13 @@ impl qobject::BrowserUi {
                 "document_known": lease.owner.document.is_some()
             })
         });
-        let shortcut_policy = rust.mixed_policy.shortcut_policy.as_str();
+        let mixed_state = rust.active_mixed_policy();
+        let policy = mixed_state.policy();
+        let shortcut_policy = policy.map(|policy| policy.shortcut_policy.as_str());
         let shortcut_policy_source =
-            rust.mixed_policy
-                .shortcut_policy_source
-                .map_or("default", |source| match source {
+            policy
+                .and_then(|policy| policy.shortcut_policy_source)
+                .map(|source| match source {
                     ferric_browser_core::MixedPolicySource::Global => "global",
                     ferric_browser_core::MixedPolicySource::Profile => "profile",
                     ferric_browser_core::MixedPolicySource::Site => "site",
@@ -133,16 +135,18 @@ impl qobject::BrowserUi {
                 "frame_count": focus_rows.len()
             },
             "shortcut_policy": {
+                "status": mixed_state.status(),
+                "unavailable_reason": mixed_state.error(),
                 "value": shortcut_policy,
                 "source": shortcut_policy_source,
-                "page_key_count": rust.mixed_policy.page_keys.len().min(64),
+                "page_key_count": policy.map(|policy| policy.page_keys.len().min(64)),
                 "policy_site_rule": site_rule_for(
                     "input.shortcut_policy",
-                    rust.mixed_policy.shortcut_policy_source
+                    policy.and_then(|policy| policy.shortcut_policy_source)
                 ),
                 "page_keys_site_rule": site_rule_for(
                     "input.page_keys",
-                    rust.mixed_policy.page_keys_source
+                    policy.and_then(|policy| policy.page_keys_source)
                 )
             },
             "scroll_policy": {
@@ -158,6 +162,7 @@ impl qobject::BrowserUi {
                 "last_outcome": rust.interaction.native_prompt_leases.last_result(),
                 "owner": prompt_owner,
             },
+            "page_keys": crate::page_key_capabilities::current_snapshot(),
             "recent_action_errors": interaction_error_summary(&rust.action_audit),
             "privacy": "on-demand bounded facts; no URL, title, page label, DOM data, key stream, or input values"
         }))

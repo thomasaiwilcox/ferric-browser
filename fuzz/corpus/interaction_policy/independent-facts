@@ -1,0 +1,1 @@
+{"policy":{"anchors":[{"id":"video","code":"v","families":["links"],"predicates":{"hint_name":{"equals":"Café"},"href":{"origin":"https://example.test","path":"/watch*"},"role":"button","attributes":[{"name":"data-id","prefix":"v-"}]}}]},"name":" Cafe\u0301 ","href":"https://example.test/watch*ba?q=x#fragment","role":"presentation button","attribute_value":"v-1"}

@@ -15,7 +15,7 @@ TestCase {
         property color warningColor:"#f0c54a"
         property color primaryTextColor:"#202020"
         property color backgroundColor:"#ffffff"
-        function contrastText(color){return "#202020"}
+        function contrastText(color){return color.r>0.5 ? "#202020" : "#ffffff"}
         Rectangle {anchors.fill:parent;color:"white"}
         Text {x:25;y:15;text:"Repaired dense hints";font.pixelSize:20}
         Repeater {
@@ -36,6 +36,7 @@ TestCase {
         }
         Text {x:25;y:420;width:590;text:overlay.previewText;textFormat:Text.PlainText;elide:Text.ElideRight;font.pixelSize:15}
     }
+    SignalSpy { id: selectionSpy; target: overlay; signalName: "selectionRequested" }
     function state(rows,active){return {mode:"label",prefix:"",matching_labels:rows.map(function(r){return r.label}),active_label:active||""}}
     function row(label,x,y,w,h,id){return {label:label,text:"Control "+id,action:"Activate",kind:"button",element_id:id,frame_path:"0",x:x,y:y,width:w,height:h}}
     function test_viewport_identity_changes_only_with_normalized_dimensions() {
@@ -50,6 +51,58 @@ TestCase {
         verify(Presentation.viewportSnapshot({width:640,height:480},empty) !== empty)
     }
     function cleanup(){overlay.hintsVisible=false;overlay.hintResults=[];overlay.hintsVisible=true}
+    function test_collision_control_follows_replacement_and_rapid_recreation() {
+        function twins(a,b) {
+            return [row(a,40,0,16,16,1),row(b,40,0,16,16,2)]
+        }
+        var rows=twins("aa","as")
+        overlay.hintState=state(rows,"aa");overlay.hintResults=rows
+        tryVerify(function(){return !!findChild(overlay,"hintCollisionBadge")})
+        var first=findChild(overlay,"hintCollisionBadge")
+        compare(first.hintRow.label,"aa")
+        compare(first.parent.parent,overlay)
+        // Same row count, different labels, and then a different representative.
+        rows=twins("ad","af")
+        overlay.hintState=state(rows,"af");overlay.hintResults=rows
+        wait(1)
+        var current=findChild(overlay,"hintCollisionBadge")
+        verify(current);compare(current.hintRow.label,"af")
+        overlay.hintState=state([rows[0]],"ad")
+        verify(!current.visible || !current.enabled,"Removed control cannot receive pointer input")
+        // Restore before deferred destruction of the removed control completes.
+        overlay.hintState=state(rows,"af")
+        wait(1)
+        current=findChild(overlay,"hintCollisionBadge")
+        verify(current);verify(current.visible);compare(current.hintRow.label,"af")
+        overlay.hintState=state([rows[0]],"ad")
+        tryVerify(function(){return !findChild(overlay,"hintCollisionBadge")})
+    }
+    function test_collision_control_returns_to_baseline_across_1000_cycles() {
+        var baseline=overlay.children.length
+        for(var i=0;i<1000;i++) {
+            var rows=[row("aa",40,0,16,16,i*2+1),row("as",40,0,16,16,i*2+2)]
+            overlay.hintState=state(rows,"aa");overlay.hintResults=rows
+            verify(!!findChild(overlay,"hintCollisionBadge"))
+            overlay.hintResults=[]
+            overlay.hintState=state([],"")
+            wait(1)
+            verify(!findChild(overlay,"hintCollisionBadge"))
+            compare(overlay.children.length,baseline)
+        }
+    }
+    function test_marker_contrast_tracks_theme_color() {
+        var rows=[row("aa",40,100,160,32,1)]
+        overlay.hintState=state(rows,"aa");overlay.hintResults=rows
+        var repeater=findChild(overlay,"hintMarkerRepeater"),badge=repeater.itemAt(0),label=null
+        for(var i=0;i<badge.children.length;i++)
+            if(badge.children[i].text!==undefined&&badge.children[i].font!==undefined)label=badge.children[i]
+        verify(label)
+        var saved=String(canvas.warningColor)
+        canvas.warningColor="#000000"
+        compare(label.color,Qt.rgba(1,1,1,1))
+        canvas.warningColor=saved
+        compare(label.color,Qt.rgba(32/255,32/255,32/255,1))
+    }
     function test_metadata_badge_does_not_cover_title_data() {
         return [{tag:"small",scale:0.75},{tag:"default",scale:1},{tag:"large",scale:1.25}]
     }
@@ -108,6 +161,20 @@ TestCase {
         overlay.hintState=state(rows,"as")
         compare(overlay.activeHint.element_id,2)
         verify(overlay.markerVisible(overlay.activeHint))
+        var badge=findChild(overlay,"hintCollisionBadge")
+        verify(!!badge)
+        compare(badge.hintRow.label,"as")
+        verify(badge.width>0 && badge.height>0)
+        selectionSpy.clear()
+        mouseClick(badge,badge.width/2,badge.height-1)
+        compare(selectionSpy.count,1)
+        compare(selectionSpy.signalArguments[0][0],"as")
+        verify(overlay.stackExpanded)
+        // Filtering down to one member must release the now-unused control.
+        overlay.hintState=state([rows[1]],"as")
+        tryVerify(function(){return !findChild(overlay,"hintCollisionBadge")})
+        compare(overlay.displayedMarkers.length,1)
+        overlay.stackExpanded=false
     }
     function test_hover_does_not_replace_keyboard_selection() {
         var rows=[row("aa",40,100,100,32,1),row("as",200,100,100,32,2)]
@@ -133,4 +200,24 @@ TestCase {
         }
         waitForRendering(overlay)
     }
+    function test_custom_lengths_and_case_keep_exact_labels() {
+        var rows=[row("A",40,100,120,32,1),row("aA7",200,100,120,32,2),row("J9X8yZ2w",360,100,120,32,3)]
+        overlay.hintResults=rows;overlay.hintState=state(rows,"aA7")
+        compare(overlay.laidOutHints.length,3)
+        compare(overlay.activeHint.label,"aA7")
+        verify(overlay.laidOutHints[2].marker_width > overlay.laidOutHints[0].marker_width)
+        compare(overlay.laidOutHints.map(function(item){return item.label}).join(","),"A,aA7,J9X8yZ2w")
+    }
+    function test_unavailable_only_codes_are_visible_plain_text() {
+        overlay.hintResults=[]
+        overlay.hintState={kind:"unavailable-only",mode:"label",prefix:"",matching_labels:[],active_label:"",reservations:[{code:"<A>",reason:"Target absent"}]}
+        verify(overlay.visible)
+        var notice=findChild(overlay,"unavailablePolicyHints")
+        verify(notice.visible)
+        compare(notice.textFormat,Text.PlainText)
+        verify(notice.text.indexOf("<A>: Target absent")>=0)
+        verify(notice.text.indexOf("Escape")>=0)
+        waitForRendering(overlay)
+    }
+
 }

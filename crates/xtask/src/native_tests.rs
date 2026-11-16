@@ -159,13 +159,21 @@ pub(super) fn run_qml_ui_tests() -> Result<(), String> {
         )
         .status()
         .map_err(|error| format!("failed to run {executable}: {error}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
+    if !status.success() {
+        return Err(format!(
             "{executable} QML interaction tests exited with {status}"
-        ))
+        ));
     }
+    // Real origin/frame fixtures need the loopback server; file-based QML
+    // execution cannot qualify their document and isolation boundaries.
+    run(
+        "python3",
+        &[
+            "crates/ferric-browser-engine-qt/tests/site-policy-http/run_fixture.py",
+            "--runner",
+            executable,
+        ],
+    )
 }
 
 pub(super) fn run_profile_lifetime_tests() -> Result<(), String> {

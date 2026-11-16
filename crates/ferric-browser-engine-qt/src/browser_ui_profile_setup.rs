@@ -1,14 +1,14 @@
 use super::{
     Arc, BrowserApplication, Config, ConfigReloadWorker, ConfigWatch, ConfigWriteWorker,
-    ContextSnapshot, ContextsConfig, CxxQtType, EditorWriteWorker, LoggingConfig, Mode,
-    NetworkPolicyWorker, PathBuf, PendingProfileConfiguration, Pin, PrintWorker, PrivacyKind,
-    ProfileDeleteWorker, ProfileListWorker, ProfileOpenEffect, ProfileOpenRequest,
-    ProfilePersistence, ProfilePreviewWorker, ProfileStorage, QString, QStringList, RootSpec,
-    RuntimeOverrides, SessionCheckpoint, StorageRoots, Uuid, Value, atomic_write_private,
-    bootstrap_runtime, bounded_header, cleanup_editor_artifact, cleanup_print_artifact,
-    cleanup_staged_downloads, configured_bindings, desktop_portals, discard_config_edit,
-    discard_editor_request, finish_pending_selection_operation, hyprland, link_cleaning_policy,
-    logging, network_policy, profile_startup::FailureStage, qobject, resolve_browser_roots,
+    ContextSnapshot, ContextsConfig, CxxQtType, EditorWriteWorker, LoggingConfig, Mode, PathBuf,
+    PendingProfileConfiguration, Pin, PrintWorker, PrivacyKind, ProfileDeleteWorker,
+    ProfileListWorker, ProfileOpenEffect, ProfileOpenRequest, ProfilePersistence,
+    ProfilePreviewWorker, ProfileStorage, QString, QStringList, RootSpec, RuntimeOverrides,
+    SessionCheckpoint, StorageRoots, Uuid, Value, atomic_write_private, bootstrap_runtime,
+    bounded_header, cleanup_editor_artifact, cleanup_print_artifact, cleanup_staged_downloads,
+    configured_bindings, desktop_portals, discard_config_edit, discard_editor_request,
+    finish_pending_selection_operation, hyprland, link_cleaning_policy, logging, network_policy,
+    profile_startup::FailureStage, qobject, resolve_browser_roots,
 };
 use crate::OperationUpdate;
 
@@ -21,6 +21,76 @@ impl qobject::BrowserUi {
             .is_some()
     }
 
+    pub(super) fn profile_configuration_request_is_current(&self, request: &Arc<()>) -> bool {
+        Arc::ptr_eq(&self.rust().configuration_io.profile_request, request)
+    }
+
+    /// Retire only work that has not entered the configuration writer/context
+    /// coordinator. A new intent also retires a callback already taken locally
+    /// which can reenter here while notifying QML.
+    pub(super) fn begin_profile_configuration_request(mut self: Pin<&mut Self>) -> Option<Arc<()>> {
+        if !self.as_ref().rust().view_alive || self.as_ref().rust().ipc_shutdown_gate {
+            return None;
+        }
+        let retired = {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            let Some(generation) = this.configuration_io.selector_generation.checked_add(1) else {
+                drop(rust);
+                self.as_mut().set_status_text(QString::from(
+                    "configuration request generation is exhausted",
+                ));
+                return None;
+            };
+            let request = Arc::new(());
+            this.configuration_io.selector_generation = generation;
+            this.configuration_io.selector_origin_generation = generation;
+            this.configuration_io.profile_request = Arc::clone(&request);
+            let pending = this.configuration_io.pending_selector_validation.take();
+            if let Some(id) = pending
+                .as_ref()
+                .and_then(|pending| pending.operation_id.as_ref())
+                && this.operation(id).is_some_and(|operation| {
+                    !operation.state.is_terminal() && operation.cancellable
+                })
+            {
+                this.set_operation(id.clone(), OperationUpdate::cancelled());
+            }
+            (request, pending, this.pending_profile_configuration.take())
+        };
+        let (request, selector, profile) = retired;
+        drop(profile);
+        // Set readiness before any notification can admit unrelated validation.
+        if let Some(state) = self.as_mut().rust_mut().as_mut().get_mut().state.as_mut() {
+            state.set_policy_owner_preparing(true);
+        }
+        self.as_mut().set_profile_bootstrap_pending(true);
+        if self
+            .as_ref()
+            .profile_configuration_request_is_current(&request)
+        {
+            self.as_mut()
+                .set_selector_validation_request(QString::default());
+        }
+        // Always resolve the retired handoff even if clearing the property
+        // admitted a newer request. Feedback itself is ID scoped.
+        let feedback = selector
+            .and_then(super::browser_ui_configuration_preparation::finish_replaced_preparation);
+        self.as_mut().finish_setting_feedback(
+            feedback,
+            Err("The profile changed before settings validation completed."),
+        );
+        self.as_ref()
+            .profile_configuration_request_is_current(&request)
+            .then_some(request)
+    }
+
+    pub(super) fn clear_policy_owner_preparation(mut self: Pin<&mut Self>) {
+        if let Some(state) = self.as_mut().rust_mut().as_mut().get_mut().state.as_mut() {
+            state.set_policy_owner_preparing(false);
+        }
+    }
+
     #[allow(clippy::too_many_lines)]
     pub(super) fn configure_profile(
         mut self: Pin<&mut Self>,
@@ -30,22 +100,47 @@ impl qobject::BrowserUi {
         profile_name: &QString,
         storage_base: &QString,
     ) {
+        self.as_mut().ensure_owner_runtime_wake();
+        let Some(request) = self.as_mut().begin_profile_configuration_request() else {
+            return;
+        };
+        macro_rules! publish {
+            ($expression:expr) => {{
+                if !self
+                    .as_ref()
+                    .profile_configuration_request_is_current(&request)
+                {
+                    return;
+                }
+                $expression;
+                if !self
+                    .as_ref()
+                    .profile_configuration_request_is_current(&request)
+                {
+                    return;
+                }
+            }};
+        }
         let context_catalog_revision = super::live_ipc_owners::context_catalog_revision();
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .profile_startup
-            .begin();
-        self.as_mut().sync_profile_startup_notice();
-        self.as_mut().cancel_diagnostics();
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .diagnostic_work
-            .diagnostics_collector
-            .clear();
+        publish!(
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .profile_startup
+                .begin()
+        );
+        publish!(self.as_mut().sync_profile_startup_notice());
+        publish!(self.as_mut().cancel_diagnostics());
+        publish!(
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .diagnostic_work
+                .diagnostics_collector
+                .clear()
+        );
         let profile_label = profile_label.to_string();
         let profile_name = profile_name.to_string();
         let storage_base = storage_base.to_string();
@@ -59,24 +154,27 @@ impl qobject::BrowserUi {
             PrivacyKind::Normal
         };
         let Some((runtime, window, tab)) = bootstrap_runtime(privacy, &profile_label) else {
-            self.as_mut().set_profile_bootstrap_pending(false);
-            self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .profile_startup
-                .fail(
-                    FailureStage::Runtime,
-                    "The initial browser runtime could not be created",
-                );
-            self.as_mut().sync_profile_startup_notice();
-            self.set_status_text(QString::from(
+            publish!(self.as_mut().clear_policy_owner_preparation());
+            publish!(self.as_mut().set_profile_bootstrap_pending(false));
+            publish!(
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .profile_startup
+                    .fail(
+                        FailureStage::Runtime,
+                        "The initial browser runtime could not be created",
+                    )
+            );
+            publish!(self.as_mut().sync_profile_startup_notice());
+            publish!(self.as_mut().set_status_text(QString::from(
                 "The profile couldn't be opened. Open :diagnostics for details.",
-            ));
+            )));
             return;
         };
-        self.as_mut().set_profile_bootstrap_pending(true);
-        self.as_mut().refresh_ipc_owner();
+        publish!(self.as_mut().set_profile_bootstrap_pending(true));
+        publish!(self.as_mut().refresh_ipc_owner());
         let startup_config =
             serde_json::from_str::<Config>(&self.as_ref().rust().config_json.to_string())
                 .unwrap_or_default();
@@ -110,13 +208,18 @@ impl qobject::BrowserUi {
             ProfileStorage::Durable(root_spec)
         };
         let mut state = BrowserApplication::from_runtime(runtime, Config::default());
+        state.set_policy_owner_preparing(true);
+        if let Some(wake) = self.as_ref().rust().runtime_waker.as_ref() {
+            state.set_storage_waker(Arc::clone(wake));
+        }
         let request_result = state
-            .request_profile_open(ProfileOpenRequest {
+            .request_profile_open_for_validation(ProfileOpenRequest {
                 name: profile_name.clone(),
                 label: profile_label,
                 privacy,
                 storage,
                 base_configuration,
+                base_authored: self.as_ref().rust().base_authored_input.clone(),
                 initial_profile_overrides,
                 command_line_overrides,
                 config_path: (!config_path.is_empty()).then(|| PathBuf::from(config_path)),
@@ -126,34 +229,44 @@ impl qobject::BrowserUi {
             })
             .map_err(|error| error.to_string());
         if let Err(error) = request_result {
-            self.as_mut().set_profile_bootstrap_pending(false);
+            publish!(self.as_mut().clear_policy_owner_preparation());
+            publish!(self.as_mut().set_profile_bootstrap_pending(false));
+            publish!(
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .profile_startup
+                    .fail(FailureStage::ProfileOpen, &error)
+            );
+            publish!(self.as_mut().sync_profile_startup_notice());
+            publish!(self.as_mut().set_status_text(QString::from(
+                "The profile couldn't be opened. Open :diagnostics for details.",
+            )));
+            return;
+        }
+        publish!(
             self.as_mut()
                 .rust_mut()
                 .as_mut()
                 .get_mut()
-                .profile_startup
-                .fail(FailureStage::ProfileOpen, &error);
-            self.as_mut().sync_profile_startup_notice();
-            self.set_status_text(QString::from(
-                "The profile couldn't be opened. Open :diagnostics for details.",
-            ));
-            return;
-        }
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_profile_configuration = Some(PendingProfileConfiguration {
-            context_catalog_revision,
-            private_profile,
-            profile_name,
-            storage_base,
-            state,
-            window,
-            tab,
-        });
-        self.as_mut()
-            .set_status_text(QString::from("Opening profile…"));
+                .pending_profile_configuration = Some(PendingProfileConfiguration {
+                request: Arc::clone(&request),
+                selector_receipt: None,
+                selector_fingerprint: None,
+                context_catalog_revision,
+                private_profile,
+                profile_name,
+                storage_base,
+                state,
+                window,
+                tab,
+            })
+        );
+        publish!(
+            self.as_mut()
+                .set_status_text(QString::from("Opening profile…"))
+        );
     }
 
     #[allow(clippy::too_many_lines)]
@@ -163,6 +276,9 @@ impl qobject::BrowserUi {
         setup: Result<ProfileOpenEffect, String>,
     ) {
         let PendingProfileConfiguration {
+            request,
+            selector_receipt,
+            selector_fingerprint,
             context_catalog_revision,
             private_profile,
             profile_name,
@@ -171,23 +287,49 @@ impl qobject::BrowserUi {
             window,
             tab,
         } = pending;
+        macro_rules! publish {
+            ($expression:expr) => {{
+                if !self
+                    .as_ref()
+                    .profile_configuration_request_is_current(&request)
+                {
+                    return;
+                }
+                $expression;
+                if !self
+                    .as_ref()
+                    .profile_configuration_request_is_current(&request)
+                {
+                    return;
+                }
+            }};
+        }
+        if !self
+            .as_ref()
+            .profile_configuration_request_is_current(&request)
+        {
+            return;
+        }
         let policy_roots = resolve_browser_roots(&storage_base).ok();
         let startup_config = serde_json::from_str(&self.as_ref().rust().config_json.to_string())
             .unwrap_or_else(|_| serde_json::to_value(Config::default()).unwrap_or(Value::Null));
         let effect = match setup {
             Ok(effect) => effect,
             Err(error) => {
-                self.as_mut().set_profile_bootstrap_pending(false);
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .profile_startup
-                    .fail(FailureStage::ProfileOpen, &error);
-                self.as_mut().sync_profile_startup_notice();
-                self.as_mut().set_status_text(QString::from(
+                publish!(self.as_mut().clear_policy_owner_preparation());
+                publish!(self.as_mut().set_profile_bootstrap_pending(false));
+                publish!(
+                    self.as_mut()
+                        .rust_mut()
+                        .as_mut()
+                        .get_mut()
+                        .profile_startup
+                        .fail(FailureStage::ProfileOpen, &error)
+                );
+                publish!(self.as_mut().sync_profile_startup_notice());
+                publish!(self.as_mut().set_status_text(QString::from(
                     "The profile couldn't be opened. Open :diagnostics for details.",
-                ));
+                )));
                 return;
             }
         };
@@ -199,54 +341,55 @@ impl qobject::BrowserUi {
                 effect.configuration_error.as_deref(),
                 effect.context_error.as_deref(),
             );
-            this.profile_open_effect = Some(effect.clone());
-            this.profile_storage_base.clone_from(&storage_base);
         }
-        self.as_mut().sync_profile_startup_notice();
-        self.as_mut().clear_session_preview_rows();
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .session_preview_request = None;
-        self.as_mut().reset_management_feedback();
+        let profile_open_effect = effect.clone();
+        publish!(self.as_mut().sync_profile_startup_notice());
+        publish!(self.as_mut().clear_session_preview_rows());
+        publish!(
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .session_preview_request = None
+        );
+        publish!(self.as_mut().reset_management_feedback());
         let profile_id = effect.profile.id;
         let session_path = effect.session_path;
         let session_state_root = effect.session_state_root;
         let recovery_paths = effect.recovery_paths;
         let storage_roots = effect.profile.roots.clone();
+        // Startup may have discarded profile/runtime/CLI inputs, or CSS may
+        // have selected built-in safe layers after the worker returned. The
+        // installed application owns every mirror used by later edits.
+        let layers = state.configuration_layers();
         let base_config =
-            serde_json::from_str::<Value>(&self.as_ref().rust().config_base_json.to_string())
-                .ok()
-                .filter(Value::is_object)
-                .unwrap_or_else(|| startup_config.clone());
-        let cli_overrides = serde_json::from_str::<RuntimeOverrides>(
-            &self.as_ref().rust().cli_overrides_json.to_string(),
-        )
-        .unwrap_or_default();
-        let profile_overrides = effect.profile_overrides;
-        let runtime_overrides = effect.runtime_overrides;
+            serde_json::to_value(&layers.base).unwrap_or_else(|_| startup_config.clone());
+        let cli_overrides = layers.command_line.clone();
+        let profile_overrides = layers.profile.clone();
+        let runtime_overrides = layers.runtime.clone();
+        let temporary_overrides = layers.temporary.clone();
         let config_path = self.as_ref().rust().config_path.to_string();
         let presentation_config = effect.configuration.effective;
         let config =
             serde_json::to_value(&presentation_config).unwrap_or_else(|_| startup_config.clone());
-        self.as_mut().update_theme_palette(&config);
-        self.as_mut()
-            .update_chrome_preferences(&presentation_config);
-        self.as_mut()
-            .update_feature_preferences(&presentation_config);
-        self.as_mut().update_hint_preferences(&presentation_config);
-        let current_url = self.as_ref().rust().current_url.to_string();
-        self.as_mut()
-            .update_hint_proxy_targets(&presentation_config, &current_url);
-        self.as_mut().update_settings_presentation(&config);
+        publish!(self.as_mut().update_theme_palette(&config));
+        publish!(
+            self.as_mut()
+                .update_chrome_preferences(&presentation_config)
+        );
+        publish!(
+            self.as_mut()
+                .update_feature_preferences(&presentation_config)
+        );
+        publish!(self.as_mut().update_hint_preferences(&presentation_config));
+        publish!(self.as_mut().update_settings_presentation(&config));
         let hyprland_config = serde_json::from_value::<ferric_browser_config::HyprlandConfig>(
             config.get("hyprland").cloned().unwrap_or(Value::Null),
         )
         .unwrap_or_default();
-        self.as_mut().set_hyprland_status(QString::from(
+        publish!(self.as_mut().set_hyprland_status(QString::from(
             hyprland::HyprlandAdapter::from_config(&hyprland_config).status(),
-        ));
+        )));
         let blocking_enabled = config
             .get("blocking")
             .and_then(Value::as_object)
@@ -278,9 +421,19 @@ impl qobject::BrowserUi {
         let profile_overrides_json =
             serde_json::to_string(&profile_overrides).unwrap_or_else(|_| "{}".into());
         let profile_snapshot = effect.profile;
-        let status = {
+        if !self
+            .as_ref()
+            .profile_configuration_request_is_current(&request)
+        {
+            return;
+        }
+        self.as_mut().detach_site_policy_file();
+        self.as_mut()
+            .site_policy_preview_cancel(&QString::default());
+        let (status, retired_publication) = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
+            let retired_publication = this.detach_configuration_publication();
             super::live_ipc_owners::forget_page_order(&this.tab_ids);
             this.page_window_closing = false;
             this.restored_page_windows.clear();
@@ -288,7 +441,22 @@ impl qobject::BrowserUi {
             if let Some(wake) = &this.runtime_waker {
                 state.set_storage_waker(Arc::clone(wake));
             }
+            this.configuration_io
+                .selector_receipts
+                .published(&state, selector_receipt);
+            this.configuration_io.active_selector_fingerprint =
+                selector_fingerprint.unwrap_or_default();
+            this.configuration_io.selector_config_revision = this
+                .configuration_io
+                .selector_config_revision
+                .wrapping_add(1);
+            // CSS and canonical fallback selection are complete. Network
+            // bootstrap readiness remains a separate existing consumer gate.
+            state.set_policy_owner_preparing(false);
             this.state = Some(state);
+            this.configuration_io.published_profile_request = Some(Arc::clone(&request));
+            this.profile_open_effect = Some(profile_open_effect);
+            this.profile_storage_base.clone_from(&storage_base);
             this.context_catalog_revision = context_catalog_revision;
             this.navigation.journey_durable_ids.borrow_mut().clear();
             this.journey_export_payload = None;
@@ -430,8 +598,15 @@ impl qobject::BrowserUi {
             this.caret_selecting = false;
             this.interaction.hint_session = None;
             this.interaction.hint_interaction = None;
+            this.interaction.hint_loading_interaction = None;
+            this.interaction.initial_hint = None;
+            this.interaction.hint_policy_proof = None;
+            this.interaction.confirmed_hint_anchor = None;
             this.interaction.hint_consumed.clear();
             this.config_revision = this.config_revision.wrapping_add(1);
+            this.active_tab_projection = None;
+            this.url_projection_input = None;
+            this.completed_url_projection = None;
             this.policy_revision = this.policy_revision.wrapping_add(1);
             this.config = config;
             crate::page_window_operations::update_policy(this);
@@ -444,12 +619,13 @@ impl qobject::BrowserUi {
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
             this.runtime_overrides = runtime_overrides;
-            this.temporary_overrides = RuntimeOverrides::default();
+            this.temporary_overrides = temporary_overrides;
             this.cli_overrides = cli_overrides;
             this.profile_overrides = profile_overrides;
-            this.mixed_policy = this
+            let mixed_resolution = this
                 .state
                 .as_ref()
+                .ok_or_else(|| "application state is unavailable".to_owned())
                 .and_then(|state| {
                     let layers = state.configuration_layers();
                     super::mixed_policy_runtime::resolve_for_layers(
@@ -461,9 +637,10 @@ impl qobject::BrowserUi {
                         state.configuration(),
                         &this.current_url.to_string(),
                     )
-                    .ok()
-                })
-                .unwrap_or_default();
+                });
+            this.replace_mixed_policy(super::mixed_policy_runtime::MixedPolicyState::from_result(
+                mixed_resolution,
+            ));
             this.binding_overlay = QString::default();
             this.configuration_io.config_watch = config_watch;
             this.configuration_io.pending_context_reload = None;
@@ -498,9 +675,8 @@ impl qobject::BrowserUi {
             this.context_workspace = QString::default();
             this.context_accent = QString::default();
             this.context_entry_force_reuse = false;
-            if let Some(bindings) = configured_bindings(&this.registry, &this.config) {
-                this.bindings = Some(bindings);
-            }
+            let bindings = configured_bindings(&this.registry, &this.config);
+            this.replace_input_bindings(bindings);
             this.profile_id = profile_id;
             this.profile_persistence = if profile_snapshot.durable {
                 ProfilePersistence::Durable
@@ -531,10 +707,18 @@ impl qobject::BrowserUi {
             if let Some(bindings) = this.bindings.as_mut() {
                 bindings.set_mode(Mode::Normal);
             }
-            let status = QString::from(this.profile_startup.ready_message(private_profile));
+            let mut message = this.profile_startup.ready_message(private_profile);
+            if let Some(error) = this.mixed_policy.error() {
+                message.push_str("; Mixed input policy unavailable: ");
+                message.push_str(error);
+            }
+            let status = QString::from(message);
             this.status_text = status.clone();
-            status
+            (status, retired_publication)
         };
+        drop(retired_publication);
+        let binding_context = self.as_ref().binding_context();
+        self.as_mut().input_bindings_changed(binding_context);
         if self.as_ref().in_page_window_mode() {
             let checkpoint = {
                 let owner = self.as_ref();
@@ -558,15 +742,19 @@ impl qobject::BrowserUi {
                 this.recovery_paths.clear();
             }
         }
-        self.as_mut().set_session_recovery_pending(false);
-        self.as_mut().set_session_recovery_error(QString::default());
-        self.as_mut().clear_userscript_inventory_rows();
-        self.as_mut().set_userscript_inventory_ready(false);
-        self.as_mut().set_userscript_inventory_pending(false);
-        self.as_mut()
-            .set_userscript_inventory_error(QString::default());
-        self.as_mut()
-            .set_userscript_install_state(QString::from("idle"));
+        publish!(self.as_mut().set_session_recovery_pending(false));
+        publish!(self.as_mut().set_session_recovery_error(QString::default()));
+        publish!(self.as_mut().clear_userscript_inventory_rows());
+        publish!(self.as_mut().set_userscript_inventory_ready(false));
+        publish!(self.as_mut().set_userscript_inventory_pending(false));
+        publish!(
+            self.as_mut()
+                .set_userscript_inventory_error(QString::default())
+        );
+        publish!(
+            self.as_mut()
+                .set_userscript_install_state(QString::from("idle"))
+        );
         let revision = self
             .as_ref()
             .rust()
@@ -577,96 +765,130 @@ impl qobject::BrowserUi {
             .rust()
             .content_history_revision
             .wrapping_add(1);
-        self.as_mut().set_content_history_revision(history_revision);
-        self.as_mut().set_start_page_ready(false);
-        self.as_mut().set_start_page_profile_revision(revision);
-        self.as_mut().set_start_page_owner_token(QString::default());
-        self.as_mut().set_start_page_error(QString::default());
-        self.as_mut().set_start_page_busy(false);
-        self.as_mut().publish_start_page();
-        self.as_mut()
-            .set_config_json(QString::from(effective_config_json));
-        self.as_mut().note_hint_configuration_change();
-        self.as_mut().update_hint_preferences(&presentation_config);
-        let current_url = self.as_ref().rust().current_url.to_string();
-        self.as_mut()
-            .update_hint_proxy_targets(&presentation_config, &current_url);
-        self.as_mut()
-            .set_desktop_portal_mode(QString::from(desktop_portal_mode));
+        publish!(self.as_mut().set_content_history_revision(history_revision));
+        publish!(self.as_mut().set_start_page_ready(false));
+        publish!(self.as_mut().set_start_page_profile_revision(revision));
+        publish!(self.as_mut().set_start_page_owner_token(QString::default()));
+        publish!(self.as_mut().set_start_page_error(QString::default()));
+        publish!(self.as_mut().set_start_page_busy(false));
+        publish!(self.as_mut().publish_start_page());
+        publish!(
+            self.as_mut()
+                .set_config_json(QString::from(effective_config_json))
+        );
+        publish!(self.as_mut().note_hint_configuration_change());
+        publish!(self.as_mut().update_hint_preferences(&presentation_config));
+        publish!(self.as_mut().request_interaction_policy_refresh());
+        publish!(
+            self.as_mut()
+                .set_desktop_portal_mode(QString::from(desktop_portal_mode))
+        );
         let learning_mode = self.as_ref().rust().learning_mode;
-        self.as_mut().set_learning_mode(learning_mode);
-        self.as_mut()
-            .set_profile_overrides_json(QString::from(profile_overrides_json));
-        self.as_mut().set_blocking_policy_ready(false);
-        self.as_mut().set_blocking_hosts(QStringList::default());
-        self.as_mut()
-            .set_blocking_exceptions(QStringList::default());
-        self.as_mut()
-            .set_blocking_rule_hosts(QStringList::default());
-        self.as_mut()
-            .set_blocking_rule_list_ids(QStringList::default());
-        self.as_mut()
-            .set_blocking_exception_rule_hosts(QStringList::default());
-        self.as_mut()
-            .set_blocking_exception_rule_list_ids(QStringList::default());
-        self.as_mut().set_blocking_loaded_lists(QString::from("[]"));
-        self.as_mut()
-            .set_blocking_list_metadata(QString::from("[]"));
-        self.as_mut()
-            .set_blocking_cosmetic_rule_hosts(QStringList::default());
-        self.as_mut()
-            .set_blocking_cosmetic_rule_selectors(QStringList::default());
-        self.as_mut()
-            .set_blocking_cosmetic_exception_hosts(QStringList::default());
-        self.as_mut()
-            .set_blocking_cosmetic_exception_selectors(QStringList::default());
-        self.as_mut()
-            .set_blocking_skipped_lists(QString::from("[]"));
-        self.as_mut()
-            .set_blocking_bypass_sites(QStringList::default());
-        self.as_mut().clear_site_experiment_presentation();
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .last_site_doctor_result = None;
-        self.as_mut().set_blocking_enabled(blocking_enabled);
-        self.as_mut().set_blocking_blocked_count(0);
-        self.as_mut().set_blocking_active_site_count(0);
-        self.as_mut().set_blocking_unknown_context_count(0);
-        self.as_mut().clear_blocking_active_evidence();
-        self.as_mut().set_active_tab_index(0);
-        self.as_mut().set_tab_count(1);
-        self.as_mut().set_status_text(status);
-        // The bootstrap snapshot predates watcher installation. Rescan after
-        // the watch is armed so edits made during that handoff are not lost.
-        self.as_mut().refresh_userscript_inventory();
-        self.as_mut().sync_context_choices();
-        self.as_mut().sync_context_metadata();
-        let policy_request = (|| {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            if this.configuration_io.network_policy_worker.is_none() {
-                this.configuration_io.network_policy_worker = Some(NetworkPolicyWorker::spawn()?);
-            }
-            this.configuration_io
-                .network_policy_worker
-                .as_mut()
-                .ok_or_else(|| "Network policy service is unavailable".to_owned())?
-                .request(this.policy_roots.clone(), this.config.clone())
-        })();
-        if let Err(error) = policy_request {
+        publish!(self.as_mut().set_learning_mode(learning_mode));
+        publish!(
+            self.as_mut()
+                .set_profile_overrides_json(QString::from(profile_overrides_json))
+        );
+        publish!(self.as_mut().set_blocking_policy_ready(false));
+        publish!(self.as_mut().set_blocking_hosts(QStringList::default()));
+        publish!(
+            self.as_mut()
+                .set_blocking_exceptions(QStringList::default())
+        );
+        publish!(
+            self.as_mut()
+                .set_blocking_rule_hosts(QStringList::default())
+        );
+        publish!(
+            self.as_mut()
+                .set_blocking_rule_list_ids(QStringList::default())
+        );
+        publish!(
+            self.as_mut()
+                .set_blocking_exception_rule_hosts(QStringList::default())
+        );
+        publish!(
+            self.as_mut()
+                .set_blocking_exception_rule_list_ids(QStringList::default())
+        );
+        publish!(self.as_mut().set_blocking_loaded_lists(QString::from("[]")));
+        publish!(
+            self.as_mut()
+                .set_blocking_list_metadata(QString::from("[]"))
+        );
+        publish!(
+            self.as_mut()
+                .set_blocking_cosmetic_rule_hosts(QStringList::default())
+        );
+        publish!(
+            self.as_mut()
+                .set_blocking_cosmetic_rule_selectors(QStringList::default())
+        );
+        publish!(
+            self.as_mut()
+                .set_blocking_cosmetic_exception_hosts(QStringList::default())
+        );
+        publish!(
+            self.as_mut()
+                .set_blocking_cosmetic_exception_selectors(QStringList::default())
+        );
+        publish!(
+            self.as_mut()
+                .set_blocking_skipped_lists(QString::from("[]"))
+        );
+        publish!(
+            self.as_mut()
+                .set_blocking_bypass_sites(QStringList::default())
+        );
+        publish!(self.as_mut().clear_site_experiment_presentation());
+        publish!(
             self.as_mut()
                 .rust_mut()
                 .as_mut()
                 .get_mut()
-                .profile_startup
-                .network_result(Some(&error));
-            self.as_mut().sync_profile_startup_notice();
-            self.as_mut().set_profile_bootstrap_pending(false);
-            self.as_mut().set_status_text(QString::from(
+                .last_site_doctor_result = None
+        );
+        publish!(self.as_mut().set_blocking_enabled(blocking_enabled));
+        publish!(self.as_mut().set_blocking_blocked_count(0));
+        publish!(self.as_mut().set_blocking_active_site_count(0));
+        publish!(self.as_mut().set_blocking_unknown_context_count(0));
+        publish!(self.as_mut().clear_blocking_active_evidence());
+        publish!(self.as_mut().set_active_tab_index(0));
+        publish!(self.as_mut().set_tab_count(1));
+        publish!(self.as_mut().set_status_text(status));
+        // The bootstrap snapshot predates watcher installation. Rescan after
+        // the watch is armed so edits made during that handoff are not lost.
+        publish!(self.as_mut().refresh_userscript_inventory());
+        publish!(self.as_mut().sync_context_choices());
+        publish!(self.as_mut().sync_context_metadata());
+        if !self
+            .as_ref()
+            .profile_configuration_request_is_current(&request)
+        {
+            return;
+        }
+        let policy_request = self.as_mut().request_network_policy(false);
+        if !self
+            .as_ref()
+            .profile_configuration_request_is_current(&request)
+        {
+            return;
+        }
+        if let Err(error) = policy_request {
+            publish!(
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .profile_startup
+                    .network_result(Some(&error))
+            );
+            publish!(self.as_mut().sync_profile_startup_notice());
+            publish!(self.as_mut().clear_policy_owner_preparation());
+            publish!(self.as_mut().set_profile_bootstrap_pending(false));
+            publish!(self.as_mut().set_status_text(QString::from(
                 "Network filtering couldn't be prepared. Open :diagnostics for details.",
-            ));
+            )));
         }
     }
 

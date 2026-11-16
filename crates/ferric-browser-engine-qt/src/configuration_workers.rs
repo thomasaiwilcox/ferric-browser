@@ -16,6 +16,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+mod site_policy;
+
 pub(super) struct ConfigReloadResult {
     pub(super) loaded: LoadedConfig,
     pub(super) contexts: ContextsConfig,
@@ -54,13 +56,37 @@ pub(super) struct ConfigReloadWorker {
     pending_operation: Option<ConfigReadOperation>,
 }
 
-pub(super) struct ConfigWriteResult {
-    pub(super) path: PathBuf,
-    pub(super) bytes: usize,
+pub(super) enum ConfigWriteResult {
+    Written {
+        path: PathBuf,
+        bytes: usize,
+    },
+    PolicyImported(ferric_browser_config::SitePolicyExchange),
+    PolicyFailure {
+        kind: ferric_browser_core::FailureKind,
+        message: String,
+    },
+    PolicyExported {
+        path: PathBuf,
+        bytes: usize,
+        durability_uncertain: bool,
+    },
 }
 
 enum ConfigWriteRequest {
-    Write { path: PathBuf, bytes: Vec<u8> },
+    Write {
+        path: PathBuf,
+        bytes: Vec<u8>,
+    },
+    PolicyImport {
+        path: PathBuf,
+    },
+    PolicyExport {
+        path: PathBuf,
+        bytes: Vec<u8>,
+        overwrite: bool,
+        protected: Vec<PathBuf>,
+    },
 }
 
 pub(super) struct ConfigWriteWorker {
@@ -82,18 +108,74 @@ impl ConfigWriteWorker {
                         let _ = fs::remove_file(&path);
                         return Err(error.to_string());
                     }
-                    Ok(ConfigWriteResult {
+                    Ok(ConfigWriteResult::Written {
                         path,
                         bytes: bytes.len(),
                     })
                 })(),
+                ConfigWriteRequest::PolicyImport { path } => Ok(match site_policy::read(&path) {
+                    Ok(document) => ConfigWriteResult::PolicyImported(document),
+                    Err(site_policy::ReadFailure::Io(message)) => {
+                        ConfigWriteResult::PolicyFailure {
+                            kind: ferric_browser_core::FailureKind::Io,
+                            message,
+                        }
+                    }
+                    Err(site_policy::ReadFailure::Format(message)) => {
+                        ConfigWriteResult::PolicyFailure {
+                            kind: ferric_browser_core::FailureKind::Config,
+                            message,
+                        }
+                    }
+                }),
+                ConfigWriteRequest::PolicyExport {
+                    path,
+                    bytes,
+                    overwrite,
+                    protected,
+                } => Ok(
+                    match site_policy::write(&path, &bytes, overwrite, &protected) {
+                        Ok(durability_uncertain) => ConfigWriteResult::PolicyExported {
+                            path,
+                            bytes: bytes.len(),
+                            durability_uncertain,
+                        },
+                        Err(message) => ConfigWriteResult::PolicyFailure {
+                            kind: ferric_browser_core::FailureKind::Io,
+                            message,
+                        },
+                    },
+                ),
             },
         );
         Self { inner }
     }
 
     pub(super) fn request(&mut self, path: PathBuf, bytes: Vec<u8>) -> Result<(), String> {
-        match self.inner.submit(ConfigWriteRequest::Write { path, bytes }) {
+        self.submit(ConfigWriteRequest::Write { path, bytes })
+    }
+
+    pub(super) fn import_policy(&mut self, path: PathBuf) -> Result<(), String> {
+        self.submit(ConfigWriteRequest::PolicyImport { path })
+    }
+
+    pub(super) fn export_policy(
+        &mut self,
+        path: PathBuf,
+        bytes: Vec<u8>,
+        overwrite: bool,
+        protected: Vec<PathBuf>,
+    ) -> Result<(), String> {
+        self.submit(ConfigWriteRequest::PolicyExport {
+            path,
+            bytes,
+            overwrite,
+            protected,
+        })
+    }
+
+    fn submit(&mut self, request: ConfigWriteRequest) -> Result<(), String> {
+        match self.inner.submit(request) {
             Ok(()) => Ok(()),
             Err(SubmitError::Busy) => Err("configuration write is already pending".into()),
             Err(SubmitError::QueueFull) => Err("configuration write queue is full".into()),

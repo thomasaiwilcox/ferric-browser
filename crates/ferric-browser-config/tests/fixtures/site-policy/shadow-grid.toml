@@ -1,0 +1,24 @@
+schema_version = 3
+
+[[site_rules]]
+id = "fixture-shadow-grid"
+pattern = "https://components.example.test/*"
+priority = 100
+
+[site_rules.interaction.labels]
+alphabet = "asdfghjkl"
+fallback_prefix = "z"
+min_chars = 2
+auto_follow = "never"
+
+[[site_rules.interaction.collections]]
+id = "component-grid"
+families = ["links", "actions", "all"]
+container_selector = "#fixture-grid"
+item_selector = "video-card"
+primary_root_steps = [{ kind = "open-shadow", self = true }]
+primary_selector = "a.primary"
+identity_attributes = ["data-id"]
+order = "row-major-ltr"
+row_tolerance_px = 8
+codes = ["aa", "as", "ad", "fa", "fs", "fd", "ja", "js", "jd"]

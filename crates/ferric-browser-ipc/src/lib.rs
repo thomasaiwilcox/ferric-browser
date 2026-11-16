@@ -12,6 +12,7 @@ mod command_codec;
 mod command_envelope;
 mod command_invocation;
 mod command_schema;
+mod connection_writer;
 
 pub use command_codec::encode_command;
 pub use command_envelope::{CommandContext, CommandEnvelope, decode_command_envelope};
@@ -19,6 +20,7 @@ pub use command_invocation::{
     CommandInvocation, decode_command_chain, decode_command_invocation, encode_command_chain,
 };
 pub use command_schema::{command_argument_names, validate_command_argument_fields};
+pub use connection_writer::ConnectionWriter;
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -100,17 +102,17 @@ pub struct EventNotification {
 #[derive(Debug)]
 pub struct PendingRequest {
     request: Request,
-    stream: UnixStream,
+    writer: ConnectionWriter,
     cache: Option<Arc<Mutex<RequestCache>>>,
     outstanding: Option<Arc<std::sync::atomic::AtomicUsize>>,
 }
 
 impl PendingRequest {
     #[must_use]
-    pub fn new(request: Request, stream: UnixStream) -> Self {
+    pub fn new(request: Request, stream: impl Into<ConnectionWriter>) -> Self {
         Self {
             request,
-            stream,
+            writer: stream.into(),
             cache: None,
             outstanding: None,
         }
@@ -119,12 +121,12 @@ impl PendingRequest {
     #[must_use]
     pub fn with_cache(
         request: Request,
-        stream: UnixStream,
+        stream: impl Into<ConnectionWriter>,
         cache: Arc<Mutex<RequestCache>>,
     ) -> Self {
         Self {
             request,
-            stream,
+            writer: stream.into(),
             cache: Some(cache),
             outstanding: None,
         }
@@ -133,13 +135,13 @@ impl PendingRequest {
     #[must_use]
     pub fn with_cache_and_outstanding(
         request: Request,
-        stream: UnixStream,
+        stream: impl Into<ConnectionWriter>,
         cache: Arc<Mutex<RequestCache>>,
         outstanding: Arc<std::sync::atomic::AtomicUsize>,
     ) -> Self {
         Self {
             request,
-            stream,
+            writer: stream.into(),
             cache: Some(cache),
             outstanding: Some(outstanding),
         }
@@ -150,30 +152,46 @@ impl PendingRequest {
         &self.request
     }
 
-    /// Clones the authenticated connection stream for a long-lived event
-    /// writer while the request response continues on the original stream.
-    ///
-    /// # Errors
-    ///
-    /// Returns the underlying operating-system error when cloning fails.
-    pub fn clone_stream(&self) -> io::Result<UnixStream> {
-        self.stream.try_clone()
+    /// Shares the authenticated connection's frame writer with event producers.
+    #[must_use]
+    pub fn writer(&self) -> ConnectionWriter {
+        self.writer.clone()
     }
 
     /// Writes the response to the request's authenticated local connection.
     ///
     /// # Errors
     ///
-    /// Returns an error when the response is too large or the connection
-    /// cannot be written.
+    /// Oversized responses become a bounded failure and that exact failure is
+    /// cached for retransmission. No partial result is sent or request retried.
+    /// Returns an error when serialization or writing the connection fails.
     pub fn respond(mut self, response: &Response) -> Result<(), FrameError> {
-        let payload = serialize_response(response)?;
-        let result = write_frame(&mut self.stream, &payload);
-        if let Some(cache) = self.cache.as_ref()
-            && let Ok(mut cache) = cache.lock()
-        {
-            cache.insert(&self.request, response.clone(), Instant::now());
+        let mut response = std::borrow::Cow::Borrowed(response);
+        let payload = match serialize_response(&response) {
+            Ok(payload) => payload,
+            Err(FrameError::TooLarge(_)) => {
+                response = std::borrow::Cow::Owned(Response::failure(
+                    self.request.id.clone(),
+                    ProtocolError {
+                        code: ErrorCode::Engine.as_str().into(),
+                        message: "The response exceeds the local IPC size limit. Check current state before retrying.".into(),
+                        details: Some(json!({"reason":"response_too_large","limit_bytes":MAX_FRAME_BYTES})),
+                    },
+                ));
+                serialize_response(&response)?
+            }
+            Err(error) => return Err(error),
+        };
+        let output = self.writer.acquire()?;
+        // Publish the exact reply before exposing any bytes. Never hold this
+        // cache lock while waiting for output ownership or writing the socket.
+        if let Some(cache) = self.cache.as_ref() {
+            let mut cache = cache.lock().map_err(|_| {
+                FrameError::from(io::Error::other("IPC response cache is poisoned"))
+            })?;
+            cache.insert(&self.request, response.into_owned(), Instant::now());
         }
+        let result = output.write(&payload);
         if let Some(outstanding) = self.outstanding.take() {
             outstanding.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
         }
@@ -319,12 +337,10 @@ static EVENT_SUBSCRIBERS: OnceLock<Mutex<Vec<EventSubscriber>>> = OnceLock::new(
 /// Returns an error if the writer thread cannot be started or the stream is
 /// not usable.
 pub fn subscribe_event_stream(
-    stream: UnixStream,
+    stream: impl Into<ConnectionWriter>,
     event_types: Option<Vec<String>>,
 ) -> Result<(), String> {
-    stream
-        .set_write_timeout(Some(Duration::from_secs(1)))
-        .map_err(|error| format!("could not bound IPC event writes: {error}"))?;
+    let stream = stream.into();
     let queue = Arc::new(EventQueue::new());
     let active = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let registry = EVENT_SUBSCRIBERS.get_or_init(|| Mutex::new(Vec::new()));
@@ -340,9 +356,8 @@ pub fn subscribe_event_stream(
     thread::Builder::new()
         .name("ferric-browser-ipc-events".into())
         .spawn(move || {
-            let mut stream = stream;
             while let Some(payload) = writer_queue.take(&writer_active) {
-                let result = write_event_frame(&mut stream, &payload);
+                let result = stream.write_frame(&payload);
                 writer_queue.written();
                 if result.is_err() {
                     writer_active.store(false, std::sync::atomic::Ordering::Release);
@@ -394,40 +409,6 @@ pub fn publish_event(notification: &EventNotification) {
         }
         deliver_event_to_subscriber(subscriber, notification, &payload)
     });
-}
-
-// SO_SNDTIMEO alone bounds each syscall. Carry one absolute deadline through
-// partial writes so a slow reader cannot repeatedly renew its shutdown lease.
-fn write_event_frame(stream: &mut UnixStream, payload: &[u8]) -> io::Result<()> {
-    let length = u32::try_from(payload.len())
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "event frame too large"))?;
-    let deadline = Instant::now() + Duration::from_secs(1);
-    for mut remaining in [&length.to_be_bytes()[..], payload] {
-        while !remaining.is_empty() {
-            let Some(timeout) = deadline
-                .checked_duration_since(Instant::now())
-                .filter(|timeout| !timeout.is_zero())
-            else {
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "event frame deadline elapsed",
-                ));
-            };
-            stream.set_write_timeout(Some(timeout))?;
-            match stream.write(remaining) {
-                Ok(0) => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::WriteZero,
-                        "event stream closed",
-                    ));
-                }
-                Ok(written) => remaining = &remaining[written..],
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => (),
-                Err(error) => return Err(error),
-            }
-        }
-    }
-    Ok(())
 }
 
 /// Whether an admitted subscriber notification is queued or being written.
@@ -848,7 +829,14 @@ impl Response {
         let Value::Object(mut details) = details else {
             unreachable!("error details are always converted to an object");
         };
-        let (preserved, next_action) = if details
+        let (preserved, next_action) = if details.get("reason").and_then(Value::as_str)
+            == Some("response_too_large")
+        {
+            (
+                "request effects have not been rolled back",
+                "inspect current browser state before retrying; request a smaller result where supported",
+            )
+        } else if details
             .get("accepted_commands")
             .and_then(Value::as_u64)
             .is_some_and(|count| count > 0)
@@ -1710,6 +1698,183 @@ mod tests {
     }
 
     #[test]
+    fn oversized_responses_deliver_and_cache_a_bounded_failure() {
+        for response in [
+            Response::success("large", json!({"value":"x".repeat(MAX_FRAME_BYTES)})),
+            Response::failure(
+                "large",
+                ProtocolError {
+                    code: "E_ENGINE".into(),
+                    message: "x".repeat(MAX_FRAME_BYTES),
+                    details: None,
+                },
+            ),
+        ] {
+            let request = request("large", "config.get", json!({"key":"tools.editor"}));
+            let cache = Arc::new(Mutex::new(RequestCache::new()));
+            assert_eq!(
+                cache.lock().unwrap().reserve(&request, Instant::now()),
+                CacheLookup::Miss
+            );
+            let outstanding = Arc::new(std::sync::atomic::AtomicUsize::new(1));
+            let (server, mut client) = UnixStream::pair().unwrap();
+            client
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            PendingRequest::with_cache_and_outstanding(
+                request.clone(),
+                server,
+                Arc::clone(&cache),
+                Arc::clone(&outstanding),
+            )
+            .respond(&response)
+            .unwrap();
+            let payload = read_frame(&mut client).unwrap().unwrap();
+            assert!(payload.len() < MAX_FRAME_BYTES);
+            let wire: Response = serde_json::from_slice(&payload).unwrap();
+            assert_eq!(wire.id, request.id);
+            assert!(wire.result.is_none());
+            let error = wire.error.as_ref().unwrap();
+            assert_eq!(error.code, "E_ENGINE");
+            assert_eq!(
+                error.details.as_ref().unwrap()["reason"],
+                "response_too_large"
+            );
+            assert_eq!(
+                error.details.as_ref().unwrap()["preserved"],
+                "request effects have not been rolled back"
+            );
+            assert_eq!(outstanding.load(std::sync::atomic::Ordering::Acquire), 0);
+            assert_eq!(
+                cache.lock().unwrap().lookup(&request, Instant::now()),
+                CacheLookup::Hit(wire)
+            );
+        }
+    }
+
+    #[test]
+    fn response_cache_is_published_before_output_can_be_observed() {
+        let request = request("blocked", "config.get", json!({"key":"content.zoom"}));
+        let response = Response::success("blocked", json!({"value":1.0}));
+        let cache = Arc::new(Mutex::new(RequestCache::new()));
+        assert_eq!(
+            cache.lock().unwrap().reserve(&request, Instant::now()),
+            CacheLookup::Miss
+        );
+        let (mut server, mut client) = UnixStream::pair().unwrap();
+        server.set_nonblocking(true).unwrap();
+        let filler = [b'x'; 4096];
+        let mut queued = 0;
+        loop {
+            match server.write(&filler) {
+                Ok(written) => queued += written,
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                Err(error) => panic!("fill socket: {error}"),
+            }
+        }
+        server.set_nonblocking(false).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let pending = PendingRequest::with_cache(request.clone(), server, Arc::clone(&cache));
+        let replay_output = pending.writer();
+        let expected = response.clone();
+        let writer = thread::spawn(move || pending.respond(&response));
+        let deadline = Instant::now() + Duration::from_millis(250);
+        let published = loop {
+            if cache.lock().unwrap().lookup(&request, Instant::now())
+                == CacheLookup::Hit(expected.clone())
+            {
+                break true;
+            }
+            if Instant::now() >= deadline {
+                break false;
+            }
+            thread::sleep(Duration::from_millis(1));
+        };
+        let replay = match cache.lock().unwrap().reserve(&request, Instant::now()) {
+            CacheLookup::Hit(cached) => Some(thread::spawn(move || {
+                replay_output.write_frame(&serialize_response(&cached).unwrap())
+            })),
+            CacheLookup::InFlight => None,
+            other => panic!("duplicate was admitted again: {other:?}"),
+        };
+        // Always drain and join before asserting, including the old failing
+        // implementation, so a failed regression cannot strand its writer.
+        let mut remaining = queued;
+        let mut drain = [0; 4096];
+        while remaining > 0 {
+            let count = remaining.min(drain.len());
+            client.read_exact(&mut drain[..count]).unwrap();
+            remaining -= count;
+        }
+        let received: Response =
+            serde_json::from_slice(&read_frame(&mut client).unwrap().unwrap()).unwrap();
+        writer.join().unwrap().unwrap();
+        assert_eq!(received, expected);
+        if let Some(replay) = replay {
+            let duplicate: Response =
+                serde_json::from_slice(&read_frame(&mut client).unwrap().unwrap()).unwrap();
+            replay.join().unwrap().unwrap();
+            assert_eq!(duplicate, expected);
+        }
+        assert!(
+            published,
+            "reply cache must be populated before frame output is unblocked"
+        );
+    }
+
+    #[test]
+    fn responses_and_notifications_share_whole_frame_ownership() {
+        let (server, mut client) = UnixStream::pair().unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let output = ConnectionWriter::new(server);
+        let mut workers = Vec::new();
+        for index in 0..4 {
+            let output = output.clone();
+            workers.push(thread::spawn(move || {
+                for frame in 0..8 {
+                    if index % 2 == 0 {
+                        let id = format!("response-{index}-{frame}");
+                        PendingRequest::new(request(&id, "fixture", json!({})), output.clone())
+                            .respond(&Response::success(id, json!({"data":"x".repeat(128*1024)})))
+                            .unwrap();
+                    } else {
+                        let event = EventNotification {
+                            instance_id: format!("event-{index}-{frame}"),
+                            sequence: frame,
+                            event_type: "fixture".into(),
+                            payload: json!({"data":"y".repeat(128*1024)}),
+                        };
+                        output
+                            .write_frame(&serde_json::to_vec(&event).unwrap())
+                            .unwrap();
+                    }
+                }
+            }));
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        for _ in 0..32 {
+            let packet: Value =
+                serde_json::from_slice(&read_frame(&mut client).unwrap().unwrap()).unwrap();
+            let (id, data, expected) = if let Some(id) = packet.get("id") {
+                (id, &packet["result"]["data"], b'x')
+            } else {
+                (&packet["instance_id"], &packet["payload"]["data"], b'y')
+            };
+            assert!(ids.insert(id.as_str().unwrap().to_owned()));
+            let data = data.as_str().unwrap();
+            assert_eq!(data.len(), 128 * 1024);
+            assert!(data.bytes().all(|byte| byte == expected));
+        }
+        for worker in workers {
+            worker.join().unwrap();
+        }
+    }
+
+    #[test]
     fn request_parsing_enforces_depth_and_identifiers() {
         let valid = br#"{"id":"one","method":"hello","params":{"a":1}}"#;
         assert_eq!(parse_request(valid).expect("request").method, "hello");
@@ -2047,10 +2212,15 @@ mod tests {
         }
         writer.set_nonblocking(false).unwrap();
         let started = Instant::now();
-        let error = write_event_frame(&mut writer, b"terminal receipt").unwrap_err();
+        let error = ConnectionWriter::new(writer)
+            .write_frame(b"terminal receipt")
+            .unwrap_err();
         assert!(matches!(
-            error.kind(),
-            io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+            error,
+            FrameError::Io {
+                kind: io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut,
+                ..
+            }
         ));
         assert!(started.elapsed() < Duration::from_secs(3));
     }

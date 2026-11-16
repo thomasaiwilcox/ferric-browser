@@ -73,6 +73,9 @@ impl qobject::BrowserUi {
         commands: Vec<(ParsedCommand, crate::IpcRoute)>,
         operation: Option<&str>,
         handoff: &mut Option<PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<crate::Value, crate::PublicError> {
         let mut continuation_route = route.clone();
         continuation_route.selector = crate::DispatchTarget::Active;
@@ -93,6 +96,7 @@ impl qobject::BrowserUi {
             },
             operation,
             handoff,
+            preparation,
         )
         .map_err(Into::into)
     }
@@ -106,6 +110,9 @@ impl qobject::BrowserUi {
         continuation: PageContinuation,
         operation: Option<&str>,
         incoming: &mut Option<PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<crate::Value, String> {
         if command.name == "open"
             && route.is_some_and(|route| self.as_ref().creation_requires_routing(command, route))
@@ -121,6 +128,7 @@ impl qobject::BrowserUi {
                     command.clone(),
                     route.expect("routed open"),
                     operation,
+                    None,
                 )
                 .map_err(|error| error.to_string());
         }
@@ -193,9 +201,12 @@ impl qobject::BrowserUi {
                 target: route.map_or(crate::DispatchTarget::Active, |route| route.selector),
             }
         };
-        let handoff = self
-            .as_mut()
-            .prepare_page_handoff(incoming.clone(), &source, operation)?;
+        let handoff = self.as_mut().prepare_page_handoff(
+            incoming.clone(),
+            &source,
+            operation,
+            preparation,
+        )?;
         if !handoff.can_create_from(&source) {
             return Err("The issuing operation changed before opening the page".into());
         }

@@ -1,0 +1,29 @@
+# Local fixture only; never an installed or verified live-site policy.
+format = 'ferric-site-interaction'
+format_version = 1
+
+[[rules]]
+operation = "upsert-interaction"
+id = "fixture-visible-list"
+pattern = "https://feed.example.test/*"
+priority = 100
+
+[rules.interaction]
+enabled = true
+
+[rules.interaction.labels]
+alphabet = "asdfghjkl"
+min_chars = 2
+fallback_prefix = "z"
+auto_follow = "full-match"
+
+[[rules.interaction.collections]]
+id = "suggestions"
+families = ["links", "actions", "all"]
+container_selector = "#fixture-suggestions"
+item_selector = ".fixture-video-card"
+primary_selector = "a.fixture-thumbnail"
+identity_attributes = ["data-video-id"]
+order = "top-to-bottom"
+codes = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+

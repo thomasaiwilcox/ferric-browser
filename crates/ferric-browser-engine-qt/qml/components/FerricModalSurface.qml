@@ -105,6 +105,28 @@ FocusScope {
             item = item.parent;
         return item === control;
     }
+    // Structured editors can opt in without replacing other dialogs' list navigation.
+    property bool customTabTraversal: false
+    function moveTabFocus(backward) {
+        var start=hostWindow.activeFocusItem||surface,next=start
+        for(var count=0;count<4096;++count){
+            next=next.nextItemInFocusChain(!backward)
+            if(!next||next===start)break
+            var owner=next
+            while(owner&&owner!==surface)owner=owner.parent
+            if(owner===surface&&next.visible&&next.enabled&&next.activeFocusOnTab){
+                next.forceActiveFocus(backward?Qt.BacktabFocusReason:Qt.TabFocusReason);return
+            }
+        }
+        applyInitialFocus()
+    }
+    function handleTabKey(event) {
+        if(customTabTraversal&&interactive&&(event.key===Qt.Key_Tab||event.key===Qt.Key_Backtab)
+                &&!(event.modifiers&(Qt.ControlModifier|Qt.AltModifier|Qt.MetaModifier))){
+            event.accepted=true
+            moveTabFocus(event.key===Qt.Key_Backtab||!!(event.modifiers&Qt.ShiftModifier))
+        }
+    }
 
     anchors.fill: parent
     z: stackingOrder
@@ -226,6 +248,8 @@ FocusScope {
         autoRepeat: false
         onActivated: surface.dismissRequested()
     }
+    Shortcut { sequence:"Tab";context:Qt.WindowShortcut;enabled:surface.interactive&&surface.customTabTraversal;onActivated:surface.moveTabFocus(false) }
+    Shortcut { sequence:"Shift+Tab";context:Qt.WindowShortcut;enabled:surface.interactive&&surface.customTabTraversal;onActivated:surface.moveTabFocus(true) }
 
     Rectangle {
         anchors.fill: parent
@@ -315,6 +339,8 @@ FocusScope {
                 }
                 TextArea {
                     objectName: "dialogMessageLabel"
+                    Keys.priority:Keys.BeforeItem
+                    Keys.onPressed:function(event){surface.handleTabKey(event)}
                     Layout.fillWidth: true
                     visible: surface.message.length > 0
                     textFormat: TextEdit.PlainText

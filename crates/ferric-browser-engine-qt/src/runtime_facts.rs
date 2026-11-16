@@ -13,6 +13,15 @@ pub(super) fn apply_runtime_facts(
     chromium_version: String,
     chromium_security_patch_version: String,
 ) {
+    if let Some(capabilities) = snapshot
+        .get_mut("capabilities")
+        .and_then(Value::as_object_mut)
+    {
+        capabilities.insert(
+            "page_keys".into(),
+            crate::page_key_capabilities::snapshot(Some(&platform), Some(&webengine_version)),
+        );
+    }
     let backend_fact = if backend.is_empty() || backend == "unknown" {
         serde_json::json!({
             "status": "unknown",

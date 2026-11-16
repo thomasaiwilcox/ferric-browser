@@ -1,0 +1,49 @@
+# Local fixture only; never an installed or verified live-site policy.
+format = 'ferric-site-interaction'
+format_version = 1
+
+[[rules]]
+operation = "upsert-interaction"
+id = "fixture-navigation"
+pattern = "https://shop.example.test/*"
+priority = 100
+
+[rules.interaction]
+enabled = true
+
+[rules.interaction.labels]
+alphabet = "asdfghjkl"
+min_chars = 2
+fallback_prefix = "z"
+auto_follow = "full-match"
+
+[[rules.interaction.anchors]]
+id = "nav-mac"
+families = ["links", "actions", "all"]
+code = "m"
+scope_selector = "#fixture-global-nav"
+target_selector = "a"
+
+[rules.interaction.anchors.predicates.hint_name]
+equals = "Mac"
+case = "sensitive"
+
+[[rules.interaction.anchors]]
+id = "nav-watch"
+families = ["links", "actions", "all"]
+code = "w"
+scope_selector = "#fixture-global-nav"
+target_selector = "a"
+
+[rules.interaction.anchors.predicates.hint_name]
+equals = "Watch"
+
+[[rules.interaction.anchors]]
+id = "nav-iphone"
+families = ["links", "actions", "all"]
+code = "ip"
+scope_selector = "#fixture-global-nav"
+target_selector = "a"
+
+[rules.interaction.anchors.predicates.hint_name]
+equals = "iPhone"

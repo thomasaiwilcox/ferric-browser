@@ -1,0 +1,18 @@
+{
+  "status": "fixture-inputs-prepared-not-exercised",
+  "scope": "Legacy comparator input required by original HintCollectorCache.initTestCase. This30e9 comparator is NOT the site-policy starting baseline; candidate/current measurements use original pinned f2c5d6d source. Preserve attribution when comparing later feature performance. No timing/browser qualification.",
+  "legacy_comparator_revision": "30e9daf34079186dd5775d5f9c18b26c40176344",
+  "site_policy_starting_revision": "f2c5d6deebd97eb861084503f25613a6a819949d",
+  "artifact_directory": "/home/tom/Projects/Ferric/ferric-browser/target/site-policy-baseline/p00-pinned-qml-comparator-inputs",
+  "files": {
+    "PageInteractionScripts.js": {
+      "git_blob": "4a744811798d440970e1d16844e72813b69f2e89",
+      "sha256": "b4995822d71647fbfa80e06f828bfebe5b6dcdbebf52078c4fffee209afc3e4b"
+    },
+    "BrowserScripts.js": {
+      "git_blob": "c1a001f901fb441c8638014a85d8d52ba65a5d90",
+      "sha256": "6a6f1bb7bd2ca17cf9f60b41c5f8e4d912e25c124d429459b2a57aec36f98c16"
+    }
+  },
+  "environment_key": "FERRIC_TEST_ARTIFACT_DIR"
+}

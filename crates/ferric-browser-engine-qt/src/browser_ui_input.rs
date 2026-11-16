@@ -6,8 +6,179 @@ use super::{
 };
 use crate::hint_policy::hint_requests_pointer;
 use crate::{FailureKind, OperationUpdate};
+use ferric_browser_application::SitePolicyMatchContext;
+use ferric_browser_config::{
+    EffectiveInteractionPolicy, InteractionPageReceiver, InteractionRemapContext,
+};
+use ferric_browser_core::{
+    HintInputMode, LogicalKey, LogicalKeyToken, MixedKeyDecisionReason, ValidatedUrl,
+};
+
+fn native_key_descriptor(key: &LogicalKeyToken) -> serde_json::Value {
+    let (text, named) = match key.key() {
+        LogicalKey::Text(text) => (text.as_str(), String::new()),
+        LogicalKey::Named(named) => ("", named.spelling()),
+    };
+    let modifiers = key.modifiers();
+    serde_json::json!({"text":text,"named":named,"ctrl":modifiers.ctrl(),
+        "alt":modifiers.alt(),"meta":modifiers.meta(),"shift":modifiers.shift()})
+}
+
+impl super::BrowserUiRust {
+    pub(super) fn replace_input_bindings(&mut self, bindings: Option<super::BindingResolver>) {
+        // Publish the resolver and its opaque ownership identity before any
+        // Qt notification can reenter input delivery. Equal-value rebuilds
+        // also retire held commands; a later profile cannot reuse the token.
+        self.bindings = bindings;
+        self.binding_context = QString::from(super::Uuid::new_v4().to_string());
+    }
+}
 
 impl qobject::BrowserUi {
+    fn current_page_key_policy(&self) -> Option<&EffectiveInteractionPolicy> {
+        let rust = self.rust();
+        let app = rust.state.as_ref()?;
+        let url = ValidatedUrl::parse(rust.current_url.to_string()).ok()?;
+        app.cached_site_policy_snapshot(rust.window?, &SitePolicyMatchContext::for_url(&url))?
+            .interaction()?
+            .policy()
+            .filter(|policy| policy.enabled())
+    }
+
+    pub(super) fn page_key_routing_active(&self) -> bool {
+        self.current_page_key_policy().is_some_and(|policy| {
+            !policy.hint_page_keys().is_empty() || !policy.remaps().is_empty()
+        })
+    }
+
+    /// A checked read of the compiled policy. This selects a terminal output;
+    /// native receiver/capability/arbitration checks still precede submission.
+    pub(super) fn page_key_route(&self, source: &QString) -> QString {
+        self.current_page_key_route(source).map_or_else(
+            || QString::from("{}"),
+            |route| QString::from(route.to_string()),
+        )
+    }
+
+    pub(super) fn current_page_key_route(&self, source: &QString) -> Option<serde_json::Value> {
+        let rust = self.rust();
+        if rust.raw_passthrough {
+            return None;
+        }
+        let source = LogicalKeyToken::parse(&source.to_string()).ok()?;
+        if source.is_protected_rescue()
+            || rust.interaction.native_prompt_leases.top().is_some()
+            || super::policy_refresh_capture::PolicyRefreshCapture::capture_rust(rust).is_none()
+        {
+            return None;
+        }
+        let context = match rust.core_mode {
+            Mode::Normal => {
+                let decision = super::mixed_policy_runtime::decision_for_key(
+                    rust,
+                    Mode::Normal,
+                    source.as_str(),
+                )?;
+                if decision.reason != MixedKeyDecisionReason::ExactPageKey {
+                    return None;
+                }
+                InteractionRemapContext::NormalPageKey
+            }
+            Mode::Hint => {
+                if rust.target_search_active
+                    || source.is_hint_grammar_control()
+                    || rust.hint_pointer_mode && rust.hint_pointer_state.to_string() != "selecting"
+                    || rust.interaction.pending_hint_palette_permit.is_some()
+                    || rust.interaction.pending_hint_scope_handoff.is_some()
+                    || rust.interaction.pending_grid_scope_permit.is_some()
+                    || rust
+                        .interaction
+                        .hint_interaction
+                        .as_ref()
+                        .or(rust.interaction.hint_loading_interaction.as_ref())
+                        .is_some_and(|input| input.input_mode() != HintInputMode::Label)
+                {
+                    return None;
+                }
+                InteractionRemapContext::HintPageKey
+            }
+            Mode::PassThroughOnce => InteractionRemapContext::PassthroughOnce,
+            Mode::PassThrough => InteractionRemapContext::Passthrough,
+            _ => return None,
+        };
+        let policy = self.current_page_key_policy()?;
+        if context == InteractionRemapContext::HintPageKey
+            && !policy.keys().hint_page_keys().contains(&source)
+        {
+            return None;
+        }
+        let remap = policy.keys().remap(context, &source);
+        if remap.is_none() && context != InteractionRemapContext::HintPageKey {
+            return None;
+        }
+        let destination = remap.map_or(&source, |remap| remap.destination());
+        let target = self.target_for_index(rust.active_tab_index)?;
+        let focus = rust
+            .interaction
+            .page_key_focus_key
+            .as_ref()
+            .filter(|key| key.0 == rust.active_tab_index)
+            .and_then(|key| rust.interaction.focus_observations.get(key))
+            .filter(|observation| {
+                observation.epoch == rust.input_epoch
+                    && observation.url == rust.current_url.to_string()
+                    && !observation.editable
+            })
+            .and_then(|observation| observation.page_key.as_ref())
+            .filter(|focus| focus.target == target && focus.focused && focus.kind == "noneditable");
+        let authorized = focus.is_some_and(|focus| match policy.page_receiver() {
+            InteractionPageReceiver::TopDocument {} => focus.receiver.top,
+            InteractionPageReceiver::FocusedFrame { origins } => {
+                !focus.receiver.top && origins.contains(&focus.receiver.origin)
+            }
+            InteractionPageReceiver::TopOrFocusedFrame { origins } => {
+                focus.receiver.top || origins.contains(&focus.receiver.origin)
+            }
+        });
+        let qualification = crate::page_key_capabilities::current_assessment(
+            destination,
+            destination != &source,
+            context,
+            crate::page_key_capabilities::receiver_scope(policy.page_receiver()),
+        );
+        let (status, reason) = if let Some(reason) = qualification.reason() {
+            ("qualification-failed", reason)
+        } else if focus.is_none() {
+            (
+                "receiver-unavailable",
+                "Page command requires a known noneditable receiver",
+            )
+        } else if !authorized {
+            (
+                "authorization-denied",
+                "Page command receiver is outside the configured scope",
+            )
+        } else {
+            ("ready", "")
+        };
+        Some(serde_json::json!({
+            "claimed": true, "context": context, "source": source.as_str(),
+            "destination": destination.as_str(), "transformed": destination != &source,
+            "destination_key": native_key_descriptor(destination),
+            "receiver": focus.map_or("", |focus| focus.receiver.key.as_str()),
+            "allowed": reason.is_empty(), "reason": reason,
+            "status": status, "qualification": qualification,
+            "hint_context": if context == InteractionRemapContext::HintPageKey {
+                self.hint_input_context().to_string()
+            } else { String::new() },
+            "revision": policy.revision().policy_revision.to_string(),
+        }))
+    }
+
+    pub(super) fn binding_context(&self) -> QString {
+        self.rust().binding_context.clone()
+    }
+
     pub(super) fn execute_command(self: Pin<&mut Self>, input: &QString) -> bool {
         let commands = match parse_chain(&input.to_string(), ParseInput::Interactive) {
             Ok(commands) => commands,
@@ -244,6 +415,12 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn handle_key(mut self: Pin<&mut Self>, key: &QString) -> bool {
+        // Missing compiled bindings cannot grant page or macro authority to
+        // input already routed to the browser in Normal mode.
+        if self.as_ref().rust().core_mode == Mode::Normal && self.as_ref().rust().bindings.is_none()
+        {
+            return true;
+        }
         let now_ms = elapsed_ms(self.as_ref().rust().binding_clock);
         let key = key.to_string();
         if let Some(result) = self.as_mut().handle_macro_key(&key, now_ms) {
@@ -253,7 +430,7 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             let Some(bindings) = this.bindings.as_mut() else {
-                return false;
+                return this.core_mode == Mode::Normal;
             };
             bindings.feed(&key, now_ms)
         };

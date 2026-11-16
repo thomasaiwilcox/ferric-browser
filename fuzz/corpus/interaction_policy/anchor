@@ -1,0 +1,8 @@
+enabled = true
+[[anchors]]
+id = "mac"
+code = "m"
+families = ["links"]
+[anchors.predicates.hint_name]
+equals = " Cafe\u0301 "
+case = "ascii-insensitive"

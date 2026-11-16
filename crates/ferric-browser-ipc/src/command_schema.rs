@@ -6,6 +6,9 @@ use serde_json::{Map, Value};
 #[must_use]
 #[allow(clippy::match_same_arms)]
 pub fn command_argument_names(command: &str) -> &'static [&'static str] {
+    if let Some(fields) = crate::command_codec::command_codec_site_policy::argument_names(command) {
+        return fields;
+    }
     match command {
         "open" => &["input", "target", "clean_link", "external"],
         "open-current" => &["target"],
@@ -63,7 +66,7 @@ pub fn command_argument_names(command: &str) -> &'static [&'static str] {
         "history-clear" => &["since", "origin", "confirmed"],
         "url-clean" | "url-explain" => &["url"],
         "hint" => &["kind", "target", "rapid", "script", "first", "index"],
-        "mode-enter" => &["mode"],
+        "mode-enter" => &["mode", "raw"],
         "caret-move" => &["direction", "count"],
         "caret-select" => &["state"],
         "download" => &["input"],

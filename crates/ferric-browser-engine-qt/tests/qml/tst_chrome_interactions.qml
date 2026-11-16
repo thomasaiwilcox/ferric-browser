@@ -222,6 +222,13 @@ TestCase {
             compare(label.text, "PASS NEXT KEY")
             verify(hint.visible)
             verify(bar.Accessible.name.indexOf("Next key") >= 0)
+            bar.rawPassthrough = true
+            compare(label.text, "PASS NEXT KEY · RAW")
+            verify(bar.Accessible.name.indexOf("remaps bypassed") >= 0)
+            bar.mode = "pass-through"
+            compare(label.text, "PASS THROUGH · RAW")
+            bar.rawPassthrough = false
+            compare(label.text, "PASS THROUGH")
             bar.mode = "normal"
             verify(!hint.visible)
         }
@@ -1328,19 +1335,50 @@ TestCase {
         }), "Ctrl+Space")
         compare(KeyboardPresentation.logicalNormalKeyText({
             key: Qt.Key_Space, text: " ", modifiers: Qt.NoModifier
-        }), " ")
+        }), "Space")
     }
 
-    function test_modified_space_does_not_claim_other_shortcuts() {
-        for (var extra of [Qt.AltModifier, Qt.MetaModifier]) {
+    function test_modified_space_retains_all_explicit_modifiers() {
+        for (var entry of [[Qt.AltModifier, "Ctrl+Alt+Shift+Space"],
+                           [Qt.MetaModifier, "Ctrl+Meta+Shift+Space"]]) {
             compare(KeyboardPresentation.logicalNormalKeyText({
                 key: Qt.Key_Space, text: " ",
-                modifiers: Qt.ControlModifier | Qt.ShiftModifier | extra
-            }), "")
+                modifiers: Qt.ControlModifier | Qt.ShiftModifier | entry[0]
+            }), entry[1])
         }
         compare(KeyboardPresentation.logicalNormalKeyText({
             key: Qt.Key_V, text: "", modifiers: Qt.ControlModifier | Qt.ShiftModifier
         }), "Ctrl+Shift+v")
+    }
+
+    function test_canonical_native_gestures_data() {
+        return [
+            {tag:"caps-command", key:Qt.Key_N, text:"N", mods:Qt.ControlModifier, token:"Ctrl+n"},
+            {tag:"shift-command", key:Qt.Key_N, text:"n", mods:Qt.ControlModifier|Qt.ShiftModifier, token:"Ctrl+Shift+n"},
+            {tag:"bare-caps", key:Qt.Key_P, text:"P", mods:Qt.NoModifier, token:"P"},
+            {tag:"bare-shift-caps", key:Qt.Key_P, text:"p", mods:Qt.ShiftModifier, token:"p"},
+            {tag:"empty-shift", key:Qt.Key_P, text:"", mods:Qt.ShiftModifier, token:"P"},
+            {tag:"enter", key:Qt.Key_Return, text:"\r", mods:Qt.NoModifier, token:"Enter"},
+            {tag:"shift-enter", key:Qt.Key_Enter, text:"\r", mods:Qt.ShiftModifier, token:"Shift+Enter"},
+            {tag:"backtab", key:Qt.Key_Tab, text:"\t", mods:Qt.ControlModifier|Qt.ShiftModifier, token:"Ctrl+Backtab"},
+            {tag:"backtab-event", key:Qt.Key_Backtab, text:"", mods:Qt.AltModifier|Qt.ShiftModifier, token:"Alt+Backtab"},
+            {tag:"plus", key:Qt.Key_Plus, text:"+", mods:Qt.ShiftModifier, token:"Plus"},
+            {tag:"modified-plus", key:Qt.Key_Plus, text:"+", mods:Qt.ControlModifier|Qt.ShiftModifier, token:"Ctrl+Plus"},
+            {tag:"punctuation", key:Qt.Key_Slash, text:"?", mods:Qt.ShiftModifier, token:"?"},
+            {tag:"legacy-caret", key:Qt.Key_6, text:"", mods:Qt.ControlModifier|Qt.ShiftModifier, token:"Ctrl+^"},
+            {tag:"modifier-order", key:Qt.Key_Z, text:"Z", mods:Qt.MetaModifier|Qt.ShiftModifier|Qt.AltModifier|Qt.ControlModifier, token:"Ctrl+Alt+Meta+Shift+z"},
+            {tag:"page-up", key:Qt.Key_PageUp, text:"", mods:Qt.AltModifier, token:"Alt+PgUp"},
+            {tag:"function", key:Qt.Key_F12, text:"", mods:Qt.ControlModifier, token:"Ctrl+F12"},
+            {tag:"unicode", key:Qt.Key_unknown, text:"é", mods:Qt.NoModifier, token:"é"},
+            {tag:"altgr", key:Qt.Key_E, text:"€", mods:Qt.GroupSwitchModifier, token:""},
+            {tag:"modifier-only", key:Qt.Key_Shift, text:"", mods:Qt.ShiftModifier, token:""}
+        ]
+    }
+
+    function test_canonical_native_gestures(data) {
+        compare(KeyboardPresentation.logicalNormalKeyText({
+            key:data.key, text:data.text, modifiers:data.mods
+        }),data.token)
     }
 
     function test_grid_double_click_shortcut_is_explicit_and_mode_local() {

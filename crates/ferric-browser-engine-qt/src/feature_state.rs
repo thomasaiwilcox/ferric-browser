@@ -66,6 +66,12 @@ pub(super) struct ProcessState {
 }
 
 pub(super) struct ConfigurationIoState {
+    pub(super) site_policy_preview: Option<super::browser_ui_site_policy::PendingSitePolicyPreview>,
+    pub(super) site_policy_file: Option<super::browser_ui_site_policy::PendingPolicyFile>,
+    pub(super) site_policy_activation:
+        Option<super::browser_ui_site_policy::PendingSitePolicyActivation>,
+    pub(super) profile_request: Arc<()>,
+    pub(super) published_profile_request: Option<Arc<()>>,
     pub(super) pending_config: Option<Value>,
     pub(super) pending_configuration_publication:
         Option<super::browser_ui_state::PendingConfigurationPublication>,
@@ -76,11 +82,15 @@ pub(super) struct ConfigurationIoState {
     pub(super) pending_context_reload: Option<PendingContextReload>,
     pub(super) config_write_worker: Option<ConfigWriteWorker>,
     pub(super) network_policy_worker: Option<NetworkPolicyWorker>,
-    pub(super) network_policy_reload_pending: bool,
+    pub(super) network_policy_request:
+        Option<super::blocking_presentation::NetworkPolicyRequestOwner>,
+    pub(super) network_policy_generation: u64,
     pub(super) pending_selector_validation: Option<PendingSelectorValidation>,
     pub(super) selector_generation: u64,
+    pub(super) selector_origin_generation: u64,
     pub(super) selector_config_revision: u64,
     pub(super) active_selector_fingerprint: String,
+    pub(super) selector_receipts: super::selector_validation_receipts::SelectorValidationReceipts,
     pub(super) theme_watch: ConfigWatch,
 }
 
@@ -135,15 +145,28 @@ pub(super) enum SessionRestoreIntent {
 }
 
 pub(super) struct InteractionState {
+    pub(super) hint_request: Option<Arc<super::hint_request_capture::RetainedHintRequest>>,
+    pub(super) next_hint_request_id: u64,
     pub(super) spatial_session: Option<SpatialSession>,
     pub(super) spatial_ids: IdSource,
     pub(super) hint_session: Option<HintSession>,
     pub(super) hint_interaction: Option<HintInteraction>,
+    pub(super) hint_loading_interaction: Option<HintInteraction>,
+    pub(super) initial_hint: Option<(
+        ferric_browser_core::HintSessionId,
+        ferric_browser_core::HintCandidate,
+    )>,
+    pub(super) hint_policy_proof: Option<Arc<super::interaction_proof::CheckedAnnotations>>,
+    pub(super) confirmed_hint_anchor: Option<super::hint_request_capture::FrozenAnchor>,
     pub(super) pending_hint_scope_handoff: Option<HintScopeBinding>,
     pub(super) active_hint_scope: Option<HintScopeBinding>,
     pub(super) next_hint_scope_lease_id: u64,
     pub(super) hint_consumed: BTreeSet<(String, String, u32)>,
     pub(super) hint_configuration_revision: u64,
+    pub(super) compiled_interaction_revision:
+        Option<ferric_browser_config::InteractionPolicyRevision>,
+    pub(super) cached_hint_policies: Option<super::hint_policy_cache::CachedHintPolicies>,
+    pub(super) interaction_policy_refresh_pending: bool,
     pub(super) pending_hint_palette_permit: Option<LocalInteractionPermit>,
     pub(super) pending_grid_scope_permit: Option<LocalInteractionPermit>,
     pub(super) hint_pointer_source: Option<CommandSource>,
@@ -151,6 +174,8 @@ pub(super) struct InteractionState {
     pub(super) hint_local_interaction_authority: LocalInteractionAuthority,
     pub(super) hint_ids: IdSource,
     pub(super) focus_observations: BTreeMap<(i32, String), FocusObservation>,
+    // A lookup hint only: the observation retains all receiver authority.
+    pub(super) page_key_focus_key: Option<(i32, String)>,
     pub(super) focus_suppressions: BTreeMap<(i32, String), i32>,
     pub(super) prompt_view_identities: BTreeMap<TabId, String>,
     pub(super) native_prompt_leases: NativePromptLeases,

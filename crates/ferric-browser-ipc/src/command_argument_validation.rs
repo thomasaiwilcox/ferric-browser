@@ -105,6 +105,7 @@ pub(crate) fn validate_command_arguments(
         ("journey", "current"),
         ("hint", "rapid"),
         ("hint", "first"),
+        ("mode-enter", "raw"),
     ] {
         if command == command_name
             && arguments

@@ -58,10 +58,14 @@ struct State {
   QList<QPair<wl_resource *, QString>> heldExports;
   QHash<int, uint32_t> modifierMasks;
   QHash<QString, uint32_t> physicalKeys;
+  uint32_t capsMask = 0, numMask = 0;
+  bool capsLocked = false, numLocked = false;
 };
 bool initializeModifiers(State *state) {
   auto settings = state->compositor->defaultSeat()->keymap();
-  settings->setLayout("us");
+  const auto requestedLayout = qEnvironmentVariable("FERRIC_NATIVE_PROBE_LAYOUT", "us");
+  if (requestedLayout != "us" && requestedLayout != "gb" && requestedLayout != "de") return false;
+  settings->setLayout(requestedLayout);
   QCoreApplication::processEvents();
   const auto rules = settings->rules().toLocal8Bit();
   const auto model = settings->model().toLocal8Bit();
@@ -77,22 +81,29 @@ bool initializeModifiers(State *state) {
   if (!keymap) return false;
   const QList<QPair<int, const char *>> modifiers{
       {Qt::ShiftModifier, XKB_MOD_NAME_SHIFT}, {Qt::ControlModifier, XKB_MOD_NAME_CTRL},
-      {Qt::AltModifier, XKB_MOD_NAME_ALT}, {Qt::MetaModifier, XKB_MOD_NAME_LOGO}};
+      {Qt::AltModifier, XKB_MOD_NAME_ALT}, {Qt::MetaModifier, XKB_MOD_NAME_LOGO},
+      {Qt::GroupSwitchModifier, "Mod5"}};
   for (const auto &modifier : modifiers) {
     auto index = xkb_keymap_mod_get_index(keymap, modifier.second);
     if (index < 32) state->modifierMasks.insert(modifier.first, uint32_t(1) << index);
   }
-  for (const auto &position : {"AB10", "AC10"}) {
+  const auto caps = xkb_keymap_mod_get_index(keymap, XKB_MOD_NAME_CAPS);
+  const auto num = xkb_keymap_mod_get_index(keymap, XKB_MOD_NAME_NUM);
+  if (caps < 32) state->capsMask = uint32_t(1) << caps;
+  if (num < 32) state->numMask = uint32_t(1) << num;
+  for (const auto &position : {"AB10", "AC10", "AD10", "AD06", "AE03", "AC11",
+                              "AD01", "AE12", "AD03", "KP1", "KPEN"}) {
     const auto code = xkb_keymap_key_by_name(keymap, position);
     if (code != XKB_KEYCODE_INVALID && code >= 8)
       state->physicalKeys.insert(QString::fromLatin1(position), code);
   }
   xkb_keymap_unref(keymap);
   return state->modifierMasks.size() == modifiers.size()
-      && state->physicalKeys.contains("AB10") && state->physicalKeys.contains("AC10");
+      && state->capsMask && state->numMask && state->physicalKeys.size() == 11;
 }
 void sendModifiers(State *state, QWaylandSurface *surface, int modifiers) {
-  struct Update { uint32_t serial, mask; } update{state->compositor->nextSerial(), 0};
+  struct Update { uint32_t serial, mask, locked; } update{state->compositor->nextSerial(), 0,
+      (state->capsLocked ? state->capsMask : 0) | (state->numLocked ? state->numMask : 0)};
   for (auto modifier = state->modifierMasks.cbegin(); modifier != state->modifierMasks.cend(); ++modifier)
     if (modifiers & modifier.key()) update.mask |= modifier.value();
   // This fixture has one seat. Keep protocol modifiers explicit, including
@@ -100,7 +111,7 @@ void sendModifiers(State *state, QWaylandSurface *surface, int modifiers) {
   wl_client_for_each_resource(surface->client()->client(), [](wl_resource *resource, void *data) {
     auto update = static_cast<Update *>(data);
     if (std::strcmp(wl_resource_get_class(resource), "wl_keyboard") == 0)
-      wl_keyboard_send_modifiers(resource, update->serial, update->mask, 0, 0, 0);
+      wl_keyboard_send_modifiers(resource, update->serial, update->mask, 0, update->locked, 0);
     return WL_ITERATOR_CONTINUE;
   }, &update);
 }
@@ -235,6 +246,17 @@ public slots:
                         {"mapped", window.surface->hasContent()}});
     return result;
   }
+  bool Focus(const QString &id) {
+    auto seat = state->compositor->defaultSeat();
+    if (!seat) return false;
+    for (const auto &window : state->windows) {
+      if (window.id == id && window.surface && window.surface->hasContent()) {
+        seat->setKeyboardFocus(window.surface);
+        return true;
+      }
+    }
+    return false;
+  }
   QByteArray Capture(const QString &id) {
     for (const auto &window : state->windows) {
       if (window.id != id || !window.surface || !window.surface->hasContent())
@@ -305,7 +327,7 @@ public slots:
 
 private:
   bool sendKey(const QString &id, int key, int modifiers, bool physical) {
-    if (modifiers & ~(Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))
+    if (modifiers & ~(Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier | Qt::GroupSwitchModifier))
       return false;
     auto seat = state->compositor->defaultSeat();
     if (!seat)
@@ -316,7 +338,8 @@ private:
       seat->setKeyboardFocus(window.surface);
       const QList<QPair<int, int>> modifierKeys{
           {Qt::ShiftModifier, Qt::Key_Shift}, {Qt::ControlModifier, Qt::Key_Control},
-          {Qt::AltModifier, Qt::Key_Alt}, {Qt::MetaModifier, Qt::Key_Meta}};
+          {Qt::AltModifier, Qt::Key_Alt}, {Qt::MetaModifier, Qt::Key_Meta},
+          {Qt::GroupSwitchModifier, Qt::Key_AltGr}};
       if (!physical && !seat->keyboard()->keyToScanCode(key)) return false;
       for (const auto &modifier : modifierKeys)
         if ((modifiers & modifier.first) && !seat->keyboard()->keyToScanCode(modifier.second)) return false;
@@ -332,6 +355,8 @@ private:
       }
       for (auto modifier = modifierKeys.crbegin(); modifier != modifierKeys.crend(); ++modifier)
         if (modifiers & modifier->first) seat->sendKeyEvent(modifier->second, false);
+      if (!physical && key == Qt::Key_CapsLock) state->capsLocked = !state->capsLocked;
+      if (!physical && key == Qt::Key_NumLock) state->numLocked = !state->numLocked;
       sendModifiers(state, window.surface, 0);
       return true;
     }

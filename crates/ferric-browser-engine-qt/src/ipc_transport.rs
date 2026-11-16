@@ -4,9 +4,9 @@
 //! admission. Qt-facing code consumes the queued requests separately.
 
 use ferric_browser_ipc::{
-    CacheLookup, EventNotification, HelloParams, HelloResult, PendingRequest, ProtocolError,
-    Request, RequestCache, Response, current_uid, enqueue_request, parse_request, peer_uid,
-    publish_event, read_frame, serialize_response, write_frame,
+    CacheLookup, ConnectionWriter, EventNotification, HelloParams, HelloResult, PendingRequest,
+    ProtocolError, Request, RequestCache, Response, current_uid, enqueue_request, parse_request,
+    peer_uid, publish_event, read_frame, serialize_response,
 };
 use serde_json::Value;
 use std::{
@@ -95,8 +95,12 @@ fn serve_connection(mut stream: UnixStream, instance_id: &str) {
     let Some(request) = read_request(&mut stream) else {
         return;
     };
+    let Ok(output_stream) = stream.try_clone() else {
+        return;
+    };
+    let writer = ConnectionWriter::new(output_stream);
     let (is_hello, response) = handshake_response(request, instance_id);
-    if !write_response(&mut stream, &response) || !is_hello || response.error.is_some() {
+    if !write_response(&writer, &response) || !is_hello || response.error.is_some() {
         return;
     }
     // The timeout is a handshake deadline only; an authenticated subscription
@@ -105,19 +109,23 @@ fn serve_connection(mut stream: UnixStream, instance_id: &str) {
     let cache = Arc::new(Mutex::new(RequestCache::new()));
     let outstanding = Arc::new(AtomicUsize::new(0));
     while let Some(request) = read_request(&mut stream) {
-        let lookup = cache.lock().map_or(CacheLookup::Miss, |mut cache| {
-            cache.reserve(&request, Instant::now())
-        });
+        let lookup = match cache.lock() {
+            Ok(mut cache) => cache.reserve(&request, Instant::now()),
+            Err(_) => {
+                writer.close();
+                return;
+            }
+        };
         match lookup {
             CacheLookup::Hit(response) => {
-                if !write_response(&mut stream, &response) {
+                if !write_response(&writer, &response) {
                     return;
                 }
                 continue;
             }
             CacheLookup::IdReuse => {
                 if !write_failure(
-                    &mut stream,
+                    &writer,
                     request.id,
                     "E_ID_REUSE",
                     "request ID was reused with a different payload",
@@ -128,7 +136,7 @@ fn serve_connection(mut stream: UnixStream, instance_id: &str) {
             }
             CacheLookup::InFlight => {
                 if !write_failure(
-                    &mut stream,
+                    &writer,
                     request.id,
                     "E_IN_FLIGHT",
                     "request with this ID is already being processed",
@@ -148,20 +156,16 @@ fn serve_connection(mut stream: UnixStream, instance_id: &str) {
             .is_err();
         if at_limit {
             let _ = write_failure(
-                &mut stream,
+                &writer,
                 request.id,
                 "E_BUSY",
                 "connection outstanding-request limit reached",
             );
             continue;
         }
-        let Ok(response_stream) = stream.try_clone() else {
-            outstanding.fetch_sub(1, Ordering::AcqRel);
-            return;
-        };
         let pending = PendingRequest::with_cache_and_outstanding(
             request,
-            response_stream,
+            writer.clone(),
             Arc::clone(&cache),
             Arc::clone(&outstanding),
         );
@@ -179,7 +183,7 @@ fn serve_connection(mut stream: UnixStream, instance_id: &str) {
     }
 }
 
-fn write_failure(stream: &mut UnixStream, id: String, code: &str, message: &str) -> bool {
+fn write_failure(stream: &ConnectionWriter, id: String, code: &str, message: &str) -> bool {
     write_response(
         stream,
         &Response::failure(
@@ -193,11 +197,11 @@ fn write_failure(stream: &mut UnixStream, id: String, code: &str, message: &str)
     )
 }
 
-fn write_response(stream: &mut UnixStream, response: &Response) -> bool {
+fn write_response(stream: &ConnectionWriter, response: &Response) -> bool {
     let Ok(payload) = serialize_response(response) else {
         return false;
     };
-    write_frame(stream, &payload).is_ok()
+    stream.write_frame(&payload).is_ok()
 }
 
 fn read_request(stream: &mut UnixStream) -> Option<Request> {
@@ -277,6 +281,7 @@ fn handshake_response(request: Request, instance_id: &str) -> (bool, Response) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ferric_browser_ipc::write_frame;
     use ferric_browser_ipc::{bind_listener, instance_paths, take_pending_request};
     use std::{fs, path::Path};
     use uuid::Uuid;

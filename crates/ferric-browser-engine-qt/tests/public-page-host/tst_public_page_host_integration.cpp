@@ -716,6 +716,110 @@ private:
     }
 
 private slots:
+    void sitePolicyTransferObservation_data()
+    {
+        QTest::addColumn<QString>("kind");
+        for (const auto *kind : {"valid", "rejected", "model-mismatch"})
+            QTest::newRow(kind) << QString::fromLatin1(kind);
+    }
+
+    void sitePolicyTransferObservation()
+    {
+        QFETCH(QString, kind);
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        connect(&server, &QTcpServer::newConnection, this, [&] {
+            while (auto *socket = server.nextPendingConnection()) {
+                auto buffer = std::make_shared<QByteArray>();
+                connect(socket, &QTcpSocket::readyRead, socket, [socket, buffer] {
+                    buffer->append(socket->readAll());
+                    if (!buffer->contains("\r\n\r\n")) return;
+                    const QByteArray body("<!doctype html><title>Policy host</title><script>window.transferMarker=83</script>");
+                    socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\nContent-Length: "
+                        + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                    socket->disconnectFromHost();
+                });
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+            }
+        });
+        QTemporaryDir storage;
+        QVERIFY(storage.isValid());
+        QQmlEngine engine;
+        std::unique_ptr<QObject> ui(makeBrowserUi(engine));
+        QVERIFY(ui && configureBrowserUi(ui.get(), storage.path()));
+        QString bootstrapDiagnostics;
+        QVERIFY2(waitForProfileBootstrap(ui.get(), &bootstrapDiagnostics), qPrintable(bootstrapDiagnostics));
+        const QString tab = browserUiTabAt(ui.get(), 0), profileId = browserUiProfileId(ui.get());
+        FerricBrowserRequestInterceptor interceptor;
+        FerricPublicProfileOwner profile(&interceptor);
+        QObject lifetime;
+        auto *owner = profile.createPage(&lifetime);
+        QVERIFY(owner);
+        FerricPublicPageHost first(ui.get(), profile.profile(), owner, nullptr, tab);
+        FerricPublicPageHost second(ui.get(), profile.profile());
+        QVERIFY(first.isReady() && second.isReady());
+        QWebEnginePage *const page = owner->page();
+        QWebEngineView *const view = first.pageView();
+        const QString url = QStringLiteral("http://127.0.0.1:%1/policy").arg(server.serverPort());
+        QSignalSpy loaded(page, &QWebEnginePage::loadFinished);
+        QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, url)));
+        QVERIFY(QMetaObject::invokeMethod(first.chromeView()->rootObject(), "dispatchPendingEngineRequest"));
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+        QVERIFY(loaded.last().at(0).toBool());
+        QCOMPARE(page->url().toString(), url);
+        QTRY_COMPARE(ui->property("current_url").toString(), url);
+        auto diagnostic = [&] {
+            // Exercise the same deferred cache boundary as the runtime timer.
+            QMetaObject::invokeMethod(ui.get(), "poll_interaction_policy_refresh", Qt::DirectConnection);
+            QString result;
+            QMetaObject::invokeMethod(ui.get(), "interaction_policy_snapshot", Qt::DirectConnection,
+                Q_RETURN_ARG(QString, result));
+            return QJsonDocument::fromJson(result.toUtf8()).object();
+        };
+        QTRY_COMPARE(diagnostic().value("state").toString(), QStringLiteral("no-op"));
+        if (kind == "rejected") {
+            loaded.clear();
+            page->setUrl(QUrl("data:text/html,%3Ctitle%3ERejected%3C/title%3E%3Cscript%3Ewindow.transferMarker=83%3C/script%3E"));
+            QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+            QVERIFY(loaded.last().at(0).toBool());
+            QVERIFY(page->url().scheme() == QStringLiteral("data"));
+            QTRY_COMPARE(diagnostic().value("reason").toString(), QStringLiteral("rejected-engine-context"));
+        } else if (kind == "model-mismatch") {
+            QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigation_url_changed_for", Qt::DirectConnection,
+                Q_ARG(int, 0), Q_ARG(QString, url + "/model-only")));
+            QCOMPARE(page->url().toString(), url);
+        }
+        const auto document = owner->documentGeneration();
+        const QString token = first.pageOwnerToken();
+        auto attach = [&](FerricPublicPageHost &destination) {
+            if (!requestHostOperation(ui.get(), "attach_page_host", tab, profileId, destination.hostToken(), token)) return false;
+            return destination.applyNativeRequest(takeReparentRequest(ui.get()));
+        };
+        QVERIFY(attach(second));
+        QCOMPARE(second.pageView(), view);
+        QCOMPARE(first.pageView(), nullptr);
+        QCOMPARE(view->page(), page);
+        QCOMPARE(owner->documentGeneration(), document);
+        QCOMPARE(runJavaScript(page, "window.transferMarker").toInt(), 83);
+        const QString key = kind == "valid" ? "state" : "reason";
+        const QString expected = kind == "valid" ? "no-op" : "rejected-engine-context";
+        QTRY_COMPARE(diagnostic().value(key).toString(), expected);
+        QVERIFY(attach(first));
+        QCOMPARE(first.pageView(), view);
+        QCOMPARE(second.pageView(), nullptr);
+        QCOMPARE(owner->documentGeneration(), document);
+        QCOMPARE(runJavaScript(page, "window.transferMarker").toInt(), 83);
+        QTRY_COMPARE(diagnostic().value(key).toString(), expected);
+        if (kind != "valid") {
+            loaded.clear();
+            QVERIFY(QMetaObject::invokeMethod(ui.get(), "navigate", Qt::DirectConnection, Q_ARG(QString, url + "?recovered=yes")));
+            QVERIFY(QMetaObject::invokeMethod(first.chromeView()->rootObject(), "dispatchPendingEngineRequest"));
+            QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+            QVERIFY(loaded.last().at(0).toBool());
+            QTRY_COMPARE(diagnostic().value("state").toString(), QStringLiteral("no-op"));
+        }
+    }
+
     void productionCredentialBoundaryAndChoice()
     {
         FixtureServer server;

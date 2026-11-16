@@ -1,0 +1,147 @@
+schema_version = 3
+include = []
+site_rules = []
+permission_rules = []
+
+[ui]
+statusbar = "in-mode"
+tabs = "multiple"
+tab_position = "top"
+font_family = "monospace"
+font_size_pt = 10.0
+reduced_motion = "system"
+
+[theme]
+source = "auto"
+path = ""
+
+[input]
+entry_mode = "normal"
+shortcut_policy = "browser-first"
+page_keys = []
+auto_insert = true
+keychain_timeout_ms = 1000
+count_limit = 9999
+
+[hints]
+chars = "asdfghjkl"
+min_chars = 1
+auto_follow = "full-match"
+unmatched = "hide"
+rapid_unmatched = "hide"
+marker_scale = 1.0
+proxy_targets = "off"
+
+[hints.selectors]
+
+[discovery]
+keychain_overlay = true
+keychain_overlay_delay_ms = 350
+learning_mode = false
+
+[navigation]
+default_search = "ddg"
+start_pages = ["rb://start"]
+new_tab = "rb://start"
+external_links = "tab"
+
+[links.cleaning]
+enabled = true
+rules = "builtin"
+confirm_navigation = true
+
+[search_engines]
+ddg = "https://duckduckgo.com/?q={query}"
+g = "https://www.google.com/search?q={query}"
+
+[tabs]
+presentation = "internal"
+last_close = "blank"
+related_position = "after-opener"
+undo_limit = 100
+auto_discard = false
+
+[passkeys]
+phone = "off"
+
+[session]
+restore = "ask-after-crash"
+lazy_restore = true
+checkpoint_seconds = 5
+
+[switcher]
+max_results = 100
+include_private = false
+
+[history]
+retention_days = 90
+command_limit = 1000
+
+[content]
+javascript = true
+images = true
+force_dark = false
+autoplay = "engine-default"
+zoom = 1.0
+
+[privacy]
+remote_suggestions = false
+push_service = false
+private_history_suggestions = false
+
+[permissions]
+camera = "ask"
+microphone = "ask"
+screen_capture = "ask"
+notifications = "ask"
+geolocation = "ask"
+clipboard = "ask"
+local_fonts = "ask"
+
+[blocking]
+enabled = true
+network_filtering = true
+cosmetic_filtering = false
+update_interval_hours = 24
+lists = ["easylist", "easyprivacy"]
+bypass_sites = []
+security_deny_hosts = []
+
+[downloads]
+directory = "xdg-downloads"
+ask_destination = true
+collision = "ask"
+open_when_complete = false
+
+[spellcheck]
+enabled = true
+languages = ["system"]
+
+[desktop]
+portals = "auto"
+notifications = true
+media_keys = true
+
+[hyprland]
+enabled = "auto"
+workspace_routing = false
+page_grouping = "off"
+
+[site_doctor]
+temporary_experiments = true
+
+[ipc]
+enabled = true
+private_queries = false
+
+[tools]
+editor = []
+
+[action_targets]
+
+[logging]
+level = "info"
+max_file_mib = 5
+retained_files = 3
+
+[bindings]

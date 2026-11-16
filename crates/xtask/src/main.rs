@@ -77,8 +77,10 @@ fn main() {
             println!("  Run the Qt-independent ferric-browser-core contract tests.");
             println!("cargo xtask test fuzz");
             println!(
-                "  Compile and run every standalone libFuzzer target against bounded corpus seeds."
+                "  Compile and run the default Qt-free libFuzzer targets against bounded corpus seeds."
             );
+            println!("cargo xtask test fuzz-interaction-proof");
+            println!("  Run the opt-in annotation decoder corpus smoke with the qualified Qt SDK.");
             println!("cargo xtask test storage");
             println!("  Run SQLite and session interruption/recovery tests.");
             println!("cargo xtask test fixtures");
@@ -361,6 +363,8 @@ fn run_fuzz_smoke() -> Result<(), String> {
             "build",
             "--manifest-path",
             "fuzz/Cargo.toml",
+            "--target-dir",
+            "fuzz/target",
             "--locked",
             "--offline",
         ],
@@ -372,6 +376,7 @@ fn run_fuzz_smoke() -> Result<(), String> {
         "command_parser",
         "contexts_routes",
         "hints",
+        "interaction_policy",
         "ipc_frames",
         "session_snapshot",
         "site_rule",
@@ -394,6 +399,42 @@ fn run_fuzz_smoke() -> Result<(), String> {
     println!(
         "bounded fuzz corpus smoke passed ({} targets; 32 runs each)",
         targets.len()
+    );
+    Ok(())
+}
+
+fn run_interaction_proof_fuzz() -> Result<(), String> {
+    run(
+        "cargo",
+        &[
+            "build",
+            "--release",
+            "--manifest-path",
+            "fuzz/Cargo.toml",
+            "--target-dir",
+            "fuzz/target",
+            "--locked",
+            "--offline",
+            "--features",
+            "interaction-proof",
+            "--bin",
+            "interaction_proof",
+        ],
+    )?;
+    fs::create_dir_all("fuzz/target/artifacts/interaction_proof")
+        .map_err(|error| format!("failed to create annotation fuzz artifact directory: {error}"))?;
+    run(
+        "fuzz/target/release/interaction_proof",
+        &[
+            "-runs=128",
+            "-max_len=2097153",
+            "-close_fd_mask=3",
+            "-artifact_prefix=fuzz/target/artifacts/interaction_proof/",
+            "fuzz/corpus/interaction_proof",
+        ],
+    )?;
+    println!(
+        "bounded annotation corpus smoke passed (128 runs; not coverage-guided qualification)"
     );
     Ok(())
 }

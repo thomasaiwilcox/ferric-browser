@@ -120,6 +120,19 @@ struct SiteTarget {
     path: String,
 }
 
+/// Opaque cache identity from the existing site-rule target parser. Query and
+/// fragment bytes do not participate in site matching; path bytes do.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SiteMatchContext(SiteTarget);
+
+impl SiteMatchContext {
+    /// Non-HTTP(S) browser URLs have no site-rule match context.
+    #[must_use]
+    pub fn for_url(url: &ferric_browser_core::ValidatedUrl) -> Option<Self> {
+        parse_site_target(url.as_str()).map(Self)
+    }
+}
+
 pub(super) fn parse_site_pattern(pattern: &str) -> Result<SitePattern, String> {
     if pattern.is_empty()
         || pattern.len() > 512
@@ -266,7 +279,7 @@ fn valid_site_host(host: &str, allow_wildcards: bool) -> bool {
         })
 }
 
-fn site_pattern_matches(pattern: &str, url: &str) -> bool {
+pub(crate) fn site_pattern_matches(pattern: &str, url: &str) -> bool {
     let Ok(pattern) = parse_site_pattern(pattern) else {
         return false;
     };
@@ -295,30 +308,50 @@ fn site_pattern_matches(pattern: &str, url: &str) -> bool {
 }
 
 fn glob_matches(pattern: &str, value: &str) -> bool {
+    glob_matches_with_work(pattern, value, || true) == Some(true)
+}
+
+/// The same byte-oriented glob grammar for legacy URL rules and Interaction.
+/// Charge each state transition (including star retries and trailing stars)
+/// before inspecting bytes. None means work was exhausted, never a nonmatch.
+pub(crate) fn glob_matches_with_work(
+    pattern: &str,
+    value: &str,
+    mut charge: impl FnMut() -> bool,
+) -> Option<bool> {
     let pattern = pattern.as_bytes();
     let value = value.as_bytes();
     let (mut pattern_index, mut value_index) = (0, 0);
     let (mut star, mut retry) = (None, 0);
     while value_index < value.len() {
-        if pattern_index < pattern.len() && pattern[pattern_index] == value[value_index] {
-            pattern_index += 1;
-            value_index += 1;
-        } else if pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
+        if !charge() {
+            return None;
+        }
+        if pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
             star = Some(pattern_index);
             pattern_index += 1;
             retry = value_index;
+        } else if pattern_index < pattern.len() && pattern[pattern_index] == value[value_index] {
+            pattern_index += 1;
+            value_index += 1;
         } else if let Some(star_index) = star {
             pattern_index = star_index + 1;
             retry += 1;
             value_index = retry;
         } else {
-            return false;
+            return Some(false);
         }
     }
-    while pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
+    while pattern_index < pattern.len() {
+        if !charge() {
+            return None;
+        }
+        if pattern[pattern_index] != b'*' {
+            return Some(false);
+        }
         pattern_index += 1;
     }
-    pattern_index == pattern.len()
+    Some(true)
 }
 
 /// A user-maintained durable browsing context definition.

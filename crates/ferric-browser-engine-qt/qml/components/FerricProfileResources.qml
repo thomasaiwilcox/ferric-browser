@@ -32,6 +32,9 @@ QtObject {
             resources.rootWindow.profileResourceRegistry.release(resources)
         }
     }
+    property FerricSitePolicyObserver nativeSitePolicy: FerricSitePolicyObserver {
+        lifetime: resources.lifetime
+    }
     property FerricCredentialIntegration nativeCredentials: FerricCredentialIntegration {
         id: credentialAdapter
         lifetime: resources.lifetime

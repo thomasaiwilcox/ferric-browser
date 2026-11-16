@@ -780,8 +780,8 @@ fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
     let qml = include_str!("../../qml/components/FerricHintWorkspace.qml");
 
     assert!(source.contains("hint_rapid_target == \"tab-bg\""));
-    assert!(source.matches("open_hint_in_background_tab(").count() >= 3);
-    assert!(source.contains("open_target: IpcOpenTarget::BackgroundTab"));
+    assert_eq!(source.matches("open_hint_in_tab(target.tab, &url, true)").count(), 2);
+    assert!(source.contains("Event::OpenTabWithNavigation"));
     assert!(source.contains("rapid_hint_keeps_mode("));
 
     assert!(ipc.contains(".dispatch_new_tab_open(input, route, operation_id)"));
@@ -840,7 +840,7 @@ fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
 fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_command() {
     let source = include_str!("../browser_ui_hint_selection.rs");
     let foreground = source
-        .split("fn open_hint_in_foreground_tab(")
+        .split("fn open_hint_in_tab(")
         .nth(1)
         .expect("foreground hint-tab helper")
         .split("pub(super) fn select_hint(")
@@ -848,7 +848,7 @@ fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_comman
         .expect("foreground hint-tab helper boundary");
 
     assert!(foreground.contains("Event::OpenTabWithNavigation"));
-    assert!(foreground.contains("background: false"));
+    assert!(foreground.contains("background: bool"));
     assert!(!foreground.contains("name: \"tab-open\""));
     let sync = foreground
         .find("sync_tab_order_from_core()")
@@ -865,7 +865,7 @@ fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_comman
         .split("hint_rapid_target == \"window\"")
         .next()
         .expect("foreground hint selection boundary");
-    assert!(selection.contains("open_hint_in_foreground_tab(target.tab, &url)"));
+    assert!(selection.contains("open_hint_in_tab(target.tab, &url, false)"));
 }
 
 #[test]
@@ -1013,7 +1013,14 @@ fn config_reload_worker_loads_and_validates_off_thread() {
         thread::sleep(Duration::from_millis(1));
     };
     assert_eq!(failure.operation, Some(ConfigReadOperation::Check));
-    assert!(failure.detail.contains("malformed private setting"));
+    let expected = ferric_browser_config::load(&path).unwrap_err();
+    let prefix = "configuration is invalid: ";
+    assert_eq!(failure.detail, format!("{prefix}{expected}"));
+    assert!(failure.detail.contains("config.toml"));
+    assert!(failure.detail.contains("at bytes "));
+    assert!(!failure.detail.contains("malformed private setting"));
+    assert!(!failure.detail.chars().any(char::is_control));
+    assert!(failure.detail.len() <= ferric_browser_config::MAX_CONFIGURATION_DIAGNOSTIC_BYTES + prefix.len());
 
     drop(worker);
     let _ = fs::remove_file(&path);
@@ -1045,8 +1052,11 @@ fn config_write_worker_creates_private_non_overwriting_file() {
     let result = result
         .expect("write response")
         .expect("private configuration write");
-    assert_eq!(result.path, path);
-    assert_eq!(result.bytes, contents.len());
+    let crate::configuration_workers::ConfigWriteResult::Written {path:written_path,bytes}=result else {
+        panic!("unexpected configuration file result")
+    };
+    assert_eq!(written_path, path);
+    assert_eq!(bytes, contents.len());
     assert_eq!(fs::read(&path).expect("written configuration"), contents);
     #[cfg(unix)]
     assert_eq!(
@@ -1283,6 +1293,7 @@ fn network_policy_worker_loads_cached_policy_off_thread() {
     let mut worker = NetworkPolicyWorker::spawn().expect("network policy worker");
     worker
         .request(
+            42,
             Some(roots.clone()),
             serde_json::json!({
                 "blocking": {
@@ -1300,7 +1311,9 @@ fn network_policy_worker_loads_cached_policy_off_thread() {
         }
         value
     });
-    let policy = result.expect("policy response").expect("policy load");
+    let (generation, result) = result.expect("policy response");
+    assert_eq!(generation, 42);
+    let policy = result.expect("policy load");
     assert_eq!(policy.blocked_hosts, Vec::<String>::new());
     assert_eq!(policy.compile_failures, Vec::<String>::new());
     drop(worker);

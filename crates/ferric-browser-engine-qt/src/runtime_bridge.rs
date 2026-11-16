@@ -75,6 +75,7 @@ impl qobject::BrowserUi {
             Ok(effects) => Ok(self.observe_runtime_effects(effects)),
             Err(error) => {
                 self.as_mut().refresh_ipc_owner();
+                self.as_mut().runtime_work_available();
                 Err(error)
             }
         }

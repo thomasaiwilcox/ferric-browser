@@ -1,0 +1,58 @@
+# Current desktop Reddit: title links and search, with no account-action remaps.
+# Opt-in. Only currently visible feed posts receive numeric positions.
+format = "ferric-site-interaction"
+format_version = 1
+
+[[rules]]
+operation = "upsert-interaction"
+id = "reddit-reading"
+pattern = "https://www.reddit.com/*"
+priority = 10
+
+[rules.interaction]
+enabled = true
+
+[[rules.interaction.anchors]]
+id = "home"
+code = "h"
+families = ["links", "actions", "all"]
+target_selector = "a#reddit-logo"
+
+[rules.interaction.anchors.predicates.href]
+origin = "https://www.reddit.com"
+path = "/"
+
+[[rules.interaction.anchors]]
+id = "search"
+code = "s"
+families = ["inputs", "actions", "all"]
+target_selector = "textarea[name='q']"
+
+[rules.interaction.anchors.root]
+start = "top-document"
+
+[[rules.interaction.anchors.root.steps]]
+kind = "open-shadow"
+host_selector = "reddit-search-large"
+
+[[rules.interaction.anchors.root.steps]]
+kind = "open-shadow"
+host_selector = "faceplate-search-input"
+
+[[rules.interaction.collections]]
+id = "posts"
+families = ["links", "actions", "all"]
+codes = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+container_selector = "shreddit-feed"
+item_selector = "shreddit-post"
+primary_selector = "a[slot='title']"
+identity_attributes = ["id"]
+order = "top-to-bottom"
+
+[rules.interaction.collections.root]
+start = "top-document"
+steps = []
+
+[rules.interaction.collections.primary_predicates.href]
+origin = "https://www.reddit.com"
+path = "/r/*/comments/*"

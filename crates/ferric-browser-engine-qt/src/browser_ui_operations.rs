@@ -95,6 +95,7 @@ impl BrowserUiRust {
     }
 
     pub(super) fn set_operation(&mut self, id: String, update: OperationUpdate) -> bool {
+        self.configuration_reads.revoke_operation(&id);
         let Some(application) = self.state.as_mut() else {
             return false;
         };

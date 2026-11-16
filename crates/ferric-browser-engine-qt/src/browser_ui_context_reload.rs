@@ -1,7 +1,7 @@
 //! A validated reload waits for its application-owned context disk operation.
 use super::{CxxQtType, Pin, QString, qobject};
 use ferric_browser_application::{
-    ConfigurationLayers, ConfigurationReservation, ContextReloadEffect, ContextReloadJob,
+    ConfigurationLayers, ContextReloadEffect, ContextReloadJob, PreparedConfigurationUpdate,
 };
 use ferric_browser_config::{ContextsConfig, RuntimeOverrides};
 use ferric_browser_runtime::worker::{Poll, SingleFlightWorker, SubmitError};
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 pub(super) struct ConfigReloadPublication {
     pub candidate: Value,
     pub layers: ConfigurationLayers,
-    pub fingerprint: String,
+    pub selectors: super::selector_validation_receipts::SelectorValidationPublication,
     pub path: PathBuf,
     pub base_json: String,
     pub profile_overrides: RuntimeOverrides,
@@ -22,7 +22,29 @@ pub(super) struct ConfigReloadPublication {
 }
 pub(super) struct PendingContextReload {
     publication: ConfigReloadPublication,
-    reservation: ConfigurationReservation,
+    prepared: PreparedConfigurationUpdate,
+}
+impl PendingContextReload {
+    pub(super) fn selectors(
+        &self,
+    ) -> (
+        &ConfigurationLayers,
+        &super::selector_validation_receipts::SelectorValidationPublication,
+    ) {
+        (&self.publication.layers, &self.publication.selectors)
+    }
+
+    pub(super) fn inspection_candidate(
+        &self,
+        state: &ferric_browser_application::BrowserApplication,
+    ) -> Result<ferric_browser_application::ConfigurationInspectionCandidate, String> {
+        let candidate = self.prepared.inspection_candidate();
+        if state.configuration_inspection_candidate_is_current(&candidate) {
+            Ok(candidate)
+        } else {
+            Err("staged context reload belongs to a retired configuration".into())
+        }
+    }
 }
 pub(super) struct ContextReloadWorker {
     inner: SingleFlightWorker<ContextReloadJob, Result<ContextReloadEffect, String>>,
@@ -47,6 +69,9 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         publication: ConfigReloadPublication,
     ) -> Result<(), String> {
+        if self.as_ref().rust().profile_bootstrap_pending {
+            return Err("The profile is still opening. Reload settings after it is ready.".into());
+        }
         if self
             .as_ref()
             .rust()
@@ -67,6 +92,7 @@ impl qobject::BrowserUi {
         let prepared = state
             .prepare_configuration_reload(publication.layers.clone())
             .map_err(|error| error.to_string())?;
+        self.as_ref().validate_candidate_hint_discovery(&prepared)?;
         let active = serde_json::to_value(prepared.snapshot().effective)
             .map_err(|error| error.to_string())?;
         self.as_ref()
@@ -75,8 +101,8 @@ impl qobject::BrowserUi {
             .prepare_context_reload(&previous, publication.contexts.clone())
             .map_err(|error| error.to_string())?;
         if let Some(job) = job {
-            let reservation = state
-                .reserve_configuration_reload()
+            let job = state
+                .admit_context_reload(&prepared, job)
                 .map_err(|error| error.to_string())?;
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -105,7 +131,7 @@ impl qobject::BrowserUi {
             let announce = publication.announce;
             this.configuration_io.pending_context_reload = Some(PendingContextReload {
                 publication,
-                reservation,
+                prepared,
             });
             drop(rust);
             if announce {
@@ -152,15 +178,10 @@ impl qobject::BrowserUi {
         };
         let announce = pending.publication.announce;
         let result = result.and_then(|effect| {
-            self.as_ref()
-                .rust()
-                .state
-                .as_ref()
-                .ok_or("The window profile is unavailable.".to_owned())?
-                .release_configuration_reload(pending.reservation)
-                .map_err(|error| error.to_string())?;
-            self.as_mut()
-                .finish_context_configuration_reload(pending.publication, Some(effect))
+            self.as_mut().finish_context_configuration_reload(
+                pending.publication,
+                Some((pending.prepared, effect)),
+            )
         });
         if let Err(error) = result {
             self.report_config_reload_failure(&error, announce);
@@ -169,13 +190,14 @@ impl qobject::BrowserUi {
     fn finish_context_configuration_reload(
         mut self: Pin<&mut Self>,
         publication: ConfigReloadPublication,
-        effect: Option<ContextReloadEffect>,
+        effect: Option<(PreparedConfigurationUpdate, ContextReloadEffect)>,
     ) -> Result<(), String> {
+        let authored = publication.layers.base_authored.clone();
         self.as_mut().commit_reloaded_config(
             publication.candidate,
             publication.layers,
             publication.announce.then_some("Settings reloaded"),
-            publication.fingerprint,
+            publication.selectors,
             effect,
         )?;
         if self.as_ref().active_profile_is_transient() {
@@ -194,6 +216,7 @@ impl qobject::BrowserUi {
         if let Some(state) = this.state.as_ref() {
             sources.extend(state.userscript_watch_sources());
         }
+        this.base_authored_input = authored;
         this.configuration_io
             .config_watch
             .refresh_sources(&publication.path, &sources);

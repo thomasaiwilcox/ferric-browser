@@ -27,9 +27,29 @@ fn report_experiment_summary(value: &Value) -> Value {
     let state = object
         .get("state")
         .and_then(Value::as_str)
-        .filter(|state| matches!(*state, "pending" | "pending-confirmation" | "applied"))
+        .filter(|state| {
+            matches!(
+                *state,
+                "pending"
+                    | "pending-confirmation"
+                    | "preparing"
+                    | "applying"
+                    | "saved-policy-pending"
+                    | "applied"
+                    | "saved-policy-failed"
+                    | "saved-policy-inactive"
+                    | "saved-configuration-inactive"
+                    | "failed"
+                    | "completion-lost"
+            )
+        })
         .unwrap_or("unknown");
     let mut result = serde_json::json!({"kind": kind, "state": state});
+    for key in ["saved", "durability_uncertain"] {
+        if let Some(value) = object.get(key).and_then(Value::as_bool) {
+            result[key] = Value::Bool(value);
+        }
+    }
     for key in ["remaining_seconds", "timeout_seconds"] {
         if let Some(seconds) = object.get(key).and_then(Value::as_u64) {
             result[key] = Value::from(seconds);
@@ -338,9 +358,7 @@ impl qobject::BrowserUi {
                 "last_result": if private {
                     Value::Null
                 } else {
-                    self.rust()
-                        .last_site_doctor_result
-                        .clone()
+                    super::site_doctor_completion::proposal_projection(self.rust())
                         .unwrap_or(Value::Null)
                 },
                 "reason": if private {
@@ -615,6 +633,32 @@ mod report_tests {
             })),
             json!({"kind": "unknown", "state": "unknown"})
         );
+    }
+
+    #[test]
+    fn proposal_reports_preserve_fixed_receipt_states_and_uncertainty_only() {
+        for state in [
+            "preparing",
+            "applying",
+            "saved-policy-pending",
+            "applied",
+            "saved-policy-failed",
+            "saved-policy-inactive",
+            "saved-configuration-inactive",
+            "failed",
+            "completion-lost",
+        ] {
+            let report = report_experiment_summary(&json!({
+                "kind":"blocker-exception", "state":state, "saved":true,
+                "durability_uncertain":true, "origin":"https://private.test",
+                "mutation":{"after":["private.test"]}, "id":"private-id"
+            }));
+            assert_eq!(
+                report,
+                json!({"kind":"blocker-exception", "state":state,
+                "saved":true, "durability_uncertain":true})
+            );
+        }
     }
 
     #[test]

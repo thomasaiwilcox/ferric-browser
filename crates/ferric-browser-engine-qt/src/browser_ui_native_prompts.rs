@@ -12,16 +12,10 @@ impl qobject::BrowserUi {
         QString::from(super::Uuid::new_v4().to_string())
     }
 
-    pub(super) fn note_native_prompt_configuration_change(
-        mut self: Pin<&mut Self>,
-        policy_changed: bool,
-    ) {
+    pub(super) fn note_native_prompt_configuration_change(mut self: Pin<&mut Self>) {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         this.config_revision = this.config_revision.wrapping_add(1);
-        if policy_changed {
-            this.policy_revision = this.policy_revision.wrapping_add(1);
-        }
     }
 
     fn prompt_owner(&self, index: i32) -> Option<(TabId, PromptOwner)> {

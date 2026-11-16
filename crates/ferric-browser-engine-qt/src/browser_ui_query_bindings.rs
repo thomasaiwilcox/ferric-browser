@@ -20,7 +20,13 @@ pub(super) fn binding_explanation_status(value: &Value) -> String {
     let source = routing
         .get("shortcut_policy_source")
         .and_then(Value::as_str)
-        .unwrap_or("default");
+        .unwrap_or_else(|| {
+            if routing.get("status").and_then(Value::as_str) == Some("unavailable") {
+                "unavailable"
+            } else {
+                "unknown"
+            }
+        });
     let site_rule = routing
         .get("shortcut_policy_site_rule")
         .and_then(Value::as_str)
@@ -97,74 +103,28 @@ fn parse_explain_keychain(keychain: &str) -> Result<(u32, bool, Vec<String>), St
 }
 
 impl qobject::BrowserUi {
-    pub(super) fn binding_layer_provenance(&self, mode: &str, keychain: &str) -> Value {
-        let mut layers = Vec::new();
-        let mut add_layer = |layer: &str, value: Option<&str>, source: Option<String>| {
-            if let Some(value) = value {
-                layers.push(serde_json::json!({
-                    "layer": layer,
-                    "source": source,
-                    "value": value,
-                    "status": if value.is_empty() { "mask" } else { "contributing" }
-                }));
-            }
-        };
-        let config_binding = |config: &Value| {
-            config
-                .get("bindings")
-                .and_then(Value::as_object)
-                .and_then(|bindings| bindings.get(mode))
-                .and_then(Value::as_object)
-                .and_then(|bindings| bindings.get(keychain))
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-        };
-        add_layer(
-            "global",
-            config_binding(&self.rust().base_config).as_deref(),
-            Some(self.rust().config_source.to_string()),
-        );
-        add_layer(
-            "profile",
-            self.rust()
-                .profile_overrides
-                .bindings
-                .get(mode)
-                .and_then(|bindings| bindings.get(keychain))
-                .map(String::as_str),
-            None,
-        );
-        add_layer(
-            "runtime",
-            self.rust()
-                .runtime_overrides
-                .bindings
-                .get(mode)
-                .and_then(|bindings| bindings.get(keychain))
-                .map(String::as_str),
-            None,
-        );
-        add_layer(
-            "cli",
-            self.rust()
-                .cli_overrides
-                .bindings
-                .get(mode)
-                .and_then(|bindings| bindings.get(keychain))
-                .map(String::as_str),
-            None,
-        );
-        add_layer(
-            "temporary",
-            self.rust()
-                .temporary_overrides
-                .bindings
-                .get(mode)
-                .and_then(|bindings| bindings.get(keychain))
-                .map(String::as_str),
-            None,
-        );
-        Value::Array(layers)
+    pub(super) fn binding_layers(&self) -> super::binding_source_index::BindingLayers<'_> {
+        use super::binding_source_index::{BindingLayers, BindingSources};
+        let rust = self.rust();
+        BindingLayers {
+            global_source: rust.config_source.to_string(),
+            layers: [
+                ("global", BindingSources::from_config(&rust.base_config)),
+                (
+                    "profile",
+                    BindingSources::from_overrides(&rust.profile_overrides),
+                ),
+                (
+                    "runtime",
+                    BindingSources::from_overrides(&rust.runtime_overrides),
+                ),
+                ("cli", BindingSources::from_overrides(&rust.cli_overrides)),
+                (
+                    "temporary",
+                    BindingSources::from_overrides(&rust.temporary_overrides),
+                ),
+            ],
+        }
     }
 
     #[allow(clippy::too_many_lines)]
@@ -179,9 +139,16 @@ impl qobject::BrowserUi {
             .as_ref()
             .map(BindingResolver::definitions)
             .unwrap_or_default();
+        let sources = super::binding_source_index::BindingSources::from_config(&self.rust().config);
+        let layers = self.binding_layers();
+        let canonical_keys = definitions
+            .iter()
+            .map(ferric_browser_core::BindingDefinition::canonical_keys)
+            .collect::<Vec<_>>();
         let visible_definitions = definitions
             .iter()
-            .filter(|binding| mode.is_none_or(|mode| mode == binding.mode))
+            .zip(&canonical_keys)
+            .filter(|(binding, _)| mode.is_none_or(|mode| mode == binding.mode))
             .collect::<Vec<_>>();
         let canonical_name = |command: &str| {
             parse_chain(command, ParseInput::Interactive)
@@ -192,21 +159,14 @@ impl qobject::BrowserUi {
         };
         let bindings = visible_definitions
             .iter()
-            .map(|binding| {
+            .map(|(binding, keys)| {
                 let command_name = canonical_name(&binding.command);
                 let description = command_name
                     .as_deref()
                     .and_then(|name| self.rust().registry.resolve(name).ok())
                     .map_or_else(String::new, |definition| definition.description.clone());
                 let keychain = binding.keys.concat();
-                let source = self
-                    .rust()
-                    .config
-                    .get("bindings")
-                    .and_then(Value::as_object)
-                    .and_then(|bindings| bindings.get(ipc_mode_name(binding.mode)))
-                    .and_then(Value::as_object)
-                    .is_some_and(|bindings| bindings.contains_key(&keychain));
+                let source = sources.get(binding.mode, keys).is_some();
                 serde_json::json!({
                     "mode": ipc_mode_name(binding.mode),
                     "keys": binding.keys,
@@ -216,10 +176,7 @@ impl qobject::BrowserUi {
                     "description": description,
                     "source": if source { "user" } else { "built-in" },
                     "timeout_ms": ferric_browser_core::DEFAULT_CHORD_TIMEOUT_MS,
-                    "provenance": self.binding_layer_provenance(
-                        ipc_mode_name(binding.mode),
-                        &keychain
-                    )
+                    "provenance": layers.provenance(binding.mode, keys)
                 })
             })
             .collect::<Vec<_>>();
@@ -276,13 +233,13 @@ impl qobject::BrowserUi {
         }
 
         let mut conflicts = Vec::new();
-        for (left_index, left) in visible_definitions.iter().enumerate() {
-            for right in visible_definitions.iter().skip(left_index + 1) {
-                if left.mode != right.mode || left.keys == right.keys {
+        for (left_index, (left, left_keys)) in visible_definitions.iter().enumerate() {
+            for (right, right_keys) in visible_definitions.iter().skip(left_index + 1) {
+                if left.mode != right.mode || left_keys == right_keys {
                     continue;
                 }
-                let left_prefix = right.keys.starts_with(&left.keys);
-                let right_prefix = left.keys.starts_with(&right.keys);
+                let left_prefix = right_keys.starts_with(left_keys);
+                let right_prefix = left_keys.starts_with(right_keys);
                 if left_prefix || right_prefix {
                     conflicts.push(serde_json::json!({
                         "mode": ipc_mode_name(left.mode),
@@ -329,19 +286,22 @@ impl qobject::BrowserUi {
             .as_ref()
             .map(BindingResolver::definitions)
             .unwrap_or_default();
+        let sources = super::binding_source_index::BindingSources::from_config(&self.rust().config);
+        let layers = self.binding_layers();
         let definitions = definitions
             .iter()
             .filter(|binding| binding.mode == mode)
+            .map(|binding| (binding, binding.canonical_keys()))
             .collect::<Vec<_>>();
         let exact = definitions
             .iter()
-            .find(|binding| binding.keys == tokens)
-            .copied();
+            .find(|(_, keys)| *keys == tokens)
+            .map(|(binding, _)| *binding);
         let mut continuations = BTreeSet::new();
-        for binding in &definitions {
-            if binding.keys.starts_with(&tokens)
-                && binding.keys.len() > tokens.len()
-                && let Some(next) = binding.keys.get(tokens.len())
+        for (_, keys) in &definitions {
+            if keys.starts_with(&tokens)
+                && keys.len() > tokens.len()
+                && let Some(next) = keys.get(tokens.len())
             {
                 continuations.insert(next.clone());
             }
@@ -374,15 +334,11 @@ impl qobject::BrowserUi {
             );
         let mode_name = ipc_mode_name(mode);
         let source = exact.map_or("unbound", |_| {
-            let configured = self
-                .rust()
-                .config
-                .get("bindings")
-                .and_then(Value::as_object)
-                .and_then(|bindings| bindings.get(mode_name))
-                .and_then(Value::as_object)
-                .is_some_and(|bindings| bindings.contains_key(keychain));
-            if configured { "user" } else { "built-in" }
+            if sources.get(mode, &tokens).is_some() {
+                "user"
+            } else {
+                "built-in"
+            }
         });
         let resolution = if exact.is_some() && !continuations.is_empty() {
             "exact-prefix"
@@ -414,7 +370,8 @@ impl qobject::BrowserUi {
             ferric_browser_core::MixedKeyDecisionReason::ExactPageKey => "exact-page-key",
             ferric_browser_core::MixedKeyDecisionReason::NoPageKeyMapping => "unmapped-key",
         });
-        let policy = &self.rust().mixed_policy;
+        let mixed_state = self.rust().active_mixed_policy();
+        let policy = mixed_state.policy();
         let site_rule_config = self
             .rust()
             .state
@@ -461,11 +418,11 @@ impl qobject::BrowserUi {
                 .map(ferric_browser_core::LogicalKeyToken::as_str);
             definitions
                 .iter()
-                .filter(|binding| {
+                .filter(|(binding, keys)| {
                     binding.mode == Mode::Normal
-                        && binding.keys.first().map(String::as_str) == first
+                        && keys.first().map(String::as_str) == first
                 })
-                .map(|binding| serde_json::json!({
+                .map(|(binding, _)| serde_json::json!({
                     "keychain": binding.keys.concat(),
                     "command": binding.command,
                     "reason": "the first key is routed to the page before this browser binding can start"
@@ -500,7 +457,7 @@ impl qobject::BrowserUi {
                 "command": binding.command,
                 "command_name": command_name,
                 "source": source,
-                "provenance": self.binding_layer_provenance(mode_name, keychain)
+                "provenance": layers.provenance(mode, &tokens)
             })),
             "continuations": continuations.into_iter().collect::<Vec<_>>(),
             "timeout_ms": ferric_browser_core::DEFAULT_CHORD_TIMEOUT_MS,
@@ -518,24 +475,26 @@ impl qobject::BrowserUi {
             },
             "conflicts": conflicts,
             "mixed_routing": {
+                "status": mixed_state.status(),
+                "unavailable_reason": mixed_state.error(),
                 "owner": routing_decision.map(|decision| match decision.owner {
                     ferric_browser_core::InputOwner::Browser => "browser",
                     ferric_browser_core::InputOwner::Page => "page",
                 }),
                 "reason": mixed_reason,
-                "shortcut_policy": policy.shortcut_policy.as_str(),
+                "shortcut_policy": policy.map(|policy| policy.shortcut_policy.as_str()),
                 "shortcut_policy_source": source_for(
                     "input.shortcut_policy",
-                    policy.shortcut_policy_source
+                    policy.and_then(|policy| policy.shortcut_policy_source)
                 ),
-                "shortcut_policy_source_layer": policy.shortcut_policy_source.map(|source| source.to_string()),
+                "shortcut_policy_source_layer": policy.and_then(|policy| policy.shortcut_policy_source).map(|source| source.to_string()),
                 "shortcut_policy_site_rule": site_rule_for(
                     "input.shortcut_policy",
-                    policy.shortcut_policy_source
+                    policy.and_then(|policy| policy.shortcut_policy_source)
                 ),
-                "page_keys_source": source_for("input.page_keys", policy.page_keys_source),
-                "page_keys_source_layer": policy.page_keys_source.map(|source| source.to_string()),
-                "page_keys_site_rule": site_rule_for("input.page_keys", policy.page_keys_source),
+                "page_keys_source": source_for("input.page_keys", policy.and_then(|policy| policy.page_keys_source)),
+                "page_keys_source_layer": policy.and_then(|policy| policy.page_keys_source).map(|source| source.to_string()),
+                "page_keys_site_rule": site_rule_for("input.page_keys", policy.and_then(|policy| policy.page_keys_source)),
                 "reserved": routing_decision.is_some_and(|decision|
                     decision.reason == ferric_browser_core::MixedKeyDecisionReason::ReservedControl
                 ),
@@ -554,6 +513,17 @@ impl qobject::BrowserUi {
 #[cfg(test)]
 mod mixed_explain_keychain_tests {
     use super::{binding_command_status, binding_explanation_status, parse_explain_keychain};
+
+    #[test]
+    fn unavailable_explanation_does_not_invent_default_policy() {
+        let status = binding_explanation_status(&serde_json::json!({
+            "mixed_routing": {"status":"unavailable", "shortcut_policy_source":null}
+        }));
+        assert!(status.contains("policy unavailable"));
+        assert!(!status.contains("policy default"));
+        let unknown = binding_explanation_status(&serde_json::json!({}));
+        assert!(unknown.contains("policy unknown"));
+    }
 
     #[test]
     fn keychain_explanation_accepts_logical_tokens_and_count_prefixes() {

@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Independent grid and sidebar collections</title>
+<style>
+  body { margin:16px; display:grid; grid-template-columns:550px 230px; gap:24px; font:16px sans-serif }
+  main { display:grid; grid-template-columns:repeat(2, 250px); gap:12px }
+  aside { display:flex; flex-direction:column; gap:12px }
+  article { border:1px solid; padding:12px; min-height:80px }
+</style>
+<main id="grid" aria-label="Main collection">
+  <article data-id="grid-one"><a class="primary" href="#shared">Grid primary one</a><button>Grid menu one</button></article>
+  <article data-id="grid-two"><a class="primary" href="#grid-two">Grid primary two</a></article>
+</main>
+<aside id="sidebar" aria-label="Related collection">
+  <article data-id="side-one"><a class="primary" href="#shared">Sidebar primary one</a><button>Sidebar menu one</button></article>
+  <article data-id="side-two"><a class="primary" href="#side-two">Sidebar primary two</a></article>
+</aside>

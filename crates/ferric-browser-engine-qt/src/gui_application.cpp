@@ -55,6 +55,14 @@ public:
 }
 
 std::unique_ptr<QGuiApplication> ferric_browser_gui_application(const QVector<QByteArray> &arguments) {
+#if QT_VERSION == QT_VERSION_CHECK(6, 11, 2)
+    // This SDK's QML JIT can expose an invalid SetLookup accumulator to GC.
+    // Qt fixes it in qtdeclarative commit 4c1054b0f997f2977a54d42523856805b309db9a.
+    // Use Qt's supported interpreter fallback until a fixed SDK is qualified.
+    // Set this before QApplication/platform initialization can create an engine.
+    // This affects QML execution (including AOT), not WebEngine's V8 renderer.
+    if (!qputenv("QV4_FORCE_INTERPRETER", "1")) return {};
+#endif
     auto application = std::make_unique<FerricApplication>(arguments);
     if (!application->preferencesReady) return {};
     return application;

@@ -467,6 +467,26 @@ QtObject {
             window.showSettings()
             return
         }
+        if (action.indexOf("show-site-policies\t") === 0) {
+            window.runtime_policyWorkspace.show(action.substring("show-site-policies\t".length))
+            return
+        }
+        if (action.indexOf("site-policy-capture\t") === 0) {
+            var captureParts=action.split("\t")
+            window.sitePolicyPreviewWorkspace.startCapture(captureParts[1],captureParts[2],captureParts[3]==="true",captureParts[4])
+            return
+        }
+        if (action.indexOf("site-policy-preview\t") === 0) {
+            var previewParts = action.split("\t")
+            window.sitePolicyPreviewWorkspace.start(previewParts[1], previewParts[2], previewParts[3] === "true")
+            return
+        }
+        if (action.indexOf("site-policy-preview-close\t") === 0) {
+            var closingPreview = action.split("\t")[1]
+            if (window.sitePolicyPreviewWorkspace.requestId === closingPreview)
+                window.sitePolicyPreviewWorkspace.stop()
+            return
+        }
         if (action === "show-profiles") {
             window.refreshProfiles()
             window.openInternalSurface()
@@ -591,6 +611,7 @@ QtObject {
             window.syncTabModel()
             window.executePendingEngineAction()
             window.browserUi.poll_config()
+            window.browserUi.poll_interaction_policy_refresh()
             window.profileSessionWorkspaceObject.presentCommandRequest()
             window.maybeOpenPendingDesktopMediaRequest()
             window.browserUi.refresh_operations()
@@ -701,6 +722,44 @@ QtObject {
         return KeyboardPresentation.logicalGridKeyText(event)
     }
 
+    // null leaves the existing owner in charge; false forwards the original;
+    // true consumes a submitted or explicitly blocked page command.
+    function tryPageKeyRoute(ui, host, event, view, hints, source) {
+        var router = host && host.browserKeyRouterObject
+        if (!router || event.browserOwnedRepeat || event.isAutoRepeat
+                || typeof ui.page_key_route !== "function") return null
+        if (hints && ui.mode === "hint" && (!hints.hintInputOwnerActive
+                || hints.hintState.mode !== "label" || hints.hintDomActivationPending
+                || hints.pendingContextMenuRequest)) return null
+        var route = JSON.parse(ui.page_key_route(source))
+        if (!route.claimed) return null
+        if (!route.allowed) {
+            router.consumeCurrentPageCommand()
+            ui.status_text = route.reason
+            return true
+        }
+        var result = router.submitCurrentPageCommand(view, route.destination,
+            route.destination_key, route.transformed, route.context === "hint-page-key" ? hints : null,
+            route.hint_context || "", route.receiver || "")
+        if (result === "forward") {
+            router.pageOwnsCurrentEvent()
+            return false
+        }
+        if (result !== "owned") {
+            router.consumeCurrentPageCommand()
+            ui.status_text = result
+        }
+        return true
+    }
+
+    function observePageKey(ui, host, view, source) {
+        var router = host && host.browserKeyRouterObject
+        var owned = !!(router && ui.page_key_routing_active()
+            && router.observeCurrentPageKey(view, source, ui.raw_passthrough))
+        if (owned) ui.status_text = "Page command output is already held"
+        return owned
+    }
+
     function handleBrowserKey(ui, host, event) {
         if (!ui || !event) {
             return false
@@ -710,26 +769,49 @@ QtObject {
         if (window.nativePromptActiveFor(ui)) {
             return false
         }
+        var inputRouter = host && host.browserKeyRouterObject
+        if (inputRouter && inputRouter.compositionActive()) return false
         var nativeView = host && host.activeView !== undefined ? host.activeView : (ui === window.browserUi ? window.activeWebView() : null)
         var hints = host && host.hintWorkspace && host.hintWorkspace.browserUi === ui
                 ? host.hintWorkspace : null
         var pageSearch = host && host.searchWorkspace ? host.searchWorkspace : null
         var logicalText = window.logicalNormalKeyText(event)
         var handled = false
+        var localHintSelection = false
         var passing = ui.mode === "pass-through" || ui.mode === "pass-through-once"
         var mixedRoute = ui.mode === "normal"
                 ? ui.mixed_key_route(logicalText) : "browser"
-        if (passing && event.key === Qt.Key_Escape
-                && event.modifiers === Qt.ControlModifier) {
+        if (event.key === Qt.Key_Escape && event.modifiers === (Qt.ControlModifier | Qt.ShiftModifier)) {
+            ui.escape()
+            if (inputRouter && typeof inputRouter.beginPageKeyRecovery === "function") {
+                var recovery = inputRouter.beginPageKeyRecovery()
+                if (recovery) ui.status_text = recovery
+            }
+            handled = true
+        } else if (passing && event.key === Qt.Key_Escape
+                && (event.modifiers & ~Qt.ShiftModifier) === Qt.ControlModifier) {
             ui.escape()
             handled = true
         } else if (window.handleMediaKey(event)) {
             handled = true
         } else if (passing) {
-            return false
+            var passRoute = tryPageKeyRoute(ui, host, event, nativeView, hints, logicalText)
+            // Native page delivery does not execute a browser action. Like
+            // the Normal/Hint page routes, leave runtime and focus polling
+            // to their existing lifecycle owners rather than restarting it
+            // for each mapped page key.
+            var passOwned = passRoute === true
+                || (passRoute === null && observePageKey(ui, host, nativeView, logicalText))
+            event.accepted = passOwned
+            return passOwned
         } else if (ui.mode === "normal"
                    && !event.browserOwnedRepeat
                    && mixedRoute === "page") {
+            var normalRoute = tryPageKeyRoute(ui, host, event, nativeView, hints, logicalText)
+            if (normalRoute === true || (normalRoute === null && observePageKey(ui, host, nativeView, logicalText))) {
+                event.accepted = true
+                return true
+            }
             var pageRouter = host && host.browserKeyRouterObject
             if (pageRouter && pageRouter.pageOwnsCurrentEvent) {
                 pageRouter.pageOwnsCurrentEvent()
@@ -792,6 +874,11 @@ QtObject {
             // cancels and all other target input is consumed.
             handled = true
         } else if (hints && ui.mode === "hint") {
+            var hintRoute = tryPageKeyRoute(ui, host, event, nativeView, hints, logicalText)
+            if (hintRoute !== null) {
+                event.accepted = hintRoute
+                return hintRoute
+            }
             var control = (event.modifiers & Qt.ControlModifier) !== 0
             var shift = (event.modifiers & Qt.ShiftModifier) !== 0
             if (control && event.key === Qt.Key_U) {
@@ -800,10 +887,12 @@ QtObject {
                 hints.applyHintInteraction("backspace", "")
             } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Right
                        || event.key === Qt.Key_Down) {
-                hints.applyHintInteraction(shift ? "previous" : "next", "")
+                localHintSelection = hints.applyHintInteraction(shift ? "previous" : "next", "")
+                        && !ui.target_search_active && ui.mode === "hint"
             } else if (event.key === Qt.Key_Backtab || event.key === Qt.Key_Left
                        || event.key === Qt.Key_Up) {
-                hints.applyHintInteraction("previous", "")
+                localHintSelection = hints.applyHintInteraction("previous", "")
+                        && !ui.target_search_active && ui.mode === "hint"
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                 if (ui.hint_pointer_mode) {
                     if (!event.isAutoRepeat) hints.beginHintPointerConfirmation()
@@ -812,8 +901,13 @@ QtObject {
                 }
             } else if (control && event.key === Qt.Key_Space) {
                 hints.applyHintInteraction("rotate", "")
-            } else if (logicalText.length === 1) {
-                hints.applyHintInteraction("character", logicalText)
+            } else if (logicalText === "Space" || logicalText === "Plus"
+                       || (event.key === Qt.Key_Space
+                           && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)))
+                       || logicalText.length === 1
+                       || (logicalText.length > 0 && logicalText === event.text)) {
+                hints.applyHintInteraction("character", event.key === Qt.Key_Space ? " "
+                    : logicalText === "Plus" ? "+" : logicalText)
             }
             handled = true
         } else if (ui.mode === "caret" && (logicalText === "Ctrl+x" || logicalText === "Ctrl+v" || logicalText === "Ctrl+Shift+v")) {
@@ -851,6 +945,7 @@ QtObject {
             handled = true
         } else if (ui.mode === "normal" && logicalText.length > 0
                    && ((logicalText !== "Enter" && logicalText !== "Shift+Enter") || ui.key_has_binding(logicalText))
+                   && (KeyboardPresentation.normalBrowserFallback(logicalText) || ui.key_has_binding(logicalText))
                    && ui.handle_key(logicalText)) {
             window.completeBrowserKeyAction(ui, host)
             handled = true
@@ -858,13 +953,16 @@ QtObject {
         if (handled) {
             event.accepted = true
             if (ui === window.browserUi) {
-                window.scheduleRuntimeWork(0)
-                if (event.key !== Qt.Key_Escape) {
-                    window.scheduleFocusProbe(2)
-                } else {
-                    window.cancelFocusProbes()
+                if (!(localHintSelection && hints && hints.hintPresentationSessionId.length > 0
+                      && !hints.hintRefreshPending && !hints.pendingHintProvisional)) {
+                    window.scheduleRuntimeWork(0)
                 }
-                window.scheduleScrollCapture()
+                if (event.key === Qt.Key_Escape) {
+                    window.cancelFocusProbes()
+                } else if (!localHintSelection) {
+                    window.scheduleFocusProbe(2)
+                }
+                if (!localHintSelection) window.scheduleScrollCapture()
             }
         }
         return handled

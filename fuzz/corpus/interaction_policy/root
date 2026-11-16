@@ -1,0 +1,8 @@
+start = "top-document"
+[[steps]]
+kind = "open-shadow"
+host_selector = "site-shell"
+[[steps]]
+kind = "assigned-slot"
+host_selector = "slot.primary"
+assigned_selector = "a"

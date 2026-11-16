@@ -1,6 +1,6 @@
 use std::fmt;
 
-const MAX_URL_BYTES: usize = 16 * 1024;
+pub const MAX_URL_BYTES: usize = 16 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ValidatedUrl(String);

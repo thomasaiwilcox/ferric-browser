@@ -1,8 +1,19 @@
 .pragma library
+.import "InteractionRootRuntime.js" as InteractionRootRuntime
+.import "InteractionWitnessRuntime.js" as InteractionWitnessRuntime
+.import "SitePolicyCapture.js" as SitePolicyCapture
 
 // Versioned ApplicationWorld script builders for scroll and Hint operations.
 // BrowserScripts.js remains the stable QML-facing compatibility facade.
-var VERSION = "8"
+var VERSION = "10"
+
+function hintNativeAncestryLifecycle() {
+    // Installed in ApplicationWorld at DocumentCreation, before page handlers.
+    // It allocates no observers and does no scan while hints are closed.
+    return "(()=>{if(window.__ferric_hintNativeAncestryLifecycle===1)return;"
+        + "window.addEventListener('pagehide',()=>{" + hintStopTracking() + "},true);"
+        + "window.__ferric_hintNativeAncestryLifecycle=1;})()"
+}
 
 function boundedCount(value) {
     return Math.max(1, Math.min(9999, Number(value) || 1))
@@ -30,7 +41,10 @@ function scrollTargetRuntime() {
     return scrollable;
 }`
         + "function ftIntersect(a,b){const left=Math.max(a.left,b.left),top=Math.max(a.top,b.top),right=Math.min(a.right,b.right),bottom=Math.min(a.bottom,b.bottom);return {left:left,top:top,right:right,bottom:bottom,width:Math.max(0,right-left),height:Math.max(0,bottom-top)};}"
-        + "function ftDeepHit(doc,x,y){let target=doc&&doc.elementFromPoint(x,y);for(let depth=0;target&&target.shadowRoot&&depth<8;depth++){const inner=target.shadowRoot.elementFromPoint(x,y);if(!inner||inner===target)break;target=inner;}return target&&target.shadowRoot?null:target;}"
+        // Only the synchronous collector supplies this cache. Fresh action
+        // probes perform native hit tests again. The cap limits memoization,
+        // never candidate coverage or actual hit-testing work.
+        + "function ftDeepHit(doc,x,y,cache){let points=cache&&cache.hitPoints&&cache.hitPoints.get(doc);const key=points||cache&&cache.hitPoints?x+','+y:null;if(points&&points.has(key))return points.get(key);let target=doc&&doc.elementFromPoint(x,y);for(let depth=0;target&&target.shadowRoot&&depth<8;depth++){const inner=target.shadowRoot.elementFromPoint(x,y);if(!inner||inner===target)break;target=inner;}if(target&&target.shadowRoot)target=null;if(cache&&cache.hitPoints&&cache.hitPointCount<15000){if(!points){points=new Map();cache.hitPoints.set(doc,points);}points.set(key,target);cache.hitPointCount++;}return target;}"
         + `function ftPointerDeepHit(doc,x,y){
     let current=doc,pointX=x,pointY=y;
     for(let depth=0;current&&depth<16;depth++){
@@ -70,23 +84,36 @@ function scrollTargetRuntime() {
     }
     return cover.left<=rect.left&&cover.top<=rect.top&&cover.right>=rect.right&&cover.bottom>=rect.bottom&&(cover.width>rect.width+1||cover.height>rect.height+1);
 }`
-        + "function ftHit(element,rect,linkAlias){const doc=element&&element.ownerDocument;if(!doc||!rect||rect.width<=0||rect.height<=0)return false;const points=[[rect.left+rect.width/2,rect.top+rect.height/2],[rect.left+Math.min(4,rect.width/2),rect.top+Math.min(4,rect.height/2)],[rect.right-Math.min(4,rect.width/2),rect.bottom-Math.min(4,rect.height/2)]];return points.some(function(point){const target=ftDeepHit(doc,point[0],point[1]);return ftContains(element,target)||linkAlias&&ftLinkAliasHit(element,target,rect);});}"
+        + "function ftHit(element,rect,linkAlias,cache){const doc=element&&element.ownerDocument;if(!doc||!rect||rect.width<=0||rect.height<=0)return false;const points=[[rect.left+rect.width/2,rect.top+rect.height/2],[rect.left+Math.min(4,rect.width/2),rect.top+Math.min(4,rect.height/2)],[rect.right-Math.min(4,rect.width/2),rect.bottom-Math.min(4,rect.height/2)]];return points.some(function(point){const target=ftDeepHit(doc,point[0],point[1],cache);return ftContains(element,target)||linkAlias&&ftLinkAliasHit(element,target,rect);});}"
         + "function ftInert(element){let node=element,depth=0;for(;node&&depth<256;node=ftParent(node),depth++)if(node.inert||(node.hasAttribute&&node.hasAttribute('inert')))return true;return !!node;}"
         + "function ftDisabled(element){try{return !!(element.matches&&element.matches(':disabled'))||element.getAttribute('aria-disabled')==='true';}catch(error){return true;}}"
         + "function ftFocusEligible(element){if(!element||ftDisabled(element)||ftInert(element))return false;try{return element.matches('input:not([type=hidden]),select,textarea,button,iframe,object,embed,summary,a[href],area[href]')||!!element.isContentEditable||element.tabIndex>=0;}catch(error){return false;}}"
         + "function ftHintPolicy(kind,family){if(family==='scrollables'||kind==='scrollable'||kind==='scrollable-region')return 'scroll';if(kind==='input'||kind==='select'||kind==='textarea'||kind==='contenteditable'||kind==='focusable'||kind==='focusable-surface'||kind==='frame')return 'focus';if(family==='regions'||family==='surfaces')return 'visible';return kind==='link'?'link':'pointer';}"
-        + `function ftHintDescription(el,family,linkSelector,cache){
-    if(family==='regions'||family==='surfaces')return ftHintFacetDescription(el,family,cache);
+        + `function ftHintDescriptionText(el,kind,evidence){
+    let name;
+    if(kind==='scrollable'&&el===el.ownerDocument.scrollingElement)name='Page scroll';
+    else if(evidence){evidence.name=ftHintNameEvidence(el,kind!=='scrollable');name=evidence.name.value;}
+    else name=ftHintName(el,kind!=='scrollable');
+    return name||({link:'Link',button:'Button',input:'Text field',select:'Select',textarea:'Text area',contenteditable:'Editable text',image:'Image',media:'Media',scrollable:el===el.ownerDocument.scrollingElement?'Page scroll':'Scrollable area',focusable:'Focus region',frame:'Embedded frame',aria:'Control'})[kind];
+}
+function ftHintDescription(el,family,linkSelector,cache,evidence,deferName){
+    if(family==='regions'||family==='surfaces')return ftHintFacetDescription(el,family,cache,evidence);
     let kind=family==='scrollables'?'scrollable':'aria';
     if(family!=='scrollables'){
         if(el.matches('iframe,frame'))kind='frame';else if(el.matches(linkSelector))kind='link';else if(el.matches('button,[role=button],[type=button][tabindex]'))kind='button';else if(el.matches('input'))kind=['button','submit','reset','image'].includes(el.type)?'button':['checkbox','radio'].includes(el.type)?'aria':'input';else if(el.matches('select'))kind='select';else if(el.matches('textarea'))kind='textarea';else if(el.isContentEditable)kind='contenteditable';else if(el.matches('img'))kind='image';else if(el.matches('audio,video'))kind='media';else if(ftAxisScrollable(el,'x',cache)||ftAxisScrollable(el,'y',cache))kind='scrollable';
         else if(ftFocusEligible(el)&&!el.matches('[role=button],[role=link],[role=checkbox],[role=switch],[role=radio],[role=option],[role=tab],[role=treeitem],[role^=menuitem],[onclick],[onmousedown],[aria-haspopup],[ng-click],[ngClick],[data-ng-click],[x-ng-click],summary'))kind='focusable';
     }
-    const text=(kind==='scrollable'&&el===el.ownerDocument.scrollingElement?'Page scroll':ftHintName(el,kind!=='scrollable'))||({link:'Link',button:'Button',input:'Text field',select:'Select',textarea:'Text area',contenteditable:'Editable text',image:'Image',media:'Media',scrollable:el===el.ownerDocument.scrollingElement?'Page scroll':'Scrollable area',focusable:'Focus region',frame:'Embedded frame',aria:'Control'})[kind];
+    const nameKind=kind,text=deferName?null:ftHintDescriptionText(el,nameKind,evidence);
     let href=kind==='link'?String(el.href||el.getAttribute('href')||''):(kind==='image'||kind==='media'?String(el.currentSrc||el.src||''):null);
+    if(evidence){
+        if(href&&href.length>8192)evidence.href={truncated:{}};
+        else if(href&&/[\\u0000-\\u001f\\u007f-\\u009f]/.test(href))evidence.href={missing:{}};
+        else if(href&&new TextEncoder().encode(href).length>8192)evidence.href={truncated:{}};
+        else evidence.href=href?{'complete-present':{value:href}}:{'complete-absent':{}};
+    }
     if(href===''||href&&href.length>8192||href&&/[\\u0000-\\u001f\\u007f-\\u009f]/.test(href))href=null;
     if(kind==='link'&&href===null)kind='aria';
-    return {kind:kind,text:text,href:href};
+    return {kind:kind,text:text,href:href,nameKind:nameKind};
 }`
         + `function ftFrameIndex(frame){
     try{
@@ -106,7 +133,7 @@ function scrollTargetRuntime() {
         // Root overflow (or body overflow when the HTML root's overflow is visible) is
         // applied to the viewport, not that element's possibly empty box.
         // https://www.w3.org/TR/css-overflow-3/#overflow-propagation
-        + "function ftComputedStyle(element,view,styleCache){if(!styleCache||!styleCache.styles)return view.getComputedStyle(element);let style=styleCache.styles.get(element);if(!style){style=view.getComputedStyle(element);styleCache.styles.set(element,style);}return style;}"
+        + "function ftComputedStyle(element,view,styleCache){if(styleCache&&styleCache.trackAssignment)styleCache.trackAssignment(element);if(!styleCache||!styleCache.styles)return view.getComputedStyle(element);let style=styleCache.styles.get(element);if(!style){style=view.getComputedStyle(element);styleCache.styles.set(element,style);}return style;}"
         + `function ftRememberStyleChain(cache,chain,visible){
     if(cache&&cache.ancestors)for(const node of chain)cache.ancestors.set(node,visible);
 }
@@ -171,7 +198,7 @@ function ftStyleChainVisible(element,view,policy,cache){
     if(cache&&cache.rendered)cache.rendered.set(element,visible);
     return visible;
 }`
-        + "function ftLocalVisible(element,view,policy,styleCache){const actionPolicy=policy||'pointer';if(!element||element.nodeType!==1||!view||ftDisabled(element)||ftInert(element)||actionPolicy==='focus'&&!ftFocusEligible(element)||actionPolicy==='scroll'&&!(ftAxisScrollable(element,'x',styleCache)||ftAxisScrollable(element,'y',styleCache)))return null;const raw=styleCache&&styleCache.rects&&styleCache.rects.get(element)||element.getBoundingClientRect();if(!(raw.width>0&&raw.height>0)||!ftRendered(element,styleCache)||!ftStyleChainVisible(element,view,actionPolicy,styleCache))return null;const clipped=ftClippedRect(element,raw,view,styleCache);if(!(clipped.width>0&&clipped.height>0)||(actionPolicy==='pointer'||actionPolicy==='link')&&!ftHit(element,clipped,actionPolicy==='link'))return null;return {raw:ftCachedRect(element,styleCache,raw),clipped:clipped};}"
+        + "function ftLocalVisible(element,view,policy,styleCache){const actionPolicy=policy||'pointer';if(!element||element.nodeType!==1||!view||ftDisabled(element)||ftInert(element)||actionPolicy==='focus'&&!ftFocusEligible(element)||actionPolicy==='scroll'&&!(ftAxisScrollable(element,'x',styleCache)||ftAxisScrollable(element,'y',styleCache)))return null;const raw=styleCache&&styleCache.rects&&styleCache.rects.get(element)||element.getBoundingClientRect();if(!(raw.width>0&&raw.height>0)||!ftRendered(element,styleCache)||!ftStyleChainVisible(element,view,actionPolicy,styleCache))return null;const clipped=ftClippedRect(element,raw,view,styleCache);if(!(clipped.width>0&&clipped.height>0)||(actionPolicy==='pointer'||actionPolicy==='link')&&!ftHit(element,clipped,actionPolicy==='link',styleCache))return null;return {raw:ftCachedRect(element,styleCache,raw),clipped:clipped};}"
         + `function ftFrameMapping(frame,local,cache,viewport){
     try{
         if(cache&&cache.frames&&cache.frames.has(frame))return cache.frames.get(frame);
@@ -317,46 +344,149 @@ function normalizedHintPolicySnapshot(snapshot) {
 
 
 function hintNameRuntime() {
-    return `function ftNameText(root,hidden){
+    return `function ftNameTruncated(evidence){if(evidence)evidence.complete=false;}
+function ftNamePrefix(value,limit,evidence){
+    if(value.length>limit)ftNameTruncated(evidence);
+    return value.slice(0,limit);
+}
+function ftNameText(root,hidden,evidence){
     if(!root||root.nodeType!==1||root.isContentEditable||root.matches('input,textarea,select'))return '';
     const stack=[root];let text='',visited=0;
     while(stack.length&&visited++<256&&text.length<2048){
-        if(typeof inspect==='function'&&!inspect())break;
+        if(typeof inspect==='function'&&!inspect()){ftNameTruncated(evidence);break;}
         const node=stack.pop();
-        if(node.nodeType===3){text+=' '+String(node.data||'').slice(0,2048-text.length);continue;}
+        if(node.nodeType===3){text+=' '+ftNamePrefix(String(node.data||''),2048-text.length,evidence);continue;}
         if(node.nodeType!==1||node.isContentEditable||node.matches('input,textarea,select,script,style'))continue;
         if(!hidden){const view=node.ownerDocument.defaultView,style=view.getComputedStyle(node);if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse')continue;}
         // Do not enqueue an unbounded sibling list. Text traversal is bounded.
         let child=node.lastChild,count=0;
         for(;child&&count<256-visited&&stack.length<256;child=child.previousSibling,count++)stack.push(child);
+        if(child)ftNameTruncated(evidence);
     }
+    if(stack.length)ftNameTruncated(evidence);
     return text;
 }
-function ftHintName(element,visibleText){
-    let name='';const root=element.getRootNode(),ids=String(element.getAttribute('aria-labelledby')||'').slice(0,1024).trim().split(/\\s+/).filter(Boolean).slice(0,16);
-    for(const id of ids){const named=root&&typeof root.getElementById==='function'?root.getElementById(id):null;if(named&&named.isConnected)name+=' '+ftNameText(named,true);if(name.length>=2048)break;}
-    if(!name.trim())name=String(element.getAttribute('aria-label')||'').slice(0,2048);
-    if(!name&&element.labels)for(const label of Array.prototype.slice.call(element.labels,0,16)){name+=' '+ftNameText(label,true);if(name.length>=2048)break;}
+function ftHintNameValue(element,visibleText,evidence){
+    let name='';const root=element.getRootNode();
+    const allIds=ftNamePrefix(String(element.getAttribute('aria-labelledby')||''),1024,evidence).trim().split(/\\s+/).filter(Boolean);
+    if(allIds.length>16)ftNameTruncated(evidence);
+    const ids=allIds.slice(0,16);
+    for(let index=0;index<ids.length;index++){
+        const named=root&&typeof root.getElementById==='function'?root.getElementById(ids[index]):null;
+        if(named&&named.isConnected)name+=' '+ftNameText(named,true,evidence);
+        if(name.length>=2048){if(index+1<ids.length)ftNameTruncated(evidence);break;}
+    }
+    if(!name.trim())name=ftNamePrefix(String(element.getAttribute('aria-label')||''),2048,evidence);
+    if(!name&&element.labels){
+        if(element.labels.length>16)ftNameTruncated(evidence);
+        const labels=Array.prototype.slice.call(element.labels,0,16);
+        for(let index=0;index<labels.length;index++){
+            name+=' '+ftNameText(labels[index],true,evidence);
+            if(name.length>=2048){if(index+1<labels.length)ftNameTruncated(evidence);break;}
+        }
+    }
     // Only captions rendered by native buttons may use an input's value.
     // Editable, checkbox and radio values never contribute to hint names.
-    if(!name.trim()&&element.matches('input')){if(['button','submit','reset'].includes(element.type))name=String(element.value||'').slice(0,2048);else if(element.type==='image')name=String(element.getAttribute('alt')||'').slice(0,2048);}
-    if(!name&&element.matches('img,area'))name=String(element.getAttribute('alt')||'').slice(0,2048);
-    if(!name&&visibleText)name=ftNameText(element,false);
-    if(!name.trim())name=String(element.getAttribute('title')||'').slice(0,2048);
-    return Array.from(name.slice(0,2048).replace(/[\\u0000-\\u001f\\u007f-\\u009f]+/g,' ').replace(/\\s+/g,' ').trim()).slice(0,512).map(function(character){const point=character.codePointAt(0);return point>=0xd800&&point<=0xdfff?'\\uFFFD':character;}).join('');
+    if(!name.trim()&&element.matches('input')){if(['button','submit','reset'].includes(element.type))name=ftNamePrefix(String(element.value||''),2048,evidence);else if(element.type==='image')name=ftNamePrefix(String(element.getAttribute('alt')||''),2048,evidence);}
+    if(!name&&element.matches('img,area'))name=ftNamePrefix(String(element.getAttribute('alt')||''),2048,evidence);
+    if(!name&&visibleText)name=ftNameText(element,false,evidence);
+    if(!name.trim())name=ftNamePrefix(String(element.getAttribute('title')||''),2048,evidence);
+    const points=Array.from(ftNamePrefix(name,2048,evidence).replace(/[\\u0000-\\u001f\\u007f-\\u009f]+/g,' ').replace(/\\s+/g,' ').trim());
+    if(points.length>512)ftNameTruncated(evidence);
+    return points.slice(0,512).map(function(character){const point=character.codePointAt(0);return point>=0xd800&&point<=0xdfff?'\\uFFFD':character;}).join('');
 }
-function ftHintPresentation(element,local,policy,topClip,cache){
+function ftHintName(element,visibleText){return ftHintNameValue(element,visibleText,null);}
+function ftHintNameEvidence(element,visibleText){
+    const evidence={complete:true};
+    evidence.value=ftHintNameValue(element,visibleText,evidence);
+    return evidence;
+}
+function ftHintFragmentIncomplete(evidence,reason){
+    evidence.complete=false;
+    if(!evidence.reason)evidence.reason=reason;
+}
+function ftHintFragmentHit(element,clipped,visible,policy,cache,evidence,sample){
+    if(policy!=='pointer'&&policy!=='link')return true;
+    const chain=[];let view=element.ownerDocument.defaultView;
+    for(let depth=0;view!==window&&depth<8;depth++){
+        if(typeof inspect==='function'&&!inspect()){ftHintFragmentIncomplete(evidence,'inspection-limit');return false;}
+        const frame=view.frameElement;
+        if(!frame||!frame.isConnected||frame.contentWindow!==view||frame.contentDocument!==view.document){ftHintFragmentIncomplete(evidence,'detached');return false;}
+        const parent=frame.ownerDocument.defaultView,local=ftLocalVisible(frame,parent,'pointer',cache),mapping=ftFrameMapping(frame,local,cache);
+        if(!mapping){ftHintFragmentIncomplete(evidence,'unsupported-root');return false;}
+        chain.push({frame:frame,mapping:mapping});view=parent;
+    }
+    if(view!==window){ftHintFragmentIncomplete(evidence,'unsupported-root');return false;}
+    const rect={left:visible.x,top:visible.y,right:visible.x+visible.width,bottom:visible.y+visible.height};
+    const insetX=Math.min(4,visible.width/2),insetY=Math.min(4,visible.height/2);
+    const points=sample?[[sample.x,sample.y]]:[[rect.left+visible.width/2,rect.top+visible.height/2],
+        [rect.left+insetX,rect.top+insetY],[rect.right-insetX,rect.bottom-insetY]];
+    // One point must reach every parent host AND the target. Independent
+    // rectangle hit tests could each succeed on disjoint uncovered areas.
+    return points.some(function(point){
+        let x=point[0],y=point[1],localRect=rect;
+        if(!Number.isFinite(x)||!Number.isFinite(y)||x<rect.left||y<rect.top||x>=rect.right||y>=rect.bottom)return false;
+        for(let index=chain.length-1;index>=0;index--){
+            const step=chain[index],mapping=step.mapping,content=mapping.content;
+            if(x<content.left||y<content.top||x>=content.right||y>=content.bottom
+                ||!ftContains(step.frame,ftDeepHit(step.frame.ownerDocument,x,y)))return false;
+            x=(x-mapping.left)/mapping.scaleX;y=(y-mapping.top)/mapping.scaleY;
+            localRect={left:(localRect.left-mapping.left)/mapping.scaleX,top:(localRect.top-mapping.top)/mapping.scaleY,
+                right:(localRect.right-mapping.left)/mapping.scaleX,bottom:(localRect.bottom-mapping.top)/mapping.scaleY};
+        }
+        localRect=ftIntersect(localRect,clipped);
+        if(x<localRect.left||y<localRect.top||x>=localRect.right||y>=localRect.bottom)return false;
+        const hit=ftDeepHit(element.ownerDocument,x,y);
+        return ftContains(element,hit)||policy==='link'&&ftLinkAliasHit(element,hit,localRect);
+    });
+}
+function ftHintPresentation(element,local,policy,topClip,cache,evidence,captured){
     const rects=element.getClientRects();
+    if(captured)captured.singleBorder=false;
+    if(evidence){evidence.complete=rects.length<=8;evidence.reason=evidence.complete?null:'truncated';evidence.primary=null;evidence.primary_index=null;evidence.eligible_fragments=[];}
+    function prove(clipped,visible,index){
+        if(!evidence)return;
+        // Witnesses share the action policy's hit test, including the existing
+        // URL-only sibling-link exception. A visible union rectangle does not
+        // prove that every individual fragment is a usable receiver.
+        if(!ftHintFragmentHit(element,clipped,visible,policy,cache,evidence))return;
+        evidence.eligible_fragments.push({index:index,rect:visible});
+        const primary=evidence.primary;
+        if(!primary||visible.y<primary.y||visible.y===primary.y&&visible.x<primary.x){evidence.primary=visible;evidence.primary_index=index;}
+    }
     // A single border box has exactly the already validated/projected geometry.
     // Avoid a duplicate projection and payload; wrapped controls keep fragments.
-    if(rects.length===1){const rect=rects[0],raw=local.raw;if(rect.left===raw.left&&rect.top===raw.top&&rect.right===raw.right&&rect.bottom===raw.bottom)return null;}
+    if(rects.length===1){
+        const rect=rects[0],raw=local.raw;
+        if(rect.left===raw.left&&rect.top===raw.top&&rect.right===raw.right&&rect.bottom===raw.bottom){
+            if(captured)captured.singleBorder=true;
+            if(evidence){
+                if(typeof inspect==='function'&&!inspect())ftHintFragmentIncomplete(evidence,'inspection-limit');
+                else{
+                    const projected=ftProjectedRect(element,local,policy,cache);
+                    const visible=projected&&ftIntersect(projected,topClip);
+                    if(visible&&visible.width>0&&visible.height>0)prove(local.clipped,{x:visible.left,y:visible.top,width:visible.width,height:visible.height},0);
+                }
+            }
+            return null;
+        }
+    }
     const fragments=[];let examined=0;
     for(const rect of rects){
         if(examined++>=8)break;
+        // Display geometry keeps its existing bounded behavior. Only proof
+        // reads consume this additional shared work, and exhaustion cannot
+        // turn an observed prefix into a complete fragment inventory.
+        const proofRead=evidence&&(typeof inspect!=='function'||inspect());
+        if(evidence&&!proofRead)ftHintFragmentIncomplete(evidence,'inspection-limit');
         const clipped=ftIntersect(ftClippedRect(element,rect,element.ownerDocument.defaultView,cache),local.clipped);
         const projected=ftProjectedRect(element,{raw:local.raw,clipped:clipped},policy,cache);
         if(!projected)continue;const visible=ftIntersect(projected,topClip);
-        if(visible.width>0&&visible.height>0)fragments.push({x:visible.left,y:visible.top,width:visible.width,height:visible.height});
+        if(visible.width>0&&visible.height>0){
+            const fragment={x:visible.left,y:visible.top,width:visible.width,height:visible.height};
+            fragments.push(fragment);
+            if(proofRead)prove(clipped,fragment,examined-1);
+        }
     }
     if(!fragments.length)return null;
     const first=fragments[0];return {anchor:{x:first.x,y:first.y},fragments:fragments};
@@ -377,8 +507,8 @@ function hintPolicyRuntime() {
         + "function ftHintDiscoveryFamily(family){return family==='actions'||family==='focus'?'all':family;}function ftHintFamilyAccepts(family,kind){return family==='focus'?kind==='focusable':family!=='actions'||kind!=='focusable';}function ftHintFamilyPolicy(family,policies){const entry=policies&&policies[ftHintDiscoveryFamily(family)];return entry?entry.policy:null;}"
         + "function ftHintSelectors(family,policies){family=ftHintDiscoveryFamily(family);if(family==='regions'||family==='surfaces')return [];const policy=ftHintFamilyPolicy(family,policies);if(!policy)return [ftHintDefaults[family]];const custom=Array.isArray(policy.selectors)?policy.selectors:[];return (policy.mode==='replace'?[]:[ftHintDefaults[family]]).concat(custom); }"
         + "function ftHintMatchesAny(element,selectors){if(!element||!Array.isArray(selectors))return false;for(const selector of selectors){try{if(element.matches(selector))return true;}catch(error){}}return false;}"
-        + "function ftHintFacetLabel(element){return ftHintName(element,false);}"
-        + "function ftHintFacetDescription(element,family,cache){if(!element||element.nodeType!==1)return null;const label=ftHintFacetLabel(element);if(family==='regions'){const role=String(element.getAttribute('role')||'').toLowerCase(),tag=String(element.localName||'').toLowerCase(),root=ftRoot(),scrollable=element!==root&&(ftAxisScrollable(element,'x',cache)||ftAxisScrollable(element,'y',cache));let ace=false;if(tag==='div'&&element.matches('.ace_editor[role=\\\"textbox\\\"]')&&typeof proxyEditorReceivers==='function'){const receivers=proxyEditorReceivers(element);ace=!!receivers&&receivers.length===1&&proxyReceiverEligible(receivers[0],element);}const structural=['main','nav','aside','dialog'].includes(tag)||['main','navigation','complementary','dialog','alertdialog','toolbar','tablist','tree','treegrid','listbox','grid'].includes(role)||(tag==='section'&&!!label)||(role==='region'&&!!label);if(!scrollable&&!structural&&!ace)return null;let name=label;if(!name){if(ace)name='Text editor';else if(scrollable&&!structural)name='Scrollable region';else if(tag==='main'||role==='main')name='Main region';else if(tag==='nav'||role==='navigation')name='Navigation region';else if(tag==='aside'||role==='complementary')name='Complementary region';else if(tag==='dialog'||role==='dialog'||role==='alertdialog')name='Dialog region';else name=role?role.replace(/-/g,' ')+' region':'Section';}return {kind:scrollable?'scrollable-region':'region',text:name,href:null,named:!!label};}if(family==='surfaces'){if(!element.matches('canvas,video,iframe,frame,object,embed'))return null;const kind=element.matches('iframe,frame')?'frame':ftFocusEligible(element)?'focusable-surface':'surface',tag=String(element.localName||'').toLowerCase(),name=label||(tag==='iframe'||tag==='frame'?'Frame surface':tag.charAt(0).toUpperCase()+tag.slice(1)+' surface');return {kind:kind,text:name,href:null,named:!!label};}return null;}"
+        + "function ftHintFacetLabel(element,evidence){if(evidence){evidence.name=ftHintNameEvidence(element,false);evidence.href={'complete-absent':{}};return evidence.name.value;}return ftHintName(element,false);}"
+        + "function ftHintFacetDescription(element,family,cache,evidence){if(!element||element.nodeType!==1)return null;const label=ftHintFacetLabel(element,evidence);if(family==='regions'){const role=String(element.getAttribute('role')||'').toLowerCase(),tag=String(element.localName||'').toLowerCase(),root=ftRoot(),scrollable=element!==root&&(ftAxisScrollable(element,'x',cache)||ftAxisScrollable(element,'y',cache));let ace=false;if(tag==='div'&&element.matches('.ace_editor[role=\\\"textbox\\\"]')&&typeof proxyEditorReceivers==='function'){const receivers=proxyEditorReceivers(element);ace=!!receivers&&receivers.length===1&&proxyReceiverEligible(receivers[0],element);}const structural=['main','nav','aside','dialog'].includes(tag)||['main','navigation','complementary','dialog','alertdialog','toolbar','tablist','tree','treegrid','listbox','grid'].includes(role)||(tag==='section'&&!!label)||(role==='region'&&!!label);if(!scrollable&&!structural&&!ace)return null;let name=label;if(!name){if(ace)name='Text editor';else if(scrollable&&!structural)name='Scrollable region';else if(tag==='main'||role==='main')name='Main region';else if(tag==='nav'||role==='navigation')name='Navigation region';else if(tag==='aside'||role==='complementary')name='Complementary region';else if(tag==='dialog'||role==='dialog'||role==='alertdialog')name='Dialog region';else name=role?role.replace(/-/g,' ')+' region':'Section';}return {kind:scrollable?'scrollable-region':'region',text:name,href:null,named:!!label};}if(family==='surfaces'){if(!element.matches('canvas,video,iframe,frame,object,embed'))return null;const kind=element.matches('iframe,frame')?'frame':ftFocusEligible(element)?'focusable-surface':'surface',tag=String(element.localName||'').toLowerCase(),name=label||(tag==='iframe'||tag==='frame'?'Frame surface':tag.charAt(0).toUpperCase()+tag.slice(1)+' surface');return {kind:kind,text:name,href:null,named:!!label};}return null;}"
         + "function ftHintNativeInputType(element,related){const input=element&&element.localName==='input'?element:related&&related.localName==='input'?related:null;return input?input.type:null;}"
         + "function ftHintRecordMatchesPolicy(record,element){if(!record||!element||!ftHintFamilyAccepts(record.family,record.kind)||record.nativeInputType!==ftHintNativeInputType(element,record.relatedElement))return false;if(record.family==='regions'||record.family==='surfaces'){const description=ftHintFacetDescription(element,record.family);return !!description&&description.kind===record.kind;}const policies=record.selectorPolicies||{},families=Array.isArray(record.discoveryFamilies)&&record.discoveryFamilies.length?record.discoveryFamilies:[record.family];if(record.kind==='editor-focus'||record.kind==='label-control'){const policy=ftHintFamilyPolicy(record.family,policies);return !policy||policy.mode!=='replace'||ftHintMatchesAny(element,ftHintSelectors(record.family,policies));}return families.some(function(family){return ftHintMatchesAny(element,ftHintSelectors(family,policies));});}"
         + "function ftHintRevisionMatches(record,revision){return revision===null||typeof revision==='undefined'||String(record&&record.selectorRevision||'')===String(revision);}"
@@ -386,50 +516,195 @@ function hintPolicyRuntime() {
 
 function hintProxyRuntime() {
     return "function proxyIdentity(element,state){let id=state.weak.get(element);if(!id){id=state.next++;state.weak.set(element,id);}return id;}"
+        + "function enteredScopeValid(element,state){const permit=state&&state.enteredScope;if(!permit)return true;try{const doc=WeakRef.prototype.deref.call(permit.document),view=doc&&doc.defaultView;if(!element||!element.isConnected||!view||view.document!==doc||view.__ferric_hintFrameDocument!==permit.epoch||String(view.origin)!==permit.origin||ftCurrentFramePath(doc)!==permit.path)return false;let current=element.ownerDocument;for(let depth=0;current&&current!==doc&&depth<8;depth++){const child=current.defaultView,host=child&&child.frameElement;if(!host||!host.isConnected||host.contentDocument!==current||host.contentWindow!==child)return false;current=host.ownerDocument;}return current===doc;}catch(error){return false;}}"
+        + "function proxyWithinScope(element,state){if(!state||!enteredScopeValid(element,state))return false;const lease=state.scopeLease;if(!lease)return true;try{const root=WeakRef.prototype.deref.call(lease.elementRef),doc=WeakRef.prototype.deref.call(lease.ownerDocumentRef);return !!root&&!!doc&&root.ownerDocument===doc&&root.isConnected&&ftReachableFromTopDocument(root,doc)&&ftCurrentFramePath(doc)===lease.framePath&&ftWithinScope(root,doc,element);}catch(error){return false;}}"
         + "function proxyReceiverEligible(element,container){if(!element||!container||!element.isConnected||!container.isConnected||element.ownerDocument!==container.ownerDocument||!container.contains(element)||ftDisabled(element)||ftInert(element)||element.readOnly)return false;const tag=String(element.tagName||'').toLowerCase(),type=String(element.type||'text').toLowerCase();if(tag==='textarea'){if(type!=='textarea')return false;}else if(tag==='input'){if(['text','search','email','url','tel'].indexOf(type)<0)return false;}else return false;let node=element,depth=0;for(;node&&depth<256;node=ftParent(node),depth++){const view=node.ownerDocument&&node.ownerDocument.defaultView;if(!view)return false;const style=view.getComputedStyle(node);if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse')return false;}return !node;}"
         + "function proxyEditorReceivers(container){const doc=container&&container.ownerDocument;if(!doc||!doc.createTreeWalker)return null;const walker=doc.createTreeWalker(container,0xffffffff);let node,receiver=null,visited=0;while((node=walker.nextNode())){if(typeof inspect==='function'){if(!inspect())return null;}else if(++visited>50000)return null;if(node.nodeType!==1||!node.matches('textarea.ace_text-input,input.ace_text-input'))continue;if(receiver)return null;receiver=node;}return receiver?[receiver]:[];}"
         + "function proxyEditorValid(container,receiver){if(!container||!receiver||!container.matches('.ace_editor[role=\"textbox\"]'))return false;const receivers=proxyEditorReceivers(container);return !!receivers&&receivers.length===1&&receivers[0]===receiver&&proxyReceiverEligible(receiver,container);}"
         + "function proxyLabelValid(label,control){if(!label||!control||label.tagName!=='LABEL'||!label.isConnected||!control.isConnected||label.ownerDocument!==control.ownerDocument||label.control!==control||ftInert(label)||ftInert(control)||ftDisabled(control))return false;const type=String(control.type||'').toLowerCase();return control.matches('input')&&(type==='checkbox'||type==='radio');}"
-        + "function proxyPairValid(record,candidate,state){if(!record||!candidate||!record.relatedElement||!state||candidate.related_element_id!==record.relatedElementId)return false;const el=record.element,related=record.relatedElement;if(!el||!related||!el.isConnected||!related.isConnected||el.ownerDocument!==related.ownerDocument||record.ownerDocument!==el.ownerDocument||!ftReachableFromTopDocument(related,record.ownerDocument))return false;if(record.kind==='editor-focus')return proxyEditorValid(el,related);if(record.kind==='label-control')return proxyLabelValid(el,related);return false;}"
-        + "function proxyText(element,kind){return kind==='editor-focus'?(ftHintName(element,false)||'Text editor'):ftHintDescription(element,'all',linkSelector).text;}"
+        + "function proxyPairValid(record,candidate,state){if(!record||!candidate||!record.relatedElement||!state||candidate.related_element_id!==record.relatedElementId)return false;const el=record.element,related=record.relatedElement;if(!el||!related||!el.isConnected||!related.isConnected||el.ownerDocument!==related.ownerDocument||record.ownerDocument!==el.ownerDocument||!ftReachableFromTopDocument(related,record.ownerDocument)||!proxyWithinScope(el,state)||!proxyWithinScope(related,state))return false;if(record.kind==='editor-focus')return proxyEditorValid(el,related);if(record.kind==='label-control')return proxyLabelValid(el,related);return false;}"
+        + "function proxyText(element,kind,evidence){if(kind==='editor-focus'){if(evidence){evidence.name=ftHintNameEvidence(element,false);evidence.href={'complete-absent':{}};return evidence.name.value||'Text editor';}return ftHintName(element,false)||'Text editor';}return ftHintDescription(element,'all',linkSelector,null,evidence).text;}"
 }
 
-function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget) {
+function hintTrackingRuntime() {
+    return `function dirty(){
+    if(!state.tracking)return;
+    state.pendingInteraction=null;
+    state.dirty=true;state.revision=Math.min(Number.MAX_SAFE_INTEGER,state.revision+1);
+}
+function removeWindowListeners(view){
+    try{view.removeEventListener('scroll',state.dirtyHandler,true);view.removeEventListener('resize',state.dirtyHandler,true);view.removeEventListener('load',state.frameLoadHandler,true);}catch(error){}
+}
+function removeRootListeners(root){
+    try{root.removeEventListener('load',state.frameLoadHandler,true);}catch(error){}
+    try{root.removeEventListener('slotchange',state.slotChangeHandler,true);}catch(error){}
+}
+function pruneTracking(){
+    const kept=[],documents=new Set();
+    for(const entry of state.rootTracking){
+        const root=entry.root.deref();let doc=null,live=false;
+        try{
+            doc=root&&(root.nodeType===9?root:root.ownerDocument);
+            live=!!doc&&ftReachableFromTopDocument(doc.documentElement,doc)
+                &&(root.nodeType===9||root.isConnected&&(root.nodeType!==11||root.host&&root.host.shadowRoot===root));
+        }catch(error){}
+        if(live){kept.push(entry);documents.add(doc);}
+        else{if(entry.observer)try{entry.observer.disconnect();}catch(error){}if(root){removeRootListeners(root);state.roots.delete(root);}}
+    }
+    state.rootTracking=kept;state.observers=kept.filter(function(entry){return !!entry.observer;}).map(function(entry){return entry.observer;});
+    const windows=[];
+    for(const view of state.windows){
+        const reference=state.windowDocuments.get(view),doc=reference&&reference.deref();
+        if(doc&&documents.has(doc))windows.push(view);
+        else{removeWindowListeners(view);state.windowDocuments.delete(view);}
+    }
+    state.windows=windows;
+    // Candidate/resize registrations also own old DOM objects. Retire stale
+    // registered entries now, rather than waiting for successful recollection.
+    for(const pair of state.elements){
+        const id=pair[0],record=pair[1];
+        if(!ftReachableFromTopDocument(record.element,record.ownerDocument)
+                ||record.relatedElement&&!ftReachableFromTopDocument(record.relatedElement,record.ownerDocument)){
+            if(state.resize)try{state.resize.unobserve(record.element);}catch(error){}
+            state.elements.delete(id);
+        }
+    }
+}
+// Registered roots only: pruning does not discover or scan any DOM subtree.
+if(!Array.isArray(state.rootTracking)||!state.windowDocuments||typeof state.slotChangeHandler!=='function'){
+    for(const observer of state.observers||[])try{observer.disconnect();}catch(error){}
+    for(const entry of state.rootTracking||[]){const root=entry.root.deref();if(root)removeRootListeners(root);}
+    for(const view of state.windows||[])removeWindowListeners(view);
+    if(state.resize)try{state.resize.disconnect();}catch(error){}
+    state.rootTracking=[];state.windowDocuments=new WeakMap();state.observers=[];state.windows=[];state.roots=new WeakSet();state.resize=null;state.tracking=false;
+}
+pruneTracking();
+if(!state.tracking){
+    state.tracking=true;state.dirtyHandler=dirty;state.frameLoadSeen=new WeakSet();
+    state.slotChangeSeen=new WeakSet();
+    state.slotChangeHandler=function(event){
+        if(!state.tracking)return;
+        const target=event.target;
+        if(target&&target.nodeType===1&&target.localName==='slot'&&!state.slotChangeSeen.has(event)){
+            state.slotChangeSeen.add(event);dirty();
+        }
+    };
+    state.frameLoadHandler=function(event){
+        if(!state.tracking)return;
+        const target=event.target;
+        if(target&&target.nodeType===1&&(target.localName==='iframe'||target.localName==='frame')&&!state.frameLoadSeen.has(event)){state.frameLoadSeen.add(event);pruneTracking();dirty();}
+    };
+    if(typeof ResizeObserver==='function')state.resize=new ResizeObserver(state.dirtyHandler);
+}
+function track(root){
+    if(state.roots.has(root))return;
+    let observer=null;
+    try{observer=new MutationObserver(state.dirtyHandler);observer.observe(root,{subtree:true,childList:true,attributes:true,characterData:true});}catch(error){observer=null;}
+    // Capture at the declared root: load may stop at Document/ShadowRoot,
+    // and a scoped Element may be the only registered ancestor.
+    try{root.addEventListener('load',state.frameLoadHandler,true);}catch(error){}
+    // slotchange is not composed. Observe the actual ShadowRoot/scoped root;
+    // manual slot.assign() and assignment ABA need not mutate DOM attributes.
+    try{root.addEventListener('slotchange',state.slotChangeHandler,true);}catch(error){}
+    state.roots.add(root);state.rootTracking.push({root:new WeakRef(root),observer:observer});if(observer)state.observers.push(observer);
+    const doc=root.nodeType===9?root:root.ownerDocument,view=doc&&doc.defaultView;
+    if(view){
+        const previous=state.windowDocuments.get(view);
+        if(!previous||previous.deref()!==doc){
+            // Navigation reuses WindowProxy, but replaces its inner Document.
+            // Remove old registration before attaching the new one.
+            if(previous)removeWindowListeners(view);
+            try{view.addEventListener('scroll',state.dirtyHandler,true);view.addEventListener('resize',state.dirtyHandler,true);state.windowDocuments.set(view,new WeakRef(doc));if(state.windows.indexOf(view)<0)state.windows.push(view);}catch(error){}
+        }
+    }
+}
+// Reuse the existing bounded composed-ancestor style walks. A scoped light-DOM
+// root, or an admitted target before a traversal cap, may never visit the
+// ShadowRoot owning its slot. Track that exact dependency without another walk
+// or observing an unrelated ShadowRoot subtree.
+const assignmentNodes=new WeakSet();
+visibilityStyleCache.trackAssignment=function(node){
+    if(assignmentNodes.has(node))return;
+    assignmentNodes.add(node);
+    const slot=node.assignedSlot;
+    if(slot)track(slot);
+};
+`
+}
+
+// Shared construction for immediate and resumed extraction. Both use the same
+// root resolver and witness extractor; no second selector/admission engine.
+function hintInteractionPasses(rootContext, limits, observations, deferred, suspendable, ordinaryExpression) {
+    return (observations ? InteractionWitnessRuntime.source()
+        + "witnessPass=ftInteractionWitnessPass({inspect:inspect,failures:function(){return failedInspections;},cache:visibilityStyleCache,owner:"
+        + JSON.stringify(rootContext.owner)+",state:state,annotationLimit:"+limits.annotation_bytes+",deferred:"+(deferred?"true":"false")+"});" : "")
+        + InteractionRootRuntime.source()
+        + "rootPass=ftInteractionRootPass({state:state,suspendable:"+(suspendable?"true":"false")+",reserve:function(value,placeholders){if(witnessPass)witnessPass.reserve(value,placeholders);},reserveBytes:function(bytes){if(witnessPass)witnessPass.reserveBytes(bytes);},annotationWork:function(){return witnessPass?witnessPass.annotationWork():NaN;},inspect:inspect,inspected:function(){return inspectedNodes;},knownExcluded:function(node){return !!witnessPass&&witnessPass.knownExcluded(node);},observe:function(node,names){return witnessPass?witnessPass.observe(node,names):{unavailable:\"missing-evidence\"};},attributes:function(node,names){return witnessPass?witnessPass.attributes(node,names):[];},track:track,framePath:ftCurrentFramePath,parent:ftParent,scope:function(){if(!requestedScopeLeaseId)return null;const lease=state.scopeLease;if(!lease||lease.leaseId!==requestedScopeLeaseId)throw {ferricRootReason:'detached'};const scope=WeakRef.prototype.deref.call(lease.elementRef),doc=WeakRef.prototype.deref.call(lease.ownerDocumentRef);if(!scope||!doc||scope.ownerDocument!==doc||!scope.isConnected)throw {ferricRootReason:'detached'};return scope;},annotationLimit:"+limits.annotation_bytes+",predicateLimit:"+limits.predicate_steps
+            + ",ordinaryInput:"+(ordinaryExpression||"null")+",depthLimit:"+limits.depth+",start:"+JSON.stringify(rootContext.start)+",owner:"+JSON.stringify(rootContext.owner)+",baseDepth:"+rootContext.base_depth+",focusedDocument:"+JSON.stringify(rootContext.focused_document||null)+",truncated:function(){return truncated;},receiverOrigin:"+JSON.stringify(rootContext.receiver_origin || "")+"});"
+}
+
+function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget, interactionRequest, deferInteraction) {
+    var rootsRequested = interactionRequest !== undefined && interactionRequest !== null
+    var rootContext = rootsRequested && interactionRequest.context
+    var enteredRequested = !!(rootContext && Object.prototype.hasOwnProperty.call(rootContext,"entered_document"))
+    function rejectedCollection(reason) {
+        return "(function(){const pendingState=window.__ferric_browserHintState;if(pendingState)pendingState.pendingInteraction=null;"
+            + (enteredRequested ? "const state=window.__ferric_browserHintState;if(state){state.interactionProof=null;state.enteredScope={closed:true};}" : "")
+            + "return {error:" + JSON.stringify(String(reason)) + ",candidates:[]};})()"
+    }
+    if (deferInteraction === true && (!rootsRequested || interactionRequest.observations !== true))
+        return rejectedCollection("invalid-deferred-request")
+    var limits = {depth:8,inspections:50000,candidates:5000,predicate_steps:100000,annotation_bytes:2097152}
+    for (var key of Object.keys(limits)) {
+        if (budget && budget[key] !== undefined) {
+            if (!Number.isSafeInteger(budget[key]) || budget[key] < 0 || budget[key] > limits[key])
+                return rejectedCollection("invalid-collection-budget")
+            limits[key] = budget[key]
+        }
+    }
+    if (rootsRequested && (interactionRequest.observations === true && !interactionRequest.stamp || !rootContext || ["top-document","focused-frame"].indexOf(rootContext.start) < 0
+            || !Number.isSafeInteger(rootContext.base_depth) || rootContext.base_depth < 0 || rootContext.base_depth > 8
+            || typeof rootContext.owner !== "string" || rootContext.owner.length > 64))
+        return rejectedCollection("invalid-root-request")
     var linkSelector = hintSelector(true)
     var snapshot = normalizedHintPolicySnapshot(selectorSnapshot)
     if (snapshot.error)
-        return "(function(){return {error:" + JSON.stringify(String(snapshot.error)) + "};})()"
+        return rejectedCollection(snapshot.error)
     var selectorRevision = typeof snapshot.selector_revision === "string"
             ? snapshot.selector_revision : ""
     var selectorPolicies = snapshot.policies && typeof snapshot.policies === "object"
             ? snapshot.policies : ({})
     var requestedScopeLeaseId = typeof scopeLeaseId === "string" && scopeLeaseId.length <= 128
             ? scopeLeaseId : ""
+    var ordinaryInput = JSON.stringify({version:1,family:family||"actions",selectors:snapshot,
+        proxy:proxyTargets===true||proxyTargets==="validated",scope_lease:requestedScopeLeaseId,
+        include_facets:includeFacets===true,deferred:deferInteraction===true,budget:limits})
     // One synchronous pass can cache shared style/ancestor/clip reads; the
     // per-call caches are discarded so later collections observe page changes.
     // Action preflights omit the cache and read the live page; no cached fact
     // grants activation permission. Explicit cleanup also releases maps from
     // contexts retained by mutation/resize observer callbacks.
-    return "(function(){const visibilityStyleCache={styles:new WeakMap(),ancestors:new WeakMap(),rects:new WeakMap(),frames:new WeakMap(),rendered:new WeakMap(),scrollables:new WeakMap(),clips:new WeakMap()};try{"
+    return "(function(){let rootPass=null,witnessPass=null,seen=null;const visibilityStyleCache={styles:new WeakMap(),ancestors:new WeakMap(),rects:new WeakMap(),frames:new WeakMap(),rendered:new WeakMap(),scrollables:new WeakMap(),clips:new WeakMap(),hitPoints:new WeakMap(),hitPointCount:0};try{"
         + scrollTargetRuntime()
         + hintPolicyRuntime()
-        + "const scannedPhysicalNodes=new WeakSet();const preferredScopes=new WeakMap();const firstSummaries=new WeakMap();const out=[];const seen=new Set();const activeIds=new Set();const selectorPolicies=" + JSON.stringify(selectorPolicies) + ";"
+        + "const scannedPhysicalNodes=new WeakSet();const preferredScopes=new WeakMap();const firstSummaries=new WeakMap();const out=[];seen=new Set();const activeIds=new Set();const selectorPolicies=" + JSON.stringify(selectorPolicies) + ";"
         + "const family=" + JSON.stringify(family || "actions") + ";"
         + "const requestedScopeLeaseId=" + JSON.stringify(requestedScopeLeaseId) + ";"
         + "const includeFacets=" + (includeFacets === true ? "true" : "false") + ";"
-        + "const facet=family==='regions'||family==='surfaces',selectors=ftHintSelectors(family,selectorPolicies),scrollSelectors=ftHintSelectors('scrollables',selectorPolicies),candidateLimit=Math.min(facet?256:5000," + Math.max(0, Math.min(5000, Number(budget && budget.candidates !== undefined ? budget.candidates : 5000))) + ");"
+        + "const facet=family==='regions'||family==='surfaces',selectors=ftHintSelectors(family,selectorPolicies),scrollSelectors=ftHintSelectors('scrollables',selectorPolicies),candidateLimit=Math.min(facet?256:5000," + limits.candidates + ");"
         + "const linkSelector=" + JSON.stringify(linkSelector) + ";"
         + "const selectorRevision=" + JSON.stringify(selectorRevision) + ";"
         + "const proxyEnabled=" + (proxyTargets === true || proxyTargets === "validated" ? "true" : "false") + ";"
-        + "const traversalDepthLimit=" + Math.max(0, Math.min(8, Number(budget && budget.depth !== undefined ? budget.depth : 8))) + ";"
-        + "const inspectionLimit=" + Math.max(0, Math.min(50000, Number(budget && budget.inspections !== undefined ? budget.inspections : 50000))) + ";let inspectedNodes=0,truncated=false;function inspect(){if(inspectedNodes>=inspectionLimit){truncated=true;return false;}inspectedNodes++;return true;}"
-        + "let state=window.__ferric_browserHintState;if(!state){state={weak:new WeakMap(),elements:new Map(),next:1,revision:1,dirty:true,roots:new WeakSet(),observers:[],windows:[],resize:null,scopeLease:null};window.__ferric_browserHintState=state;}if(!state.windows)state.windows=[];if(typeof state.scopeLease==='undefined')state.scopeLease=null;const elements=state.elements;window.__ferric_browserHintElements=elements;"
+        + (rootsRequested ? "const ordinaryInput="+JSON.stringify(ordinaryInput)+";" : "")
+        + "const traversalDepthLimit=" + limits.depth + ";"
+        + "const inspectionLimit=" + limits.inspections + ";let inspectedNodes=0,failedInspections=0,truncated=false;function inspect(){if(inspectedNodes>=inspectionLimit){failedInspections++;truncated=true;return false;}inspectedNodes++;return true;}"
+        + "let state=window.__ferric_browserHintState;if(!state){state={weak:new WeakMap(),elements:new Map(),next:1,revision:1,dirty:true,roots:new WeakSet(),observers:[],windows:[],resize:null,scopeLease:null};window.__ferric_browserHintState=state;}if(!state.windows)state.windows=[];if(typeof state.scopeLease==='undefined')state.scopeLease=null;state.interactionProof=null;state.pendingInteraction=null;state.enteredScope=null;const elements=state.elements;window.__ferric_browserHintElements=elements;"
         + hintProxyRuntime()
-        + "function dirty(){state.dirty=true;state.revision=Math.min(Number.MAX_SAFE_INTEGER,state.revision+1);}if(!state.tracking){state.tracking=true;state.dirtyHandler=dirty;if(typeof ResizeObserver==='function')state.resize=new ResizeObserver(dirty);}"
-        + "function track(root){if(state.roots.has(root))return;state.roots.add(root);try{const observer=new MutationObserver(dirty);observer.observe(root,{subtree:true,childList:true,attributes:true,characterData:true});state.observers.push(observer);}catch(error){}const doc=root.nodeType===9?root:root.ownerDocument,view=doc&&doc.defaultView;if(view&&state.windows.indexOf(view)<0){try{view.addEventListener('scroll',dirty,true);view.addEventListener('resize',dirty,true);state.windows.push(view);}catch(error){}}}"
+        + hintTrackingRuntime()
+        + (rootsRequested ? hintInteractionPasses(rootContext,limits,interactionRequest.observations===true,false,deferInteraction===true,"ordinaryInput") : "")
         + "function parentOf(node){return ftParent(node);}"
         + "function linkedSurface(el,r){for(let node=parentOf(el);node;node=parentOf(node))if(node.matches&&node.matches(linkSelector))return node;const doc=el.ownerDocument,points=[[r.left+r.width/2,r.top+r.height/2],[r.left+Math.min(4,r.width/2),r.top+Math.min(4,r.height/2)],[r.right-Math.min(4,r.width/2),r.bottom-Math.min(4,r.height/2)]];for(const point of points)for(const hit of doc.elementsFromPoint(point[0],point[1]))for(let node=hit;node;node=parentOf(node))if(node.matches&&node.matches(linkSelector)){const q=ftCachedRect(node,visibilityStyleCache);if(q.left<=r.left+1&&q.top<=r.top+1&&q.right>=r.right-1&&q.bottom>=r.bottom-1)return node;}return null;}"
-        + "function hit(el,r){return ftHit(el,r);}"
+        + "function hit(el,r){return ftHit(el,r,false,visibilityStyleCache);}"
         + `function hasPreferredLink(el,r){
     if(!el.matches(linkSelector))return false;
     const scope=parentOf(el),doc=el.ownerDocument;
@@ -453,20 +728,72 @@ function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, inc
     return !!summary&&summary.has(href)&&summary.get(href)+1<r.width*r.height;
 }`
         + "function intersect(a,b){const left=Math.max(a.left,b.left),top=Math.max(a.top,b.top),right=Math.min(a.right,b.right),bottom=Math.min(a.bottom,b.bottom);return {left:left,top:top,right:right,bottom:bottom,width:Math.max(0,right-left),height:Math.max(0,bottom-top)};}"
-        + "function add(el,ox,oy,framePath,topClip,pairKind,related,discoveryFamily,recordFamily){const candidateFamily=recordFamily||family;if(!facet&&out.length>=candidateLimit){truncated=true;return;}if(!pairKind&&candidateFamily!=='regions'&&candidateFamily!=='surfaces'&&!ftHintMatchesAny(el,ftHintSelectors(discoveryFamily||candidateFamily,selectorPolicies)))return;if(seen.has(el)){const id=state.weak.get(el),old=elements.get(id),source=discoveryFamily||candidateFamily;if(old&&old.discoveryFamilies.indexOf(source)<0)old.discoveryFamilies.push(source);return;}"
-        + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(!ownerView)return;const description=pairKind?{kind:pairKind,text:proxyText(el,pairKind),href:null}:ftHintDescription(el,candidateFamily,linkSelector,visibilityStyleCache);if(!description)return;const kind=description.kind;if(!ftHintFamilyAccepts(candidateFamily,kind))return;seen.add(el);const policy=ftHintPolicy(kind,candidateFamily),local=ftLocalVisible(el,ownerView,policy,visibilityStyleCache);if(!local)return;const r=local.clipped,projected=ftProjectedRect(el,local,policy,visibilityStyleCache);if(!projected)return;if(candidateFamily==='surfaces'&&!description.named&&(r.width<16||r.height<16))return;const vw=ownerView.innerWidth,vh=ownerView.innerHeight,topRect=intersect(projected,topClip),x=topRect.left,y=topRect.top;"
+        // Keep action admission and geometry in one per-pass routine. Rooted
+        // witnesses must reuse its final admitted records, after proxy and
+        // disclosure filtering, rather than call it to revive a missing row.
+        + "function materialize(el,topClip,pairKind,candidateFamily){"
+        + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(!ownerView)return;const evidence=witnessPass?{}:null;const description=pairKind?{kind:pairKind,href:null}:ftHintDescription(el,candidateFamily,linkSelector,visibilityStyleCache,evidence,true);if(!description)return;const kind=description.kind;if(!ftHintFamilyAccepts(candidateFamily,kind))return;seen.add(el);const policy=ftHintPolicy(kind,candidateFamily),local=ftLocalVisible(el,ownerView,policy,visibilityStyleCache);if(!local)return;const r=local.clipped,projected=ftProjectedRect(el,local,policy,visibilityStyleCache);if(!projected)return;if(candidateFamily==='surfaces'&&!description.named&&(r.width<16||r.height<16))return;const vw=ownerView.innerWidth,vh=ownerView.innerHeight,topRect=intersect(projected,topClip),x=topRect.left,y=topRect.top;"
         + "if(candidateFamily==='scrollables'&&!(ftAxisScrollable(el,'x',visibilityStyleCache)||ftAxisScrollable(el,'y',visibilityStyleCache)))return;"
         + "if(r.width<=0||r.height<=0||topRect.width<=0||topRect.height<=0||hasPreferredLink(el,r))return;"
-        + "if(r.bottom<=0||r.right<=0||r.top>=vh||r.left>=vw||topRect.right<=0||topRect.bottom<=0||x>=window.innerWidth||y>=window.innerHeight)return;if(facet&&out.length>=candidateLimit){truncated=true;return;}"
+        + "if(r.bottom<=0||r.right<=0||r.top>=vh||r.left>=vw||topRect.right<=0||topRect.bottom<=0||x>=window.innerWidth||y>=window.innerHeight)return;if(facet&&out.length>=candidateLimit){truncated=true;return {blocked:true};}"
         + "if((candidateFamily==='all'||candidateFamily==='actions')&&(kind==='image'||kind==='media')&&linkedSurface(el,r))return;"
-        + "const text=description.text,href=description.href,elementId=proxyIdentity(el,state),relatedElementId=related?proxyIdentity(related,state):null,source=discoveryFamily||candidateFamily,policyEntry=selectorPolicies[ftHintDiscoveryFamily(candidateFamily)];elements.set(elementId,{element:el,nativeInputType:ftHintNativeInputType(el,related),relatedElement:related||null,relatedElementId:relatedElementId,ownerDocument:el.ownerDocument,framePath:framePath,family:candidateFamily,kind:kind,text:text,href:href,selectorPolicies:selectorPolicies,selectorRevision:selectorRevision,scopeLeaseId:requestedScopeLeaseId||null,discoveryFamilies:[source],provenance:policyEntry&&policyEntry.provenance||['built-in']});activeIds.add(elementId);if(state.resize)try{state.resize.observe(el);}catch(error){}"
-        + "out.push({element_id:elementId,related_element_id:relatedElementId,kind:kind,frame_path:framePath,text:text,href:href,presentation:ftHintPresentation(el,local,policy,topClip,visibilityStyleCache),geometry:{x:x,y:y,width:topRect.width,height:topRect.height}});}"
-        + "function visit(root,framePath,ox,oy,depth,topClip,includeRoot){if(!facet&&out.length>=candidateLimit){truncated=true;return;}if(facet&&truncated||depth>traversalDepthLimit)return;track(root);const doc=root.nodeType===9?root:root.ownerDocument;if(!doc||!doc.createTreeWalker)return;const walker=doc.createTreeWalker(root,0xffffffff),normal=[],facetNodes=[],scrollableNodes=[],editors=[],editorReceivers=new Map(),labels=[],shadows=[],frames=[],slots=[];let node;"
-        + "function scan(el){if(el.localName==='summary'&&el.parentElement&&el.parentElement.localName==='details'&&!firstSummaries.has(el.parentElement))firstSummaries.set(el.parentElement,el);if(family==='regions'||family==='surfaces'){if(ftHintFacetDescription(el,family,visibilityStyleCache))normal.push(el);}else if(ftHintMatchesAny(el,selectors))normal.push(el);if(includeFacets&&family==='all'){if(ftHintFacetDescription(el,'regions',visibilityStyleCache))facetNodes.push([el,'regions']);if(ftHintFacetDescription(el,'surfaces',visibilityStyleCache))facetNodes.push([el,'surfaces']);}const allPolicy=ftHintFamilyPolicy('all',selectorPolicies),allPolicyAllowsSecondary=!allPolicy||allPolicy.mode!=='replace'||ftHintMatchesAny(el,selectors);if((family==='all'||family==='actions')&&allPolicyAllowsSecondary&&ftHintMatchesAny(el,scrollSelectors)&&(ftAxisScrollable(el,'x',visibilityStyleCache)||ftAxisScrollable(el,'y',visibilityStyleCache)))scrollableNodes.push(el);if(proxyEnabled&&(family==='inputs'||family==='all'||family==='actions')){if(el.matches('.ace_editor[role=\"textbox\"]'))editors.push(el);if(el.matches('textarea.ace_text-input,input.ace_text-input')){for(let parent=ftParent(el),guard=0;parent&&guard<256;parent=ftParent(parent),guard++)if(parent.matches&&parent.matches('.ace_editor[role=\"textbox\"]')){let pair=editorReceivers.get(parent);if(!pair){pair={count:0,receiver:null};editorReceivers.set(parent,pair);}pair.count++;pair.receiver=el;}}if(el.tagName==='LABEL')labels.push(el);}if(el.shadowRoot)shadows.push(el.shadowRoot);if(el.matches('slot'))slots.push(el);if(el.matches('iframe,frame'))frames.push(el);}if(includeRoot&&root.nodeType===1&&inspect()){scannedPhysicalNodes.add(root);scan(root);}while((node=walker.nextNode())){if(!inspect())break;scannedPhysicalNodes.add(node);if(node.nodeType===1)scan(node);}"
-        + "for(const target of normal){if(facet&&truncated)break;if(!facet&&out.length>=candidateLimit){truncated=true;break;}add(target,ox,oy,framePath,topClip,null,null,family);}"
-        + "for(const facetEntry of facetNodes){if(out.length>=5000){truncated=true;break;}add(facetEntry[0],ox,oy,framePath,topClip,null,null,facetEntry[1],facetEntry[1]);}"
-        + "if(proxyEnabled&&(family==='inputs'||family==='all'||family==='actions')&&out.length<5000){const familyPolicy=ftHintFamilyPolicy(family,selectorPolicies),replacePolicy=familyPolicy&&familyPolicy.mode==='replace';for(const editor of editors){if(out.length>=5000){truncated=true;break;}const pair=editorReceivers.get(editor);if(pair&&pair.count===1&&proxyReceiverEligible(pair.receiver,editor)&&(!replacePolicy||ftHintMatchesAny(editor,selectors)))add(editor,ox,oy,framePath,topClip,'editor-focus',pair.receiver,family);}for(const label of labels){if(out.length>=5000){truncated=true;break;}const control=label.control;if(!proxyLabelValid(label,control)||replacePolicy&&!ftHintMatchesAny(label,selectors))continue;const controlId=proxyIdentity(control,state);if(activeIds.has(controlId))continue;if(seen.has(label)){const oldId=state.weak.get(label);for(let index=out.length-1;index>=0;index--)if(out[index].element_id===oldId)out.splice(index,1);elements.delete(oldId);activeIds.delete(oldId);seen.delete(label);}add(label,ox,oy,framePath,topClip,'label-control',control,family);}}"
-        + "if(family==='all'||family==='actions')for(const target of scrollableNodes){if(out.length>=5000){truncated=true;break;}add(target,ox,oy,framePath,topClip,null,null,'scrollables');}"
+        // Naming can walk labelled hidden subtrees. Spend that shared work
+        // only after action admission; ineligible controls need no name fact.
+        + "if(pairKind)description.text=proxyText(el,pairKind,evidence);else if(candidateFamily!=='regions'&&candidateFamily!=='surfaces')description.text=ftHintDescriptionText(el,description.nameKind,evidence);"
+        + "return {description:description,kind:kind,local:local,policy:policy,projected:projected,topRect:topRect,topClip:topClip,evidence:evidence};}"
+        + `function add(el,ox,oy,framePath,topClip,pairKind,related,discoveryFamily,recordFamily,path){
+    const candidateFamily=recordFamily||family,before=failedInspections;
+    function done(){if(witnessPass)witnessPass.finish(el,path,before);}
+    if(!facet&&out.length>=candidateLimit){truncated=true;return;}
+    if(!enteredScopeValid(el,state)||related&&!enteredScopeValid(related,state)){done();return;}
+    if(pairKind&&(!proxyWithinScope(el,state)||!proxyWithinScope(related,state))){done();return;}
+    if(!pairKind&&candidateFamily!=='regions'&&candidateFamily!=='surfaces'&&!ftHintMatchesAny(el,ftHintSelectors(discoveryFamily||candidateFamily,selectorPolicies))){done();return;}
+    if(seen.has(el)){
+        const id=state.weak.get(el),old=elements.get(id),source=discoveryFamily||candidateFamily;
+        if(old&&old.discoveryFamilies.indexOf(source)<0)old.discoveryFamilies.push(source);
+        done();return;
+    }
+    const material=materialize(el,topClip,pairKind,candidateFamily);
+    if(!material){done();return;}
+    if(material.blocked)return;
+    const description=material.description,kind=material.kind,local=material.local,policy=material.policy,topRect=material.topRect;
+    const text=description.text,href=description.href,elementId=proxyIdentity(el,state),relatedElementId=related?proxyIdentity(related,state):null,source=discoveryFamily||candidateFamily,policyEntry=selectorPolicies[ftHintDiscoveryFamily(candidateFamily)];
+    elements.set(elementId,{element:el,nativeInputType:ftHintNativeInputType(el,related),relatedElement:related||null,relatedElementId:relatedElementId,ownerDocument:el.ownerDocument,framePath:framePath,family:candidateFamily,kind:kind,text:text,href:href,selectorPolicies:selectorPolicies,selectorRevision:selectorRevision,scopeLeaseId:requestedScopeLeaseId||null,enteredScope:state.enteredScope,discoveryFamilies:[source],provenance:policyEntry&&policyEntry.provenance||['built-in']});
+    activeIds.add(elementId);if(state.resize)try{state.resize.observe(el);}catch(error){}
+    out.push({element_id:elementId,related_element_id:relatedElementId,kind:kind,frame_path:framePath,text:text,href:href,presentation:ftHintPresentation(el,local,policy,topClip,visibilityStyleCache,null,witnessPass?material:null),geometry:{x:topRect.left,y:topRect.top,width:topRect.width,height:topRect.height}});
+    if(witnessPass)witnessPass.admit(el,material);
+    done();
+}`
+        + "function visit(root,framePath,ox,oy,depth,topClip,includeRoot){if(!facet&&out.length>=candidateLimit){truncated=true;return;}if(facet&&truncated||depth>traversalDepthLimit)return;track(root);const doc=root.nodeType===9?root:root.ownerDocument;if(!doc||!doc.createTreeWalker)return;const rootWalk=rootPass?rootPass.begin(root):null;let rootWalkComplete=true;const walker=doc.createTreeWalker(root,0xffffffff),normal=[],facetNodes=[],scrollableNodes=[],editors=[],editorReceivers=new Map(),labels=[],shadows=[],frames=[],slots=[];let node;"
+        + "function scan(el){const scanFailures=witnessPass?witnessPass.begin(el):0;if(el.localName==='summary'&&el.parentElement&&el.parentElement.localName==='details'&&!firstSummaries.has(el.parentElement))firstSummaries.set(el.parentElement,el);if(family==='regions'||family==='surfaces'){if(ftHintFacetDescription(el,family,visibilityStyleCache))(normal.push(el),witnessPass&&witnessPass.queue(el,1));}else if(ftHintMatchesAny(el,selectors))(normal.push(el),witnessPass&&witnessPass.queue(el,1));if(includeFacets&&family==='all'){if(ftHintFacetDescription(el,'regions',visibilityStyleCache))(facetNodes.push([el,'regions']),witnessPass&&witnessPass.queue(el,2));if(ftHintFacetDescription(el,'surfaces',visibilityStyleCache))(facetNodes.push([el,'surfaces']),witnessPass&&witnessPass.queue(el,4));}const allPolicy=ftHintFamilyPolicy('all',selectorPolicies),allPolicyAllowsSecondary=!allPolicy||allPolicy.mode!=='replace'||ftHintMatchesAny(el,selectors);if((family==='all'||family==='actions')&&allPolicyAllowsSecondary&&ftHintMatchesAny(el,scrollSelectors)&&(ftAxisScrollable(el,'x',visibilityStyleCache)||ftAxisScrollable(el,'y',visibilityStyleCache)))(scrollableNodes.push(el),witnessPass&&witnessPass.queue(el,32));if(proxyEnabled&&(family==='inputs'||family==='all'||family==='actions')){if(el.matches('.ace_editor[role=\"textbox\"]'))(editors.push(el),witnessPass&&witnessPass.queue(el,8));if(el.matches('textarea.ace_text-input,input.ace_text-input')){for(let parent=ftParent(el),guard=0;parent&&guard<256;parent=ftParent(parent),guard++)if(parent.matches&&parent.matches('.ace_editor[role=\"textbox\"]')){let pair=editorReceivers.get(parent);if(!pair){pair={count:0,receiver:null};editorReceivers.set(parent,pair);}pair.count++;pair.receiver=el;}}if(el.tagName==='LABEL')(labels.push(el),witnessPass&&witnessPass.queue(el,16));}if(el.shadowRoot)shadows.push(el.shadowRoot);if(el.matches('slot'))slots.push(el);if(el.matches('iframe,frame'))frames.push(el);if(witnessPass)witnessPass.finish(el,0,scanFailures);}if(includeRoot&&root.nodeType===1&&inspect()){scannedPhysicalNodes.add(root);scan(root);}while((node=walker.nextNode())){if(!inspect()){rootWalkComplete=false;break;}if(rootWalk)rootPass.record(rootWalk,node);scannedPhysicalNodes.add(node);if(node.nodeType===1)scan(node);}if(rootWalk)rootPass.finish(rootWalk,rootWalkComplete);"
+        + "for(const target of normal){if(facet&&truncated)break;if(!facet&&out.length>=candidateLimit){truncated=true;break;}add(target,ox,oy,framePath,topClip,null,null,family,undefined,1);}"
+        + "for(const facetEntry of facetNodes){if(out.length>=5000){truncated=true;break;}add(facetEntry[0],ox,oy,framePath,topClip,null,null,facetEntry[1],facetEntry[1],facetEntry[1]==='regions'?2:4);}"
+        + `if(proxyEnabled&&(family==='inputs'||family==='all'||family==='actions')&&out.length<5000){
+    const familyPolicy=ftHintFamilyPolicy(family,selectorPolicies),replacePolicy=familyPolicy&&familyPolicy.mode==='replace';
+    for(const editor of editors){
+        if(out.length>=5000){truncated=true;break;}
+        const before=failedInspections,pair=editorReceivers.get(editor);
+        if(pair&&pair.count===1&&proxyReceiverEligible(pair.receiver,editor)&&(!replacePolicy||ftHintMatchesAny(editor,selectors)))add(editor,ox,oy,framePath,topClip,'editor-focus',pair.receiver,family,undefined,8);
+        else if(witnessPass)witnessPass.finish(editor,8,before);
+    }
+    for(const label of labels){
+        if(out.length>=5000){truncated=true;break;}
+        const before=failedInspections,control=label.control;
+        if(!proxyLabelValid(label,control)||replacePolicy&&!ftHintMatchesAny(label,selectors)){
+            if(witnessPass)witnessPass.finish(label,16,before);
+            continue;
+        }
+        const controlId=proxyIdentity(control,state);
+        if(activeIds.has(controlId)){if(witnessPass)witnessPass.finish(label,16,before);continue;}
+        if(seen.has(label)){
+            const oldId=state.weak.get(label);
+            for(let index=out.length-1;index>=0;index--)if(out[index].element_id===oldId)out.splice(index,1);
+            elements.delete(oldId);activeIds.delete(oldId);seen.delete(label);
+        }
+        add(label,ox,oy,framePath,topClip,'label-control',control,family,undefined,16);
+    }
+}`
+        + "if(family==='all'||family==='actions')for(const target of scrollableNodes){if(out.length>=5000){truncated=true;break;}add(target,ox,oy,framePath,topClip,null,null,'scrollables',undefined,32);}"
         + "for(const shadow of shadows){if(out.length>=5000||inspectedNodes>=inspectionLimit){if(inspectedNodes>=inspectionLimit)truncated=true;break;}visit(shadow,framePath,ox,oy,depth+1,topClip,false);}"
         + "for(const slot of slots){let assigned=[];try{assigned=slot.assignedElements({flatten:true});}catch(error){}for(const assignedElement of assigned){if(scannedPhysicalNodes.has(assignedElement))continue;if(out.length>=5000||inspectedNodes>=inspectionLimit){if(inspectedNodes>=inspectionLimit)truncated=true;break;}visit(assignedElement,framePath,ox,oy,depth+1,topClip,true);}}"
         + "for(let index=0;index<frames.length;index++){const frame=frames[index],frameIndex=ftFrameIndex(frame);if(frameIndex<0)continue;if(out.length>=5000||inspectedNodes>=inspectionLimit||depth>=traversalDepthLimit){if(inspectedNodes>=inspectionLimit)truncated=true;break;}"
@@ -492,7 +819,114 @@ function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, inc
     }
     out.length=kept;
 }`
-        + "let startRoot=document,startPath='0',startX=0,startY=0,startClip={left:0,top:0,right:innerWidth,bottom:innerHeight};if(requestedScopeLeaseId){const lease=state.scopeLease;let scopeRoot=null,scopeDocument=null;try{if(typeof WeakRef!=='function'||!lease||lease.leaseId!==requestedScopeLeaseId)return {error:'stale-scope',candidates:[]};scopeRoot=WeakRef.prototype.deref.call(lease.elementRef);scopeDocument=WeakRef.prototype.deref.call(lease.ownerDocumentRef);}catch(error){return {error:'stale-scope',candidates:[]};}if(!scopeRoot||!scopeDocument||scopeRoot.nodeType!==1||scopeRoot.ownerDocument!==scopeDocument||!scopeRoot.isConnected||!ftReachableFromTopDocument(scopeRoot,scopeDocument)||ftCurrentFramePath(scopeDocument)!==lease.framePath)return {error:'stale-scope',candidates:[]};const scopeDescription=ftHintFacetDescription(scopeRoot,'regions'),scopeLocal=ftLocalVisible(scopeRoot,scopeDocument.defaultView,'visible',visibilityStyleCache),scopeRect=ftProjectedRect(scopeRoot,scopeLocal,'visible',visibilityStyleCache);if(!scopeDescription||scopeDescription.kind!==lease.kind||!scopeRect)return {error:'stale-scope',candidates:[]};startRoot=scopeRoot;startPath=lease.framePath;startClip=scopeRect;let scopeView=scopeDocument.defaultView;for(let scopeDepth=0;scopeView&&scopeView!==window&&scopeDepth<16;scopeDepth++){const frame=scopeView.frameElement;if(!frame||frame.contentWindow!==scopeView||frame.contentDocument!==scopeView.document)return {error:'stale-scope',candidates:[]};const rect=frame.getBoundingClientRect();startX+=rect.left+frame.clientLeft;startY+=rect.top+frame.clientTop;scopeView=frame.ownerDocument&&frame.ownerDocument.defaultView;}if(scopeView!==window)return {error:'stale-scope',candidates:[]};}else if(state.scopeLease)return {error:'scope-lease-required',candidates:[]};visit(startRoot,startPath,startX,startY,0,startClip,false);preferDisclosureReceivers();for(const id of Array.from(elements.keys()))if(!activeIds.has(id)){const record=elements.get(id);if(state.resize&&record)try{state.resize.unobserve(record.element);}catch(error){}elements.delete(id);}state.dirty=false;return {candidates:out,revision:state.revision,selector_revision:selectorRevision,scope_lease_id:requestedScopeLeaseId||null,inspected_nodes:inspectedNodes,truncated:truncated,viewport:{width:innerWidth,height:innerHeight}};}finally{for(const key of Object.keys(visibilityStyleCache))visibilityStyleCache[key]=null;}})()"
+        + "let entered=null;"
+        + (enteredRequested
+            ? "state.enteredScope={closed:true};try{entered=rootPass.enter("+JSON.stringify(rootContext.entered_document)+");const path=ftCurrentFramePath(entered.document);if(!path)throw Error('entered-path');state.enteredScope={document:new WeakRef(entered.document),epoch:"+JSON.stringify(rootContext.entered_document && rootContext.entered_document.epoch)+",origin:"+JSON.stringify(rootContext.entered_document && rootContext.entered_document.origin)+",path:path};}catch(error){return {error:'entered-document-unavailable',candidates:[]};}"
+            : "")
+        + "let startRoot=document,startPath='0',startX=0,startY=0,startClip={left:0,top:0,right:innerWidth,bottom:innerHeight};if(requestedScopeLeaseId){const lease=state.scopeLease;let scopeRoot=null,scopeDocument=null;try{if(typeof WeakRef!=='function'||!lease||lease.leaseId!==requestedScopeLeaseId)return {error:'stale-scope',candidates:[]};scopeRoot=WeakRef.prototype.deref.call(lease.elementRef);scopeDocument=WeakRef.prototype.deref.call(lease.ownerDocumentRef);}catch(error){return {error:'stale-scope',candidates:[]};}if(!scopeRoot||!scopeDocument||scopeRoot.nodeType!==1||scopeRoot.ownerDocument!==scopeDocument||!scopeRoot.isConnected||!ftReachableFromTopDocument(scopeRoot,scopeDocument)||ftCurrentFramePath(scopeDocument)!==lease.framePath)return {error:'stale-scope',candidates:[]};const scopeDescription=ftHintFacetDescription(scopeRoot,'regions'),scopeLocal=ftLocalVisible(scopeRoot,scopeDocument.defaultView,'visible',visibilityStyleCache),scopeRect=ftProjectedRect(scopeRoot,scopeLocal,'visible',visibilityStyleCache);if(!scopeDescription||scopeDescription.kind!==lease.kind||!scopeRect)return {error:'stale-scope',candidates:[]};startRoot=scopeRoot;startPath=lease.framePath;startClip=scopeRect;let scopeView=scopeDocument.defaultView;for(let scopeDepth=0;scopeView&&scopeView!==window&&scopeDepth<16;scopeDepth++){const frame=scopeView.frameElement;if(!frame||frame.contentWindow!==scopeView||frame.contentDocument!==scopeView.document)return {error:'stale-scope',candidates:[]};const rect=frame.getBoundingClientRect();startX+=rect.left+frame.clientLeft;startY+=rect.top+frame.clientTop;scopeView=frame.ownerDocument&&frame.ownerDocument.defaultView;}if(scopeView!==window)return {error:'stale-scope',candidates:[]};}else if(state.scopeLease)return {error:'scope-lease-required',candidates:[]};let startDepth=0;if(entered){try{const doc=entered.document,host=doc.defaultView.frameElement,local=host&&ftLocalVisible(host,host.ownerDocument.defaultView,'visible',visibilityStyleCache),mapping=local&&ftFrameMapping(host,local,visibilityStyleCache),clip=mapping&&ftProjectedRect(host,{raw:local.raw,clipped:mapping.content},'visible',visibilityStyleCache);if(!clip)return {error:'entered-document-unavailable',candidates:[]};startClip=intersect(startClip,clip);if(!(startClip.width>0&&startClip.height>0))return {error:'entered-document-unavailable',candidates:[]};if(!rootPass.withinEntered(startRoot))startRoot=doc;startDepth=rootPass.traversalDepth(startRoot);startPath=ftCurrentFramePath(startRoot.nodeType===9?startRoot:startRoot.ownerDocument);if(!startPath)return {error:'entered-document-unavailable',candidates:[]};}catch(error){state.enteredScope={closed:true};return {error:'entered-document-unavailable',candidates:[]};}}visit(startRoot,startPath,startX,startY,startDepth,startClip,false);preferDisclosureReceivers();for(const id of Array.from(elements.keys()))if(!activeIds.has(id)){const record=elements.get(id);if(state.resize&&record)try{state.resize.unobserve(record.element);}catch(error){}elements.delete(id);}if(witnessPass)witnessPass.finalize(out,elements);state.dirty=false;const result={candidates:out,revision:state.revision,selector_revision:selectorRevision,scope_lease_id:requestedScopeLeaseId||null,inspected_nodes:inspectedNodes,truncated:truncated,viewport:{width:innerWidth,height:innerHeight}};"
+        + (deferInteraction === true ? `try{
+            const inventory=rootPass.suspend(),witnesses=witnessPass.suspend(),nonce=rootPass.newBatchId();
+            const pending={nonce:nonce,plan:`+JSON.stringify(JSON.stringify(interactionRequest))+`,
+                document:new WeakRef(document),origin:String(window.origin),nativeEpoch:window.__ferric_hintFrameDocument,
+                revision:state.revision,scope:state.scopeLease?new WeakRef(state.scopeLease):null,
+                entered:state.enteredScope?new WeakRef(state.enteredScope):null,
+                viewport:{width:innerWidth,height:innerHeight},clip:startClip,
+                roots:inventory,witnesses:witnesses,candidates:out,
+                inspected:inspectedNodes,truncated:truncated,selectorRevision:selectorRevision,limits:`+JSON.stringify(limits)+`};
+            for(const candidate of out)Object.freeze(candidate);
+            Object.freeze(out);
+            Object.freeze(pending.limits);
+            Object.defineProperty(pending,'ordinaryInput',{value:ordinaryInput,enumerable:true});
+            state.pendingInteraction=pending;
+            result.interaction_pending=nonce;
+            result.interaction_work={inspections:inspectedNodes,predicate_steps:inventory.predicate_steps};
+        }catch(error){state.pendingInteraction=null;result.interaction_error=error&&error.ferricRootReason||'missing-evidence';}`
+            : rootsRequested ? "result.root_proofs=rootPass.run("+JSON.stringify(interactionRequest)+");if(typeof result.root_proofs.annotation_json===\"string\"){result.annotation_json=result.root_proofs.annotation_json;result.annotation_batch=result.root_proofs.annotation_batch;delete result.root_proofs;}result.inspected_nodes=inspectedNodes;result.truncated=truncated;" : "")
+        + "return result;}finally{if(rootPass){rootPass.clear();rootPass=null;}if(witnessPass){witnessPass.clear();witnessPass=null;}if(seen){seen.clear();seen=null;}for(const key of Object.keys(visibilityStyleCache))visibilityStyleCache[key]=null;}})()"
+}
+
+// Completes the original ordinary pass without invoking candidate admission.
+// The native consumer must still seal the resulting local graph and project
+// foreign geometry before canonical classification or session publication.
+// Selection consumers already retain the complete ordinary inventory natively;
+// omit only its unused result copy after the full proof has been produced.
+function hintFinishInteraction(interactionRequest, pendingId, budget, omitCandidates) {
+    var rootContext = interactionRequest && interactionRequest.context
+    if (!rootContext || !interactionRequest.stamp || typeof interactionRequest.stamp.scope_lease !== "string")
+        return "(()=>{const s=window.__ferric_browserHintState,p=s&&s.pendingInteraction;if(p&&p.nonce==="+JSON.stringify(pendingId)+"){s.pendingInteraction=null;s.interactionProof=null;}return {error:'invalid-interaction-resume'};})()"
+    var limits = {depth:"pending.limits.depth",predicate_steps:"predicateLimit",annotation_bytes:"annotationLimit"}
+    return `(()=>{let rootPass=null,witnessPass=null;
+        const visibilityStyleCache={styles:new WeakMap(),ancestors:new WeakMap(),rects:new WeakMap(),frames:new WeakMap(),rendered:new WeakMap(),scrollables:new WeakMap(),clips:new WeakMap()};
+        const state=window.__ferric_browserHintState,pending=state&&state.pendingInteraction;
+        if(!pending||pending.nonce!==`+JSON.stringify(pendingId)+`)return {error:'stale-interaction-collection'};
+        state.pendingInteraction=null;state.interactionProof=null;
+        function stale(){throw {ferricRootReason:'stale-interaction-collection'};}
+        function sameWeak(reference,value){return reference?WeakRef.prototype.deref.call(reference)===value:value===null;}
+        let inspectedNodes=0,failedInspections=0,truncated=false,inspectionLimit=0,predicateBefore=0;
+        function inspect(){if(inspectedNodes>=inspectionLimit){failedInspections++;truncated=true;return false;}inspectedNodes++;return true;}
+        try{
+            if(!pending||pending.nonce!==`+JSON.stringify(pendingId)+`||pending.plan!==`+JSON.stringify(JSON.stringify(interactionRequest))+`
+                ||WeakRef.prototype.deref.call(pending.document)!==document||state.dirty||state.revision!==pending.revision
+                ||String(window.origin)!==pending.origin||window.__ferric_hintFrameDocument!==pending.nativeEpoch
+                ||!sameWeak(pending.scope,state.scopeLease)||!sameWeak(pending.entered,state.enteredScope)
+                ||innerWidth!==pending.viewport.width||innerHeight!==pending.viewport.height)stale();
+            const budget=`+JSON.stringify(budget === undefined ? {} : budget)+`;
+            if(!budget||typeof budget!=='object'||Array.isArray(budget)
+                ||Object.keys(budget).some(key=>!['inspections','predicate_steps','annotation_bytes'].includes(key)))
+                throw {ferricRootReason:'invalid-collection-budget'};
+            const remainder={inspections:pending.limits.inspections-pending.inspected,
+                predicate_steps:pending.limits.predicate_steps-pending.roots.predicate_steps,
+                annotation_bytes:pending.limits.annotation_bytes};
+            for(const key of Object.keys(remainder)){
+                if(budget[key]===undefined)continue;
+                if(!Number.isSafeInteger(budget[key])||budget[key]<0||budget[key]>remainder[key])
+                    throw {ferricRootReason:'invalid-collection-budget'};
+                remainder[key]=budget[key];
+            }
+            inspectedNodes=pending.inspected;inspectionLimit=inspectedNodes+remainder.inspections;
+            truncated=pending.truncated;
+            predicateBefore=pending.roots.predicate_steps;
+            const predicateLimit=predicateBefore+remainder.predicate_steps,annotationLimit=remainder.annotation_bytes;
+            const requestedScopeLeaseId=`+JSON.stringify(interactionRequest.stamp.scope_lease)+`;
+        `+scrollTargetRuntime()+hintPolicyRuntime()+hintProxyRuntime()+hintTrackingRuntime()
+        +hintInteractionPasses(rootContext,limits,true,true,false,"pending.ordinaryInput")+`
+            rootPass.resume(pending.roots);witnessPass.resume(pending.witnesses);
+            let clip={left:0,top:0,right:innerWidth,bottom:innerHeight};
+            if(requestedScopeLeaseId){
+                const lease=state.scopeLease,scope=lease&&WeakRef.prototype.deref.call(lease.elementRef),doc=lease&&WeakRef.prototype.deref.call(lease.ownerDocumentRef);
+                if(!scope||!doc||lease.leaseId!==requestedScopeLeaseId||scope.ownerDocument!==doc||!scope.isConnected
+                    ||!ftReachableFromTopDocument(scope,doc)||ftCurrentFramePath(doc)!==lease.framePath)stale();
+                const local=ftLocalVisible(scope,doc.defaultView,'visible',visibilityStyleCache),rect=local&&ftProjectedRect(scope,local,'visible',visibilityStyleCache);
+                if(!rect)stale();clip=ftIntersect(clip,rect);
+            }
+            if(state.enteredScope){
+                const entered=state.enteredScope,doc=entered.document&&WeakRef.prototype.deref.call(entered.document),view=doc&&doc.defaultView;
+                if(!doc||entered.closed||!view||view.document!==doc||!doc.hasFocus()
+                    ||view.__ferric_hintFrameDocument!==entered.epoch||String(view.origin)!==entered.origin)stale();
+                const host=view.frameElement,local=host&&ftLocalVisible(host,host.ownerDocument.defaultView,'visible',visibilityStyleCache);
+                const mapping=local&&ftFrameMapping(host,local,visibilityStyleCache),rect=mapping&&ftProjectedRect(host,{raw:local.raw,clipped:mapping.content},'visible',visibilityStyleCache);
+                if(!rect)stale();clip=ftIntersect(clip,rect);
+            }
+            for(const key of ['left','top','right','bottom'])if(clip[key]!==pending.clip[key])stale();
+            const proof=rootPass.run(`+JSON.stringify(interactionRequest)+`,pending.nonce);
+            if(state.dirty||state.revision!==pending.revision)stale();
+            if(proof.error)throw {ferricRootReason:proof.error};
+            return {candidates:`+(omitCandidates===true?"[]":"pending.candidates")+`,annotation_json:proof.annotation_json,annotation_batch:proof.annotation_batch,
+                revision:pending.revision,selector_revision:pending.selectorRevision,
+                inspected_nodes:inspectedNodes,truncated:truncated,viewport:pending.viewport,
+                interaction_work:{inspections:inspectedNodes-pending.inspected,predicate_steps:rootPass.work()-predicateBefore,annotation_bytes:proof.annotation_work}};
+        }catch(error){
+            if(state)state.interactionProof=null;
+            return {error:error&&error.ferricRootReason||'missing-evidence',interaction_work:{
+                inspections:Math.max(0,inspectedNodes-pending.inspected),
+                predicate_steps:rootPass?Math.max(0,rootPass.work()-predicateBefore):0,
+                annotation_bytes:witnessPass?witnessPass.annotationWork():0}};
+        }
+        finally{
+            if(rootPass)rootPass.clear();if(witnessPass)witnessPass.clear();
+            for(const key of Object.keys(visibilityStyleCache))visibilityStyleCache[key]=null;
+        }
+    })()`
 }
 
 // Retains an exact parent-visible iframe independently of the semantic
@@ -531,7 +965,7 @@ function hintDirtyRevision() {
 function hintStopTracking(preserveScopeLeaseId) {
     var preserve = typeof preserveScopeLeaseId === "string" && preserveScopeLeaseId.length <= 128
             ? preserveScopeLeaseId : ""
-    return "(function(){const s=window.__ferric_browserHintState;if(!s)return true;const keepScope=!!(s.scopeLease&&s.scopeLease.leaseId===" + JSON.stringify(preserve) + ");if(s.dirtyHandler)for(const view of s.windows||[])try{view.removeEventListener('scroll',s.dirtyHandler,true);view.removeEventListener('resize',s.dirtyHandler,true);}catch(error){}for(const o of s.observers||[])try{o.disconnect();}catch(error){}if(s.resize)try{s.resize.disconnect();}catch(error){}if(s.elements&&typeof s.elements.clear==='function')s.elements.clear();try{delete window.__ferric_browserHintElements;}catch(error){window.__ferric_browserHintElements=null;}s.observers=[];s.windows=[];s.roots=new WeakSet();s.resize=null;s.dirtyHandler=null;s.tracking=false;s.dirty=false;if(!keepScope&&s.scopeLease){try{const target=WeakRef.prototype.deref.call(s.scopeLease.elementRef);if(target)target.removeEventListener('scroll',s.scopeLease.scrollHandler,true);}catch(error){}for(const view of s.scopeLease.scrollViews||[])try{view.removeEventListener('scroll',s.scopeLease.scrollHandler,true);view.removeEventListener('resize',s.scopeLease.scrollHandler,true);}catch(error){}for(const doc of s.scopeLease.scrollDocuments||[])try{doc.removeEventListener('scroll',s.scopeLease.scrollHandler,true);}catch(error){}s.scopeLease=null;}return true;})()"
+    return "(function(){const ancestry=window.__ferric_hintNativeAncestry;if(ancestry instanceof Map){for(const record of ancestry.values())try{record.release();}catch(error){}ancestry.clear();}const s=window.__ferric_browserHintState;if(!s)return true;s.interactionProof=null;s.pendingInteraction=null;s.enteredScope=null;const keepScope=!!(s.scopeLease&&s.scopeLease.leaseId===" + JSON.stringify(preserve) + ");if(s.dirtyHandler)for(const view of s.windows||[])try{view.removeEventListener('scroll',s.dirtyHandler,true);view.removeEventListener('resize',s.dirtyHandler,true);view.removeEventListener('load',s.frameLoadHandler,true);}catch(error){}for(const entry of s.rootTracking||[])try{const root=entry.root.deref();if(root){root.removeEventListener('load',s.frameLoadHandler,true);root.removeEventListener('slotchange',s.slotChangeHandler,true);}}catch(error){}for(const o of s.observers||[])try{o.disconnect();}catch(error){}if(s.resize)try{s.resize.disconnect();}catch(error){}if(s.elements&&typeof s.elements.clear==='function')s.elements.clear();try{delete window.__ferric_browserHintElements;}catch(error){window.__ferric_browserHintElements=null;}s.observers=[];s.windows=[];s.rootTracking=[];s.windowDocuments=new WeakMap();s.roots=new WeakSet();s.resize=null;s.dirtyHandler=null;s.frameLoadHandler=null;s.frameLoadSeen=null;s.slotChangeHandler=null;s.slotChangeSeen=null;s.tracking=false;s.dirty=false;if(!keepScope&&s.scopeLease){try{const target=WeakRef.prototype.deref.call(s.scopeLease.elementRef);if(target)target.removeEventListener('scroll',s.scopeLease.scrollHandler,true);}catch(error){}for(const view of s.scopeLease.scrollViews||[])try{view.removeEventListener('scroll',s.scopeLease.scrollHandler,true);view.removeEventListener('resize',s.scopeLease.scrollHandler,true);}catch(error){}for(const doc of s.scopeLease.scrollDocuments||[])try{doc.removeEventListener('scroll',s.scopeLease.scrollHandler,true);}catch(error){}s.scopeLease=null;}return true;})()"
 }
 
 function hintAcquireScopeLease(request, candidate, selectorSnapshot) {
@@ -547,7 +981,7 @@ function hintAcquireScopeLease(request, candidate, selectorSnapshot) {
         + "const fields=['lease_id','element_id','frame_path','kind','selector_revision','configuration_revision','parent_scope_lease_id'];if(!request||typeof request!=='object'||Object.keys(request).length!==fields.length||Object.keys(request).some(function(key){return fields.indexOf(key)<0;})||typeof request.lease_id!=='string'||request.lease_id.length<1||request.lease_id.length>128||!Number.isInteger(request.element_id)||request.element_id<=0||typeof request.frame_path!=='string'||request.frame_path.length<1||request.frame_path.length>256||!['region','scrollable-region','surface','focusable-surface','frame'].includes(request.kind)||typeof request.selector_revision!=='string'||request.selector_revision.length!==16||!Number.isSafeInteger(request.configuration_revision)||request.configuration_revision<0||!(request.parent_scope_lease_id===null||typeof request.parent_scope_lease_id==='string'&&request.parent_scope_lease_id.length<=128))return {ok:false,error:'invalid-scope-request'};"
         + "const activeId=state&&state.scopeLease?state.scopeLease.leaseId:null,scopeFamily=request.kind==='surface'||request.kind==='focusable-surface'||request.kind==='frame'?'surfaces':'regions';if((request.parent_scope_lease_id||null)!==activeId||(record&&record.scopeLeaseId||null)!==activeId||!record||(record.family!==scopeFamily&&!(request.kind==='frame'&&(record.family==='all'||record.family==='actions')))||record.kind!==request.kind||record.framePath!==request.frame_path||record.selectorRevision!==request.selector_revision||!fresh.visible||fresh.element_id!==request.element_id||fresh.kind!==request.kind||fresh.frame_path!==request.frame_path||candidate.element_id!==request.element_id||candidate.kind!==request.kind||candidate.frame_path!==request.frame_path||fresh.text!==record.text||fresh.href!==record.href)return {ok:false,error:'stale-scope'};"
         + "if(typeof WeakRef!=='function'||typeof WeakRef.prototype.deref!=='function')return {ok:false,error:'weak-reference-unavailable'};const description=ftHintFacetDescription(element,scopeFamily);if(!element||!element.isConnected||!description||description.kind!==request.kind||!ftMeaningfullyVisible(element,'visible')||!ftReachableFromTopDocument(element,record.ownerDocument)||ftCurrentFramePath(record.ownerDocument)!==request.frame_path)return {ok:false,error:'stale-scope'};"
-        + "let elementRef,ownerDocumentRef;try{elementRef=new WeakRef(element);ownerDocumentRef=new WeakRef(record.ownerDocument);}catch(error){return {ok:false,error:'weak-reference-unavailable'};}const releasePreviousScope=function(lease){if(!lease)return;try{const target=WeakRef.prototype.deref.call(lease.elementRef);if(target)target.removeEventListener('scroll',lease.scrollHandler,true);}catch(error){}for(const view of lease.scrollViews||[])try{view.removeEventListener('scroll',lease.scrollHandler,true);view.removeEventListener('resize',lease.scrollHandler,true);}catch(error){}for(const doc of lease.scrollDocuments||[])try{doc.removeEventListener('scroll',lease.scrollHandler,true);}catch(error){}};releasePreviousScope(state.scopeLease);state.scopeLease={leaseId:request.lease_id,elementRef:elementRef,ownerDocumentRef:ownerDocumentRef,elementId:request.element_id,framePath:request.frame_path,kind:request.kind,family:scopeFamily,selectorRevision:request.selector_revision,configurationRevision:request.configuration_revision,parentScopeLeaseId:request.parent_scope_lease_id,scrollRevision:0,scrollViews:[],scrollDocuments:[],scrollHandler:null};const bumpScroll=function(){state.scopeLease.scrollRevision=Math.min(Number.MAX_SAFE_INTEGER,state.scopeLease.scrollRevision+1);};state.scopeLease.scrollHandler=bumpScroll;try{element.addEventListener('scroll',bumpScroll,true);}catch(error){return {ok:false,error:'scope-listener-unavailable'};}let scopeView=record.ownerDocument.defaultView;for(let scopeDepth=0;scopeView&&scopeDepth<16;scopeDepth++){const scopeDocument=scopeView.document;if(scopeDocument&&state.scopeLease.scrollDocuments.indexOf(scopeDocument)<0){try{scopeDocument.addEventListener('scroll',bumpScroll,true);state.scopeLease.scrollDocuments.push(scopeDocument);}catch(error){return {ok:false,error:'scope-listener-unavailable'};}}if(state.scopeLease.scrollViews.indexOf(scopeView)<0){try{scopeView.addEventListener('scroll',bumpScroll,true);scopeView.addEventListener('resize',bumpScroll,true);state.scopeLease.scrollViews.push(scopeView);}catch(error){return {ok:false,error:'scope-listener-unavailable'};}}if(scopeView===window)break;const frame=scopeView.frameElement;if(!frame||frame.contentWindow!==scopeView||frame.contentDocument!==scopeView.document)return {ok:false,error:'stale-scope'};scopeView=frame.ownerDocument&&frame.ownerDocument.defaultView;}if(scopeView!==window)return {ok:false,error:'stale-scope'};return {ok:true,lease_id:request.lease_id,element_id:request.element_id,frame_path:request.frame_path,kind:request.kind,selector_revision:request.selector_revision,configuration_revision:request.configuration_revision,parent_scope_lease_id:request.parent_scope_lease_id};"
+        + "let elementRef,ownerDocumentRef;try{elementRef=new WeakRef(element);ownerDocumentRef=new WeakRef(record.ownerDocument);}catch(error){return {ok:false,error:'weak-reference-unavailable'};}const releasePreviousScope=function(lease){if(!lease)return;try{const target=WeakRef.prototype.deref.call(lease.elementRef);if(target)target.removeEventListener('scroll',lease.scrollHandler,true);}catch(error){}for(const view of lease.scrollViews||[])try{view.removeEventListener('scroll',lease.scrollHandler,true);view.removeEventListener('resize',lease.scrollHandler,true);}catch(error){}for(const doc of lease.scrollDocuments||[])try{doc.removeEventListener('scroll',lease.scrollHandler,true);}catch(error){}};releasePreviousScope(state.scopeLease);state.pendingInteraction=null;state.scopeLease={leaseId:request.lease_id,elementRef:elementRef,ownerDocumentRef:ownerDocumentRef,elementId:request.element_id,framePath:request.frame_path,kind:request.kind,family:scopeFamily,selectorRevision:request.selector_revision,configurationRevision:request.configuration_revision,parentScopeLeaseId:request.parent_scope_lease_id,scrollRevision:0,scrollViews:[],scrollDocuments:[],scrollHandler:null};const bumpScroll=function(){state.scopeLease.scrollRevision=Math.min(Number.MAX_SAFE_INTEGER,state.scopeLease.scrollRevision+1);};state.scopeLease.scrollHandler=bumpScroll;try{element.addEventListener('scroll',bumpScroll,true);}catch(error){return {ok:false,error:'scope-listener-unavailable'};}let scopeView=record.ownerDocument.defaultView;for(let scopeDepth=0;scopeView&&scopeDepth<16;scopeDepth++){const scopeDocument=scopeView.document;if(scopeDocument&&state.scopeLease.scrollDocuments.indexOf(scopeDocument)<0){try{scopeDocument.addEventListener('scroll',bumpScroll,true);state.scopeLease.scrollDocuments.push(scopeDocument);}catch(error){return {ok:false,error:'scope-listener-unavailable'};}}if(state.scopeLease.scrollViews.indexOf(scopeView)<0){try{scopeView.addEventListener('scroll',bumpScroll,true);scopeView.addEventListener('resize',bumpScroll,true);state.scopeLease.scrollViews.push(scopeView);}catch(error){return {ok:false,error:'scope-listener-unavailable'};}}if(scopeView===window)break;const frame=scopeView.frameElement;if(!frame||frame.contentWindow!==scopeView||frame.contentDocument!==scopeView.document)return {ok:false,error:'stale-scope'};scopeView=frame.ownerDocument&&frame.ownerDocument.defaultView;}if(scopeView!==window)return {ok:false,error:'stale-scope'};return {ok:true,lease_id:request.lease_id,element_id:request.element_id,frame_path:request.frame_path,kind:request.kind,selector_revision:request.selector_revision,configuration_revision:request.configuration_revision,parent_scope_lease_id:request.parent_scope_lease_id};"
         + "}catch(error){return {ok:false,error:'scope-lease-invalid'};}})()"
 }
 
@@ -555,7 +989,7 @@ function hintClearScopeLease(scopeLeaseId) {
     var leaseId = typeof scopeLeaseId === "string" && scopeLeaseId.length <= 128
             ? scopeLeaseId : ""
     return "(function(){const s=window.__ferric_browserHintState;if(!s||!s.scopeLease||s.scopeLease.leaseId!=="
-        + JSON.stringify(leaseId) + ")return false;try{const target=WeakRef.prototype.deref.call(s.scopeLease.elementRef);if(target)target.removeEventListener('scroll',s.scopeLease.scrollHandler,true);}catch(error){}for(const view of s.scopeLease.scrollViews||[])try{view.removeEventListener('scroll',s.scopeLease.scrollHandler,true);view.removeEventListener('resize',s.scopeLease.scrollHandler,true);}catch(error){}for(const doc of s.scopeLease.scrollDocuments||[])try{doc.removeEventListener('scroll',s.scopeLease.scrollHandler,true);}catch(error){}s.scopeLease=null;return true;})()"
+        + JSON.stringify(leaseId) + ")return false;s.pendingInteraction=null;try{const target=WeakRef.prototype.deref.call(s.scopeLease.elementRef);if(target)target.removeEventListener('scroll',s.scopeLease.scrollHandler,true);}catch(error){}for(const view of s.scopeLease.scrollViews||[])try{view.removeEventListener('scroll',s.scopeLease.scrollHandler,true);view.removeEventListener('resize',s.scopeLease.scrollHandler,true);}catch(error){}for(const doc of s.scopeLease.scrollDocuments||[])try{doc.removeEventListener('scroll',s.scopeLease.scrollHandler,true);}catch(error){}s.scopeLease=null;return true;})()"
 }
 
 function spatialScopeGeometry(scopeLeaseId) {
@@ -592,7 +1026,7 @@ function hintFresh(candidate, selectorSnapshot) {
         + hintPolicyRuntime()
         + hintProxyRuntime()
         + "const state=window.__ferric_browserHintState,elements=state&&state.elements,record=elements&&elements.get(elementId),el=record&&record.element;"
-        + "if(!record||!el||record.framePath!==path||record.ownerDocument!==el.ownerDocument||!ftReachableFromTopDocument(el,record.ownerDocument)||ftCurrentFramePath(el.ownerDocument)!==path)return {visible:false,element_id:elementId};const activeScopeLeaseId=state.scopeLease?state.scopeLease.leaseId:null;if((record.scopeLeaseId||null)!==activeScopeLeaseId)return {visible:false,element_id:elementId};if(activeScopeLeaseId){let scopeRoot=null,scopeDocument=null;try{scopeRoot=WeakRef.prototype.deref.call(state.scopeLease.elementRef);scopeDocument=WeakRef.prototype.deref.call(state.scopeLease.ownerDocumentRef);}catch(error){return {visible:false,element_id:elementId};}const scopeDescription=scopeRoot&&ftHintFacetDescription(scopeRoot,'regions');if(!scopeRoot||!scopeDocument||scopeRoot.ownerDocument!==scopeDocument||!scopeRoot.isConnected||!scopeDescription||scopeDescription.kind!==state.scopeLease.kind||!ftReachableFromTopDocument(scopeRoot,scopeDocument)||ftCurrentFramePath(scopeDocument)!==state.scopeLease.framePath||!ftWithinScope(scopeRoot,scopeDocument,el))return {visible:false,element_id:elementId};}"
+        + "if(!record||!el||record.framePath!==path||record.ownerDocument!==el.ownerDocument||!ftReachableFromTopDocument(el,record.ownerDocument)||ftCurrentFramePath(el.ownerDocument)!==path)return {visible:false,element_id:elementId};if((record.enteredScope||null)!==(state.enteredScope||null)||!enteredScopeValid(el,state))return {visible:false,element_id:elementId};const activeScopeLeaseId=state.scopeLease?state.scopeLease.leaseId:null;if((record.scopeLeaseId||null)!==activeScopeLeaseId)return {visible:false,element_id:elementId};if(activeScopeLeaseId){let scopeRoot=null,scopeDocument=null;try{scopeRoot=WeakRef.prototype.deref.call(state.scopeLease.elementRef);scopeDocument=WeakRef.prototype.deref.call(state.scopeLease.ownerDocumentRef);}catch(error){return {visible:false,element_id:elementId};}const scopeDescription=scopeRoot&&ftHintFacetDescription(scopeRoot,'regions');if(!scopeRoot||!scopeDocument||scopeRoot.ownerDocument!==scopeDocument||!scopeRoot.isConnected||!scopeDescription||scopeDescription.kind!==state.scopeLease.kind||!ftReachableFromTopDocument(scopeRoot,scopeDocument)||ftCurrentFramePath(scopeDocument)!==state.scopeLease.framePath||!ftWithinScope(scopeRoot,scopeDocument,el))return {visible:false,element_id:elementId};}"
         + "if(!ftHintRevisionMatches(record,activeSelectorRevision)||!ftHintRecordMatchesPolicy(record,el))return {visible:false,element_id:elementId};"
         + "const pairKind=record.kind==='editor-focus'||record.kind==='label-control';if(pairKind&&!proxyPairValid(record,{related_element_id:candidateRelatedId},state))return {visible:false,element_id:elementId};"
         + "const maybeScrollable=ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y');if((record.kind==='scrollable'||record.kind==='scrollable-region')&&!maybeScrollable)return {visible:false,element_id:elementId};"
@@ -601,6 +1035,14 @@ function hintFresh(candidate, selectorSnapshot) {
         + "const policy=ftHintPolicy(description.kind,record.family),ownerView=el.ownerDocument&&el.ownerDocument.defaultView,local=ftLocalVisible(el,ownerView,policy),geometry=ftProjectedRect(el,local,policy);if(!geometry)return {visible:false,element_id:elementId};"
         + "return {visible:true,element_id:elementId,related_element_id:record.relatedElementId,kind:description.kind,frame_path:path,text:description.text,href:description.href,geometry:{x:geometry.left,y:geometry.top,width:geometry.width,height:geometry.height}};"
         + "}catch(error){return {visible:false,element_id:" + Number(candidate.element_id) + "};}})()"
+}
+
+function hintCaptureFacts(candidate, selectorSnapshot) {
+    var fresh = hintFresh(candidate, selectorSnapshot)
+    return "(function(){const fresh=" + fresh + ";if(!fresh||!fresh.visible)return {error:'capture target is stale'};"
+        + "const state=window.__ferric_browserHintState,record=state&&state.elements&&state.elements.get(" + Number(candidate.element_id) + ");"
+        + "if(!record||!record.element||state.dirty)return {error:'capture target is unavailable or stale'};const revision=state.revision;try{const facts=(" + SitePolicyCapture.factsSource()
+        + ")(record.element,fresh);if(state.dirty||state.revision!==revision)return {error:'capture changed while reading facts'};return Object.assign({},fresh,{capture_facts:facts});}catch(error){return {error:'bounded capture facts unavailable'};}})()"
 }
 
 function hintPointerPreflight(candidate, viewWidth, viewHeight, selectorSnapshot) {

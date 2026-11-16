@@ -2,8 +2,8 @@ use super::{
     BufReader, Child, Command, Duration, Instant, Output, Path, PathBuf, Stdio, SystemTime,
     TcpStream, UNIX_EPOCH, check_accessibility_contract, check_compatibility_report, fs,
     prepare_application_tests, run, run_application_tests, run_blocking_evidence_tests,
-    run_fuzz_smoke, run_native_insert_tests, run_qml_ui_tests, run_wayland_application_tests,
-    thread,
+    run_fuzz_smoke, run_interaction_proof_fuzz, run_native_insert_tests, run_qml_ui_tests,
+    run_wayland_application_tests, thread,
 };
 use std::{
     io::{BufRead as _, Read as _, Write as _},
@@ -69,6 +69,7 @@ pub(super) fn run_test(arguments: &[String]) -> Result<(), String> {
         "wayland-input" => run_wayland_input_qualification(),
         "adapter" => run_adapter_smoke(),
         "fuzz" => run_fuzz_smoke(),
+        "fuzz-interaction-proof" => run_interaction_proof_fuzz(),
         "storage" => run(
             "cargo",
             &[

@@ -31,6 +31,9 @@ impl qobject::BrowserUi {
         mut command: ParsedCommand,
         route: &IpcRoute,
         operation_id: Option<&str>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<Value, super::PublicError> {
         if self.as_ref().in_page_window_mode() && super::browser_ui_page_regroup::handles(&command)
         {
@@ -40,6 +43,7 @@ impl qobject::BrowserUi {
                 Vec::new(),
                 operation_id,
                 &mut None,
+                preparation,
             );
         }
         if self.as_ref().in_page_window_mode()
@@ -51,6 +55,7 @@ impl qobject::BrowserUi {
                 Vec::new(),
                 operation_id,
                 &mut None,
+                preparation,
             );
         }
         if self.as_ref().in_page_window_mode() && super::browser_ui_page_windows::handles(&command)
@@ -60,6 +65,7 @@ impl qobject::BrowserUi {
                 route,
                 Vec::new(),
                 operation_id,
+                preparation,
             );
         }
         if let Some(executor) = self
@@ -243,19 +249,46 @@ impl qobject::BrowserUi {
             }
             return Ok(result);
         }
+        if matches!(
+            command.name.as_str(),
+            "site-policy-apply" | "site-policy-edit" | "site-policy-discard"
+        ) {
+            if route.context.is_some() {
+                return Err("context routing is not valid for Site Policies drafts".into());
+            }
+            self.as_ref().validate_ipc_route_public(route)?;
+            let result = self
+                .as_mut()
+                .execute_site_policy_command(&command, preparation)
+                .map_err(super::PublicError::engine);
+            if result.is_ok()
+                && let Some(operation_id) = operation_id
+            {
+                self.as_mut().bind_configuration_operation(operation_id);
+            }
+            return result;
+        }
         if matches!(command.name.as_str(), "set" | "unset" | "bind" | "unbind") {
             if route.context.is_some() {
                 return Err("context routing is not valid for configuration commands".into());
             }
             self.as_ref().validate_ipc_route_public(route)?;
             let result = if matches!(command.name.as_str(), "bind" | "unbind") {
-                self.as_mut()
-                    .execute_runtime_binding_command(&command)
-                    .map_err(super::PublicError::engine)
+                (if preparation.is_some() {
+                    self.as_mut()
+                        .prepare_runtime_binding_command(&command, preparation)
+                } else {
+                    self.as_mut().execute_runtime_binding_command(&command)
+                })
+                .map_err(super::PublicError::engine)
             } else {
-                self.as_mut()
-                    .execute_runtime_config_command(&command)
-                    .map_err(super::PublicError::engine)
+                (if preparation.is_some() {
+                    self.as_mut()
+                        .prepare_runtime_config_command(&command, preparation)
+                } else {
+                    self.as_mut().execute_runtime_config_command(&command)
+                })
+                .map_err(super::PublicError::engine)
             };
             if result.is_ok()
                 && let Some(operation_id) = operation_id
@@ -576,8 +609,10 @@ impl qobject::BrowserUi {
                 return Err("context routing is not valid for command actions".into());
             }
             self.as_ref().validate_ipc_route_public(route)?;
-            return (self.as_mut().execute_command_action(&command, Some(route)))
-                .map_err(Into::into);
+            return (self
+                .as_mut()
+                .execute_command_action(&command, Some(route), preparation))
+            .map_err(Into::into);
         }
         if command.name == "edit-text" {
             if route.context.is_some() {

@@ -4,14 +4,20 @@ use std::{env, fmt::Write as _, fs, path::Path, path::PathBuf};
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 const NATIVE_SOURCES: &[&str] = &[
+    "src/startup_configuration.h",
+    "src/startup_configuration.cpp",
     "src/browser_key_router.h",
     "src/browser_key_router.cpp",
     "src/hint_frame_broker.h",
     "src/hint_frame_broker.cpp",
+    "src/hint_request_adapter.h",
+    "src/hint_request_adapter.cpp",
     "src/script_runner.h",
     "src/script_runner.cpp",
     "src/profile_lifetime.h",
     "src/profile_lifetime.cpp",
+    "src/site_policy_observation.h",
+    "src/site_policy_observation.cpp",
     "src/public_profile_owner.h",
     "src/public_profile_owner.cpp",
     "src/public_page_owner.h",
@@ -76,6 +82,9 @@ const NATIVE_SOURCES: &[&str] = &[
 ];
 
 fn main() {
+    println!("cargo:rerun-if-changed=src/hint_proof_object_probe.h");
+    println!("cargo:rerun-if-changed=src/hint_graph_work.h");
+    println!("cargo:rerun-if-changed=src/hint_frame_ancestry_probe.h");
     println!("cargo:rerun-if-changed=src/qt_compat/profile_adapter_client.h");
     println!("cargo:rerun-if-changed=src/qt_compat/api/qtwebenginecoreglobal_p.h");
     println!("cargo:rerun-if-changed=src/qt_compat/provenance.toml");

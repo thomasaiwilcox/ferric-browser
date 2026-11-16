@@ -1,8 +1,11 @@
 #include "tst_application.h"
+#include "ferric-browser-engine-qt/src/bridge.cxxqt.h"
 #include "owned_renderer_process.h"
 #include "owned_browser_keyboard.h"
 #include "../../src/url_display.h"
 #include "../../src/gui_application.h"
+#include "../../src/startup_configuration.h"
+#include <chrono>
 #include <QEvent>
 #include <QKeyEvent>
 #include <QClipboard>
@@ -23,6 +26,7 @@
 #include <QAbstractButton>
 #include <QMessageBox>
 #include <QTimer>
+#include <QThread>
 #include <QImage>
 #include <QScopeGuard>
 #include <QHostAddress>
@@ -146,10 +150,16 @@ void ApplicationTests::accept(const QVariant &value) {
 }
 
 void ApplicationTests::frameOperationComplete(const QVariant &value) {
-    ++frameCallbackCount;scriptResult=value;
+    ++frameCallbackCount;scriptResult=value;frameCallbackResult=value;
+    frameCallbackNsecs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
 void ApplicationTests::initTestCase() {
+#if QT_VERSION == QT_VERSION_CHECK(6, 11, 2)
+    // All production QML engines must avoid this SDK's broken JIT SetLookup.
+    QCOMPARE(qgetenv("QV4_FORCE_INTERPRETER"), QByteArray("1"));
+#endif
     if (QGuiApplication::platformName() != "wayland")
         return;
     QQuickWindow probe;
@@ -217,6 +227,15 @@ void ApplicationTests::init() {
                     "HTTP/1.1 200 OK\r\nContent-Type: text/html; "
                     "charset=utf-8\r\nConnection: close\r\nContent-Length: " +
                     QByteArray::number(body.size()) + "\r\n\r\n" + body;
+                if (fixtureHeldPaths.contains(path)) {
+                    const QPointer<QTcpSocket> guarded(socket);
+                    fixtureHeldResponses[path].append([guarded, response] {
+                        if (!guarded) return;
+                        guarded->write(response);
+                        guarded->disconnectFromHost();
+                    });
+                    return;
+                }
                 const auto sendResponse = [socket, response] {
                     socket->write(response);
                     socket->disconnectFromHost();
@@ -239,15 +258,240 @@ void ApplicationTests::init() {
     const bool recoveryTemporary = (testName == "productPolishTabRecovery" || testName == "productPolishLastTabUndo")
         && dataTag.startsWith("temporary-");
     const bool windowContext = testName == "pageWindowPresentation" && (dataTag == "activation-context" || dataTag.startsWith("session-") || dataTag == "window-mutations" || dataTag == "window-chain-workflows" || dataTag.startsWith("window-regroup") || dataTag.startsWith("window-live-") || dataTag == "window-grouping-context" || dataTag == "window-focus-stale" || dataTag == "window-order" || dataTag == "window-undo-peer" || dataTag == "window-undo-context");
-    const bool durable = windowContext || !identityPrivate && !identityTemporary && !recoveryTemporary && (testName.startsWith("durablePersistence")
+    const bool durable = (testName == "sitePolicyBuilderKeyboard" && dataTag == "failed-save") || testName == "sitePolicyEditorReceipts" || testName == "sitePolicySourceCopies" || (testName == "sitePolicyDraftWorkflow" && dataTag.startsWith("generated")) || (testName == "sharedPolicyPreparingOwner" && dataTag == "retained-durable-close") || testName == "profileMetadataWaitsForEngineValidation" || testName == "committedPeerSelectorRevisionAba" || testName == "siteDoctorCompletion" || testName == "runtimeSettingsHandoffCompletion" || testName == "sitePolicyTransferObservation" || windowContext || !identityPrivate && !identityTemporary && !recoveryTemporary && (testName.startsWith("durablePersistence")
                          || testName == "selectorValidationRejectsWholeCandidate"
                          || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary"
                              && !(testName == "productPolishDiagnosticLifecycle" && QString::fromLatin1(QTest::currentDataTag()) == "private")));
     QString startupConfig = "{\"schema_version\":3}";
+    if(testName=="hintRequestCaptureClassification"&&dataTag=="non-http")
+        startupConfig=R"JSON({"schema_version":3,"hints":{"selectors":{"all":{"mode":"replace","selectors":["#button"]}}}})JSON";
+    if(testName=="hintRequestCollectionBinding") {
+        if(dataTag=="ordinary-non-http")
+            startupConfig=R"JSON({"schema_version":3,"hints":{"selectors":{"all":{"mode":"replace","selectors":["#button"]}}}})JSON";
+        else startupConfig=QString::fromUtf8(QJsonDocument(QJsonObject{{"schema_version",3},{"site_rules",QJsonArray{QJsonObject{
+            {"id","binding"},{"pattern",QStringLiteral("http://127.0.0.1:%1/*").arg(server.serverPort())},
+            {"interaction",QJsonObject{{"enabled",true},{"anchors",QJsonArray{QJsonObject{
+                {"id","primary"},{"code","m"},{"families",QJsonArray{"all"}},{"target_selector","#button"}}}}}}
+        }}}}).toJson(QJsonDocument::Compact));
+    }
+    if (testName == "hintRequestCaptureClassification" &&
+        (dataTag == "disabled" || dataTag == "no-op" || dataTag == "labels-only" || dataTag == "page-keys-only" || dataTag == "anchor")) {
+        QJsonObject interaction{{"enabled",dataTag!="disabled"}};
+        if(dataTag=="labels-only")interaction.insert("labels",QJsonObject{{"fallback_prefix","z"}});
+        if(dataTag=="page-keys-only")interaction.insert("hint_page_keys",QJsonArray{"k"});
+        if(dataTag=="anchor")interaction.insert("anchors",QJsonArray{QJsonObject{
+            {"id","primary"},{"code","m"},{"families",QJsonArray{"all"}},{"target_selector","#button"}}});
+        startupConfig=QString::fromUtf8(QJsonDocument(QJsonObject{{"schema_version",3},{"site_rules",QJsonArray{QJsonObject{
+            {"id","classification"},{"pattern",QStringLiteral("http://127.0.0.1:%1/*").arg(server.serverPort())},{"interaction",interaction}
+        }}}}).toJson(QJsonDocument::Compact));
+    }
+    if(testName=="hintInputIntegration"||testName=="hintFamilyPolicyIntegration") {
+        const bool family=testName=="hintFamilyPolicyIntegration";
+        QJsonObject anchor{{"id","primary"},{"code",family&&dataTag=="buttons"?"Aa":"m"},
+            {"families",family?QJsonArray{dataTag}:QJsonArray{"buttons","links","all"}},{"target_selector",family?"#family-anchor":"#button"}};
+        if(dataTag=="first-ambiguous")anchor.insert("target_selector","button");
+        QJsonObject interaction{{"enabled",true},{"anchors",QJsonArray{anchor}}};
+        if(dataTag=="early-confirm"||dataTag=="page-ready")interaction.insert("labels",QJsonObject{{"auto_follow","never"}});
+        if(dataTag=="first-capacity"||dataTag=="namespace-error")interaction=QJsonObject{
+            {"enabled",true},{"labels",QJsonObject{{"alphabet","as"},{"fallback_prefix",""}}},
+            {"anchors",QJsonArray{QJsonObject{{"id","reserved-a"},{"code","a"},{"families",QJsonArray{"buttons"}},{"target_selector","#absent-a"}},
+                QJsonObject{{"id","reserved-s"},{"code","s"},{"families",QJsonArray{"buttons"}},{"target_selector","#absent-s"}}}}};
+        startupConfig=QString::fromUtf8(QJsonDocument(QJsonObject{{"schema_version",3},{"site_rules",QJsonArray{QJsonObject{
+            {"id","hint-integration"},{"pattern",QStringLiteral("http://127.0.0.1:%1/*").arg(server.serverPort())},{"interaction",interaction}
+        }}}}).toJson(QJsonDocument::Compact));
+    }
+    if(testName=="hintPageKeyRouting" || testName.startsWith("sitePolicyNativeProduction")) {
+        const QString destination = dataTag=="named-output"?"Enter":dataTag=="uppercase-output"?"A"
+            :dataTag=="digit-output"?"7":dataTag=="punctuation-output"?"Plus"
+            :dataTag=="chord-output"?"Ctrl+Left":dataTag=="unqualified-output"?"Ctrl+c":dataTag=="receiver-tab"?"Tab":dataTag=="receiver-enter"?"Enter":"k";
+        const auto contexts=dataTag=="omitted-context"?QJsonArray{"passthrough"}
+            :QJsonArray{"hint-page-key","normal-page-key","passthrough-once","passthrough"};
+        QJsonObject interaction{{"enabled",true},
+            {"labels",QJsonObject{{"alphabet","as"},{"min_chars",2},{"auto_follow","never"}}},
+            {"hint_page_keys",QJsonArray{"p","k","f","1","Ctrl+j"}},
+            {"anchors",QJsonArray{QJsonObject{{"id","main"},{"code","mm"},{"families",QJsonArray{"buttons"}},{"target_selector","#button"}}}},
+            {"remaps",QJsonArray{QJsonObject{{"id","play"},{"from","p"},{"to",destination},{"contexts",contexts}},
+                QJsonObject{{"id","modified"},{"from","Ctrl+j"},{"to","k"},{"contexts",QJsonArray{"hint-page-key"}}}}}};
+        if(dataTag.startsWith("one-hop-")) {
+            auto remaps=interaction.value("remaps").toArray();
+            remaps.append(QJsonObject{{"id","terminal-overlap"},{"from","k"},
+                {"to",dataTag.contains("reciprocal")?"p":"j"},{"contexts",contexts}});
+            interaction.insert("remaps",remaps);
+        }
+        if(dataTag.startsWith("clipboard-map-")) {
+            auto remaps=interaction.value("remaps").toArray();
+            remaps.append(QJsonObject{{"id","clipboard-source"},{"from","Ctrl+v"},{"to","k"},
+                {"contexts",dataTag.endsWith("ordinary")?QJsonArray{"hint-page-key"}:contexts}});
+            interaction.insert("remaps",remaps);
+            auto keys=interaction.value("hint_page_keys").toArray();keys.append("Ctrl+v");
+            interaction.insert("hint_page_keys",keys);
+        }
+        if(dataTag.startsWith("receiver-")) {
+            const bool top=dataTag=="receiver-top"||dataTag=="receiver-top-denies-frame"
+                ||dataTag=="receiver-open-shadow"||dataTag=="receiver-closed-shadow"||dataTag=="receiver-custom-editor"||dataTag=="receiver-many-observations"
+                ||dataTag.startsWith("receiver-media-");
+            const bool combined=dataTag.startsWith("receiver-combined");
+            QJsonObject receiver{{"scope",top?"top-document":combined?"top-or-focused-frame":"focused-frame"}};
+            if(!top) receiver.insert("origins",QJsonArray{QStringLiteral("http://%1:%2")
+                .arg(dataTag=="receiver-foreign"||combined?"localhost":"127.0.0.1").arg(server.serverPort())});
+            interaction.insert("page_receiver",receiver);
+        }
+        QJsonObject config{{"schema_version",3},{"site_rules",QJsonArray{QJsonObject{
+            {"id","page-key-routing"},{"pattern",QStringLiteral("http://127.0.0.1:%1/*").arg(server.serverPort())},{"interaction",interaction}}}}};
+        if(dataTag=="normal-mixed"||dataTag=="normal-count"||dataTag=="normal-chain"
+            ||(dataTag.startsWith("one-hop-")&&dataTag.endsWith("-normal"))
+            ||dataTag=="clipboard-map-normal"||dataTag=="receiver-media-normal")
+            config.insert("input",QJsonObject{{"shortcut_policy","mixed"},
+                {"page_keys",dataTag=="clipboard-map-normal"?QJsonArray{"Ctrl+v"}:dataTag.startsWith("one-hop-")?QJsonArray{"p","k"}:QJsonArray{"p"}}});
+        startupConfig=QString::fromUtf8(QJsonDocument(config).toJson(QJsonDocument::Compact));
+    }
+    if(testName=="hintCollectionActivation") {
+        const bool links=dataTag=="equal-urls"||dataTag=="rapid-yank";
+        QJsonObject collection{{"id","cards"},{"codes",dataTag=="multi-code"?QJsonArray{"aa","ss","dd"}:QJsonArray{"1","2","3"}},
+            {"families",QJsonArray{links?"links":dataTag=="passive-burst"?"buttons":"actions"}},{"container_selector","#policy-list"},
+            {"item_selector",".policy-item"},{"primary_selector",".policy-primary"},{"identity_attributes",QJsonArray{"data-id"}},
+            {"order",dataTag=="row-ltr"?"row-major-ltr":dataTag=="row-rtl"?"row-major-rtl":dataTag=="top-to-bottom"?"top-to-bottom":"dom"}};
+        if(dataTag=="shadow"||dataTag.startsWith("slot")||dataTag.startsWith("same-origin")) {
+            QJsonArray steps{QJsonObject{{"kind",dataTag.startsWith("same-origin")?"same-origin-frame":"open-shadow"},{"host_selector",dataTag.startsWith("same-origin")?"#policy-frame":"#policy-host"}}};
+            if(dataTag.startsWith("slot"))steps.append(QJsonObject{{"kind","assigned-slot"},{"host_selector","#policy-slot"},{"assigned_selector","#policy-list"}});
+            collection.insert("root",QJsonObject{{"start","top-document"},{"steps",steps}});
+            if(dataTag.startsWith("slot")){collection.remove("container_selector");collection.insert("container_self",true);}
+        }
+        if(dataTag=="foreign")collection.insert("root",QJsonObject{{"start","focused-frame"},{"receiver_origin",QStringLiteral("http://localhost:%1").arg(server.serverPort())}});
+        if(dataTag=="per-item-shadow")collection.insert("primary_root_steps",QJsonArray{QJsonObject{{"kind","open-shadow"},{"self",true}}});
+        QJsonObject interaction{{"enabled",true},{"collections",QJsonArray{collection}}};
+        if(dataTag=="overlap") {auto other=collection;other.insert("id","overlap");other.insert("codes",QJsonArray{"x","y","v"});interaction.insert("collections",QJsonArray{collection,other});}
+        if(dataTag=="anchor-hole"||dataTag=="duplicate-anchors") {
+            QJsonObject anchor{{"id","second"},{"code","m"},{"families",QJsonArray{"actions"}},{"target_selector","#card-2"}};
+            QJsonArray anchors{anchor};if(dataTag=="duplicate-anchors"){anchor.insert("id","duplicate");anchor.insert("code","n");anchors.append(anchor);}interaction.insert("anchors",anchors);
+        }
+        startupConfig=QString::fromUtf8(QJsonDocument(QJsonObject{{"schema_version",3},{"site_rules",QJsonArray{QJsonObject{
+            {"id","collection-activation"},{"pattern",QStringLiteral("http://127.0.0.1:%1/*").arg(server.serverPort())},{"interaction",interaction}
+        }}}}).toJson(QJsonDocument::Compact));
+    }
+    if(testName=="hintAnchorActivation") {
+        QJsonArray anchors{QJsonObject{{"id","primary"},{"code","m"},{"families",QJsonArray{"all"}},{"target_selector","#button"}}};
+        if(dataTag=="duplicate-claims")anchors.append(QJsonObject{{"id","second"},{"code","n"},{"families",QJsonArray{"all"}},{"target_selector","#button"}});
+        if(dataTag=="link-current"||dataTag=="tab"||dataTag=="tab-bg"||dataTag=="yank"||dataTag=="download"||dataTag=="focus"||dataTag=="scroll") {
+            auto anchor=anchors.first().toObject();
+            const bool focus=dataTag=="focus",scroll=dataTag=="scroll";
+            anchor.insert("families",QJsonArray{focus?"focus":scroll?"scrollables":"links"});
+            anchor.insert("target_selector",focus?"#focus-anchor":scroll?"section":dataTag.startsWith("tab")?"#new":"#same");
+            anchors.replace(0,anchor);
+        }
+        if(dataTag=="foreign"||dataTag=="shadow"||dataTag=="same-origin"||dataTag=="slot") {
+            auto anchor=anchors.first().toObject();
+            if(dataTag=="foreign") {
+                anchor.insert("target_selector","#foreign-primary");
+                anchor.insert("root",QJsonObject{{"start","focused-frame"},{"receiver_origin",QStringLiteral("http://localhost:%1").arg(server.serverPort())}});
+            } else {
+                QJsonArray steps{QJsonObject{{"kind",dataTag=="same-origin"?"same-origin-frame":"open-shadow"},
+                    {"host_selector",dataTag=="same-origin"?"#frame":"#shadow"}}};
+                if(dataTag=="slot")steps.append(QJsonObject{{"kind","assigned-slot"},{"host_selector","#policy-slot"},{"assigned_selector","#slot-item"}});
+                anchor.insert("root",QJsonObject{{"start","top-document"},{"steps",steps}});
+                anchor.insert("target_selector",dataTag=="slot"?"#slot-button":"button");
+            }
+            anchors.replace(0,anchor);
+        }
+        startupConfig=QString::fromUtf8(QJsonDocument(QJsonObject{{"schema_version",3},{"site_rules",QJsonArray{QJsonObject{
+            {"id","anchor-activation"},{"pattern",QStringLiteral("http://127.0.0.1:%1/*").arg(server.serverPort())},
+            {"interaction",QJsonObject{{"enabled",true},{"anchors",anchors}}}
+        }}}}).toJson(QJsonDocument::Compact));
+    }
+    if (testName == "hintRequestObservationDocuments" || testName == "hintRequestWorkspaceCollection") {
+        const auto pattern = QStringLiteral("http://127.0.0.1:%1/*").arg(server.serverPort());
+        const QJsonArray observationFamilies = dataTag.startsWith("objects-scope-") ? QJsonArray{"actions"} : QJsonArray{"all"};
+        startupConfig = QString::fromUtf8(QJsonDocument(QJsonObject{
+            {"schema_version",3}, {"site_rules",QJsonArray{QJsonObject{
+                {"id","original-observations"}, {"pattern",pattern},
+                {"interaction",QJsonObject{{"enabled",true},
+                    {"anchors",QJsonArray{QJsonObject{{"id","primary"},{"code","m"},
+                        {"families",observationFamilies},{"target_selector","#button"}}}},
+                    {"collections",QJsonArray{QJsonObject{{"id","excluded-child"},{"codes",QJsonArray{"1"}},
+                        {"families",observationFamilies},{"container_self",true},{"item_selector","#frame"},
+                        {"primary_root_steps",QJsonArray{QJsonObject{{"kind","same-origin-frame"},{"self",true}}}},
+                        {"primary_selector","button"},{"item_attributes",QJsonArray{QJsonObject{
+                            {"name","data-use"},{"equals","yes"}}}},{"order","dom"}}}}
+                }}
+            }}}
+        }).toJson(QJsonDocument::Compact));
+        if (dataTag.startsWith("work-policy-") || testName == "hintRequestWorkspaceCollection") {
+            auto config=QJsonDocument::fromJson(startupConfig.toUtf8()).object();
+            auto rules=config.value("site_rules").toArray();
+            auto rule=rules.first().toObject();
+            auto interaction=rule.value("interaction").toObject();
+            auto anchors=interaction.value("anchors").toArray();
+            QJsonObject foreignRoot{{"start","focused-frame"},{"receiver_origin",QStringLiteral("http://localhost:%1").arg(server.serverPort())}};
+            if(testName=="hintRequestWorkspaceCollection"&&dataTag=="foreign-shadow")
+                foreignRoot.insert("steps",QJsonArray{QJsonObject{{"kind","open-shadow"},{"host_selector","#foreign-policy-host"}}});
+            anchors.append(QJsonObject{{"id","foreign-primary"},{"code","n"},{"families",QJsonArray{"all"}},
+                {"root",foreignRoot},
+                {"target_selector","#foreign-primary"}});
+            if(testName=="hintRequestWorkspaceCollection"&&dataTag=="shadow-slot")
+                anchors.append(QJsonObject{{"id","slotted"},{"code","s"},{"families",QJsonArray{"all"}},
+                    {"root",QJsonObject{{"start","top-document"},{"steps",QJsonArray{
+                        QJsonObject{{"kind","open-shadow"},{"host_selector","#policy-shadow"}},
+                        QJsonObject{{"kind","assigned-slot"},{"host_selector","#policy-slot"},{"assigned_selector","#policy-slot-item"}}}}}},
+                    {"target_selector","#policy-slot-button"}});
+            interaction.insert("anchors",anchors);rule.insert("interaction",interaction);rules[0]=rule;config.insert("site_rules",rules);
+            startupConfig=QString::fromUtf8(QJsonDocument(config).toJson(QJsonDocument::Compact));
+        }
+        if (dataTag == "objects-strict-nonmatch-staging") {
+            auto config = QJsonDocument::fromJson(startupConfig.toUtf8()).object();
+            auto rules = config.value("site_rules").toArray();
+            auto rule = rules.first().toObject();
+            auto interaction = rule.value("interaction").toObject();
+            auto anchors = interaction.value("anchors").toArray();
+            auto anchor = anchors.first().toObject();
+            anchor.insert("predicates", QJsonObject{{"hint_name", QJsonObject{{"equals", "Never matches the primary"}}}});
+            anchors.replace(0, anchor);
+            interaction.insert("anchors", anchors);
+            rule.insert("interaction", interaction);
+            rules.replace(0, rule);
+            config.insert("site_rules", rules);
+            startupConfig = QString::fromUtf8(QJsonDocument(config).toJson(QJsonDocument::Compact));
+        }
+        if (dataTag == "focused-top-plan" || dataTag == "objects-focused-top-plan" || dataTag == "selected-leaf-epoch" || dataTag == "wrong-focused-document"
+            || dataTag == "missing-focused-name" || dataTag == "unavailable-focused-root") {
+            auto config = QJsonDocument::fromJson(startupConfig.toUtf8()).object();
+            auto rules = config.value("site_rules").toArray();
+            auto rule = rules.first().toObject();
+            auto interaction = rule.value("interaction").toObject();
+            auto anchors = interaction.value("anchors").toArray();
+            anchors.append(QJsonObject{{"id","focused-primary"},{"code","x"},
+                {"families",QJsonArray{"all"}},{"target_selector","#child"},
+                {"root",QJsonObject{{"start","focused-frame"},{"steps",QJsonArray{}},
+                    {"receiver_origin",QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort())}}}});
+            if(dataTag=="missing-focused-name"||dataTag=="unavailable-focused-root") {
+                auto focused=anchors.last().toObject();
+                focused.insert("predicates",QJsonObject{{"hint_name",QJsonObject{{"equals","Never matches"}}}});
+                anchors.replace(anchors.size()-1,focused);
+            }
+            interaction.insert("anchors",anchors); rule.insert("interaction",interaction);
+            rules.replace(0,rule); config.insert("site_rules",rules);
+            startupConfig = QString::fromUtf8(QJsonDocument(config).toJson(QJsonDocument::Compact));
+        }
+    }
+    if (testName == "hintRequestNativeOwnership" && dataTag == "provisional-document") {
+        const auto pattern = QStringLiteral("http://127.0.0.1:%1/native-request-held.html").arg(server.serverPort());
+        startupConfig = QString::fromUtf8(QJsonDocument(QJsonObject{
+            {"schema_version",3}, {"site_rules",QJsonArray{QJsonObject{
+                {"id","next-document-selectors"}, {"pattern",pattern},
+                {"set",QJsonObject{{"hints.selectors.all",QJsonObject{
+                    {"mode","replace"},{"selectors",QJsonArray{"#button","#new"}}
+                }}}}
+            }}}
+        }).toJson(QJsonDocument::Compact));
+    }
+    if (testName == "invalidProfileBindingsUseValidatedFallback")
+        startupConfig = R"JSON({"schema_version":3,"bindings":{"normal":{"z":"unknown-fixture-command"}}})JSON";
     if (testName == "credentialViewAssociation")
         startupConfig = R"JSON({"schema_version":3,"passkeys":{"phone":"on"}})JSON";
-    if (testName == "pageWindowPresentation")
+    if (testName == "runtimeSettingsHandoffCompletion" || testName == "pageWindowPresentation" || (testName == "sitePolicyTransferObservation" && dataTag.startsWith("native"))
+        || (testName == "runtimeSettingsDeferPreparation" && qEnvironmentVariableIntValue("FERRIC_TEST_SETTINGS_PAGE_WINDOWS") == 1))
         startupConfig = R"JSON({"schema_version":3,"tabs":{"presentation":"windows"}})JSON";
+    if (testName == "runtimeSettingsHandoffCompletion")
+        startupConfig = R"JSON({"schema_version":3,"tabs":{"presentation":"windows"},"hints":{"selectors":{"buttons":{"mode":"extend","selectors":["#baseline-button"]}}}})JSON";
     if (testName == "productPolishExternalActionFeedback") {
         const auto tag = QString::fromLatin1(QTest::currentDataTag());
         const auto subject = tag.startsWith("selection") ? "selection" : "url";
@@ -267,6 +511,8 @@ void ApplicationTests::init() {
         startupConfig = R"JSON({"schema_version":3,"desktop":{"portals":"required"}})JSON";
     if (testName == "productPolishPermissionReadiness" || testName == "productPolishPermissionCapacity")
         startupConfig = R"JSON({"schema_version":3,"permissions":{"geolocation":"allow"}})JSON";
+    if (testName == "siteDoctorCompletion" && dataTag == "policy-failed")
+        startupConfig = R"JSON({"schema_version":3,"blocking":{"enabled":true,"network_filtering":true,"lists":["broken"]}})JSON";
     if (testName == "productPolishSiteLedger")
         startupConfig = R"JSON({"schema_version":3,"blocking":{"enabled":true,"bypass_sites":["other-private.test"]}})JSON";
     if (QString::fromLatin1(QTest::currentTestFunction()) ==
@@ -294,6 +540,39 @@ void ApplicationTests::init() {
         startupConfig = QString::fromUtf8(QJsonDocument(QJsonObject{
             {"schema_version",3}, {"hints",QJsonObject{{"selectors",policies}}}}).toJson(QJsonDocument::Compact));
     }
+    if (testName == "sitePolicyActivationPerformance"
+            && qEnvironmentVariable("FERRIC_P15_ACTIVATION_POLICY") == "anchor") {
+        const QJsonObject anchor{{"id", "primary"}, {"code", "m"},
+            {"families", QJsonArray{"actions"}}, {"scope_selector", "body"},
+            {"target_selector", "#target-0"}};
+        startupConfig = QString::fromUtf8(QJsonDocument(QJsonObject{
+            {"schema_version", 3}, {"site_rules", QJsonArray{QJsonObject{
+                {"id", "performance-anchor"},
+                {"pattern", QStringLiteral("http://127.0.0.1:%1/*").arg(server.serverPort())},
+                {"interaction", QJsonObject{{"enabled", true}, {"anchors", QJsonArray{anchor}}}}
+            }}}
+        }).toJson(QJsonDocument::Compact));
+    }
+    if (testName == "sitePolicyHintRenderPerformance"
+            && qEnvironmentVariable("FERRIC_P15_HINT_POLICY") == "nonmatching") {
+        // Exercise the maximum surviving rule count through normal startup
+        // validation/selection. If selected accidentally these rules replace
+        // ordinary discovery, so the candidate assertions detect the mistake.
+        QJsonArray rules;
+        for (int index = 0; index < 256; ++index) {
+            rules.append(QJsonObject{
+                {"id", QString("nonmatching-%1").arg(index)},
+                {"pattern", QString("https://policy-%1.invalid/*").arg(index)},
+                {"set", QJsonObject{{"hints.selectors.all", QJsonObject{
+                    {"mode", "replace"}, {"selectors", QJsonArray{"#nonmatching-only"}}}}}},
+                {"interaction", QJsonObject{{"enabled", true}, {"anchors", QJsonArray{QJsonObject{
+                    {"id", "unmatched"}, {"code", "m"}, {"families", QJsonArray{"all"}},
+                    {"target_selector", "#nonmatching-only"}}}}}}
+            });
+        }
+        startupConfig = QString::fromUtf8(QJsonDocument(QJsonObject{
+            {"schema_version", 3}, {"site_rules", rules}}).toJson(QJsonDocument::Compact));
+    }
     const auto storageBase = QDir::cleanPath(directory.filePath(
         "durable-test/" + testName + "/" + QString::fromLatin1(QTest::currentDataTag())));
     if (testName == "productPolishUnavailableStorage") {
@@ -303,6 +582,20 @@ void ApplicationTests::init() {
         blockedRoot.write("fixture blocks profile directory");
     }
     QString startupConfigPath;
+    if(testName=="sitePolicySourceCopies") {
+        startupConfig=R"JSON({"schema_version":3,"site_rules":[{"id":"mixed-copy","pattern":"https://copy.test/*","priority":7,"set":{"content.zoom":1.25},"interaction":{"enabled":false}}]})JSON";
+        startupConfigPath=directory.filePath("copy-policy.toml");
+        QFile policy(startupConfigPath);QVERIFY(policy.open(QIODevice::WriteOnly));
+        policy.write("schema_version=3\n[[site_rules]]\nid='mixed-copy'\npattern='https://copy.test/*'\npriority=7\n[site_rules.set]\n'content.zoom'=1.25\n[site_rules.interaction]\nenabled=false\n");
+    }
+    if (testName == "hintPageKeyRouting" && dataTag.startsWith("policy-publication")) {
+        startupConfigPath = directory.filePath("held-policy-config.toml");
+        QFile policy(startupConfigPath);
+        QVERIFY(policy.open(QIODevice::WriteOnly));
+        policy.write(QString("schema_version = 3\n[[site_rules]]\nid = 'page-key-routing'\npattern = 'http://127.0.0.1:%1/*'\n"
+            "[site_rules.interaction]\nenabled = true\n[[site_rules.interaction.remaps]]\nid = 'play'\nfrom = 'p'\nto = 'k'\n"
+            "contexts = ['passthrough', 'passthrough-once']\n").arg(server.serverPort()).toUtf8());
+    }
     if (testName == "productPolishStartupProblems" || testName == "productPolishProfileRecovery") {
         startupConfigPath = directory.filePath(testName=="productPolishProfileRecovery"
             ? "configuration/root/config.toml" : "private-startup-config.toml");
@@ -334,6 +627,14 @@ void ApplicationTests::init() {
                                 ? "?keep=yes&utm_source=polish" : "")}};
     if (windowContext) initialProperties.insert("startupContextsJson", QStringLiteral(
         R"JSON({"schema_version":3,"contexts":[{"name":"changed","label":"Changed","profile":"default"}]})JSON"));
+    if(testName=="sitePolicySourceCopies") {
+        const auto bundle=load_startup_configuration(startupConfigPath);
+        const auto base=ferric_startup_base_json(bundle);
+        initialProperties.insert("startupConfigurationBundle",bundle);
+        initialProperties.insert("startupConfigSource","user");
+        initialProperties.insert("startupConfigJson",base);
+        initialProperties.insert("startupConfigBaseJson",base);
+    }
     engine->setInitialProperties(initialProperties);
     qInfo() << "loading production QML";
     engine->load(QUrl("qrc:/qt/qml/io/github/ferricbrowser/qml/Main.qml"));
@@ -350,8 +651,10 @@ void ApplicationTests::init() {
         else if (window->isVisible())
             QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.pageWindowTagRequested").toBool(), 1000);
     }
-    QTRY_VERIFY_WITH_TIMEOUT(
-        evaluate("testWindow.activeWebView() !== null").toBool(), 10000);
+    QTRY_VERIFY2_WITH_TIMEOUT(
+        evaluate("testWindow.activeWebView() !== null").toBool(),
+        qPrintable(evaluate("JSON.stringify({pending:testWindow.browserUi.profile_bootstrap_pending,complete:testWindow.profileBootstrapComplete,status:testWindow.browserUi.status_text,details:testWindow.browserUi.profile_startup_details(),selectors:testWindow.browserUi.selector_validation_request})").toString()),
+        10000);
     QTRY_VERIFY_WITH_TIMEOUT(
         !evaluate("testWindow.activeWebView().loading").toBool(), 15000);
     if (testName == "productPolishStartupCleanLink") {
@@ -378,6 +681,8 @@ void ApplicationTests::init() {
         evaluate("testWindow.browserKeyFocusActive").toBool(), 3000);
 }
 void ApplicationTests::cleanup() {
+    fixtureHeldResponses.clear();
+    fixtureHeldPaths.clear();
     engine.reset();
     frameFixtures.clear();
     fixtureResponseDelays.clear();
@@ -533,6 +838,154 @@ void ApplicationTests::crossOriginFrameInvalidation() {
     QTRY_COMPARE(evaluate("testWindow.hintFrameProvider.leaseCount").toInt(),0);
 }
 
+void ApplicationTests::crossOriginUnsupportedScopedActions_data() {
+    QTest::addColumn<QString>("option");
+    QTest::newRow("pointer") << QString("pointer");
+    QTest::newRow("scope") << QString("scope");
+}
+void ApplicationTests::crossOriginUnsupportedScopedActions() {
+    QFETCH(QString, option);
+    const auto port = server.serverPort();
+    frameFixtures["/consent"] = "<!doctype html><button>Foreign control</button><script>document.documentElement.dataset.activations='0';document.documentElement.dataset.pointerEvents='0';document.addEventListener('click',()=>document.documentElement.dataset.activations=String(Number(document.documentElement.dataset.activations)+1));document.addEventListener('pointerdown',()=>document.documentElement.dataset.pointerEvents=String(Number(document.documentElement.dataset.pointerEvents)+1))</script>";
+    fixtureHtml = QString("<!doctype html><iframe id='left' title='Foreign subject' src='http://localhost:%1/consent' style='width:400px;height:240px'></iframe>").arg(port).toUtf8();
+    QVERIFY(command(QString("open http://127.0.0.1:%1/frames").arg(port)));
+    QTRY_VERIFY(page("!!document.getElementById('left')").toBool());
+    QVERIFY(command("set --temp hints.auto_follow=never"));
+    QVERIFY(command("hint all"));
+    const auto label = hintLabel("Foreign subject");
+    QVERIFY(!label.isEmpty());
+    typeText(label); key(Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.pendingContextMenuRequest!==null").toBool());
+    QVERIFY(chooseCapability("hint-inside-frame"));
+    QVERIFY(!hintLabel("Foreign control").isEmpty());
+    const auto owner = evaluate("testWindow.hintFrameProvider.scopedOwner").toString();
+    QVERIFY(!owner.isEmpty());
+    frameCallbackCount = 0;
+    evaluate("testWindow.hintFrameProvider.collect(testWindow.activeWebView(),'null',{family:'all'," + option + ":true},function(v){testProbe.frameOperationComplete(v)})");
+    QTRY_COMPARE(frameCallbackCount, 1);
+    QCOMPARE(frameCallbackResult.toMap()["error"].toString(), QString("unsupported-frame-action"));
+    frameCallbackCount = 0;
+    evaluate("testWindow.hintFrameProvider.run(" + quoted(owner) + "," + quoted("({activations:document.documentElement.dataset.activations,pointerEvents:document.documentElement.dataset.pointerEvents})") + ",function(v){testProbe.frameOperationComplete(v)})");
+    QTRY_COMPARE(frameCallbackCount, 1);
+    const auto counters = frameCallbackResult.toMap();
+    QVERIFY(!counters.contains("error"));
+    QVERIFY(counters.contains("activations"));
+    QVERIFY(counters.contains("pointerEvents"));
+    bool activationValid = false, pointerValid = false;
+    const auto activations = counters["activations"].toInt(&activationValid);
+    const auto pointerEvents = counters["pointerEvents"].toInt(&pointerValid);
+    QVERIFY(activationValid && pointerValid);
+    QCOMPARE(activations, 0);
+    QCOMPARE(pointerEvents, 0);
+    key(Qt::Key_Escape);
+    QTRY_COMPARE(evaluate("testWindow.hintFrameProvider.leaseCount").toInt(), 0);
+}
+
+void ApplicationTests::crossOriginHostileFacetResults_data() {
+    QTest::addColumn<QString>("family");
+    QTest::newRow("region") << QString("regions");
+    QTest::newRow("surface") << QString("surfaces");
+}
+void ApplicationTests::crossOriginHostileFacetResults() {
+    QFETCH(QString, family);
+    const auto port = server.serverPort();
+    frameFixtures["/consent"] = R"HTML(<!doctype html><button>Foreign control</button><section aria-label="Foreign region" style="display:block;width:240px;height:70px">Content</section><canvas aria-label="Foreign surface" style="display:block;width:240px;height:70px"></canvas><script>document.documentElement.dataset.activations='0';document.addEventListener('click',()=>document.documentElement.dataset.activations=String(Number(document.documentElement.dataset.activations)+1))</script>)HTML";
+    fixtureHtml = QString("<!doctype html><iframe id='left' title='Foreign subject' src='http://localhost:%1/consent' style='width:400px;height:300px'></iframe>").arg(port).toUtf8();
+    QVERIFY(command(QString("open http://127.0.0.1:%1/frames").arg(port)));
+    QTRY_VERIFY(page("!!document.getElementById('left')").toBool());
+    QVERIFY(command("set --temp hints.auto_follow=never"));
+    QVERIFY(command("hint all"));
+    const auto frameLabel = hintLabel("Foreign subject");
+    QVERIFY(!frameLabel.isEmpty()); typeText(frameLabel); key(Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.pendingContextMenuRequest!==null").toBool());
+    QVERIFY(chooseCapability("hint-inside-frame"));
+    QVERIFY(!hintLabel("Foreign control").isEmpty());
+    const auto owner = evaluate("testWindow.hintFrameProvider.scopedOwner").toString();
+    QVERIFY(!owner.isEmpty());
+    // Exercise an ordinary collection already in flight at the boundary.
+    QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());
+    QCOMPARE(text("hint_family"), QString("all"));
+    evaluate("testWindow.startHintCollection()");
+    QVERIFY(evaluate("testWindow.hintRefreshPending").toBool());
+    const auto collectionEpoch = evaluate("testWindow.hintCollectionEpoch").toInt();
+    const auto providerEpoch = evaluate("testWindow.hintFrameProvider.epoch").toInt();
+    // Finish the admitted All collection before holding subsequent refreshes.
+    // A plain pending=true does not cancel its callback; changing family while
+    // it runs would close Hint mode and retire the provider's fresh callback.
+    // Latch acquisition: QTRY_VERIFY may evaluate again after success.
+    bool collectionHeld = false;
+    QTRY_VERIFY(collectionHeld || (collectionHeld = evaluate(
+        "(function(){if(testWindow.hintRefreshPending)return false;"
+        "testWindow.hintRefreshPending=true;return true})()").toBool()));
+    QCOMPARE(text("mode"), QString("hint"));
+    QCOMPARE(text("hint_family"), QString("all"));
+    QCOMPARE(evaluate("testWindow.hintFrameProvider.scopedOwner").toString(), owner);
+    // Retain the real broker lease, collector IDs, policy revision and
+    // production geometry projection at the normal selection boundary.
+    // The command registry rejects starting another Hint invocation while in
+    // Hint mode. Set the browser-side family's expectation directly for this
+    // hostile-result boundary test, retaining the real collector/broker proof.
+    evaluate("testWindow.browserUi.hint_family=" + quoted(family));
+    QCOMPARE(text("hint_family"), family);
+    QCOMPARE(evaluate("testWindow.hintFrameProvider.scopedOwner").toString(), owner);
+    frameCallbackCount = 0;
+    evaluate(QString(R"JS((function(){
+        var provider=testWindow.hintFrameProvider, owner=%1, family=%2;
+        var policy=testWindow.hintSelectorPolicySnapshot(family);
+        provider.verifyChain(owner,function(proof){
+            if(proof.error){testProbe.frameOperationComplete(proof);return}
+            provider.run(owner,testWindow.hintCollectorScript(family,policy,'',false),function(payload){
+                if(!payload||payload.error){testProbe.frameOperationComplete(payload);return}
+                payload.candidates=(payload.candidates||[]).map(function(c){return provider.project(c,owner,proof.mappings)}).filter(Boolean);
+                testProbe.frameOperationComplete(payload);
+            });
+        });
+    })())JS").arg(quoted(owner), quoted(family)));
+    QTRY_COMPARE(frameCallbackCount, 1);
+    const auto payload = QJsonObject::fromVariantMap(frameCallbackResult.toMap());
+    QVERIFY(!payload.contains("error"));
+    const auto candidates = payload["candidates"].toArray();
+    QVERIFY(!candidates.isEmpty());
+    const auto candidate = candidates.first().toObject();
+    const auto kind = candidate["kind"].toString();
+    if (family == "regions") QVERIFY(kind == "region" || kind == "scrollable-region");
+    else QVERIFY(kind == "surface" || kind == "focusable-surface");
+    QCOMPARE(candidate["frame_owner"].toString(), owner);
+    QVERIFY(candidate["element_id"].isDouble());
+    const auto serialized = QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    const auto session = QJsonDocument::fromJson(evaluate("testWindow.browserUi.begin_hint_session(" + quoted(serialized) + ")").toString().toUtf8()).object();
+    QVERIFY2(!session.contains("error"), qPrintable(QString::fromUtf8(QJsonDocument(session).toJson())));
+    QString label;
+    for (const auto &row : QJsonDocument::fromJson(text("hint_values").toUtf8()).array()) {
+        const auto value = row.toObject();
+        if (value["element_id"] == candidate["element_id"] && value["frame_owner"].toString() == owner) label = value["label"].toString();
+    }
+    QVERIFY(!label.isEmpty());
+    const auto candidateJson = QString::fromUtf8(QJsonDocument(candidate).toJson(QJsonDocument::Compact));
+    frameCallbackCount = 0;
+    evaluate("testWindow.hintFrameProvider.fresh(" + candidateJson + ",testWindow.hintFreshScript(" + candidateJson + "),function(v){testProbe.frameOperationComplete(v)})");
+    QTRY_VERIFY2(frameCallbackCount == 1, qPrintable(QString(
+        "initial collection=%1 provider=%2 final=%3").arg(collectionEpoch).arg(providerEpoch).arg(evaluate(
+        "JSON.stringify({mode:testWindow.browserUi.mode,status:testWindow.browserUi.status_text,"
+        "collectionEpoch:testWindow.hintCollectionEpoch,providerEpoch:testWindow.hintFrameProvider.epoch,"
+        "owner:testWindow.hintFrameProvider.scopedOwner,pending:testWindow.hintRefreshPending})").toString())));
+    QVERIFY(frameCallbackResult.toMap()["visible"].toBool());
+    const auto freshJson = QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(frameCallbackResult.toMap())).toJson(QJsonDocument::Compact));
+    const auto selection = QJsonDocument::fromJson(evaluate("testWindow.browserUi.select_hint(" + quoted(label) + "," + quoted(freshJson) + ")").toString().toUtf8()).object();
+    QCOMPARE(selection["error"].toString(), QString("unsupported-frame-action"));
+    QVERIFY(!selection.contains("action"));
+    QVERIFY(!evaluate("testWindow.pendingContextMenuRequest!==null").toBool());
+    frameCallbackCount = 0;
+    evaluate("testWindow.hintFrameProvider.run(" + quoted(owner) + "," + quoted("({activations:document.documentElement.dataset.activations})") + ",function(v){testProbe.frameOperationComplete(v)})");
+    QTRY_COMPARE(frameCallbackCount, 1);
+    QVERIFY(!frameCallbackResult.toMap().contains("error"));
+    bool valid = false;
+    QCOMPARE(frameCallbackResult.toMap()["activations"].toInt(&valid), 0);
+    QVERIFY(valid);
+    key(Qt::Key_Escape);
+    QTRY_COMPARE(evaluate("testWindow.hintFrameProvider.leaseCount").toInt(), 0);
+}
+
 void ApplicationTests::crossOriginFrameOperationLifetimes() {
     const auto port=server.serverPort();
     frameFixtures["/consent"]="<!doctype html><button>Accept</button>";
@@ -657,9 +1110,37 @@ void ApplicationTests::stretchedPostTitleKeyboardNavigation() {
     QTRY_VERIFY_WITH_TIMEOUT(!evaluate("testWindow.activeWebView().loading").toBool(),10000);
     QVERIFY(!text("current_url").endsWith("/community"));
 }
+void ApplicationTests::sitePolicyProtectedRecovery_data() {
+    QTest::addColumn<bool>("fullscreen");
+    QTest::newRow("escape-mode") << false;
+    QTest::newRow("end-fullscreen") << true;
+}
+void ApplicationTests::sitePolicyProtectedRecovery() {
+    QFETCH(bool, fullscreen);
+    QVERIFY(command("mode-enter passthrough"));
+    QTRY_COMPARE(text("mode"), QString("pass-through"));
+    evaluate("testWindow.activeWebView().forceActiveFocus()");
+    if (fullscreen) {
+        window->showFullScreen();
+        QTRY_COMPARE(window->visibility(), QWindow::FullScreen);
+    }
+    page("window.keys=[];true");
+    key(Qt::Key_Escape, Qt::ControlModifier | Qt::ShiftModifier);
+    QCOMPARE(page("window.keys.filter(k=>k==='Escape').length").toInt(), 0);
+    if (fullscreen) {
+        QTRY_VERIFY(window->visibility() != QWindow::FullScreen);
+        QTRY_COMPARE(text("status_text"), QString("Fullscreen ended"));
+        QCOMPARE(text("mode"), QString("pass-through"));
+    } else {
+        QTRY_COMPARE(text("mode"), QString("normal"));
+    }
+}
 void ApplicationTests::mixedReservedKeysAndUnmappedDelivery() {
     QVERIFY(command("set --temp input.shortcut_policy=mixed"));
+    QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object()
+                     .value("input").toObject().value("shortcut_policy").toString(), QString("mixed"));
     QVERIFY(command("set --temp \"input.page_keys=['z']\""));
+    QTRY_COMPARE(evaluate("testWindow.browserUi.mixed_key_route('z')").toString(), QString("page"));
     page("document.getElementById('input').focus(); window.keys=[]");
     evaluate("testWindow.activeWebView().forceActiveFocus()");
     key(Qt::Key_Z);
@@ -795,15 +1276,17 @@ void ApplicationTests::promptAcceptCancelAndNestedRestoration() {
     QTRY_COMPARE(text("mode"), QString("pass-through"));
 }
 void ApplicationTests::stalePromptCannotRestoreAfterConfigChange() {
+    const double scale = evaluate("testWindow.browserUi.hint_marker_scale").toDouble() == 1.2 ? 1.3 : 1.2;
     QVERIFY(command("mode-enter pass-through"));
     const auto lease =
         evaluate(
             "testWindow.browserUi.begin_native_prompt_lease(0, 'page-dialog')")
             .toString();
     QVERIFY(!lease.isEmpty());
-    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('hints.marker_"
-                     "scale','1.2',true)")
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('hints.marker_scale',"
+                     + quoted(QString::number(scale)) + ",true)")
                 .toBool());
+    QTRY_COMPARE(evaluate("testWindow.browserUi.hint_marker_scale").toDouble(), scale);
     evaluate("testWindow.browserUi.complete_native_prompt_lease(" +
              quoted(lease) + ")");
     QCOMPARE(text("mode"), QString("normal"));
@@ -820,6 +1303,868 @@ void ApplicationTests::passThroughDocumentBoundaries() {
     QTRY_VERIFY(text("current_url").contains("?new"));
     QTRY_VERIFY(!evaluate("testWindow.activeWebView().loading").toBool());
     QTRY_COMPARE(text("mode"), QString("normal"));
+}
+void ApplicationTests::runtimeSettingsDeferPreparation() {
+    QCOMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("tabs").toObject().value("presentation").toString(),
+        qEnvironmentVariableIntValue("FERRIC_TEST_SETTINGS_PAGE_WINDOWS") == 1 ? QString("windows") : QString("internal"));
+    const QPointer<QObject> reentry(evaluate(R"JS(Qt.createQmlObject('import QtQuick; Connections {
+        property bool called:false; target:testWindow.browserUi;
+        function onStatus_textChanged(){ if(target.status_text==="Preparing settings") {
+            called=true; target.poll_config();
+        }} }',testWindow))JS").value<QObject *>());
+    QVERIFY(reentry);
+    const auto before = text("config_json");
+    const auto result = QJsonDocument::fromJson(evaluate(R"JS((function(){
+        const ui = testWindow.browserUi;
+        const next = JSON.parse(ui.config_json).ui.font_size_pt + 1;
+        const accepted = ui.set_runtime_setting('ui.font_size_pt', String(next), true);
+        // This fixture starts with no authored selectors (no startup CSS
+        // request), so its first settings preparation owns generation 1.
+        const forged = ui.complete_selector_validation('1', '{"ok":true}');
+        return JSON.stringify({accepted:accepted, after:ui.config_json,
+            feedback:ui.setting_action_state, feedbackId:ui.setting_action_id,
+            css:ui.selector_validation_request, next:next, forged:forged});
+    })())JS").toString().toUtf8()).object();
+    QVERIFY(result.value("accepted").toBool());
+    QVERIFY(reentry->property("called").toBool());
+    QVERIFY(!result.value("forged").toBool());
+    QCOMPARE(result.value("after").toString(), before);
+    QCOMPARE(result.value("feedback").toString(), QString("pending"));
+    QVERIFY(result.value("css").toString().isEmpty());
+    QTRY_COMPARE(text("setting_action_state"), QString("succeeded"));
+    QCOMPARE(text("setting_action_id"), result.value("feedbackId").toString());
+    QCOMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("ui").toObject().value("font_size_pt"), result.value("next"));
+    delete reentry.data();
+
+    const auto configured = text("config_json");
+    QVERIFY(evaluate("testWindow.browserUi.unset_runtime_setting('ui.font_size_pt',true)").toBool());
+    QCOMPARE(text("config_json"), configured);
+    QTRY_COMPARE(text("setting_action_state"), QString("succeeded"));
+    QCOMPARE(text("config_json"), before);
+
+    const auto overlapping=QJsonDocument::fromJson(evaluate(R"JS((function(){
+        const ui=testWindow.browserUi;
+        const first=ui.execute_command('set --temp hints.auto_follow=never');
+        const second=ui.execute_command('set --temp hints.min_chars=2');
+        return JSON.stringify({first:first,second:second,status:ui.status_text});
+    })())JS").toString().toUtf8()).object();
+    QVERIFY(overlapping.value("first").toBool());
+    QVERIFY(!overlapping.value("second").toBool());
+    QVERIFY(overlapping.value("status").toString().contains("still pending"));
+    QTRY_COMPARE(evaluate("JSON.parse(testWindow.browserUi.config_json).hints.auto_follow").toString(),QString("never"));
+    QVERIFY(command("set --temp hints.min_chars=2"));
+    QTRY_COMPARE(evaluate("JSON.parse(testWindow.browserUi.config_json).hints.min_chars").toInt(),2);
+    QVERIFY(command("hint buttons"));
+    const auto neverLabel=hintLabel("Activate exact button");QCOMPARE(neverLabel.size(),2);
+    typeText(neverLabel);
+    QCOMPARE(text("mode"),QString("hint"));QCOMPARE(page("window.clicks").toInt(),0);
+    key(Qt::Key_Return);QTRY_COMPARE(page("window.clicks").toInt(),1);
+
+    // All remaining commands resume on the accepted preparation result. They
+    // do not disappear when bind/set/unbind each updates configuration.
+    const auto chained = QJsonDocument::fromJson(evaluate(R"JS((function(){
+        const ui=testWindow.browserUi, before=ui.config_json;
+        const accepted=ui.execute_command('bind F7 zoom in ;; set --temp ui.font_size_pt=19 ;; unbind F7');
+        return JSON.stringify({accepted:accepted,before:before,after:ui.config_json});
+    })())JS").toString().toUtf8()).object();
+    QVERIFY(chained.value("accepted").toBool());
+    QCOMPARE(chained.value("after"), chained.value("before"));
+    QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("ui").toObject().value("font_size_pt").toInt(), 19);
+    const auto bindings = QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("bindings").toObject().value("normal").toObject();
+    QVERIFY(bindings.contains("F7"));
+    QCOMPARE(bindings.value("F7").toString(), QString("unbound"));
+
+    const auto deferredGet = QJsonDocument::fromJson(evaluate(R"JS((function(){
+        const ui=testWindow.browserUi, before=ui.status_text;
+        const accepted=ui.execute_command('get ui.font_size_pt');
+        return JSON.stringify({accepted:accepted,before:before,after:ui.status_text});
+    })())JS").toString().toUtf8()).object();
+    QVERIFY(deferredGet.value("accepted").toBool());
+    QCOMPARE(deferredGet.value("after"),deferredGet.value("before"));
+    QTRY_VERIFY(text("status_text").startsWith("ui.font_size_pt = 19"));
+    QVERIFY(evaluate("testWindow.browserUi.execute_command('get ui.font_size_pt ;; set --temp ui.font_size_pt=21 ;; get ui.font_size_pt')").toBool());
+    QCOMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("ui").toObject().value("font_size_pt").toInt(),19);
+    QTRY_VERIFY(text("status_text").startsWith("ui.font_size_pt = 21"));
+
+    const QPointer<QObject> readReplacement(evaluate(R"JS(Qt.createQmlObject('import QtQuick; Connections {
+        property bool called:false; target:testWindow.browserUi;
+        function onStatus_textChanged(){ if(!called && target.status_text.indexOf("ui.font_size_pt = 21")===0) {
+            called=true; target.execute_command("set --temp ui.font_size_pt=23");
+        }} }',testWindow))JS").value<QObject *>());
+    QVERIFY(readReplacement);
+    evaluate("testWindow.browserUi.status_text='read replacement barrier'");
+    QVERIFY(evaluate("testWindow.browserUi.execute_command('get ui.font_size_pt ;; set --temp ui.font_size_pt=20')").toBool());
+    QTRY_VERIFY(readReplacement->property("called").toBool());
+    QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("ui").toObject().value("font_size_pt").toInt(),23);
+    delete readReplacement.data();
+
+    const auto beforeFailure = text("config_json");
+    QVERIFY(evaluate("testWindow.browserUi.execute_command('set --temp ui.font_size_pt=-1 ;; set --temp ui.font_size_pt=20')").toBool());
+    QCOMPARE(text("config_json"), beforeFailure);
+    QTRY_VERIFY(text("status_text") != "Preparing settings");
+    QCOMPARE(text("config_json"), beforeFailure);
+
+    auto *validator = window->findChild<QObject *>("selectorValidationSurface");
+    QVERIFY(validator);
+    QTRY_VERIFY(validator->property("documentReady").toBool());
+    QVERIFY(validator->setProperty("documentReady", false));
+    const QPointer<QObject> replacement(evaluate(R"JS(Qt.createQmlObject('import QtQuick; Connections {
+        property bool called:false; target:testWindow.browserUi;
+        function onConfig_jsonChanged(){
+            const font=JSON.parse(target.config_json).ui.font_size_pt;
+            if(!called && font===18){ called=true; target.execute_command("set --temp ui.font_size_pt=22"); }
+        } }',testWindow))JS").value<QObject *>());
+    QVERIFY(replacement);
+    QVERIFY(evaluate("testWindow.browserUi.execute_command(" + quoted("set --temp ui.font_size_pt=18 ;; set --temp 'hints.selectors.buttons={mode=\"extend\",selectors=[\"#button\"]}'") + ")").toBool());
+    QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("ui").toObject().value("font_size_pt").toInt(), 22);
+    QVERIFY(replacement->property("called").toBool());
+    QVERIFY(text("selector_validation_request").isEmpty());
+    QVERIFY(QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("hints").toObject().value("selectors").toObject().isEmpty());
+    delete replacement.data();
+    QVERIFY(validator->setProperty("documentReady", true));
+
+    // Prime a real repeatable leaf so window presentation expands this chain
+    // through its Recorded executor. Ordinary presentation retains its classic
+    // executor. Consume presentation requests before any native timer runs.
+    QVERIFY(command("zoom in"));
+    evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+    const auto prefix = QJsonDocument::fromJson(evaluate(R"JS((function(){
+        const ui=testWindow.browserUi;
+        const firstAccepted=ui.execute_command('fullscreen on ;; get content.zoom ;; set --temp ui.font_size_pt=24 ;; repeat');
+        const nextAccepted=ui.execute_command('fullscreen off');
+        return JSON.stringify({firstAccepted:firstAccepted,nextAccepted:nextAccepted,
+            first:ui.take_engine_action(),second:ui.take_engine_action()});
+    })())JS").toString().toUtf8()).object();
+    QVERIFY(prefix.value("firstAccepted").toBool());
+    QVERIFY(prefix.value("nextAccepted").toBool());
+    QCOMPARE(prefix.value("first").toString(), QString("fullscreen\ton"));
+    QCOMPARE(prefix.value("second").toString(), QString("fullscreen\toff"));
+    QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("ui").toObject().value("font_size_pt").toInt(), 24);
+
+    // A separate read must finish while this genuine CSS request stays held.
+    // It may observe the candidate, but cannot cancel, replace or complete it.
+    const auto heldConfig = text("config_json");
+    QVERIFY(validator->setProperty("documentReady", false));
+    const auto restoreHeldValidator = qScopeGuard([&] { validator->setProperty("documentReady", true); });
+    QVERIFY(evaluate("testWindow.browserUi.execute_command(" + quoted("set --temp 'hints.selectors.buttons={mode=\"extend\",selectors=[\"#button\"]}'") + ")").toBool());
+    QTRY_VERIFY(!text("selector_validation_request").isEmpty());
+    const auto heldRequest = text("selector_validation_request");
+    QVERIFY(evaluate("testWindow.browserUi.execute_command('get hints.selectors.buttons')").toBool());
+    QTRY_VERIFY(text("status_text").startsWith("hints.selectors.buttons = null ")
+        && text("status_text").contains(", pending)"));
+    QCOMPARE(text("selector_validation_request"), heldRequest);
+    QCOMPARE(text("config_json"), heldConfig);
+    QVERIFY(validator->setProperty("documentReady", true));
+    QVERIFY(QMetaObject::invokeMethod(validator, "validateRequest", Qt::DirectConnection,
+        Q_ARG(QVariant, validator->property("pendingRequest"))));
+    QTRY_VERIFY(text("selector_validation_request").isEmpty());
+    QTRY_VERIFY(text("status_text").startsWith("Set hints.selectors.buttons (temporary)"));
+}
+void ApplicationTests::siteDoctorCompletion_data() {
+    QTest::addColumn<QString>("outcome");
+    for (const auto &outcome : {"durable", "closed-ledger", "uncertain", "proposal-replaced", "policy-replaced", "policy-failed", "write-rejected", "owner-closed", "profile-replaced"})
+        QTest::newRow(outcome) << QString::fromLatin1(outcome);
+}
+void ApplicationTests::siteDoctorCompletion() {
+    QFETCH(QString, outcome);
+    QTRY_VERIFY(evaluate("testWindow.profileBootstrapComplete && !testWindow.browserUi.profile_bootstrap_pending").toBool());
+    QTRY_VERIFY(evaluate("testWindow.browserUi.blocking_policy_ready").toBool());
+    QVERIFY(qEnvironmentVariableIntValue("FERRIC_SETTINGS_SYNC_FIXTURE") == 1);
+    const auto beforeConfig = text("config_json");
+    auto *ui = qobject_cast<BrowserUi *>(evaluate("testWindow.browserUi").value<QObject *>());
+    QVERIFY(ui);
+    if (outcome == "owner-closed" || outcome == "profile-replaced") {
+        const auto url = text("current_url");
+        QVERIFY(command("open --target window " + url));
+        QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 2);
+        const auto entry = QStringLiteral("testWindow.browserWindowRegistry[1]");
+        QPointer<QObject> host = evaluate(entry + ".host").value<QObject *>();
+        QPointer<BrowserUi> child = qobject_cast<BrowserUi *>(evaluate(entry + ".ui").value<QObject *>());
+        QVERIFY(host); QVERIFY(child);
+        engine->rootContext()->setContextProperty("siteDoctorLifecycleHost", host.data());
+        engine->rootContext()->setContextProperty("siteDoctorLifecycleUi", child.data());
+        const auto closeChild = qScopeGuard([&] {
+            if (host && host->property("visible").toBool())
+                evaluate("siteDoctorLifecycleHost.windowShutdownApproved=true;siteDoctorLifecycleHost.close()");
+        });
+        QTRY_VERIFY(host && host->property("profileBootstrapComplete").toBool());
+        QTRY_VERIFY(!child->property("profile_bootstrap_pending").toBool());
+        QTRY_VERIFY(child->property("blocking_policy_ready").toBool());
+        QTRY_COMPARE(child->property("current_url").toString(), url);
+        const auto proposalFor = [](BrowserUi *owner) {
+            return QJsonDocument::fromJson(owner->site_doctor_proposal().toUtf8()).object();
+        };
+        const auto generateFor = [&](BrowserUi *owner) {
+            const auto experiment = QJsonDocument::fromJson(owner->begin_site_doctor_experiment(QString("blocking-bypass")).toUtf8()).object();
+            const auto experimentId = experiment["id"].toString();
+            if (experimentId.isEmpty() || !owner->finish_site_doctor_experiment(experimentId, true))
+                return QString();
+            return proposalFor(owner)["id"].toString();
+        };
+        const auto bypassFor = [](BrowserUi *owner) {
+            return QJsonDocument::fromJson(owner->property("config_json").toString().toUtf8())
+                .object()["blocking"].toObject()["bypass_sites"].toArray();
+        };
+        const auto oldId = generateFor(child);
+        QVERIFY(!oldId.isEmpty());
+        QCOMPARE(proposalFor(child)["mutation"].toObject()["after"].toArray(), QJsonArray{QString("127.0.0.1")});
+        const auto rootA = evaluate("testWindow.storageBasePath").toString();
+        const auto stateA = rootA + "/state";
+        const auto savedPath = stateA + "/runtime-overrides.toml";
+        QVERIFY(!QFileInfo::exists(savedPath));
+        QTemporaryDir controls;
+        QVERIFY(controls.isValid());
+        // The fixture's owned root outlives engine teardown. A closed durable
+        // window may retain its backend after this function has returned.
+        const auto replacementRoot = directory.filePath("site-doctor-replacement/" + outcome);
+        QVERIFY(!QFileInfo::exists(replacementRoot));
+        QVERIFY(QDir().mkpath(replacementRoot));
+        const auto ready = controls.filePath("ready");
+        const auto release = controls.filePath("release");
+        const auto readyFacts = controls.filePath("ready-facts");
+        const auto completed = controls.filePath("completed-facts");
+        const auto expired = controls.filePath("expired");
+        const auto read = [](const QString &path) {
+            QFile file(path);
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        };
+        const auto releaseWriter = [&] { QFile file(release); if (file.open(QIODevice::WriteOnly)) file.close(); };
+        bool saveQueued = false;
+        const auto cleanup = qScopeGuard([&] {
+            releaseWriter();
+            if (saveQueued && !QFileInfo::exists(completed)) {
+                QElapsedTimer drain;
+                drain.start();
+                while (!QFileInfo::exists(completed) && drain.elapsed() < 3000)
+                    QTest::qWait(1);
+                if (!QFileInfo::exists(completed)) {
+                    // An earlier assertion failed before a worker outcome.
+                    // Preserve its release marker for any still-owned job.
+                    controls.setAutoRemove(false);
+                    qWarning() << "Site Doctor failure keeps writer release markers at" << controls.path();
+                }
+            }
+            for (const auto *key : {"FERRIC_SETTINGS_SYNC_HOLD_PATH", "FERRIC_SETTINGS_SYNC_HOLD_FILE",
+                     "FERRIC_SETTINGS_SYNC_HOLD_THREAD", "FERRIC_SETTINGS_SYNC_READY_FILE",
+                     "FERRIC_SETTINGS_SYNC_RELEASE_FILE", "FERRIC_SETTINGS_SYNC_READY_FACTS",
+                     "FERRIC_SETTINGS_SYNC_COMPLETED_FACTS", "FERRIC_SETTINGS_SYNC_HOLD_EXPIRED_FILE"})
+                qunsetenv(key);
+        });
+        qputenv("FERRIC_SETTINGS_SYNC_HOLD_PATH", stateA.toUtf8());
+        qputenv("FERRIC_SETTINGS_SYNC_HOLD_FILE", savedPath.toUtf8());
+        qputenv("FERRIC_SETTINGS_SYNC_HOLD_THREAD", "ferric-settings");
+        qputenv("FERRIC_SETTINGS_SYNC_READY_FILE", ready.toUtf8());
+        qputenv("FERRIC_SETTINGS_SYNC_RELEASE_FILE", release.toUtf8());
+        qputenv("FERRIC_SETTINGS_SYNC_READY_FACTS", readyFacts.toUtf8());
+        qputenv("FERRIC_SETTINGS_SYNC_COMPLETED_FACTS", completed.toUtf8());
+        qputenv("FERRIC_SETTINGS_SYNC_HOLD_EXPIRED_FILE", expired.toUtf8());
+        saveQueued = child->apply_site_doctor_proposal(oldId, true);
+        QVERIFY(saveQueued);
+        QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(ready), 5000);
+        QElapsedTimer held;
+        held.start();
+        QCOMPARE(read(readyFacts), QByteArray("ferric-settings\n") + stateA.toUtf8() + '\n');
+        QCOMPARE(proposalFor(child)["state"].toString(), QString("applying"));
+        QCOMPARE(bypassFor(ui), QJsonArray{});
+        QCOMPARE(bypassFor(child), QJsonArray{});
+        const auto savedBytes = read(savedPath);
+        QVERIFY(savedBytes.contains("127.0.0.1"));
+        BrowserUi *replacementObserver = nullptr;
+        QString replacementId, replacementWindow;
+        QString replacementConfig;
+        if (outcome == "owner-closed") {
+            evaluate("siteDoctorLifecycleHost.windowShutdownApproved=true;siteDoctorLifecycleHost.close()");
+            QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 1);
+            QTRY_VERIFY(host && host->property("runtimeReleaseComplete").toBool());
+            QVERIFY(child && !child->property("view_alive").toBool());
+            // The surviving peer may adopt the saved Runtime normally. Its
+            // independent proposal must never become the retired fix's receipt.
+            replacementObserver = ui;
+        } else {
+            child->configure_profile(false, false, QString("Site Doctor replacement"),
+                                     QString("site-doctor-replacement"), replacementRoot);
+            QTRY_VERIFY_WITH_TIMEOUT(child && !child->property("profile_bootstrap_pending").toBool(), 5000);
+            QTRY_VERIFY_WITH_TIMEOUT(child && child->property("blocking_policy_ready").toBool(), 5000);
+            QVERIFY(child->execute_command("open " + url));
+            QTRY_COMPARE(child->property("current_url").toString(), url);
+            QTRY_VERIFY(evaluate("!!siteDoctorLifecycleHost.activeWebView() && !siteDoctorLifecycleHost.activeWebView().loading").toBool());
+            replacementObserver = child;
+            replacementConfig = child->property("config_json").toString();
+            replacementWindow = child->property("core_window_id").toString();
+            QVERIFY(!replacementWindow.isEmpty());
+            QCOMPARE(bypassFor(child), QJsonArray{});
+        }
+        replacementId = generateFor(replacementObserver);
+        QVERIFY(!replacementId.isEmpty() && replacementId != oldId);
+        QCOMPARE(proposalFor(replacementObserver)["state"].toString(), QString("pending-confirmation"));
+        QVERIFY2(held.elapsed() < 8000, "Lifecycle setup exceeded the owned writer hold budget");
+        QVERIFY(!QFileInfo::exists(expired));
+        QVERIFY(!QFileInfo::exists(release));
+        releaseWriter();
+        QTRY_COMPARE_WITH_TIMEOUT(read(completed), QByteArray("0\n") + stateA.toUtf8() + '\n', 3000);
+        QVERIFY(!QFileInfo::exists(expired));
+        QTRY_COMPARE(bypassFor(ui), QJsonArray{QString("127.0.0.1")});
+        QCOMPARE(read(savedPath), savedBytes);
+        QVERIFY(ui->set_runtime_setting(QString("content.zoom"), QString("1.25"), true));
+        QTRY_COMPARE(ui->property("setting_action_state").toString(), QString("succeeded"));
+        QCOMPARE(proposalFor(replacementObserver)["id"].toString(), replacementId);
+        QCOMPARE(proposalFor(replacementObserver)["state"].toString(), QString("pending-confirmation"));
+        QVERIFY(!proposalFor(replacementObserver).contains("saved"));
+        if (outcome == "profile-replaced") {
+            QCOMPARE(child->property("core_window_id").toString(), replacementWindow);
+            QCOMPARE(child->property("config_json").toString(), replacementConfig);
+            QCOMPARE(bypassFor(child), QJsonArray{});
+            QVERIFY(!QFileInfo::exists(QDir(replacementRoot).filePath("state/runtime-overrides.toml")));
+        }
+        return;
+    }
+    const auto proposal = [&] {
+        return evaluate("JSON.parse(testWindow.browserUi.site_doctor_proposal())").toMap();
+    };
+    const auto generateProposal = [&] {
+        return evaluate(R"JS((function(){
+            var ui=testWindow.browserUi;
+            var experiment=JSON.parse(ui.begin_site_doctor_experiment('blocking-bypass'));
+            if(!ui.finish_site_doctor_experiment(experiment.id,true)) return '';
+            return JSON.parse(ui.site_doctor_proposal()).id;
+        })())JS").toString();
+    };
+    const auto id = generateProposal();
+    QVERIFY2(!id.isEmpty(), qPrintable(text("status_text")));
+    QCOMPARE(proposal().value("mutation").toMap().value("after").toList(), QVariantList{QString("127.0.0.1")});
+    evaluate("testWindow.showSiteLedger()");
+    auto *receiptLabel = window->findChild<QQuickItem *>("siteDoctorProposalStatus");
+    auto *apply = window->findChild<QQuickItem *>("siteDoctorApplyButton");
+    auto *consent = window->findChild<QQuickItem *>("siteDoctorProposalConfirmation");
+    QVERIFY(receiptLabel); QVERIFY(apply); QVERIFY(consent);
+    const auto snapshotState = [&] { return evaluate("testWindow.siteLedgerData.site_doctor.last_result.state").toString(); };
+    QCOMPARE(snapshotState(), QString("pending-confirmation"));
+    QVERIFY(receiptLabel->property("text").toString().contains("The test suggests"));
+    const auto statePath = evaluate("testWindow.storageBasePath").toString() + "/state";
+    QTemporaryDir syncDirectory;
+    QVERIFY(syncDirectory.isValid());
+    const auto readyPath = syncDirectory.filePath("ready");
+    const auto releasePath = syncDirectory.filePath("release");
+    const auto savedPath = statePath + "/runtime-overrides.toml";
+    if(outcome == "policy-failed") {
+        const auto path = evaluate("testWindow.storageBasePath").toString() + "/cache/blocklists";
+        QVERIFY(QDir().mkpath(path));
+        QFile broken(path + "/broken.txt");
+        QVERIFY(broken.open(QIODevice::WriteOnly));
+        QCOMPARE(broken.write(QByteArray::fromHex("fffefd")), 3);
+    }
+    const auto release = [&] { QFile file(releasePath); if(file.open(QIODevice::WriteOnly)) file.close(); };
+    const auto cleanup = qScopeGuard([&] {
+        release();
+        for (const auto *key : {"FERRIC_SETTINGS_SYNC_HOLD_PATH", "FERRIC_SETTINGS_SYNC_READY_FILE", "FERRIC_SETTINGS_SYNC_RELEASE_FILE", "FERRIC_SETTINGS_SYNC_HOLD_FILE", "FERRIC_SETTINGS_SYNC_FAULT_PATH"}) qunsetenv(key);
+    });
+    if (outcome == "write-rejected") {
+        QVERIFY(QDir().mkpath(savedPath));
+    } else {
+        qputenv("FERRIC_SETTINGS_SYNC_HOLD_PATH", statePath.toUtf8());
+        qputenv("FERRIC_SETTINGS_SYNC_READY_FILE", readyPath.toUtf8());
+        qputenv("FERRIC_SETTINGS_SYNC_RELEASE_FILE", releasePath.toUtf8());
+        qputenv("FERRIC_SETTINGS_SYNC_HOLD_FILE", savedPath.toUtf8());
+        if(outcome == "uncertain") qputenv("FERRIC_SETTINGS_SYNC_FAULT_PATH", statePath.toUtf8());
+    }
+    QStringList installationStates;
+    QStringList statuses;
+    const auto statusConnection = connect(ui, &BrowserUi::status_textChanged, ui, [&] {
+        statuses.push_back(ui->property("status_text").toString());
+    }, Qt::DirectConnection);
+    const auto disconnectStatus = qScopeGuard([&] { disconnect(statusConnection); });
+    bool replacedPolicy = false;
+    const auto connection = connect(ui, &BrowserUi::blocking_policy_readyChanged, ui, [&] {
+        installationStates.push_back(proposal().value("state").toString());
+        if(outcome == "policy-replaced" && !replacedPolicy && !ui->property("blocking_policy_ready").toBool()) {
+            replacedPolicy = true;
+            QVERIFY(evaluate("testWindow.browserUi.reload_blocking_policy()").toBool());
+        }
+    }, Qt::DirectConnection);
+    const auto disconnectObserver = qScopeGuard([&] { disconnect(connection); });
+    QVERIFY(consent->setProperty("checked", true));
+    QVERIFY(apply->property("enabled").toBool());
+    QVERIFY(QMetaObject::invokeMethod(apply, "click"));
+    // The actual Apply handler synchronously refreshes the queued projection,
+    // before the deferred preparation callback can compose or admit its write.
+    QCOMPARE(proposal().value("state").toString(), QString("preparing"));
+    QCOMPARE(snapshotState(), QString("preparing"));
+    QCOMPARE(text("config_json"), beforeConfig);
+    QVERIFY(receiptLabel->property("text").toString().contains("Saving has not completed"));
+    QVERIFY(!apply->property("visible").toBool());
+    QVERIFY(!consent->property("checked").toBool());
+    if(outcome == "write-rejected") {
+        QTRY_COMPARE(proposal().value("state").toString(), QString("failed"));
+        QCOMPARE(proposal().value("saved").toBool(), false);
+        QTRY_COMPARE(snapshotState(), QString("failed"));
+        QVERIFY(receiptLabel->property("text").toString().contains("No successful save receipt"));
+        QVERIFY(!apply->property("visible").toBool());
+        QVERIFY(installationStates.isEmpty());
+        QCOMPARE(text("config_json"), beforeConfig);
+        QVERIFY(QFileInfo(savedPath).isDir());
+        return;
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(readyPath), 5000);
+    QCOMPARE(proposal().value("state").toString(), QString("applying"));
+    QTRY_COMPARE(snapshotState(), QString("applying"));
+    QVERIFY(receiptLabel->property("text").toString().contains("activation is not yet confirmed"));
+    QVERIFY(!apply->property("visible").toBool());
+    if(outcome == "closed-ledger") {
+        evaluate("Qt.callLater(testWindow.refreshVisibleSiteLedger);testWindow.siteLedgerVisible=false");
+    }
+    QCOMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("blocking").toObject().value("bypass_sites").toArray(), QJsonArray{});
+    QVERIFY(installationStates.isEmpty());
+    QFile saved(savedPath);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    const auto bytes = saved.readAll();
+    QVERIFY(bytes.contains("127.0.0.1"));
+    QVERIFY(!bytes.contains("http://"));
+    QString newId;
+    if(outcome == "proposal-replaced") {
+        newId = generateProposal();
+        QVERIFY(!newId.isEmpty() && newId != id);
+        QTRY_COMPARE(snapshotState(), QString("pending-confirmation"));
+        QVERIFY(!consent->property("checked").toBool());
+    }
+    release();
+    if(outcome == "proposal-replaced") {
+        // Replacing the observer does not revoke its admitted save. A valid
+        // application receipt can publish it; the obsolete post-action cannot.
+        QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("blocking").toObject().value("bypass_sites").toArray(), QJsonArray{QString("127.0.0.1")});
+        QCOMPARE(proposal().value("id").toString(), newId);
+        QCOMPARE(proposal().value("state").toString(), QString("pending-confirmation"));
+        QCOMPARE(snapshotState(), QString("pending-confirmation"));
+        QVERIFY(!consent->property("checked").toBool());
+        QVERIFY(!apply->property("enabled").toBool());
+        QVERIFY2(installationStates.isEmpty(), qPrintable(statuses.join(" | ")));
+        QVERIFY(evaluate("Array.prototype.indexOf.call(testWindow.browserUi.blocking_bypass_sites,'127.0.0.1')<0").toBool());
+    } else {
+        QTRY_COMPARE(proposal().value("state").toString(), (outcome == "policy-replaced" || outcome == "policy-failed") ? QString("saved-policy-failed") : QString("applied"));
+        QVERIFY(proposal().value("saved").toBool());
+        QCOMPARE(proposal().value("durability_uncertain").toBool(), outcome == "uncertain");
+        if(outcome == "closed-ledger") {
+            QTest::qWait(100);
+            QVERIFY(!evaluate("testWindow.siteLedgerVisible").toBool());
+            evaluate("testWindow.showSiteLedger()");
+        }
+        QTRY_COMPARE(snapshotState(), proposal().value("state").toString());
+        const auto message = receiptLabel->property("text").toString();
+        QVERIFY2(message.contains(outcome == "policy-replaced" || outcome == "policy-failed"
+            ? "blocking rules could not be activated" : "matching blocking rules are active"), qPrintable(message));
+        QCOMPARE(message.contains("may not survive a system crash"), outcome == "uncertain");
+        QVERIFY(!apply->property("visible").toBool());
+        QVERIFY(!consent->property("checked").toBool());
+        if(outcome == "policy-failed") {
+            QVERIFY(installationStates.isEmpty());
+            QVERIFY(evaluate("Array.prototype.indexOf.call(testWindow.browserUi.blocking_bypass_sites,'127.0.0.1')<0").toBool());
+        } else {
+            QVERIFY(!installationStates.isEmpty());
+            QCOMPARE(installationStates.first(), QString("saved-policy-pending"));
+            for(const auto &state : installationStates) {
+                if(outcome == "policy-replaced") QVERIFY(state == "saved-policy-pending" || state == "saved-policy-failed");
+                else QCOMPARE(state, QString("saved-policy-pending"));
+            }
+        }
+        if(outcome == "policy-replaced") QVERIFY(replacedPolicy);
+        else if(outcome != "policy-failed") QVERIFY(evaluate("Array.prototype.indexOf.call(testWindow.browserUi.blocking_bypass_sites,'127.0.0.1')>=0").toBool());
+    }
+}
+void ApplicationTests::runtimeSettingsHandoffCompletion_data() {
+    QTest::addColumn<bool>("settingsFirst");
+    QTest::addColumn<bool>("css");
+    QTest::newRow("native-then-write") << false << false;
+    QTest::newRow("write-then-native") << true << false;
+    QTest::newRow("native-then-css") << false << true;
+    QTest::newRow("css-then-native") << true << true;
+}
+void ApplicationTests::runtimeSettingsHandoffCompletion() {
+    QFETCH(bool, settingsFirst);
+    QFETCH(bool, css);
+    QCOMPARE(QGuiApplication::platformName(), QString("offscreen"));
+    QTRY_VERIFY(evaluate("testWindow.profileBootstrapComplete && !testWindow.browserUi.profile_bootstrap_pending").toBool());
+    QVERIFY(qEnvironmentVariableIntValue("FERRIC_SETTINGS_SYNC_FIXTURE") == 1);
+    QCOMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object()
+        .value("tabs").toObject().value("presentation").toString(), QString("windows"));
+    const auto statePath = evaluate("testWindow.storageBasePath").toString() + "/state";
+    const auto row = QString::fromLatin1(QTest::currentDataTag());
+    const auto readyPath = directory.filePath("settings-handoff-sync-ready-" + row);
+    const auto releasePath = directory.filePath("settings-handoff-sync-release-" + row);
+    QVERIFY(!QFileInfo::exists(readyPath));
+    QVERIFY(!QFileInfo::exists(releasePath));
+    qputenv("FERRIC_SETTINGS_SYNC_HOLD_PATH", statePath.toUtf8());
+    qputenv("FERRIC_SETTINGS_SYNC_READY_FILE", readyPath.toUtf8());
+    qputenv("FERRIC_SETTINGS_SYNC_RELEASE_FILE", releasePath.toUtf8());
+    const auto release = [&] {
+        QFile file(releasePath);
+        if (file.open(QIODevice::WriteOnly)) file.close();
+    };
+    const auto cleanup = qScopeGuard([&] {
+        release();
+        qunsetenv("FERRIC_SETTINGS_SYNC_HOLD_PATH");
+        qunsetenv("FERRIC_SETTINGS_SYNC_READY_FILE");
+        qunsetenv("FERRIC_SETTINGS_SYNC_RELEASE_FILE");
+    });
+    const auto before = text("config_json");
+    auto *validator = window->findChild<QObject *>("selectorValidationSurface");
+    QVERIFY(validator);
+    QTRY_VERIFY(validator->property("documentReady").toBool());
+    if (css) QVERIFY(validator->setProperty("documentReady", false));
+    const auto restoreValidator = qScopeGuard([&] { validator->setProperty("documentReady", true); });
+    const auto sourceId = evaluate("testWindow.browserUi.tab_id_for_index(0)").toString();
+    evaluate("testWindow.commandNoticeVisible=false;testWindow.commandNoticeText=''");
+    const QPointer<QObject> focusObserver(evaluate(R"JS(Qt.createQmlObject('import QtQuick; Connections {
+        target:testWindow; property int requests:0;
+        function onPendingActivationChanged(){
+            const state=target.pendingActivation;
+            if(state && state.nonce && state.nonce.length) requests++;
+        } }',testWindow))JS").value<QObject *>());
+    QVERIFY(focusObserver);
+    const auto clearObserver = qScopeGuard([&] { delete focusObserver.data(); });
+    const QString setting = css ? "set --temp 'hints.selectors.buttons={mode=\"extend\",selectors=[\"#button\"]}'" : "set content.zoom=1.25";
+    const QString focus = "tab-focus " + sourceId;
+    QVERIFY(command((settingsFirst ? setting + " ;; " + focus : focus + " ;; " + setting)
+        + " ;; jseval --world page window.settingsHandoffTail=37"));
+    if (css) QTRY_VERIFY(!text("selector_validation_request").isEmpty());
+    else QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(readyPath), 5000);
+    // The accepted command tail runs while the original handoff waits for the
+    // admitted writer. Directory replacement has occurred, activation has not.
+    QTRY_COMPARE(page("window.settingsHandoffTail").toInt(), 37);
+    QCOMPARE(text("config_json"), before);
+    if (!css) {
+        QFile saved(statePath + "/runtime-overrides.toml");
+        QVERIFY(saved.open(QIODevice::ReadOnly));
+        QVERIFY(saved.readAll().contains("1.25"));
+    }
+    QTest::qWait(150);
+    QCOMPARE(focusObserver->property("requests").toInt(), 0);
+    QVERIFY2(!evaluate("testWindow.commandNoticeVisible && testWindow.commandNoticeError").toBool(),
+        qPrintable(evaluate("testWindow.commandNoticeText").toString()));
+    if (css) {
+        QVERIFY(validator->setProperty("documentReady", true));
+        // The real load-success callback replays this queued request; changing
+        // its readiness flag alone does not invoke that callback.
+        QVERIFY(QMetaObject::invokeMethod(validator, "validateRequest", Qt::DirectConnection,
+            Q_ARG(QVariant, validator->property("pendingRequest"))));
+        QTRY_VERIFY(text("selector_validation_request").isEmpty());
+        QCOMPARE(text("config_json"), before);
+    } else {
+        release();
+        QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object()
+            .value("content").toObject().value("zoom").toDouble(), 1.25);
+    }
+    // Observe either terminal path after release. Offscreen Qt can publish a
+    // focus request through its generic window marker; successful compositor
+    // activation is outside this fixture's qualification scope.
+    QTRY_VERIFY(focusObserver->property("requests").toInt() > 0
+        || evaluate("testWindow.commandNoticeVisible && testWindow.commandNoticeError").toBool());
+    QVERIFY(focusObserver->property("requests").toInt() <= 1);
+    if (css) {
+        QVERIFY(command("get hints.selectors.buttons"));
+        QTRY_VERIFY(text("status_text").startsWith("hints.selectors.buttons = ")
+            && text("status_text").contains(", pending)"));
+    }
+    // The frozen activation witness also catches a premature successful Qt
+    // focus request, even if it produces no error notice.
+}
+void ApplicationTests::policyCacheDirtyClosesPendingActions_data() {
+    QTest::addColumn<bool>("pointer");
+    QTest::newRow("pointer-confirmation-release") << true;
+    QTest::newRow("scoped-grid-geometry") << false;
+}
+void ApplicationTests::policyCacheDirtyClosesPendingActions() {
+    QFETCH(bool, pointer);
+    // A single p shares the existing pp/pP prefix and intentionally waits for
+    // the chord timeout. Use an unambiguous key to enter during publication.
+    QVERIFY(command(pointer ? "bind F8 hint --target pointer all" : "bind r hint --target choose regions"));
+    // Verify the deferred prerequisite has actually published before installing
+    // observers for the separate setting's cold-cache boundary.
+    QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object()
+        .value("bindings").toObject().value("normal").toObject()
+        .value(pointer ? "F8" : "r").toString(),
+        pointer ? QString("hint --target pointer all") : QString("hint --target choose regions"));
+    // Enter Hint at actual publication, before the same runtime turn rebuilds
+    // the dirty cache. Admission alone leaves the old active config intact.
+    auto *policyUi = qobject_cast<BrowserUi *>(evaluate("testWindow.browserUi").value<QObject *>());
+    QVERIFY(policyUi);
+    QString coldPolicy;
+    QString hintEntryPolicy;
+    QString hintEntryPayload;
+    bool hintModeObserved = false;
+    bool entered = false;
+    QObject observer;
+    const auto modeConnection = connect(policyUi, &BrowserUi::modeChanged, &observer, [&] {
+        if (entered && policyUi->property("mode").toString() == "hint" && !hintModeObserved) {
+            hintModeObserved = true;
+            hintEntryPayload = evaluate("testWindow.browserUi.hint_selector_policy('all')").toString();
+            hintEntryPolicy = QJsonDocument::fromJson(hintEntryPayload.toUtf8()).object().value("error").toString();
+        }
+    }, Qt::DirectConnection);
+    const auto connection = connect(policyUi, &BrowserUi::setting_action_stateChanged, &observer, [&] {
+        if (entered || policyUi->property("setting_action_state").toString() != "succeeded") return;
+        entered = true;
+        coldPolicy = evaluate("JSON.parse(testWindow.browserUi.hint_selector_policy('all')).error").toString();
+        // Send constructed Qt events synchronously: QTest's window-system
+        // simulator processes queued timers as part of event delivery.
+        const auto key = pointer ? Qt::Key_F8 : Qt::Key_R;
+        const QString text = pointer ? QString() : QString("r");
+        QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, text);
+        QCoreApplication::sendEvent(window, &press);
+        QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, text);
+        QCoreApplication::sendEvent(window, &release);
+    }, Qt::DirectConnection);
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('content.images','true',true)").toBool());
+    QTRY_VERIFY(entered);
+    disconnect(connection);
+    disconnect(modeConnection);
+    QCOMPARE(coldPolicy, QString("selector-policy-pending"));
+    QVERIFY2(hintModeObserved && hintEntryPolicy == "selector-policy-pending",
+        qPrintable("Hint-entry policy: " + hintEntryPayload + "; current mode: " + text("mode") + "; status: " + text("status_text")));
+    const auto label = hintLabel(pointer ? "Activate exact button" : "Scoped panel");
+    QVERIFY(!label.isEmpty());
+    typeText(label);
+    if (pointer) {
+        QTRY_COMPARE(text("hint_pointer_state"), QString("selecting"));
+        QVERIFY(evaluate("JSON.parse(testWindow.browserUi.hint_pointer_confirmation_pressed()).ok === true").toBool());
+        QCOMPARE(text("hint_pointer_state"), QString("awaiting-confirmation-release"));
+    } else {
+        QTRY_VERIFY(evaluate("testWindow.contextMenuItems.length > 0").toBool());
+        QVERIFY(chooseCapability("grid-within"));
+        QTRY_VERIFY(evaluate("testWindow.browserUi.spatial_visible").toBool());
+        const auto script = evaluate("testWindow.spatialScopeGeometryScript(testWindow.browserUi.spatial_scope_lease_id)").toString();
+        savedSelection = page(script, 1); // Real isolated-world scope geometry.
+        QVERIFY(savedSelection.toMap()["ok"].toBool());
+        QVERIFY(evaluate(R"JS(testWindow.browserUi.spatial_scope_geometry_validated(
+            "", JSON.stringify(testProbe.savedSelection),
+            testWindow.hintWorkspace.spatialAdapterSurfaceSerial,
+            testWindow.hintWorkspace.spatialAdapterSurfaceRevision,
+            testWindow.activeWebView().width, testWindow.activeWebView().height,
+            testWindow.activeWebView().zoomFactor))JS").toBool());
+    }
+    // Observe the deferred publication through its receipt signal. Check the
+    // pending action before the real runtime timer can rebuild the cache.
+    // The unrelated setting leaves the saved Hint revision unchanged.
+    const auto before = evaluate(R"JS((function(){
+        const ui=testWindow.browserUi,view=testWindow.activeWebView();
+        return JSON.stringify({mode:ui.mode,pointer:ui.hint_pointer_state,lease:ui.spatial_scope_lease_id,
+            visible:ui.spatial_visible,zoom:view.zoomFactor,x:ui.spatial_root_x,width:ui.spatial_root_width});
+    })())JS").toString();
+    const auto source = QString(R"QML(import QtQuick
+    Connections {
+      property string before: ""
+      property string result: ""
+      target: testWindow.browserUi
+      function onSetting_action_stateChanged() {
+        if (result.length || target.setting_action_state !== "succeeded") return;
+        const ui=target,view=testWindow.activeWebView();
+        const unavailable = JSON.parse(ui.hint_selector_policy('all')).error;
+        const after = {mode:ui.mode,pointer:ui.hint_pointer_state,lease:ui.spatial_scope_lease_id,
+            visible:ui.spatial_visible,zoom:view.zoomFactor,x:ui.spatial_root_x,width:ui.spatial_root_width};
+        const action = %1;
+        result=JSON.stringify({unavailable:unavailable,action:action,before:JSON.parse(before),after:after});
+      }
+    })QML").arg(pointer ? R"JS(JSON.parse(ui.hint_pointer_confirmation_released('1','1',view.width,view.height)))JS"
+        : R"JS(ui.spatial_scope_geometry_validated('',JSON.stringify(testProbe.savedSelection),
+            testWindow.hintWorkspace.spatialAdapterSurfaceSerial,
+            testWindow.hintWorkspace.spatialAdapterSurfaceRevision,view.width,view.height,view.zoomFactor))JS");
+    const QPointer<QObject> publication(evaluate("Qt.createQmlObject(" + quoted(source) + ",testWindow)").value<QObject *>());
+    QVERIFY(publication);
+    QVERIFY(publication->setProperty("before", before));
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('content.zoom','1.0',true)").toBool());
+    QTRY_VERIFY(!publication->property("result").toString().isEmpty());
+    const auto result = QJsonDocument::fromJson(publication->property("result").toString().toUtf8()).object();
+    delete publication.data();
+    QCOMPARE(result["after"].toObject(), result["before"].toObject());
+    QCOMPARE(result["unavailable"].toString(), QString("selector-policy-pending"));
+    if (pointer) {
+        QCOMPARE(result["action"].toObject()["error"].toString(), QString("stale-owner"));
+        QCOMPARE(text("hint_pointer_state"), QString("terminal"));
+    } else {
+        QVERIFY(!result["action"].toBool());
+        QVERIFY(!evaluate("testWindow.browserUi.spatial_visible").toBool());
+    }
+    QTest::qWait(120);
+    QCOMPARE(page("window.clicks").toInt(), 0);
+    QCOMPARE(page("window.scopedClicks || 0").toInt(), 0);
+}
+void ApplicationTests::policyCacheLoadingCancellation_data() {
+    QTest::addColumn<bool>("replacement");
+    QTest::newRow("escape") << false;
+    QTest::newRow("document-replacement") << true;
+}
+void ApplicationTests::policyCacheLoadingCancellation() {
+    QFETCH(bool, replacement);
+    QTRY_VERIFY(evaluate("JSON.parse(testWindow.browserUi.hint_selector_policy('all')).policies !== undefined").toBool());
+    const auto source = QString(R"QML(import QtQuick
+    Connections {
+      property string result: ""
+      target: testWindow.browserUi
+      function onSetting_action_stateChanged() {
+        if (result.length || target.setting_action_state !== "succeeded") return;
+        const ui = target;
+        const hint = ui.execute_command('hint all');
+        testWindow.startHintCollection();
+        const pending = JSON.parse(ui.hint_selector_policy('all')).error;
+        if (%1) testWindow.activeWebView().url = 'about:blank';
+        else testWindow.closeHints();
+        result=JSON.stringify({hint:hint,pending:pending});
+      }
+    })QML").arg(replacement ? "true" : "false");
+    const QPointer<QObject> publication(evaluate("Qt.createQmlObject(" + quoted(source) + ",testWindow)").value<QObject *>());
+    QVERIFY(publication);
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('content.images','true',true)").toBool());
+    QTRY_VERIFY(!publication->property("result").toString().isEmpty());
+    const auto result = QJsonDocument::fromJson(publication->property("result").toString().toUtf8()).object();
+    delete publication.data();
+    QVERIFY(result["hint"].toBool());
+    QCOMPARE(result["pending"].toString(), QString("selector-policy-pending"));
+    if (replacement) QTRY_COMPARE(text("current_url"), QString("about:blank"));
+    QTRY_COMPARE(text("mode"), QString("normal"));
+    QTest::qWait(120); // The queued collection retry must not revive Hint.
+    QCOMPARE(text("mode"), QString("normal"));
+    QVERIFY(!evaluate("testWindow.browserUi.hint_visible").toBool());
+}
+void ApplicationTests::sitePolicyTransferObservation_data() {
+    QTest::addColumn<QString>("kind");
+    for (const auto *kind : {"generic-rejected", "generic-valid", "generic-model-mismatch", "generic-background",
+                              "native-rejected", "native-valid", "native-rollback"})
+        QTest::newRow(kind) << QString::fromLatin1(kind);
+}
+void ApplicationTests::sitePolicyTransferObservation() {
+    QTest::failOnWarning(QRegularExpression(".*page_key_routing_active.*"));
+    QFETCH(QString, kind);
+    const bool native = kind.startsWith("native");
+    const bool rejected = kind.endsWith("rejected") || kind.endsWith("rollback") || kind.endsWith("background");
+    auto diagnostic = [&](const QString &ui) {
+        return QJsonDocument::fromJson(evaluate(ui + ".interaction_policy_snapshot()").toString().toUtf8()).object();
+    };
+    QTRY_COMPARE(diagnostic("testWindow.browserUi")["state"].toString(), QString("no-op"));
+    const QString initial = text("current_url");
+    const QPointer<QObject> moving(evaluate("testWindow.activeWebView()").value<QObject *>());
+    QVERIFY(moving);
+    engine->rootContext()->setContextProperty("movingPolicyView", moving.data());
+    // Keep a loaded source fallback, including in window presentation mode.
+    engine->rootContext()->setContextProperty("savedPolicyWindowFactory", evaluate("testWindow.browserWindowComponentObject").value<QObject *>());
+    evaluate("testWindow.browserWindowComponentObject=null");
+    QVERIFY(command("open --target tab-bg " + initial + "?policy-spare=yes"));
+    evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+    QTRY_COMPARE(evaluate("testWindow.tabViews.length").toInt(), 2);
+    pageReceiver = "testWindow.tabViewAt(1)";
+    QTRY_VERIFY(!evaluate(pageReceiver + ".loading").toBool());
+    QTRY_VERIFY(page("document.readyState==='complete' && !!document.getElementById('button')").toBool());
+    QCOMPARE(page("location.href").toString(), initial + "?policy-spare=yes");
+    pageReceiver = "testWindow.activeWebView()";
+    evaluate("testWindow.browserWindowComponentObject=savedPolicyWindowFactory");
+    QVERIFY(evaluate("testWindow.browserUi.select_tab(0)").toBool());
+    QTRY_COMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), moving.data());
+    auto *sourceUi = qobject_cast<BrowserUi *>(evaluate("testWindow.browserUi").value<QObject *>());
+    QVERIFY(sourceUi);
+    QTRY_COMPARE(diagnostic("testWindow.browserUi")["state"].toString(), QString("no-op"));
+    const auto activeBeforeBackground = diagnostic("testWindow.browserUi");
+    const QString spareTab = evaluate("testWindow.browserUi.tab_id_for_index(1)").toString();
+    auto backgroundCapture = ferric::site_policy::begin_association(*sourceUi, spareTab);
+    QCOMPARE(diagnostic("testWindow.browserUi"), activeBeforeBackground);
+    const QString spareUrl = evaluate("testWindow.tabViewAt(1).url.toString()").toString();
+    QVERIFY(ferric::site_policy::complete_association(*sourceUi, *backgroundCapture, spareUrl));
+    QCOMPARE(diagnostic("testWindow.browserUi"), activeBeforeBackground);
+    if (rejected) {
+        evaluate("movingPolicyView.url='data:text/html,%3Ctitle%3ETransfer%20rejected%3C/title%3E%3Cscript%3Ewindow.transferMarker=83%3C/script%3E'");
+        QTRY_COMPARE(evaluate("movingPolicyView.title").toString(), QString("Transfer rejected"));
+        QTRY_VERIFY(!evaluate("movingPolicyView.loading").toBool());
+        QTRY_COMPARE(diagnostic("testWindow.browserUi")["reason"].toString(), QString("rejected-engine-context"));
+    } else {
+        QCOMPARE(page("window.transferMarker=83;window.transferMarker").toInt(), 83);
+    }
+    if (kind == "generic-model-mismatch") {
+        evaluate("testWindow.browserUi.navigation_url_changed_for(0," + quoted(initial + "/model-only") + ")");
+        QCOMPARE(evaluate("movingPolicyView.url.toString()").toString(), initial);
+    }
+    const auto sourceTab = evaluate("testWindow.browserUi.tab_id_for_index(0)").toString();
+    if (kind == "generic-background") {
+        QVERIFY(evaluate("testWindow.browserUi.select_tab(1)").toBool());
+        QTRY_COMPARE(diagnostic("testWindow.browserUi")["state"].toString(), QString("no-op"));
+    }
+    // Private opaque native capture, not a fabricated JSON eligibility flag.
+    auto staleCapture = ferric::site_policy::begin_association(*sourceUi, sourceTab);
+    QPointer<QObject> injection;
+    if (kind == "native-rollback") {
+        injection = evaluate(R"JS(Qt.createQmlObject('import QtQuick; Connections {
+            property bool injected:false; target:movingPolicyView;
+            function onViewHostChanged(){if(!injected && target.viewHost!==testWindow){
+                injected=true;testWindow.browserUi.cancel_live_page_move(target.viewHost.windowLivePageNonce)
+            }} }',testWindow))JS").value<QObject *>();
+        QVERIFY(injection);
+    }
+    if (kind == "generic-background") {
+        QVERIFY(evaluate("testWindow.executeBrowserTransferAction(testWindow.browserUi,testWindow,"
+            + quoted(QString("tab-detach\t\t") + sourceTab) + ")").toBool());
+    } else {
+        QVERIFY(command("tab-detach"));
+        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+    }
+    if (kind == "native-rollback") {
+        QTRY_VERIFY(injection->property("injected").toBool());
+        QTRY_VERIFY(evaluate("movingPolicyView.viewHost===testWindow && !movingPolicyView.viewTransferPending").toBool());
+        QTest::qWait(120);
+        QCOMPARE(diagnostic("testWindow.browserUi")["reason"].toString(), QString("rejected-engine-context"));
+        QCOMPARE(page("window.transferMarker").toInt(), 83);
+        QVERIFY(!ferric::site_policy::complete_association(*sourceUi, *staleCapture, initial));
+        delete injection.data();
+        return;
+    }
+    const QString entry = "testWindow.liveWindowEntries().find(function(e){return e.host!==testWindow && e.view===movingPolicyView})";
+    QTRY_VERIFY2_WITH_TIMEOUT(evaluate(entry + " && " + entry + ".host.profileBootstrapComplete").toBool(),
+        qPrintable(text("status_text")), 15000);
+    const QPointer<QObject> destinationHost(evaluate(entry + ".host").value<QObject *>());
+    const QPointer<QObject> destinationObject(evaluate(entry + ".ui").value<QObject *>());
+    QVERIFY(destinationHost && destinationObject);
+    engine->rootContext()->setContextProperty("policyDestinationHost", destinationHost.data());
+    engine->rootContext()->setContextProperty("policyDestinationUi", destinationObject.data());
+    const QString ui = "policyDestinationUi", host = "policyDestinationHost";
+    QTRY_COMPARE(evaluate(host + ".activeView").value<QObject *>(), moving.data());
+    pageReceiver = host + ".activeView";
+    QCOMPARE(page("window.transferMarker").toInt(), 83);
+    const bool unavailable = rejected || kind.endsWith("mismatch");
+    if (unavailable) QTRY_COMPARE(diagnostic(ui)["reason"].toString(), QString("rejected-engine-context"));
+    else QTRY_COMPARE(diagnostic(ui)["state"].toString(), QString("no-op"));
+    auto *destinationUi = qobject_cast<BrowserUi *>(evaluate(ui).value<QObject *>());
+    QVERIFY(destinationUi);
+    const auto beforeStale = diagnostic(ui);
+    QVERIFY(!ferric::site_policy::complete_association(*destinationUi, *staleCapture, initial));
+    QCOMPARE(diagnostic(ui), beforeStale);
+    if (native) QCOMPARE(evaluate(ui + ".tab_id_for_index(0)").toString(), sourceTab);
+    if (kind == "generic-background") {
+        QVERIFY(evaluate(ui + ".execute_secondary_interactive_command(" + quoted("tab-open " + initial + "?destination-spare=yes") + ")").toBool());
+        evaluate(host + ".processRuntimeWork()");
+        QTRY_COMPARE(evaluate(ui + ".tab_count").toInt(), 2);
+        QTRY_COMPARE(diagnostic(ui)["state"].toString(), QString("no-op"));
+        QVERIFY(evaluate(ui + ".select_tab(0)").toBool());
+        QTRY_COMPARE(evaluate(host + ".activeView").value<QObject *>(), moving.data());
+        QTRY_COMPARE(diagnostic(ui)["reason"].toString(), QString("rejected-engine-context"));
+    }
+    if (unavailable) {
+        const QJsonValue count = diagnostic(ui).value("compilations");
+        QVERIFY(evaluate(ui + ".set_runtime_setting('content.images','true',true)").toBool());
+        QTRY_COMPARE(evaluate(ui + ".setting_action_state").toString(), QString("succeeded"));
+        QTest::qWait(120);
+        QCOMPARE(diagnostic(ui)["reason"].toString(), QString("rejected-engine-context"));
+        QCOMPARE(diagnostic(ui).value("compilations"), count);
+    }
+    if (!native && rejected) {
+        // Return the same rejected WebEngine view to the primary without any
+        // navigation or URL-change notification to donate eligibility.
+        const auto primary = evaluate("testWindow.browserUi.core_window_id").toString();
+        QVERIFY(evaluate(ui + ".execute_secondary_interactive_command(" + quoted("tab-give " + primary) + ")").toBool());
+        evaluate(host + ".processRuntimeWork()");
+        QTRY_COMPARE(evaluate("testWindow.activeWebView()").value<QObject *>(), moving.data());
+        QTRY_COMPARE(diagnostic("testWindow.browserUi")["reason"].toString(), QString("rejected-engine-context"));
+        pageReceiver = "testWindow.activeWebView()";
+        QCOMPARE(page("window.transferMarker").toInt(), 83);
+        evaluate("movingPolicyView.url=" + quoted(initial + "?policy-recovered=yes"));
+        QTRY_COMPARE(diagnostic("testWindow.browserUi")["state"].toString(), QString("no-op"));
+    } else if (unavailable) {
+        evaluate("movingPolicyView.url=" + quoted(initial + "?policy-recovered=yes"));
+        QTRY_COMPARE(diagnostic(ui)["state"].toString(), QString("no-op"));
+    }
 }
 void ApplicationTests::scopedGridResetAndInvalidation() {
     QVERIFY(command("bind r hint --target choose regions"));
@@ -980,9 +2325,11 @@ void ApplicationTests::selectorValidationRejectsWholeCandidate() {
     QVERIFY(persisted.open(QIODevice::ReadOnly));
     QVERIFY(persisted.readAll().contains("[data-ferric-owned]"));
     const auto saved = text("config_json");
-    QVERIFY(!evaluate("testWindow.browserUi.set_runtime_setting('ui.font_size_pt','-1',true)").toBool());
-    QCOMPARE(text("setting_action_state"), QString("failed"));
-    QVERIFY(text("setting_action_id") != retriedReceipt);
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('ui.font_size_pt','-1',true)").toBool());
+    const auto invalidReceipt = text("setting_action_id");
+    QVERIFY(invalidReceipt != retriedReceipt);
+    QTRY_COMPARE(text("setting_action_state"), QString("failed"));
+    QCOMPARE(text("setting_action_id"), invalidReceipt);
     QVERIFY(!text("setting_action_detail").isEmpty());
     QCOMPARE(text("config_json"), saved);
     QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('desktop.portals','\"required\"',false)").toBool());
@@ -1103,10 +2450,14 @@ void ApplicationTests::mixedPageKeysAndBrowserSequence() {
     QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('input.shortcut_"
                      "policy','mixed',true)")
                 .toBool());
+    QTRY_COMPARE(text("setting_action_state"), QString("succeeded"));
     QVERIFY(evaluate(
                 "testWindow.browserUi.set_runtime_setting('input.page_keys', " +
                 quoted("['/','?','f','Ctrl+f','g']") + ",true)")
                 .toBool());
+    QTRY_COMPARE(text("setting_action_state"), QString("succeeded"));
+    QTRY_COMPARE(evaluate("testWindow.browserUi.mixed_key_route(" +
+        quoted(domKey == "f" && modifiers != 0 ? "Ctrl+f" : domKey) + ")").toString(), QString("page"));
     key(value, Qt::KeyboardModifiers(modifiers));
     QTRY_COMPARE(
         page("window.keys.filter(k=>k===" + quoted(domKey) + ").length")
@@ -1306,6 +2657,8 @@ void ApplicationTests::selectorReloadRejectsInvalidAndStaleCandidates() {
     QTRY_VERIFY_WITH_TIMEOUT(!text("selector_validation_request").isEmpty(),6000);
     const auto generation = QJsonDocument::fromJson(text("selector_validation_request").toUtf8()).object()["generation"].toString();
     QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('hints.marker_scale','1.2',true)").toBool());
+    QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object()
+                     .value("hints").toObject().value("marker_scale").toDouble(), 1.2);
     const auto newer = text("config_json");
     evaluate("testWindow.browserUi.complete_selector_validation(" + quoted(generation) + ",'{\"ok\":true}')");
     QCOMPARE(text("config_json"),newer);
@@ -1352,6 +2705,176 @@ void ApplicationTests::selectorDiscoveryUsesProductionPolicy() {
     if (policy == "disabled") QCOMPARE(rows.size(), 0);
     if (policy == "replace") QCOMPARE(rows.size(), 1);
 }
+void ApplicationTests::profilePublicationReentryKeepsNewRequest() {
+    auto *validator = window->findChild<QObject *>("selectorValidationSurface");
+    QVERIFY(validator);
+    QTRY_VERIFY(validator->property("documentReady").toBool());
+    QVERIFY(validator->setProperty("documentReady", false));
+    const auto fixture = QString::fromUtf8(R"JSON({"schema_version":3,"ui":{"font_size_pt":19},"hints":{"selectors":{"links":{"mode":"replace","selectors":["#profile-publication"]}}}})JSON");
+    evaluate("testWindow.browserUi.config_base_json=" + quoted(fixture));
+    evaluate("testWindow.browserUi.configure_profile(true,false,'First published profile','first-published-profile',testWindow.storageBasePath)");
+    QTRY_VERIFY_WITH_TIMEOUT(!text("selector_validation_request").isEmpty(), 6000);
+    const auto generation = QJsonDocument::fromJson(text("selector_validation_request").toUtf8())
+                                .object().value("generation").toString();
+    const QPointer<QObject> replacement = evaluate(R"JS(Qt.createQmlObject('import QtQuick; Connections {
+        property bool called:false; target:testWindow.browserUi;
+        function onConfig_jsonChanged() {
+            if(!called && JSON.parse(target.config_json).ui.font_size_pt===19) {
+                called=true;
+                target.config_base_json=JSON.stringify({schema_version:3,ui:{font_size_pt:22},hints:{selectors:{links:{mode:"replace",selectors:["#replacement-profile-publication"]}}}});
+                target.configure_profile(true,false,"Replacement publication profile","replacement-publication-profile",testWindow.storageBasePath);
+            }
+        }
+    }',testWindow))JS").value<QObject *>();
+    QVERIFY(replacement);
+    QVERIFY(evaluate("testWindow.browserUi.complete_selector_validation(" + quoted(generation) + ",'{\"ok\":true}')").toBool());
+    // Validated profile metadata now completes on the existing worker before publication.
+    QTRY_VERIFY_WITH_TIMEOUT(replacement->property("called").toBool(), 6000);
+    delete replacement.data();
+    // The first profile was installed before its config notification admitted
+    // the replacement. It may not then finish the replacement's startup.
+    QVERIFY(evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    QCOMPARE(text("status_text"), QString("Opening profile…"));
+    QTRY_VERIFY_WITH_TIMEOUT(!text("selector_validation_request").isEmpty(), 6000);
+    engine->rootContext()->setContextProperty("replacementProfileValidator", validator);
+    evaluate("replacementProfileValidator.documentReady=true;replacementProfileValidator.validateRequest(JSON.parse(testWindow.browserUi.selector_validation_request))");
+    QTRY_VERIFY_WITH_TIMEOUT(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool(), 6000);
+    QCOMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("ui").toObject().value("font_size_pt").toDouble(), 22.0);
+}
+void ApplicationTests::configurationCheckCannotReplaceProfileValidation() {
+    auto *validator = window->findChild<QObject *>("selectorValidationSurface");
+    QVERIFY(validator);
+    QTRY_VERIFY(validator->property("documentReady").toBool());
+    QVERIFY(validator->setProperty("documentReady", false));
+    const auto fixture = QString::fromUtf8(R"JSON({"schema_version":3,"ui":{"font_size_pt":19},"hints":{"selectors":{"links":{"mode":"replace","selectors":["#profile-owned"]}}}})JSON");
+    evaluate("testWindow.browserUi.config_base_json=" + quoted(fixture));
+    evaluate("testWindow.browserUi.configure_profile(true,false,'Held parser profile','held-parser-profile',testWindow.storageBasePath)");
+    QTRY_VERIFY_WITH_TIMEOUT(!text("selector_validation_request").isEmpty(), 6000);
+    const auto held = text("selector_validation_request");
+    const auto path = directory.filePath("unrelated-check.toml");
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("schema_version=3\n[hints.selectors.links]\nmode='replace'\nselectors=['#unrelated-check']\n");
+    file.close();
+    evaluate("testWindow.browserUi.config_path=" + quoted(path));
+    QVERIFY(command("config-check"));
+    QTRY_VERIFY_WITH_TIMEOUT(text("status_text").contains("still opening"), 3000);
+    QCOMPARE(text("selector_validation_request"), held);
+    QVERIFY(evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    evaluate("testWindow.browserUi.config_path=''");
+    engine->rootContext()->setContextProperty("heldProfileValidator", validator);
+    evaluate("heldProfileValidator.documentReady=true; heldProfileValidator.validateRequest(JSON.parse(testWindow.browserUi.selector_validation_request))");
+    QTRY_VERIFY_WITH_TIMEOUT(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool(), 6000);
+    QCOMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object().value("ui").toObject().value("font_size_pt").toDouble(), 19.0);
+    QVERIFY(text("selector_validation_request").isEmpty());
+}
+void ApplicationTests::replacedStartupSelectorCallbackCannotPublish_data() {
+    QTest::addColumn<bool>("duringClear");
+    QTest::addColumn<bool>("expired");
+    QTest::newRow("new-worker-pending-success") << false << false;
+    QTest::newRow("new-worker-pending-expired") << false << true;
+    QTest::newRow("request-clear-reentry-success") << true << false;
+    QTest::newRow("request-clear-reentry-expired") << true << true;
+}
+void ApplicationTests::replacedStartupSelectorCallbackCannotPublish() {
+    QFETCH(bool, duringClear);
+    QFETCH(bool, expired);
+    auto *validator = window->findChild<QObject *>("selectorValidationSurface");
+    QVERIFY(validator);
+    QTRY_VERIFY(validator->property("documentReady").toBool());
+    QVERIFY(validator->setProperty("documentReady", false));
+    const auto originalConfig = text("config_json");
+    const auto originalOwner = text("core_window_id");
+    const auto oldFixture = QString::fromUtf8(R"JSON({"schema_version":3,"ui":{"font_size_pt":19},"hints":{"selectors":{"links":{"mode":"replace","selectors":["#obsolete-profile"]}}}})JSON");
+    evaluate("testWindow.browserUi.config_base_json=" + quoted(oldFixture));
+    evaluate("testWindow.browserUi.configure_profile(true,false,'Obsolete parser profile','obsolete-parser-profile',testWindow.storageBasePath)");
+    QTRY_VERIFY_WITH_TIMEOUT(!text("selector_validation_request").isEmpty(), 6000);
+    const auto generation = QJsonDocument::fromJson(text("selector_validation_request").toUtf8())
+                                .object().value("generation").toString();
+    const auto replace = QStringLiteral(R"JS(
+        const ui=testWindow.browserUi;
+        ui.config_base_json=JSON.stringify({schema_version:3,ui:{font_size_pt:22}});
+        ui.configure_profile(true,false,"Current parser profile","current-parser-profile",testWindow.storageBasePath);
+    )JS");
+    QPointer<QObject> replacement;
+    if (duringClear) {
+        const auto body = "import QtQuick; Connections { property bool called:false; target:testWindow.browserUi; "
+            "function onSelector_validation_requestChanged(){if(!called && target.selector_validation_request.length===0){called=true;"
+            + replace + "}}}";
+        replacement = evaluate("Qt.createQmlObject(" + quoted(body) + ",testWindow)").value<QObject *>();
+        QVERIFY(replacement);
+    } else {
+        evaluate("(function(){" + replace + "})()");
+    }
+    if (expired) blockEventLoopForSelectorDeadline();
+    const auto consumed = evaluate("testWindow.browserUi.complete_selector_validation(" + quoted(generation) + ",'{\"ok\":true}')").toBool();
+    QCOMPARE(consumed, duringClear);
+    QCOMPARE(text("status_text"), QString("Opening profile…"));
+    if (replacement) {
+        QVERIFY(replacement->property("called").toBool());
+        delete replacement.data();
+    }
+    // Neither obsolete success nor its fallback may install a different owner
+    // during the synchronous window before the current worker is polled.
+    QCOMPARE(text("core_window_id"), originalOwner);
+    QCOMPARE(text("config_json"), originalConfig);
+    QVERIFY(evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool(), 6000);
+    const auto current = QJsonDocument::fromJson(text("config_json").toUtf8()).object();
+    QCOMPARE(current.value("ui").toObject().value("font_size_pt").toDouble(), 22.0);
+    QVERIFY(current.value("hints").toObject().value("selectors").toObject().isEmpty());
+    QVERIFY(text("core_window_id") != originalOwner);
+    QVERIFY(!evaluate("testWindow.browserUi.complete_selector_validation(" + quoted(generation) + ",'{\"ok\":true}')").toBool());
+}
+void ApplicationTests::blockEventLoopForSelectorDeadline() {
+    // Deliberately do not process native/QML timers while a callback is queued.
+    QThread::msleep(5100);
+}
+void ApplicationTests::lateStartupSelectorCallbackUsesSafeFallback_data() {
+    QTest::addColumn<bool>("duringClear");
+    QTest::newRow("before-taking-request") << false;
+    QTest::newRow("during-request-clear-reentry") << true;
+}
+void ApplicationTests::lateStartupSelectorCallbackUsesSafeFallback() {
+    QFETCH(bool, duringClear);
+    auto *validator = window->findChild<QObject *>("selectorValidationSurface");
+    QVERIFY(validator);
+    QTRY_VERIFY(validator->property("documentReady").toBool());
+    QVERIFY(validator->setProperty("documentReady", false));
+    const auto fixture = QString::fromUtf8(R"JSON({"schema_version":3,"ui":{"font_size_pt":19},"hints":{"selectors":{"links":{"mode":"replace","selectors":["#late-profile"]}}}})JSON");
+    evaluate("testWindow.browserUi.config_base_json=" + quoted(fixture));
+    evaluate("testWindow.browserUi.configure_profile(true,false,'Late parser profile','late-parser-profile',testWindow.storageBasePath)");
+    QTRY_VERIFY_WITH_TIMEOUT(!text("selector_validation_request").isEmpty(), 6000);
+    QVERIFY(evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    const auto generation = QJsonDocument::fromJson(text("selector_validation_request").toUtf8())
+                                .object().value("generation").toString();
+    QPointer<QObject> blocker;
+    if (duringClear) {
+        blocker = evaluate(R"JS(Qt.createQmlObject('import QtQuick; Connections {
+            property bool called:false; target:testWindow.browserUi;
+            function onSelector_validation_requestChanged() {
+                if(!called && target.selector_validation_request.length===0) {
+                    called=true; testProbe.blockEventLoopForSelectorDeadline();
+                }
+            }
+        }',testWindow))JS").value<QObject *>();
+        QVERIFY(blocker);
+    } else {
+        blockEventLoopForSelectorDeadline();
+    }
+    QVERIFY(evaluate("testWindow.browserUi.complete_selector_validation(" + quoted(generation) + ",'{\"ok\":true}')").toBool());
+    if (blocker) {
+        QVERIFY(blocker->property("called").toBool());
+        delete blocker.data();
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool(), 6000);
+    QVERIFY(evaluate("testWindow.browserUi.profile_startup_details()").toString().contains("timed out"));
+    QVERIFY(evaluate("testWindow.browserUi.profile_startup_details()").toString().contains("built-in safe configuration"));
+    const auto config = QJsonDocument::fromJson(text("config_json").toUtf8()).object();
+    QCOMPARE(config.value("ui").toObject().value("font_size_pt").toDouble(), 10.0);
+    QVERIFY(config.value("hints").toObject().value("selectors").toObject().isEmpty());
+    QVERIFY(!evaluate("testWindow.browserUi.complete_selector_validation(" + quoted(generation) + ",'{\"ok\":true}')").toBool());
+}
 void ApplicationTests::startupSelectorValidation_data() {
     QTest::addColumn<bool>("valid");
     QTest::newRow("accepted") << true;
@@ -1381,6 +2904,7 @@ void ApplicationTests::staleSelectorCallbackCannotPublish() {
             quoted("{mode='extend',selectors=['button[data-queued]']}") +
             ",true)")
             .toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(!text("selector_validation_request").isEmpty(), 6000);
     const auto pending =
         QJsonDocument::fromJson(text("selector_validation_request").toUtf8())
             .object();
@@ -1394,14 +2918,14 @@ void ApplicationTests::staleSelectorCallbackCannotPublish() {
                  .toBool());
     QVERIFY(text("runtime_setting_error").contains("still pending"));
     QVERIFY(command("set --temp content.zoom=1.2"));
+    QTRY_COMPARE(QJsonDocument::fromJson(text("config_json").toUtf8()).object()
+                 .value("content").toObject().value("zoom").toDouble(), 1.2);
     const auto accepted = text("config_json");
-    QCOMPARE(QJsonDocument::fromJson(accepted.toUtf8()).object()
-                 .value("content").toObject().value("zoom").toDouble(),
-             1.2);
-    evaluate("testWindow.browserUi.complete_selector_validation(" +
-             quoted(generation) + ",'{\"ok\":true}')");
+    const auto acceptedStatus = text("status_text");
+    QVERIFY(!evaluate("testWindow.browserUi.complete_selector_validation(" +
+             quoted(generation) + ",'{\"ok\":true}')").toBool());
     QCOMPARE(text("config_json"), accepted);
-    QVERIFY(text("status_text").contains("Selector settings changed"));
+    QCOMPARE(text("status_text"), acceptedStatus);
 }
 void ApplicationTests::unavailableSelectorDocumentTimesOut() {
     auto validator = window->findChild<QObject *>("selectorValidationSurface");
@@ -1415,6 +2939,7 @@ void ApplicationTests::unavailableSelectorDocumentTimesOut() {
             quoted("{mode='extend',selectors=['button[data-timeout]']}") +
             ",true)")
             .toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(!text("selector_validation_request").isEmpty(), 6000);
     QTRY_VERIFY_WITH_TIMEOUT(text("selector_validation_request").isEmpty(),
                              6500);
     QCOMPARE(text("config_json"), old);
@@ -1691,7 +3216,9 @@ int main(int argc, char **argv) {
 
 void ApplicationTests::hintRefreshRetainsInput() {
     QVERIFY(command("set --temp hints.min_chars=2"));
+    QTRY_COMPARE(evaluate("JSON.parse(testWindow.browserUi.config_json).hints.min_chars").toInt(),2);
     QVERIFY(command("set --temp hints.auto_follow=never"));
+    QTRY_COMPARE(evaluate("JSON.parse(testWindow.browserUi.config_json).hints.auto_follow").toString(),QString("never"));
     QVERIFY(command("hint buttons"));
     const auto label=hintLabel("Activate exact button");
     QCOMPARE(label.size(),2);
@@ -2821,7 +4348,7 @@ void ApplicationTests::deferredNativeRequestsKeepCapturedTargets() {
         var ui = testWindow.browserUi;
         var before = ui.config_json;
         return !ui.set_startup_configuration(before, ui.config_base_json,
-            ui.cli_overrides_json, ui.profile_overrides_json, ui.config_path, ui.config_source)
+            ui.cli_overrides_json, ui.profile_overrides_json, ui.config_path, ui.config_source, null)
             && ui.config_json === before;
     })())JS").toBool());
     // Consume within one JS turn, before the scheduled native pass can run.
@@ -4894,8 +6421,25 @@ void ApplicationTests::productPolishSiteLedger() {
     evaluate("testWindow.executePendingEngineAction()");
     QTRY_COMPARE(evaluate("testWindow.activeWebView().nativeUrl").toString(), QString("rb://blank"));
     QTRY_VERIFY(evaluate("JSON.parse(testWindow.browserUi.refresh_site_status()).origin === null").toBool());
-    QVERIFY(!evaluate("testWindow.browserUi.apply_site_doctor_proposal(" +
+    QTRY_VERIFY(evaluate("testWindow.browserUi.load_state==='complete' && !testWindow.activeWebView().loading").toBool());
+    auto *siteUi = qobject_cast<BrowserUi *>(evaluate("testWindow.browserUi").value<QObject *>());
+    QVERIFY(siteUi);
+    QStringList staleFixMessages;
+    const auto staleConnection = connect(siteUi, &BrowserUi::status_textChanged, siteUi, [&] {
+        staleFixMessages.push_back(siteUi->property("status_text").toString());
+    }, Qt::DirectConnection);
+    const auto disconnectStale = qScopeGuard([&] { disconnect(staleConnection); });
+    const auto beforeStaleFix = text("config_json");
+    const auto overridePath = evaluate("testWindow.storageBasePath").toString() + "/state/runtime-overrides.toml";
+    QVERIFY(!QFileInfo::exists(overridePath));
+    // Acceptance queues preparation; the proposal's old origin must be
+    // rejected during that turn without changing or saving the configuration.
+    QVERIFY(evaluate("testWindow.browserUi.apply_site_doctor_proposal(" +
                      quoted(proposal.value("id").toString()) + ",true)").toBool());
+    QCOMPARE(text("config_json"), beforeStaleFix);
+    QTRY_VERIFY2(staleFixMessages.contains("This page changed. Run a new site test before applying a fix."), qPrintable(staleFixMessages.join(" | ")));
+    QCOMPARE(text("config_json"), beforeStaleFix);
+    QVERIFY(!QFileInfo::exists(overridePath));
     evaluate("testWindow.siteLedgerData=JSON.parse(" + quoted(oldSnapshot) + ");testWindow.siteLedgerVisible=true");
     auto consent = window->findChild<QQuickItem *>("siteReportHost");
     auto copy = window->findChild<QQuickItem *>("siteReportCopyButton");

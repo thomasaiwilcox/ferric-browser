@@ -61,6 +61,7 @@ private:
     bool requestIsCurrent(const QVariantMap &request) const;
     int currentTabIndex() const;
     void bindPageSignals();
+    void observeSitePolicyAssociation();
     bool executePageCommand(const QVariantMap &request);
     bool confirmFormReload(const QVariantMap &request);
     bool m_documentHasFormData = false;

@@ -14,6 +14,51 @@ pub struct GuideArticle {
 #[allow(clippy::too_many_lines)]
 pub fn guide_article(command: &str) -> Option<GuideArticle> {
     let (category, explanation, recovery) = match command {
+        "site-policy" => (
+            "Settings and Site Policies",
+            "Open the native Site Policies workspace for the current page or --url URL. Inspect exact sources and saved/active state, create independent drafts, and edit every Interaction field with structured controls. Authored sources are read-only; explicit copy creates a reviewed generated/temporary snapshot. Editing, validation and copying do not save or activate configuration. Apply uses an exact reviewed revision through the existing coordinator.",
+            "Refresh and section changes retain your draft and active text edits. Review the full-rule diff before applying. Rebase is explicit. Closing the workspace retains its draft; closing during an admitted save detaches observation without cancelling the writer.",
+        ),
+        "site-policy-preview" => (
+            "Settings and Site Policies",
+            "site-policy-preview DRAFT_ID validates an immutable revision and returns an explicitly static-only receipt. Add --tab TAB_ID to inspect that live tab through the native document collector. Every literal invocation family is reported separately. Preview never activates or focuses a target, sends a page key, enables a rule, or changes configuration. Closed, stale or incomplete documents produce unavailable diagnostics; request a fresh preview after changing the page or draft.",
+            "An inspected snapshot is not an activation permit or a successful native key-delivery test.",
+        ),
+        "site-policy-import" => (
+            "Settings and Site Policies",
+            "Read a local ferric-site-interaction version 1 document into one draft batch. Import never publishes, enables or watches a policy. --temp chooses the temporary source; otherwise the destination is generated. Upserts replacing any destination or lower-source ID require --replace-existing and preserve local ordinary settings. Mixed-purpose rules retain their exact pattern and priority. Unsets require an exact destination/pattern guard. Unknown requirements remain visible and block apply.",
+            "The result is pending until its operation completes. Keep its proposed draft ID; a failed read creates no draft. Preview and review the resulting revision before applying it. Imported private-session drafts remain in memory.",
+        ),
+        "site-policy-export" => (
+            "Settings and Site Policies",
+            "Write a constrained local document for either --draft DRAFT_ID or --source SOURCE --id RULE_ID. Ordinary settings, page samples and general configuration are excluded. Removal drafts export guarded unset operations. Existing destinations require --overwrite; symlinks and special files are refused. Export captures its content before the file worker starts and never applies configuration.",
+            "Pending is not success: inspect the operation result. An admitted export cannot be cancelled. A private-session export persists outside that session. If directory durability is uncertain, inspect the written file before retrying.",
+        ),
+        "site-policy-explain" => (
+            "Settings and Site Policies",
+            "Explain Site Policies for the current page or --url URL. Active and desired values show their winning fields and source boundaries. --source SOURCE --id RULE_ID includes that exact raw rule, even when it is shadowed. Use either --key TOKEN for source admission, terminal mapping and native capability diagnostics, or --code CODE for reserved hint slots and namespace capacity. Configured intent, session observations and action availability are separate. This command never activates configuration or submits an input.",
+            "An unavailable or stale session cannot prove a live target. Static code capacity does not imply that a selector matches the current document. No raw webpage text is collected by this query.",
+        ),
+        "site-policy-list" => (
+            "Settings and Site Policies",
+            "List matching policies for the current HTTP(S) page, or specify --url URL. Add --all to include nonmatching, shadowed and retired raw rules. Source tokens and exact IDs identify rules. Desired and active rule lists are separate; saved generated settings include their profile revision or an explicit read error. Session-only profiles have no saved file.",
+            "Listing does not activate configuration. Use site-policy-edit with the exact source and ID to create a separate reviewable draft.",
+        ),
+        "site-policy-discard" => (
+            "Settings and Site Policies",
+            "Discard a draft with site-policy-discard DRAFT_ID. Only the window that owns the draft may discard it. Discard releases uncommitted management state; it does not undo a published change. An admitted save cannot be cancelled by discarding its draft.",
+            "Keep a dirty draft until you have reviewed or exported its changes. A discarded draft cannot be recovered.",
+        ),
+        "site-policy-edit" => (
+            "Settings and Site Policies",
+            "Create a draft for an exact --source and --id. Generated and temporary rules are editable; authored:DOCUMENT_ID is read-only. A new rule requires --new and --pattern. Pattern and priority changes show the full rule, including preserved ordinary settings. --remove-interaction removes only that section. Nothing is saved or activated by editing. Explicit --draft DRAFT_ID --revision REVISION --rebase adopts current sources while retaining local changed fields and returns a new revision for review.",
+            "Keep the returned draft ID and revision for apply. A stale revision or identity conflict leaves the draft intact. Rebase is explicit and never applies automatically; review its full diff before applying.",
+        ),
+        "site-policy-apply" => (
+            "Settings and Site Policies",
+            "Apply an exact reviewed Site Policies draft with site-policy-apply DRAFT_ID --revision REVISION. The request keeps that immutable version while validation and saving run. Add --activate to activate the saved configuration through the configuration coordinator; this does not reload the webpage. Saved, active, session-only and durability-warning outcomes remain separate. A newer local edit is retained when an older save finishes.",
+            "A rejected request retains the draft. Review concurrent changes and explicitly rebase before retrying a stale version. If a save reports durability uncertainty or saved-but-inactive state, inspect the saved configuration before retrying or reloading it.",
+        ),
         "tab-new" | "start-page" | "start-page-view" | "start-page-cycle" | "favourite-add" => (
             "Getting Started and Modes",
             "The start page has Top Sites, Favourites, and Guide views. Top Sites ranks recent and frequent visits; Favourites keeps eight explicitly chosen, bookmark-backed slots. Select a view to remember it for this profile. With a site grid focused, press 1–8 to open that slot, or move with arrows/hjkl and press Enter. Add the current page from the browser action menu or :favourite-add; choose a slot to replace when all eight are occupied. Private-session choices and favourites disappear when that session closes. Startup and new tabs can be configured independently.",

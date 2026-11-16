@@ -1,0 +1,501 @@
+{
+  "status": "Partial; complete matrix not run",
+  "baseline": "f2c5d6deebd97eb861084503f25613a6a819949d",
+  "note": "Each cell requires direct evidence; generated inventory is not qualification. Raw recovery uses existing passthrough, entered after the selected mapping context. Negative unknown/opaque/unauthorized receivers and IME/dead-key/AltGr/CapsLock lifecycle cases must also be tested.",
+  "dimensions": {
+    "context": [
+      "passthrough-once",
+      "passthrough",
+      "normal-page-key",
+      "hint-page-key"
+    ],
+    "path": [
+      "mapped",
+      "passthrough-once-raw-recovery",
+      "passthrough-raw-recovery"
+    ],
+    "destination": [
+      "ascii-lower",
+      "ascii-upper",
+      "digits",
+      "punctuation-space",
+      "enter-tab-backtab",
+      "editing-navigation",
+      "back-forward",
+      "f1-f12",
+      "modifier-chords"
+    ],
+    "receiver": [
+      "top-document",
+      "focused-same-origin",
+      "focused-authorized-foreign",
+      "open-shadow-focus"
+    ],
+    "backend": [
+      "x11",
+      "wayland-compositor"
+    ],
+    "layout": [
+      "us",
+      "gb",
+      "de"
+    ],
+    "receiver_policy": [
+      "top-document",
+      "focused-frame",
+      "top-or-focused-frame:top",
+      "top-or-focused-frame:focused"
+    ]
+  },
+  "cell_rule": "Cartesian product of dimensions; absent result means Not run. Each raw path is explicitly entered after leaving the named mapping context and must qualify its own session termination and mapping restoration.",
+  "results": [],
+  "destination_members": {
+    "ascii-lower": [
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+      "f",
+      "g",
+      "h",
+      "i",
+      "j",
+      "k",
+      "l",
+      "m",
+      "n",
+      "o",
+      "p",
+      "q",
+      "r",
+      "s",
+      "t",
+      "u",
+      "v",
+      "w",
+      "x",
+      "y",
+      "z"
+    ],
+    "ascii-upper": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "L",
+      "M",
+      "N",
+      "O",
+      "P",
+      "Q",
+      "R",
+      "S",
+      "T",
+      "U",
+      "V",
+      "W",
+      "X",
+      "Y",
+      "Z"
+    ],
+    "digits": [
+      "0",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9"
+    ],
+    "punctuation-space": [
+      "Space",
+      "!",
+      "\"",
+      "#",
+      "$",
+      "%",
+      "&",
+      "'",
+      "(",
+      ")",
+      "*",
+      "Plus",
+      ",",
+      "-",
+      ".",
+      "/",
+      ":",
+      ";",
+      "<",
+      "=",
+      ">",
+      "?",
+      "@",
+      "[",
+      "\\",
+      "]",
+      "^",
+      "_",
+      "`",
+      "{",
+      "|",
+      "}",
+      "~"
+    ],
+    "enter-tab-backtab": [
+      "Enter",
+      "Tab",
+      "Backtab"
+    ],
+    "editing-navigation": [
+      "Backspace",
+      "Delete",
+      "Insert",
+      "Escape",
+      "Left",
+      "Right",
+      "Up",
+      "Down",
+      "Home",
+      "End",
+      "PgUp",
+      "PgDown"
+    ],
+    "back-forward": [
+      "Back",
+      "Forward"
+    ],
+    "f1-f12": [
+      "F1",
+      "F2",
+      "F3",
+      "F4",
+      "F5",
+      "F6",
+      "F7",
+      "F8",
+      "F9",
+      "F10",
+      "F11",
+      "F12"
+    ],
+    "modifier-chords": {
+      "modifier_sets": [
+        [
+          "Ctrl"
+        ],
+        [
+          "Alt"
+        ],
+        [
+          "Meta"
+        ],
+        [
+          "Shift"
+        ],
+        [
+          "Ctrl",
+          "Alt"
+        ],
+        [
+          "Ctrl",
+          "Meta"
+        ],
+        [
+          "Ctrl",
+          "Shift"
+        ],
+        [
+          "Alt",
+          "Meta"
+        ],
+        [
+          "Alt",
+          "Shift"
+        ],
+        [
+          "Meta",
+          "Shift"
+        ],
+        [
+          "Ctrl",
+          "Alt",
+          "Meta"
+        ],
+        [
+          "Ctrl",
+          "Alt",
+          "Shift"
+        ],
+        [
+          "Ctrl",
+          "Meta",
+          "Shift"
+        ],
+        [
+          "Alt",
+          "Meta",
+          "Shift"
+        ],
+        [
+          "Ctrl",
+          "Alt",
+          "Meta",
+          "Shift"
+        ]
+      ],
+      "base_classes": [
+        "ascii-lower",
+        "ascii-upper",
+        "digits",
+        "punctuation-space",
+        "enter-tab-backtab",
+        "editing-navigation",
+        "back-forward",
+        "f1-f12"
+      ],
+      "inventory_rule": "Enumerate modifier-set plus base-token candidates through the production LogicalKeyToken parser, retain accepted canonical tokens and deduplicate aliases. Reject ambiguous Shift+punctuation/digit spellings; produced literals remain covered by their own classes. Every retained token is individually qualified, not inferred from another chord.",
+      "protected_outputs": [
+        "Ctrl+Escape",
+        "Ctrl+Shift+Escape"
+      ],
+      "protected_output_rule": "Excluded from positive delivery; mandatory protected-control negative cases. Syntax acceptance never establishes page authority or native delivery."
+    }
+  },
+  "receiver_policy_rule": "Mapped delivery must satisfy the named descriptor and receiver origin/scope. The two top-or-focused-frame branches are separate cells. Mismatching combinations are explicit rejection cases, not omitted cells. Raw paths retain the existing passthrough authority and bypass transformations only; they do not grant new browser/page permissions.",
+  "cell_defaults": {
+    "status": "Not run",
+    "infrastructure_status": "Not assessed",
+    "capability_status": "Not qualified",
+    "infrastructure_reason": null,
+    "capability_reason": null,
+    "evidence": []
+  },
+  "result_contract": {
+    "status": [
+      "Not run",
+      "Passed",
+      "Failed",
+      "Blocked"
+    ],
+    "infrastructure_status": [
+      "Not assessed",
+      "Available",
+      "Missing"
+    ],
+    "capability_status": [
+      "Not qualified",
+      "Supported",
+      "Unsupported"
+    ],
+    "rule": "Every result records infrastructure and capability independently. Missing infrastructure cannot establish unsupported capability; syntax or an offscreen/constructed event cannot establish native support. Every passed destination class identifies its complete tested canonical token inventory and direct event evidence."
+  },
+  "negative_and_lifecycle_cases": [
+    {
+      "id": "unknown-receiver",
+      "expected": "Unknown focus/receiver proof blocks mapped output without original-key leakage.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "opaque-frame",
+      "expected": "Opaque or inaccessible focused document cannot authorize a new mapped delivery.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "unauthorized-origin",
+      "expected": "Focused foreign origin outside the explicit receiver allowlist rejects.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "closed-shadow-editor",
+      "expected": "Unprovable closed-shadow/editable focus blocks mapped output; explicit raw recovery remains reachable.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "editor-query-input",
+      "expected": "Editors, Target Search, Hint query intent and provisional slash/query intent retain input ownership.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "native-prompt",
+      "expected": "Native prompt/menu ownership precedes mappings and all raw modes.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "ime-preedit",
+      "expected": "Live composition cannot become a page-command transform.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "ime-commit",
+      "expected": "IME commit remains text input rather than a remap token.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "dead-key",
+      "expected": "Dead-key composition is preserved; it is not a single remappable command.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "altgr",
+      "expected": "AltGr text is distinguished from a Ctrl+Alt command chord.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "capslock",
+      "expected": "Native CapsLock never invents an authored Shift modifier.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "layout-change-held",
+      "expected": "Held/cancelled source ownership and recovery use captured physical identity across layout/lock changes.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "entry-release",
+      "expected": "Passthrough entry release cannot consume the selected transformed gesture.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "repeat-release",
+      "expected": "Autorepeat release artifacts cannot terminate one-shot or release output ownership.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "overlapping-source",
+      "expected": "Already admitted sources retain frozen routes after one-shot returns Normal.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "overlapping-output",
+      "expected": "Mapped output and unchanged physical key overlap without duplicate keydown or early keyup.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "receiver-loss",
+      "expected": "Focus/receiver loss cannot deliver a terminal event into a replacement receiver.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "navigation",
+      "expected": "Navigation cancels old output ownership and cannot replay into a new document.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "deactivation",
+      "expected": "Deactivation safely cancels held output and terminates one-shot according to contract.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "synchronous-router-destruction",
+      "expected": "Synchronous router destruction during native dispatch cannot access freed state or duplicate cleanup.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "returned-unhandled-event",
+      "expected": "Internally forwarded/returned WebEngine events cannot re-enter mapping or browser-command admission.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "raw-held-refusal",
+      "expected": "Raw entry is refused while transformed/suppressed/cancelled physical sources remain held.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "lost-release-recovery",
+      "expected": "Explicit browser-owned press/release capture retires only a stale cancelled source; user retries raw entry.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    },
+    {
+      "id": "protected-rescue",
+      "expected": "Protected rescue sources and prohibited outputs remain protected in every context/raw path.",
+      "status": "Not run",
+      "infrastructure_status": "Not assessed",
+      "capability_status": "Not qualified",
+      "evidence": []
+    }
+  ],
+  "qualification_status": "Partial: scoped evidence exists; this original comprehensive inventory is not fully qualified",
+  "current_evidence_index": "docs/testing/site-policy-qualification.md",
+  "coverage_limit": "Evidence index is not per-cell qualification. Empty or unmapped rows remain unqualified; no generated Cartesian cell is assumed passed."
+}

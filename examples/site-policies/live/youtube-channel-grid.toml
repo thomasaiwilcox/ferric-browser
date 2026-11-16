@@ -1,0 +1,26 @@
+# Opt-in live example checked on 15 November 2026, signed-out Blender channel.
+# Family all; partial first/third rows and full middle row at one PageDown.
+# Codes 1-6 Live, 7-9 Missing; 7 did not navigate; 1 followed the first video.
+# An earlier preview crashed in QML GC. Replay passed without a crash fix.
+# Transcribed from the exact native reviewed rule; capture and preview again.
+format = "ferric-site-interaction"
+format_version = 1
+[[rules]]
+operation = "upsert-interaction"
+id = "youtube-live-grid-20261115"
+pattern = "https://www.youtube.com/@BlenderOfficial/videos"
+priority = 0
+[rules.interaction]
+enabled = true
+[[rules.interaction.collections]]
+id = "videos"
+families = ["all"]
+codes = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+item_selector = "ytd-rich-item-renderer"
+order = "row-major-ltr"
+container_self = true
+primary_root_steps = []
+primary_selector = "a.ytLockupMetadataViewModelTitle"
+[rules.interaction.collections.root]
+start = "top-document"
+steps = []

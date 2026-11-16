@@ -1,6 +1,49 @@
 //! Pure policy for translating page-focus facts into core mode transitions.
 
-use ferric_browser_core::Mode;
+use ferric_browser_core::{Mode, Target};
+
+#[derive(Clone, Debug)]
+pub(super) struct PageKeyFocus {
+    pub target: Target,
+    pub focused: bool,
+    pub kind: String,
+    pub receiver: PageKeyReceiver,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct PageKeyReceiver {
+    pub key: String,
+    pub origin: String,
+    pub top: bool,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct FocusProbeReceipt {
+    pub target: FocusProbeTarget,
+    pub state: Option<FocusProbeState>,
+    pub receiver: Option<PageKeyReceiver>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct FocusProbeTarget {
+    pub tab_id: String,
+    pub generation: String,
+    pub document_id: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct FocusProbeState {
+    pub sequence: i32,
+    pub context: i32,
+    pub editable: bool,
+    pub user_activated: bool,
+    pub kind: String,
+    pub focused: bool,
+}
 
 #[derive(Clone, Debug)]
 pub(super) struct FocusObservation {
@@ -10,6 +53,8 @@ pub(super) struct FocusObservation {
     pub(super) context: i32,
     pub(super) editable: bool,
     pub(super) user_activated: bool,
+    pub(super) page_key: Option<PageKeyFocus>,
+    pub(super) frame_document: Option<String>,
 }
 
 impl FocusObservation {
@@ -77,6 +122,8 @@ mod insert_tests {
             context: 42,
             editable: true,
             user_activated: true,
+            page_key: None,
+            frame_document: None,
         };
         assert!(!observation.ends_transient_context(Mode::Insert, 7, 42, true));
         assert!(observation.ends_transient_context(Mode::Insert, 7, 43, true));

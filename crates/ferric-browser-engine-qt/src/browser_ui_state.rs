@@ -1,10 +1,9 @@
 //! Qt-owned transient state shapes shared by browser presentation modules.
 
 use super::{
-    BrowserApplication, BrowserUiRust, ConfigurationLayers, ProfileOpenEffect, QString,
-    RuntimeOverrides, TabId, Target, Value, WindowId,
+    BrowserApplication, BrowserUiRust, ConfigurationLayers, QString, TabId, Target, Value, WindowId,
 };
-use std::{path::PathBuf, time::Instant};
+use std::time::Instant;
 
 #[derive(Clone, Debug)]
 pub(super) struct PendingContextRoute {
@@ -57,6 +56,10 @@ impl ContextSnapshot {
 }
 
 pub(super) struct PendingProfileConfiguration {
+    pub(super) request: std::sync::Arc<()>,
+    pub(super) selector_receipt:
+        Option<std::sync::Arc<super::selector_validation_receipts::SelectorValidationReceipt>>,
+    pub(super) selector_fingerprint: Option<String>,
     pub(super) context_catalog_revision: u64,
     pub(super) private_profile: bool,
     pub(super) profile_name: String,
@@ -67,29 +70,37 @@ pub(super) struct PendingProfileConfiguration {
 }
 
 pub(super) struct PendingSelectorValidation {
+    pub(super) completion: Option<super::browser_ui_page_windows::PageSettingsCompletion>,
+    pub(super) origin:
+        Option<super::browser_ui_configuration_preparation::ConfigurationRequestOrigin>,
     pub(super) operation_id: Option<String>,
     pub(super) setting_feedback: Option<SettingFeedback>,
     pub(super) generation: u64,
     pub(super) expected_revision: u64,
-    pub(super) started_at: Instant,
+    pub(super) owner: Option<ferric_browser_application::ConfigurationRequestCapture>,
+    pub(super) started_at: Option<Instant>,
     pub(super) fingerprint: String,
+    pub(super) validation: Option<super::selector_validation_receipts::SelectorValidationCapture>,
     pub(super) action: PendingSelectorAction,
 }
 
 pub(super) enum PendingSelectorAction {
+    Prepare(Box<super::browser_ui_configuration_preparation::DeferredConfigurationPreparation>),
+    CommittedPeer {
+        prepared: Box<ferric_browser_application::PreparedConfigurationUpdate>,
+    },
     RuntimeConfig {
-        candidate: Value,
-        layers: Box<ConfigurationLayers>,
+        post_action: Option<super::configuration_completion::ConfigurationCompletion>,
+        prepared: Box<ferric_browser_application::PreparedConfigurationUpdate>,
         status: String,
-        persistent_overrides: RuntimeOverrides,
-        persist_path: Option<PathBuf>,
+        persist: bool,
     },
     Reload {
         publication: Box<super::ConfigReloadPublication>,
     },
     Profile {
         pending: Box<PendingProfileConfiguration>,
-        effect: Box<ProfileOpenEffect>,
+        candidate: Box<ferric_browser_application::ProfileOpenCandidate>,
     },
     Check {
         source_count: usize,
@@ -97,14 +108,19 @@ pub(super) enum PendingSelectorAction {
 }
 
 pub(super) struct PendingConfigurationPublication {
+    pub(super) post_action: Option<super::configuration_completion::ConfigurationCompletion>,
+    pub(super) completion: Option<super::browser_ui_page_windows::AdmittedPageSettingsCompletion>,
+    pub(super) origin:
+        Option<super::browser_ui_configuration_preparation::ConfigurationRequestOrigin>,
     pub(super) operation_id: Option<String>,
     pub(super) setting_feedback: Option<SettingFeedback>,
     pub(super) candidate: Value,
     pub(super) layers: ConfigurationLayers,
     pub(super) status: String,
-    pub(super) fingerprint: String,
+    pub(super) selectors: super::selector_validation_receipts::SelectorValidationPublication,
 }
 
+#[derive(Clone)]
 pub(super) struct SettingFeedback {
     pub(super) id: QString,
     pub(super) key: String,

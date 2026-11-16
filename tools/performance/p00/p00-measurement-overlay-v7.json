@@ -1,0 +1,56 @@
+{
+  "status": "prepared-syntax-only-pass-not-built-or-applied",
+  "revision": "f2c5d6deebd97eb861084503f25613a6a819949d",
+  "scope": "Eight-file P00 measurement-only overlay. Keeps107 default timing rows. Explicit lifetime kind adds four resource rows:1000 ordinary and1000focusedforeign established Hint cycles,100shared and100private window transitions; ten warmups. Read-only frame/document observations after unmodified production close, exact Button/delegate endpoints, native profile ledgers and observed process resources; no forced cleanup, callback-retirement, detached-DOM, named-durable-profile or latency percentile claim.",
+  "patch_sha256": "77e4bf4c2d53e800977ec6a3cca082cd04c6b630e4fd8f72d8b988824f2631aa",
+  "inputs": {
+    "crates/ferric-browser-engine-qt/tests/application/tst_application.h": {
+      "original_sha256": "8528a154721cb4218a9fea413b2cf24229a4cc9ebdd0fa6fd36cb34f00b4dd62",
+      "overlay_sha256": "14981d4bf3ba62bc78aaed0843620199d0c23d1a26d23e16f4ce77ebc592d9fb"
+    },
+    "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp": {
+      "original_sha256": "90dcb77f808959fcc0c9333edacf296d95c508b2709b2a6d68f9b27a469ca268",
+      "overlay_sha256": "6fe900b9995f6e953894444a8b15d2a7b9d5bd6b2f616fde1ddb60cd1a6e7d9d"
+    },
+    "crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt": {
+      "original_sha256": "74810e8d9ed99d1682c8f3cdbc79e1fb8b1f7badc82fe3f9bb11b481976b705b",
+      "overlay_sha256": "750768fe9fb186357713b748d4edf32b8486416393176d6b165e6c2987510eb5"
+    },
+    "crates/ferric-browser-engine-qt/tests/application/tst_site_policy_performance.cpp": {
+      "original_sha256": null,
+      "overlay_sha256": "8f5f079619979c66dce1b6e06c927b371d23ad29557f5e218cb3c41783000eff"
+    },
+    "crates/ferric-browser-engine-qt/tests/application/run_site_policy_performance.py": {
+      "original_sha256": null,
+      "overlay_sha256": "5970a94bfcf7fe2f273f5cd34b656bde294004c8f4d03fe251f0372cb9562aad"
+    },
+    "crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-targets.html": {
+      "original_sha256": null,
+      "overlay_sha256": "e2f1edd82e164f2c262bf434dc0c802ab94d58e51687b89d345c44fc8ee1b7a6"
+    },
+    "crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-refresh-targets.html": {
+      "original_sha256": null,
+      "overlay_sha256": "5fe42617486832d3a266bdc9c2ea9facdbf12979dec87dea169740d5e826db1f"
+    },
+    "crates/ferric-browser-engine-qt/tests/fixtures/site-policy/root-render-targets.html": {
+      "original_sha256": null,
+      "overlay_sha256": "f620df998ffa64e145c46cf4874c1837c36dea40a6707c56c8897a1a2bdf7600"
+    }
+  },
+  "materialization": "/home/tom/Projects/Ferric/ferric-browser/target/site-policy-baseline/p00-measurement-syntax/v7",
+  "syntax": "Qt6.11.2/GCC16 measurement translation unit+header syntax-only passed8.34s; exact8source hashes matched before/after; low priority alongside original functional run. No object/link/browser/performance qualification.",
+  "review": "p00_remaining_audit final source approval of8paths/hash/helperordering/4slots/default107rows/lifecyclematrix. Subsequent isolated syntax-only pass recorded separately; full build/runtime/performance remain pending.",
+  "synthetic_parser_probe": "p00-parser-guard-probe-v7/summary.json (18 cases, fake log producer/archive stub, no qualification)",
+  "synthetic_state_reader_probe": "p00-lifetime-state-reader-probe.json (5 cases, no WebEngine qualification)",
+  "supersedes": "v6 frozen and unapplied; original source clean",
+  "review_corrections": [
+    {
+      "prior_patch_sha256": "c00c643f0eab7d910e24d02af1f0fa83810a7a7a2f34074c7f4fb60f7b0dff8a",
+      "finding": "Successful window release outcomes could duplicate/miss indices",
+      "correction": "Exact unique integer index range(-warmups,requested) and boolean warmup==(index<0)",
+      "preserved_patch": "p00-measurement-overlay-v7-pre-outcome-matrix.patch",
+      "probe": "p00-parser-guard-probe-v7-matrix/summary.json;8 synthetic checks passed, no runtime qualification"
+    }
+  ],
+  "syntax_record": "p00-measurement-v7-syntax.json"
+}

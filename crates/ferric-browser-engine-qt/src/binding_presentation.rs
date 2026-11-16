@@ -1,8 +1,7 @@
 //! Typed binding-help projection for the QML list view.
 
 use super::{
-    BindingResolver, CxxQtType, ParseInput, Pin, QString, Value, ipc_mode_name, parse_chain,
-    qobject,
+    BindingResolver, CxxQtType, ParseInput, Pin, QString, ipc_mode_name, parse_chain, qobject,
 };
 
 const BINDING_HELP_MODES: [&str; 9] = [
@@ -53,6 +52,12 @@ impl qobject::BrowserUi {
             .as_ref()
             .map(BindingResolver::definitions)
             .unwrap_or_default();
+        let this = self.as_ref();
+        let sources = super::binding_source_index::BindingSources::from_config(&this.rust().config);
+        let definitions = definitions
+            .iter()
+            .map(|binding| (binding, binding.canonical_keys()))
+            .collect::<Vec<_>>();
         let mut rows = Vec::new();
 
         for mode in BINDING_HELP_MODES {
@@ -68,7 +73,7 @@ impl qobject::BrowserUi {
 
                 let bindings = definitions
                     .iter()
-                    .filter(|binding| {
+                    .filter(|(binding, _)| {
                         ipc_mode_name(binding.mode) == mode
                             && canonical_binding_command_name(
                                 &self.as_ref().rust().registry,
@@ -83,7 +88,7 @@ impl qobject::BrowserUi {
                 } else {
                     bindings
                         .iter()
-                        .map(|binding| binding.keys.join(" "))
+                        .map(|(binding, _)| binding.keys.join(" "))
                         .collect::<Vec<_>>()
                         .join(" · ")
                 };
@@ -92,18 +97,12 @@ impl qobject::BrowserUi {
                 } else {
                     bindings
                         .iter()
-                        .map(|binding| {
-                            let keychain = binding.keys.concat();
-                            let configured = self
-                                .as_ref()
-                                .rust()
-                                .config
-                                .get("bindings")
-                                .and_then(Value::as_object)
-                                .and_then(|values| values.get(mode))
-                                .and_then(Value::as_object)
-                                .is_some_and(|values| values.contains_key(&keychain));
-                            if configured { "user" } else { "built-in" }
+                        .map(|(binding, keys)| {
+                            if sources.get(binding.mode, keys).is_some() {
+                                "user"
+                            } else {
+                                "built-in"
+                            }
                         })
                         .collect::<Vec<_>>()
                         .join(" · ")
@@ -157,11 +156,11 @@ impl qobject::BrowserUi {
         }
 
         let mut conflict_rows = Vec::new();
-        for (left_index, left) in definitions.iter().enumerate() {
-            for right in definitions.iter().skip(left_index + 1) {
+        for (left_index, (left, left_keys)) in definitions.iter().enumerate() {
+            for (right, right_keys) in definitions.iter().skip(left_index + 1) {
                 if left.mode != right.mode
-                    || left.keys == right.keys
-                    || (!right.keys.starts_with(&left.keys) && !left.keys.starts_with(&right.keys))
+                    || left_keys == right_keys
+                    || (!right_keys.starts_with(left_keys) && !left_keys.starts_with(right_keys))
                 {
                     continue;
                 }

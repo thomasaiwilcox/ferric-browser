@@ -27,6 +27,7 @@ FerricModalSurface {
     required property var settingsModel
     signal closeRequested
     signal refreshRequested
+    signal sitePoliciesRequested
     signal installUserscriptRequested
     signal temporaryChangeRequested(bool temporary)
     signal searchChanged(string text)
@@ -80,6 +81,12 @@ FerricModalSurface {
                 objectName: "settingsScriptsTab"
                 text: "Scripts"
                 Accessible.name: "Installed userscripts"
+            }
+            TabButton {
+                objectName: "settingsSitePoliciesButton"
+                text: "Site Policies"
+                Accessible.description: "Open the Site Policies workspace"
+                onClicked: { sections.currentIndex = 0; settings.sitePoliciesRequested() }
             }
         }
         FerricScrollColumn {

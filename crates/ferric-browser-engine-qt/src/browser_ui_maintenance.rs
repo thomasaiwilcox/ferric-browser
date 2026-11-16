@@ -100,6 +100,19 @@ impl qobject::BrowserUi {
 
     pub(super) fn activate_runtime_wake(mut self: Pin<&mut Self>) {
         self.as_mut().register_ipc_controller();
+        let wake = self.as_mut().ensure_owner_runtime_wake();
+        install_pending_request_waker(Arc::clone(&wake));
+        crate::page_window_operations::install_waker(wake);
+    }
+
+    /// Every Ui needs its own queued scheduler. Only primary activation above
+    /// installs the process-wide IPC/page-operation controller wake targets.
+    pub(super) fn ensure_owner_runtime_wake(
+        mut self: Pin<&mut Self>,
+    ) -> Arc<dyn Fn() + Send + Sync> {
+        if let Some(wake) = self.as_ref().rust().runtime_waker.as_ref() {
+            return Arc::clone(wake);
+        }
         let qt_thread = self.as_ref().get_ref().qt_thread();
         let wake_queued = Arc::new(AtomicBool::new(false));
         let callback_queued = Arc::clone(&wake_queued);
@@ -122,13 +135,21 @@ impl qobject::BrowserUi {
                 failed.store(false, Ordering::Release);
             }
         });
-        install_pending_request_waker(Arc::clone(&wake));
-        crate::page_window_operations::install_waker(Arc::clone(&wake));
         let mut rust = self.as_mut().rust_mut();
         if let Some(state) = rust.state.as_mut() {
             state.set_storage_waker(Arc::clone(&wake));
         }
-        rust.runtime_waker = Some(wake);
+        if let Some(pending) = rust.pending_profile_configuration.as_mut() {
+            pending.state.set_storage_waker(Arc::clone(&wake));
+        }
+        if let Some(pending) = rust.configuration_io.pending_selector_validation.as_mut()
+            && let super::browser_ui_state::PendingSelectorAction::Profile { pending, .. } =
+                &mut pending.action
+        {
+            pending.state.set_storage_waker(Arc::clone(&wake));
+        }
+        rust.runtime_waker = Some(Arc::clone(&wake));
+        wake
     }
 
     pub(super) fn maintenance_delay_ms(mut self: Pin<&mut Self>) -> i32 {
@@ -143,6 +164,10 @@ impl qobject::BrowserUi {
                 .state
                 .as_ref()
                 .is_some_and(super::BrowserApplication::configuration_write_pending)
+            || rust
+                .state
+                .as_ref()
+                .is_some_and(super::BrowserApplication::shared_policy_contexts_pending)
             || rust.configuration_io.pending_context_reload.is_some()
             || rust
                 .configuration_io
@@ -278,11 +303,8 @@ impl qobject::BrowserUi {
         pending: ferric_browser_ipc::PendingRequest,
         request: &super::Request,
     ) {
-        let event_stream = if pending.request().method == "events.subscribe" {
-            pending.clone_stream().map(Some)
-        } else {
-            Ok(None)
-        };
+        let event_stream =
+            (pending.request().method == "events.subscribe").then(|| pending.writer());
         let event_types = if pending.request().method == "events.subscribe" {
             Self::ipc_event_filter(&pending.request().params)
         } else {
@@ -291,7 +313,7 @@ impl qobject::BrowserUi {
         let mut response = self.as_mut().handle_ipc_request(request);
         self.as_mut().refresh_ipc_owner();
         if response.error.is_none()
-            && let Ok(Some(stream)) = event_stream
+            && let Some(stream) = event_stream
             && let Ok(event_types) = event_types
             && let Err(error) = subscribe_event_stream(stream, event_types)
         {

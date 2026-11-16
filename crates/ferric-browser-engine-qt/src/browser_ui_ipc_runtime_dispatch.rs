@@ -6,10 +6,42 @@ use ferric_browser_ipc::ErrorCode;
 
 impl qobject::BrowserUi {
     pub(super) fn execute_ipc_command_with_operation(
+        self: Pin<&mut Self>,
+        command: ParsedCommand,
+        route: &IpcRoute,
+        operation_id: Option<&str>,
+    ) -> Result<Value, PublicError> {
+        self.execute_ipc_command_in_turn(command, route, operation_id, None)
+    }
+
+    pub(super) fn execute_ipc_command_in_turn(
+        self: Pin<&mut Self>,
+        command: ParsedCommand,
+        route: &IpcRoute,
+        operation_id: Option<&str>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
+    ) -> Result<Value, PublicError> {
+        let read = preparation
+            .filter(|turn| turn.is_current(self.as_ref().get_ref()))
+            .and_then(|_| {
+                super::browser_ui_configuration_read::ConfigurationReadTurn::capture(
+                    self.as_ref().get_ref(),
+                )
+            });
+        self.execute_ipc_command_with_read(command, route, operation_id, preparation, read.as_ref())
+    }
+
+    pub(super) fn execute_ipc_command_with_read(
         mut self: Pin<&mut Self>,
         command: ParsedCommand,
         route: &IpcRoute,
         operation_id: Option<&str>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
+        read: Option<&super::browser_ui_configuration_read::ConfigurationReadTurn>,
     ) -> Result<Value, PublicError> {
         let expanded = self
             .as_ref()
@@ -33,9 +65,94 @@ impl qobject::BrowserUi {
             },
         )?;
         if expanded.len() != 1 {
-            return self.execute_page_window_ipc_chain(expanded, route, operation_id);
+            return self.execute_routed_ipc_chain_with_read(
+                expanded
+                    .into_iter()
+                    .map(|command| (command, route.clone()))
+                    .collect(),
+                operation_id,
+                &mut None,
+                preparation,
+                read,
+            );
         }
         let command = expanded.into_iter().next().expect("one expanded command");
+        if command.name == "get" || super::browser_ui_site_policy::uses_read_turn(&command) {
+            if preparation.is_some_and(|turn| !turn.is_current(self.as_ref().get_ref())) {
+                return Err("The command owner changed during settings preparation".into());
+            }
+            if operation_id.is_some_and(|id| {
+                self.as_ref()
+                    .rust()
+                    .operation(id)
+                    .is_none_or(|record| record.state.is_terminal())
+            }) {
+                return Err(crate::PublicError::new(
+                    ferric_browser_ipc::ErrorCode::Cancelled,
+                    "The command was cancelled.",
+                    "read operation is no longer live",
+                ));
+            }
+
+            let rebound = preparation
+                .filter(|turn| turn.is_current(self.as_ref().get_ref()))
+                .and_then(|_| {
+                    super::browser_ui_configuration_read::ConfigurationReadTurn::capture(
+                        self.as_ref().get_ref(),
+                    )
+                });
+            let read = rebound.as_ref().or(read);
+            self.as_ref().validate_configuration_get_route(route)?;
+            if let Some(read) = read {
+                return self
+                    .as_mut()
+                    .execute_configuration_read_command(&command, read);
+            }
+            return self.queue_configuration_read(
+                command,
+                super::browser_ui_page_windows::PageContinuation::Ipc {
+                    commands: Vec::new(),
+                    route: route.clone(),
+                },
+                operation_id,
+                &mut None,
+            );
+        }
+
+        if !self.as_ref().in_page_window_mode()
+            && super::browser_ui_page_workflows::needs_read_expansion(std::iter::once(&command))
+            && let Some(commands) = super::browser_ui_page_workflows::expanded_read_workflow(
+                self.as_ref().rust(),
+                vec![crate::RepeatableCommand {
+                    command: command.clone(),
+                    count: 1,
+                    route: Some(route.clone()),
+                }],
+            )
+        {
+            return self.execute_page_recorded_commands_with_read(
+                commands,
+                operation_id,
+                &mut None,
+                preparation,
+                read,
+            );
+        }
+        if preparation.is_none()
+            && !(super::browser_ui_site_policy::is_draft_management(&command) && read.is_some())
+            && super::browser_ui_configuration_preparation::needs_preparation(
+                &command,
+                &self.as_ref().rust().registry,
+            )
+        {
+            self.as_ref().validate_ipc_route_public(route)?;
+            return self.queue_configuration_preparation(
+                super::browser_ui_configuration_preparation::DeferredConfigurationAction::Commands(
+                    super::browser_ui_page_windows::PageContinuation::Ipc {
+                        commands: vec![(command, route.clone())], route: route.clone(),
+                    }), operation_id, &mut None,
+            ).map_err(Into::into);
+        }
         if self.as_ref().in_page_window_mode()
             && (matches!(
                 command.name.as_str(),
@@ -43,7 +160,7 @@ impl qobject::BrowserUi {
             ) || (command.name == "action" && crate::parse_action_invocation(&command).is_ok()))
         {
             let wrapper = command.clone();
-            let mut result = self.execute_page_workflow(
+            let mut result = self.execute_page_workflow_with_read(
                 vec![crate::RepeatableCommand {
                     command,
                     count: 1,
@@ -51,6 +168,8 @@ impl qobject::BrowserUi {
                 }],
                 operation_id,
                 &mut None,
+                preparation,
+                read,
             )?;
             if wrapper.name == "action" {
                 let (_, id) =
@@ -97,7 +216,13 @@ impl qobject::BrowserUi {
             };
         }
         if command.name == "action" {
-            return self.execute_action_ipc_command(&command, route, operation_id);
+            return self.execute_action_ipc_command(
+                &command,
+                route,
+                operation_id,
+                preparation,
+                read,
+            );
         }
         if command.name == "context-delete" {
             if route.context.is_some() || route.profile.is_some() {
@@ -119,6 +244,7 @@ impl qobject::BrowserUi {
                 Vec::new(),
                 operation_id,
                 &mut None,
+                preparation,
             );
         }
         if self.as_ref().in_page_window_mode() && command.name == "tab-close" {
@@ -128,11 +254,27 @@ impl qobject::BrowserUi {
                 Vec::new(),
                 operation_id,
                 &mut None,
+                preparation,
             );
         }
-        let result =
-            self.as_mut()
-                .execute_adapter_ipc_command(command.clone(), route, operation_id)?;
+        if super::browser_ui_site_policy::is_draft_management(&command) && preparation.is_none() {
+            if route.context.is_some() {
+                return Err("context routing is not valid for Site Policies drafts".into());
+            }
+            self.as_ref().validate_ipc_route_public(route)?;
+            let read = read.ok_or_else(|| {
+                PublicError::engine("Site Policies edit requires a cold owner-bound turn")
+            })?;
+            return self
+                .execute_site_policy_management_read(&command, read)
+                .map_err(PublicError::engine);
+        }
+        let result = self.as_mut().execute_adapter_ipc_command(
+            command.clone(),
+            route,
+            operation_id,
+            preparation,
+        )?;
         // A preview or routing prompt has not executed the navigation. Clean
         // opens dispatch their accepted, cleaned command separately, either
         // immediately or after confirmation; recording here would duplicate it.
@@ -155,6 +297,10 @@ impl qobject::BrowserUi {
         command: &ParsedCommand,
         route: &IpcRoute,
         operation_id: Option<&str>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
+        read: Option<&super::browser_ui_configuration_read::ConfigurationReadTurn>,
     ) -> Result<Value, PublicError> {
         self.as_ref().validate_action_ipc_route(route)?;
         if let Some((mut result, action_id)) =
@@ -170,9 +316,13 @@ impl qobject::BrowserUi {
                 error,
             )
         })?;
-        let mut result =
-            self.as_mut()
-                .execute_ipc_command_with_operation(mapped, route, operation_id)?;
+        let mut result = self.as_mut().execute_ipc_command_with_read(
+            mapped,
+            route,
+            operation_id,
+            preparation,
+            read,
+        )?;
         result["action_id"] = Value::String(action_id);
         Ok(result)
     }
@@ -285,6 +435,7 @@ impl qobject::BrowserUi {
                     Vec::new(),
                     operation_id,
                     &mut None,
+                    None,
                 )
                 .map_err(|error| error.to_string());
         }

@@ -1,15 +1,19 @@
 #include "../../src/browser_key_router.h"
 #include "../../src/browser_page_pointer_adapter.h"
+#include "native_probe_input.h"
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QJsonDocument>
+#include <QtCore/QJsonArray>
 #include <QtCore/QPointer>
+#include <QtCore/QScopeGuard>
 #include <QtCore/QTemporaryDir>
 #include <QtCore/QTimer>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QInputMethodEvent>
+#include <QtGui/QInputMethod>
 #include <QtQml/QQmlEngine>
 #include <QtQml/QQmlContext>
 #include <QtQuick/QQuickItem>
@@ -20,6 +24,30 @@
 #include <algorithm>
 #include <memory>
 #include <functional>
+
+class NativeKeyTrace final : public QObject {
+public:
+    explicit NativeKeyTrace(QObject *target) : window(target) { QCoreApplication::instance()->installEventFilter(this); }
+    ~NativeKeyTrace() override { QCoreApplication::instance()->removeEventFilter(this); }
+    QObject *window;
+    QVariantList samples;
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        if(event->type()==QEvent::InputMethod && QGuiApplication::focusWindow()==window) {
+            const auto *input=static_cast<QInputMethodEvent *>(event);
+            samples.append(QVariantMap{{"type",int(event->type())},{"preedit",input->preeditString()},
+                {"commit",input->commitString()}});
+        }
+        if (watched == window && (event->type() == QEvent::ShortcutOverride
+            || event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease)) {
+            const auto *key = static_cast<QKeyEvent *>(event);
+            samples.append(QVariantMap{{"type",int(event->type())},{"key",key->key()},
+                {"scan",key->nativeScanCode()},{"symbol",key->nativeVirtualKey()},
+                {"nativeModifiers",key->nativeModifiers()},{"text",key->text()},
+                {"modifiers",int(key->modifiers())},{"repeat",key->isAutoRepeat()}});
+        }
+        return false;
+    }
+};
 
 // Test-only held-pointer experiment. Production Ferric currently exposes only
 // discrete pointer actions; this helper deliberately stays inside the native
@@ -173,6 +201,18 @@ private:
     bool cleanupReleaseSent_ = false;
 };
 
+class NativeKeyHook final : public QObject {
+public:
+    std::function<void(QKeyEvent *)> callback;
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        const QPointer<QObject> alive(watched);
+        if (callback && (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease))
+            callback(static_cast<QKeyEvent *>(event));
+        return alive.isNull();
+    }
+};
+
 // Exercise the production application event filter on WebEngine's actual
 // Quick focus proxy. No synthetic JS keyboard events or browser automation.
 class NativeInsertTest : public QObject {
@@ -227,13 +267,21 @@ class NativeInsertTest : public QObject {
             qFatal("Production PageInteractionScripts resource unavailable");
         QString module = QString::fromUtf8(interaction.readAll());
         module.remove(".pragma library");
+        module.remove(".import \"InteractionRootRuntime.js\" as InteractionRootRuntime");
+        module.remove(".import \"InteractionWitnessRuntime.js\" as InteractionWitnessRuntime");
+        const auto runtime = [](const QString &name) {
+            QFile file(QFileInfo(QStringLiteral(FERRIC_SCRIPT_PATH)).absoluteDir().filePath(name+".js"));
+            if (!file.open(QIODevice::ReadOnly)) qFatal("Production interaction runtime unavailable");
+            QString source=QString::fromUtf8(file.readAll());source.remove(".pragma library");
+            return "var "+name+"=(function(){"+source+";return {source:source};})();";
+        };
         QString facade = QString::fromUtf8(script.readAll());
         facade.remove(".pragma library");
         facade.remove(".import \"PageInteractionScripts.js\" as PageInteractionScripts");
         const QString namespaceSource =
             QStringLiteral("var PageInteractionScripts=(function(){") + module
             + QStringLiteral(
-                ";return {VERSION:VERSION,boundedCount:boundedCount,"
+                ";return {VERSION:VERSION,boundedCount:boundedCount,hintNativeAncestryLifecycle:hintNativeAncestryLifecycle,hintFrameHost:hintFrameHost,"
                 "scrollTargetRuntime:scrollTargetRuntime,scroll:scroll,"
                 "scrollTargetPolicy:scrollTargetPolicy,scrollTargetStatus:scrollTargetStatus,"
                 "hintSelector:hintSelector,hintProxyRuntime:hintProxyRuntime,"
@@ -241,7 +289,7 @@ class NativeInsertTest : public QObject {
                 "hintStopTracking:hintStopTracking,hintFresh:hintFresh,"
                 "hintPointerPreflight:hintPointerPreflight,hintFocus:hintFocus,"
                 "hintClick:hintClick,hintSetScrollTarget:hintSetScrollTarget};})() ;");
-        return namespaceSource + facade;
+        return runtime("InteractionRootRuntime")+runtime("InteractionWitnessRuntime")+namespaceSource+facade;
     }
     QString browserScript(const QString &expression) {
         return js(productionBrowserScript() + ";" + expression).toString();
@@ -267,6 +315,39 @@ class NativeInsertTest : public QObject {
         locked = false;
         view->setProperty("ferricMode", "normal");
         view->setProperty("ferricEpoch", router.inputEpoch() + 1);
+    }
+    void openPolicyTrace() {
+        const int loaded = view->property("loaded").toInt();
+        view->setProperty("url", QUrl::fromLocalFile(QStringLiteral(FERRIC_POLICY_FIXTURE_PATH)));
+        QTRY_VERIFY(view->property("loaded").toInt() > loaded);
+        QVERIFY(js("typeof policyFixture==='object'").toBool());
+        focus("command-target");
+        QVERIFY(js("policyFixture.clear();true").toBool());
+    }
+    void observePageReceiver() {
+        QJSEngine scripts;
+        const auto loaded = scripts.evaluate(productionBrowserScript());
+        QVERIFY2(!loaded.isError(),qPrintable(loaded.toString()));
+        const auto script = scripts.evaluate("focusObserverSource()+';'+focusProbe()");
+        QVERIFY(!script.isError());
+        QSignalSpy observed(&router,&FerricBrowserKeyRouter::pageReceiverObserved);
+        router.probePageReceiver(view,script.toString(),router.inputEpoch());
+        QTRY_COMPARE(observed.size(),1);
+        QVERIFY2(!router.pageReceiverKey().isEmpty(),qPrintable(observed.first().at(3).toString()));
+    }
+    void ownedProbe(bool once = false) {
+        openPolicyTrace();
+        QVERIFY(router.configureFeasibilityMapping(view, true));
+        pass(once);
+    }
+    void probeSource(int key, bool press, bool repeat = false, uint scan = 0,
+                     Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+        const QString text = key >= Qt::Key_A && key <= Qt::Key_Z
+            ? QString(QChar(key)).toLower() : QString();
+        QKeyEvent event(press ? QEvent::KeyPress : QEvent::KeyRelease,
+                       key, modifiers, scan, text.isEmpty() ? 0 : text.front().unicode(),
+                       0, text, repeat);
+        QCoreApplication::sendEvent(&window, &event);
     }
 private slots:
     void initTestCase() {
@@ -300,6 +381,15 @@ document.addEventListener('keyup',e=>{keyups.push(e.key);if(e.key==='Enter')up++
         QVERIFY(next.open(QIODevice::WriteOnly));
         next.write("<input id='next'>");
         next.close();
+        // Local PCM media, independent of codecs, network or a live service.
+        QFile audio(files.filePath("silence.wav"));
+        QVERIFY(audio.open(QIODevice::WriteOnly));
+        QByteArray wav("RIFF\x24\x7d\x00\x00WAVEfmt \x10\x00\x00\x00"
+                       "\x01\x00\x01\x00\x80\x3e\x00\x00\x00\x7d\x00\x00"
+                       "\x02\x00\x10\x00" "data\x00\x7d\x00\x00", 44);
+        wav.append(QByteArray(32000, '\0'));
+        QCOMPARE(audio.write(wav), qint64(wav.size()));
+        audio.close();
         QFile qml(files.filePath("view.qml"));
         QVERIFY(qml.open(QIODevice::WriteOnly));
         qml.write(R"(import QtQuick
@@ -321,6 +411,14 @@ WebEngineView {
     onLoadingChanged: function(request) { if (request.status === WebEngineView.LoadSucceededStatus) loaded++ }
     property bool probeDone: false
     property var probeResult
+    settings.playbackRequiresUserGesture: true
+    property bool probeFullscreenEnabled: false
+    settings.fullScreenSupportEnabled: probeFullscreenEnabled
+    property int probeFullscreenRequests: 0
+    onFullScreenRequested: function(request) {
+        probeFullscreenRequests++
+        request.accept()
+    }
     function probeBrowser(source) {
         runJavaScript(source, WebEngineScript.ApplicationWorld, function(value) { probeResult = value; probeDone = true })
     }
@@ -413,6 +511,9 @@ WebEngineView {
         });
     }
     void init() {
+        QVERIFY(router.configureFeasibilityMapping(view, false));
+        router.setFeasibilityInputBlocked(false);
+        QCOMPARE(router.feasibilitySourceCount(), 0);
         exits = 0;
         navigations = 0;
         passExits = 0;
@@ -431,6 +532,32 @@ WebEngineView {
         QTRY_VERIFY(js("typeof window.down !== 'undefined'").toBool());
         js("down=0;up=0;submits=0;true");
         enter();
+    }
+    void canonicalDecisionText_data() {
+        QTest::addColumn<int>("logicalKey");
+        QTest::addColumn<quint32>("scan");
+        QTest::addColumn<QString>("text");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("metadata-free-shift")<<int(Qt::Key_P)<<quint32(0)<<QString("p")<<QString("P");
+        QTest::newRow("metadata-free-empty")<<int(Qt::Key_P)<<quint32(0)<<QString()<<QString("P");
+        QTest::newRow("native-produced-lower")<<int(Qt::Key_P)<<quint32(33)<<QString("p")<<QString("p");
+        QTest::newRow("native-produced-upper")<<int(Qt::Key_P)<<quint32(33)<<QString("P")<<QString("P");
+        QTest::newRow("metadata-free-unicode")<<int(Qt::Key_P)<<quint32(0)<<QString::fromUtf8("é")<<QString::fromUtf8("é");
+        QTest::newRow("native-unicode")<<int(Qt::Key_P)<<quint32(33)<<QString::fromUtf8("é")<<QString::fromUtf8("é");
+        QTest::newRow("unicode-ascii-fold")<<int(Qt::Key_K)<<quint32(0)<<QString::fromUtf8("K")<<QString::fromUtf8("K");
+    }
+    void canonicalDecisionText() {
+        QFETCH(int,logicalKey);QFETCH(quint32,scan);QFETCH(QString,text);QFETCH(QString,expected);
+        normal();
+        QObject owner;
+        connect(&router,&FerricBrowserKeyRouter::keyPressed,&owner,[this]{router.acceptCurrentEvent();});
+        QSignalSpy spy(&router,&FerricBrowserKeyRouter::keyPressed);
+        QKeyEvent down(QEvent::KeyPress,logicalKey,Qt::ShiftModifier,scan,0,0,text);
+        QKeyEvent up(QEvent::KeyRelease,logicalKey,Qt::ShiftModifier,scan,0,0,text);
+        QCoreApplication::sendEvent(&window,&down);
+        QCOMPARE(spy.size(),1);QCOMPARE(spy.first().at(0).toString(),expected);
+        QCOMPARE(down.text(),text);QCOMPARE(down.nativeScanCode(),scan);
+        QCoreApplication::sendEvent(&window,&up);
     }
     void extractedInteractionResourceFailsClosed() {
         const QString source = productionBrowserScript();
@@ -523,6 +650,1245 @@ WebEngineView {
         // that original text and modifier combination unchanged.
         QTest::newRow("shift-letter") << int(Qt::Key_K) << int(Qt::ShiftModifier) << "k";
         QTest::newRow("ctrl-letter") << int(Qt::Key_F) << int(Qt::ControlModifier) << "f";
+    }
+    void sitePolicyBaselineNativeTrace_data() {
+        QTest::addColumn<bool>("once");
+        QTest::newRow("one-shot") << true;
+        QTest::newRow("persistent") << false;
+    }
+    void sitePolicyBaselineNativeTrace() {
+        QFETCH(bool, once);
+        const int loaded = view->property("loaded").toInt();
+        view->setProperty("url", QUrl::fromLocalFile(QStringLiteral(FERRIC_POLICY_FIXTURE_PATH)));
+        QTRY_VERIFY(view->property("loaded").toInt() > loaded);
+        QVERIFY(js("typeof policyFixture==='object'").toBool());
+        focus("command-target");
+        QVERIFY(js("policyFixture.clear(); true").toBool());
+        pass(once);
+        QTest::keyPress(&window, Qt::Key_P);
+        QCOMPARE(passExits, 0);
+        QTest::keyRelease(&window, Qt::Key_P);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 2);
+        QCOMPARE(js("policyFixture.snapshot().events[0].type").toString(), "keydown");
+        QCOMPARE(js("policyFixture.snapshot().events[1].type").toString(), "keyup");
+        QCOMPARE(js("policyFixture.snapshot().events[0].key").toString(), "p");
+        QCOMPARE(js("policyFixture.snapshot().events[1].key").toString(), "p");
+        QCOMPARE(js("policyFixture.snapshot().events[0].focus").toString(), "command-target");
+        QCOMPARE(js("policyFixture.snapshot().activations").toInt(), 0);
+        QCOMPARE(passExits, once ? 1 : 0);
+        QCOMPARE(navigations, 0);
+        // Retain actual code/trust/activation observations without treating
+        // constructed Qt input as physical/compositor qualification.
+        qInfo().noquote() << "SITE_POLICY_BASELINE_QT_TRACE"
+                         << QJsonDocument::fromVariant(js("policyFixture.snapshot()"))
+                                .toJson(QJsonDocument::Compact);
+    }
+    void sitePolicyNativeMetadataControls_data() {
+        QTest::addColumn<uint>("scan");
+        QTest::newRow("zero-native-metadata") << uint(0);
+        QTest::newRow("incorrect-copied-source-p") << uint(33);
+        QTest::newRow("explicit-virtual-k") << uint(45);
+    }
+    void sitePolicyNativeMetadataControls() {
+        QFETCH(uint, scan);
+        openPolicyTrace();
+        pass(false);
+        auto *receiver = window.activeFocusItem();
+        QVERIFY(receiver && (receiver == view || view->isAncestorOf(receiver)));
+        const uint symbol = scan == 0 ? 0 : scan == 33 ? 0x70 : 0x6b;
+        QKeyEvent down(QEvent::KeyPress, Qt::Key_K, Qt::NoModifier,
+                       scan, symbol, 0, QStringLiteral("k"));
+        QKeyEvent up(QEvent::KeyRelease, Qt::Key_K, Qt::NoModifier,
+                     scan, symbol, 0, QStringLiteral("k"));
+        QCoreApplication::sendEvent(receiver, &down);
+        QCoreApplication::sendEvent(receiver, &up);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 2);
+        const bool xkb = QGuiApplication::platformName() == QStringLiteral("xcb")
+            || QGuiApplication::platformName() == QStringLiteral("wayland");
+        const QString code = xkb && scan == 33 ? QStringLiteral("KeyP") : QStringLiteral("KeyK");
+        QCOMPARE(js("policyFixture.snapshot().events[0].key").toString(), QStringLiteral("k"));
+        QCOMPARE(js("policyFixture.snapshot().events[0].code").toString(), code);
+        QCOMPARE(js("policyFixture.snapshot().events[1].code").toString(), code);
+        QCOMPARE(js("policyFixture.snapshot().events[0].keyCode").toInt(), 75);
+        QCOMPARE(js("policyFixture.snapshot().events[0].location").toInt(), 0);
+        qInfo().noquote() << "P01_NATIVE_METADATA_CONTROL"
+            << QGuiApplication::platformName() << scan
+            << QJsonDocument::fromVariant(js("policyFixture.snapshot()"))
+                   .toJson(QJsonDocument::Compact);
+    }
+    void pageReceiverBodyWithUnfocusedChild() {
+        openPolicyTrace();pass(false);
+        QVERIFY(js("var frame=document.createElement('iframe');frame.srcdoc='<button>Unfocused child</button>';document.body.append(frame);document.body.tabIndex=-1;document.body.focus();true").toBool());
+        observePageReceiver();
+        QVERIFY(!router.pageReceiverKey().isEmpty());
+    }
+    void compiledPageDestinations_data() {
+        QTest::addColumn<QString>("token");
+        QTest::addColumn<QString>("text");
+        QTest::addColumn<QString>("name");
+        QTest::addColumn<QString>("expectedKey");
+        QTest::addColumn<int>("modifiers");
+        for (ushort value = '!'; value <= '~'; ++value) {
+            const QString text{QChar(value)};
+            QTest::newRow(qPrintable(QStringLiteral("ascii-%1").arg(value)))
+                << (value == '+' ? QStringLiteral("Plus") : text) << text << QString()
+                << text << int(Qt::NoModifier);
+        }
+        const QStringList names = {"Space","Enter","Tab","Backtab","Backspace","Delete",
+            "Insert","Escape","Left","Right","Up","Down","Home","End","PgUp","PgDown",
+            "Back","Forward","F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12"};
+        for (const auto &name : names) {
+            QString key = name;
+            if (name == "Space") key = " ";
+            else if (name == "Backtab") key = "Tab";
+            else if (name == "Left" || name == "Right" || name == "Up" || name == "Down") key = "Arrow" + name;
+            else if (name == "PgUp") key = "PageUp";
+            else if (name == "PgDown") key = "PageDown";
+            else if (name == "Back") key = "BrowserBack";
+            else if (name == "Forward") key = "BrowserForward";
+            QTest::newRow(qPrintable(name)) << name << QString() << name << key << int(Qt::NoModifier);
+        }
+        QTest::newRow("ctrl-letter") << QString("Ctrl+k") << QString("k") << QString() << QString("k") << int(Qt::ControlModifier);
+        QTest::newRow("ctrl-named") << QString("Ctrl+Left") << QString() << QString("Left") << QString("ArrowLeft") << int(Qt::ControlModifier);
+        QTest::newRow("ctrl-shift-letter") << QString("Ctrl+Shift+k") << QString("k") << QString() << QString("K") << int(Qt::ControlModifier | Qt::ShiftModifier);
+        QTest::newRow("alt-letter") << QString("Alt+k") << QString("k") << QString() << QString("k") << int(Qt::AltModifier);
+        QTest::newRow("meta-letter") << QString("Meta+k") << QString("k") << QString() << QString("k") << int(Qt::MetaModifier);
+        QTest::newRow("ctrl-alt-letter") << QString("Ctrl+Alt+k") << QString("k") << QString() << QString("k") << int(Qt::ControlModifier | Qt::AltModifier);
+    }
+    void compiledPageDestinations() {
+        QFETCH(QString, token); QFETCH(QString, text); QFETCH(QString, name);
+        QFETCH(QString, expectedKey); QFETCH(int, modifiers);
+        const bool control = modifiers & Qt::ControlModifier;
+        openPolicyTrace();
+        pass(false);
+        observePageReceiver();
+        QVERIFY(js("document.addEventListener('keydown',e=>e.preventDefault());true").toBool());
+        if(control)QVERIFY(js("window.ctrlFlags=0;window.ctrlTimeline=0;window.controlHeld=false;"
+            "document.addEventListener('keydown',e=>{if(e.key==='Control')controlHeld=true;"
+            "else {if(e.ctrlKey)ctrlFlags++;if(controlHeld)ctrlTimeline++;}});"
+            "document.addEventListener('keyup',e=>{if(e.key==='Control')controlHeld=false;});true").toBool());
+        const QVariantMap descriptor{{"text",text},{"named",name},{"ctrl",control},
+            {"alt",bool(modifiers & Qt::AltModifier)},{"meta",bool(modifiers & Qt::MetaModifier)},
+            {"shift",bool(modifiers & Qt::ShiftModifier)}};
+        QObject policy;
+        QString result;
+        int readmissions = 0;
+        connect(&router, &FerricBrowserKeyRouter::keyPressed, &policy,
+            [&](const QString &, int key, int, bool, bool) {
+                if (key != Qt::Key_P) { ++readmissions; return; }
+                result = router.submitCurrentPageCommand(view, token, descriptor, true, nullptr, {}, router.pageReceiverKey());
+            });
+        probeSource(Qt::Key_P, true, false, 33);
+        QCOMPARE(result, QString("owned"));
+        probeSource(Qt::Key_P, true, true, 33);
+        probeSource(Qt::Key_P, false, false, 33);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 3);
+        const QString expectedKeys = QStringList{expectedKey,expectedKey,expectedKey}.join('|');
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join('|')").toString(), expectedKeys);
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.repeat).join(',')").toString(), "false,true,false");
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.ctrl).join(',')").toString(),
+                 control ? "true,true,true" : "false,false,false");
+        QCOMPARE(js("policyFixture.snapshot().events[0].alt").toBool(), bool(modifiers & Qt::AltModifier));
+        QCOMPARE(js("policyFixture.snapshot().events[0].meta").toBool(), bool(modifiers & Qt::MetaModifier));
+        if (modifiers) QCOMPARE(js("policyFixture.snapshot().events[0].shift").toBool(), bool(modifiers & Qt::ShiftModifier));
+        QString expectedCode;
+        if (!text.isEmpty()) {
+            const QChar character = text.front();
+            if (character.toLower() >= QLatin1Char('a') && character.toLower() <= QLatin1Char('z'))
+                expectedCode = "Key" + QString(character.toUpper());
+            else {
+                const QString digits = "1234567890";
+                int digit = digits.indexOf(character);
+                if (digit < 0) digit = QString("!@#$%^&*()").indexOf(character);
+                if (digit >= 0) expectedCode = "Digit" + QString(digits[digit]);
+                else {
+                    const QStringList codes = {"Backquote","Minus","Equal","BracketLeft","BracketRight",
+                        "Backslash","Semicolon","Quote","Comma","Period","Slash"};
+                    int index = QString("`-=[]\\;',./").indexOf(character);
+                    if (index < 0) index = QString("~_+{}|:\"<>?").indexOf(character);
+                    QVERIFY(index >= 0); expectedCode = codes[index];
+                }
+            }
+        } else if (name == "Backtab") expectedCode = "Tab";
+        else if (name == "PgUp") expectedCode = "PageUp";
+        else if (name == "PgDown") expectedCode = "PageDown";
+        else if (name == "Left" || name == "Right" || name == "Up" || name == "Down") expectedCode = "Arrow" + name;
+        else if (name == "Back" || name == "Forward") expectedCode = "Browser" + name;
+        else expectedCode = name;
+        // Offscreen uses Qt's logical fallback, which has no physical code for
+        // browser navigation keys. The native backend must supply Browser*.
+        if (QGuiApplication::platformName() == "offscreen" && (name == "Back" || name == "Forward"))
+            expectedCode.clear();
+        for (int index = 0; index < 3; ++index) {
+            const QString event = QStringLiteral("policyFixture.snapshot().events[%1]").arg(index);
+            QCOMPARE(js(event + ".code").toString(), expectedCode);
+            QCOMPARE(js(event + ".location").toInt(), 0);
+            QCOMPARE(js(event + ".which").toInt(), js(event + ".keyCode").toInt());
+        }
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+        QCOMPARE(readmissions, 0);
+        if(control) {
+            QCOMPARE(js("ctrlFlags").toInt(),2);
+            QCOMPARE(js("ctrlTimeline").toInt(),0);
+            QVERIFY(!js("controlHeld").toBool());
+        }
+        qInfo().noquote() << "P10_COMPILED_DESTINATION" << token
+            << QJsonDocument::fromVariant(js("policyFixture.snapshot()")).toJson(QJsonDocument::Compact);
+    }
+    void compiledOutputChannels_data() {
+        QTest::addColumn<QString>("destination");
+        QTest::addColumn<bool>("nativeFirst");
+        QTest::addColumn<bool>("twoMappings");
+        QTest::addColumn<bool>("independent");
+        for (const auto &destination : {QString("k"),QString("Left"),QString("Ctrl+k")})
+            for (bool nativeFirst : {false,true})
+                for (bool twoMappings : {false,true})
+                    for (bool independent : {false,true})
+                        QTest::newRow(qPrintable(QString("%1-first%2-maps%3-independent%4")
+                            .arg(destination).arg(nativeFirst).arg(twoMappings).arg(independent)))
+                            << destination << nativeFirst << twoMappings << independent;
+    }
+    void compiledOutputChannels() {
+        QFETCH(QString,destination); QFETCH(bool,nativeFirst);
+        QFETCH(bool,twoMappings); QFETCH(bool,independent);
+        openPolicyTrace(); pass(false); observePageReceiver();
+        QVERIFY(js("document.addEventListener('keydown',e=>e.preventDefault());true").toBool());
+        const bool named = destination == "Left";
+        const bool control = destination == "Ctrl+k";
+        const QVariantMap descriptor{{"text",named ? "" : "k"},{"named",named ? "Left" : ""},
+            {"ctrl",control},{"alt",false},{"meta",false},{"shift",false}};
+        const QVariantMap other{{"text","z"},{"named",""},{"ctrl",false},
+            {"alt",false},{"meta",false},{"shift",false}};
+        const int nativeKey = named ? Qt::Key_Left : Qt::Key_K;
+        const int secondKey = twoMappings ? Qt::Key_Q : nativeKey;
+        const auto nativeModifiers = control ? Qt::ControlModifier : Qt::NoModifier;
+        QStringList results;
+        QObject policy;
+        connect(&router,&FerricBrowserKeyRouter::keyPressed,&policy,
+            [&](const QString &,int key,int,bool,bool) {
+                if (key == Qt::Key_P || (twoMappings && key == Qt::Key_Q)) {
+                    const bool different = independent && key == Qt::Key_Q;
+                    results << router.submitCurrentPageCommand(view,different ? "z" : destination,
+                        different ? other : descriptor,true,nullptr,{},router.pageReceiverKey());
+                } else if (!twoMappings && key == nativeKey) {
+                    const bool suppressed = router.observeCurrentPageKey(view,destination);
+                    results << (suppressed ? "collision" : "native");
+                }
+            });
+        const auto sendSecond = [&](bool press, bool repeat = false) {
+            probeSource(secondKey,press,repeat,0,twoMappings ? Qt::NoModifier : nativeModifiers);
+        };
+        if (nativeFirst) { sendSecond(true); probeSource(Qt::Key_P,true); }
+        else { probeSource(Qt::Key_P,true); sendSecond(true); }
+        const bool separate = independent && twoMappings;
+        QCOMPARE(router.feasibilityOutputCount(), separate ? 2 : 1);
+        // Release the winner before repeating the loser: no promotion/replay.
+        if (nativeFirst) { sendSecond(false); probeSource(Qt::Key_P,true,true); probeSource(Qt::Key_P,false); }
+        else { probeSource(Qt::Key_P,false); sendSecond(true,true); sendSecond(false); }
+        QTRY_COMPARE(js("policyFixture.snapshot().events.filter(e=>e.type==='keyup').length").toInt(), separate ? 2 : 1);
+        QCOMPARE(js("policyFixture.snapshot().events.length").toInt(), separate ? 5 : 2);
+        QCOMPARE(router.feasibilitySourceCount(),0);
+        QCOMPARE(router.feasibilityOutputCount(),0);
+        QVERIFY(results.contains("owned") || results.contains("native"));
+    }
+    void sitePolicyNativeMappingProbe_data() {
+        QTest::addColumn<uint>("sourceScan");
+        QTest::newRow("qt-source") << uint(0);
+        QTest::newRow("native-metadata-source") << uint(33);
+    }
+    void sitePolicyNativeMappingProbe() {
+        QFETCH(uint, sourceScan);
+        openPolicyTrace();
+        pass(false);
+        // Temporary probe policy lives only in this fixture. Submission and
+        // asynchronous-output provenance use the production native adapter.
+        QObject probeConfiguration;
+        bool downSubmitted = false, upSubmitted = false;
+        int destinationReadmissions = 0;
+        connect(&router, &FerricBrowserKeyRouter::keyPressed, &probeConfiguration,
+                [&](const QString &, int key, int modifiers, bool repeat, bool) {
+            if (key == Qt::Key_K) ++destinationReadmissions;
+            if (key != Qt::Key_P || modifiers != Qt::NoModifier) return;
+            downSubmitted = router.submitFeasibilityPageKey(view, true, repeat);
+            router.acceptCurrentEvent();
+        });
+        connect(&router, &FerricBrowserKeyRouter::keyReleased, &probeConfiguration,
+                [&](int key, int) {
+            if (key == Qt::Key_P)
+                upSubmitted = router.submitFeasibilityPageKey(view, false);
+        });
+        const auto returnedBefore = router.feasibilityReturnedEvents();
+        QKeyEvent down(QEvent::KeyPress, Qt::Key_P, Qt::NoModifier,
+                       sourceScan, sourceScan ? 0x70 : 0, 0, QStringLiteral("p"));
+        QKeyEvent up(QEvent::KeyRelease, Qt::Key_P, Qt::NoModifier,
+                     sourceScan, sourceScan ? 0x70 : 0, 0, QStringLiteral("p"));
+        QCoreApplication::sendEvent(&window, &down);
+        QVERIFY(downSubmitted);
+        QCoreApplication::sendEvent(&window, &up);
+        QVERIFY(upSubmitted);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 2);
+        for (int index = 0; index != 2; ++index) {
+            const QString event = QStringLiteral("policyFixture.snapshot().events[%1]").arg(index);
+            QCOMPARE(js(event + ".key").toString(), QStringLiteral("k"));
+            QCOMPARE(js(event + ".code").toString(), QStringLiteral("KeyK"));
+            QCOMPARE(js(event + ".logicalText").toString(), QStringLiteral("k"));
+            QCOMPARE(js(event + ".keyCode").toInt(), 75);
+            QCOMPARE(js(event + ".location").toInt(), 0);
+            QVERIFY(!js(event + ".repeat||" + event + ".ctrl||" + event + ".shift||"
+                        + event + ".alt||" + event + ".meta").toBool());
+        }
+        QCOMPARE(js("policyFixture.snapshot().events[0].type").toString(), QStringLiteral("keydown"));
+        QCOMPARE(js("policyFixture.snapshot().events[1].type").toString(), QStringLiteral("keyup"));
+        // The page deliberately leaves K unhandled. Observe the actual
+        // asynchronous return instead of relying on an arbitrary delay.
+        QTRY_VERIFY(router.feasibilityReturnedEvents() > returnedBefore);
+        QCOMPARE(destinationReadmissions, 0);
+        QCOMPARE(navigations, 0);
+        QCOMPARE(passExits, 0);
+        qInfo().noquote() << "P01_NATIVE_MAPPING_QT_TRACE"
+            << QGuiApplication::platformName() << sourceScan
+            << QJsonDocument::fromVariant(js("policyFixture.snapshot()"))
+                   .toJson(QJsonDocument::Compact);
+    }
+    void sitePolicyNativeOwnedGesture_data() {
+        QTest::addColumn<bool>("once");
+        QTest::newRow("one-shot") << true;
+        QTest::newRow("persistent") << false;
+    }
+    void sitePolicyNativeOwnedGesture() {
+        QFETCH(bool, once);
+        ownedProbe(once);
+        const auto returns = router.feasibilityReturnedEvents();
+        probeSource(Qt::Key_P, true);
+        QCOMPARE(passExits, 0);
+        QCOMPARE(router.feasibilitySourceCount(), 1);
+        QCOMPARE(router.feasibilityOutputCount(), 1);
+        probeSource(Qt::Key_P, false, true);
+        probeSource(Qt::Key_P, true, true);
+        probeSource(Qt::Key_P, false, true);
+        probeSource(Qt::Key_P, true, true);
+        QCOMPARE(passExits, 0);
+        probeSource(Qt::Key_P, false);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 4);
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(), "k,k,k,k");
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.repeat).join(',')").toString(), "false,true,true,false");
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.type).join(',')").toString(), "keydown,keydown,keydown,keyup");
+        QCOMPARE(passExits, once ? 1 : 0);
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+        QTRY_VERIFY(router.feasibilityReturnedEvents() > returns);
+        QCOMPARE(navigations, 0);
+    }
+    void sitePolicyNativeCollision_data() {
+        QTest::addColumn<bool>("mappedFirst");
+        QTest::addColumn<bool>("winnerReleasedFirst");
+        QTest::newRow("mapped-winner-first-up") << true << true;
+        QTest::newRow("mapped-loser-first-up") << true << false;
+        QTest::newRow("native-winner-first-up") << false << true;
+        QTest::newRow("native-loser-first-up") << false << false;
+    }
+    void sitePolicyNativeCollision() {
+        QFETCH(bool, mappedFirst);
+        QFETCH(bool, winnerReleasedFirst);
+        ownedProbe();
+        const int winner = mappedFirst ? Qt::Key_P : Qt::Key_K;
+        const int loser = mappedFirst ? Qt::Key_K : Qt::Key_P;
+        probeSource(winner, true);
+        probeSource(loser, true);
+        probeSource(loser, true, true);
+        QCOMPARE(router.feasibilitySourceCount(), 2);
+        QCOMPARE(router.feasibilityOutputCount(), 1);
+        QVERIFY(!router.requestFeasibilityRaw());
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 1);
+        probeSource(winnerReleasedFirst ? winner : loser, false);
+        if (winnerReleasedFirst) {
+            QCOMPARE(router.feasibilityOutputCount(), 0);
+            QVERIFY(!router.requestFeasibilityRaw());
+            probeSource(loser, true, true);
+        }
+        probeSource(winnerReleasedFirst ? loser : winner, false);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 2);
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(), "k,k");
+        QCOMPARE(js("policyFixture.snapshot().events[1].type").toString(), "keyup");
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+        QVERIFY(router.requestFeasibilityRaw());
+    }
+    void sitePolicyNativeUnchangedParity() {
+        ownedProbe();
+        probeSource(Qt::Key_K, true, false, 45);
+        probeSource(Qt::Key_K, true, false, 46);
+        QCOMPARE(router.feasibilitySourceCount(), 2);
+        QCOMPARE(router.feasibilityOutputCount(), 1);
+        probeSource(Qt::Key_K, false, false, 45);
+        probeSource(Qt::Key_K, false, false, 46);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 4);
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(), "k,k,k,k");
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+    }
+    void sitePolicyNativeOneShotOverlap() {
+        ownedProbe(true);
+        probeSource(Qt::Key_J, true);
+        probeSource(Qt::Key_P, true);
+        probeSource(Qt::Key_J, false);
+        QCOMPARE(passExits, 1);
+        QCOMPARE(view->property("ferricMode").toString(), "normal");
+        QCOMPARE(router.feasibilitySourceCount(), 1);
+        QCOMPARE(router.feasibilityOutputCount(), 1);
+        probeSource(Qt::Key_P, true, true);
+        probeSource(Qt::Key_P, false);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 5);
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(), "j,k,j,k,k");
+        QCOMPARE(passExits, 1);
+        QCOMPARE(navigations, 0);
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+    }
+    void compiledSourceStopsOnPreedit() {
+        openPolicyTrace();pass(false);observePageReceiver();
+        const QVariantMap destination{{"text","k"},{"named",""},{"ctrl",false},
+            {"alt",false},{"meta",false},{"shift",false}};
+        QObject policy;
+        connect(&router,&FerricBrowserKeyRouter::keyPressed,&policy,
+            [&](const QString &,int key,int,bool,bool) {
+                if(key==Qt::Key_P)router.submitCurrentPageCommand(view,"k",destination,true,nullptr,{},router.pageReceiverKey());
+            });
+        probeSource(Qt::Key_P,true,false,33);
+        const auto release=qScopeGuard([&]{probeSource(Qt::Key_P,false,false,33);});
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(),1);
+        const QPointer<QQuickItem> receiver(window.activeFocusItem());QVERIFY(receiver);
+        const auto finishComposition=qScopeGuard([&]{if(receiver){QInputMethodEvent commit;QCoreApplication::sendEvent(receiver,&commit);}});
+        QInputMethodEvent preedit("composing",{});QCoreApplication::sendEvent(receiver,&preedit);
+        QVERIFY(router.compositionActive());
+        QCOMPARE(router.feasibilityOutputCount(),0);
+        QCOMPARE(router.feasibilitySourceCount(),1);
+        probeSource(Qt::Key_P,true,true,33);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.filter(e=>e.key==='k'&&e.type==='keyup').length").toInt(),1);
+        QCOMPARE(js("policyFixture.snapshot().events.filter(e=>e.key==='k'&&e.type==='keydown').length").toInt(),1);
+    }
+    void overlappingEpochFocusRefresh_data() {
+        QTest::addColumn<bool>("child");
+        QTest::addColumn<int>("requests");
+        for (bool child : {false,true})
+            for (int requests : {2,8})
+                QTest::newRow(qPrintable(QString("child%1-requests%2").arg(child).arg(requests))) << child << requests;
+    }
+    void overlappingEpochFocusRefresh() {
+        QFETCH(bool,child); QFETCH(int,requests);
+        openPolicyTrace(); pass(false);
+        if (child) {
+            QVERIFY(js("var epochFrame=document.createElement('iframe');epochFrame.srcdoc='<button id=receiver>Child</button>';document.body.append(epochFrame);true").toBool());
+            QTRY_VERIFY(js("!!epochFrame.contentDocument&&!!epochFrame.contentDocument.getElementById('receiver')").toBool());
+            QVERIFY(js("epochFrame.contentDocument.getElementById('receiver').focus();true").toBool());
+        }
+        QJSEngine scripts;
+        QVERIFY(!scripts.evaluate(productionBrowserScript()).isError());
+        const auto script=scripts.evaluate("focusObserverSource()+';'+focusProbe()").toString();
+        QSignalSpy observed(&router,&FerricBrowserKeyRouter::pageReceiverObserved);
+        for (int index=0;index<requests;++index) {
+            router.setInputEpoch(router.inputEpoch()+1);
+            router.probePageReceiver(view,script,router.inputEpoch());
+        }
+        QTRY_COMPARE(observed.size(),1);
+        QCOMPARE(observed.first().at(1).toInt(),router.inputEpoch());
+        QVERIFY2(!router.pageReceiverKey().isEmpty(),qPrintable(observed.first().at(3).toString()));
+        const auto facts=QJsonDocument::fromJson(observed.first().at(3).toString().toUtf8()).object();
+        QCOMPARE(facts.value("receiver").toObject().value("top").toBool(),!child);
+    }
+    void overlappingFocusRefreshKeepsHeldOutput() {
+        openPolicyTrace(); pass(false); observePageReceiver();
+        const QVariantMap destination{{"text","k"},{"named",""},{"ctrl",false},
+            {"alt",false},{"meta",false},{"shift",false}};
+        QObject policy;
+        connect(&router,&FerricBrowserKeyRouter::keyPressed,&policy,
+            [&](const QString &,int key,int,bool,bool) {
+                if (key == Qt::Key_P)
+                    router.submitCurrentPageCommand(view,"k",destination,true,nullptr,{},router.pageReceiverKey());
+            });
+        probeSource(Qt::Key_P,true,false,33);
+        const auto release=qScopeGuard([&]{probeSource(Qt::Key_P,false,false,33);});
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(),1);
+        QJSEngine scripts;
+        QVERIFY(!scripts.evaluate(productionBrowserScript()).isError());
+        const auto script=scripts.evaluate("focusProbe()").toString();
+        QSignalSpy observed(&router,&FerricBrowserKeyRouter::pageReceiverObserved);
+        router.probePageReceiver(view,script,router.inputEpoch());
+        router.probePageReceiver(view,script,router.inputEpoch());
+        QTRY_COMPARE(observed.size(),2);
+        QCOMPARE(router.feasibilityOutputCount(),1);
+        QVERIFY(!router.pageReceiverKey().isEmpty());
+        for (const auto &arguments:observed)
+            QVERIFY(!QJsonDocument::fromJson(arguments.at(3).toString().toUtf8()).object().value("state").isNull());
+    }
+    void compiledPolicyPublicationCancelsHeldSource() {
+        openPolicyTrace(); pass(false); observePageReceiver();
+        router.setPolicyContext("original-policy");
+        const QVariantMap destination{{"text","k"},{"named",""},{"ctrl",false},
+            {"alt",false},{"meta",false},{"shift",false}};
+        QObject policy;
+        QString result;
+        connect(&router,&FerricBrowserKeyRouter::keyPressed,&policy,
+            [&](const QString &,int key,int,bool,bool) {
+                if (key == Qt::Key_P)
+                    result = router.submitCurrentPageCommand(view,"k",destination,true,nullptr,{},router.pageReceiverKey());
+            });
+        probeSource(Qt::Key_P,true,false,33);
+        QCOMPARE(result,QString("owned"));
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(),1);
+        router.setPolicyContext("replacement-policy");
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(),2);
+        QCOMPARE(js("policyFixture.snapshot().events[1].type").toString(),QString("keyup"));
+        QCOMPARE(router.feasibilityOutputCount(),0);
+        QVERIFY(!router.canEnterRawPassThrough()); // source remains held
+        probeSource(Qt::Key_P,true,true,33);
+        probeSource(Qt::Key_P,false,false,33);
+        QCOMPARE(router.feasibilitySourceCount(),0);
+        QCOMPARE(js("policyFixture.snapshot().events.length").toInt(),2);
+        QVERIFY(router.canEnterRawPassThrough());
+        probeSource(Qt::Key_P,true,false,33);
+        probeSource(Qt::Key_P,false,false,33);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(),4);
+    }
+    void mappedEscapePreservesProtectedRecovery_data() {
+        QTest::addColumn<int>("recoveryModifiers");
+        QTest::newRow("escape") << int(Qt::ControlModifier);
+        QTest::newRow("capture") << int(Qt::ControlModifier | Qt::ShiftModifier);
+    }
+    void mappedEscapePreservesProtectedRecovery() {
+        QFETCH(int, recoveryModifiers);
+        openPolicyTrace(); pass(false); observePageReceiver();
+        const QVariantMap destination{{"text","k"},{"named",""},{"ctrl",false},
+            {"alt",false},{"meta",false},{"shift",false}};
+        QObject policy;
+        int protectedPresses = 0;
+        QString result;
+        connect(&router,&FerricBrowserKeyRouter::keyPressed,&policy,
+            [&](const QString &,int key,int modifiers,bool repeat,bool) {
+                if (key != Qt::Key_Escape || repeat) return;
+                if (modifiers == Qt::NoModifier)
+                    result = router.submitCurrentPageCommand(view,"k",destination,true,nullptr,{},router.pageReceiverKey());
+                else if (modifiers == recoveryModifiers) {
+                    ++protectedPresses;
+                    router.acceptCurrentEvent();
+                }
+            });
+        constexpr quint32 escapeScan = 9;
+        const auto releaseSource = qScopeGuard([&] {
+            if (!router.feasibilitySourceCount()) return;
+            router.beginFeasibilityRecovery((quint64(1) << 63) | escapeScan);
+            probeSource(Qt::Key_Escape,true,false,escapeScan);
+            probeSource(Qt::Key_Escape,false,false,escapeScan);
+        });
+        probeSource(Qt::Key_Escape,true,false,escapeScan);
+        QCOMPARE(result,QString("owned"));
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(),1);
+        router.setEnabled(false); router.setEnabled(true); // original up was lost
+        probeSource(Qt::Key_Escape,true,false,escapeScan,Qt::KeyboardModifiers(recoveryModifiers));
+        probeSource(Qt::Key_Escape,false,false,escapeScan,Qt::KeyboardModifiers(recoveryModifiers));
+        QCOMPARE(protectedPresses,1);
+        QCOMPARE(js("policyFixture.snapshot().events.length").toInt(),1);
+        QCOMPARE(router.feasibilitySourceCount(),0);
+    }
+    void productionRawAdmissionAndProtectedRecovery_data() {
+        QTest::addColumn<bool>("interruptRecovery");
+        QTest::newRow("physical-source-recovery") << false;
+        QTest::newRow("capture-cancelled-on-deactivation") << true;
+    }
+    void productionRawAdmissionAndProtectedRecovery() {
+        QFETCH(bool,interruptRecovery);
+        openPolicyTrace(); pass(false); observePageReceiver();
+        const QVariantMap destination{{"text","k"},{"named",""},{"ctrl",false},
+            {"alt",false},{"meta",false},{"shift",false}};
+        QObject policy;
+        QString result, recovery;
+        connect(&router,&FerricBrowserKeyRouter::keyPressed,&policy,
+            [&](const QString &,int key,int modifiers,bool,bool) {
+                if (key == Qt::Key_P) result = router.submitCurrentPageCommand(view,"k",destination,true,nullptr,{},router.pageReceiverKey());
+                if (key == Qt::Key_Escape && modifiers == (Qt::ControlModifier|Qt::ShiftModifier)) {
+                    normal(); recovery = router.beginPageKeyRecovery(); router.acceptCurrentEvent();
+                }
+            });
+        QVERIFY(router.canEnterRawPassThrough());
+        probeSource(Qt::Key_P,true,false,33);
+        QCOMPARE(result,QString("owned"));
+        QVERIFY(!router.canEnterRawPassThrough());
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(),1);
+        // Deactivation loses the source's up; refocus does not arm raw.
+        router.setEnabled(false); router.setEnabled(true);
+        QCOMPARE(router.feasibilitySourceCount(),1);
+        QCOMPARE(router.feasibilityOutputCount(),0);
+        QVERIFY(!router.canEnterRawPassThrough());
+        probeSource(Qt::Key_Escape,true,false,0,Qt::ControlModifier|Qt::ShiftModifier);
+        probeSource(Qt::Key_Escape,false,false,0,Qt::ControlModifier|Qt::ShiftModifier);
+        QVERIFY(recovery.startsWith("Press and release"));
+        probeSource(Qt::Key_P,true,true,33);
+        QVERIFY(!router.canEnterRawPassThrough()); // still held, no fresh down
+        if (interruptRecovery) {
+            router.setEnabled(false);router.setEnabled(true);
+            probeSource(Qt::Key_Q,true,false,33,Qt::ShiftModifier);
+            probeSource(Qt::Key_Q,false,false,33,Qt::ShiftModifier);
+            QCOMPARE(router.feasibilitySourceCount(),1);
+            QVERIFY(!router.canEnterRawPassThrough());
+            probeSource(Qt::Key_Escape,true,false,0,Qt::ControlModifier|Qt::ShiftModifier);
+            probeSource(Qt::Key_Escape,false,false,0,Qt::ControlModifier|Qt::ShiftModifier);
+            QVERIFY(recovery.startsWith("Press and release"));
+        }
+        // A changed layout/case cannot hide the stored physical source.
+        probeSource(Qt::Key_Q,true,false,33,Qt::ShiftModifier);
+        QVERIFY(!router.canEnterRawPassThrough());
+        probeSource(Qt::Key_Q,false,false,33,Qt::ShiftModifier);
+        QCOMPARE(router.feasibilitySourceCount(),0);
+        QVERIFY(router.canEnterRawPassThrough());
+        QVERIFY(!router.feasibilityRaw());
+        QCOMPARE(js("policyFixture.snapshot().events.length").toInt(),1);
+    }
+    void sitePolicyNativeRawSession() {
+        ownedProbe();
+        QVERIFY(router.requestFeasibilityRaw());
+        probeSource(Qt::Key_P, true, false, 33);
+        probeSource(Qt::Key_P, false, false, 33);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 2);
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(), "p,p");
+        normal();
+        pass(false);
+        QVERIFY(!router.feasibilityRaw());
+        js("policyFixture.clear();true");
+        probeSource(Qt::Key_P, true);
+        QVERIFY(!router.requestFeasibilityRaw());
+        probeSource(Qt::Key_P, false);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 2);
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(), "k,k");
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+    }
+    void sitePolicyNativeCancellation_data() {
+        QTest::addColumn<QString>("reason");
+        QTest::addColumn<bool>("cleanup");
+        QTest::newRow("prompt") << QString("prompt") << false;
+        QTest::newRow("focus") << QString("focus") << false;
+        QTest::newRow("disabled") << QString("disabled") << false;
+        QTest::newRow("configuration") << QString("configuration") << true;
+        QTest::newRow("modifiers") << QString("modifiers") << true;
+    }
+    void sitePolicyNativeCancellation() {
+        QFETCH(QString, reason);
+        QFETCH(bool, cleanup);
+        ownedProbe();
+        probeSource(Qt::Key_P, true);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 1);
+        QQuickItem chrome(window.contentItem());
+        if (reason == "prompt") router.setFeasibilityInputBlocked(true);
+        else if (reason == "focus") chrome.forceActiveFocus();
+        else if (reason == "disabled") router.setEnabled(false);
+        else if (reason == "configuration") QVERIFY(router.configureFeasibilityMapping(view, false));
+        else probeSource(Qt::Key_P, true, true, 0, Qt::ShiftModifier);
+        QCOMPARE(router.feasibilitySourceCount(), 1);
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+        QVERIFY(!router.requestFeasibilityRaw());
+        view->forceActiveFocus();
+        router.setFeasibilityInputBlocked(false);
+        router.setEnabled(true);
+        probeSource(Qt::Key_P, true, true);
+        probeSource(Qt::Key_P, false);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), cleanup ? 2 : 1);
+        if (cleanup)
+            QCOMPARE(js("policyFixture.snapshot().events[1].type").toString(), "keyup");
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+    }
+    void sitePolicyNativeNavigationCancellation() {
+        ownedProbe();
+        probeSource(Qt::Key_P, true);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 1);
+        const int loaded = view->property("loaded").toInt();
+        view->setProperty("url", QUrl::fromLocalFile(files.filePath("next.html")));
+        QTRY_VERIFY(view->property("loaded").toInt() > loaded);
+        js("window.replacementKeys=[];document.addEventListener('keyup',e=>replacementKeys.push(e.key));true");
+        view->forceActiveFocus();
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+        QVERIFY(!router.requestFeasibilityRaw());
+        probeSource(Qt::Key_P, false);
+        QCOMPARE(js("replacementKeys.length").toInt(), 0);
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+    }
+    void sitePolicyNativeLostReleaseRecovery() {
+        ownedProbe();
+        probeSource(Qt::Key_P, true, false, 33);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 1);
+        QQuickWindow other;
+        other.show(); other.requestActivate();
+        QTRY_COMPARE(QGuiApplication::focusWindow(), &other);
+        window.requestActivate();
+        QTRY_COMPARE(QGuiApplication::focusWindow(), &window);
+        view->forceActiveFocus();
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+        QVERIFY(!router.requestFeasibilityRaw());
+        probeSource(Qt::Key_U, true, false, 33);
+        probeSource(Qt::Key_U, false, false, 33);
+        QCOMPARE(router.feasibilitySourceCount(), 1);
+        QVERIFY(!router.requestFeasibilityRaw());
+        QVERIFY(router.beginFeasibilityRecovery((quint64(1) << 63) | 33));
+        // Simulate changed logical text with the same stored physical source.
+        probeSource(Qt::Key_U, true, false, 33);
+        probeSource(Qt::Key_U, false, true, 33);
+        QCOMPARE(router.feasibilitySourceCount(), 1);
+        probeSource(Qt::Key_U, false, false, 33);
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+        QVERIFY(!router.feasibilityRaw());
+        QCOMPARE(js("policyFixture.snapshot().events.length").toInt(), 1);
+        QVERIFY(router.requestFeasibilityRaw());
+        probeSource(Qt::Key_P, true, false, 33);
+        probeSource(Qt::Key_P, false, false, 33);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 3);
+        QCOMPARE(js("policyFixture.snapshot().events.slice(1).map(e=>e.key).join(',')").toString(), "p,p");
+    }
+    void sitePolicyNativeBlockedOneShot() {
+        ownedProbe(true);
+        QVERIFY(QMetaObject::invokeMethod(&router, "invalidateFeasibilityDocument"));
+        probeSource(Qt::Key_P, true);
+        QCOMPARE(passExits, 0);
+        QCOMPARE(router.feasibilitySourceCount(), 1);
+        probeSource(Qt::Key_P, false);
+        QCOMPARE(passExits, 1);
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+        QCOMPARE(js("policyFixture.snapshot().events.length").toInt(), 0);
+    }
+    void compiledNativeLayoutInput_data() {
+        QTest::addColumn<QString>("position");
+        QTest::addColumn<QString>("sourceText");
+        QTest::addColumn<QString>("code");
+        QTest::addColumn<int>("modifiers");
+        QTest::addColumn<bool>("caps");
+        QTest::addColumn<bool>("num");
+        QTest::addColumn<bool>("mapped");
+        QTest::addColumn<bool>("dead");
+        const auto row=[](const char *name,const QString &position,const QString &text,const QString &code,
+            int modifiers=0,bool caps=false,bool num=false,bool mapped=false,bool dead=false) {
+            QTest::newRow(name)<<position<<text<<code<<modifiers<<caps<<num<<mapped<<dead;
+        };
+        const auto layout=qEnvironmentVariable("FERRIC_NATIVE_PROBE_LAYOUT","us");
+        row("mapped-p","AD10","p","KeyP",0,false,false,true);
+        row("mapped-shift-p","AD10","P","KeyP",Qt::ShiftModifier,false,false,true);
+        row("mapped-caps-p","AD10","P","KeyP",0,true,false,true);
+        row("mapped-shift-caps-p","AD10","p","KeyP",Qt::ShiftModifier,true,false,true);
+        row("mapped-layout-letter","AD06",layout=="de"?"z":"y","KeyY",0,false,false,true);
+        row("original-caps-p","AD10","P","KeyP",0,true);
+        row("original-shift-caps-p","AD10","p","KeyP",Qt::ShiftModifier,true);
+        row("original-shift-digit","AE03",layout=="gb"?QString::fromUtf8("£"):layout=="de"?QString::fromUtf8("§"):QString("#"),"Digit3",Qt::ShiftModifier);
+        row("original-layout-text","AC11",layout=="de"?QString::fromUtf8("ä"):QString("'"),"Quote");
+        row("original-keypad-digit","KP1","1","Numpad1",0,false,true);
+        row("original-keypad-enter","KPEN","","NumpadEnter");
+        if (layout=="de") {
+            row("original-altgr","AD01","@","KeyQ",Qt::GroupSwitchModifier);
+            row("original-dead-compose","AD03",QString::fromUtf8("é"),"KeyE",0,false,false,false,true);
+        }
+    }
+    void compiledNativeLayoutInput() {
+        QFETCH(QString,position);QFETCH(QString,sourceText);QFETCH(QString,code);
+        QFETCH(int,modifiers);QFETCH(bool,caps);QFETCH(bool,num);QFETCH(bool,mapped);QFETCH(bool,dead);
+        if (!QGuiApplication::platformName().startsWith("wayland"))
+            QSKIP("Layout qualification requires the isolated owned Wayland compositor");
+        window.setTitle(QStringLiteral("ferric-p10-layout-%1").arg(QCoreApplication::applicationPid()));
+        openPolicyTrace();pass(false);
+        if (mapped) observePageReceiver();
+        else {
+            QVERIFY(js("document.getElementById('editor').focus();true").toBool());
+            QTRY_VERIFY(QInputMethod::queryFocusObject(Qt::ImEnabled,{}).toBool());
+        }
+        NativeKeyTrace trace(&window);
+        const auto failedTrace=qScopeGuard([&]{if(QTest::currentTestFailed())qInfo().noquote()
+            <<"P10_LAYOUT_FAILURE"<<QJsonDocument::fromVariant(trace.samples).toJson(QJsonDocument::Compact)
+            <<"DOM"<<QJsonDocument::fromVariant(js("policyFixture.snapshot()")).toJson(QJsonDocument::Compact);});
+        QObject policy;
+        QString result,error;
+        const QVariantMap destination{{"text","k"},{"named",""},{"ctrl",false},
+            {"alt",false},{"meta",false},{"shift",false}};
+        connect(&router,&FerricBrowserKeyRouter::keyPressed,&policy,
+            [&](const QString &text,int key,int,bool repeat,bool) {
+                if (repeat) return;
+                if (mapped && text==sourceText)
+                    result=router.submitCurrentPageCommand(view,"k",destination,true,nullptr,{},router.pageReceiverKey());
+                else if (!mapped && !text.isEmpty() && key!=Qt::Key_AltGr)
+                    router.observeCurrentPageKey(view,text,true);
+            });
+        bool capsSet=false,numSet=false;
+        const auto unlock=qScopeGuard([&]{
+            if(capsSet)sendNativeProbeKey(&window,Qt::Key_CapsLock,&error);
+            if(numSet)sendNativeProbeKey(&window,Qt::Key_NumLock,&error);
+        });
+        if(caps) {
+            QVERIFY2(sendNativeProbeKey(&window,Qt::Key_CapsLock,&error),qPrintable(error));capsSet=true;
+            QTRY_VERIFY(js("policyFixture.snapshot().events.some(e=>e.key==='CapsLock'&&e.type==='keyup')").toBool());
+        }
+        if(num) {
+            QVERIFY2(sendNativeProbeKey(&window,Qt::Key_NumLock,&error),qPrintable(error));numSet=true;
+            QTRY_VERIFY(js("policyFixture.snapshot().events.some(e=>e.key==='NumLock'&&e.type==='keyup')").toBool());
+        }
+        QVERIFY(js("policyFixture.clear();true").toBool());trace.samples.clear();
+        if(dead)QVERIFY2(sendNativeProbeKey(&window,0,&error,Qt::NoModifier,"AE12"),qPrintable(error));
+        QVERIFY2(sendNativeProbeKey(&window,0,&error,Qt::KeyboardModifiers(modifiers),position),qPrintable(error));
+        if(mapped) {
+            QTRY_COMPARE(result,QString("owned"));
+            QTRY_COMPARE(js("policyFixture.snapshot().events.filter(e=>e.key==='k').length").toInt(),2);
+            QVERIFY(js("policyFixture.snapshot().events.filter(e=>e.key==='k').every(e=>e.code==='KeyK'&&!e.shift&&!e.caps&&e.trusted)").toBool());
+            QVERIFY(js("policyFixture.snapshot().events.every(e=>e.key==='k'||e.key==='Shift')").toBool());
+            QCOMPARE(js("policyFixture.snapshot().events.filter(e=>e.key==='Shift').length").toInt(),
+                modifiers&Qt::ShiftModifier?2:0);
+        } else {
+            QTRY_COMPARE(js("document.getElementById('editor').value").toString(),sourceText);
+            const auto quoted=QString::fromUtf8(QJsonDocument(QJsonArray{code}).toJson(QJsonDocument::Compact));
+            QTRY_VERIFY(js("policyFixture.snapshot().events.some(e=>e.type==='keyup'&&e.code==="+quoted+"[0])").toBool());
+            QVERIFY(js("policyFixture.snapshot().events.every(e=>e.trusted)").toBool());
+            if(position.startsWith("KP"))
+                QVERIFY(js("policyFixture.snapshot().events.filter(e=>e.type==='keydown'||e.type==='keyup').every(e=>e.location===3)").toBool());
+        }
+        QVERIFY(std::any_of(trace.samples.cbegin(),trace.samples.cend(),[](const QVariant &sample){
+            return sample.toMap().value("scan").toUInt()!=0;
+        }));
+        QCOMPARE(router.feasibilitySourceCount(),0);QCOMPARE(router.feasibilityOutputCount(),0);
+        qInfo().noquote()<<"P10_LAYOUT"<<qEnvironmentVariable("FERRIC_NATIVE_PROBE_LAYOUT","us")
+            <<QTest::currentDataTag()<<"Qt"<<QJsonDocument::fromVariant(trace.samples).toJson(QJsonDocument::Compact)
+            <<"DOM"<<QJsonDocument::fromVariant(js("policyFixture.snapshot()")).toJson(QJsonDocument::Compact);
+    }
+    void sitePolicyNativePlatformInput_data() {
+        QTest::addColumn<bool>("once");
+        QTest::addColumn<bool>("raw");
+        QTest::newRow("mapped-persistent") << false << false;
+        QTest::newRow("mapped-one-shot") << true << false;
+        QTest::newRow("raw-persistent") << false << true;
+    }
+    void sitePolicyNativePlatformInput() {
+        QFETCH(bool, once);
+        QFETCH(bool, raw);
+        if (QGuiApplication::platformName() != "xcb"
+            && !QGuiApplication::platformName().startsWith("wayland"))
+            QSKIP("Native source probe requires X11/XTEST or the owned Wayland compositor");
+        window.setTitle(QStringLiteral("ferric-p01-native-%1").arg(QCoreApplication::applicationPid()));
+        openPolicyTrace(); pass(once); observePageReceiver();
+        QObject policy;
+        const QVariantMap destination{{"text","k"},{"named",""},{"ctrl",false},
+            {"alt",false},{"meta",false},{"shift",false}};
+        connect(&router,&FerricBrowserKeyRouter::keyPressed,&policy,
+            [&](const QString &text,int key,int,bool repeat,bool) {
+                if (repeat || key != Qt::Key_P || text != "p") return;
+                if (raw) { router.observeCurrentPageKey(view,"p",true); router.pageOwnsCurrentEvent(); }
+                else router.submitCurrentPageCommand(view,"k",destination,true,nullptr,{},router.pageReceiverKey());
+            });
+        NativeKeyTrace trace(&window);
+        QString error;
+        QVERIFY2(sendNativeProbeKey(&window, Qt::Key_P, &error), qPrintable(error));
+        QTRY_VERIFY2(js("policyFixture.snapshot().events.length").toInt() == 2,
+            qPrintable(QStringLiteral("Native source trace: %1; sources=%2 outputs=%3 active=%4 enabled=%5")
+                .arg(QString::fromUtf8(QJsonDocument::fromVariant(trace.samples).toJson(QJsonDocument::Compact)))
+                .arg(router.feasibilitySourceCount()).arg(router.feasibilityOutputCount())
+                .arg(window.isActive()).arg(router.enabled())));
+        const auto dom = js("policyFixture.snapshot().events").toList();
+        qInfo().noquote() << "P01 native source" << QGuiApplication::platformName()
+            << QJsonDocument::fromVariant(trace.samples).toJson(QJsonDocument::Compact)
+            << "DOM" << QJsonDocument::fromVariant(dom).toJson(QJsonDocument::Compact);
+        QVERIFY(std::any_of(trace.samples.cbegin(), trace.samples.cend(), [](const QVariant &sample) {
+            const auto event = sample.toMap();
+            return event.value("key").toInt() == Qt::Key_P && event.value("scan").toUInt() == 33
+                && event.value("modifiers").toInt() == 0;
+        }));
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(), raw ? "p,p" : "k,k");
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.code).join(',')").toString(), raw ? "KeyP,KeyP" : "KeyK,KeyK");
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.type).join(',')").toString(), "keydown,keyup");
+        QVERIFY(js("policyFixture.snapshot().events.every(e=>e.trusted&&!e.repeat&&!e.ctrl&&!e.shift&&!e.alt&&!e.meta)").toBool());
+        QVERIFY(js("policyFixture.snapshot().events.some(e=>e.type==='keydown'&&e.activation)").toBool());
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+        QCOMPARE(passExits, once ? 1 : 0);
+    }
+    void sitePolicyNativeMedia() {
+        window.setTitle(QStringLiteral("ferric-p10-permission-%1").arg(QCoreApplication::applicationPid()));
+        openPolicyTrace();pass(false);observePageReceiver();
+        QObject policy;
+        const QVariantMap destination{{"text","k"},{"named",""},{"ctrl",false},
+            {"alt",false},{"meta",false},{"shift",false}};
+        connect(&router,&FerricBrowserKeyRouter::keyPressed,&policy,
+            [&](const QString &text,int key,int,bool repeat,bool) {
+                if (!repeat && key==Qt::Key_P && text=="p")
+                    router.submitCurrentPageCommand(view,"k",destination,true,nullptr,{},router.pageReceiverKey());
+            });
+        const auto url = QString::fromUtf8(QJsonDocument(QJsonArray{
+            QUrl::fromLocalFile(files.filePath("silence.wav")).toString()}).toJson(QJsonDocument::Compact));
+        QVERIFY(js(QStringLiteral("window.probeAudio=new Audio((%1)[0]);probeAudio.preload='auto';"
+                                  "window.mediaOutcome='pending';probeAudio.load();true").arg(url)).toBool());
+        QTRY_VERIFY(js("probeAudio.readyState>=2").toBool());
+        js("probeAudio.play().then(()=>window.mediaOutcome='allowed').catch(e=>window.mediaOutcome=e.name);true");
+        QTRY_VERIFY(js("mediaOutcome!=='pending'").toBool());
+        QCOMPARE(js("mediaOutcome").toString(), "NotAllowedError");
+        js("window.mediaOutcome='pending';document.addEventListener('keydown',e=>{if(e.key==='k')"
+           "probeAudio.play().then(()=>window.mediaOutcome='allowed').catch(e=>window.mediaOutcome=e.name)});true");
+        if (QGuiApplication::platformName().startsWith("wayland")) {
+            QString error;QVERIFY2(sendNativeProbeKey(&window,Qt::Key_P,&error),qPrintable(error));
+        } else { probeSource(Qt::Key_P,true);probeSource(Qt::Key_P,false); }
+        QTRY_VERIFY(js("mediaOutcome!=='pending'").toBool());
+        qInfo() << "P10 compiled local media after mapped K:" << js("mediaOutcome");
+        QCOMPARE(js("mediaOutcome").toString(), "allowed");
+        QVERIFY(js("!probeAudio.paused").toBool());
+        js("probeAudio.pause();true");
+    }
+    void sitePolicyNativeFullscreen_data() {
+        QTest::addColumn<bool>("featureEnabled");
+        QTest::newRow("Qt-feature-disabled") << false;
+        QTest::newRow("Qt-feature-enabled") << true;
+    }
+    void sitePolicyNativeFullscreen() {
+        QFETCH(bool, featureEnabled);
+        window.setTitle(QStringLiteral("ferric-p10-permission-%1").arg(QCoreApplication::applicationPid()));
+        openPolicyTrace();pass(false);observePageReceiver();
+        QObject policy;
+        const QVariantMap destination{{"text","k"},{"named",""},{"ctrl",false},
+            {"alt",false},{"meta",false},{"shift",false}};
+        connect(&router,&FerricBrowserKeyRouter::keyPressed,&policy,
+            [&](const QString &text,int key,int,bool repeat,bool) {
+                if (!repeat && key==Qt::Key_P && text=="p")
+                    router.submitCurrentPageCommand(view,"k",destination,true,nullptr,{},router.pageReceiverKey());
+            });
+        view->setProperty("probeFullscreenEnabled", featureEnabled);
+        view->setProperty("probeFullscreenRequests", 0);
+        js("window.fullscreenOutcome='pending';document.addEventListener('keydown',e=>{if(e.key==='k')"
+           "document.documentElement.requestFullscreen().then(()=>window.fullscreenOutcome='allowed')"
+           ".catch(e=>window.fullscreenOutcome=e.name)});true");
+        if (QGuiApplication::platformName().startsWith("wayland")) {
+            QString error;QVERIFY2(sendNativeProbeKey(&window,Qt::Key_P,&error),qPrintable(error));
+        } else { probeSource(Qt::Key_P,true);probeSource(Qt::Key_P,false); }
+        QTRY_VERIFY(js("fullscreenOutcome!=='pending'").toBool());
+        qInfo() << "P10 compiled fullscreen:" << featureEnabled << js("fullscreenOutcome")
+                << "Qt requests:" << view->property("probeFullscreenRequests");
+        QCOMPARE(js("fullscreenOutcome").toString(), featureEnabled ? "allowed" : "TypeError");
+        QCOMPARE(js("!!document.fullscreenElement").toBool(), featureEnabled);
+        QCOMPARE(view->property("probeFullscreenRequests").toInt(), featureEnabled ? 1 : 0);
+        if (featureEnabled) {
+            js("document.exitFullscreen();true");
+            QTRY_VERIFY(js("!document.fullscreenElement").toBool());
+        }
+        view->setProperty("probeFullscreenEnabled", false);
+    }
+    void sitePolicyNativeReentrantSetter_data() {
+        QTest::addColumn<QString>("setter");
+        QTest::newRow("epoch") << QString("epoch");
+        QTest::newRow("persistent") << QString("persistent");
+        QTest::newRow("one-shot") << QString("one-shot");
+    }
+    void sitePolicyNativeReentrantSetter() {
+        QFETCH(QString, setter);
+        ownedProbe(setter == "one-shot");
+        probeSource(Qt::Key_P, true);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 1);
+        NativeKeyHook hook;
+        bool nested = false;
+        const int outerEpoch = router.inputEpoch() + 1;
+        const int newerEpoch = outerEpoch + 1;
+        hook.callback = [&](QKeyEvent *event) {
+            if (nested || event->type() != QEvent::KeyRelease || event->key() != Qt::Key_K) return;
+            nested = true;
+            if (setter == "epoch") router.setInputEpoch(newerEpoch);
+            else if (setter == "persistent") router.setPassThrough(true);
+            else router.setPassNextKey(true);
+        };
+        window.activeFocusItem()->installEventFilter(&hook);
+        if (setter == "epoch") router.setInputEpoch(outerEpoch);
+        else if (setter == "persistent") router.setPassThrough(false);
+        else router.setPassNextKey(false);
+        const int observed = setter == "epoch" ? router.inputEpoch()
+            : setter == "persistent" ? int(router.passThrough()) : int(router.passNextKey());
+        probeSource(Qt::Key_P, false);
+        QVERIFY(nested);
+        QCOMPARE(observed, setter == "epoch" ? newerEpoch : 1);
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+    }
+    void sitePolicyNativeRouterDestruction_data() {
+        QTest::addColumn<QString>("phase");
+        QTest::addColumn<bool>("collisionLoser");
+        QTest::newRow("down") << QString("down") << false;
+        QTest::newRow("admission") << QString("admission") << false;
+        QTest::newRow("admission-after-terminal-release") << QString("admission-released") << false;
+        QTest::newRow("repeat") << QString("repeat") << false;
+        QTest::newRow("terminal-release") << QString("release") << false;
+        QTest::newRow("repeat-with-suppressed-source") << QString("repeat") << true;
+    }
+    void sitePolicyNativeRouterDestruction() {
+        QFETCH(QString, phase);
+        QFETCH(bool, collisionLoser);
+        openPolicyTrace();
+        auto owner = std::make_unique<FerricBrowserKeyRouter>();
+        QPointer<FerricBrowserKeyRouter> alive(owner.get());
+        owner->setTargetWindow(&window); owner->setEnabled(true); owner->setPassThrough(true);
+        const auto prepare = [&](FerricBrowserKeyRouter *target) {
+            QJSEngine scripts;
+            const auto loaded = scripts.evaluate(productionBrowserScript());
+            QVERIFY2(!loaded.isError(), qPrintable(loaded.toString()));
+            const auto script = scripts.evaluate("focusObserverSource()+';'+focusProbe()");
+            QVERIFY(!script.isError());
+            QSignalSpy observed(target, &FerricBrowserKeyRouter::pageReceiverObserved);
+            target->probePageReceiver(view, script.toString(), target->inputEpoch());
+            QTRY_COMPARE(observed.size(), 1);
+            QVERIFY(!target->pageReceiverKey().isEmpty());
+        };
+        const auto connectPolicy = [&](FerricBrowserKeyRouter *target) {
+            connect(target, &FerricBrowserKeyRouter::keyPressed, target,
+                [&, target](const QString &, int key) {
+                    if (key == Qt::Key_P) {
+                        const QVariantMap destination{{"text","k"},{"named",""},
+                            {"ctrl",false},{"alt",false},{"meta",false},{"shift",false}};
+                        target->submitCurrentPageCommand(view, "k", destination, true,
+                            nullptr, {}, target->pageReceiverKey());
+                    } else if (key == Qt::Key_K) target->observeCurrentPageKey(view, "k");
+                });
+        };
+        prepare(owner.get());
+        NativeKeyHook hook;
+        if (phase.startsWith("admission")) {
+            connect(owner.get(), &FerricBrowserKeyRouter::keyPressed, &hook,
+                    [&](const QString &, int key) {
+                if (key != Qt::Key_P) return;
+                if (phase == "admission-released") probeSource(Qt::Key_P, false);
+                owner.reset();
+            });
+        }
+        connectPolicy(owner.get());
+        hook.callback = [&](QKeyEvent *event) {
+            if (!owner || event->key() != Qt::Key_K) return;
+            const bool match = phase == "down"
+                ? event->type() == QEvent::KeyPress && !event->isAutoRepeat()
+                : phase == "repeat" ? event->type() == QEvent::KeyPress && event->isAutoRepeat()
+                                     : event->type() == QEvent::KeyRelease;
+            if (match) owner.reset();
+        };
+        window.activeFocusItem()->installEventFilter(&hook);
+        probeSource(Qt::Key_P, true);
+        if (collisionLoser) probeSource(Qt::Key_K, true);
+        if (phase == "repeat") probeSource(Qt::Key_P, true, true);
+        if (phase == "release") probeSource(Qt::Key_P, false);
+        QVERIFY(alive.isNull());
+        FerricBrowserKeyRouter replacement;
+        replacement.setTargetWindow(&window); replacement.setEnabled(true);
+        replacement.setPassThrough(true);
+        prepare(&replacement);
+        connectPolicy(&replacement);
+        if (phase == "release" || phase == "admission-released") {
+            // Its source terminal release already happened: no held tombstone.
+            const bool rawAvailable = replacement.canEnterRawPassThrough();
+            replacement.setPassThrough(false); replacement.setPassThrough(true);
+            probeSource(Qt::Key_P, true); probeSource(Qt::Key_P, false);
+            QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), phase == "release" ? 4 : 2);
+            QVERIFY(rawAvailable);
+            QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(),
+                     phase == "release" ? "k,k,k,k" : "k,k");
+        } else {
+            const bool refused = !replacement.canEnterRawPassThrough();
+            probeSource(Qt::Key_P, false);
+            const bool loserStillRefuses = !collisionLoser || !replacement.canEnterRawPassThrough();
+            if (collisionLoser) probeSource(Qt::Key_K, false);
+            probeSource(Qt::Key_L, true); probeSource(Qt::Key_L, false);
+            QTRY_VERIFY(js("policyFixture.snapshot().events.some(e=>e.key==='l'&&e.type==='keyup')").toBool());
+            QVERIFY(refused);
+            QVERIFY(loserStillRefuses);
+            const QString expected = phase == "admission" ? "l,l"
+                : phase == "down" ? "k,l,l" : "k,k,l,l";
+            QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(), expected);
+            QVERIFY(replacement.canEnterRawPassThrough());
+        }
+    }
+    void compiledViewDestroyedDuringDispatch_data() {
+        QTest::addColumn<QString>("phase");
+        for (const auto *phase : {"down", "repeat", "release"})
+            QTest::newRow(phase) << QString::fromLatin1(phase);
+    }
+    void compiledViewDestroyedDuringDispatch() {
+        QFETCH(QString, phase);
+        openPolicyTrace(); pass(false); observePageReceiver();
+        const QPointer<QQuickItem> original(view);
+        QObject policy;
+        connect(&router, &FerricBrowserKeyRouter::keyPressed, &policy,
+            [&](const QString &, int key) {
+                if (key != Qt::Key_P) return;
+                const QVariantMap destination{{"text","k"},{"named",""},
+                    {"ctrl",false},{"alt",false},{"meta",false},{"shift",false}};
+                router.submitCurrentPageCommand(view, "k", destination, true,
+                    nullptr, {}, router.pageReceiverKey());
+            });
+        NativeKeyHook hook;
+        hook.callback = [&](QKeyEvent *event) {
+            if (event->key() != Qt::Key_K) return;
+            const bool match = phase == "down"
+                ? event->type() == QEvent::KeyPress && !event->isAutoRepeat()
+                : phase == "repeat" ? event->type() == QEvent::KeyPress && event->isAutoRepeat()
+                                     : event->type() == QEvent::KeyRelease;
+            if (match) { window.setSource(QUrl()); view = nullptr; }
+        };
+        window.activeFocusItem()->installEventFilter(&hook);
+        probeSource(Qt::Key_P, true);
+        if (phase != "down") {
+            QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 1);
+            probeSource(Qt::Key_P, phase == "repeat", phase == "repeat");
+        }
+        // Restore the fixture before assertions so later cases retain their owner.
+        window.setSource(QUrl::fromLocalFile(files.filePath("view.qml")));
+        view = window.rootObject();
+        QVERIFY(view);
+        QVERIFY(original.isNull());
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+        openPolicyTrace(); pass(false);
+        if (phase != "release") {
+            probeSource(Qt::Key_P, true, true);
+            probeSource(Qt::Key_P, false);
+        }
+        probeSource(Qt::Key_L, true); probeSource(Qt::Key_L, false);
+        QTRY_VERIFY(js("policyFixture.snapshot().events.some(e=>e.key==='l'&&e.type==='keyup')").toBool());
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(), "l,l");
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+        QVERIFY(router.canEnterRawPassThrough());
+    }
+    void sitePolicyNativeCrossRouterSupersession_data() {
+        QTest::addColumn<bool>("destroyOuter");
+        QTest::newRow("outer-survives") << false;
+        QTest::newRow("outer-destroyed") << true;
+    }
+    void sitePolicyNativeCrossRouterSupersession() {
+        QFETCH(bool, destroyOuter);
+        openPolicyTrace();
+        auto outer = std::make_unique<FerricBrowserKeyRouter>();
+        outer->setTargetWindow(&window);
+        outer->setEnabled(true);
+        outer->setPassThrough(true);
+        QVERIFY(outer->configureFeasibilityMapping(view, true));
+        QObject context;
+        bool nested = false;
+        connect(outer.get(), &FerricBrowserKeyRouter::keyPressed, &context,
+                [&](const QString &, int key) {
+            if (key != Qt::Key_P || nested) return;
+            nested = true;
+            {
+                FerricBrowserKeyRouter newer;
+                newer.setTargetWindow(&window);
+                newer.setEnabled(true);
+                newer.setPassThrough(true);
+                QVERIFY(newer.configureFeasibilityMapping(view, true));
+                probeSource(Qt::Key_P, true);
+                probeSource(Qt::Key_P, false);
+                QCOMPARE(newer.feasibilitySourceCount(), 0);
+            }
+            // The newer owner has already retired. Its absence must not let
+            // an older pending down deliver, or leave a held tombstone.
+            if (destroyOuter) outer.reset();
+        });
+        probeSource(Qt::Key_P, true);
+        const auto staleSources = outer ? outer->feasibilitySourceCount() : 0;
+        if (staleSources) probeSource(Qt::Key_P, false);
+        FerricBrowserKeyRouter replacement;
+        replacement.setTargetWindow(&window);
+        replacement.setEnabled(true);
+        replacement.setPassThrough(true);
+        const bool rawAvailable = replacement.requestFeasibilityRaw();
+        // Preserve isolation when running this regression against broken code.
+        if (!rawAvailable) probeSource(Qt::Key_P, false);
+        probeSource(Qt::Key_L, true); probeSource(Qt::Key_L, false);
+        QTRY_VERIFY(js("policyFixture.snapshot().events.some(e=>e.key==='l'&&e.type==='keyup')").toBool());
+        QVERIFY(nested);
+        QCOMPARE(staleSources, 0);
+        QVERIFY(rawAvailable);
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(), "k,k,l,l");
+    }
+    void sitePolicyNativeNestedRelease_data() {
+        QTest::addColumn<bool>("duringAdmission");
+        QTest::newRow("admission") << true;
+        QTest::newRow("destination-down") << false;
+    }
+    void sitePolicyNativeNestedRelease() {
+        QFETCH(bool, duringAdmission);
+        ownedProbe(true);
+        NativeKeyHook hook;
+        QObject context;
+        bool sent = false;
+        if (duringAdmission) {
+            connect(&router, &FerricBrowserKeyRouter::keyPressed, &context,
+                    [&](const QString &, int key) {
+                if (key == Qt::Key_P && !sent) { sent = true; probeSource(Qt::Key_P, false); }
+            });
+        } else {
+            hook.callback = [&](QKeyEvent *event) {
+                if (event->key() == Qt::Key_K && event->type() == QEvent::KeyPress && !sent) {
+                    sent = true; probeSource(Qt::Key_P, false);
+                }
+            };
+            window.activeFocusItem()->installEventFilter(&hook);
+        }
+        probeSource(Qt::Key_P, true);
+        QVERIFY(sent);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 2);
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.type).join(',')").toString(), "keydown,keyup");
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(), "k,k");
+        QCOMPARE(passExits, 1);
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+    }
+    void sitePolicyNativeReentrantWinnerRelease() {
+        ownedProbe();
+        probeSource(Qt::Key_K, true);
+        NativeKeyHook hook;
+        bool admitted = false;
+        hook.callback = [&](QKeyEvent *event) {
+            if (event->key() == Qt::Key_K && event->type() == QEvent::KeyRelease && !admitted) {
+                admitted = true;
+                probeSource(Qt::Key_P, true);
+            }
+        };
+        window.activeFocusItem()->installEventFilter(&hook);
+        probeSource(Qt::Key_K, false);
+        QVERIFY(admitted);
+        QCOMPARE(router.feasibilitySourceCount(), 1);
+        QCOMPARE(router.feasibilityOutputCount(), 0);
+        QVERIFY(!router.requestFeasibilityRaw());
+        probeSource(Qt::Key_P, true, true);
+        probeSource(Qt::Key_P, false);
+        QTRY_COMPARE(js("policyFixture.snapshot().events.length").toInt(), 2);
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(), "k,k");
+        QCOMPARE(router.feasibilitySourceCount(), 0);
+    }
+    void sitePolicyNativeOwnerlessCapture_data() {
+        QTest::addColumn<bool>("duringAdmission");
+        QTest::newRow("destination-down") << false;
+        QTest::newRow("admission") << true;
+    }
+    void sitePolicyNativeOwnerlessCapture() {
+        QFETCH(bool, duringAdmission);
+        openPolicyTrace();
+        auto owner = std::make_unique<FerricBrowserKeyRouter>();
+        owner->setTargetWindow(&window); owner->setEnabled(true); owner->setPassThrough(true);
+        QVERIFY(owner->configureFeasibilityMapping(view, true));
+        QCoreApplication::instance()->removeEventFilter(&router);
+        struct RestoreFilter {
+            QObject *router;
+            ~RestoreFilter() { QCoreApplication::instance()->installEventFilter(router); }
+        } restore{&router};
+        NativeKeyHook hook;
+        if (duringAdmission) {
+            connect(owner.get(), &FerricBrowserKeyRouter::keyPressed, &hook,
+                    [&](const QString &, int key) { if (key == Qt::Key_P) owner.reset(); });
+        }
+        hook.callback = [&](QKeyEvent *event) {
+            if (owner && event->key() == Qt::Key_K && event->type() == QEvent::KeyPress)
+                owner.reset();
+        };
+        window.activeFocusItem()->installEventFilter(&hook);
+        probeSource(Qt::Key_P, true);
+        QVERIFY(!owner);
+        // No window router exists here. The app-owned source capture alone
+        // must consume the owed physical release before any new owner exists.
+        probeSource(Qt::Key_P, false);
+        probeSource(Qt::Key_L, true); probeSource(Qt::Key_L, false);
+        QTRY_VERIFY(js("policyFixture.snapshot().events.some(e=>e.key==='l'&&e.type==='keyup')").toBool());
+        QCOMPARE(js("policyFixture.snapshot().events.map(e=>e.key).join(',')").toString(),
+                 duringAdmission ? "l,l" : "k,l,l");
+        FerricBrowserKeyRouter replacement;
+        replacement.setTargetWindow(&window); replacement.setEnabled(true);
+        replacement.setPassThrough(true);
+        QVERIFY(replacement.requestFeasibilityRaw());
     }
     void passNext() {
         QFETCH(int, key);
@@ -651,6 +2017,323 @@ WebEngineView {
         QTRY_COMPARE(js("events.filter(e=>e.key==='f'&&e.type==='keydown').length").toInt(), 2);
         QTRY_COMPARE(js("events.filter(e=>e.key==='g'&&e.type==='keydown').length").toInt(), 2);
         QTRY_COMPARE(js("events.filter(e=>(e.key==='f'||e.key==='g')&&e.type==='keyup').length").toInt(), 2);
+    }
+    void browserBindingContextRetiresHeldSources() {
+        focus("player");
+        normal();
+        QObject callbacks;
+        QString context = "A";
+        int dispatched = 0;
+        const auto connection = connect(&router, &FerricBrowserKeyRouter::keyPressed,
+            &callbacks, [&](const QString &, int key, int, bool, bool) {
+                if (key != Qt::Key_Z && key != Qt::Key_X) return;
+                if (router.captureBindingContext(context)) ++dispatched;
+                router.acceptCurrentEvent();
+            });
+        Q_UNUSED(connection);
+        const auto cleanup = qScopeGuard([&] {
+            probeSource(Qt::Key_Z, false);
+            probeSource(Qt::Key_X, false);
+        });
+        QSignalSpy releases(&router, &FerricBrowserKeyRouter::keyReleased);
+        probeSource(Qt::Key_Z, true);
+        probeSource(Qt::Key_Z, true, true);
+        probeSource(Qt::Key_X, true);
+        QCOMPARE(dispatched, 3);
+        context = "B";
+        probeSource(Qt::Key_Z, true, true);
+        probeSource(Qt::Key_X, true, true);
+        probeSource(Qt::Key_Z, false, true);
+        QCOMPARE(dispatched, 3);
+        QCOMPARE(releases.count(), 0);
+        // Once cancellation was observed, even a repeated token cannot revive
+        // that held gesture. A genuine new down may replace a lost release.
+        context = "A";
+        probeSource(Qt::Key_Z, true, true);
+        QCOMPARE(dispatched, 3);
+        probeSource(Qt::Key_Z, false);
+        probeSource(Qt::Key_X, false);
+        QCOMPARE(releases.count(), 2);
+        probeSource(Qt::Key_Z, true);
+        QCOMPARE(dispatched, 4);
+        context = "C";
+        probeSource(Qt::Key_Z, true);
+        probeSource(Qt::Key_Z, true, true);
+        QCOMPARE(dispatched, 6);
+        probeSource(Qt::Key_Z, false);
+        QCOMPARE(releases.count(), 3);
+        QCOMPARE(js("events.filter(e=>e.key==='z'||e.key==='x').length").toInt(), 0);
+    }
+    void browserBindingContextPublicationDuringAdmission() {
+        focus("player");
+        normal();
+        QObject callbacks;
+        QString context = "A";
+        QStringList dispatched;
+        bool nested = false;
+        connect(&router, &FerricBrowserKeyRouter::keyPressed, &callbacks,
+            [&](const QString &, int key, int, bool repeat, bool) {
+                if (key != Qt::Key_Z) return;
+                if (!router.captureBindingContext(context)) {
+                    router.acceptCurrentEvent();
+                    return;
+                }
+                dispatched.append(context);
+                if (!repeat && !nested) {
+                    nested = true;
+                    context = "B";
+                    probeSource(Qt::Key_Z, true, true);
+                }
+                router.acceptCurrentEvent();
+            });
+        const auto cleanup = qScopeGuard([&] { probeSource(Qt::Key_Z, false); });
+        QSignalSpy releases(&router, &FerricBrowserKeyRouter::keyReleased);
+        probeSource(Qt::Key_Z, true);
+        QCOMPARE(dispatched, QStringList({"A"}));
+        probeSource(Qt::Key_Z, true, true);
+        QCOMPARE(dispatched, QStringList({"A"}));
+        probeSource(Qt::Key_Z, false);
+        QCOMPARE(releases.count(), 1);
+        probeSource(Qt::Key_Z, true);
+        QCOMPARE(dispatched, QStringList({"A", "B"}));
+        probeSource(Qt::Key_Z, false);
+        QCOMPARE(releases.count(), 2);
+        QCOMPARE(js("events.filter(e=>e.key==='z').length").toInt(), 0);
+    }
+    void browserBindingContextNestedFreshPress() {
+        focus("player");
+        normal();
+        QObject callbacks;
+        QString context = "A";
+        QStringList dispatched;
+        bool nested = false;
+        connect(&router, &FerricBrowserKeyRouter::keyPressed, &callbacks,
+            [&](const QString &, int key, int, bool repeat, bool) {
+                if (key != Qt::Key_Z) return;
+                if (!router.captureBindingContext(context)) {
+                    router.acceptCurrentEvent();
+                    return;
+                }
+                dispatched.append(context);
+                if (!repeat && !nested) {
+                    nested = true;
+                    context = "B";
+                    probeSource(Qt::Key_Z, true);
+                }
+                router.acceptCurrentEvent();
+            });
+        const auto cleanup = qScopeGuard([&] { probeSource(Qt::Key_Z, false); });
+        probeSource(Qt::Key_Z, true);
+        probeSource(Qt::Key_Z, true, true);
+        QCOMPARE(dispatched, QStringList({"A", "B", "B"}));
+        probeSource(Qt::Key_Z, false);
+        QCOMPARE(js("events.filter(e=>e.key==='z').length").toInt(), 0);
+    }
+    void browserBindingContextForeignRouter() {
+        focus("player");
+        normal();
+        QObject callbacks;
+        int firstActions = 0;
+        connect(&router, &FerricBrowserKeyRouter::keyPressed, &callbacks,
+            [&](const QString &, int key, int, bool, bool) {
+                if (key != Qt::Key_Z) return;
+                if (router.captureBindingContext("first")) ++firstActions;
+                router.acceptCurrentEvent();
+            });
+        bool held = true;
+        const auto cleanup = qScopeGuard([&] {
+            if (held) probeSource(Qt::Key_Z, false);
+        });
+        QSignalSpy firstReleases(&router, &FerricBrowserKeyRouter::keyReleased);
+        probeSource(Qt::Key_Z, true);
+        QCOMPARE(firstActions, 1);
+        QQuickWindow secondWindow;
+        FerricBrowserKeyRouter second;
+        secondWindow.resize(200, 150);
+        secondWindow.show();
+        secondWindow.requestActivate();
+        QTRY_COMPARE(QGuiApplication::focusWindow(), &secondWindow);
+        second.setTargetWindow(&secondWindow);
+        second.setEnabled(true);
+        int secondActions = 0;
+        connect(&second, &FerricBrowserKeyRouter::keyPressed, &callbacks,
+            [&](const QString &, int key, int, bool, bool) {
+                if (key != Qt::Key_Z) return;
+                if (second.captureBindingContext("second")) ++secondActions;
+                second.acceptCurrentEvent();
+            });
+        QSignalSpy secondReleases(&second, &FerricBrowserKeyRouter::keyReleased);
+        QKeyEvent repeat(QEvent::KeyPress, Qt::Key_Z, Qt::NoModifier, "z", true);
+        QCoreApplication::sendEvent(&secondWindow, &repeat);
+        QCOMPARE(secondActions, 0);
+        QKeyEvent release(QEvent::KeyRelease, Qt::Key_Z, Qt::NoModifier, "z");
+        QCoreApplication::sendEvent(&secondWindow, &release);
+        held = false;
+        QCOMPARE(firstReleases.count(), 1);
+        QCOMPARE(secondReleases.count(), 0);
+        QTest::keyClick(&secondWindow, Qt::Key_Z);
+        QCOMPARE(secondActions, 1);
+        QCOMPARE(secondReleases.count(), 1);
+    }
+    void browserBindingContextDestroyedOwner_data() {
+        QTest::addColumn<bool>("duringDispatch");
+        QTest::newRow("after-admission") << false;
+        QTest::newRow("during-admission") << true;
+    }
+    void browserBindingContextDestroyedOwner() {
+        QFETCH(bool, duringDispatch);
+        focus("player");
+        normal();
+        QObject callbacks;
+        auto *first = new FerricBrowserKeyRouter;
+        QPointer<FerricBrowserKeyRouter> guardedFirst(first);
+        const auto cleanupFirst = qScopeGuard([&] {
+            if (guardedFirst) delete guardedFirst.data();
+        });
+        first->setTargetWindow(&window);
+        first->setEnabled(true);
+        int firstActions = 0;
+        connect(first, &FerricBrowserKeyRouter::keyPressed, &callbacks,
+            [&](const QString &, int key, int, bool, bool) {
+                if (key != Qt::Key_Z) return;
+                if (first->captureBindingContext("first")) ++firstActions;
+                first->acceptCurrentEvent();
+                if (duringDispatch) delete first;
+            });
+        probeSource(Qt::Key_Z, true);
+        QCOMPARE(firstActions, 1);
+        if (!duringDispatch) delete first;
+        QVERIFY(guardedFirst.isNull());
+        FerricBrowserKeyRouter second;
+        second.setTargetWindow(&window);
+        second.setEnabled(true);
+        int secondActions = 0;
+        connect(&second, &FerricBrowserKeyRouter::keyPressed, &callbacks,
+            [&](const QString &, int key, int, bool, bool) {
+                if (key != Qt::Key_Z) return;
+                if (second.captureBindingContext("second")) ++secondActions;
+                second.acceptCurrentEvent();
+            });
+        const auto cleanupHeld = qScopeGuard([&] { probeSource(Qt::Key_Z, false); });
+        probeSource(Qt::Key_Z, true, true);
+        QCOMPARE(secondActions, 0);
+        probeSource(Qt::Key_Z, false);
+        probeSource(Qt::Key_Z, true);
+        QCOMPARE(secondActions, 1);
+        probeSource(Qt::Key_Z, false);
+        QCOMPARE(js("events.filter(e=>e.key==='z').length").toInt(), 0);
+    }
+    void browserBindingContextPendingForeignReturns() {
+        focus("player");
+        normal();
+        QObject callbacks;
+        FerricBrowserKeyRouter second;
+        second.setTargetWindow(&window);
+        int firstActions = 0;
+        int secondActions = 0;
+        bool nested = false;
+        connect(&second, &FerricBrowserKeyRouter::keyPressed, &callbacks,
+            [&](const QString &, int key, int, bool, bool) {
+                if (key != Qt::Key_Z) return;
+                if (second.captureBindingContext("second")) ++secondActions;
+                second.acceptCurrentEvent();
+            });
+        connect(&router, &FerricBrowserKeyRouter::keyPressed, &callbacks,
+            [&](const QString &, int key, int, bool repeat, bool) {
+                if (key != Qt::Key_Z) return;
+                if (!router.captureBindingContext("first")) {
+                    router.acceptCurrentEvent();
+                    return;
+                }
+                ++firstActions;
+                if (!repeat && !nested) {
+                    nested = true;
+                    second.setEnabled(true);
+                    probeSource(Qt::Key_Z, true, true);
+                    second.setEnabled(false);
+                }
+                router.acceptCurrentEvent();
+            });
+        const auto cleanup = qScopeGuard([&] { probeSource(Qt::Key_Z, false); });
+        probeSource(Qt::Key_Z, true);
+        QCOMPARE(firstActions, 1);
+        QCOMPARE(secondActions, 0);
+        probeSource(Qt::Key_Z, true, true);
+        QCOMPARE(firstActions, 1);
+        probeSource(Qt::Key_Z, false);
+        probeSource(Qt::Key_Z, true);
+        QCOMPARE(firstActions, 2);
+        probeSource(Qt::Key_Z, false);
+    }
+    void browserBindingContextTargetReplacement() {
+        focus("player");
+        normal();
+        QObject callbacks;
+        QQuickWindow replacement;
+        replacement.resize(200, 150);
+        bool held = false;
+        const auto cleanup = qScopeGuard([&] {
+            if (held) {
+                QKeyEvent release(QEvent::KeyRelease, Qt::Key_Z, Qt::NoModifier, "z");
+                QCoreApplication::sendEvent(&replacement, &release);
+            }
+            router.setTargetWindow(&window);
+            replacement.hide();
+            window.requestActivate();
+        });
+        int dispatched = 0;
+        connect(&router, &FerricBrowserKeyRouter::keyPressed, &callbacks,
+            [&](const QString &, int key, int, bool repeat, bool) {
+                if (key != Qt::Key_Z) return;
+                if (!router.captureBindingContext("same-ui")) {
+                    router.acceptCurrentEvent();
+                    return;
+                }
+                ++dispatched;
+                if (!repeat && dispatched == 1) router.setTargetWindow(&replacement);
+                router.acceptCurrentEvent();
+            });
+        held = true;
+        probeSource(Qt::Key_Z, true);
+        QCOMPARE(dispatched, 1);
+        replacement.show();
+        replacement.requestActivate();
+        QTRY_COMPARE(QGuiApplication::focusWindow(), &replacement);
+        QKeyEvent repeat(QEvent::KeyPress, Qt::Key_Z, Qt::NoModifier, "z", true);
+        QCoreApplication::sendEvent(&replacement, &repeat);
+        QCOMPARE(dispatched, 1);
+        QKeyEvent release(QEvent::KeyRelease, Qt::Key_Z, Qt::NoModifier, "z");
+        QCoreApplication::sendEvent(&replacement, &release);
+        held = false;
+        QTest::keyClick(&replacement, Qt::Key_Z);
+        QCOMPARE(dispatched, 2);
+    }
+    void browserBindingContextFocusReceiverReturns() {
+        focus("player");
+        normal();
+        QObject callbacks;
+        int dispatched = 0;
+        connect(&router, &FerricBrowserKeyRouter::keyPressed, &callbacks,
+            [&](const QString &, int key, int, bool, bool) {
+                if (key != Qt::Key_Z) return;
+                if (router.captureBindingContext("same-ui")) ++dispatched;
+                router.acceptCurrentEvent();
+            });
+        const auto cleanup = qScopeGuard([&] { probeSource(Qt::Key_Z, false); });
+        probeSource(Qt::Key_Z, true);
+        QCOMPARE(dispatched, 1);
+        QQuickItem chrome;
+        chrome.setParentItem(window.contentItem());
+        chrome.forceActiveFocus();
+        QCOMPARE(window.activeFocusItem(), &chrome);
+        view->forceActiveFocus();
+        QTRY_VERIFY(window.activeFocusItem() != &chrome);
+        probeSource(Qt::Key_Z, true, true);
+        QCOMPARE(dispatched, 1);
+        probeSource(Qt::Key_Z, false);
+        probeSource(Qt::Key_Z, true);
+        QCOMPARE(dispatched, 2);
+        probeSource(Qt::Key_Z, false);
     }
     void mixedBrowserOwnerSurvivesPageMappingChange() {
         focus("player");
@@ -788,6 +2471,19 @@ WebEngineView {
         QCOMPARE(js("shift").toBool(), bool(modifiers & Qt::ShiftModifier));
         QCOMPARE(exits, 0);
         QCOMPARE(router.transientInsert(), !persistent);
+    }
+    void compositionCommitPreservesText() {
+        focus("multi");
+        QTRY_VERIFY(QInputMethod::queryFocusObject(Qt::ImEnabled,{}).toBool());
+        const QPointer<QQuickItem> receiver(window.activeFocusItem());QVERIFY(receiver);
+        const auto finish=qScopeGuard([&]{if(receiver){QInputMethodEvent end;QCoreApplication::sendEvent(receiver,&end);}});
+        QInputMethodEvent preedit("pending",{});QCoreApplication::sendEvent(receiver,&preedit);
+        QVERIFY(router.compositionActive());
+        QTRY_COMPARE(js("document.getElementById('multi').value").toString(),QString("pending"));
+        QInputMethodEvent commit;commit.setCommitString("confirmed");QCoreApplication::sendEvent(receiver,&commit);
+        QVERIFY(!router.compositionActive());
+        QTRY_COMPARE(js("document.getElementById('multi').value").toString(),QString("confirmed"));
+        QCOMPARE(exits,0);
     }
     void composition() {
         focus("multi");

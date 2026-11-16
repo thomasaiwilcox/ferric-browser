@@ -444,6 +444,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
     }
     let (
         mut config,
+        base_authored,
         config_source,
         contexts_json,
         profile_overrides,
@@ -488,6 +489,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
             };
         (
             loaded.config,
+            loaded.authored,
             "user",
             serde_json::to_string(&contexts).map_err(|error| {
                 CliError::config(format!(
@@ -502,6 +504,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
     } else {
         (
             Config::default(),
+            Arc::default(),
             "built-in",
             serde_json::to_string(&ContextsConfig::default()).map_err(|error| {
                 CliError::config(format!("could not serialize default contexts: {error}"))
@@ -752,6 +755,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
             storage_base: storage_base.as_deref(),
             recovery_available,
             base_config_json: &base_config_json,
+            base_authored: &base_authored,
             config_json: &config_json,
             config_source,
             config_path: config_path.as_deref(),
@@ -1029,6 +1033,7 @@ struct GuiLaunchPlan<'a> {
     storage_base: Option<&'a Path>,
     recovery_available: bool,
     base_config_json: &'a str,
+    base_authored: &'a Arc<ferric_browser_config::ConfigurationSources>,
     config_json: &'a str,
     config_source: &'a str,
     config_path: Option<&'a str>,
@@ -1060,6 +1065,7 @@ fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
         storage_base,
         recovery_available,
         base_config_json,
+        base_authored,
         config_json,
         config_source,
         config_path,
@@ -1198,6 +1204,12 @@ fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
             QString::from("startupConfigJson"),
             QVariant::from(&config_json),
         );
+        let startup_bundle = ferric_browser_engine_qt::startup_configuration_value(
+            serde_json::from_str(base_config_json)
+                .map_err(|error| format!("Invalid captured startup base: {error}"))?,
+            Arc::clone(base_authored),
+        );
+        initial_properties.insert(QString::from("startupConfigurationBundle"), startup_bundle);
         let base_config_json = QString::from(base_config_json);
         initial_properties.insert(
             QString::from("startupConfigBaseJson"),

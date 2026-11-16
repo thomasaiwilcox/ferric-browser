@@ -1,0 +1,264 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Ordinary rooted Hint baseline</title>
+<style>
+  html, body { margin:0; width:100%; height:100%; overflow:hidden; }
+  iframe { position:fixed; left:6px; top:6px; width:calc(100% - 16px); height:calc(100% - 16px); border:2px solid black; }
+</style>
+<script>
+'use strict';
+const parameters = new URL(location.href).searchParams;
+const requested = Number(parameters.get('count'));
+const shape = parameters.get('shape');
+const freshControl = parameters.get('control') === 'fresh';
+const remaining = Number(parameters.get('remaining') || '0');
+const shapes = ['shadow-2','slots','same-origin-2','foreign-2','clipping'];
+const frameShape = shape === 'same-origin-2' || shape === 'foreign-2';
+if ((!freshControl && ![500,1000,5000].includes(requested)) || (freshControl && requested !== 1)
+    || !shapes.includes(shape)
+    || !Number.isInteger(remaining) || remaining < 0 || remaining > 2
+    || !frameShape && remaining !== 0)
+  throw new Error('Unsupported baseline subject');
+const parentOrigin = parameters.get('parentOrigin');
+const parentUrl = parentOrigin ? new URL(parentOrigin) : null;
+if (parentUrl && (!['127.0.0.1','localhost'].includes(parentUrl.hostname)
+    || parentUrl.port !== location.port || parentUrl.protocol !== location.protocol))
+  throw new Error('Unexpected fixture parent origin');
+const state = window.rootFixture = {
+  shape, requested, freshControl, targetCount:0, shadowRoots:0, slots:0, frameHops:0,
+  physicalButtons:0, clippedSentinels:0, focused:false, ready:false,
+  shadowDepthMin:0, shadowDepthMax:0,
+  layoutGeneration:0, readyGeneration:-1, viewport:{}, leafViewport:{}
+};
+// These are fixture readiness/expected-workload facts. They grant no frame
+// authority; production collection must independently establish its own route.
+let frame = null, childOrigin = '', targets = [], container = null, initialized = false;
+let parentLayoutRequest = 0, childLayoutRequest = 0, lastChildGeneration = -1;
+let childReady = false, focusWanted = false;
+let focusGeneration = 0, focusLayoutGeneration = -1, parentFocusRequest = 0;
+let lastParentFocusRequest = 0;
+function snapshot() {
+  return {shape, requested, freshControl, targetCount:state.targetCount, shadowRoots:state.shadowRoots,
+    slots:state.slots, frameHops:state.frameHops, physicalButtons:state.physicalButtons,
+    clippedSentinels:state.clippedSentinels, layoutGeneration:state.layoutGeneration,
+    shadowDepthMin:state.shadowDepthMin, shadowDepthMax:state.shadowDepthMax,
+    viewport:{width:innerWidth,height:innerHeight}, leafViewport:state.leafViewport};
+}
+function send(type, extra = {}) {
+  if (parentOrigin) parent.postMessage(Object.assign({type},snapshot(),extra),parentOrigin);
+}
+function ready(generation) {
+  if (generation !== state.layoutGeneration) return;
+  state.ready = true;
+  state.readyGeneration = generation;
+  state.viewport = {width:innerWidth,height:innerHeight};
+  document.body.dataset.layoutWidth = String(innerWidth);
+  document.body.dataset.layoutHeight = String(innerHeight);
+  document.body.dataset.ready = 'true';
+  send('p00-root-ready',{request:parentLayoutRequest});
+  if (focusWanted) tryFocus();
+}
+function pending() {
+  ++state.layoutGeneration;
+  state.ready = false;
+  state.readyGeneration = -1;
+  state.focused = false;
+  ++focusGeneration;
+  document.body.dataset.ready = 'false';
+  send('p00-root-pending',{request:parentLayoutRequest});
+  return state.layoutGeneration;
+}
+function requestFocus() {
+  focusWanted = true;
+  return tryFocus();
+}
+function tryFocus() {
+  if (!initialized || !state.ready || state.readyGeneration !== state.layoutGeneration) return false;
+  state.focused = false;
+  const request = ++focusGeneration;
+  focusLayoutGeneration = state.layoutGeneration;
+  if (frame) {
+    frame.focus();
+    frame.contentWindow.postMessage({type:'p00-root-focus',shape,requested,
+      request,layoutRequest:childLayoutRequest},childOrigin);
+  } else {
+    targets[0].focus();
+    let active = document.activeElement;
+    while (active && active.shadowRoot && active.shadowRoot.activeElement) active = active.shadowRoot.activeElement;
+    state.focused = document.hasFocus() && active === targets[0];
+    if (state.focused) focusWanted = false;
+    send('p00-root-focused',{focused:state.focused,request:parentFocusRequest,
+      layoutRequest:parentLayoutRequest});
+  }
+  return true;
+}
+state.focus = requestFocus;
+state.snapshot = snapshot;
+function resize() {
+  if (!initialized) return;
+  if (!frame) { layout(); return; }
+  pending();
+  ++childLayoutRequest;
+  childReady = false;
+  frame.contentWindow.postMessage({type:'p00-root-layout',shape,requested,
+    request:childLayoutRequest},childOrigin);
+}
+window.addEventListener('message',event=>{
+  const value = event.data;
+  if (!value || value.shape !== shape || value.requested !== requested) return;
+  if (event.source === parent && parentOrigin && event.origin === parentOrigin) {
+    if (value.type === 'p00-root-focus') {
+      if (!Number.isSafeInteger(value.request) || value.request <= lastParentFocusRequest
+          || value.layoutRequest !== parentLayoutRequest) return;
+      lastParentFocusRequest = value.request;
+      parentFocusRequest = value.request;
+      requestFocus(); return;
+    }
+    if (value.type === 'p00-root-layout') {
+      if (!Number.isSafeInteger(value.request) || value.request <= parentLayoutRequest) return;
+      parentLayoutRequest = value.request;
+      focusWanted = false;
+      resize(); return;
+    }
+  }
+  if (!frame || event.source !== frame.contentWindow || event.origin !== childOrigin) return;
+  if (value.type === 'p00-root-pending') {
+    if (value.request !== childLayoutRequest || !Number.isSafeInteger(value.layoutGeneration)
+        || value.layoutGeneration <= lastChildGeneration) return;
+    lastChildGeneration = value.layoutGeneration;
+    childReady = false;
+    // Invalidate ancestors without issuing another child layout request.
+    // A pending->request feedback loop would never become ready.
+    pending(); return;
+  }
+  if (value.type === 'p00-root-ready') {
+    if (value.request !== childLayoutRequest
+        || !Number.isSafeInteger(value.layoutGeneration) || value.layoutGeneration < lastChildGeneration
+        || value.layoutGeneration === lastChildGeneration && childReady
+        || !value.viewport || !Number.isFinite(value.viewport.width) || !Number.isFinite(value.viewport.height)
+        || Math.abs(value.viewport.width-frame.clientWidth)>1
+        || Math.abs(value.viewport.height-frame.clientHeight)>1) return;
+    if (value.layoutGeneration > lastChildGeneration) pending();
+    state.targetCount = value.targetCount;
+    lastChildGeneration = value.layoutGeneration;
+    childReady = true;
+    state.shadowRoots = value.shadowRoots;
+    state.slots = value.slots;
+    state.shadowDepthMin = value.shadowDepthMin;
+    state.shadowDepthMax = value.shadowDepthMax;
+    state.frameHops = value.frameHops+1;
+    state.clippedSentinels = value.clippedSentinels;
+    state.physicalButtons = value.physicalButtons;
+    state.leafViewport = value.leafViewport;
+    ready(state.layoutGeneration);
+  } else if (value.type === 'p00-root-focused') {
+    if (!state.ready || focusLayoutGeneration !== state.layoutGeneration
+        || value.request !== focusGeneration || value.layoutRequest !== childLayoutRequest) return;
+    state.focused = value.focused === true && document.hasFocus() && document.activeElement === frame;
+    if (state.focused) focusWanted = false;
+    send('p00-root-focused',{focused:state.focused,request:parentFocusRequest,
+      layoutRequest:parentLayoutRequest});
+  }
+});
+function button(index, name = 'Leaf '+index) {
+  const value = document.createElement('button');
+  value.type = 'button'; value.id = 'leaf-'+index;
+  value.textContent = 'x'; value.setAttribute('aria-label',name);
+  value.style.cssText = 'position:absolute;display:block;color:black;font:1px sans-serif;line-height:1;border:0;padding:0;';
+  return value;
+}
+function layout() {
+  const generation = pending();
+  const width = container ? container.clientWidth : innerWidth;
+  const height = container ? container.clientHeight : innerHeight;
+  const columns = freshControl ? 1 : requested === 500 ? 20 : requested === 1000 ? 40 : 100;
+  const rows = Math.ceil(requested/columns);
+  const cellWidth = (width-24)/columns, cellHeight = (height-24)/rows;
+  for (let index=0;index<targets.length;++index) {
+    const w = Math.max(2,Math.min(12,cellWidth/2));
+    const h = Math.max(2,Math.min(10,cellHeight/2));
+    Object.assign(targets[index].style,{
+      left:(12+(index%columns+.5)*cellWidth-w/2)+'px',
+      top:(12+(Math.floor(index/columns)+.5)*cellHeight-h/2)+'px',
+      width:w+'px',height:h+'px'
+    });
+  }
+  if (container) {
+    const clipped = document.getElementById('leaf-clipped');
+    clipped.style.left = (width+2)+'px';
+  }
+  state.targetCount = targets.filter(value=>value.isConnected).length;
+  const roots = new Set(), slots = new Set(), depths = [];
+  for (const control of targets) {
+    let node = control, depth = 0;
+    while (node) {
+      const assigned = node.assignedSlot;
+      if (assigned) slots.add(assigned);
+      const root = (assigned || node).getRootNode();
+      if (!root.host) break;
+      roots.add(root); ++depth; node = root.host;
+    }
+    depths.push(depth);
+  }
+  state.shadowRoots = roots.size; state.slots = slots.size;
+  state.shadowDepthMin = Math.min(...depths); state.shadowDepthMax = Math.max(...depths);
+  state.physicalButtons = state.targetCount + (container ?
+    ['leaf-clipped','leaf-covered'].filter(id=>document.getElementById(id).isConnected).length : 0);
+  state.leafViewport = {width:innerWidth,height:innerHeight};
+  requestAnimationFrame(()=>requestAnimationFrame(()=>ready(generation)));
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  const level = parameters.has('remaining') ? remaining : frameShape ? 2 : 0;
+  if (level > 0) {
+    const child = new URL(location.href);
+    child.searchParams.set('remaining',String(level-1));
+    child.searchParams.set('parentOrigin',location.origin);
+    if (shape === 'foreign-2') child.hostname = location.hostname === '127.0.0.1' ? 'localhost' : '127.0.0.1';
+    childOrigin = child.origin;
+    frame = document.createElement('iframe'); frame.id = 'root-frame'; frame.src = child.href;
+    frame.addEventListener('load',()=>{
+      // The WindowProxy can survive a document replacement, while its local
+      // generation restarts. A new request fences every old acknowledgment.
+      lastChildGeneration = -1; childReady = false; resize();
+    });
+    document.body.append(frame);
+    initialized = true;
+    window.addEventListener('resize',resize);
+    resize();
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  if (shape === 'clipping') {
+    container = document.createElement('section');
+    container.style.cssText = 'position:fixed;left:12px;top:12px;width:calc(100% - 36px);height:calc(100% - 36px);overflow:hidden;';
+    document.body.append(container);
+  }
+  for (let index=0;index<requested;++index) {
+    const control = button(index); targets.push(control);
+    if (shape === 'shadow-2' || shape === 'slots') {
+      const host = document.createElement('div'); host.id = 'host-'+index; host.style.display='contents';
+      const root = host.attachShadow({mode:'open'}); ++state.shadowRoots;
+      if (shape === 'shadow-2') {
+        const inner = document.createElement('div'); inner.style.display='contents'; root.append(inner);
+        inner.attachShadow({mode:'open'}).append(control); ++state.shadowRoots;
+      } else {
+        const slot = document.createElement('slot'); slot.name='leaf'; root.append(slot);
+        control.slot='leaf'; host.append(control); ++state.slots;
+      }
+      fragment.append(host);
+    } else fragment.append(control);
+  }
+  (container || document.body).append(fragment);
+  if (container) {
+    const clipped = button('clipped','Excluded clipped');
+    Object.assign(clipped.style,{top:'2px',width:'12px',height:'8px'}); container.append(clipped);
+    const covered = button('covered','Excluded covered');
+    Object.assign(covered.style,{left:'2px',top:'2px',width:'8px',height:'8px'}); container.append(covered);
+    const cover = document.createElement('div');
+    cover.style.cssText='position:absolute;left:0;top:0;width:12px;height:12px;background:black;z-index:2;';
+    container.append(cover); state.clippedSentinels=2;
+  }
+  initialized = true;
+  window.addEventListener('resize',resize); layout();
+});
+</script>

@@ -1,0 +1,257 @@
+{
+  "schema": 1,
+  "build": {
+    "package_version": "0.1.0",
+    "os": "linux",
+    "arch": "x86_64",
+    "qt_webengine": "6.11.2"
+  },
+  "backends": {
+    "wayland": {
+      "qualification": "qualified",
+      "source_input": "owned-compositor",
+      "excluded_groups": []
+    },
+    "offscreen": {
+      "qualification": "qualified",
+      "source_input": "constructed-qt-events",
+      "excluded_groups": [
+        "back-forward"
+      ]
+    },
+    "xcb": {
+      "qualification": "not-tested",
+      "source_input": "not-qualified",
+      "excluded_groups": []
+    }
+  },
+  "tested_layouts": [
+    "us",
+    "gb",
+    "de"
+  ],
+  "contexts": [
+    "passthrough-once",
+    "passthrough",
+    "normal-page-key",
+    "hint-page-key"
+  ],
+  "receiver_scopes": [
+    "top-document",
+    "focused-frame",
+    "top-or-focused-frame"
+  ],
+  "token_groups": [
+    {
+      "id": "ascii-lower",
+      "qualification": "qualified",
+      "tokens": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "h",
+        "i",
+        "j",
+        "k",
+        "l",
+        "m",
+        "n",
+        "o",
+        "p",
+        "q",
+        "r",
+        "s",
+        "t",
+        "u",
+        "v",
+        "w",
+        "x",
+        "y",
+        "z"
+      ]
+    },
+    {
+      "id": "ascii-upper",
+      "qualification": "qualified",
+      "tokens": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "K",
+        "L",
+        "M",
+        "N",
+        "O",
+        "P",
+        "Q",
+        "R",
+        "S",
+        "T",
+        "U",
+        "V",
+        "W",
+        "X",
+        "Y",
+        "Z"
+      ]
+    },
+    {
+      "id": "digits",
+      "qualification": "qualified",
+      "tokens": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9"
+      ]
+    },
+    {
+      "id": "punctuation-space",
+      "qualification": "qualified",
+      "tokens": [
+        "!",
+        "\"",
+        "#",
+        "$",
+        "%",
+        "&",
+        "'",
+        "(",
+        ")",
+        "*",
+        "Plus",
+        ",",
+        "-",
+        ".",
+        "/",
+        ":",
+        ";",
+        "<",
+        "=",
+        ">",
+        "?",
+        "@",
+        "[",
+        "\\",
+        "]",
+        "^",
+        "_",
+        "`",
+        "{",
+        "|",
+        "}",
+        "~",
+        "Space"
+      ]
+    },
+    {
+      "id": "enter-tab-backtab",
+      "qualification": "qualified",
+      "tokens": [
+        "Enter",
+        "Tab",
+        "Backtab"
+      ]
+    },
+    {
+      "id": "editing-navigation",
+      "qualification": "qualified",
+      "tokens": [
+        "Backspace",
+        "Delete",
+        "Insert",
+        "Escape",
+        "Left",
+        "Right",
+        "Up",
+        "Down",
+        "Home",
+        "End",
+        "PgUp",
+        "PgDown"
+      ]
+    },
+    {
+      "id": "back-forward",
+      "qualification": "qualified",
+      "tokens": [
+        "Back",
+        "Forward"
+      ]
+    },
+    {
+      "id": "f1-f12",
+      "qualification": "qualified",
+      "tokens": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "F6",
+        "F7",
+        "F8",
+        "F9",
+        "F10",
+        "F11",
+        "F12"
+      ]
+    },
+    {
+      "id": "modifier-chords",
+      "qualification": "qualified",
+      "tokens": [
+        "Ctrl+k",
+        "Ctrl+Left",
+        "Ctrl+Shift+k",
+        "Alt+k",
+        "Meta+k",
+        "Ctrl+Alt+k"
+      ]
+    }
+  ],
+  "limits": [
+    "Original noncomposing Unicode input remains original input; arbitrary Unicode virtual output is unsupported.",
+    "Destination modifiers are command flags, not physical modifier down/up timelines.",
+    "Focused receiver association is an asynchronous observation, not an atomic DOM focus lock.",
+    "Permissions depend on Qt features and page/browser policy; trust does not grant every operation.",
+    "Only the listed modifier chords have native metadata qualification.",
+    "The tested source layouts are US, UK and German; other source layouts are not claimed as qualified."
+  ],
+  "evidence": {
+    "destination_metadata": [
+      "p10-layout-us-2",
+      "p10-layout-gb-1",
+      "p10-layout-de-1"
+    ],
+    "physical_input": [
+      "p10-layout-us-final",
+      "p10-layout-gb-final",
+      "p10-layout-de-ime-final"
+    ],
+    "contexts_and_receivers": [
+      "p10-focus-generation-application-1",
+      "p10-layout-application-1"
+    ],
+    "permissions": [
+      "p10-compiled-permissions-native-1"
+    ]
+  }
+}

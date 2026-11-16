@@ -1,7 +1,7 @@
 use super::{
     Config, ContextsConfig, CxxQtType, MAX_UNTRUSTED_ARGUMENT_BYTES, ParsedCommand, Path, PathBuf,
-    Pin, QString, RuntimeOverrides, Uuid, Value, is_bounded_untrusted_text, qobject, resolve_input,
-    save_contexts_atomic,
+    Pin, QString, QVariant, RuntimeOverrides, Uuid, Value, is_bounded_untrusted_text, qobject,
+    resolve_input, save_contexts_atomic,
 };
 
 impl qobject::BrowserUi {
@@ -496,6 +496,17 @@ impl qobject::BrowserUi {
         self.as_mut().set_context_entry_force_reuse(force_reuse);
     }
 
+    pub(super) fn capture_startup_configuration(&self) -> QVariant {
+        let rust = self.rust();
+        if rust.profile_open_effect.is_none() {
+            return QVariant::default();
+        }
+        serde_json::from_str::<Config>(&rust.config_base_json.to_string()).map_or_else(
+            |_| QVariant::default(),
+            |base| crate::startup_configuration_value(base, rust.base_authored_input.clone()),
+        )
+    }
+
     pub(super) fn set_startup_configuration(
         mut self: Pin<&mut Self>,
         config: &QString,
@@ -504,10 +515,13 @@ impl qobject::BrowserUi {
         profile_overrides: &QString,
         path: &QString,
         source: &QString,
+        captured: &QVariant,
     ) -> bool {
         // This is a construction input, never a live configuration channel.
         // Active owners synchronize through their application and file watcher.
-        if self.as_ref().rust().profile_open_effect.is_some() {
+        if self.as_ref().rust().startup_configuration_set
+            || self.as_ref().rust().profile_open_effect.is_some()
+        {
             return false;
         }
         let config_text = config.to_string();
@@ -530,6 +544,19 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Startup configuration is invalid"));
             return false;
         }
+        if captured.is_valid() && !captured.is_null() {
+            if !qobject::ferric_install_startup_configuration(captured, self.as_mut(), base_config)
+            {
+                self.set_status_text(QString::from(
+                    "Startup source catalogue does not match its base",
+                ));
+                return false;
+            }
+        } else if source == "user" {
+            self.set_status_text(QString::from("Startup source catalogue is missing"));
+            return false;
+        }
+        self.as_mut().rust_mut().get_mut().startup_configuration_set = true;
         let safe_startup_config =
             serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into());
         self.as_mut()

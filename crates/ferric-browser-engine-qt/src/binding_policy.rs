@@ -40,7 +40,7 @@ pub(super) fn ipc_mode_name(mode: Mode) -> &'static str {
     }
 }
 
-fn configured_mode_name(mode: &str) -> Option<Mode> {
+pub(super) fn configured_mode_name(mode: &str) -> Option<Mode> {
     match mode {
         "grid" => Some(Mode::Grid),
         _ => parse_ipc_mode(mode).ok(),
@@ -254,7 +254,10 @@ pub(super) fn configured_bindings(
 ) -> Option<BindingResolver> {
     let mut definitions = BindingTrie::default_v1(registry.clone())
         .ok()?
-        .definitions();
+        .definitions()
+        .into_iter()
+        .map(|definition| ((definition.mode, definition.canonical_keys()), definition))
+        .collect::<std::collections::BTreeMap<_, _>>();
     let modes = config.get("bindings")?.as_object()?;
     for (mode_name, entries) in modes {
         let Some(mode) = configured_mode_name(mode_name) else {
@@ -268,17 +271,21 @@ pub(super) fn configured_bindings(
                 continue;
             };
             let keys = ferric_browser_core::binding_key_tokens(keychain)?;
-            definitions.retain(|definition| definition.mode != mode || definition.keys != keys);
-            if !matches!(command, "unbound" | "none") {
-                definitions.push(BindingDefinition {
-                    mode,
-                    keys,
-                    command: command.into(),
-                });
+            if matches!(command, "unbound" | "none") {
+                definitions.remove(&(mode, keys));
+            } else {
+                definitions.insert(
+                    (mode, keys.clone()),
+                    BindingDefinition {
+                        mode,
+                        keys,
+                        command: command.into(),
+                    },
+                );
             }
         }
     }
-    BindingTrie::new(registry.clone(), definitions)
+    BindingTrie::new(registry.clone(), definitions.into_values())
         .ok()
         .map(|trie| BindingResolver::new(trie, Mode::Normal))
 }
@@ -328,4 +335,81 @@ pub(super) fn is_library_command(name: &str) -> bool {
             | "journey-reopen"
             | "history-clear"
     )
+}
+
+#[cfg(test)]
+mod alias_tests {
+    use super::*;
+    use ferric_browser_core::BindingOutcome;
+
+    #[test]
+    fn an_alias_override_replaces_the_default_plus_binding() {
+        for authored in ["Plus", "+"] {
+            let mut config = serde_json::json!({"bindings":{"normal":{}}});
+            config["bindings"]["normal"][authored] = Value::String("zoom out".into());
+            let mut resolver =
+                configured_bindings(&CommandRegistry::default_v1(), &config).unwrap();
+            for delivered in ["+", "Plus"] {
+                assert!(resolver.has_initial_key(delivered));
+                assert_eq!(
+                    resolver.feed(delivered, 0),
+                    BindingOutcome::Execute {
+                        command: "zoom out".into(),
+                        count: 1,
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_alias_unbind_masks_the_default_plus_binding() {
+        for authored in ["Plus", "+"] {
+            for marker in ["unbound", "none"] {
+                let mut config = serde_json::json!({"bindings":{"normal":{}}});
+                config["bindings"]["normal"][authored] = Value::String(marker.into());
+                let mut resolver =
+                    configured_bindings(&CommandRegistry::default_v1(), &config).unwrap();
+                for delivered in ["+", "Plus"] {
+                    assert!(!resolver.has_initial_key(delivered));
+                    assert_eq!(resolver.feed(delivered, 0), BindingOutcome::Consumed);
+                }
+                assert!(resolver.has_initial_key("j"));
+            }
+        }
+    }
+
+    #[test]
+    fn large_authored_binding_tables_preserve_defaults_and_resolve_aliases() {
+        let registry = CommandRegistry::default_v1();
+        let defaults = configured_bindings(&registry, &serde_json::json!({"bindings":{}}))
+            .unwrap()
+            .definitions();
+        let mut config = serde_json::json!({"bindings":{"normal":{}}});
+        for index in 0..4_000 {
+            config["bindings"]["normal"][format!("g{index:04}+")] =
+                Value::String("zoom out".into());
+        }
+        let mut resolver = configured_bindings(&registry, &config).unwrap();
+        let definitions = resolver.definitions();
+        assert_eq!(definitions.len(), defaults.len() + 4_000);
+        for binding in &defaults {
+            assert!(definitions.contains(binding), "default {binding:?}");
+        }
+        for index in [0, 1_999, 3_999] {
+            for key in format!("g{index:04}").chars() {
+                assert!(matches!(
+                    resolver.feed(&key.to_string(), 0),
+                    BindingOutcome::Pending { .. }
+                ));
+            }
+            assert_eq!(
+                resolver.feed("Plus", 0),
+                BindingOutcome::Execute {
+                    command: "zoom out".into(),
+                    count: 1
+                }
+            );
+        }
+    }
 }

@@ -1,0 +1,9 @@
+format='ferric-site-interaction'
+format_version=1
+[[rules]]
+operation='upsert-interaction'
+id='shared'
+pattern='https://example.test/*'
+priority=0
+[rules.interaction]
+enabled=true
