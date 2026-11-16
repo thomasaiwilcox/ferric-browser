@@ -95,6 +95,7 @@ class ApplicationTests final : public QObject {
     void hintInputIntegration();
     void hintPageKeyRouting_data();
     void hintPageKeyRouting();
+    void hintPageKeyAcrossTabs();
     void hintFamilyPolicyIntegration_data();
     void hintFamilyPolicyIntegration();
     void hintCollectionActivation_data();

@@ -24,6 +24,7 @@ target_sources(application_tests PRIVATE tst_page_windows.cpp)
 target_sources(application_tests PRIVATE tst_peer_configuration.cpp)
 target_sources(application_tests PRIVATE tst_profile_metadata.cpp)
 target_sources(application_tests PRIVATE tst_site_policy_native.cpp)
+target_sources(application_tests PRIVATE tst_hint_media_tabs.cpp)
 target_sources(application_tests PRIVATE tst_binding_aliases.cpp)
 target_include_directories(application_tests PRIVATE "${FERRIC_ENGINE_CXX_INCLUDE_DIR}")
 target_link_libraries(application_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
@@ -51,6 +52,8 @@ set_tests_properties(application_binding_aliases PROPERTIES TIMEOUT 90 ENVIRONME
 add_test(NAME application_site_policy_native COMMAND application_tests
     sitePolicyNativeProductionGesture sitePolicyNativeProductionPrompt sitePolicyNativeProductionViewDestruction)
 set_tests_properties(application_site_policy_native PROPERTIES TIMEOUT 180 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+add_test(NAME application_hint_media_tabs COMMAND application_tests hintPageKeyAcrossTabs)
+set_tests_properties(application_hint_media_tabs PROPERTIES TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_test(NAME application_site_policy_drafts COMMAND application_tests sitePolicyDraftWorkflow)
 set_tests_properties(application_site_policy_drafts PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_test(NAME application_site_policy_draft_ipc COMMAND "${Python3_EXECUTABLE}"

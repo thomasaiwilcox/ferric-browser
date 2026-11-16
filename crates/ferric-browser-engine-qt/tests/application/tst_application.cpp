@@ -300,6 +300,17 @@ void ApplicationTests::init() {
             {"id","hint-integration"},{"pattern",QStringLiteral("http://127.0.0.1:%1/*").arg(server.serverPort())},{"interaction",interaction}
         }}}}).toJson(QJsonDocument::Compact));
     }
+    if(testName=="hintPageKeyAcrossTabs") {
+        startupConfig=QString::fromUtf8(QJsonDocument(QJsonObject{
+            {"schema_version",3},{"hints",QJsonObject{{"auto_follow","full-match"}}},
+            {"site_rules",QJsonArray{QJsonObject{
+                {"id","media-tabs"},{"pattern",QStringLiteral("http://127.0.0.1:%1/*").arg(server.serverPort())},
+                {"interaction",QJsonObject{{"enabled",true},{"hint_page_keys",QJsonArray{"p"}},
+                    {"page_receiver",QJsonObject{{"scope","top-document"}}},
+                    {"remaps",QJsonArray{QJsonObject{{"id","play"},{"from","p"},{"to","k"},
+                        {"contexts",QJsonArray{"hint-page-key","passthrough-once","passthrough"}}}}}}}
+            }}}}).toJson(QJsonDocument::Compact));
+    }
     if(testName=="hintPageKeyRouting" || testName.startsWith("sitePolicyNativeProduction")) {
         const QString destination = dataTag=="named-output"?"Enter":dataTag=="uppercase-output"?"A"
             :dataTag=="digit-output"?"7":dataTag=="punctuation-output"?"Plus"

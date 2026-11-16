@@ -71,7 +71,7 @@ fn everyday_site_presets_cover_the_default_actions_hint_family() {
                     .unwrap();
                 assert_eq!(player.to, "k");
                 assert!(
-                    player
+                    !player
                         .contexts
                         .contains(&InteractionRemapContext::NormalPageKey)
                 );
@@ -80,6 +80,12 @@ fn everyday_site_presets_cover_the_default_actions_hint_family() {
                         .contexts
                         .contains(&InteractionRemapContext::HintPageKey)
                 );
+                for context in [
+                    InteractionRemapContext::PassthroughOnce,
+                    InteractionRemapContext::Passthrough,
+                ] {
+                    assert!(player.contexts.contains(&context));
+                }
             }
             for anchor in interaction.anchors.iter().flatten() {
                 assert!(anchor.families.contains(&InteractionFamily::Actions));
