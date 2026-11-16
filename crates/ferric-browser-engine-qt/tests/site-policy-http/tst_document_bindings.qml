@@ -107,10 +107,10 @@ TestCase {
         // No native child token was needed to establish its actual Document.
         compare(evaluate("typeof document.getElementById('same-origin').contentWindow.__ferric_hintFrameDocument",WebEngineScript.ApplicationWorld),"undefined")
     }
-    function test_manual_slot_aba_retires_a_native_document_association_data() {
+    function test_manual_slot_aba_preserves_document_identity_until_recollection_data() {
         return [{tag:"visited-shadow",capped:false},{tag:"unvisited-shadow",capped:true}]
     }
-    function test_manual_slot_aba_retires_a_native_document_association(data) {
+    function test_manual_slot_aba_preserves_document_identity_until_recollection(data) {
         compare(evaluate("(()=>{document.body.textContent='';const host=document.createElement('div');host.id='manual-host';host.style='position:fixed;left:500px;top:500px;width:250px;height:60px;z-index:99';host.innerHTML='<a id=manual-a href=#manual-a>Manual A</a><a id=manual-b href=#manual-b>Manual B</a>';document.body.append(host);const root=host.attachShadow({mode:'open',slotAssignment:'manual'});root.innerHTML='<slot></slot>';root.querySelector('slot').assign(host.querySelector('#manual-a'));return root.slotAssignment==='manual'})()"),true)
         var request={version:1,observations:true,stamp:stamp(),context:{start:"top-document",base_depth:0,owner:""},rules:[
             {rule:{kind:"anchor",id:"manual"},root:{start:"top-document",steps:[
@@ -129,9 +129,11 @@ TestCase {
         compare(validateDocuments(value),true)
         compare(evaluate("(()=>{const host=document.getElementById('manual-host'),slot=host.shadowRoot.querySelector('slot');slot.assign(host.querySelector('#manual-b'));slot.assign(host.querySelector('#manual-a'));return slot.assignedElements({flatten:false})[0].id})()"),"manual-a")
         wait(50)
-        compare(validateDocuments(value),false)
-        // A fresh pass may prove the restored assignment again. The retired
-        // batch must never become valid merely because the same objects return.
+        // This seam associates Documents, not root/target/action freshness.
+        // Restoring a slot does not replace any Document. The shipping graph
+        // and geometry checks independently validate the captured targets.
+        compare(validateDocuments(value),true)
+        // Recollection replaces the batch even when Document identities match.
         var fresh=JSON.parse(evaluate(script,WebEngineScript.ApplicationWorld))
         fresh.annotation=JSON.parse(fresh.annotation_json)
         compare(validateDocuments(fresh),true)
@@ -187,11 +189,13 @@ TestCase {
         compare(evaluate("window.__ferric_browserHintState.interactionProof===null",WebEngineScript.ApplicationWorld),true)
         compare(validateDocuments(value),false)
     }
-    function test_actual_dom_mutation_retires_the_captured_batch() {
+    function test_unrelated_dom_mutation_preserves_document_identity() {
         var value=collect()
         compare(validateDocuments(value),true)
         evaluate("document.getElementById('same-origin').dataset.changed='yes';true")
-        compare(validateDocuments(value),false)
+        // A data attribute on the host leaves the actual Document association
+        // intact; this is not an activation or geometry permit.
+        compare(validateDocuments(value),true)
     }
     function test_same_url_child_document_replacement_cannot_reuse_weak_ids() {
         var value=collect()
