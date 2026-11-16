@@ -1,6 +1,11 @@
 # Site Policy qualification
 
-Current delivery update — 16 November 2026: the busy-page snapshot fix and
+Current Reddit follow-up — 16 November 2026: an initial ResizeObserver
+notification could invalidate a budget-exhausted ordinary scan. The
+[focused fix and regression report](reddit-initial-resize-2026-11-16.md) records
+the reproduced failure, corrected visible fixture and new artifact checks.
+
+Earlier delivery closeout — 16 November 2026: the busy-page snapshot fix and
 permanent two-tab media regression are qualified in the
 [closeout report](hint-reliability-closeout-2026-11-16.md). That report records the
 current artifact, exact checks, diagnostic measurements and remaining limits.

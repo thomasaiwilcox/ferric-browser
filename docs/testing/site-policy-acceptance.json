@@ -2277,12 +2277,17 @@
         "ApplicationTests::hintRequestWorkspaceCollection:busy-top",
         "ApplicationTests::hintRequestWorkspaceCollection:busy-foreign",
         "test_busy_page_refreshes_an_identical_inventory",
-        "test_refresh_recomputes_policy_matching_even_when_candidates_are_identical"
+        "test_refresh_recomputes_policy_matching_even_when_candidates_are_identical",
+        "test_initial_resize_notification_does_not_invalidate_discovery",
+        "test_real_resize_still_invalidates_discovery",
+        "test_removed_target_gets_a_new_resize_baseline_when_readmitted"
       ],
       "evidence": [
         "docs/testing/site-policy-qualification.md",
         "target/hint-reliability-closeout/final/native-completion.log",
-        "target/hint-reliability-closeout/final/tst_deferred_collection.qml.log"
+        "target/hint-reliability-closeout/final/tst_deferred_collection.qml.log",
+        "docs/testing/reddit-initial-resize-2026-11-16.md",
+        "target/reddit-return-investigation/qualification.json"
       ],
       "planned_tests": {
         "pure": "crates/ferric-browser-core/src/hints.rs::t_h45",

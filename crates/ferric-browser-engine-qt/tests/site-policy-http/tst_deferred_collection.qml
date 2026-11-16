@@ -11,6 +11,7 @@ TestCase {
     id: tests
     name: "PolicyDeferredCollection"
     when: windowShown
+    visible: true
     width: 1000
     height: 800
     property bool done: false
@@ -55,8 +56,8 @@ TestCase {
         verify(reply.ok,JSON.stringify(reply))
         topReceipt=reply.documents
         compare(topReceipt[0].focused,true)
-        // Settle the existing observer's initial notification, as the normal
-        // Hint workspace does before its retained-request proof checks.
+        // Most cases exercise an already observed inventory. The first-entry
+        // regression below explicitly stops tracking to cover a fresh observer.
         evaluate(Scripts.hintCollector("links"))
         wait(60)
     }
@@ -107,6 +108,47 @@ TestCase {
         var refreshBudget=Object.assign({depth:8,candidates:5000},budget)
         return finish(plan,ordinary,budget,undefined,false,
             Scripts.hintCollector(plan.stamp.family,false,undefined,"",false,refreshBudget,plan,true))
+    }
+    function test_initial_resize_notification_does_not_invalidate_discovery() {
+        evaluate(Scripts.hintStopTracking())
+        var plan=request(),ordinary=prepare(plan)
+        wait(80)
+        compare(evaluate("window.__ferric_browserHintState.dirty"),false,
+            "A newly observed, unchanged target must not request another ordinary scan")
+        compare(evaluate("window.__ferric_browserHintState.revision"),ordinary.revision)
+        var completed=finish(plan,ordinary)
+        verify(!completed.error,JSON.stringify(completed))
+        compare(completed.annotation_batch,ordinary.interaction_pending)
+    }
+    function test_real_resize_still_invalidates_discovery_data() {
+        return [{tag:"before-first-notification",settle:false},
+            {tag:"after-first-notification",settle:true}]
+    }
+    function test_real_resize_still_invalidates_discovery(data) {
+        evaluate(Scripts.hintStopTracking())
+        var plan=request()
+        var script=Scripts.hintCollector("links",false,undefined,"",false,undefined,plan,true)
+        var resize="document.getElementById('target').animate({width:'250px'},{duration:0,fill:'forwards'});"
+        var ordinary=JSON.parse(evaluate("(()=>{const result="+script+";"+(data.settle?"":resize)+"return JSON.stringify(result)})()"))
+        verify(!ordinary.error,JSON.stringify(ordinary))
+        if(data.settle) {
+            wait(80)
+            // Web Animations change layout without a DOM attribute mutation.
+            evaluate(resize+"true")
+        }
+        wait(80)
+        compare(evaluate("document.getElementById('target').getBoundingClientRect().width"),250)
+        compare(evaluate("window.__ferric_browserHintState.dirty"),true)
+        compare(finish(plan,ordinary).error,"stale-interaction-collection")
+    }
+    function test_removed_target_gets_a_new_resize_baseline_when_readmitted() {
+        evaluate("window.resizeTarget=document.getElementById('target');window.resizeTarget.remove();true")
+        compare(evaluate(Scripts.hintCollector("links")).candidates.length,0)
+        evaluate("document.body.append(window.resizeTarget);true")
+        var plan=request(),ordinary=prepare(plan)
+        wait(80)
+        compare(evaluate("window.__ferric_browserHintState.dirty"),false)
+        verify(!finish(plan,ordinary).error)
     }
     function test_busy_page_refreshes_an_identical_inventory_data() {
         return [{tag:"style",mutation:"document.body.style.backgroundColor='rgb(1,2,3)'"},
