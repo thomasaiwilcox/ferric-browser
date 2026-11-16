@@ -286,7 +286,7 @@ Item {
                     topViewport=geometry.viewport
                     metadata.push({owner:owner,annotation_json:world.policy.annotation_json,
                         annotation_batch:world.policy.annotation_batch,viewport:world.ordinary.viewport,
-                        revision:world.ordinary.revision,geometry:geometry})
+                        revision:world.policy.revision,geometry:geometry})
                     inspected+=world.ordinary.interaction_work.inspections+world.policy.interaction_work.inspections
                     truncated=truncated||world.ordinary.truncated||world.policy.truncated
                     revision=Math.min(Number.MAX_SAFE_INTEGER,revision+world.policy.revision)
@@ -310,11 +310,13 @@ Item {
             if(!plan){fail();return}
             var world=worlds[owner]
             checkpoint=grant.phase
+            var refresh=world?Scripts.hintCollector(options.family,options.proxy,options.selectors,options.scope,
+                options.includeFacets,Object.assign({},world.budget,grant.budget),plan,true):null
             var script=grant.phase==="ordinary"
                     ?Scripts.hintCollector(options.family,options.proxy,options.selectors,options.scope,
                         options.includeFacets,grant.budget,plan,true)
                     :world?Scripts.hintFinishInteraction(plan,world.ordinary.interaction_pending,grant.budget,
-                        options.selectionCheck===true):""
+                        options.selectionCheck===true,refresh):""
             if(!script){fail();return}
             run(owner||rootOwner,script,function(value) {
                 if(!current())return
@@ -331,7 +333,7 @@ Item {
                     checkpoint="ordinary-accept"
                     if(!adapter.acceptCollectionOrdinary(request,grant.stage,owner,
                             JSON.stringify(value.candidates),JSON.stringify(metadata))){fail();return}
-                    worlds[owner]={ordinary:value,sealed:false}
+                    worlds[owner]={ordinary:value,budget:grant.budget,sealed:false}
                     next()
                 } else {
                     checkpoint="policy-seal"

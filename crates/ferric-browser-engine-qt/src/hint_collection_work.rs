@@ -458,7 +458,12 @@ impl CollectionWork {
             let metadata: OrdinaryMetadata = serde_json::from_str(metadata).ok()?;
             let annotation_bytes = usize::try_from(metadata.annotation_bytes?).ok()?;
             if metadata.nonce != ordinary.metadata.nonce
-                || metadata.revision != ordinary.metadata.revision
+                // A dirty renderer may repeat ordinary discovery within this
+                // policy grant, preserving the exact retained candidate rows.
+                // Its new snapshot must spend work and still pass native
+                // batch/document/geometry validation before it can be sealed.
+                || metadata.revision < ordinary.metadata.revision
+                || (metadata.revision != ordinary.metadata.revision && metadata.inspections == 0)
                 || metadata.selector_revision != ordinary.metadata.selector_revision
                 || metadata.viewport != ordinary.metadata.viewport
                 || ordinary.metadata.truncated && !metadata.truncated

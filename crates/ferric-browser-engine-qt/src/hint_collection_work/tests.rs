@@ -564,6 +564,41 @@ fn absent_optional_receiver_does_not_issue_or_burn_a_selected_grant() {
 }
 
 #[test]
+fn refreshed_policy_revision_requires_charged_work_and_native_completion() {
+    for (revision, inspections, accepted) in [(0, 7, false), (2, 0, false), (2, 7, true)] {
+        let mut fixture = policy_fixture();
+        fixture.top_metadata["revision"] = json!(revision);
+        fixture.top_metadata["inspections"] = json!(inspections);
+        let ordinary = fixture.work.ordinary[0]
+            .as_ref()
+            .unwrap()
+            .metadata
+            .inspections;
+        fixture.top["discovery_work"]["inspections"] = json!(ordinary + inspections);
+        let raw = fixture.top.to_string();
+        fixture.top_metadata["annotation_bytes"] = json!(raw.len());
+        assert_eq!(
+            fixture.work.prepare_policy(
+                "3",
+                "",
+                &raw,
+                &fixture.top_metadata.to_string(),
+                &fixture.request
+            ),
+            accepted
+        );
+        if accepted {
+            assert_eq!(
+                fixture.work.pending_policy("3", "").unwrap().revision,
+                revision
+            );
+            assert!(!fixture.work.policy[0].as_ref().unwrap().sealed);
+            assert!(fixture.work.complete_policy("3", "", true));
+        }
+    }
+}
+
+#[test]
 fn declared_policy_byte_debit_includes_private_facts_and_is_charged_once() {
     let mut fixture = policy_fixture();
     let raw = fixture.top.to_string();
@@ -728,7 +763,7 @@ fn raw_policy_slots_share_frozen_rows_and_advance_only_after_native_completion()
 fn malformed_policy_metadata_burns_the_matching_grant_without_losing_ordinary_rows() {
     for (pointer, value) in [
         ("/nonce", json!("44444444-4444-4444-8444-444444444444")),
-        ("/revision", json!(2)),
+        ("/revision", json!(0)),
         ("/selector_revision", json!("0000000000000013")),
         ("/viewport/width", json!(1001)),
         ("/inspections", json!(50_001)),

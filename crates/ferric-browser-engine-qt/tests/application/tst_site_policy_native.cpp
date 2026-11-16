@@ -74,6 +74,8 @@ void ApplicationTests::hintRequestWorkspaceCollection_data()
     QTest::newRow("ordinary-timeout-reentry")<<false;
     QTest::newRow("ordinary-timeout-navigation")<<false;
     QTest::newRow("ordinary-evidence-limit")<<false;
+    QTest::newRow("busy-top")<<false;
+    QTest::newRow("busy-foreign")<<true;
 }
 
 void ApplicationTests::hintInputIntegration_data()
@@ -550,6 +552,9 @@ void ApplicationTests::hintPageKeyRouting()
         return;
     }
     if(change=="stale-refresh") {
+        // Own the explicit stale-refresh cycle below; background polling must
+        // not start overlapping collections while its handle is inspected.
+        QVERIFY(suspendHintRefreshForAdapterFixture(workspace));
         QVERIFY(page(R"JS((()=>{
             const state=window.__ferric_browserHintState;let pending=state.pendingInteraction;
             window.staleRefreshes=0;
@@ -1183,6 +1188,28 @@ void ApplicationTests::hintRequestWorkspaceCollection()
     QFETCH(bool,foreign);
     const auto rootCase=QString::fromLatin1(QTest::currentDataTag());
     const bool collectionFailure=rootCase.startsWith("ordinary-");
+    if(rootCase.startsWith("busy-")) {
+        // Change the real DOM after every suspension, including a refreshed
+        // ordinary pass. There is never a quiet async gap for sealing.
+        QVERIFY(page(R"JS((()=>{
+            window.busyUpdates=0;window.busyRequests=0;window.busyLastPlan=null;
+            function watch(state){
+                if(!state)return;
+                let pending=state.pendingInteraction;
+                Object.defineProperty(state,'pendingInteraction',{configurable:true,
+                    get(){return pending;},set(value){pending=value;if(value){
+                        if(value.plan!==window.busyLastPlan){window.busyLastPlan=value.plan;++window.busyRequests;}
+                        queueMicrotask(()=>{
+                            document.documentElement.setAttribute('data-clock',String(++window.busyUpdates));
+                        });
+                    }}});
+            }
+            let state=window.__ferric_browserHintState;watch(state);
+            Object.defineProperty(window,'__ferric_browserHintState',{configurable:true,
+                get(){return state;},set(value){state=value;watch(value);}});
+            return true;
+        })())JS",1).toBool());
+    }
     if(collectionFailure) {
         // Delay the actual isolated collector at suspension so the native
         // deadline expires. The next attempt must acquire a fresh request.
@@ -1249,6 +1276,7 @@ void ApplicationTests::hintRequestWorkspaceCollection()
         QVERIFY(page("document.getElementById('frame').dataset.use='yes';true",1).toBool());
     if(rootCase==QStringLiteral("shadow-slot"))
         QVERIFY(page("(()=>{const host=document.createElement('div');host.id='policy-shadow';host.style='position:fixed;left:530px;top:420px;width:300px;height:80px';host.attachShadow({mode:'open'}).innerHTML='<slot id=policy-slot name=target></slot>';const item=document.createElement('div');item.id='policy-slot-item';item.slot='target';item.style='width:300px;height:80px';item.innerHTML='<button id=policy-slot-button>Slotted policy action</button>';host.append(item);document.body.append(host);return true})()",1).toBool());
+    QElapsedTimer collectionClock;collectionClock.start();
     QVERIFY(command("hint all"));
     if (rootCase=="ordinary-timeout-cancel" || rootCase=="ordinary-timeout-reentry" || rootCase=="ordinary-timeout-navigation") {
         QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.hintWorkspace.hintCollectionRetryCount===1 && testWindow.hintRefreshPending").toBool(), 2000);
@@ -1281,9 +1309,21 @@ void ApplicationTests::hintRequestWorkspaceCollection()
     QTRY_VERIFY2_WITH_TIMEOUT(evaluate("!testWindow.hintWorkspace.hintRefreshPending && testWindow.browserUi.hint_visible").toBool(),
         qPrintable(page("JSON.stringify(window.__workspaceCollectionTrace)",1).toString()),10000);
     auto *workspace=evaluate("testWindow.hintWorkspace").value<QObject *>();QVERIFY(workspace);
+    // The busy cases prove initial collection and sealing without a quiet
+    // gap. Freeze passive polling only after publication so the adapter-handle
+    // assertions below cannot race a legitimate next refresh. Production
+    // refresh concurrency remains exercised by passive-burst activation.
+    if(rootCase.startsWith("busy-"))QVERIFY(suspendHintRefreshForAdapterFixture(workspace));
     auto *adapter=workspace->findChild<FerricHintRequestAdapter *>();QVERIFY(adapter);
     auto handle=workspace->property("hintCollectionRequest");
     QCOMPARE(adapter->collectionState(handle),QStringLiteral("proof-ready"));
+    if(rootCase.startsWith("busy-")) {
+        QVERIFY(page("window.busyUpdates>=2",1).toBool());
+        QCOMPARE(page("window.busyRequests",1).toInt(),1);
+    }
+    qInfo().noquote()<<"HINT_COLLECTION_MEASUREMENT"<<QJsonDocument(QJsonObject{
+        {"scenario",rootCase},{"publication_ms",double(collectionClock.elapsed())},
+        {"requests",rootCase.startsWith("busy-")?QJsonValue(page("window.busyRequests",1).toInt()):QJsonValue(QJsonValue::Null)}}).toJson(QJsonDocument::Compact);
     if(rootCase=="ordinary-timeout")QCOMPARE(page("window.collectionAttempts",1).toInt(),2);
     QVERIFY(adapter->collectionWorkPlan(handle).isEmpty());
     const auto worlds=QJsonDocument::fromJson(evaluate("JSON.stringify(testWindow.hintWorkspace.hintCollectionWorlds)").toString().toUtf8()).array();

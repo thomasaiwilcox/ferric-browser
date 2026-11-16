@@ -98,8 +98,85 @@ TestCase {
         verify(typeof value.interaction_pending==="string" && value.interaction_pending.length===36)
         compare(evaluate("window.__ferric_browserHintState.interactionProof===null"),true)
     }
-    function finish(plan,value,budget,owner,omitCandidates) {
-        return JSON.parse(world("JSON.stringify("+Scripts.hintFinishInteraction(plan,value.interaction_pending,budget,omitCandidates)+")",owner))
+    function finish(plan,value,budget,owner,omitCandidates,refresh) {
+        return JSON.parse(world("JSON.stringify("+Scripts.hintFinishInteraction(plan,value.interaction_pending,budget,omitCandidates,refresh)+")",owner))
+    }
+    function refreshedFinish(plan,ordinary,budget) {
+        budget=budget||{inspections:50000-ordinary.interaction_work.inspections,
+            predicate_steps:100000-ordinary.interaction_work.predicate_steps,annotation_bytes:2097152}
+        var refreshBudget=Object.assign({depth:8,candidates:5000},budget)
+        return finish(plan,ordinary,budget,undefined,false,
+            Scripts.hintCollector(plan.stamp.family,false,undefined,"",false,refreshBudget,plan,true))
+    }
+    function test_busy_page_refreshes_an_identical_inventory_data() {
+        return [{tag:"style",mutation:"document.body.style.backgroundColor='rgb(1,2,3)'"},
+            {tag:"unrelated-text",mutation:"document.title='Clock tick'"},
+            {tag:"target-attribute",mutation:"document.getElementById('target').setAttribute('data-change','changed')"}]
+    }
+    function test_busy_page_refreshes_an_identical_inventory(data) {
+        var plan=request(),ordinary=prepare(plan)
+        evaluate(data.mutation+";true",WebEngineScript.MainWorld)
+        wait(30)
+        verify(evaluate("window.__ferric_browserHintState.dirty"))
+        var completed=refreshedFinish(plan,ordinary)
+        verify(!completed.error,JSON.stringify(completed))
+        compare(JSON.stringify(completed.candidates),JSON.stringify(ordinary.candidates))
+        compare(completed.annotation_batch,ordinary.interaction_pending)
+        verify(completed.revision>ordinary.revision)
+        verify(completed.interaction_work.inspections>=ordinary.interaction_work.inspections,
+            "The refresh must spend the remaining request allowance, not reset it")
+        var wire=JSON.parse(completed.annotation_json)
+        compare(wire.outcomes[0].result["anchor-observed"].targets.length,1)
+        compare(wire.discovery_work.inspections,ordinary.interaction_work.inspections+completed.interaction_work.inspections)
+    }
+    function test_busy_page_refuses_a_changed_inventory_data() {
+        return [{tag:"text",mutation:"document.getElementById('target').textContent='Changed target'"},
+            {tag:"geometry",mutation:"document.getElementById('target').style.width='250px'"},
+            {tag:"replacement",mutation:"const e=document.getElementById('target');e.replaceWith(e.cloneNode(true))"},
+            {tag:"new-target",mutation:"document.body.append(document.getElementById('target').cloneNode(true))"}]
+    }
+    function test_busy_page_refuses_a_changed_inventory(data) {
+        var plan=request(),ordinary=prepare(plan)
+        evaluate("(()=>{"+data.mutation+";return true})()",WebEngineScript.MainWorld)
+        wait(30)
+        compare(refreshedFinish(plan,ordinary).error,"stale-interaction-collection")
+        compare(evaluate("window.__ferric_browserHintState.interactionProof===null"),true)
+    }
+    function test_busy_page_refresh_cannot_renew_the_inspection_budget() {
+        var plan=request(),ordinary=prepare(plan)
+        evaluate("document.title='Clock tick';true",WebEngineScript.MainWorld);wait(30)
+        var completed=refreshedFinish(plan,ordinary,{inspections:0,predicate_steps:100000,annotation_bytes:2097152})
+        verify(!!completed.error,JSON.stringify(completed))
+        compare(evaluate("window.__ferric_browserHintState.interactionProof===null"),true)
+    }
+    function test_refresh_recomputes_policy_matching_even_when_candidates_are_identical() {
+        var plan=request(),ordinary=prepare(plan)
+        evaluate("document.getElementById('target').id='no-longer-matches';true",WebEngineScript.MainWorld)
+        wait(30)
+        var completed=refreshedFinish(plan,ordinary)
+        verify(!completed.error,JSON.stringify(completed))
+        compare(JSON.stringify(completed.candidates),JSON.stringify(ordinary.candidates))
+        compare(JSON.parse(completed.annotation_json).outcomes[0].result["anchor-observed"].targets.length,0)
+    }
+    function test_refresh_rejects_an_inflated_grant_before_reading_the_dom() {
+        var plan=request(),ordinary=prepare(plan)
+        evaluate("document.title='Clock tick';true",WebEngineScript.MainWorld);wait(30)
+        evaluate("(()=>{const original=document.createTreeWalker;window.refreshWalks=0;document.createTreeWalker=function(){window.refreshWalks++;return original.apply(this,arguments)};return true})()")
+        var completed=refreshedFinish(plan,ordinary,{inspections:50000,predicate_steps:100000,annotation_bytes:2097152})
+        compare(completed.error,"invalid-collection-budget")
+        compare(evaluate("window.refreshWalks"),0)
+    }
+    function test_snapshot_sealing_survives_refresh_notifications_data() {
+        return [{tag:"unrelated-update",replace:false},{tag:"detached-target",replace:true}]
+    }
+    function test_snapshot_sealing_survives_refresh_notifications(data) {
+        var plan=request(),ordinary=prepare(plan),completed=finish(plan,ordinary)
+        verify(!completed.error,JSON.stringify(completed))
+        evaluate(data.replace?"document.getElementById('target').remove();true":"document.title='Clock tick';true",WebEngineScript.MainWorld)
+        wait(30)
+        verify(evaluate("window.__ferric_browserHintState.dirty"))
+        compare(seal(completed),!data.replace,
+            "Snapshot identity survives unrelated updates; detached target objects never seal")
     }
     function test_resume_uses_original_weak_inventory_and_candidate_indices_once_data() {
         return [{tag:"full-projection",omitCandidates:false},{tag:"selection-projection",omitCandidates:true}]

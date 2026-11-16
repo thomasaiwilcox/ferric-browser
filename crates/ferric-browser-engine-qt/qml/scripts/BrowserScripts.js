@@ -295,8 +295,8 @@ function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, inc
     return interactionScript("hintCollector", [family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget, interactionRequest, deferInteraction])
 }
 
-function hintFinishInteraction(interactionRequest, pendingId, budget, omitCandidates) {
-    return interactionScript("hintFinishInteraction", [interactionRequest, pendingId, budget, omitCandidates])
+function hintFinishInteraction(interactionRequest, pendingId, budget, omitCandidates, refreshScript) {
+    return interactionScript("hintFinishInteraction", [interactionRequest, pendingId, budget, omitCandidates, refreshScript])
 }
 
 function hintDirtyRevision() {

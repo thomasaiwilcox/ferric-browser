@@ -531,7 +531,9 @@ function hintProxyRuntime() {
 function hintTrackingRuntime() {
     return `function dirty(){
     if(!state.tracking)return;
-    state.pendingInteraction=null;
+    // Dirtiness requests refresh. Keep the weak pending inventory until its
+    // original request either completes, refreshes within its allowance, or
+    // retires; an unrelated animation is not a new collection request.
     state.dirty=true;state.revision=Math.min(Number.MAX_SAFE_INTEGER,state.revision+1);
 }
 function removeWindowListeners(view){
@@ -855,23 +857,24 @@ function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, inc
 // foreign geometry before canonical classification or session publication.
 // Selection consumers already retain the complete ordinary inventory natively;
 // omit only its unused result copy after the full proof has been produced.
-function hintFinishInteraction(interactionRequest, pendingId, budget, omitCandidates) {
+function hintFinishInteraction(interactionRequest, pendingId, budget, omitCandidates, refreshScript) {
     var rootContext = interactionRequest && interactionRequest.context
     if (!rootContext || !interactionRequest.stamp || typeof interactionRequest.stamp.scope_lease !== "string")
         return "(()=>{const s=window.__ferric_browserHintState,p=s&&s.pendingInteraction;if(p&&p.nonce==="+JSON.stringify(pendingId)+"){s.pendingInteraction=null;s.interactionProof=null;}return {error:'invalid-interaction-resume'};})()"
     var limits = {depth:"pending.limits.depth",predicate_steps:"predicateLimit",annotation_bytes:"annotationLimit"}
     return `(()=>{let rootPass=null,witnessPass=null;
         const visibilityStyleCache={styles:new WeakMap(),ancestors:new WeakMap(),rects:new WeakMap(),frames:new WeakMap(),rendered:new WeakMap(),scrollables:new WeakMap(),clips:new WeakMap()};
-        const state=window.__ferric_browserHintState,pending=state&&state.pendingInteraction;
+        const state=window.__ferric_browserHintState;
+        let pending=state&&state.pendingInteraction;
         if(!pending||pending.nonce!==`+JSON.stringify(pendingId)+`)return {error:'stale-interaction-collection'};
         state.pendingInteraction=null;state.interactionProof=null;
         function stale(){throw {ferricRootReason:'stale-interaction-collection'};}
         function sameWeak(reference,value){return reference?WeakRef.prototype.deref.call(reference)===value:value===null;}
-        let inspectedNodes=0,failedInspections=0,truncated=false,inspectionLimit=0,predicateBefore=0;
+        let inspectedNodes=0,failedInspections=0,truncated=false,inspectionLimit=0,predicateBefore=0,ordinaryInspections=0;
         function inspect(){if(inspectedNodes>=inspectionLimit){failedInspections++;truncated=true;return false;}inspectedNodes++;return true;}
         try{
             if(!pending||pending.nonce!==`+JSON.stringify(pendingId)+`||pending.plan!==`+JSON.stringify(JSON.stringify(interactionRequest))+`
-                ||WeakRef.prototype.deref.call(pending.document)!==document||state.dirty||state.revision!==pending.revision
+                ||WeakRef.prototype.deref.call(pending.document)!==document
                 ||String(window.origin)!==pending.origin||window.__ferric_hintFrameDocument!==pending.nativeEpoch
                 ||!sameWeak(pending.scope,state.scopeLease)||!sameWeak(pending.entered,state.enteredScope)
                 ||innerWidth!==pending.viewport.width||innerHeight!==pending.viewport.height)stale();
@@ -879,19 +882,48 @@ function hintFinishInteraction(interactionRequest, pendingId, budget, omitCandid
             if(!budget||typeof budget!=='object'||Array.isArray(budget)
                 ||Object.keys(budget).some(key=>!['inspections','predicate_steps','annotation_bytes'].includes(key)))
                 throw {ferricRootReason:'invalid-collection-budget'};
+            const originalRemainder={inspections:pending.limits.inspections-pending.inspected,
+                predicate_steps:pending.limits.predicate_steps-pending.roots.predicate_steps,
+                annotation_bytes:pending.limits.annotation_bytes};
+            for(const key of Object.keys(budget))if(!Number.isSafeInteger(budget[key])
+                ||budget[key]<0||budget[key]>originalRemainder[key])
+                throw {ferricRootReason:'invalid-collection-budget'};
+            ordinaryInspections=pending.inspected;predicateBefore=pending.roots.predicate_steps;
+            let refreshInspections=0,refreshPredicates=0;
+            if(state.dirty||state.revision!==pending.revision){
+                if(Object.keys(originalRemainder).some(key=>!Number.isSafeInteger(budget[key])))stale();
+                const original=pending;
+                const refreshed=`+(typeof refreshScript==="string"&&refreshScript.length?refreshScript:"null")+`;
+                const fresh=state.pendingInteraction;
+                if(!refreshed||refreshed.error||!fresh||fresh.plan!==original.plan
+                    ||refreshed.truncated!==original.truncated
+                    ||JSON.stringify(refreshed.candidates)!==JSON.stringify(original.candidates))stale();
+                // Refresh and extraction share this synchronous renderer turn.
+                // Preserve the native inventory and original input identity;
+                // charge the repeated reads to this request's remaining grant.
+                refreshInspections=fresh.inspected;refreshPredicates=fresh.roots.predicate_steps;
+                pending=Object.assign({},fresh,{nonce:original.nonce,ordinaryInput:original.ordinaryInput,
+                    inspected:ordinaryInspections+refreshInspections,
+                    limits:Object.assign({},fresh.limits,{
+                        inspections:ordinaryInspections+budget.inspections,
+                        predicate_steps:predicateBefore+budget.predicate_steps})});
+                pending.roots.predicate_steps+=predicateBefore;
+                state.pendingInteraction=null;
+            }
+            if(state.dirty||state.revision!==pending.revision)stale();
             const remainder={inspections:pending.limits.inspections-pending.inspected,
                 predicate_steps:pending.limits.predicate_steps-pending.roots.predicate_steps,
                 annotation_bytes:pending.limits.annotation_bytes};
             for(const key of Object.keys(remainder)){
                 if(budget[key]===undefined)continue;
-                if(!Number.isSafeInteger(budget[key])||budget[key]<0||budget[key]>remainder[key])
+                const available=budget[key]-(key==='inspections'?refreshInspections:key==='predicate_steps'?refreshPredicates:0);
+                if(!Number.isSafeInteger(budget[key])||available<0||available>remainder[key])
                     throw {ferricRootReason:'invalid-collection-budget'};
-                remainder[key]=budget[key];
+                remainder[key]=available;
             }
             inspectedNodes=pending.inspected;inspectionLimit=inspectedNodes+remainder.inspections;
             truncated=pending.truncated;
-            predicateBefore=pending.roots.predicate_steps;
-            const predicateLimit=predicateBefore+remainder.predicate_steps,annotationLimit=remainder.annotation_bytes;
+            const predicateLimit=pending.roots.predicate_steps+remainder.predicate_steps,annotationLimit=remainder.annotation_bytes;
             const requestedScopeLeaseId=`+JSON.stringify(interactionRequest.stamp.scope_lease)+`;
         `+scrollTargetRuntime()+hintPolicyRuntime()+hintProxyRuntime()+hintTrackingRuntime()
         +hintInteractionPasses(rootContext,limits,true,true,false,"pending.ordinaryInput")+`
@@ -919,11 +951,11 @@ function hintFinishInteraction(interactionRequest, pendingId, budget, omitCandid
             return {candidates:`+(omitCandidates===true?"[]":"pending.candidates")+`,annotation_json:proof.annotation_json,annotation_batch:proof.annotation_batch,
                 revision:pending.revision,selector_revision:pending.selectorRevision,
                 inspected_nodes:inspectedNodes,truncated:truncated,viewport:pending.viewport,
-                interaction_work:{inspections:inspectedNodes-pending.inspected,predicate_steps:rootPass.work()-predicateBefore,annotation_bytes:proof.annotation_work}};
+                interaction_work:{inspections:inspectedNodes-ordinaryInspections,predicate_steps:rootPass.work()-predicateBefore,annotation_bytes:proof.annotation_work}};
         }catch(error){
-            if(state)state.interactionProof=null;
+            if(state){state.interactionProof=null;state.pendingInteraction=null;}
             return {error:error&&error.ferricRootReason||'missing-evidence',interaction_work:{
-                inspections:Math.max(0,inspectedNodes-pending.inspected),
+                inspections:Math.max(0,inspectedNodes-ordinaryInspections),
                 predicate_steps:rootPass?Math.max(0,rootPass.work()-predicateBefore):0,
                 annotation_bytes:witnessPass?witnessPass.annotationWork():0}};
         }

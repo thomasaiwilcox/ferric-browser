@@ -23,6 +23,12 @@ inline QString ferricHintFrameAncestryProbe() {
         function deref(value){return value?WeakRef.prototype.deref.call(value):null;}
         let work=0;
         function tick(){if(++work>1024)throw Error('ancestry-limit');}
+        function geometry(frame){
+            tick();const rect=frame.getBoundingClientRect();
+            const value=[rect.x,rect.y,rect.width,rect.height,
+                frame.clientLeft,frame.clientTop,frame.clientWidth,frame.clientHeight];
+            return value.every(Number.isFinite)?value:null;
+        }
         function focused(){
             let active=document.activeElement;
             for(let depth=0;active&&active.shadowRoot;depth++){
@@ -37,11 +43,17 @@ inline QString ferricHintFrameAncestryProbe() {
         const host=focused();if(!host)return null;
         if(request.mode==='verify'){
             const record=records instanceof Map&&records.get(request.token);
+            // Observer callbacks classify unrelated updates outside this
+            // native probe. Unprocessed records remain a conservative fence;
+            // verification never scans a mutation batch on its work allowance.
             if(record&&record.observer.takeRecords().length)record.dirty=true;
             if(!record||record.issuer!==request.issuer||record.epoch!==request.epoch
                 ||record.child!==request.child||record.childEpoch!==request.child_epoch
                 ||record.dirty||deref(record.host)!==host
                 ||deref(record.document)!==document)return null;
+            const currentGeometry=geometry(host);
+            if(!currentGeometry||!Array.isArray(record.geometry)||record.geometry.length!==8
+                ||currentGeometry.some((value,index)=>value!==record.geometry[index]))return null;
             for(const entry of record.path){
                 tick();const node=deref(entry.node);
                 if(!node||!node.isConnected||node.ownerDocument!==document
@@ -106,10 +118,34 @@ inline QString ferricHintFrameAncestryProbe() {
                 seenNodes.add(current);current=current.parentNode;
             }
         }
+        const hostGeometry=geometry(host);if(!hostGeometry)return null;
         const record={issuer:request.issuer,epoch:request.epoch,child:request.child,childEpoch:request.child_epoch,
-            host:new WeakRef(host),document:new WeakRef(document),path:path,roots:roots,depth:depth,dirty:false};
+            host:new WeakRef(host),document:new WeakRef(document),path:path,roots:roots,depth:depth,
+            geometry:hostGeometry,dirty:false};
         const dirty=function(){record.dirty=true;};
-        const observer=new MutationObserver(dirty),watched=new Set([document]);
+        const slotPlacement=roots.length>0||slots.size>0;
+        // This receipt proves frame placement, not page-wide quiescence.
+        // Keep ABA retirement for actual path nodes and slot dependencies;
+        // unrelated progress/style/text updates cannot change that placement.
+        const changed=function(rows){
+            let remaining=1024;
+            for(const row of rows){
+                if(--remaining<0){dirty();return;}
+                if(row.type==='attributes'){
+                    if(row.attributeName==='slot'||row.attributeName==='name'
+                        ||seenNodes.has(row.target)&&['src','srcdoc','sandbox'].includes(row.attributeName)){dirty();return;}
+                }else{
+                    // Slot placement also depends on other nodes in its root.
+                    // Preserve the conservative structural fence for those
+                    // graphs; ordinary light-DOM frames need only path edges.
+                    if(slotPlacement){dirty();return;}
+                    for(const nodes of [row.addedNodes,row.removedNodes])for(const node of nodes){
+                        if(--remaining<0||seenNodes.has(node)){dirty();return;}
+                    }
+                }
+            }
+        };
+        const observer=new MutationObserver(changed),watched=new Set([document]);
         for(const entry of roots)watched.add(deref(entry.root));
         // Observe assigned-slot roots too, without counting them as the
         // host's own roots. Mutation/slot events retire even ABA assignments.

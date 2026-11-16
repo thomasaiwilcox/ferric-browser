@@ -193,6 +193,31 @@ TestCase {
         compare(validate(selectedProbe),false,"Draining mutation records cannot revive the old receipt")
         verify(captureComposed(freshProbe).ok)
     }
+    function test_ancestry_ignores_unrelated_updates_with_bounded_observation_data() {
+        return [{tag:"direct-style",mode:"direct",change:"style",valid:true},
+            {tag:"direct-clock",mode:"direct",change:"text",valid:true},
+            {tag:"host-color",mode:"direct",change:"color",valid:true},
+            {tag:"host-moved",mode:"direct",change:"move",valid:false},
+            {tag:"shadow-style",mode:"shadow",change:"style",valid:true},
+            {tag:"slot-style",mode:"slot",change:"style",valid:true},
+            {tag:"overflow",mode:"direct",change:"overflow",valid:false}]
+    }
+    function test_ancestry_ignores_unrelated_updates_with_bounded_observation(data) {
+        setupFrame(data.mode,0,false)
+        // Keep the clock outside normal flow: adding text to an empty block
+        // before the iframe would genuinely move the receiver below it.
+        compare(evaluate("document.getElementById('spare').style.cssText='position:fixed;left:900px;top:0';true"),true)
+        ancestry=captureComposed(selectedProbe);verify(ancestry.ok,JSON.stringify(ancestry))
+        compare(validate(selectedProbe),true)
+        var mutation=data.change==="style"?"document.getElementById('spare').style.opacity='0.9'":
+            data.change==="text"?"document.getElementById('spare').textContent='42'":
+            data.change==="color"?"window.ancestryFrame.style.backgroundColor='rgb(1,2,3)'":
+            data.change==="move"?"window.ancestryFrame.style.marginLeft='10px'":
+            "for(let n=0;n<1025;n++)document.getElementById('spare').setAttribute('data-clock',String(n))"
+        compare(evaluate("(()=>{"+mutation+";return true})()"),true)
+        wait(30)
+        compare(validate(selectedProbe),data.valid)
+    }
     function test_stop_releases_ancestry_before_ordinary_tracking_exists() {
         setupFrame("shadow",0,false)
         compare(evaluate("typeof window.__ferric_browserHintState",WebEngineScript.ApplicationWorld),"undefined")

@@ -377,11 +377,11 @@ TestCase {
         compare(reply.mappings.length,0)
         compare(reply.viewport.width,value.viewport.width)
         compare(reply.viewport.height,value.viewport.height)
-        evaluate("window.__ferric_browserHintState.revision++;true",WebEngineScript.ApplicationWorld)
+        evaluate(Scripts.hintCollector("links"),WebEngineScript.ApplicationWorld)
         done=false
         probe.fragmentGeometry(broker,function(result){reply=result;done=true})
         tryVerify(function(){return done},10000)
-        verify(!reply,"A later collector revision cannot reuse the original geometry")
+        verify(!reply,"A later collection cannot reuse the original geometry")
     }
     function ordinaryInputEvidence(actual,expected,resumeBudget,scope) {
         var request={version:1,observations:true,stamp:stamp(expected.family,scope&&scope.lease_id),

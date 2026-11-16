@@ -354,8 +354,8 @@ void FerricFrameBroker::captureFragmentGeometry(const FragmentCatalogue &catalog
         if(!mapping) {
             if(index==count-1) {
                 script+=QStringLiteral("const s=window.__ferric_browserHintState,b=s&&s.interactionProof;"
-                    "if(!s||s.dirty||!b||s.revision!==")+QString::number(request.revision)
-                    +QStringLiteral("||b.revision!==s.revision||b.batch!==")+quoted(request.batch)
+                    "if(!s||!b||b.revision!==")+QString::number(request.revision)
+                    +QStringLiteral("||b.batch!==")+quoted(request.batch)
                     +QStringLiteral("||b.stamp!==")+quoted(request.stamp)
                     +QStringLiteral("||b.annotation!==")+quoted(request.annotation)
                     +QStringLiteral("||b.fragment_catalogue!==")+quoted(read->catalogue->json)
@@ -522,7 +522,7 @@ void FerricFrameBroker::projectFragmentCatalogue(const FragmentCatalogue &catalo
                         "return JSON.stringify(points.map(p=>ftContains(host,ftDeepHit(document,p[1],p[2]))));");
             } else {
                 script+=QStringLiteral("const s=window.__ferric_browserHintState,b=s&&s.interactionProof;"
-                    "if(!s||s.dirty||!b||s.revision!==")+QString::number(request.revision)
+                    "if(!s||!b||b.revision!==")+QString::number(request.revision)
                     +QStringLiteral("||b.batch!==")+quoted(request.batch)+QStringLiteral("||b.fragment_catalogue!==")+quoted(state->catalogue.json())
                     +QStringLiteral(")return null;let used=0;function inspect(){return ++used<=points.length*9;}"
                     "return JSON.stringify(points.map(p=>{if(!inspect())return false;const target=b.targets.get(p[0]),"
@@ -1621,8 +1621,11 @@ void FerricFrameBroker::validateLocalDocuments(const DocumentReceipt &receipt, s
         + QStringLiteral(");if(expected.annotation!==null){expected.facts=JSON.parse(expected.annotation);expected.documents=expected.facts.documents;}if(!Array.isArray(expected.documents)||expected.documents.length>50000)return false;if(window.") + documentProperty_
         + QStringLiteral(R"JS(!==expected.nativeEpoch||String(window.origin)!==expected.nativeOrigin)return false;
         const state=window.__ferric_browserHintState,batch=state&&state.interactionProof;
-        if(!state||state.dirty||!batch||batch.batch!==expected.batch||batch.stamp!==expected.stamp
-            ||batch.revision!==expected.revision||state.revision!==expected.revision
+        // Validate the captured snapshot, independently of unrelated refresh
+        // notifications. Document/graph/geometry and fresh action checks still
+        // apply; a dirty page alone cannot confer or revoke target identity.
+        if(!state||!batch||batch.batch!==expected.batch||batch.stamp!==expected.stamp
+            ||batch.revision!==expected.revision
             ||!(batch.documents instanceof Map)||batch.documents.size>50000)return false;
         if(expected.viewport!==null&&(innerWidth!==expected.viewport.width||innerHeight!==expected.viewport.height))return false;
         // Validate and return the same retained strings, even if the renderer
