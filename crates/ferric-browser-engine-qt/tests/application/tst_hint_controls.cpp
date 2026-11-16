@@ -42,7 +42,10 @@ void ApplicationTests::hintEarlyInput() {
     evaluate(pageReceiver + ".forceActiveFocus()");
     const auto workspace = owner + ".hintWorkspace";
     QVERIFY(evaluate(ui + ".execute_command('set --temp hints.min_chars=2')").toBool());
-    QVERIFY(evaluate(ui + ".execute_command('set --temp hints.auto_follow=never')").toBool());
+    QTRY_COMPARE(evaluate("JSON.parse(" + ui + ".config_json).hints.min_chars").toInt(), 2);
+    QVERIFY2(evaluate(ui + ".execute_command('set --temp hints.auto_follow=never')").toBool(),
+        qPrintable(evaluate(ui + ".status_text").toString()));
+    QTRY_COMPARE(evaluate("JSON.parse(" + ui + ".config_json).hints.auto_follow").toString(), QString("never"));
     if (journey == "view-change") {
         QVERIFY(evaluate(ui + ".execute_command('tab-open --background rb://start')").toBool());
         evaluate(owner + ".syncTabModel()");
@@ -56,10 +59,14 @@ void ApplicationTests::hintEarlyInput() {
     QTest::keyClick(host, Qt::Key_Escape);
     QCOMPARE(evaluate(ui + ".mode").toString(), "normal");
 
-    if (journey == "auto-follow")
+    if (journey == "auto-follow") {
         QVERIFY(evaluate(ui + ".execute_command('set --temp hints.auto_follow=full-match')").toBool());
-    if (journey == "initial-auto")
+        QTRY_COMPARE(evaluate("JSON.parse(" + ui + ".config_json).hints.auto_follow").toString(), QString("full-match"));
+    }
+    if (journey == "initial-auto") {
         QVERIFY(evaluate(ui + ".execute_command('set --temp hints.auto_follow=always')").toBool());
+        QTRY_COMPARE(evaluate("JSON.parse(" + ui + ".config_json).hints.auto_follow").toString(), QString("always"));
+    }
 
     // Synchronous delivery uses the production window's key router without
     // pumping collection callbacks between gestures. Assert the missing Rust
@@ -240,7 +247,9 @@ void ApplicationTests::hintNativeControls() {
     evaluate(pageReceiver + ".url=" + quoted(url));
     QTRY_VERIFY(page("document.body.dataset.ready==='true' && !!window.controlEvents").toBool());
     evaluate(pageReceiver + ".zoomFactor=" + QString::number(zoom));
-    QVERIFY(evaluate(ui + ".execute_command('set --temp hints.auto_follow=never')").toBool());
+    QVERIFY2(evaluate(ui + ".execute_command('set --temp hints.auto_follow=never')").toBool(),
+        qPrintable(evaluate(ui + ".status_text").toString()));
+    QTRY_COMPARE(evaluate("JSON.parse(" + ui + ".config_json).hints.auto_follow").toString(), QString("never"));
     ownerWindow->requestActivate();
     QTRY_VERIFY(ownerWindow->isActive());
     evaluate(pageReceiver + ".forceActiveFocus()");
