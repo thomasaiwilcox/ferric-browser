@@ -1987,12 +1987,19 @@ void ApplicationTests::hintRequestObservationDocuments()
     auto pending = work ? adapter->beginCollection(view, broker).value("request") : adapter->begin(view, broker);
     QVERIFY(pending.isValid());
     auto selectedOwner = provider->property("rootOwner").toString();
-    const auto awaitInitialChildObservation=[&](quint64 revision) {
+    const auto awaitInitialChildObservation=[&](quint64 revision, bool invalidated=false, const QString &nonce={}) {
         QElapsedTimer timer;timer.start();
         while(timer.elapsed()<1000) {
             scriptDone=false;
-            broker->run(selectedOwner,"(()=>{const state=window.__ferric_browserHintState;return !!state&&state.dirty===true&&state.revision>"
-                +QString::number(revision)+"&&state.pendingInteraction===null})()",completion);
+            // Initial equal-size reports have deliberately been non-dirty
+            // since 066cf8b. Observe delivery itself for the stable positives;
+            // require actual dirtiness and the same retained nonce for the
+            // changed-child negative (9d39e43 retains weak pending facts).
+            broker->run(selectedOwner,"(()=>{const state=window.__ferric_browserHintState,target=document.getElementById('foreign-primary');"
+                "return !!state&&state.tracking===true&&!!target&&state.resizeInitialRects instanceof WeakMap"
+                "&&state.resizeInitialRects.has(target)&&state.resizeInitialRects.get(target)===null&&state.revision>="
+                +QString::number(revision)+(invalidated?"&&state.dirty===true&&state.revision>"+QString::number(revision)
+                    +"&&!!state.pendingInteraction&&state.pendingInteraction.nonce==="+quoted(nonce):"")+"})()",completion);
             while(!scriptDone&&timer.elapsed()<1000)QTest::qWait(1);
             if(!scriptDone||scriptResult.metaType().id()!=QMetaType::Bool)return false;
             if(scriptResult.toBool())return true;
@@ -2045,7 +2052,7 @@ void ApplicationTests::hintRequestObservationDocuments()
     }
     if(policyWork&&!coldChild) {
         // Establish the child's initial ResizeObserver delivery before the
-        // definitive request. Cold-child invalidation is a separate negative;
+        // definitive request. Changed-child invalidation is a separate negative;
         // these component positives require a stable original inventory.
         const auto warmSelectors=adapter->collectorSelectors(pending);
         QVERIFY(!warmSelectors.isEmpty());
@@ -2159,7 +2166,14 @@ void ApplicationTests::hintRequestObservationDocuments()
                 });
                 QVERIFY(expected!=childRows.cend());
                 QVERIFY(accept(following,child,false));
-                if(coldChild)QVERIFY(awaitInitialChildObservation(child.value("revision").toInteger()));
+                if(coldChild) {
+                    // Equal initial geometry is now a coherent snapshot. Make
+                    // a real child layout change to exercise stale rejection.
+                    scriptDone=false;
+                    broker->run(selectedOwner,"(()=>{const target=document.getElementById('foreign-primary');target.style.width='190px';return true})()",completion);
+                    QTRY_VERIFY(scriptDone);QVERIFY(scriptResult.toBool());
+                    QVERIFY(awaitInitialChildObservation(child.value("revision").toInteger(),true,child.value("interaction_pending").toString()));
+                }
                 following=QJsonDocument::fromJson(adapter->collectionWorkPlan(handle).toUtf8()).object();
                 QCOMPARE(following.value("world").toString(),QStringLiteral("top"));
             }
