@@ -3,9 +3,10 @@
 ## Phase 0 baseline and feasibility
 
 Starting production source: `277d72c74bb40d747ae8150f529b4f0eea2e7779`.
-Production behavior is unchanged at this checkpoint. Phases 1–5 have not started;
-the live production-input baseline is outstanding. This report does not qualify
-the proposed progressive implementation.
+Production behavior is unchanged at this checkpoint. The live-input retry below
+resolved the initial setup block. Phase 0 does not support proceeding with the
+straightforward world-level publication cut under the plan's retention gate;
+Phases 1–5 have not started. This report does not qualify a progressive feature.
 
 ### Controlled renderer measurements
 
@@ -108,3 +109,103 @@ desktop and leave it available. Before Phase 1, obtain valid native-input
 baselines and confirm useful policy-aware publication boundaries on YouTube and
 Reddit. This is an outstanding Phase 0 exit check, not a failed progressive
 performance gate. Do not claim an end-to-end speedup from the renderer table.
+
+## Live retry and Phase 0 decision
+
+The subsequent retry obtained real native focus. Session 1 reported
+`Active=yes`, `State=active`, `LockedHint=no`, and the owned browser reported
+`active: true`. The previous setup failure was not a product failure and did
+not recur in the measured retry. All 48 recorded entries across two batches
+completed; 24 used stage instrumentation and 24 used the ordinary timing path
+in the diagnostic resource overlay. These latter rows still use the diagnostic
+QML resource copies; they are not original-resource release qualification.
+
+The same installed production executable was used with a fresh temporary profile,
+copied interaction policies, 1280 × 720 viewport, 100% zoom, native Wayland and AC
+power. Each batch includes three stage-instrumented and three ordinary timing
+samples per case, with alternating instrumentation order. Batch 1 had one
+unrecorded warmup per case; batch 2 had two. Startup/long-running outliers remain
+in the data. These small samples support feasibility inspection, not tail-latency
+or release qualification. No additional ten-pair candidate comparison is claimed.
+
+| Case | Strict-path median ms batch 1 / 2 | Optimistic removable remainder ms batch 1 / 2 | Remainder as median fraction of instrumented journey batch 1 / 2 |
+| --- | ---: | ---: | ---: |
+| YouTube top | 372.6 / 367.2 | 66.0 / 59.8 | 16.3% / 15.7% |
+| YouTube scrolled | 399.7 / 384.7 | 58.7 / 59.8 | 17.4% / 16.6% |
+| Reddit top | 521.7 / 512.1 | 63.9 / 69.9 | 12.1% / 10.9% |
+| Reddit scrolled | 567.8 / 561.2 | 72.7 / 74.2 | 12.6% / 12.4% |
+
+The remainder is calculated separately for every instrumented sample as first
+rendered-marker time minus the return time of policy extraction. The table
+reports medians of those per-sample differences and ratios. It does not subtract
+independent stage medians or divide a diagnostic remainder by a different
+non-instrumented run. Both timestamps come from the diagnostic host clock.
+
+This is a deliberately generous opportunity bound for the **existing schedule**:
+it assumes labels can appear immediately at policy return, with zero new decoding,
+allocation, overlay or frame cost. In reality ownership still depends on native
+projection/merge, so an implementation needs additional presentation-only facts
+and work. It is not a proof that a redesigned discovery/policy pipeline cannot
+be faster. It does show that simply publishing ahead of sealing after the current
+extraction cannot reach the proposed 20% early-label improvement on these samples.
+The unchanged path spends most of its time before that cut.
+
+Ordinary controls independent of policies could theoretically appear earlier,
+but that is not evidence that the intended numbered video/post targets appear
+earlier. The handoff expressly forbids claiming success from an unrelated badge
+while the user's intended policy targets still wait. Early collection ranks may
+not be guessed and repaired by moving displayed numbers to different items.
+
+### Native selector experiment rejected
+
+An ignored experimental source copy replaced the primary per-element selector
+check with a per-root native `querySelectorAll` result set. It retained physical
+traversal, eligibility checks and secondary discovery. This was a narrow
+measurement prototype; it does not solve native query work accounting or all
+custom-selector semantics and was never installed or added to production.
+
+The maintained feed differential suite passed all four QtTest results, checking
+six target families, three scroll positions, fresh documents and changed content.
+The timing section used three warmup pairs and twenty alternating pairs per
+position. Medians of ordinary renderer collection were:
+
+| Scroll Y | Current ms | Native selector prototype ms | Change |
+| --- | ---: | ---: | ---: |
+| 0 | 90.05 | 93.65 | 4.0% slower |
+| 1500 | 100.05 | 103.50 | 3.4% slower |
+| 6000 | 96.75 | 104.60 | 8.1% slower |
+
+Five fresh-page pairs likewise showed no consistent improvement. Matching
+target fingerprints established equivalence only for the exercised fixture
+cases. This is a policy-free renderer experiment, not an end-to-end/live or
+custom-policy qualification. The clearly negative result rejects this particular
+prototype without another batch. It does not reject every possible native CSS
+selection design. No source swap, native rebuild or installation was required.
+
+### Stop decision
+
+Do not begin provisional session state, pending action machinery or the new
+scheduler on the strength of these results. The accepted execution plan requires
+an early feasibility gate and meaningful measured benefit before retaining that
+complexity. Its straightforward world-level early-publication cut does not meet
+the proposed benefit threshold, and the tested discovery optimization regresses.
+There is no useful production optimization from this experiment to retain.
+
+This leaves the progressive feature **unimplemented**, with a completed negative
+feasibility checkpoint for this specific cut. It does not establish that the
+overall hybrid vision is impossible. A revised implementation would first need
+to move the binding-determining policy/discovery work earlier or make it cheaper
+while retaining complete membership, ownership, capacity and activation rules.
+Showing speculative policy ranks before those facts settle would be a product
+contract change, not a local optimization under the current plan.
+
+Do not repeatedly tune the failed selector prototype or build a general
+dependency engine to avoid reporting the stop gate. The maintained feasibility
+fixture remains useful; the ignored prototype remains evidence only.
+
+Evidence is under `target/progressive-hints-20261117/`: `baseline-batch1.json`,
+`baseline.json`, `baseline-summary.json`, `retry-provenance.json`, and
+`native-selector/{fixture.log,measurements.json,summary.json,control.js,candidate.js}`.
+The original failed setup is retained under `attempt-1/`. Production source and
+installed files remain unchanged. The owned browser is stopped and its temporary
+profile, socket and debugging endpoint are removed at the end of the retry.
