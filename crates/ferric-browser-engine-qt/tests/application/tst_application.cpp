@@ -263,6 +263,20 @@ void ApplicationTests::init() {
                          || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary"
                              && !(testName == "productPolishDiagnosticLifecycle" && QString::fromLatin1(QTest::currentDataTag()) == "private")));
     QString startupConfig = "{\"schema_version\":3}";
+    if(testName=="hintCollectionOptimisationPerformance") {
+        const auto kind=qEnvironmentVariable("FERRIC_OPT_CASE","full");
+        QJsonObject interaction{{"enabled",true}};
+        if(kind=="keys"||kind=="full")interaction.insert("hint_page_keys",QJsonArray{"p"});
+        if(kind=="anchor"||kind=="full")interaction.insert("anchors",QJsonArray{QJsonObject{
+            {"id","home"},{"code","h"},{"families",QJsonArray{"actions"}},{"target_selector","#home"}}});
+        if(kind=="collection"||kind=="full")interaction.insert("collections",QJsonArray{QJsonObject{
+            {"id","items"},{"families",QJsonArray{"actions"}},{"codes",QJsonArray{"1","2","3","4","5","6","7","8","9"}},
+            {"container_selector","#feed"},{"item_selector",".card"},{"primary_selector","a.title"},{"order","dom"}}});
+        const QJsonArray rules=kind=="none"?QJsonArray{}:QJsonArray{QJsonObject{
+            {"id","optimisation"},{"pattern",QString("http://127.0.0.1:%1/*").arg(server.serverPort())},{"interaction",interaction}}};
+        startupConfig=QString::fromUtf8(QJsonDocument(QJsonObject{{"schema_version",3},{"site_rules",rules}}).toJson(QJsonDocument::Compact));
+    }
+
     if(testName=="hintRequestCaptureClassification"&&dataTag=="non-http")
         startupConfig=R"JSON({"schema_version":3,"hints":{"selectors":{"all":{"mode":"replace","selectors":["#button"]}}}})JSON";
     if(testName=="hintRequestCollectionBinding") {

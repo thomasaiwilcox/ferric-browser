@@ -2248,3 +2248,67 @@ void ApplicationTests::sitePolicyWindowLifetime() {
     }
     stage="complete";failures=0;
 }
+
+
+void ApplicationTests::hintCollectionOptimisationPerformance() {
+    if(!qEnvironmentVariableIsSet("FERRIC_OPT_PERF"))QSKIP("Opt-in current-source optimisation benchmark");
+    const int cards=qEnvironmentVariableIntValue("FERRIC_OPT_CARDS");
+    const int scroll=qEnvironmentVariableIntValue("FERRIC_OPT_SCROLL");
+    const int warmups=qEnvironmentVariableIsSet("FERRIC_OPT_SMOKE")?1:5;
+    const int samples=qEnvironmentVariableIsSet("FERRIC_OPT_SMOKE")?2:qEnvironmentVariableIsSet("FERRIC_OPT_SAMPLES")?qEnvironmentVariableIntValue("FERRIC_OPT_SAMPLES"):20;
+    QVERIFY(samples>0&&samples<=100);
+    QVERIFY(cards==8||cards==30||cards==100||cards==300);
+    window->resize(640,480);
+    fixtureHtml="<!doctype html><meta charset=utf-8><style>body{margin:16px;font:16px sans-serif}a{display:block;height:32px}.card{height:96px;overflow:hidden}.card span{font-size:12px}</style><nav><button id=home>Home</button><button>Menu</button><button>Search</button></nav><main id=feed>";
+    for(int i=0;i<cards;++i) {
+        fixtureHtml+=QString("<article class=card><a class=title href='#article-%1'>Article %1: keyboard browsing</a>").arg(i).toUtf8();
+        for(int j=0;j<20;++j)fixtureHtml+=QString("<span> detail %1</span>").arg(j).toUtf8();
+        fixtureHtml+="</article>";
+    }
+    fixtureHtml+="</main><script>document.body.dataset.ready='true'</script>";
+    if(cards==8){
+        fixtureHtml="<!doctype html><style>body{margin:16px;font:16px sans-serif}a{display:block;height:32px}</style>";
+        for(int i=0;i<8;++i)fixtureHtml+=QString("<a href='#article-%1'>Article %1</a>").arg(i).toUtf8();
+        fixtureHtml+="<script>document.body.dataset.ready='true'</script>";
+    }
+    const auto url=QString("http://127.0.0.1:%1/optimisation-feed").arg(server.serverPort());
+    QVERIFY(command("open "+url));
+    QTRY_VERIFY_WITH_TIMEOUT(page("location.href==="+quoted(url)+"&&document.body.dataset.ready==='true'").toBool(),15000);
+    QVERIFY(page(QString("scrollTo(0,%1);true").arg(scroll)).toBool());
+    QTest::qWait(250);
+    window->requestActivate();QTRY_VERIFY(window->isActive());
+    evaluate("testWindow.activeWebView().forceActiveFocus()");
+    auto *ui=evaluate("testWindow.browserUi").value<QObject *>();QVERIFY(ui);
+    auto *repeater=window->findChild<QQuickItem *>("hintMarkerRepeater");QVERIFY(repeater);
+    auto *overlay=repeater->parentItem();QVERIFY(overlay);
+    RenderedStateObserver rendered(window,[&]{
+        if(ui->property("mode").toString()!="hint"||!overlay->isVisible())return false;
+        const int count=repeater->property("count").toInt();if(count<1)return false;
+        for(int i=0;i<count;++i){QQuickItem *item=nullptr;
+            if(!QMetaObject::invokeMethod(repeater,"itemAt",Qt::DirectConnection,Q_RETURN_ARG(QQuickItem *,item),Q_ARG(int,i))
+                ||!item||!item->isVisible()||item->opacity()<=0||item->width()<=0||item->height()<=0)return false;
+            bool label=false;
+            for(auto *child:item->childItems())if(child->isVisible()&&child->width()>0&&child->height()>0&&!child->property("text").toString().isEmpty()){label=true;break;}
+            if(!label)return false;
+        }
+        return !evaluate("testWindow.hintWorkspace.hintRefreshPending").toBool();
+    });
+    RenderedStateObserver normal(window,[&]{return ui->property("mode").toString()=="normal"&&!overlay->isVisible();});
+    for(int i=0;i<warmups+samples;++i){
+        const auto gate=qEnvironmentVariable("FERRIC_OPT_GATE");
+        if(!gate.isEmpty())QVERIFY2(QTest::qWaitFor([&]{return QFile::exists(gate+"/go-"+QString::number(i));},120000),"Benchmark coordinator did not grant sample");
+        QVERIFY(normal.measure([&]{gesture(window,Qt::Key_Escape);window->update();})>=0);
+        const double ms=rendered.measure([&]{gesture(window,Qt::Key_F,"f");},5000);
+        QVERIFY2(ms>=0,qPrintable(ui->property("status_text").toString()));
+        QJsonArray projection;
+        for(const auto &v:QJsonDocument::fromJson(ui->property("hint_values").toString().toUtf8()).array()){
+            const auto h=v.toObject();projection.append(QJsonArray{QUrl(h["href"].toString()).fragment(),h["text"],h["kind"],h["label"],h["frame_path"],h["x"],h["y"],h["width"],h["height"]});
+        }
+        qInfo().noquote()<<"FERRIC_OPT_SAMPLE "+QJsonDocument(QJsonObject{
+            {"case",qEnvironmentVariable("FERRIC_OPT_CASE","full")},{"cards",cards},{"scroll",scroll},{"iteration",i},{"warmup",i<warmups},
+            {"ms",ms},{"projection",projection},{"observer_ms",rendered.predicateMillis()},
+            {"viewport",QJsonObject::fromVariantMap(page("({width:innerWidth,height:innerHeight,scrollY})").toMap())}
+        }).toJson(QJsonDocument::Compact);
+    }
+    QVERIFY(normal.measure([&]{gesture(window,Qt::Key_Escape);})>=0);
+}

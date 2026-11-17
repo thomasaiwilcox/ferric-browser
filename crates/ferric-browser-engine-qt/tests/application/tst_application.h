@@ -357,6 +357,7 @@ class ApplicationTests final : public QObject {
     void mixedReservedKeysAndUnmappedDelivery();
     void sitePolicyProtectedRecovery_data();
     void sitePolicyProtectedRecovery();
+    void hintCollectionOptimisationPerformance();
     void sitePolicyCommandRenderPerformance();
     void sitePolicyHintRenderPerformance_data();
     void sitePolicyHintRenderPerformance();
