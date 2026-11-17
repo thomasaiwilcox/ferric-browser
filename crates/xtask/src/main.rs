@@ -507,7 +507,30 @@ mod requirement_tests {
 
 #[cfg(test)]
 mod adapter_boundary_tests {
-    use super::architecture_checks::qt_adapter_core_mutation_marker;
+    use super::architecture_checks::{
+        qt_adapter_core_mutation_marker, qt_adapter_production_source,
+    };
+
+    #[test]
+    fn only_explicit_test_file_gates_exclude_separate_test_modules() {
+        let source = "error.contains(\"private page text\")";
+        assert_eq!(qt_adapter_production_source(source), source);
+        assert_eq!(
+            qt_adapter_production_source(&format!("#![cfg(test)]\n{source}")),
+            ""
+        );
+        let commented_gate = format!("// #![cfg(test)]\n{source}");
+        assert_eq!(
+            qt_adapter_production_source(&commented_gate),
+            commented_gate
+        );
+        assert_eq!(
+            qt_adapter_core_mutation_marker(qt_adapter_production_source(
+                "model.tabs.get_mut(&tab);\n#[cfg(test)]\nmod tests {}"
+            )),
+            Some(".tabs.get_mut(")
+        );
+    }
 
     #[test]
     fn opaque_application_metadata_services_are_allowed() {

@@ -965,7 +965,7 @@ fn selected_ordinary_precedes_top_policy_and_retains_separate_local_identities()
     let top = work.ordinary[0].as_ref().unwrap();
     let child = work.ordinary[1].as_ref().unwrap();
     assert_eq!(top.candidates[0].element_id, child.candidates[0].element_id);
-    assert!(top.candidates[0].frame_owner.is_empty());
+    assert_eq!(top.candidates[0].frame_owner.len(), 0);
     assert_eq!(child.candidates[0].frame_owner, OWNER);
     assert_eq!(top.candidates[0].geometry, child.candidates[0].geometry);
     assert_eq!(top.metadata.nonce, NONCE);

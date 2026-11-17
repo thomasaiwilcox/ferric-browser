@@ -249,6 +249,10 @@ impl InteractionPolicyCache {
             configuration_revision: sources.revision(),
             policy_revision: self.semantic_revision,
         };
+        #[allow(
+            deprecated,
+            reason = "Atomic::try_update is unavailable on MSRV Rust 1.88"
+        )]
         let _ = app.interaction_compilations.fetch_update(
             std::sync::atomic::Ordering::Relaxed,
             std::sync::atomic::Ordering::Relaxed,

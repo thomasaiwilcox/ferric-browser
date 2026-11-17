@@ -540,7 +540,7 @@ mod tests {
             );
             assert!(reporter.settings_saved_with_durability_uncertainty());
             assert_eq!(registry.get("uncertain").unwrap(), pending);
-            assert!(registry.drain_completions().is_empty());
+            assert_eq!(registry.drain_completions().len(), 0);
             assert!(reporter.finish(outcome));
             let receipt = registry.get("uncertain").unwrap();
             let expected = outcome.update().unwrap();
@@ -578,7 +578,7 @@ mod tests {
             assert_eq!(completions[0].scope, original);
             assert_eq!(completions[0].completion.id, pending.record.id);
             assert_eq!(completions[0].completion.sequence, pending.record.sequence);
-            assert!(registry.drain_completions().is_empty());
+            assert_eq!(registry.drain_completions().len(), 0);
         }
     }
 
@@ -609,7 +609,7 @@ mod tests {
                 durability_uncertain
             );
             assert_eq!(registry.drain_completions().len(), 1);
-            assert!(registry.drain_completions().is_empty());
+            assert_eq!(registry.drain_completions().len(), 0);
         }
     }
 

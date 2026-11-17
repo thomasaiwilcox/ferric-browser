@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 use super::*;
 use serde_json::json;
 
@@ -210,7 +212,7 @@ fn nesting_guard_matches_the_former_value_decoder_boundary() {
         );
     }
     let quoted = json!({"candidates":[], "ignored":"[\\\"{".repeat(10_000)}).to_string();
-    assert!(parse_hint_payload(&quoted).unwrap().is_empty());
+    assert_eq!(parse_hint_payload(&quoted).unwrap().len(), 0);
 }
 
 #[test]

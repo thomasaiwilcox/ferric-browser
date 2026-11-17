@@ -147,7 +147,7 @@ fn committed_adoption_preserves_peer_layers_and_unblocks_repair_of_late_conflict
         .unwrap();
     peer.publish_configuration_update(repair.into_prepared(), || Ok(()))
         .unwrap();
-    assert!(peer.configuration_layers().runtime.site_rules.is_empty());
+    assert_eq!(peer.configuration_layers().runtime.site_rules.len(), 0);
 }
 
 #[test]

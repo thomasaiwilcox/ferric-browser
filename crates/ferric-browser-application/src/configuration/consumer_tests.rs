@@ -510,7 +510,7 @@ fn typed_consumers_share_selection_provenance_and_one_configuration_publication(
     );
     assert!(pair.interaction.enabled());
     assert_eq!(pair.dummy.values.value, 4);
-    assert!(pair.dummy.values.entries.is_empty());
+    assert_eq!(pair.dummy.values.entries.len(), 0);
     let origins = &pair.dummy.values.origins;
     assert_eq!(
         origins
@@ -598,7 +598,7 @@ fn replaced_include_dummy_entries_still_require_validation_and_membership() {
     layers.base_authored = loaded.authored;
     let raw = expected_raw(&layers);
     assert_eq!(raw.len(), 1);
-    assert!(layers.base.site_rules.is_empty());
+    assert_eq!(layers.base.site_rules.len(), 0);
     let catalogue = Arc::new(DummyCatalogue {
         patches: raw
             .iter()
@@ -631,8 +631,8 @@ fn runtime_boundary_cannot_publish_desired_reload_only_rules_as_active_consumer(
     let app = BrowserApplication::new(Config::default());
     let (layers, catalogue) = fixture();
     let prepared = app.prepare_configuration_update(layers).unwrap();
-    assert!(prepared.snapshot().effective.site_rules.is_empty());
-    assert!(!prepared.snapshot().pending_changes.is_empty());
+    assert_eq!(prepared.snapshot().effective.site_rules.len(), 0);
+    assert_ne!(prepared.snapshot().pending_changes.len(), 0);
     assert!(
         prepared
             .prepare_consumer(|effective, layers, revision| compile(

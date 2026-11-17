@@ -221,8 +221,8 @@ fn replaced_include_arrays_never_reappear_and_catalogue_mismatch_rejects() {
     .unwrap();
     let (selected, trace) = resolved.select_with_trace("https://example.com/list");
     assert!(selected.selected().is_empty());
-    assert!(trace.survivors.is_empty());
-    assert!(trace.shadowed.is_empty());
+    assert_eq!(trace.survivors.len(), 0);
+    assert_eq!(trace.shadowed.len(), 0);
     assert_eq!(
         trace.authored_array,
         Some(AuthoredSitePolicyArray {
@@ -331,7 +331,7 @@ fn array_history_tracks_immediate_replacements_including_empty_arrays() {
             .priority(),
         7
     );
-    assert!(trace.replaced_arrays[1].rules.is_empty());
+    assert_eq!(trace.replaced_arrays[1].rules.len(), 0);
     assert_eq!(trace.shadowed.len(), 1);
     assert_eq!(
         trace.shadowed[0].replaced.source(),
@@ -367,7 +367,7 @@ fn selected_rules_do_not_borrow_the_diagnostic_catalogue() {
         .unwrap();
         let (_, trace) = resolved.select_with_trace(URL);
         assert!(trace.authored_array.is_none());
-        assert!(trace.replaced_arrays.is_empty());
+        assert_eq!(trace.replaced_arrays.len(), 0);
         resolved.select(URL)
     };
     assert_eq!(selected.selected()[0].rule().id, "standalone");
@@ -616,7 +616,7 @@ fn exact_survivor_lookup_never_revives_a_retired_include_array() {
         loaded.authored.documents()[0].site_rules().unwrap()[0].id,
         "hidden"
     );
-    assert!(loaded.config.site_rules.is_empty());
+    assert_eq!(loaded.config.site_rules.len(), 0);
     let generated = RuntimeOverrides::default();
     let temporary = RuntimeOverrides::default();
     let resolved = resolve_site_policy_rules(

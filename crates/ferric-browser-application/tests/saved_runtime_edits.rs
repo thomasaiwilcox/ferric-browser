@@ -85,7 +85,7 @@ fn saved_capture_repairs_the_full_graph_and_retains_activation_boundaries() {
     assert!(!prepared.is_committed_peer_update());
     assert_eq!(prepared.policy_sources().desired_layers().runtime, fixed);
     assert!(prepared.snapshot().effective.hints.selectors.is_empty());
-    assert!(prepared.snapshot().effective.site_rules.is_empty());
+    assert_eq!(prepared.snapshot().effective.site_rules.len(), 0);
     assert_eq!(app.configuration_snapshot(), before);
     assert_eq!(
         load_runtime_overrides(roots.state.join("runtime-overrides.toml")).unwrap(),
@@ -110,7 +110,7 @@ fn saved_capture_repairs_the_full_graph_and_retains_activation_boundaries() {
     );
     assert_eq!(app.configuration_layers().runtime, fixed);
     assert!(app.configuration().hints.selectors.is_empty());
-    assert!(app.configuration().site_rules.is_empty());
+    assert_eq!(app.configuration().site_rules.len(), 0);
     assert!((app.configuration().content.zoom - 1.25).abs() < f64::EPSILON);
     let reloaded = app
         .prepare_configuration_reload(app.configuration_layers().clone())

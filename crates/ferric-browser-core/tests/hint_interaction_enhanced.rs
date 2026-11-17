@@ -502,7 +502,7 @@ fn late_ordinary_completion_consumes_known_identity_after_disappearance() {
     model.refresh(vec![]).unwrap();
     model.consume(&original);
     model.refresh(vec![original]).unwrap();
-    assert!(model.hints().is_empty());
+    assert_eq!(model.hints().len(), 0);
     assert_eq!(model.ordinary_codes_remaining(), Some(2));
 }
 
@@ -513,7 +513,7 @@ fn late_special_completion_preserves_retirement_and_prevents_ordinary_fallback()
     model.refresh(vec![]).unwrap();
     model.consume(&original);
     model.refresh(vec![original]).unwrap();
-    assert!(model.hints().is_empty());
+    assert_eq!(model.hints().len(), 0);
     assert_eq!(
         model.reservations()[0].state(),
         HintReservationState::Retired(HintReservationReason::Missing)
@@ -529,9 +529,9 @@ fn late_completion_consumes_physical_identity_even_after_meaning_changes() {
     let mut model = model(vec![original.clone()], &[], vec![]);
     model.refresh(vec![changed.clone()]).unwrap();
     model.consume(&original);
-    assert!(model.hints().is_empty());
+    assert_eq!(model.hints().len(), 0);
     model.refresh(vec![changed]).unwrap();
-    assert!(model.hints().is_empty());
+    assert_eq!(model.hints().len(), 0);
     assert_eq!(model.ordinary_codes_remaining(), Some(1));
 }
 

@@ -98,11 +98,9 @@ fn direct_activation_and_replacement_reject_open_conflicts_without_touching_the_
         &app.refresh_interaction_snapshot(window, URL).unwrap()
     ));
     app.replace_configuration(Config::default()).unwrap();
-    assert!(
-        app.configuration_layers()
-            .base_authored
-            .documents()
-            .is_empty()
+    assert_eq!(
+        app.configuration_layers().base_authored.documents().len(),
+        0
     );
     assert_eq!(
         app.refresh_interaction_snapshot(window, URL)

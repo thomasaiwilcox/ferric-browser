@@ -18,7 +18,7 @@ fn shipped_local_examples_are_valid_constrained_round_trips() {
         include_str!("../../../examples/site-policies/player-remap.toml"),
     ] {
         let parsed = SitePolicyExchange::parse(source.as_bytes()).unwrap();
-        assert!(parsed.unsupported_capabilities().is_empty());
+        assert_eq!(parsed.unsupported_capabilities().len(), 0);
         assert_eq!(
             SitePolicyExchange::parse(parsed.encode().unwrap().as_bytes()).unwrap(),
             parsed
@@ -41,7 +41,7 @@ fn everyday_site_presets_cover_the_default_actions_hint_family() {
         include_str!("../../../examples/site-policies/presets/reddit-reading.toml"),
     ] {
         let parsed = SitePolicyExchange::parse(source.as_bytes()).unwrap();
-        assert!(parsed.unsupported_capabilities().is_empty());
+        assert_eq!(parsed.unsupported_capabilities().len(), 0);
         assert_eq!(
             SitePolicyExchange::parse(parsed.encode().unwrap().as_bytes()).unwrap(),
             parsed
@@ -141,7 +141,7 @@ fn production_parser_round_trips_mixed_operations_and_derives_omitted_requiremen
         parsed.required_capabilities(),
         vec!["interaction-policy-v1", "semantic-anchors-v1"]
     );
-    assert!(parsed.unsupported_capabilities().is_empty());
+    assert_eq!(parsed.unsupported_capabilities().len(), 0);
     let encoded = parsed.encode().unwrap();
     assert_eq!(
         SitePolicyExchange::parse(encoded.as_bytes()).unwrap(),

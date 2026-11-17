@@ -162,7 +162,7 @@ mod tests {
     fn check(overrides: &RuntimeOverrides, expected: &[(Mode, &str, &str)]) {
         // Compare metadata only after the existing compiler accepts the input.
         let applied = apply_runtime_overrides_traced(&base(), overrides).unwrap();
-        assert!(!applied.assignments.is_empty());
+        assert_ne!(applied.assignments.len(), 0);
         let effective = serde_json::to_value(&applied.configuration).unwrap();
         let active = BindingSources::from_config(&effective);
         let source = BindingSources::from_overrides(overrides);

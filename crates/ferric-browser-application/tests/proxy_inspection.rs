@@ -82,7 +82,7 @@ fn authored_absence_and_explicit_default_have_distinct_seed_origins() {
             inspected.trace.seed.len(),
             usize::from(expected_source.is_some())
         );
-        assert!(inspected.trace.contributions.is_empty());
+        assert_eq!(inspected.trace.contributions.len(), 0);
     }
     let app = BrowserApplication::new(Config::default());
     let inspected = app
@@ -219,7 +219,7 @@ fn proxy_trace_keeps_live_globals_and_reload_rules_at_their_captured_revisions()
         .inspect_hint_proxy_targets(URL, "default")
         .unwrap();
     assert_eq!(inspected.effective.policy, HintProxyTargets::Off);
-    assert!(inspected.trace.contributions.is_empty());
+    assert_eq!(inspected.trace.contributions.len(), 0);
     assert_eq!(
         captured
             .inspect_hint_proxy_targets(URL, "default")

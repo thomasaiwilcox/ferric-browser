@@ -340,11 +340,12 @@ mod tests {
             "/../ferric-browser-config/tests/fixtures/site-policy/includes/root.toml"
         ))
         .unwrap();
-        assert!(loaded.config.site_rules.is_empty());
-        assert!(
+        assert_eq!(loaded.config.site_rules.len(), 0);
+        assert_eq!(
             loaded.config.hints.selectors[&HintSelectorFamily::Links]
                 .selectors
-                .is_empty()
+                .len(),
+            0
         );
         let items = selector_validation_items_for_check(&loaded.config, None, &loaded.authored);
         assert_eq!(items.len(), 2);

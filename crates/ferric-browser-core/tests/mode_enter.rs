@@ -66,10 +66,11 @@ fn raw_completion_follows_a_passthrough_mode_and_is_not_duplicated() {
         );
     }
     for input in ["mode-enter insert ", "mode-enter passthrough --raw "] {
-        assert!(
+        assert_eq!(
             complete(input, input.chars().count(), &registry, &[], 100)
                 .candidates
-                .is_empty()
+                .len(),
+            0
         );
     }
 }

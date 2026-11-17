@@ -76,7 +76,7 @@ fn traced_composition_retains_noops_clears_and_only_explicit_shared_leaves() {
     );
     assert_eq!(trace[2].origin.source_revision(), 2);
     assert_eq!(policy.labels(), policy.ordinary_labels());
-    assert!(policy.anchors().is_empty());
+    assert_eq!(policy.anchors().len(), 0);
     assert_eq!(
         policy.origin(InteractionField::Anchors).unwrap(),
         trace[3].origin.as_ref()
@@ -114,7 +114,7 @@ fn traced_finish_rejects_partial_winners_until_composed_conflict_is_repaired() {
     apply(&mut builder, "clear", json!({"anchors":[]}));
     let (policy, trace) = builder.finish_with_trace(revision()).unwrap();
     assert_eq!(trace.len(), 3);
-    assert!(policy.anchors().is_empty());
+    assert_eq!(policy.anchors().len(), 0);
     assert_eq!(policy.collections().len(), 1);
 }
 

@@ -106,16 +106,17 @@ fn extend_retains_mode_and_duplicate_origins_while_replace_retires_them() {
         .apply_settings_with_origin(&empty, "temporary", &temporary)
         .unwrap();
     let (policies, trace) = cleared.finish_with_trace().unwrap();
-    assert!(
+    assert_eq!(
         policies[&HintSelectorFamily::Buttons]
             .policy
             .as_ref()
             .unwrap()
             .selectors
-            .is_empty()
+            .len(),
+        0
     );
     let fields = &trace[&HintSelectorFamily::Buttons].fields;
-    assert!(fields.selectors.is_empty());
+    assert_eq!(fields.selectors.len(), 0);
     assert_eq!(fields.mode.as_ref().unwrap().source, temporary);
     assert_eq!(
         fields.empty_list.as_ref().unwrap().input,

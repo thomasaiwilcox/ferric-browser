@@ -25,6 +25,10 @@ impl ReadQueueState {
         self.claims.remove(id);
     }
     fn acquire(&self) -> Result<ReadTicket, PublicError> {
+        #[allow(
+            deprecated,
+            reason = "Atomic::try_update is unavailable on MSRV Rust 1.88"
+        )]
         self.pending
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
                 (count < MAX_PENDING_READS).then_some(count + 1)

@@ -85,7 +85,7 @@ fn inspection_observes_shared_leaves_sections_and_same_id_shadowing_without_effe
         &PolicySourceIdentity::Generated
     );
     assert_eq!(result.trace[4].origin.rule().unwrap().id(), "clear");
-    assert!(result.policy.anchors().is_empty());
+    assert_eq!(result.policy.anchors().len(), 0);
     assert_eq!(result.selection.shadowed.len(), 1);
     assert!(
         result
@@ -350,7 +350,7 @@ fn disabled_and_empty_sections_retain_data_and_ordinary_settings_until_explicit_
     app.activate_configuration(layers).unwrap();
     let policy = compile(&app).unwrap();
     assert!(policy.enabled());
-    assert!(policy.anchors().is_empty());
+    assert_eq!(policy.anchors().len(), 0);
     assert_eq!(policy.labels().alphabet(), "cd");
     assert_eq!(
         policy.origin(InteractionField::Anchors).unwrap().source(),
@@ -522,7 +522,7 @@ fn final_validation_rejects_unrepaired_conflicts_but_allows_a_later_list_clear()
         .push(rule("clear", 0, "anchors=[]"));
     app.activate_configuration(layers).unwrap();
     let policy = compile(&app).unwrap();
-    assert!(policy.anchors().is_empty());
+    assert_eq!(policy.anchors().len(), 0);
     assert_eq!(
         policy
             .collections()

@@ -98,7 +98,7 @@ fn interaction_conflict_rejects_context_admission_before_registry_io() {
             .contains("Interaction active policy conflicts")
     );
     assert!(!roots.state.join("contexts.json").exists());
-    assert!(app.contexts().unwrap().is_empty());
+    assert_eq!(app.contexts().unwrap().len(), 0);
     assert_eq!(app.configuration_snapshot(), before);
     assert!(app.reserve_configuration_reload().is_ok());
 }
@@ -152,7 +152,7 @@ fn committed_context_effect_cannot_authorize_another_preparation_with_equal_revi
             .is_err()
     );
     assert_eq!(app.configuration_snapshot(), before);
-    assert!(app.contexts().unwrap().is_empty());
+    assert_eq!(app.contexts().unwrap().len(), 0);
     assert_eq!(
         ContextRegistry::open(&roots).unwrap().contexts()[0].label,
         "Work"
@@ -201,7 +201,7 @@ fn unadmitted_context_job_rejects_before_any_io_even_with_a_competing_reservatio
         let reservation = busy.then(|| app.reserve_configuration_reload().unwrap());
         assert!(matches!(job.run(), Err(ContextReloadError::NotAdmitted)));
         assert!(!roots.state.join("contexts.json").exists());
-        assert!(app.contexts().unwrap().is_empty());
+        assert_eq!(app.contexts().unwrap().len(), 0);
         if busy {
             assert!(app.reserve_configuration_reload().is_err());
         }
@@ -240,7 +240,7 @@ fn context_admission_preflights_shared_revision_exhaustion_before_io() {
             assert!(admission.is_err());
             assert!(!roots.state.join("contexts.json").exists());
             assert_eq!(app.configuration_snapshot(), before);
-            assert!(app.contexts().unwrap().is_empty());
+            assert_eq!(app.contexts().unwrap().len(), 0);
         } else {
             let effect = admission.unwrap().run().unwrap();
             app.publish_context_configuration(prepared, effect).unwrap();
@@ -367,8 +367,8 @@ fn rejected_context_admission_never_writes_or_strands_the_gate() {
             assert_eq!(app.configuration_snapshot(), after);
         }
         assert!(app.reserve_configuration_reload().is_ok());
-        assert!(ContextRegistry::open(&roots).unwrap().contexts().is_empty());
-        assert!(app.contexts().unwrap().is_empty());
+        assert_eq!(ContextRegistry::open(&roots).unwrap().contexts().len(), 0);
+        assert_eq!(app.contexts().unwrap().len(), 0);
     }
 }
 
@@ -387,7 +387,7 @@ fn failed_admitted_context_work_releases_its_gate() {
     assert!(app.reserve_configuration_reload().is_err());
     assert!(job.run().is_err());
     assert!(app.reserve_configuration_reload().is_ok());
-    assert!(ContextRegistry::open(&roots).unwrap().contexts().is_empty());
+    assert_eq!(ContextRegistry::open(&roots).unwrap().contexts().len(), 0);
 }
 
 #[test]
@@ -527,7 +527,7 @@ fn reject_old_context_effect(peer_update: bool, paired: bool) {
     assert_eq!(app.configuration_snapshot(), before);
     assert_eq!(app.configuration_policy_sources(), sources);
     assert_eq!(app.snapshot(), runtime);
-    assert!(app.contexts().unwrap().is_empty());
+    assert_eq!(app.contexts().unwrap().len(), 0);
 }
 
 #[test]
@@ -553,7 +553,7 @@ fn context_publication_rejects_a_stale_shared_profile_revision() {
     assert!(app.publish_context_configuration(prepared, effect).is_err());
     assert_eq!(app.configuration_snapshot(), before);
     assert_eq!(app.configuration_policy_sources(), before_sources);
-    assert!(app.contexts().unwrap().is_empty());
+    assert_eq!(app.contexts().unwrap().len(), 0);
 }
 
 #[test]
@@ -605,7 +605,7 @@ fn inherited_peer_cannot_adopt_another_windows_context_effect() {
     let effect =
         completed_context_reload(&app, &ContextsConfig::default(), configuration("default"));
     assert!(peer.apply_context_reload(effect).is_err());
-    assert!(peer.contexts().unwrap().is_empty());
+    assert_eq!(peer.contexts().unwrap().len(), 0);
 }
 
 #[test]
@@ -625,7 +625,7 @@ fn context_configuration_rejects_a_foreign_effect_even_with_local_preparation() 
             .is_err()
     );
     assert_eq!(peer.configuration_snapshot(), before);
-    assert!(peer.contexts().unwrap().is_empty());
+    assert_eq!(peer.contexts().unwrap().len(), 0);
 }
 
 #[test]
@@ -645,7 +645,7 @@ fn context_configuration_rejects_a_foreign_preparation_even_with_local_effect() 
             .is_err()
     );
     assert_eq!(peer.configuration_snapshot(), before);
-    assert!(peer.contexts().unwrap().is_empty());
+    assert_eq!(peer.contexts().unwrap().len(), 0);
 }
 
 #[test]

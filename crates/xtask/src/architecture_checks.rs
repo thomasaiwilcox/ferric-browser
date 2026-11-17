@@ -83,6 +83,13 @@ pub(super) fn qt_adapter_core_mutation_marker(source: &str) -> Option<&'static s
     })
 }
 
+pub(super) fn qt_adapter_production_source(source: &str) -> &str {
+    if source.starts_with("#![cfg(test)]\n") {
+        return "";
+    }
+    source.split("#[cfg(test)]").next().unwrap_or(source)
+}
+
 pub(super) fn check_qt_adapter_boundaries() -> Result<(), String> {
     let reducer_ownership_markers = ["ApplicationState", "RuntimeOwner", "StateView"];
     let prose_error_markers = ["error.contains(", "error.starts_with(", "error.ends_with("];
@@ -95,7 +102,7 @@ pub(super) fn check_qt_adapter_boundaries() -> Result<(), String> {
             if path.file_name().is_some_and(|name| name == "tests.rs") {
                 return Ok(());
             }
-            let production_source = source.split("#[cfg(test)]").next().unwrap_or(source);
+            let production_source = qt_adapter_production_source(source);
             if let Some(marker) = qt_adapter_core_mutation_marker(production_source) {
                 return Err(format!(
                     "Qt adapter mutates application state outside the reducer: {} contains {marker}",

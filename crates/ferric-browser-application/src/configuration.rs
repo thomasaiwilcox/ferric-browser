@@ -581,7 +581,7 @@ mod tests {
             &state.layers().base_authored,
             &authored
         ));
-        assert!(state.effective().site_rules.is_empty());
+        assert_eq!(state.effective().site_rules.len(), 0);
         assert_eq!(
             state.layers().base_authored.documents()[0]
                 .site_rules()
@@ -612,7 +612,7 @@ mod tests {
             &authored
         ));
         state.replace_effective(Config::default()).unwrap();
-        assert!(state.layers().base_authored.documents().is_empty());
+        assert_eq!(state.layers().base_authored.documents().len(), 0);
         assert_eq!(state.effective(), &Config::default());
     }
 

@@ -21,14 +21,16 @@ static ACTIVE_PREVIEWS: AtomicUsize = AtomicUsize::new(0);
 struct PreviewSlot;
 impl PreviewSlot {
     fn acquire() -> Result<Self, String> {
-        ACTIVE_PREVIEWS
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
-                (count < MAX_SITE_POLICY_PREVIEWS).then_some(count + 1)
-            })
-            .map(|_| Self)
-            .map_err(|_| {
-                "eight policy previews are already in flight; close a preview first".into()
-            })
+        #[allow(
+            deprecated,
+            reason = "Atomic::try_update is unavailable on MSRV Rust 1.88"
+        )]
+        let acquired = ACTIVE_PREVIEWS.fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+            (count < MAX_SITE_POLICY_PREVIEWS).then_some(count + 1)
+        });
+        acquired.map(|_| Self).map_err(|_| {
+            "eight policy previews are already in flight; close a preview first".into()
+        })
     }
 }
 impl Drop for PreviewSlot {

@@ -85,7 +85,7 @@ fn retained_sources_do_not_resurrect_replaced_rules_or_fill_sparse_defaults() {
         "schema_version=3\ninclude=['included.toml']\nsite_rules=[]\n[hints]\nmin_chars=2\n[hints.selectors.links]\nselectors=['a[href]']\n",
     );
     let loaded = load(fixture.root()).unwrap();
-    assert!(loaded.config.site_rules.is_empty());
+    assert_eq!(loaded.config.site_rules.len(), 0);
     assert_eq!(loaded.config.hints.chars, "abcd");
     assert_eq!(loaded.config.hints.min_chars, 2);
     let documents = loaded.authored.documents();
@@ -166,7 +166,7 @@ fn registered_globals_keep_explicit_defaults_sparse_tables_and_replaced_arrays()
         resolved.mode,
         ferric_browser_config::HintSelectorMode::Replace
     );
-    assert!(resolved.selectors.is_empty());
+    assert_eq!(resolved.selectors.len(), 0);
 }
 
 #[test]

@@ -1074,7 +1074,7 @@ mod tests {
         assert_eq!(sources.desired_layers(), sources.reload_layers());
         assert_eq!(sources.revision(), app.configuration_revision());
         assert_eq!(sources.reload_revision(), app.configuration_revision());
-        assert!(sources.reload_layers().base_authored.documents().is_empty());
+        assert_eq!(sources.reload_layers().base_authored.documents().len(), 0);
         assert_eq!(
             before_sources
                 .reload_layers()

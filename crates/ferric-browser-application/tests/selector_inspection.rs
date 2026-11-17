@@ -228,8 +228,8 @@ fn inspection_stays_at_reload_boundary_and_old_capture_cannot_promote_pending_ru
         active.policies[&family].policy.as_ref().unwrap().selectors,
         ["#base"]
     );
-    assert!(active.trace[&family].contributions.is_empty());
-    assert!(active.selection.survivors.is_empty());
+    assert_eq!(active.trace[&family].contributions.len(), 0);
+    assert_eq!(active.selection.survivors.len(), 0);
     let prepared = app.prepare_configuration_reload(layers).unwrap();
     app.publish_configuration_update(prepared, || Ok(()))
         .unwrap();
@@ -333,6 +333,6 @@ fn authored_site_replacement_has_its_own_origin_distinct_from_same_document_seed
         &PolicySourceIdentity::Generated
     );
     assert_eq!(trace.contributions.len(), 3);
-    assert!(inspected.selection.shadowed.is_empty());
+    assert_eq!(inspected.selection.shadowed.len(), 0);
     assert!(inspected.selection.survivors[0].matched);
 }

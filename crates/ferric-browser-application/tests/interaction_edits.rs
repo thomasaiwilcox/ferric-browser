@@ -223,7 +223,7 @@ fn preview_uses_the_prospective_compiler_without_publication_and_has_bounded_lif
         .unwrap();
     assert!(!failed.receipt().valid);
     assert!(failed.snapshot().is_none());
-    assert!(!failed.receipt().message.is_empty());
+    assert_ne!(failed.receipt().message.len(), 0);
     assert!(failed.is_current(&app));
     assert_eq!(app.configuration_snapshot(), before);
     app.discard_site_policy_draft(&invalid.id).unwrap();
@@ -943,7 +943,7 @@ fn temporary_and_private_generated_edits_stay_with_the_existing_memory_coordinat
             .is_err()
     );
     assert!(!app.configuration_write_pending());
-    assert!(app.configuration_layers().runtime.site_rules.is_empty());
+    assert_eq!(app.configuration_layers().runtime.site_rules.len(), 0);
     let prepared = app
         .prepare_interaction_edits(
             &capture,
@@ -953,7 +953,7 @@ fn temporary_and_private_generated_edits_stay_with_the_existing_memory_coordinat
         .unwrap();
     app.publish_configuration_update(prepared.into_prepared(), || Ok(()))
         .unwrap();
-    assert!(app.configuration_layers().runtime.site_rules.is_empty());
+    assert_eq!(app.configuration_layers().runtime.site_rules.len(), 0);
     assert_eq!(
         app.configuration_layers().temporary.site_rules[0].id,
         "temp"
@@ -1109,7 +1109,7 @@ fn durable_exact_edit_uses_the_existing_writer_and_remains_reload_scoped() {
         app.configuration_layers().runtime.site_rules,
         saved.site_rules
     );
-    assert!(app.configuration().site_rules.is_empty());
+    assert_eq!(app.configuration().site_rules.len(), 0);
     let reload = app
         .prepare_configuration_reload(app.configuration_layers().clone())
         .unwrap();

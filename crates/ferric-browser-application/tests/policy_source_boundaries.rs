@@ -99,9 +99,9 @@ fn reload_advances_source_identity_even_when_effective_values_and_pending_change
     desired.runtime.set_literal("hints.chars", "'ab'").unwrap();
     app.update_configuration(desired.clone()).unwrap();
     assert_eq!(app.configuration(), &effective);
-    assert!(app.configuration_snapshot().pending_changes.is_empty());
+    assert_eq!(app.configuration_snapshot().pending_changes.len(), 0);
     let pending = app.configuration_policy_sources();
-    assert!(pending.reload_layers().runtime.site_rules.is_empty());
+    assert_eq!(pending.reload_layers().runtime.site_rules.len(), 0);
     assert_eq!(pending.reload_revision(), old.reload_revision());
     assert_eq!(
         pending.desired_layers().runtime.settings["hints.chars"].as_str(),
@@ -201,7 +201,7 @@ fn activation_and_standalone_replacement_reset_both_source_captures() {
     let replaced = app.configuration_policy_sources();
     assert_eq!(replaced.desired_layers(), replaced.reload_layers());
     assert_eq!(replaced.revision(), replaced.reload_revision());
-    assert!(replaced.reload_layers().base.site_rules.is_empty());
+    assert_eq!(replaced.reload_layers().base.site_rules.len(), 0);
     assert_eq!(pending.reload_layers().base.site_rules[0].id, "old");
 }
 
@@ -218,7 +218,7 @@ fn cancelling_pending_rules_does_not_promote_the_pending_source_epoch() {
     assert_eq!(cancelled.desired_layers(), &original);
     assert_eq!(cancelled.reload_layers(), active.reload_layers());
     assert_eq!(cancelled.reload_revision(), active.reload_revision());
-    assert!(app.configuration_snapshot().pending_changes.is_empty());
+    assert_eq!(app.configuration_snapshot().pending_changes.len(), 0);
     assert_eq!(pending.desired_layers().base.site_rules[0].id, "pending");
 }
 

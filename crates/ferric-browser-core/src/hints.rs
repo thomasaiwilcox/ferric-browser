@@ -1234,7 +1234,7 @@ mod tests {
         assert_eq!(model.snapshot().mode, HintInputMode::Label);
         assert_eq!(model.snapshot().prefix, "a");
         assert!(model.clear_label_selection());
-        assert!(model.snapshot().prefix.is_empty());
+        assert_eq!(model.snapshot().prefix.len(), 0);
     }
 
     #[test]
