@@ -1,0 +1,52 @@
+{
+  "date": "2026-11-17",
+  "ferric_source": "8c27c75a371861dc7e5040fd09226b0461a95486",
+  "ferric_sha256": "0f374110d84b4a6e576fe0ebf63a1fefd883b62b7378c2ed6015154f02472e38",
+  "qutebrowser": "3.7.0",
+  "qute_qt": "6.12.0",
+  "qute_qtwebengine": "6.11.2",
+  "ferric_qt": "6.11.2",
+  "local_artifact_root": "/home/tom/Projects/Ferric/ferric-browser/target/browser-comparison-20261117",
+  "files": {
+    "run1-source.py": {
+      "sha256": "f4a97b9640eabcef44f3a257fdde2a43b31be0d5dad5944bcdbfb713d909db3d",
+      "bytes": 15037
+    },
+    "compare.py": {
+      "sha256": "3771f5e9f64415ba271dac394c6cc39a171b26fdfbeb57d64387b755c272836b",
+      "bytes": 15902
+    },
+    "extend.py": {
+      "sha256": "9facfdf3be4be3b3ade36cd725bef95ced0a1d9f8e94ae82625e3e6dcde1e5da",
+      "bytes": 4987
+    },
+    "native_check.py": {
+      "sha256": "5c132cc90391926fefa6bf3ae8097bd5883da24fc768907b652a1ff1754543d4",
+      "bytes": 3972
+    },
+    "finish.py": {
+      "sha256": "96eceaea461cd6f75c7f8be27bda36894572ac339dc3658a4c3261c97f014194",
+      "bytes": 2581
+    },
+    "run1.log": {
+      "sha256": "952181ef0ca360b1771d18fd36e0bcc08d48ada98b9308100695f61116219fc2",
+      "bytes": 11212
+    },
+    "run2.log": {
+      "sha256": "773a5c83abf7855765eb354badb3c0a7432fe4243b04f3f351832b9dda684c51",
+      "bytes": 20330
+    },
+    "native-check.log": {
+      "sha256": "be17604aede257fb23e9d1e0cc959ab1f32dea7f0dac8a45ad327bf65eea9e2f",
+      "bytes": 1471
+    },
+    "finish.log": {
+      "sha256": "14884572dac8eb984bdbf3bc630f01b60a823c6e6c9e8afcb6d99b867ad01843",
+      "bytes": 5418
+    }
+  },
+  "notes": [
+    "Comparison of installed binaries with temporary clean profiles; no production code changes.",
+    "Raw observations include excluded setup/anomalous cases. See report for qualification boundaries."
+  ]
+}

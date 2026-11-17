@@ -1,0 +1,235 @@
+{"run": "run1", "test": "startup", "browser": "qute", "ready_ms": 1834.4447780400515, "note": "includes 300ms setup settle and capture; not a startup latency result"}
+{"run": "run1", "test": "startup", "browser": "ferric", "ready_ms": 1951.5982459997758, "note": "includes 300ms setup settle and capture; not a startup latency result"}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": -2, "lower_ms": 50.76491192448884, "upper_ms": 112.52525297459215, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": -2, "lower_ms": 50.73079909197986, "upper_ms": 113.8628349872306, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": -1, "lower_ms": 57.45680199470371, "upper_ms": 117.6338029326871, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": -1, "lower_ms": 47.479205997660756, "upper_ms": 113.68177307303995, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 0, "lower_ms": 51.97221110574901, "upper_ms": 114.62319700513035, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 0, "lower_ms": 58.179983985610306, "upper_ms": 120.25375501252711, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 1, "lower_ms": 50.78328202944249, "upper_ms": 112.21720499452204, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 1, "lower_ms": 48.357262974604964, "upper_ms": 115.29809597413987, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 2, "lower_ms": 46.275544911623, "upper_ms": 110.9947629738599, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 2, "lower_ms": 49.98364602215588, "upper_ms": 113.6490860953927, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 3, "lower_ms": 46.82628100272268, "upper_ms": 104.29501405451447, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 3, "lower_ms": 46.99582397006452, "upper_ms": 108.71328704524785, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 4, "lower_ms": 49.559958977624774, "upper_ms": 112.11334506515414, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 4, "lower_ms": 47.37252998165786, "upper_ms": 109.22195692546666, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 5, "lower_ms": 46.377606922760606, "upper_ms": 106.58151493407786, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 5, "lower_ms": 53.37909597437829, "upper_ms": 114.91936398670077, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 6, "lower_ms": 46.204159036278725, "upper_ms": 110.77463498804718, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 6, "lower_ms": 46.09698208514601, "upper_ms": 107.90896008256823, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 7, "lower_ms": 50.894513027742505, "upper_ms": 113.08232496958226, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 7, "lower_ms": 48.537866096012294, "upper_ms": 112.25287208799273, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 8, "lower_ms": 60.08952495176345, "upper_ms": 121.33043492212892, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 8, "lower_ms": 49.85745204612613, "upper_ms": 110.64020707271993, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 9, "lower_ms": 53.42401994857937, "upper_ms": 115.60910695698112, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 9, "lower_ms": 57.132649002596736, "upper_ms": 119.25871204584837, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": -2, "lower_ms": 59.58297406323254, "upper_ms": 133.35823395755142, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": -2, "lower_ms": 140.13664494268596, "upper_ms": 213.5653889272362, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": -1, "lower_ms": 168.31171105150133, "upper_ms": 244.0752909751609, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": -1, "lower_ms": 63.75486799515784, "upper_ms": 141.11813507042825, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 0, "lower_ms": 62.13285098783672, "upper_ms": 135.5666930321604, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 0, "lower_ms": 156.25124901998788, "upper_ms": 228.91604993492365, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 1, "lower_ms": 139.98938200529665, "upper_ms": 210.72850609198213, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 1, "lower_ms": 60.59075996745378, "upper_ms": 133.76450294163078, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 2, "lower_ms": 67.41968402639031, "upper_ms": 142.37778901588172, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 2, "lower_ms": 152.48110401444137, "upper_ms": 224.91921193432063, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 3, "lower_ms": 153.76656199805439, "upper_ms": 226.33787896484137, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 3, "lower_ms": 64.48442197870463, "upper_ms": 139.0627989312634, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 4, "lower_ms": 59.63581695687026, "upper_ms": 136.40558603219688, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 4, "lower_ms": 144.1629290347919, "upper_ms": 217.04894304275513, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 5, "lower_ms": 145.016658003442, "upper_ms": 217.05343096982688, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 5, "lower_ms": 69.19612805359066, "upper_ms": 144.33760999236256, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 6, "lower_ms": 72.44117697700858, "upper_ms": 145.90530993882567, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 6, "lower_ms": 141.14495704416186, "upper_ms": 214.2103889491409, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 7, "lower_ms": 139.59441997576505, "upper_ms": 212.90308190509677, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 7, "lower_ms": 74.6545409783721, "upper_ms": 148.43240997288376, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 8, "lower_ms": 66.01275794673711, "upper_ms": 140.48317295964807, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 8, "lower_ms": 151.6367079457268, "upper_ms": 224.4494860060513, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 9, "lower_ms": 135.42841305024922, "upper_ms": 208.20376905612648, "success": true}
+{"run": "run1", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 9, "lower_ms": 61.11524498555809, "upper_ms": 135.23609493859112, "success": true}
+{"run": "run1", "test": "follow_first_link", "browser": "qute", "delay_ms": 0, "success": false, "action_ms": null}
+{"run": "run1", "test": "follow_first_link", "browser": "qute", "delay_ms": 0, "success": false, "action_ms": null}
+{"run": "run1", "test": "follow_first_link", "browser": "qute", "delay_ms": 0, "success": false, "action_ms": null}
+{"run": "run1", "test": "follow_first_link", "browser": "qute", "delay_ms": 50.0, "success": true, "action_ms": 92.39791403524578}
+{"run": "run1", "test": "follow_first_link", "browser": "qute", "delay_ms": 50.0, "success": true, "action_ms": 88.1271850084886}
+{"run": "run1", "test": "follow_first_link", "browser": "qute", "delay_ms": 50.0, "success": true, "action_ms": 92.61730511207134}
+{"run": "run1", "test": "follow_first_link", "browser": "qute", "delay_ms": 250.0, "success": true, "action_ms": 287.7580940257758}
+{"run": "run1", "test": "follow_first_link", "browser": "qute", "delay_ms": 250.0, "success": true, "action_ms": 286.28435207065195}
+{"run": "run1", "test": "follow_first_link", "browser": "qute", "delay_ms": 250.0, "success": true, "action_ms": 289.81092700269073}
+{"run": "run1", "test": "spa_form_then_scroll", "browser": "qute", "snapshot": {"type": "key", "b": "qute", "id": "0", "token": "977188522228647", "url": "http://127.0.0.1:35237/?b=qute&kind=forms&id=0&token=977188522228647", "scroll": 0, "visible": "visible", "viewport": [640, 444], "value": "needlej", "draft": "", "key": "Shift", "trusted": true, "t": 977190.215707072}}
+{"run": "run1", "test": "multiline_default", "browser": "qute", "snapshot": {"type": "key", "b": "qute", "id": "0", "token": "977190280603827", "url": "http://127.0.0.1:35237/?b=qute&kind=forms&id=0&token=977190280603827", "scroll": 0, "visible": "visible", "viewport": [640, 444], "value": "", "draft": "first\njjj", "key": "Shift", "trusted": true, "t": 977191.825319783}}
+{"run": "run1", "test": "follow_first_link", "browser": "ferric", "delay_ms": 0, "success": true, "action_ms": 97.97368303406984}
+{"run": "run1", "test": "follow_first_link", "browser": "ferric", "delay_ms": 0, "success": true, "action_ms": 103.95585699006915}
+{"run": "run1", "test": "follow_first_link", "browser": "ferric", "delay_ms": 0, "success": true, "action_ms": 87.6860209973529}
+{"run": "run1", "test": "follow_first_link", "browser": "ferric", "delay_ms": 50.0, "success": true, "action_ms": 106.44807701464742}
+{"run": "run1", "test": "follow_first_link", "browser": "ferric", "delay_ms": 50.0, "success": true, "action_ms": 107.70494595635682}
+{"run": "run1", "test": "follow_first_link", "browser": "ferric", "delay_ms": 50.0, "success": true, "action_ms": 105.55315599776804}
+{"run": "run1", "test": "follow_first_link", "browser": "ferric", "delay_ms": 250.0, "success": true, "action_ms": 306.83707701973617}
+{"run": "run1", "test": "follow_first_link", "browser": "ferric", "delay_ms": 250.0, "success": true, "action_ms": 302.6418359950185}
+{"run": "run1", "test": "follow_first_link", "browser": "ferric", "delay_ms": 250.0, "success": true, "action_ms": 309.9174560047686}
+{"run": "run1", "test": "spa_form_then_scroll", "browser": "ferric", "snapshot": null}
+{"run": "run1", "test": "multiline_default", "browser": "ferric", "snapshot": {"type": "key", "b": "ferric", "id": "0", "token": "977200084959859", "url": "http://127.0.0.1:35237/?b=ferric&kind=forms&id=0&token=977200084959859", "scroll": 0, "visible": "visible", "viewport": [640, 480], "value": "", "draft": "jjj", "key": "Shift", "trusted": true, "t": 977200.948198546}}
+{"run": "run2", "test": "process_to_dom_ready", "browser": "ferric", "ms": 1600.7543309824541}
+{"run": "run2", "test": "startup", "browser": "ferric", "ready_ms": 1971.9375090207905, "note": "includes 300ms setup settle and capture; not a startup latency result"}
+{"run": "run2", "test": "process_to_dom_ready", "browser": "qute", "ms": 1462.7185360295698}
+{"run": "run2", "test": "startup", "browser": "qute", "ready_ms": 1822.6583190262318, "note": "includes 300ms setup settle and capture; not a startup latency result"}
+{"run": "run2", "test": "capture_overhead", "browser": "ferric", "ms": [41.79425397887826, 38.44793897587806, 40.086135966703296, 41.9025399023667, 39.010103908367455, 38.696679985150695]}
+{"run": "run2", "test": "capture_overhead", "browser": "qute", "ms": [43.92514005303383, 44.333950034342706, 42.62192395981401, 44.23278395552188, 45.93090701382607, 45.69783597253263]}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": -2, "lower_ms": 46.32033093366772, "upper_ms": 106.6151859704405, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": -2, "lower_ms": 47.59526706766337, "upper_ms": 107.70666506141424, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": -1, "lower_ms": 56.38780409935862, "upper_ms": 118.29130409751087, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": -1, "lower_ms": 44.283470953814685, "upper_ms": 106.21791996527463, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 0, "lower_ms": 49.1103739477694, "upper_ms": 111.67751299217343, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 0, "lower_ms": 47.20528901088983, "upper_ms": 107.86822601221502, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 1, "lower_ms": 48.67914493661374, "upper_ms": 118.66748193278909, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 1, "lower_ms": 46.847030986100435, "upper_ms": 105.21976999007165, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 2, "lower_ms": 51.43720400519669, "upper_ms": 111.21978389564902, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 2, "lower_ms": 47.913282993249595, "upper_ms": 109.88119896501303, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 3, "lower_ms": 50.998206017538905, "upper_ms": 112.71044996101409, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 3, "lower_ms": 48.80060406867415, "upper_ms": 108.95738005638123, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 4, "lower_ms": 53.594451979734, "upper_ms": 114.31403807364404, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 4, "lower_ms": 45.26214604265988, "upper_ms": 108.41064609121531, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 5, "lower_ms": 55.83757802378386, "upper_ms": 116.83812702540308, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 5, "lower_ms": 43.80322899669409, "upper_ms": 104.88486895337701, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 6, "lower_ms": 52.21876397263259, "upper_ms": 111.26290599349886, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 6, "lower_ms": 49.40946097485721, "upper_ms": 110.65859498921782, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 7, "lower_ms": 52.42969107348472, "upper_ms": 114.98506099451333, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 7, "lower_ms": 48.25623193755746, "upper_ms": 109.44764397572726, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 8, "lower_ms": 51.542049972340465, "upper_ms": 111.68562097009271, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 8, "lower_ms": 47.848587040789425, "upper_ms": 110.12634506914765, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "simple", "index": 9, "lower_ms": 46.4415829628706, "upper_ms": 111.88827501609921, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "simple", "index": 9, "lower_ms": 56.20260094292462, "upper_ms": 117.29796300642192, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": -2, "lower_ms": 145.5379700055346, "upper_ms": 212.0370559860021, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": -2, "lower_ms": 65.52322197239846, "upper_ms": 136.6538490401581, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": -1, "lower_ms": 65.8882389543578, "upper_ms": 139.91774898022413, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": -1, "lower_ms": 158.24492101091892, "upper_ms": 227.41477307863533, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 0, "lower_ms": 141.64839196018875, "upper_ms": 212.20101101789623, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 0, "lower_ms": 57.812027051113546, "upper_ms": 131.2472530407831, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 1, "lower_ms": 64.59813204128295, "upper_ms": 136.7385690100491, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 1, "lower_ms": 138.08273803442717, "upper_ms": 210.69350105244666, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 2, "lower_ms": 140.4181900434196, "upper_ms": 212.9881459986791, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 2, "lower_ms": 60.78322802204639, "upper_ms": 132.60053098201752, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 3, "lower_ms": 64.64245391543955, "upper_ms": 136.5561569109559, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 3, "lower_ms": 163.79785095341504, "upper_ms": 238.5682730237022, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 4, "lower_ms": 138.64406291395426, "upper_ms": 210.87372896727175, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 4, "lower_ms": 58.67357493843883, "upper_ms": 132.27071694564074, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 5, "lower_ms": 72.43858510628343, "upper_ms": 146.77834801841527, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 5, "lower_ms": 144.7379880119115, "upper_ms": 215.79324698541313, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 6, "lower_ms": 143.93304800614715, "upper_ms": 215.20855301059783, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 6, "lower_ms": 73.88123706914485, "upper_ms": 147.5401340285316, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 7, "lower_ms": 61.5832059411332, "upper_ms": 139.38228599727154, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 7, "lower_ms": 148.32620008382946, "upper_ms": 219.70685198903084, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 8, "lower_ms": 147.16590393800288, "upper_ms": 230.41276691947132, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 8, "lower_ms": 67.14475504122674, "upper_ms": 139.94277396705002, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "qute", "page": "feed", "index": 9, "lower_ms": 77.16779201291502, "upper_ms": 149.22112098429352, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric", "page": "feed", "index": 9, "lower_ms": 135.03075402695686, "upper_ms": 207.68002804834396, "success": true}
+{"run": "run2", "test": "click_type_without_i", "browser": "qute", "pause_ms": 150.0, "snapshot": {"type": "snapshot", "b": "qute", "id": "0", "token": "978187487292017", "url": "http://127.0.0.1:40605/?b=qute&kind=forms&id=0&token=978187487292017", "scroll": 0, "visible": "visible", "viewport": [640, 444], "value": "xyz", "draft": "", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 978188.946414035}}
+{"run": "run2", "test": "click_type_without_i", "browser": "qute", "pause_ms": 800.0, "snapshot": {"type": "snapshot", "b": "qute", "id": "0", "token": "978189012958842", "url": "http://127.0.0.1:40605/?b=qute&kind=forms&id=0&token=978189012958842", "scroll": 0, "visible": "visible", "viewport": [640, 444], "value": "xyz", "draft": "", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 978191.098962789}}
+{"run": "run2", "test": "spa_form_documented", "browser": "qute", "snapshot": {"type": "snapshot", "b": "qute", "id": "0", "token": "978191161929310", "url": "http://127.0.0.1:40605/?b=qute&kind=forms&id=0&token=978191161929310", "scroll": 0, "visible": "visible", "viewport": [640, 444], "value": "needlej", "draft": "", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 978193.004394758}}
+{"run": "run2", "test": "multiline_documented", "browser": "qute", "locked": false, "snapshot": {"type": "snapshot", "b": "qute", "id": "0", "token": "978193070513206", "url": "http://127.0.0.1:40605/?b=qute&kind=forms&id=0&token=978193070513206", "scroll": 0, "visible": "visible", "viewport": [640, 444], "value": "", "draft": "first\njjj", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 978194.811378596}}
+{"run": "run2", "test": "multiline_documented", "browser": "qute", "locked": true, "snapshot": {"type": "snapshot", "b": "qute", "id": "0", "token": "978194873280304", "url": "http://127.0.0.1:40605/?b=qute&kind=forms&id=0&token=978194873280304", "scroll": 0, "visible": "visible", "viewport": [640, 444], "value": "", "draft": "first\njjj", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 978196.609476675}}
+{"run": "run2", "test": "questionable_hint_activation", "browser": "qute", "target": "disabled", "effect": null}
+{"run": "run2", "test": "questionable_hint_activation", "browser": "qute", "target": "inert", "effect": null}
+{"run": "run2", "test": "questionable_hint_activation", "browser": "qute", "target": "transparent", "effect": {"type": "click", "b": "qute", "id": "0", "token": "978200514161253", "url": "http://127.0.0.1:40605/?b=qute&kind=eligibility&id=0&token=978200514161253", "scroll": 0, "visible": "visible", "viewport": [640, 444], "active": "transparent", "user_activated": true, "cookie": "", "target": "transparent", "trusted": true, "t": 978201.88307717}}
+{"run": "run2", "test": "questionable_hint_activation", "browser": "qute", "target": "covered", "effect": null}
+{"run": "run2", "test": "resources", "browser": "qute", "stage": "one_loaded_tab", "processes": 5, "complete": true, "pss_complete": true, "rss_kib": 619272, "pss_kib": 385439, "ticks": 581}
+{"run": "run2", "test": "resources", "browser": "qute", "stage": "eight_tabs_visited", "processes": 12, "complete": true, "pss_complete": true, "rss_kib": 1510184, "pss_kib": 520785, "ticks": 815}
+{"run": "run2", "test": "resources", "browser": "qute", "stage": "idle_begin", "processes": 12, "complete": true, "pss_complete": true, "rss_kib": 1510184, "pss_kib": 520785, "ticks": 815}
+{"run": "run2", "test": "resources", "browser": "qute", "stage": "idle_end", "processes": 12, "complete": true, "pss_complete": true, "rss_kib": 1510192, "pss_kib": 520793, "ticks": 815}
+{"run": "run2", "test": "idle_cpu", "browser": "qute", "seconds": 3.0486393539467826, "cpu_ms": 0.0}
+{"run": "run2", "test": "tab_switch", "browser": "qute", "index": 0, "success": true, "visibility_ms": 13.64250504411757}
+{"run": "run2", "test": "tab_switch", "browser": "qute", "index": 1, "success": true, "visibility_ms": 15.885657980106771}
+{"run": "run2", "test": "tab_switch", "browser": "qute", "index": 2, "success": true, "visibility_ms": 24.684853036887944}
+{"run": "run2", "test": "tab_switch", "browser": "qute", "index": 3, "success": true, "visibility_ms": 23.784685065038502}
+{"run": "run2", "test": "tab_switch", "browser": "qute", "index": 4, "success": true, "visibility_ms": 11.685210978612304}
+{"run": "run2", "test": "tab_switch", "browser": "qute", "index": 5, "success": true, "visibility_ms": 28.700059046968818}
+{"run": "run2", "test": "tab_switch", "browser": "qute", "index": 6, "success": true, "visibility_ms": 23.99762300774455}
+{"run": "run2", "test": "tab_switch", "browser": "qute", "index": 7, "success": true, "visibility_ms": 24.071063962765038}
+{"run": "run2", "test": "tab_switch", "browser": "qute", "index": 8, "success": true, "visibility_ms": 11.372826993465424}
+{"run": "run2", "test": "tab_switch", "browser": "qute", "index": 9, "success": true, "visibility_ms": 30.850543989799917}
+{"run": "run2", "test": "undo_unsent_draft", "browser": "qute", "snapshot": {"type": "snapshot", "b": "qute", "id": "0", "token": "978216589191231", "url": "http://127.0.0.1:40605/?b=qute&kind=forms&id=0&token=978216589191231", "scroll": 0, "visible": "visible", "viewport": [640, 444], "value": "", "draft": "", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 978219.001675268}}
+{"run": "run2", "test": "click_type_without_i", "browser": "ferric", "pause_ms": 150.0, "snapshot": {"type": "snapshot", "b": "ferric", "id": "0", "token": "978219003819074", "url": "http://127.0.0.1:40605/?b=ferric&kind=forms&id=0&token=978219003819074", "scroll": 0, "visible": "visible", "viewport": [640, 480], "value": "", "draft": "", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 978219.767254215}}
+{"run": "run2", "test": "click_type_without_i", "browser": "ferric", "pause_ms": 800.0, "snapshot": {"type": "snapshot", "b": "ferric", "id": "0", "token": "978219830120585", "url": "http://127.0.0.1:40605/?b=ferric&kind=forms&id=0&token=978219830120585", "scroll": 0, "visible": "visible", "viewport": [640, 480], "value": "", "draft": "", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 978221.234963637}}
+{"run": "run2", "test": "spa_form_documented", "browser": "ferric", "snapshot": {"type": "snapshot", "b": "ferric", "id": "0", "token": "978221297949196", "url": "http://127.0.0.1:40605/?b=ferric&kind=forms&id=0&token=978221297949196", "scroll": 72, "visible": "visible", "viewport": [640, 480], "value": "needle", "draft": "", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 978222.45443524}}
+{"run": "run2", "test": "multiline_documented", "browser": "ferric", "locked": false, "snapshot": {"type": "snapshot", "b": "ferric", "id": "0", "token": "978222524837395", "url": "http://127.0.0.1:40605/?b=ferric&kind=forms&id=0&token=978222524837395", "scroll": 216, "visible": "visible", "viewport": [640, 480], "value": "", "draft": "first\n", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 978223.583119161}}
+{"run": "run2", "test": "multiline_documented", "browser": "ferric", "locked": true, "snapshot": {"type": "snapshot", "b": "ferric", "id": "0", "token": "978223662273542", "url": "http://127.0.0.1:40605/?b=ferric&kind=forms&id=0&token=978223662273542", "scroll": 0, "visible": "visible", "viewport": [640, 480], "value": "", "draft": "first\njjj", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 978224.719210578}}
+{"run": "run2", "test": "resources", "browser": "ferric", "stage": "one_loaded_tab", "processes": 6, "complete": true, "pss_complete": true, "rss_kib": 769292, "pss_kib": 467991, "ticks": 844}
+{"run": "run2", "test": "resources", "browser": "ferric", "stage": "eight_tabs_visited", "processes": 13, "complete": true, "pss_complete": true, "rss_kib": 1593184, "pss_kib": 605628, "ticks": 1106}
+{"run": "run2", "test": "resources", "browser": "ferric", "stage": "idle_begin", "processes": 13, "complete": true, "pss_complete": true, "rss_kib": 1593184, "pss_kib": 605628, "ticks": 1106}
+{"run": "run2", "test": "resources", "browser": "ferric", "stage": "idle_end", "processes": 13, "complete": true, "pss_complete": true, "rss_kib": 1592216, "pss_kib": 604660, "ticks": 1108}
+{"run": "run2", "test": "idle_cpu", "browser": "ferric", "seconds": 3.0461119540268555, "cpu_ms": 20.0}
+{"run": "run2", "test": "tab_switch", "browser": "ferric", "index": 0, "success": true, "visibility_ms": 11.274880031123757}
+{"run": "run2", "test": "tab_switch", "browser": "ferric", "index": 1, "success": true, "visibility_ms": 18.590149004012346}
+{"run": "run2", "test": "tab_switch", "browser": "ferric", "index": 2, "success": true, "visibility_ms": 17.224784940481186}
+{"run": "run2", "test": "tab_switch", "browser": "ferric", "index": 3, "success": true, "visibility_ms": 15.088432002812624}
+{"run": "run2", "test": "tab_switch", "browser": "ferric", "index": 4, "success": true, "visibility_ms": 15.46672498807311}
+{"run": "run2", "test": "tab_switch", "browser": "ferric", "index": 5, "success": true, "visibility_ms": 20.731054013594985}
+{"run": "run2", "test": "tab_switch", "browser": "ferric", "index": 6, "success": true, "visibility_ms": 10.963432025164366}
+{"run": "run2", "test": "tab_switch", "browser": "ferric", "index": 7, "success": true, "visibility_ms": 12.459006975404918}
+{"run": "run2", "test": "tab_switch", "browser": "ferric", "index": 8, "success": true, "visibility_ms": 10.713496943935752}
+{"run": "run2", "test": "tab_switch", "browser": "ferric", "index": 9, "success": true, "visibility_ms": 22.289662971161306}
+{"run": "run2", "test": "undo_unsent_draft", "browser": "ferric", "snapshot": {"type": "snapshot", "b": "ferric", "id": "0", "token": "", "url": "http://127.0.0.1:40605/?b=ferric&kind=forms&id=0", "scroll": 0, "visible": "visible", "viewport": [640, 452], "value": "", "draft": "", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 978233.471292043}}
+{"run": "run2", "test": "process_to_dom_ready", "browser": "ferric-policy", "ms": 1636.8730760877952}
+{"run": "run2", "test": "startup", "browser": "ferric-policy", "ready_ms": 2001.4230071101338, "note": "includes 300ms setup settle and capture; not a startup latency result"}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric-policy", "page": "configured-feed", "index": -1, "lower_ms": 312.8170120762661, "upper_ms": 386.1397160217166, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric-policy", "page": "configured-feed", "index": 0, "lower_ms": 330.30637190677226, "upper_ms": 400.64771194010973, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric-policy", "page": "configured-feed", "index": 1, "lower_ms": 308.805768028833, "upper_ms": 381.44868600647897, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric-policy", "page": "configured-feed", "index": 2, "lower_ms": 332.8614359488711, "upper_ms": 406.59950696863234, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric-policy", "page": "configured-feed", "index": 3, "lower_ms": 333.08709994889796, "upper_ms": 404.175367904827, "success": true}
+{"run": "run2", "test": "hint_first_capture", "browser": "ferric-policy", "page": "configured-feed", "index": 4, "lower_ms": 316.50212593376637, "upper_ms": 389.76373395416886, "success": true}
+{"run": "run2", "test": "numbered_early_follow", "browser": "ferric-policy", "success": true, "action_ms": 616.7449740460142}
+{"run": "run2", "test": "numbered_early_follow", "browser": "ferric-policy", "success": true, "action_ms": 615.0308389915153}
+{"run": "run2", "test": "numbered_early_follow", "browser": "ferric-policy", "success": true, "action_ms": 644.2144319880754}
+{"run": "run2", "test": "hint_media_gesture", "browser": "ferric-policy", "delay_ms": 50.0, "success": false, "event": null}
+{"run": "run2", "test": "normal_p_after_hint", "browser": "ferric-policy", "unexpected_play": false}
+{"run": "run2", "test": "hint_media_gesture", "browser": "ferric-policy", "delay_ms": 300.0, "success": false, "event": null}
+{"run": "run2", "test": "normal_p_after_hint", "browser": "ferric-policy", "unexpected_play": false}
+{"run": "run2", "test": "insert_media_gesture", "browser": "qute", "success": true, "event": {"type": "play", "b": "qute", "id": "0", "token": "978252051340403", "url": "http://127.0.0.1:40605/?b=qute&kind=media&id=0&token=978252051340403", "scroll": 0, "visible": "visible", "viewport": [640, 444], "active": "", "user_activated": true, "cookie": "", "count": 1, "t": 978253.200179575}}
+{"run": "native", "test": "real_desktop_tab_focus_type", "browser": "ferric", "snapshot": {"type": "probe", "b": "native-ferric", "id": "", "token": "", "url": "http://127.0.0.1:45341/?b=native-ferric&kind=forms", "scroll": 0, "visible": "visible", "viewport": [640, 694], "value": "xyz", "draft": "", "active": "entry", "user_activated": true, "cookie": "", "t": 978817.559538054}}
+{"run": "native", "test": "real_desktop_media_policy", "browser": "ferric", "pause_ms": 100.0, "success": true, "event": {"type": "play", "b": "native-ferric", "id": "", "token": "", "url": "http://127.0.0.1:45341/?b=native-ferric&kind=media", "scroll": 0, "visible": "visible", "viewport": [640, 694], "active": "", "user_activated": true, "cookie": "", "count": 1, "t": 978819.075094914}}
+{"run": "native", "test": "real_desktop_media_policy", "browser": "ferric", "pause_ms": 700.0, "success": true, "event": {"type": "play", "b": "native-ferric", "id": "", "token": "", "url": "http://127.0.0.1:45341/?b=native-ferric&kind=media", "scroll": 0, "visible": "visible", "viewport": [640, 694], "active": "", "user_activated": true, "cookie": "", "count": 2, "t": 978819.977113705}}
+{"run": "native", "test": "real_desktop_tab_focus_type", "browser": "qute", "snapshot": {"type": "probe", "b": "native-qute", "id": "", "token": "", "url": "http://127.0.0.1:45341/?b=native-qute&kind=forms", "scroll": 0, "visible": "visible", "viewport": [640, 658], "value": "", "draft": "", "active": "entry", "user_activated": true, "cookie": "", "t": 978823.033476369}}
+{"run": "finish", "test": "process_to_dom_ready", "browser": "qute", "ms": 1462.4073499580845}
+{"run": "finish", "test": "startup", "browser": "qute", "ready_ms": 1841.271687997505, "note": "includes 300ms setup settle and capture; not a startup latency result"}
+{"run": "finish", "test": "process_to_dom_ready", "browser": "ferric", "ms": 1661.6400659549981}
+{"run": "finish", "test": "startup", "browser": "ferric", "ready_ms": 2020.052895997651, "note": "includes 300ms setup settle and capture; not a startup latency result"}
+{"run": "finish", "test": "history", "browser": "qute", "key": "H", "success": true}
+{"run": "finish", "test": "history", "browser": "qute", "key": "L", "success": true}
+{"run": "finish", "test": "find_next", "browser": "qute", "snapshot": {"type": "snapshot", "b": "qute", "id": "0", "token": "979049167761669", "url": "http://127.0.0.1:43571/?b=qute&kind=forms&id=0&token=979049167761669", "scroll": 250, "visible": "visible", "viewport": [640, 444], "value": "", "draft": "", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 979050.979108596}}
+{"run": "finish", "test": "resources", "browser": "qute", "stage": "one_tab_repeat", "processes": 5, "complete": true, "pss_complete": true, "rss_kib": 585292, "pss_kib": 350551, "ticks": 277}
+{"run": "finish", "test": "resources", "browser": "qute", "stage": "eight_tabs_repeat", "processes": 12, "complete": true, "pss_complete": true, "rss_kib": 1474916, "pss_kib": 486528, "ticks": 509}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "qute", "success": true, "visibility_ms": 13.931973022408783}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "qute", "success": true, "visibility_ms": 29.807541985064745}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "qute", "success": true, "visibility_ms": 26.098862988874316}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "qute", "success": true, "visibility_ms": 13.741948991082609}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "qute", "success": true, "visibility_ms": 23.94605299923569}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "qute", "success": true, "visibility_ms": 27.348806033842266}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "qute", "success": true, "visibility_ms": 22.646781988441944}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "qute", "success": true, "visibility_ms": 40.961966034956276}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "qute", "success": true, "visibility_ms": 34.50094105210155}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "qute", "success": true, "visibility_ms": 35.36863892804831}
+{"run": "finish", "test": "history", "browser": "ferric", "key": "H", "success": true}
+{"run": "finish", "test": "history", "browser": "ferric", "key": "L", "success": true}
+{"run": "finish", "test": "find_next", "browser": "ferric", "snapshot": {"type": "snapshot", "b": "ferric", "id": "0", "token": "979062944490697", "url": "http://127.0.0.1:43571/?b=ferric&kind=forms&id=0&token=979062944490697", "scroll": 0, "visible": "visible", "viewport": [640, 480], "value": "", "draft": "", "active": "", "user_activated": true, "cookie": "", "trusted": true, "t": 979064.081854946}}
+{"run": "finish", "test": "grid_canvas", "browser": "ferric", "digits": "2898", "event": {"type": "canvas", "b": "ferric", "id": "0", "token": "979064145264212", "url": "http://127.0.0.1:43571/?b=ferric&kind=canvas&id=0&token=979064145264212", "scroll": 0, "visible": "visible", "viewport": [640, 480], "active": "", "user_activated": true, "cookie": "", "x": 328, "y": 52, "hit": true, "trusted": true, "t": 979065.511944158}}
+{"run": "finish", "test": "resources", "browser": "ferric", "stage": "one_tab_repeat", "processes": 6, "complete": true, "pss_complete": true, "rss_kib": 687100, "pss_kib": 388781, "ticks": 318}
+{"run": "finish", "test": "resources", "browser": "ferric", "stage": "eight_tabs_repeat", "processes": 13, "complete": true, "pss_complete": true, "rss_kib": 1518944, "pss_kib": 532369, "ticks": 611}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "ferric", "success": true, "visibility_ms": 12.221823912113905}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "ferric", "success": true, "visibility_ms": 13.514580088667572}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "ferric", "success": true, "visibility_ms": 12.616634950973094}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "ferric", "success": true, "visibility_ms": 13.346262043341994}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "ferric", "success": true, "visibility_ms": 14.725742978043854}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "ferric", "success": true, "visibility_ms": 19.4106160197407}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "ferric", "success": true, "visibility_ms": 13.718032976612449}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "ferric", "success": true, "visibility_ms": 15.083196922205389}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "ferric", "success": true, "visibility_ms": 13.907659915275872}
+{"run": "finish", "test": "tab_switch_repeat", "browser": "ferric", "success": true, "visibility_ms": 13.327424065209925}
+{"run": "finish", "test": "live_page_capture", "browser": "qute", "site": "hn", "cli_success": true}
+{"run": "finish", "test": "live_page_capture", "browser": "ferric", "site": "hn", "cli_success": true}
+{"run": "finish", "test": "live_page_capture", "browser": "qute", "site": "wiki", "cli_success": true}
+{"run": "finish", "test": "live_page_capture", "browser": "ferric", "site": "wiki", "cli_success": true}
+{"run": "finish", "test": "live_page_capture", "browser": "qute", "site": "youtube", "cli_success": true}
+{"run": "finish", "test": "live_page_capture", "browser": "ferric", "site": "youtube", "cli_success": true}
+{"run": "finish", "test": "live_page_capture", "browser": "qute", "site": "reddit", "cli_success": true}
+{"run": "finish", "test": "live_page_capture", "browser": "ferric", "site": "reddit", "cli_success": true}
