@@ -200,6 +200,9 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Select a Hint target before confirming"));
             return QString::from(r#"{"error":"no-selected-hint"}"#);
         };
+        if !self.as_ref().hint_label_is_validated(&label) {
+            return QString::from(r#"{"error":"hint-validation-pending"}"#);
+        }
         let session_has_label = self
             .as_ref()
             .rust()

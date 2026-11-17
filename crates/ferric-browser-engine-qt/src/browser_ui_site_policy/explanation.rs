@@ -158,6 +158,7 @@ fn reservation_state(state: HintReservationState) -> Value {
         HintReservationReason::MeaningChanged => "meaning-changed",
     };
     match state {
+        HintReservationState::PendingInitial => json!({"status":"pending"}),
         HintReservationState::Live => json!({"status":"observed-live"}),
         HintReservationState::Unavailable(why) => {
             json!({"status":"unavailable","reason":reason(why)})

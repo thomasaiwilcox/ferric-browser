@@ -11,6 +11,13 @@ use super::{
 const HINT_CAPABILITY_ACTION_PREFIX: &str = "hint.capability.";
 
 impl qobject::BrowserUi {
+    pub(super) fn hint_label_is_validated(&self, label: &str) -> bool {
+        self.rust()
+            .interaction
+            .hint_interaction
+            .as_ref()
+            .is_none_or(|interaction| interaction.hint_selection_is_validated(label))
+    }
     pub(super) fn policy_hint_needs_freshness(&self, label: &str) -> bool {
         self.rust().interaction.hint_policy_proof.is_some()
             && self
@@ -32,6 +39,9 @@ impl qobject::BrowserUi {
         fresh_candidate_json: &QString,
         action_id: &QString,
     ) -> QString {
+        if !self.as_ref().hint_label_is_validated(&label.to_string()) {
+            return QString::from(r#"{"error":"hint-validation-pending"}"#);
+        }
         let action_id = action_id.to_string();
         if let Some(target) = match action_id.as_str() {
             "hint.current" => Some("current"),
@@ -251,6 +261,9 @@ impl qobject::BrowserUi {
         allow_local_palette: bool,
         initial: Option<ferric_browser_core::HintCandidate>,
     ) -> QString {
+        if !self.as_ref().hint_label_is_validated(&label.to_string()) {
+            return QString::from(r#"{"error":"hint-validation-pending"}"#);
+        }
         if self.as_ref().rust().hint_first && initial.is_none() {
             return QString::from(r#"{"error":"initial-selection-required"}"#);
         }

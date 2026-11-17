@@ -31,6 +31,7 @@ pub enum HintReservationReason {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HintReservationState {
+    PendingInitial,
     Live,
     Unavailable(HintReservationReason),
     Retired(HintReservationReason),
@@ -120,6 +121,7 @@ impl HintReservation {
 pub enum HintEnhancedError {
     Candidate(HintError),
     Codebook(HintCodebookError),
+    Validation(super::HintValidationError),
     UnknownSlot(usize),
     DuplicateSlot(usize),
     UnknownCandidate(usize),
@@ -132,6 +134,7 @@ impl std::fmt::Display for HintEnhancedError {
         match self {
             Self::Candidate(error) => error.fmt(f),
             Self::Codebook(error) => error.fmt(f),
+            Self::Validation(error) => error.fmt(f),
             Self::UnknownSlot(slot) => write!(f, "Unknown Hint reservation slot {slot}"),
             Self::DuplicateSlot(slot) => write!(f, "Repeated initial Hint reservation slot {slot}"),
             Self::UnknownCandidate(slot) => write!(
@@ -154,6 +157,7 @@ impl std::error::Error for HintEnhancedError {
         match self {
             Self::Candidate(error) => Some(error),
             Self::Codebook(error) => Some(error),
+            Self::Validation(error) => Some(error),
             _ => None,
         }
     }
@@ -209,6 +213,7 @@ fn initial_slots(
     candidates: &[HintCandidate],
     codebook: &CheckedHintCodebook,
     assignments: Vec<HintSpecialAssignment>,
+    pending_initial: bool,
 ) -> Result<(Vec<HintReservation>, BTreeMap<HintIdentity, usize>), HintEnhancedError> {
     let mut reservations: Vec<_> = codebook
         .declarations()
@@ -216,7 +221,11 @@ fn initial_slots(
         .cloned()
         .map(|declaration| HintReservation {
             declaration,
-            state: HintReservationState::Unavailable(HintReservationReason::Missing),
+            state: if pending_initial {
+                HintReservationState::PendingInitial
+            } else {
+                HintReservationState::Unavailable(HintReservationReason::Missing)
+            },
         })
         .collect();
     let known: BTreeMap<_, _> = candidates
@@ -266,16 +275,65 @@ impl HintInteraction {
     /// Rejects invalid candidates, conflicting initial bindings, insufficient
     /// ordinary capacity or the caller's explicit retained-payload budget.
     pub fn new_enhanced(
-        mut candidates: Vec<HintCandidate>,
+        candidates: Vec<HintCandidate>,
         codebook: CheckedHintCodebook,
         assignments: Vec<HintSpecialAssignment>,
         budget: HintRetentionBudget,
     ) -> Result<Self, HintEnhancedError> {
+        Self::enhanced_snapshot(candidates, codebook, assignments, budget, None)
+    }
+
+    /// Allocates a presentation-only initial snapshot. Omitted special slots
+    /// remain pending, and the caller supplies complete ordinary capacity.
+    /// # Errors
+    /// Rejects invalid snapshots, insufficient capacity or retained-state budget.
+    pub fn new_provisional_enhanced(
+        candidates: Vec<HintCandidate>,
+        codebook: CheckedHintCodebook,
+        assignments: Vec<HintSpecialAssignment>,
+        ordinary_capacity: usize,
+        budget: HintRetentionBudget,
+    ) -> Result<Self, HintEnhancedError> {
+        let mut model = Self::enhanced_snapshot(
+            candidates,
+            codebook,
+            assignments,
+            budget,
+            Some(ordinary_capacity),
+        )?;
+        model
+            .begin_hint_validation()
+            .map_err(HintEnhancedError::Validation)?;
+        Ok(model)
+    }
+
+    fn enhanced_snapshot(
+        mut candidates: Vec<HintCandidate>,
+        codebook: CheckedHintCodebook,
+        assignments: Vec<HintSpecialAssignment>,
+        budget: HintRetentionBudget,
+        ordinary_capacity: Option<usize>,
+    ) -> Result<Self, HintEnhancedError> {
         validate_candidates(&candidates).map_err(HintEnhancedError::Candidate)?;
         candidates.sort_by(compare_hint_candidates);
-        let (reservations, targets) = initial_slots(&candidates, &codebook, assignments)?;
+        let (reservations, targets) = initial_slots(
+            &candidates,
+            &codebook,
+            assignments,
+            ordinary_capacity.is_some(),
+        )?;
+        let ordinary_count = candidates.len() - targets.len();
+        let capacity = ordinary_capacity.unwrap_or(ordinary_count);
+        if capacity < ordinary_count {
+            return Err(HintEnhancedError::Codebook(
+                HintCodebookError::InsufficientCapacity {
+                    requested: ordinary_count,
+                    available: capacity as u64,
+                },
+            ));
+        }
         let mut allocator = codebook
-            .allocator(candidates.len() - targets.len())
+            .allocator(capacity)
             .map_err(HintEnhancedError::Codebook)?;
         let mut hints = Vec::with_capacity(candidates.len());
         let mut bindings = BTreeMap::new();
@@ -298,6 +356,7 @@ impl HintInteraction {
                 meaning: HintMeaning::of(&candidate),
                 state: HintBindingState::Available,
                 special_slot,
+                provisional: false,
             };
             charged_bytes = charged_bytes.saturating_add(charge(&identity, &binding));
             budget
@@ -363,6 +422,118 @@ impl HintInteraction {
         self.enhanced
             .as_ref()
             .map(|state| state.allocator.suffix_width())
+    }
+
+    /// Settles omitted special declarations once during initial collection.
+    /// Live additions are still provisional and cannot replace an ordinary row.
+    /// # Errors
+    /// Rejects closed/stale batches, already settled slots, duplicate targets,
+    /// invalid geometry, candidate overflow or insufficient retained capacity.
+    pub fn settle_initial_hint_reservations(
+        &mut self,
+        sequence: u64,
+        assignments: Vec<HintSpecialAssignment>,
+    ) -> Result<(), HintEnhancedError> {
+        let progress = self
+            .progressive
+            .as_ref()
+            .filter(|p| !p.closed && !p.complete)
+            .ok_or(HintEnhancedError::Validation(
+                super::HintValidationError::Closed,
+            ))?;
+        if sequence != progress.sequence || sequence == u64::MAX {
+            return Err(HintEnhancedError::Validation(
+                super::HintValidationError::InvalidSequence,
+            ));
+        }
+        let state = self.enhanced.as_ref().ok_or(HintEnhancedError::Validation(
+            super::HintValidationError::InvalidInitialState,
+        ))?;
+        if assignments.is_empty() || assignments.len() > state.reservations.len() {
+            return Err(HintEnhancedError::Validation(
+                super::HintValidationError::InvalidUpdate,
+            ));
+        }
+        let mut slots = BTreeSet::new();
+        let mut targets = BTreeSet::new();
+        let mut additions = Vec::new();
+        let mut charged = state.charged_bytes;
+        for assignment in &assignments {
+            let reservation = state
+                .reservations
+                .get(assignment.slot)
+                .ok_or(HintEnhancedError::UnknownSlot(assignment.slot))?;
+            if !slots.insert(assignment.slot) {
+                return Err(HintEnhancedError::DuplicateSlot(assignment.slot));
+            }
+            if reservation.state != HintReservationState::PendingInitial {
+                return Err(HintEnhancedError::Validation(
+                    super::HintValidationError::InvalidUpdate,
+                ));
+            }
+            if let HintSpecialBinding::Live(candidate) = &assignment.binding {
+                let identity = hint_identity(candidate);
+                if self.bindings.contains_key(&identity) || !targets.insert(identity.clone()) {
+                    return Err(HintEnhancedError::Candidate(HintError::DuplicateCandidate));
+                }
+                if !candidate.geometry.is_valid() {
+                    return Err(HintEnhancedError::Candidate(HintError::InvalidGeometry {
+                        index: additions.len(),
+                    }));
+                }
+                let binding = HintLabelBinding {
+                    label: reservation.declaration.code.clone(),
+                    meaning: HintMeaning::of(candidate),
+                    state: HintBindingState::Available,
+                    special_slot: Some(assignment.slot),
+                    provisional: true,
+                };
+                charged = charged.saturating_add(charge(&identity, &binding));
+                state
+                    .budget
+                    .check(charged)
+                    .map_err(HintEnhancedError::Candidate)?;
+                additions.push((identity, binding, candidate.clone()));
+            }
+        }
+        if self.bindings.len().saturating_add(additions.len()) > MAX_HINT_CANDIDATES {
+            return Err(HintEnhancedError::Candidate(HintError::TooManyCandidates {
+                count: self.bindings.len().saturating_add(additions.len()),
+                maximum: MAX_HINT_CANDIDATES,
+            }));
+        }
+        self.commit_initial_hint_reservations(assignments, additions, charged);
+        Ok(())
+    }
+
+    fn commit_initial_hint_reservations(
+        &mut self,
+        assignments: Vec<HintSpecialAssignment>,
+        additions: Vec<(HintIdentity, HintLabelBinding, HintCandidate)>,
+        charged: usize,
+    ) {
+        let selected = self.active_label().map(str::to_owned);
+        let state = self.enhanced.as_mut().unwrap();
+        for assignment in assignments {
+            state.reservations[assignment.slot].state = match assignment.binding {
+                HintSpecialBinding::Live(_) => HintReservationState::Live,
+                HintSpecialBinding::Unavailable(reason) => {
+                    HintReservationState::Unavailable(reason)
+                }
+            };
+        }
+        state.charged_bytes = charged;
+        for (identity, binding, candidate) in additions {
+            self.hints.push(LabeledHint {
+                label: binding.label.clone(),
+                candidate,
+            });
+            self.bindings.insert(identity, binding);
+        }
+        self.hints
+            .sort_by(|a, b| compare_hint_candidates(&a.candidate, &b.candidate));
+        self.rebuild_enhanced_matches(selected.as_deref());
+        self.progressive.as_mut().unwrap().sequence += 1;
     }
 
     /// Revokes only a live initial slot. This never installs a new binding or
@@ -603,6 +774,7 @@ impl HintInteraction {
                 meaning: HintMeaning::of(&candidate),
                 state: HintBindingState::Available,
                 special_slot: None,
+                provisional: false,
             };
             plan.charged = plan
                 .charged

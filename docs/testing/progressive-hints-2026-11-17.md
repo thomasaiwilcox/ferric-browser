@@ -1,12 +1,18 @@
 # Progressive hints implementation checkpoints
 
+Current execution: the owner requested continuation after the Phase 0 stop
+decision. The negative selector and late-publication measurements remain valid,
+but they do not evaluate the full progressive pipeline. Implementation has
+resumed with the Phase 1 state/readiness foundation below. Early publication is
+not enabled and no end-to-end speedup is claimed.
+
 ## Phase 0 baseline and feasibility
 
 Starting production source: `277d72c74bb40d747ae8150f529b4f0eea2e7779`.
-Production behavior is unchanged at this checkpoint. The live-input retry below
+At the Phase 0 checkpoint, production behavior was unchanged. The live-input retry below
 resolved the initial setup block. Phase 0 does not support proceeding with the
 straightforward world-level publication cut under the plan's retention gate;
-Phases 1–5 have not started. This report does not qualify a progressive feature.
+Phases 1–5 had not started. This report does not qualify a progressive feature.
 
 ### Controlled renderer measurements
 
@@ -182,17 +188,17 @@ custom-policy qualification. The clearly negative result rejects this particular
 prototype without another batch. It does not reject every possible native CSS
 selection design. No source swap, native rebuild or installation was required.
 
-### Stop decision
+### Initial stop decision superseded by the owner request to continue
 
-Do not begin provisional session state, pending action machinery or the new
-scheduler on the strength of these results. The accepted execution plan requires
-an early feasibility gate and meaningful measured benefit before retaining that
-complexity. Its straightforward world-level early-publication cut does not meet
-the proposed benefit threshold, and the tested discovery optimization regresses.
-There is no useful production optimization from this experiment to retain.
+The initial decision was to hold provisional state and scheduling work because
+the straightforward world-level cut did not meet the proposed benefit threshold
+and the tested discovery optimization regressed. No production optimization from
+that experiment was retained. The subsequent owner request to continue advances
+the planned prototype; it does not turn the rejected selector experiment into a
+beneficial change or establish a speedup for the complete design.
 
-This leaves the progressive feature **unimplemented**, with a completed negative
-feasibility checkpoint for this specific cut. It does not establish that the
+At that checkpoint the progressive feature was **unimplemented**, with negative
+feasibility evidence for this specific cut. It does not establish that the
 overall hybrid vision is impossible. A revised implementation would first need
 to move the binding-determining policy/discovery work earlier or make it cheaper
 while retaining complete membership, ownership, capacity and activation rules.
@@ -209,3 +215,109 @@ Evidence is under `target/progressive-hints-20261117/`: `baseline-batch1.json`,
 The original failed setup is retained under `attempt-1/`. Production source and
 installed files remain unchanged. The owned browser is stopped and its temporary
 profile, socket and debugging endpoint are removed at the end of the retry.
+
+## Phase 1 state and readiness foundation
+
+The existing `HintInteraction` now owns provisional readiness and at most one
+pending label selection. The existing codebook, bindings, input grammar and
+allocator remain the owners of those concerns. There is no second input queue,
+policy matcher or label allocator.
+
+The additive core APIs are `begin_hint_validation`,
+`new_provisional_enhanced`, `settle_initial_hint_reservations`,
+`apply_hint_validation`, status/pending accessors and explicit cancellation/close.
+They are native caller APIs, not renderer-callable proof constructors. An update
+is matched to its allocated label, physical identity and current action meaning;
+changed geometry must still be finite and valid. Batches are sequenced and
+checked atomically before promotion. Empty nonterminal batches, duplicates,
+unknown bindings, changed meanings and premature completion are rejected.
+
+Initial omitted special declarations have a distinct `PendingInitial` state.
+They can settle once during initial collection, either unavailable or bound to
+a new provisional target. They cannot claim an already represented ordinary
+target. The caller supplies complete ordinary capacity before allocation;
+retained bindings, new special rows and their meanings retain the existing
+explicit payload budget. A missing or retired special code cannot acquire a new
+target through passive refresh.
+
+Full-code input or explicit confirmation of a provisional row records one pending
+selection and returns an editing update. Validation can return that exact label
+once; it does not create an action permit. Editing, query changes, cycling,
+replacement selection, cancel and request close discard it. Completion without
+an explicit pending selection never produces activation. Adapter-owned absolute
+expiry and document/view cancellation still need their producer integration in
+later phases.
+
+Native selection, palette action entry and pointer confirmation now consult
+readiness before consuming action state. Policy anchor capture also refuses
+unvalidated bindings, and frozen anchor currentness checks readiness. Existing
+freshness, document, scope and action-permit checks remain in place. Internal
+interaction diagnostics expose pending validation/selection; the public policy
+configuration schema is unchanged.
+
+Production collection still creates completed strict interactions. No code path
+publishes provisional rows yet. Renderer continuation, proposal transport,
+same-session final publication and new native lifecycle journeys remain later
+work; this checkpoint does not claim them as implemented or tested.
+
+### State validation
+
+`cargo test -j 2 -p ferric-browser-core --offline --locked` passes all 245 tests:
+193 library, 11 codebook, 26 existing enhanced-interaction, 12 new progressive,
+and three mode-entry cases. The new cases exercise exact pending selection,
+one-time settlement, terminal missing reservations, withdrawal without code
+reuse, atomic rejected batches, changed identities/action meanings, invalid
+geometry, cancellation/close, retained-budget failure and a complete 5,000-row
+batch. This is correctness coverage, not reopening stress-load latency gates.
+
+An initial implementation changed a legacy ordinary auto-follow case; that
+regression was corrected before the passing full run. Strict ordinary behavior
+remains covered by the original tests. `cargo clippy -j 2 -p ferric-browser-core
+--offline --locked --all-targets -- -D warnings`, workspace formatting checks and
+`git diff --check` pass. Logs are in ignored `target/progressive-core-tests.log`,
+`target/progressive-core-clippy.log` and `target/progressive-format.log`.
+
+The qualified Qt 6.11.2 engine check passed with
+`tools/performance/with_qt611.sh cargo check --release --offline --locked
+-p ferric-browser-engine-qt --lib`. The first invocation selected a separate
+check artifact set and rebuilt unchanged Qt/C++ bindings, adding avoidable build
+time (24m 32s). A subsequent check of the final core source reused those artifacts
+and passed in 35s. These are compile checks, not a linked release browser or new
+native runtime journey qualification. Logs are
+`target/progressive-engine-check.log` and
+`target/progressive-engine-check-current.log`.
+
+### Input and retained state comparison
+
+An isolated optimized comparison builds the original core from `277d72c` and the
+current core into one diagnostic executable. It does not swap production files
+or modify source timestamps. Each sample processes 100,000 character/backspace
+pairs over 30 ordinary targets with automatic following disabled. Two warmup
+pairs precede ten alternating baseline/candidate pairs. Measurements run after
+the native build finishes.
+
+| Metric | Original core | Current core |
+| --- | ---: | ---: |
+| Inline `HintInteraction` size | 504 bytes | 544 bytes |
+| Accounted retained payload for 30 identical enhanced bindings | 5,811 bytes | 5,811 bytes |
+| Median time per input operation in this loop | 384 ns | 374 ns |
+
+The small timing difference is not a speedup claim. The strict path keeps a
+direct fast path into existing input handling. Per-binding readiness uses
+existing layout padding in this build; the one optional progressive record adds
+40 inline bytes per interaction. Accounted payload is not allocator/RSS or total
+working-set measurement. This comparison excludes DOM collection, Qt publication,
+transport and real keyboard latency, and establishes no end-to-end benefit.
+
+Reproduction inputs, individual samples, source hashes and summary are under
+ignored `target/progressive-hints-core-bench/`. Its control source is extracted
+from the named original commit; `src/main.rs`, `Cargo.toml`, `samples.log` and
+`result.json` identify the complete diagnostic. Run
+`cargo run --release --offline -j 2 --manifest-path
+target/progressive-hints-core-bench/Cargo.toml` after preparing those recorded
+inputs. The essential results above remain versioned for other checkouts.
+
+This retains the Phase 1 foundation as supporting implementation work. It does
+not close the later producer, renderer continuation, native lifecycle or visual
+qualification gates. The rejected native selector remains rejected. No browser
+installation, PR or push is part of this checkpoint.

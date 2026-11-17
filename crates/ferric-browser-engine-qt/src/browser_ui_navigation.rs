@@ -1074,6 +1074,7 @@ fn hint_interaction_json(interaction: &HintInteraction) -> Value {
     let reservations: Vec<_> = interaction.reservations().iter().map(|reservation| {
         let declaration=reservation.declaration();
         let (state,reason)=match reservation.state() {
+            HintReservationState::PendingInitial => ("pending", "Checking target"),
             HintReservationState::Live => ("live", ""),
             HintReservationState::Unavailable(reason) => ("unavailable",hint_reservation_reason(reason)),
             HintReservationState::Retired(reason) => ("retired",hint_reservation_reason(reason)),
@@ -1107,6 +1108,8 @@ fn hint_interaction_json(interaction: &HintInteraction) -> Value {
             ferric_browser_core::HintInputMode::Label => "label",
             ferric_browser_core::HintInputMode::Text => "text",
         },
+        "validation_pending": interaction.validation_in_progress(),
+        "pending_label": interaction.pending_hint_selection(),
         "prefix": snapshot.prefix,
         "query": snapshot.query,
         "matching_labels": snapshot.matching_labels,
