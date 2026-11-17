@@ -7,9 +7,12 @@ state and prototype-only tests have been removed, including the Phase 1
 foundation. Strict hints remain the production behavior.
 
 The shared policy-assignment refactor, maintained feasibility tools and useful
-child-observation test fixes are retained. No build was installed, published or
-pushed. The chronology below records experiments, not currently available
-features; see [the final decision](#final-paired-measurements-and-removal-decision).
+child-observation test fixes are retained. Following a subsequent owner request,
+the cleaned-up strict build was installed for testing and the owner reported
+that it feels fast enough in use. The rejected prototype was never installed;
+nothing was published or pushed. The chronology below records experiments, not
+currently available progressive features; see [the final decision](#final-paired-measurements-and-removal-decision)
+and [the subsequent installation](#subsequent-strict-build-installation-and-owner-feedback).
 
 ## Phase 0 baseline and feasibility
 
@@ -786,3 +789,36 @@ any future packaging or installation.
 The retained scope is complete. Further progressive work requires a new owner
 request and a design that earns its cost on representative native workloads;
 there is no pending rollout or permanent experimental switch in this checkout.
+
+
+## Subsequent strict-build installation and owner feedback
+
+At the owner's subsequent request, clean source `8c27c75a371861dc7e5040fd09226b0461a95486`
+was rebuilt using Qt 6.11.2 and two build jobs. The release build passed in
+16m31s, with identical source manifests before and after. CMake's archive
+freshness check passed. The fresh application runner passed all **16 targeted
+checks** (zero failures/skips, 47.786s), covering early input and selection,
+policy actions, two-tab page-key routing, refresh, resource parity, keyboard
+activation and the repaired child-observation cases. These application checks
+used the offscreen software backend.
+
+The installed executable SHA-256 is
+`0f374110d84b4a6e576fe0ebf63a1fefd883b62b7378c2ed6015154f02472e38`,
+in release `strict-hints-0f374110d84b4a6e`. Its launcher passes `--version` and
+`--help`. A separate installed-product check on native Wayland, using a
+disposable profile, verifies the actual executable, a mapped window, a healthy
+complete active tab, the exact source manifest and the KDE-free runtime/library
+closure. Personal profiles and browser defaults were not changed. The previous
+`6582e478` release is retained, with guarded rollback metadata. Evidence is under
+ignored `target/strict-hints-install-20261117/`, including `build.json`,
+`hint-smoke.log`, `installed-startup.json`, `installed-runtime.json` and
+`complete.json`; the runtime's `installation.json` records the active release
+and rollback command.
+
+The owner subsequently reported that hints feel faster, though still slower
+than qutebrowser, and fast enough for practical use. This is positive hands-on
+feedback, not a new comparative benchmark or a claim about wider user
+satisfaction. The earlier measured sparse-inventory optimisation remains in
+the installed code. No additional measured speedup is attributed to the shared
+policy refactor or progressive-state removal, and the rejected progressive path
+remains removed. No further performance tuning is planned under this task.
