@@ -321,3 +321,63 @@ This retains the Phase 1 foundation as supporting implementation work. It does
 not close the later producer, renderer continuation, native lifecycle or visual
 qualification gates. The rejected native selector remains rejected. No browser
 installation, PR or push is part of this checkpoint.
+
+## Phase 2 shared policy calculation
+
+Anchor claims, collection ordering and ownership assignment now run through one
+private read-only `BindingView` over the normalized graph, policy and canonical
+candidate snapshots. `CheckedAnnotations.special_assignments` delegates to it.
+Collection freshness comparisons remain on the checked-proof type and retain
+their original native associations and exact witness comparisons.
+
+This separates policy interpretation from the checked-proof wrapper so that the
+proposal producer can reuse the same calculation. It introduces no second
+matcher, unchecked-to-checked conversion, authority token, new wire version or
+renderer result. The view only borrows three existing data structures and adds
+no retained inventory or cache. The assignment and ordering algorithms are moved
+without changing their behavior. Provisional publication is still unwired.
+
+The failed native-CSS prototype remains excluded. Ordinary JavaScript discovery
+is unchanged in this checkpoint. No speedup or completed progressive pipeline is
+claimed for this supporting refactor.
+
+### Contract tests without Qt linking
+
+`tools/qualification/check_hint_contracts.py` creates a small isolated Cargo
+harness under `target/`, links the actual production module files and executes
+their existing tests. It includes payload decoding, policy/proof interpretation,
+root and world merging, fuzz regressions, request work sequencing and native-work
+ledger unit contracts. It does not duplicate test bodies, provide a replacement
+policy engine or qualify real native receipts. The native input-size declaration
+comes directly from the production source; dependencies start from the production
+lock file and the helper records source and lock hashes.
+
+The first harness attempts exposed Rust module lookup and a missing application
+test dependency. Those were harness setup errors. The final harness preserves
+the original module/fixture layout and includes the actual application crate;
+it does not rewrite production or test logic to work around errors. Subsequent
+attempt logs are archived under the output directory.
+
+Run:
+
+```sh
+python3 tools/qualification/check_hint_contracts.py \
+  --output target/progressive-hints-contracts
+```
+
+Final result: **188 tests passed, zero failed** in 12.20s after compilation. One
+existing documentation example is ignored separately; no unit test is ignored.
+The results cover ambiguity, anchor ownership, collections and ordering, graph
+and candidate association, malformed input, shared budgets, one-shot grants and
+work sequencing. The harness avoids Qt linking; these are not native window,
+keyboard or runtime performance results.
+
+The current policy-view source also passes the qualified Qt 6.11.2 release engine
+compile check in `target/progressive-policy-view-check.log` (23.53s using the
+existing artifacts). Workspace formatting, Python compilation and diff whitespace
+checks pass. This checkpoint changes no dependencies of the shipping browser.
+
+Raw test output and source provenance are under
+`target/progressive-hints-contracts/`. The retained report and reusable command
+allow another checkout to run these same source tests. Proposal transport,
+publication and native end-to-end qualification remain outstanding.

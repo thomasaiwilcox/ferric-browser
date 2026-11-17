@@ -334,7 +334,123 @@ impl fmt::Debug for CheckedAnnotations {
     }
 }
 
+// Read-only policy interpretation. This view owns no native identity, DOM
+// freshness, mutable inventory or action permit. Both checked and provisional
+// presentation consumers must use this same assignment calculation.
+struct BindingView<'a> {
+    wire: &'a wire::Envelope,
+    policy: &'a EffectiveInteractionPolicy,
+    candidates: &'a BTreeMap<u16, HintCandidate>,
+}
+
+impl<'a> BindingView<'a> {
+    fn candidate_snapshot(&self, index: u16) -> Option<&'a HintCandidate> {
+        self.candidates.get(&index)
+    }
+    fn special_assignments(
+        &self,
+        candidates: &[HintCandidate],
+        declarations: &[ferric_browser_core::HintCodeDeclaration],
+        live_slots: Option<&BTreeSet<usize>>,
+    ) -> Vec<ferric_browser_core::HintSpecialAssignment> {
+        use ferric_browser_core::{
+            HintReservationCategory, HintReservationReason as Reason, HintSpecialAssignment,
+            HintSpecialBinding as Binding,
+        };
+        let mut assignments: Vec<_> = declarations
+            .iter()
+            .enumerate()
+            .map(|(slot, declaration)| {
+                let binding = if declaration.category == HintReservationCategory::Anchor
+                    && live_slots.is_none_or(|slots| slots.contains(&slot))
+                {
+                    match self
+                        .wire
+                        .outcomes
+                        .iter()
+                        .find(|outcome| {
+                            outcome.rule.kind == wire::RuleKind::Anchor
+                                && outcome.rule.id == declaration.rule_id
+                        })
+                        .map(|outcome| &outcome.result)
+                    {
+                        Some(wire::ResultFacts::AnchorComplete { matches, .. })
+                            if matches.len() == 1 =>
+                        {
+                            self.candidate_snapshot(matches[0].candidate.index)
+                                .and_then(|candidate| {
+                                    candidates.iter().find(|current| *current == candidate)
+                                })
+                                .map_or(Binding::Unavailable(Reason::Incomplete), |candidate| {
+                                    Binding::Live(candidate.clone())
+                                })
+                        }
+                        Some(wire::ResultFacts::AnchorComplete { matches, .. })
+                            if matches.is_empty() =>
+                        {
+                            Binding::Unavailable(Reason::Missing)
+                        }
+                        Some(wire::ResultFacts::AnchorComplete { .. }) => {
+                            Binding::Unavailable(Reason::Ambiguous)
+                        }
+                        Some(wire::ResultFacts::SearchComplete {
+                            cardinality: wire::SearchCardinality::Absent,
+                            ..
+                        }) => Binding::Unavailable(Reason::Missing),
+                        Some(wire::ResultFacts::SearchComplete {
+                            cardinality: wire::SearchCardinality::Ambiguous,
+                            ..
+                        }) => Binding::Unavailable(Reason::Ambiguous),
+                        _ => Binding::Unavailable(Reason::Incomplete),
+                    }
+                } else {
+                    Binding::Unavailable(Reason::Incomplete)
+                };
+                HintSpecialAssignment { slot, binding }
+            })
+            .collect();
+        // Neither independently unique anchor wins a shared physical target.
+        // Leave that row eligible for ordinary fallback.
+        let mut claims = BTreeMap::<_, Vec<usize>>::new();
+        for assignment in &assignments {
+            if let Binding::Live(candidate) = &assignment.binding {
+                claims
+                    .entry((
+                        candidate.frame_owner.clone(),
+                        candidate.frame_path.clone(),
+                        candidate.element_id,
+                        candidate.related_element_id,
+                    ))
+                    .or_default()
+                    .push(assignment.slot);
+            }
+        }
+        let anchor_targets = claims.keys().cloned().collect();
+        for slots in claims.values().filter(|slots| slots.len() > 1) {
+            for &slot in slots {
+                assignments[slot].binding = Binding::Unavailable(Reason::Ambiguous);
+            }
+        }
+        self.assign_collection_slots(
+            candidates,
+            declarations,
+            live_slots,
+            &anchor_targets,
+            &mut assignments,
+        );
+        assignments
+    }
+}
+
 impl CheckedAnnotations {
+    fn binding_view(&self) -> BindingView<'_> {
+        BindingView {
+            wire: &self.wire,
+            policy: &self.policy,
+            candidates: &self.candidates,
+        }
+    }
+
     pub(crate) fn family(&self) -> InteractionFamily {
         self.wire.stamp.family
     }
@@ -439,92 +555,8 @@ impl CheckedAnnotations {
         declarations: &[ferric_browser_core::HintCodeDeclaration],
         live_slots: Option<&BTreeSet<usize>>,
     ) -> Vec<ferric_browser_core::HintSpecialAssignment> {
-        use ferric_browser_core::{
-            HintReservationCategory, HintReservationReason as Reason, HintSpecialAssignment,
-            HintSpecialBinding as Binding,
-        };
-        let mut assignments: Vec<_> = declarations
-            .iter()
-            .enumerate()
-            .map(|(slot, declaration)| {
-                let binding = if declaration.category == HintReservationCategory::Anchor
-                    && live_slots.is_none_or(|slots| slots.contains(&slot))
-                {
-                    match self
-                        .wire
-                        .outcomes
-                        .iter()
-                        .find(|outcome| {
-                            outcome.rule.kind == wire::RuleKind::Anchor
-                                && outcome.rule.id == declaration.rule_id
-                        })
-                        .map(|outcome| &outcome.result)
-                    {
-                        Some(wire::ResultFacts::AnchorComplete { matches, .. })
-                            if matches.len() == 1 =>
-                        {
-                            self.candidate_snapshot(matches[0].candidate.index)
-                                .and_then(|candidate| {
-                                    candidates.iter().find(|current| *current == candidate)
-                                })
-                                .map_or(Binding::Unavailable(Reason::Incomplete), |candidate| {
-                                    Binding::Live(candidate.clone())
-                                })
-                        }
-                        Some(wire::ResultFacts::AnchorComplete { matches, .. })
-                            if matches.is_empty() =>
-                        {
-                            Binding::Unavailable(Reason::Missing)
-                        }
-                        Some(wire::ResultFacts::AnchorComplete { .. }) => {
-                            Binding::Unavailable(Reason::Ambiguous)
-                        }
-                        Some(wire::ResultFacts::SearchComplete {
-                            cardinality: wire::SearchCardinality::Absent,
-                            ..
-                        }) => Binding::Unavailable(Reason::Missing),
-                        Some(wire::ResultFacts::SearchComplete {
-                            cardinality: wire::SearchCardinality::Ambiguous,
-                            ..
-                        }) => Binding::Unavailable(Reason::Ambiguous),
-                        _ => Binding::Unavailable(Reason::Incomplete),
-                    }
-                } else {
-                    Binding::Unavailable(Reason::Incomplete)
-                };
-                HintSpecialAssignment { slot, binding }
-            })
-            .collect();
-        // Neither independently unique anchor wins a shared physical target.
-        // Leave that row eligible for ordinary fallback.
-        let mut claims = BTreeMap::<_, Vec<usize>>::new();
-        for assignment in &assignments {
-            if let Binding::Live(candidate) = &assignment.binding {
-                claims
-                    .entry((
-                        candidate.frame_owner.clone(),
-                        candidate.frame_path.clone(),
-                        candidate.element_id,
-                        candidate.related_element_id,
-                    ))
-                    .or_default()
-                    .push(assignment.slot);
-            }
-        }
-        let anchor_targets = claims.keys().cloned().collect();
-        for slots in claims.values().filter(|slots| slots.len() > 1) {
-            for &slot in slots {
-                assignments[slot].binding = Binding::Unavailable(Reason::Ambiguous);
-            }
-        }
-        self.assign_collection_slots(
-            candidates,
-            declarations,
-            live_slots,
-            &anchor_targets,
-            &mut assignments,
-        );
-        assignments
+        self.binding_view()
+            .special_assignments(candidates, declarations, live_slots)
     }
 
     pub(crate) fn surviving_special_slots(

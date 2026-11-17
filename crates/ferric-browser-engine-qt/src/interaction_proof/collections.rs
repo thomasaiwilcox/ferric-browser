@@ -1,6 +1,6 @@
 //! Ordered collection views over the existing native-sealed graph. The retained
 //! checked proof is the session snapshot; no second inventory or authority store.
-use super::{CheckedAnnotations, wire};
+use super::{BindingView, CheckedAnnotations, wire};
 use ferric_browser_config::InteractionCollectionOrder;
 use ferric_browser_core::{
     HintCandidate, HintCodeDeclaration, HintReservationCategory, HintReservationReason as Reason,
@@ -69,40 +69,7 @@ fn order_items(items: &mut [&wire::Item], order: InteractionCollectionOrder, tol
 
 impl CheckedAnnotations {
     fn collection_snapshot(&self, id: &str) -> Option<CollectionSnapshot<'_>> {
-        let authored = self
-            .policy
-            .collections()
-            .iter()
-            .find(|collection| collection.id == id)?;
-        let result = &self
-            .wire
-            .outcomes
-            .iter()
-            .find(|outcome| {
-                outcome.rule.kind == wire::RuleKind::Collection && outcome.rule.id == id
-            })?
-            .result;
-        let wire::ResultFacts::CollectionComplete {
-            root,
-            container,
-            container_kind,
-            items,
-        } = result
-        else {
-            return None;
-        };
-        let mut items: Vec<_> = items.iter().collect();
-        order_items(
-            &mut items,
-            authored.order,
-            authored.row_tolerance_px.unwrap_or(8.),
-        );
-        Some(CollectionSnapshot {
-            root: self.wire.roots.iter().find(|entry| entry.id == *root)?,
-            container: *container,
-            kind: *container_kind,
-            items,
-        })
+        self.binding_view().collection_snapshot(id)
     }
 
     pub(super) fn same_collection_binding(&self, current: &Self, id: &str) -> bool {
@@ -139,6 +106,45 @@ impl CheckedAnnotations {
                         == new.primary.projected_primary_fragment_css
                     && old.primary.top_viewport_css == new.primary.top_viewport_css
             })
+    }
+}
+
+impl<'a> BindingView<'a> {
+    fn collection_snapshot(&self, id: &str) -> Option<CollectionSnapshot<'a>> {
+        let authored = self
+            .policy
+            .collections()
+            .iter()
+            .find(|collection| collection.id == id)?;
+        let result = &self
+            .wire
+            .outcomes
+            .iter()
+            .find(|outcome| {
+                outcome.rule.kind == wire::RuleKind::Collection && outcome.rule.id == id
+            })?
+            .result;
+        let wire::ResultFacts::CollectionComplete {
+            root,
+            container,
+            container_kind,
+            items,
+        } = result
+        else {
+            return None;
+        };
+        let mut items: Vec<_> = items.iter().collect();
+        order_items(
+            &mut items,
+            authored.order,
+            authored.row_tolerance_px.unwrap_or(8.),
+        );
+        Some(CollectionSnapshot {
+            root: self.wire.roots.iter().find(|entry| entry.id == *root)?,
+            container: *container,
+            kind: *container_kind,
+            items,
+        })
     }
 
     fn collection_unavailable_reason(&self, id: &str) -> Reason {
