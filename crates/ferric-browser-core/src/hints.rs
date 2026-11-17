@@ -2,14 +2,12 @@ use crate::{DocumentId, HintSessionId, IdSource, TabId, switcher_rank, tokenize_
 use std::collections::{BTreeMap, BTreeSet};
 
 mod enhanced;
-mod progressive;
 use enhanced::EnhancedHintState;
 pub use enhanced::{
     HintEnhancedError, HintInteractionKind, HintRefreshIssue, HintReservation,
     HintReservationReason, HintReservationState, HintRetentionBudget, HintSelectionUnavailable,
     HintSpecialAssignment, HintSpecialBinding,
 };
-pub use progressive::{HintValidationError, HintValidationStatus, HintValidationUpdate};
 
 const DEFAULT_HINT_CHARS: &str = "asdfghjkl";
 pub const MAX_HINT_CANDIDATES: usize = 5_000;
@@ -704,7 +702,6 @@ struct HintLabelBinding {
     meaning: HintMeaning,
     state: HintBindingState,
     special_slot: Option<usize>,
-    provisional: bool,
 }
 
 type HintIdentity = (String, String, u32, Option<u32>);
@@ -738,7 +735,6 @@ pub struct HintInteraction {
     initial_activation_available: bool,
     enhanced: Option<EnhancedHintState>,
     loading: bool,
-    progressive: Option<progressive::ProgressiveValidation>,
 }
 
 impl HintInteraction {
@@ -762,7 +758,6 @@ impl HintInteraction {
                         meaning: HintMeaning::of(&hint.candidate),
                         state: HintBindingState::Available,
                         special_slot: None,
-                        provisional: false,
                     },
                 )
             })
@@ -785,7 +780,6 @@ impl HintInteraction {
             initial_activation_available: true,
             enhanced: None,
             loading: false,
-            progressive: None,
         }
     }
 
@@ -808,7 +802,6 @@ impl HintInteraction {
     /// A committed Hint page command relinquishes label selection, including
     /// the ordinary model's default row. Query editing is never affected.
     pub fn clear_label_selection(&mut self) -> bool {
-        self.cancel_pending_hint_selection();
         if self.mode != HintInputMode::Label {
             return false;
         }
@@ -830,9 +823,6 @@ impl HintInteraction {
     /// positive budget admission preserves observed revocations and blocks
     /// confirmation until a successful fresh reconciliation.
     pub fn refresh(&mut self, mut candidates: Vec<HintCandidate>) -> Result<(), HintError> {
-        if self.validation_in_progress() {
-            return Err(HintError::StaleTarget);
-        }
         if self.enhanced.is_some() {
             return self.refresh_enhanced(candidates);
         }
@@ -878,7 +868,6 @@ impl HintInteraction {
                         meaning,
                         state: HintBindingState::Available,
                         special_slot: None,
-                        provisional: false,
                     },
                 );
                 label
@@ -988,7 +977,7 @@ impl HintInteraction {
         }
     }
 
-    fn handle_ready_input(&mut self, input: HintInteractionInput) -> HintInteractionOutcome {
+    pub fn handle(&mut self, input: HintInteractionInput) -> HintInteractionOutcome {
         match input {
             HintInteractionInput::Cancel => HintInteractionOutcome::Cancel,
             HintInteractionInput::RotateCollision => {

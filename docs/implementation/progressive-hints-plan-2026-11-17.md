@@ -2,7 +2,7 @@
 
 Date: 17 November 2026. Source baseline: `277d72c74bb40d747ae8150f529b4f0eea2e7779`, branch `feature/site-interaction-policy`.
 
-Status: proposed implementation approach following the owner's agreement on progressive presentation. This document specifies the work for the next implementation agent; it does not describe an implemented feature. Check the actual checkout before starting and record any intervening changes.
+Status: evaluated; the progressive prototype was removed at the owner's explicit request after it missed the live benefit gate. See [the final measurement and removal report](../testing/progressive-hints-2026-11-17.md#final-paired-measurements-and-removal-decision). The approach below is the historical proposal used for that experiment, not an instruction to restart it without a new owner request.
 
 Ferric should show useful, stable hint labels earlier, allowing the user to read and type while remaining validation completes. Every effect must retain Ferric's current action validation. The product change is that a displayed label may initially be provisional and may subsequently be withdrawn. A displayed code must never move to another target or acquire a different action during that interaction.
 

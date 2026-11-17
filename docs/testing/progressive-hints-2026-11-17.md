@@ -1,10 +1,15 @@
 # Progressive hints implementation checkpoints
 
-Current execution: the owner requested continuation after the Phase 0 stop
-decision. The negative selector and late-publication measurements remain valid,
-but they do not evaluate the full progressive pipeline. Implementation has
-resumed with the Phase 1 state/readiness foundation below. Early publication is
-not enabled and no end-to-end speedup is claimed.
+Final outcome (17 November 2026): the integrated prototype missed the live
+benefit gate. After reviewing the measurements, the owner explicitly selected
+**“Remove it per the plan”**. Provisional publication, pending-selection/readiness
+state and prototype-only tests have been removed, including the Phase 1
+foundation. Strict hints remain the production behavior.
+
+The shared policy-assignment refactor, maintained feasibility tools and useful
+child-observation test fixes are retained. No build was installed, published or
+pushed. The chronology below records experiments, not currently available
+features; see [the final decision](#final-paired-measurements-and-removal-decision).
 
 ## Phase 0 baseline and feasibility
 
@@ -381,3 +386,403 @@ Raw test output and source provenance are under
 `target/progressive-hints-contracts/`. The retained report and reusable command
 allow another checkout to run these same source tests. Proposal transport,
 publication and native end-to-end qualification remain outstanding.
+
+## Phase 3 initial integration — evaluated and removed
+
+The first integration prepares a complete policy-resolved presentation for a
+single Top document with at most 64 ordinary candidates, before native graph
+sealing. This is one bounded validation unit, not a new candidate allowance.
+Foreign/same-origin child-document inventories, label proxies, larger inventories, scopes,
+pointer/search/rapid/first invocations and passive refresh retain strict
+publication. The temporary internal environment variable
+`FERRIC_HINT_PROGRESSIVE_EXPERIMENT=1` selects this prototype; the shipping default
+and installed browser are unchanged. It is not a public mode or policy setting.
+
+The producer uses the existing ordinary inventory and canonical world merge,
+including document/root namespace remapping. It then runs the same normalization
+and assignment calculation. The raw original graph remains available for native
+sealing. The canonical result is retained and reused after sealing, rather than
+repeating semantic matching with a new budget. Its structural verification work
+is charged before subsequent native grants. Failures cannot refill or retry
+normalization within that request. Native completion must corroborate the same
+Top viewport, without excluded/limited/foreign projections.
+
+Native staging alone can create the typed presentation. Renderer/QML envelopes
+cannot opt into provisional publication or grant readiness. QML reads the
+existing Rust session for display; initial early-input gestures are replayed once
+against that allocator. Completion updates the same interaction and session ID,
+withdraws any disproved bindings, and returns an explicit pending selection once
+to the existing fresh action route. Completion without prior selection does not
+auto-follow. A failed displayed proposal closes instead of silently reallocating
+its codes on the ordinary automatic retry.
+
+The pure contract harness passes **194 tests**, including exact canonical output
+and special-assignment comparisons with strict merge for anchors and collections,
+refresh identity, seal/projection refusal, shared one-shot accounting, unchanged
+labels and explicit-only pending selection. These tests do not qualify native
+publication, rendering, keyboard focus or performance. The compiled native
+application fixtures and paired first-policy-render measurements are the next
+qualification step; no speedup or release-readiness claim is made yet.
+
+The maintained application tests include `hintProgressivePublication` and the
+opt-in `hintProgressivePerformance` comparison. The latter reuses the existing
+render-signal observer, real input router, production resources, collector,
+policy and native continuation. It compares two warmup pairs and ten alternating
+strict/progressive pairs on fresh grid/feed documents at two scroll positions.
+It records useful policy-label rendering separately from validation completion,
+checks unchanged initial/final labels, and retains full candidate projections.
+It does not measure compositor presentation or completed-action latency.
+
+### Initial native trial and measurement-fixture correction
+
+The first optimized engine build completed in 20m33s with two build jobs and the
+qualified SDK. The first non-injected application trial passed six production
+workspace cases (eight QtTest results including setup/cleanup, zero failures,
+14.762s): provisional display, explicit confirmation, editing, text query,
+Escape/cancel and explicit cancellation of pending intent. Each provisional
+publication attempted the ordinary native selection route and nine action/palette
+routes directly; all returned `hint-validation-pending`. Confirmation executed
+once; the other cases executed no action. Final labels and the session ID were
+unchanged. These are offscreen functional results, not latency measurements or
+physical input qualification. The final ownership/accounting refinements and
+additional early-input cases require the subsequent clean rebuild and rerun.
+
+The first grid render comparison correctly failed its requirement to observe
+code `1`: the benchmark configured its collection for family `all`, whereas the
+actual default `f` binding invokes `actions`. Ordinary labels appeared, with no
+numbered reservations. The fixture now configures `actions`; the policy-label
+assertion remains. No timing sample from that failed attempt is retained as a
+progressive result. Logs are `integrated-grid-comparison.log` and
+`grid-diagnostic/states.json` under the ignored evidence directory.
+
+The one diagnostic retry loaded an existing external generic Qt inspection
+plugin to read the runtime state. That process exited with SIGSEGV after the
+QtTest summary, in `QGuiApplicationPrivate` / `QApplicationPrivate` destruction
+through a null call. Other threads showed idle WebEngine/IPC workers; no OOM
+was recorded. The same test without injection exited normally (with its fixture
+assertion failure), and the non-injected publication trial also exited normally.
+This correlates the shutdown failure with the injected run but does not prove
+the precise offending function. It is excluded from performance qualification;
+subsequent qualification uses the maintained non-injected executable. The
+extracted temporary core was deleted. No installed browser or personal profile
+participated. The diagnostic backtrace is `grid-diagnostic/crash.txt`.
+
+### Controlled render and action comparisons
+
+The non-injected final-source publication trial passes eight journeys (ten
+QtTest results, zero failures, 19.772s), including query and confirmation gestures
+queued before any labels exist. It preserves a single session ID and allocator.
+
+The initial render comparison used the render observer's 5ms event loop until
+first labels, then QtTest `qWait` polling until validation. That changes the host
+waiter earlier in the progressive case and produced a large apparent completion
+penalty. The observer now retains the same event-loop waiter through validation
+in both controls, while keeping the original first-frame timestamp. Both events
+use the native steady clock. The mixed-wait run remains diagnostic evidence in
+`final-comparison-batch1.log` / `mixed-wait-summary.json`; its completion numbers
+are not an architecture comparison.
+
+The first neutral-wait batch uses two warmup pairs and ten alternating pairs on
+fresh documents, Qt 6.11.2, offscreen/software rendering, a 1000×800 window and
+1000×774 page viewport, zoom 1, AC connected. It observes the actual rendered
+text for policy code `1`, not merely an ordinary label or a published model.
+All 40 paired final target/code/geometry projections match exactly. Every
+provisional initial/final Hint JSON array is identical: no withdrawn targets,
+retargets, changed ordinary code lengths or changed numbered assignments in
+these unchanged fixtures.
+
+| Fixture | Strict first policy frame ms | Progressive ms | Earlier ms / % | Strict / progressive validation complete ms |
+| --- | ---: | ---: | ---: | ---: |
+| Grid, top | 393.02 | 308.64 | 84.38 / 21.5% | 385.38 / 416.97 |
+| Grid, scroll 2100 | 380.59 | 295.65 | 84.94 / 22.3% | 373.53 / 399.98 |
+| Feed, top | 341.52 | 261.34 | 80.18 / 23.5% | 336.29 / 349.69 |
+| Feed, scroll 2100 | 338.32 | 265.62 | 72.70 / 21.5% | 332.29 / 351.26 |
+
+Early presentation has a real validation-completion cost here, even after the
+waiter correction. These are one-batch medians, not tail estimates, compositor
+presentation, live-site qualification or evidence that completed actions are
+faster under every input schedule. Raw data and exact comparisons are in
+`neutral-comparison-batch1.log` / `neutral-comparison-batch1-summary.json`.
+
+The maintained action comparison uses the same DOM, replacing primary links
+with non-navigating buttons. It sends constructed native code-1/Enter events at
+fixed offsets from `f`, observes the exact `target-0` DOM activation, and checks
+that it executes only once. A separate schedule sends input 100ms after the
+first rendered policy frame; it is reported separately from fixed input timing.
+Both use the native steady clock and identical 5ms asynchronous receipt polling.
+The initial coarse-timer action run exposed unequal actual delivery offsets, so
+qualification uses precise timers and records actual selection timestamps.
+
+In the first precise batch, selection following visible labels completed 82.57ms
+earlier on the grid and 110.21ms earlier on the feed. Blind 100ms input showed
+larger slowdown in that batch (including a late-run shift affecting both
+controls), so those cases were repeated without changing production code. The
+repeat medians were 745.54 / 770.20ms (strict/progressive grid) and 663.45 /
+673.86ms (feed): 24.66ms / 3.3% and 10.41ms / 1.6% slower respectively. Thus the
+large first-batch slowdown has not reproduced above both proposed regression
+thresholds. The validation overhead remains real and the remaining repeat/live
+checks are still required; these results do not qualify every early input case.
+
+### Final-publication reentry qualification
+
+Two additional deterministic native cases edit or restart Hint mode from the
+final publication notification. Both fail on the first integrated prototype:
+the pending-selection dispatch can still use its old reply after UI publication
+has reentered input handling. These failures are retained in
+`publication-reentry-red.log`; they were found before enabling or installing
+this feature. The dispatch now also checks the original collection epoch,
+session ID and the exact input-state object. An edit replaces that state object;
+a restart replaces the owning epoch/session. No second intent queue or action
+permission is introduced. The fresh production-resource build passes both cases. All ten publication
+journeys pass (12 QtTest results including setup/cleanup, zero failures,
+23.299s). `publication-final.log` records the result;
+`lifecycle-final-provenance.json` records exact production-source and native
+artifact hashes. Neither source timestamps nor archive freshness checks were
+bypassed. This completes the deterministic publication reentry check; broader
+lifecycle and performance qualification continues below.
+
+
+### Broader regression run
+
+The first broader offscreen regression run overlaps the compiler (functional
+checks only; no performance samples are taken under build load). One existing
+`hintPageKeyRouting(stale-refresh)` assertion missed its unchanged 5s check;
+QtTest reports it would pass at 5100ms. Its failure and state diagnostics remain
+in `regression-final.log`. It needs an isolated enabled/disabled repeat after
+compilation; build contention is a hypothesis, not an established cause. The
+operation and test timeouts have not been increased.
+
+
+The run finished with **266 passes and six failures** (1045.596s). Five
+`hintRequestObservationDocuments(work-policy-*)` cases fail before policy
+verification, while waiting for an initial child ResizeObserver invalidation.
+All five reproduce with the experiment disabled, at the identical assertion,
+in `regression-baseline-failures.log` (three passes, five failures, 26.475s).
+That disabled repeat passes stale-refresh. These comparisons do not establish
+that the child-observation tests pass on the earlier committed baseline; they
+show the failures are independent of selecting the progressive branch in this
+binary. Owned Wayland qualification and an idle stale-refresh repeat follow.
+
+
+Owned Wayland repeats all ten publication journeys, stale-refresh and the
+two-tab media-key journey successfully (14 passes); the same five child setup
+assertions fail (five failures, 80.518s total). This rules out an offscreen-only
+explanation. Source history identifies the obsolete assumption: commit
+`066cf8b` already suppresses unchanged initial ResizeObserver reports. The
+positive adapter fixtures now wait for observed initial-report delivery itself,
+without demanding a dirty revision. The stale-child negative makes a real
+layout change and checks a dirty newer revision before the existing rejection
+assertions. The retained-nonce refinement below corrects a second older test
+assumption about notification-driven inventory cancellation. No production
+collector, deadline or authority assertion changes for this test repair. The
+original enabled/disabled failures remain available for comparison.
+
+
+### Qualification setup and lint closeout
+
+The engine passes release Clippy with `-D warnings` using the qualified SDK.
+Three reported style lints were fixed (two redundant closures and one wildcard
+covering a single variant). The functional production behavior is unchanged;
+`release-final-inputs.json` records these two Rust-file differences from the
+native artifact used above. A fresh release build is required before calling
+that final source qualified. Existing GCC/Qt header diagnostics remain in the
+build output; the Rust lint run exits successfully.
+
+`hintEarlyInput` and `hintNativeControls` pass all 32 offscreen results,
+including primary/secondary windows, navigation, view/focus changes, shutdown,
+query ownership, early confirmation and pointer behavior (145.137s).
+
+The first live run is **setup evidence, not representative performance
+qualification**. The disposable YouTube profile opens a consent screen, so it
+has no numbered video bindings. On native Wayland the compositor tiles the
+requested 1280px startup window to 640×694 logical pixels (640×668 page, DPR
+1.5). Reddit's top case completes ten matched pairs with unchanged projections,
+but a cookie overlay remains and the scrolled case has no numbered post label.
+Its measured 22.13ms / 10.6% earlier first policy frame is retained as diagnostic
+evidence; it does not pass the primary-workload gate. No failed first-label
+attempt is counted as a timing sample.
+
+The maintained live harness now requests application fullscreen, records the
+actual page viewport and can explicitly reject optional-cookie consent in its
+own disposable profile before measurement. Its optional ready-selector checks
+are fixture parameters. This setup code is not installed in the collector or
+policy engine, and does not change personal cookies or any website's production
+handling. Original logs are `live-youtube-batch1.log` and
+`live-reddit-batch1.log`.
+
+
+### Historical owner trial guide — prototype removed
+
+This was the proposed review guide. No candidate was installed or delivered for
+this trial; the owner subsequently chose removal. It is retained as part of the
+experiment record, not as instructions for the current checkout.
+
+1. On YouTube search/home and watch pages, open hints and start reading/typing
+   immediately. Check numbered videos and named anchors, not just ordinary links.
+   A displayed code must keep its target; it may disappear if that target changes.
+2. Select immediately, then repeat after reading the labels. Each selection
+   should perform one expected action. Repeat Enter must not duplicate it.
+3. Type part of a code, edit it, switch to `/` query input and cancel with Escape.
+   Wait briefly after cancellation; no delayed action should occur.
+4. Open a second YouTube tab. On both tabs try `f`, then `p` (and fullscreen).
+   A successfully delivered shortcut returns to Normal after release. Ordinary
+   Normal-mode input must not inherit the Hint mapping.
+5. Navigate from YouTube to Reddit, scroll several screens, and repeat `f` and
+   selection. Revisit the other tab and repeat. Check that numbered posts remain
+   available and no old tab's selection executes.
+6. While hints are collecting, switch tabs/windows or focus a browser prompt,
+   then return. An old selection must not execute after that ownership change.
+
+Judge whether labels become useful earlier without distracting corrections,
+longer codes, missing controls or delayed surprises. Timing alone cannot pass
+this review. The installed release remains unchanged until delivery is explicitly
+requested; the experimental path remains off by default during qualification.
+
+
+The additional lifecycle/refresh matrix passes **21 results** (79.787s):
+navigation invalidation, embedded-resource parity, actual hint keyboard
+activation, input-preserving refresh, no refresh auto-follow, confirmation
+freezing and scoped Hint/Target Search journeys. The final-source pure contract
+harness also passes **194 tests**. Source/lock hashes are retained by the harness.
+
+
+The final release build completes in 18m04s with two jobs. All recorded
+production-source hashes match its inputs. The native archive SHA-256 is
+`def7c5007a32c6a9758c6f5c5cd1dc25ce22bdc8afaac6455246103c2279f3bd`;
+the standalone browser SHA-256 is
+`a43f008f0d137cc4e7fae52efb3cf92e2f5acd82552a1fa2e1a1a4093a4f1bb2`.
+CMake's archive freshness check passes before relinking the application runner.
+
+The final-source Wayland run passes 19 results, including all ten progressive
+publication journeys, stale-refresh, two-tab media keys, resource parity and
+four repaired child cases. Its only remaining failure identifies a second
+pre-existing test assumption: `9d39e43` retains the weak pending inventory on a
+dirty notification instead of deleting it. The changed-child fixture now checks
+that the original nonce remains retained, then still requires policy completion
+to reject the changed snapshot, clear the native work, grant no checked
+observation, preserve the displayed snapshot and execute zero clicks. All five
+child cases then pass (seven results including setup/cleanup, 17.569s).
+`release-final-native.log` retains the intermediate failure;
+`child-repair-final.log` records the repaired cases. These are test repairs for
+committed behavior; production deadlines and collector behavior are unchanged.
+
+## Final paired measurements and removal decision
+
+The final controlled repeat passes all 12 results (231.270s). It uses the final
+prototype source/resources, two warmup pairs and ten alternating pairs per case,
+with the neutral waiter and precise action timers described above. Every one of
+its 40 paired final projections matches; all displayed initial/final arrays are
+unchanged. The first controlled batch also had 40 exact projection matches.
+
+| Controlled fixture | Strict / progressive first policy frame ms | Earlier ms / % | Validation completion cost ms |
+| --- | ---: | ---: | ---: |
+| grid, scroll 0 | 389.14 / 304.01 | 85.13 / 21.9% | 30.67 |
+| grid, scroll 2100 | 383.36 / 301.91 | 81.45 / 21.2% | 35.40 |
+| feed, scroll 0 | 340.69 / 256.45 | 84.25 / 24.7% | 13.03 |
+| feed, scroll 2100 | 341.20 / 259.19 | 82.01 / 24.0% | 10.94 |
+
+Completed actions in the repeat use the exact same input schedule within each
+comparison. The after-label schedule starts 100ms after each control’s own first
+policy frame; it must not be conflated with input fixed relative to `f`. All
+observed actions activate `target-0` exactly once and return to Normal.
+
+| Fixture / input schedule | Strict / progressive action receipt ms from `f` | Progressive difference ms |
+| --- | ---: | ---: |
+| grid / 100ms after f | 742.81 / 763.13 | +20.31 |
+| grid / 500ms after f | 863.69 / 859.99 | -3.70 |
+| grid / 100ms after labels | 854.98 / 779.23 | -75.75 |
+| feed / 100ms after f | 649.71 / 658.91 | +9.20 |
+| feed / 500ms after f | 825.20 / 828.74 | +3.54 |
+| feed / 100ms after labels | 754.93 / 689.41 | -65.52 |
+
+The consent-cleared, settled Reddit runs use native Wayland, software rendering,
+Qt 6.11.2, AC power, zoom 1, a 1280×694 logical page viewport and DPR 1.5. Each
+case has two warmup pairs and ten alternating pairs. The existing live baseline’s
+two-second page-settlement interval precedes T0 and all warmups. These measure a
+swapped Qt frame, not compositor presentation.
+
+| Live Reddit case | Strict / progressive first policy frame ms | Earlier ms / % | Validation completion cost ms |
+| --- | ---: | ---: | ---: |
+| Batch 1, scroll 0 | 229.51 / 209.32 | 20.19 / 8.8% | 48.72 |
+| Batch 1, scroll 1800 | 485.46 / 435.74 | 49.72 / 10.2% | 31.03 |
+| Batch 2, scroll 0 | 235.28 / 205.01 | 30.27 / 12.9% | 36.12 |
+| Batch 2, scroll 1800 | 473.60 / 452.27 | 21.33 / 4.5% | 52.05 |
+
+All 40 live Reddit candidate/control projection pairs match exactly. All 40
+candidate attempts use the prepared single-Top path (zero strict fallbacks among
+these completed samples); initial/final displayed arrays remain identical.
+This establishes neither a general fallback rate nor live completed-action
+latency. The live relative benefit does not reproduce the proposed 20% gate;
+validation is 31–52ms later. Controlled action gains cannot be extrapolated to
+these live pages.
+
+YouTube has **no qualified ten-pair batch**. The logs distinguish consent and
+configured-primary readiness failures from collection staleness after page
+loading/scrolling. In one trial policy labels reach the frame observer before
+collection closes; this is an observed withdrawal/failed journey, not a successful
+speed sample. Later settled trials still fail. These results do not establish
+whether each failed collection actually selected the progressive branch, or
+whether the strict branch would fail at the same page-load instant. No positive
+YouTube speed or coverage claim is justified. The second YouTube batch was not
+run after its first batch failed; failures were not discarded or replaced.
+
+The owner reviewed the live benefit/cost and explicitly chose **“Remove it per
+the plan”**. The Phase 3/4 publication prototype and the Phase 1 core readiness,
+pending-selection and PendingInitial machinery are removed. Prototype-only
+native/pure tests, its benchmark fixture, UI callback and temporary environment
+switch are removed too. No provisional contract is left in the current
+architecture/user documentation. Strict collection remains authoritative for
+all contexts, without changed eligibility, policy semantics, work allowances,
+frame deadlines or the deferred 5,000-target case.
+
+Retained work is the shared policy-assignment interpretation in `275b5fb`, the
+maintained Phase 0 feasibility fixtures/tools and the child-observation test
+repairs for already committed behavior. The shared refactor is retained for
+one interpretation of the policy graph, not advertised as a performance gain.
+The original installed release remains untouched. No human trial, default
+rollout, installation, PR or push was performed for the rejected prototype.
+
+Raw evidence is ignored under `target/progressive-hints-20261117/`:
+`qualified-live-{youtube,reddit}-b*.log`, their summary JSON, and
+`final-controlled-batch2.log` / `.summary.json`. The rejected source/resources,
+runner and standalone binary are identified by
+`rejected-prototype-provenance.json`; `removed-prototype.patch` and the copied
+fixture preserve the local experimental inputs. They are historical research
+artifacts, not installation candidates. If those local artifacts are absent in
+another checkout, use this report as summarized evidence; the current checkout
+intentionally cannot run the removed prototype benchmarks.
+
+The post-removal contract harness passes **188 tests** using actual retained
+production modules. Core tests, formatting and final source review are recorded
+below. The prototype’s successful native build/tests above qualify that measured
+prototype; they are not a claim that a new post-removal release was built. The
+retained production code returns exactly to the committed strict implementation,
+plus the already qualified shared policy-view refactor. No replacement native
+binary is supplied for this removal; a fresh source build is required before
+any future packaging or installation.
+
+
+### Retained-tree validation and local commits
+
+- Child-observation fixes: local commit `24c8c58`. All five repaired cases pass
+  on owned Wayland (seven results); the changed-child negative also passes with
+  the experiment disabled (three results, 3.743s), retaining its stale-rejection
+  and zero-effect assertions.
+- Post-removal core tests: **233 pass** (193 unit and 40 integration tests). Core Clippy passes for all targets with `-D warnings`.
+- Post-removal production-module contract harness: **188 pass**. Reproduce with
+  `python3 tools/qualification/check_hint_contracts.py --output target/hint-contracts`.
+  This remains a Qt-free logic check, not a substitute for native qualification.
+- Workspace formatting, diff whitespace and KDE-free schema-v2 policy checks
+  pass. Dependency-policy tooling's 15 tests also pass.
+- Exact source checks confirm every removed foundation file matches `6c4563d^`
+  (or is absent if it was introduced there), and the retained interpreter files
+  still match `275b5fb`. The only other crate change is the reviewed test repair.
+  `retained-source-review.json` records this check.
+- The installed executable still hashes to
+  `6582e4785530301549137fd1d9f772c1f149cd12421e484cb4588a3d7fdf57e5`.
+  Rejected prototype artifacts are explicitly marked not for installation.
+  No post-removal full native rebuild or whole-workspace CI pass is claimed.
+
+The retained scope is complete. Further progressive work requires a new owner
+request and a design that earns its cost on representative native workloads;
+there is no pending rollout or permanent experimental switch in this checkout.

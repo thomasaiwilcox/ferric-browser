@@ -117,15 +117,14 @@ impl FrozenAnchor {
                 .hint_interaction
                 .as_ref()
                 .is_some_and(|interaction| {
-                    interaction.hint_selection_is_validated(&self.label)
-                        && interaction
-                            .reservations()
-                            .get(self.slot)
-                            .is_some_and(|reservation| {
-                                reservation.declaration().code == self.label
-                                    && reservation.state()
-                                        == ferric_browser_core::HintReservationState::Live
-                            })
+                    interaction
+                        .reservations()
+                        .get(self.slot)
+                        .is_some_and(|reservation| {
+                            reservation.declaration().code == self.label
+                                && reservation.state()
+                                    == ferric_browser_core::HintReservationState::Live
+                        })
                 })
     }
 }
@@ -135,9 +134,6 @@ pub(crate) fn hint_anchor_state(ui: &qobject::BrowserUi, label: &QString) -> QSt
     let Some(interaction) = ui.rust().interaction.hint_interaction.as_ref() else {
         return QString::from("closed");
     };
-    if !interaction.hint_selection_is_validated(&label) {
-        return QString::from("pending");
-    }
     let Some(reservation) = interaction
         .reservations()
         .iter()
