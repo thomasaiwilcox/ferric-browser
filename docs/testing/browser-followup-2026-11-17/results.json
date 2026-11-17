@@ -1,0 +1,5470 @@
+{
+  "policy": {
+    "control": {
+      "none": {
+        "captured_labels_ms": {
+          "n": 10,
+          "median": 216.64922952186316,
+          "min": 203.58968200162053,
+          "max": 236.2907159840688
+        },
+        "all_success": true,
+        "stages": {}
+      },
+      "key-only": {
+        "captured_labels_ms": {
+          "n": 10,
+          "median": 309.89248951664194,
+          "min": 283.4519920870662,
+          "max": 357.8816360095516
+        },
+        "all_success": true,
+        "stages": {}
+      },
+      "anchor-only": {
+        "captured_labels_ms": {
+          "n": 10,
+          "median": 322.1727595082484,
+          "min": 288.6218619532883,
+          "max": 345.20783298648894
+        },
+        "all_success": true,
+        "stages": {}
+      },
+      "collection-only": {
+        "captured_labels_ms": {
+          "n": 10,
+          "median": 408.7304210406728,
+          "min": 381.4815009245649,
+          "max": 440.3887279331684
+        },
+        "all_success": true,
+        "stages": {}
+      },
+      "full": {
+        "captured_labels_ms": {
+          "n": 10,
+          "median": 417.31028800131753,
+          "min": 389.6673039998859,
+          "max": 461.94731805007905
+        },
+        "all_success": true,
+        "stages": {}
+      }
+    },
+    "diagnostic": {
+      "none": {
+        "captured_labels_ms": {
+          "n": 10,
+          "median": 215.86483449209481,
+          "min": 205.53196093533188,
+          "max": 237.89879900868982
+        },
+        "all_success": true,
+        "stages": {
+          "script:ordinary": {
+            "wall_ms": {
+              "n": 10,
+              "median": 99.5,
+              "min": 92,
+              "max": 114
+            },
+            "renderer_ms": {
+              "n": 10,
+              "median": 92.60000002384186,
+              "min": 87.59999990463257,
+              "max": 107.09999990463257
+            }
+          },
+          "collection-total": {
+            "wall_ms": {
+              "n": 10,
+              "median": 104.5,
+              "min": 101,
+              "max": 118
+            }
+          },
+          "publication-callback": {
+            "wall_ms": {
+              "n": 10,
+              "median": 7.5,
+              "min": 5,
+              "max": 10
+            }
+          }
+        }
+      },
+      "key-only": {
+        "captured_labels_ms": {
+          "n": 10,
+          "median": 312.0276869740337,
+          "min": 289.3489209236577,
+          "max": 354.5268439920619
+        },
+        "all_success": true,
+        "stages": {
+          "script:ordinary": {
+            "wall_ms": {
+              "n": 10,
+              "median": 130.5,
+              "min": 111,
+              "max": 155
+            },
+            "renderer_ms": {
+              "n": 10,
+              "median": 120.3500000834465,
+              "min": 101.39999997615814,
+              "max": 145.70000004768372
+            },
+            "work_medians": {
+              "inspections": 13147.0,
+              "predicate_steps": 0.0
+            }
+          },
+          "script:policy": {
+            "wall_ms": {
+              "n": 10,
+              "median": 17.5,
+              "min": 14,
+              "max": 23
+            },
+            "renderer_ms": {
+              "n": 10,
+              "median": 2.449999988079071,
+              "min": 2.1999999284744263,
+              "max": 6.899999976158142
+            },
+            "work_medians": {
+              "annotation_bytes": 523.5,
+              "inspections": 0.0,
+              "predicate_steps": 0.0
+            }
+          },
+          "adapter:verifyCollectionPolicy": {
+            "wall_ms": {
+              "n": 10,
+              "median": 22.5,
+              "min": 19,
+              "max": 30
+            }
+          },
+          "collection-total": {
+            "wall_ms": {
+              "n": 10,
+              "median": 190.5,
+              "min": 164,
+              "max": 223
+            }
+          },
+          "publication-callback": {
+            "wall_ms": {
+              "n": 10,
+              "median": 6.5,
+              "min": 5,
+              "max": 9
+            }
+          }
+        }
+      },
+      "anchor-only": {
+        "captured_labels_ms": {
+          "n": 10,
+          "median": 299.5712839765474,
+          "min": 291.17979505099356,
+          "max": 325.38927800487727
+        },
+        "all_success": true,
+        "stages": {
+          "script:ordinary": {
+            "wall_ms": {
+              "n": 10,
+              "median": 123.5,
+              "min": 116,
+              "max": 137
+            },
+            "renderer_ms": {
+              "n": 10,
+              "median": 114.35000002384186,
+              "min": 106.89999997615814,
+              "max": 129.69999992847443
+            },
+            "work_medians": {
+              "inspections": 13147.0,
+              "predicate_steps": 0.0
+            }
+          },
+          "script:policy": {
+            "wall_ms": {
+              "n": 10,
+              "median": 31.5,
+              "min": 30,
+              "max": 40
+            },
+            "renderer_ms": {
+              "n": 10,
+              "median": 18.599999964237213,
+              "min": 17,
+              "max": 20.899999976158142
+            },
+            "work_medians": {
+              "annotation_bytes": 1983.5,
+              "inspections": 3.0,
+              "predicate_steps": 19555.0
+            }
+          },
+          "adapter:verifyCollectionPolicy": {
+            "wall_ms": {
+              "n": 10,
+              "median": 26.0,
+              "min": 21,
+              "max": 34
+            }
+          },
+          "collection-total": {
+            "wall_ms": {
+              "n": 10,
+              "median": 196.0,
+              "min": 193,
+              "max": 216
+            }
+          },
+          "publication-callback": {
+            "wall_ms": {
+              "n": 10,
+              "median": 7.0,
+              "min": 5,
+              "max": 11
+            }
+          }
+        }
+      },
+      "collection-only": {
+        "captured_labels_ms": {
+          "n": 10,
+          "median": 419.3393415189348,
+          "min": 388.1125400075689,
+          "max": 447.17712502460927
+        },
+        "all_success": true,
+        "stages": {
+          "script:ordinary": {
+            "wall_ms": {
+              "n": 10,
+              "median": 131.0,
+              "min": 113,
+              "max": 153
+            },
+            "renderer_ms": {
+              "n": 10,
+              "median": 121.79999995231628,
+              "min": 103.89999997615814,
+              "max": 141.39999997615814
+            },
+            "work_medians": {
+              "inspections": 13147.0,
+              "predicate_steps": 0.0
+            }
+          },
+          "script:policy": {
+            "wall_ms": {
+              "n": 10,
+              "median": 74.0,
+              "min": 64,
+              "max": 85
+            },
+            "renderer_ms": {
+              "n": 10,
+              "median": 58.05000001192093,
+              "min": 51.5,
+              "max": 68.5
+            },
+            "work_medians": {
+              "annotation_bytes": 94714.0,
+              "inspections": 15.0,
+              "predicate_steps": 72081.0
+            }
+          },
+          "adapter:verifyCollectionPolicy": {
+            "wall_ms": {
+              "n": 10,
+              "median": 77.0,
+              "min": 69,
+              "max": 92
+            }
+          },
+          "collection-total": {
+            "wall_ms": {
+              "n": 10,
+              "median": 299.5,
+              "min": 271,
+              "max": 335
+            }
+          },
+          "publication-callback": {
+            "wall_ms": {
+              "n": 10,
+              "median": 10.0,
+              "min": 5,
+              "max": 16
+            }
+          }
+        }
+      },
+      "full": {
+        "captured_labels_ms": {
+          "n": 10,
+          "median": 406.00800747051835,
+          "min": 385.1064129266888,
+          "max": 512.1514700585976
+        },
+        "all_success": true,
+        "stages": {
+          "script:ordinary": {
+            "wall_ms": {
+              "n": 10,
+              "median": 121.0,
+              "min": 112,
+              "max": 154
+            },
+            "renderer_ms": {
+              "n": 10,
+              "median": 112.10000002384186,
+              "min": 104.39999997615814,
+              "max": 144.89999997615814
+            },
+            "work_medians": {
+              "inspections": 13147.0,
+              "predicate_steps": 0.0
+            }
+          },
+          "script:policy": {
+            "wall_ms": {
+              "n": 10,
+              "median": 80.5,
+              "min": 70,
+              "max": 89
+            },
+            "renderer_ms": {
+              "n": 10,
+              "median": 66.19999992847443,
+              "min": 55.800000071525574,
+              "max": 76.39999997615814
+            },
+            "work_medians": {
+              "annotation_bytes": 96015.0,
+              "inspections": 18.0,
+              "predicate_steps": 85023.0
+            }
+          },
+          "adapter:verifyCollectionPolicy": {
+            "wall_ms": {
+              "n": 10,
+              "median": 82.0,
+              "min": 74,
+              "max": 131
+            }
+          },
+          "collection-total": {
+            "wall_ms": {
+              "n": 10,
+              "median": 307.0,
+              "min": 289,
+              "max": 353
+            }
+          },
+          "publication-callback": {
+            "wall_ms": {
+              "n": 10,
+              "median": 6.0,
+              "min": 5,
+              "max": 18
+            }
+          }
+        }
+      }
+    }
+  },
+  "scaling": [
+    {
+      "case": "none",
+      "cards": 30,
+      "captured_labels_ms": {
+        "n": 3,
+        "median": 135.2870640112087,
+        "min": 133.28750408254564,
+        "max": 139.05073096975684
+      },
+      "stages": {
+        "script:ordinary": {
+          "wall_ms": {
+            "n": 3,
+            "median": 28,
+            "min": 26,
+            "max": 32
+          }
+        },
+        "collection-total": {
+          "wall_ms": {
+            "n": 3,
+            "median": 32,
+            "min": 31,
+            "max": 39
+          }
+        }
+      }
+    },
+    {
+      "case": "none",
+      "cards": 100,
+      "captured_labels_ms": {
+        "n": 3,
+        "median": 146.88311610370874,
+        "min": 137.93894101399928,
+        "max": 160.25101707782596
+      },
+      "stages": {
+        "script:ordinary": {
+          "wall_ms": {
+            "n": 3,
+            "median": 56,
+            "min": 45,
+            "max": 61
+          }
+        },
+        "collection-total": {
+          "wall_ms": {
+            "n": 3,
+            "median": 64,
+            "min": 50,
+            "max": 65
+          }
+        }
+      }
+    },
+    {
+      "case": "none",
+      "cards": 300,
+      "captured_labels_ms": {
+        "n": 3,
+        "median": 211.9406049605459,
+        "min": 211.17977506946772,
+        "max": 239.32228493504226
+      },
+      "stages": {
+        "script:ordinary": {
+          "wall_ms": {
+            "n": 3,
+            "median": 95,
+            "min": 91,
+            "max": 120
+          }
+        },
+        "collection-total": {
+          "wall_ms": {
+            "n": 3,
+            "median": 100,
+            "min": 99,
+            "max": 126
+          }
+        }
+      }
+    },
+    {
+      "case": "collection-only",
+      "cards": 30,
+      "captured_labels_ms": {
+        "n": 3,
+        "median": 225.40907899383456,
+        "min": 223.91264198813587,
+        "max": 243.7284189509228
+      },
+      "stages": {
+        "script:ordinary": {
+          "wall_ms": {
+            "n": 3,
+            "median": 32,
+            "min": 32,
+            "max": 47
+          },
+          "work_medians": {
+            "inspections": 1537,
+            "predicate_steps": 0
+          }
+        },
+        "script:policy": {
+          "wall_ms": {
+            "n": 3,
+            "median": 38,
+            "min": 34,
+            "max": 41
+          },
+          "work_medians": {
+            "annotation_bytes": 15103,
+            "inspections": 15,
+            "predicate_steps": 7281
+          }
+        },
+        "adapter:verifyCollectionPolicy": {
+          "wall_ms": {
+            "n": 3,
+            "median": 38,
+            "min": 36,
+            "max": 41
+          }
+        },
+        "collection-total": {
+          "wall_ms": {
+            "n": 3,
+            "median": 129,
+            "min": 116,
+            "max": 145
+          }
+        }
+      }
+    },
+    {
+      "case": "collection-only",
+      "cards": 100,
+      "captured_labels_ms": {
+        "n": 3,
+        "median": 320.46449405606836,
+        "min": 298.1565600493923,
+        "max": 352.3885089671239
+      },
+      "stages": {
+        "script:ordinary": {
+          "wall_ms": {
+            "n": 3,
+            "median": 67,
+            "min": 55,
+            "max": 91
+          },
+          "work_medians": {
+            "inspections": 4547,
+            "predicate_steps": 0
+          }
+        },
+        "script:policy": {
+          "wall_ms": {
+            "n": 3,
+            "median": 52,
+            "min": 47,
+            "max": 65
+          },
+          "work_medians": {
+            "annotation_bytes": 35513,
+            "inspections": 15,
+            "predicate_steps": 24081
+          }
+        },
+        "adapter:verifyCollectionPolicy": {
+          "wall_ms": {
+            "n": 3,
+            "median": 45,
+            "min": 44,
+            "max": 47
+          }
+        },
+        "collection-total": {
+          "wall_ms": {
+            "n": 3,
+            "median": 179,
+            "min": 161,
+            "max": 218
+          }
+        }
+      }
+    },
+    {
+      "case": "collection-only",
+      "cards": 300,
+      "captured_labels_ms": {
+        "n": 3,
+        "median": 402.784425066784,
+        "min": 384.8884829785675,
+        "max": 438.0430339369923
+      },
+      "stages": {
+        "script:ordinary": {
+          "wall_ms": {
+            "n": 3,
+            "median": 124,
+            "min": 122,
+            "max": 128
+          },
+          "work_medians": {
+            "inspections": 13147,
+            "predicate_steps": 0
+          }
+        },
+        "script:policy": {
+          "wall_ms": {
+            "n": 3,
+            "median": 71,
+            "min": 69,
+            "max": 83
+          },
+          "work_medians": {
+            "annotation_bytes": 94714,
+            "inspections": 15,
+            "predicate_steps": 72081
+          }
+        },
+        "adapter:verifyCollectionPolicy": {
+          "wall_ms": {
+            "n": 3,
+            "median": 84,
+            "min": 80,
+            "max": 88
+          }
+        },
+        "collection-total": {
+          "wall_ms": {
+            "n": 3,
+            "median": 298,
+            "min": 284,
+            "max": 315
+          }
+        }
+      }
+    }
+  ],
+  "inventory_experiment": [
+    {
+      "batch": 0,
+      "browser": "ferric-baseline",
+      "captured_labels_ms": {
+        "n": 10,
+        "median": 311.63244642084464,
+        "min": 294.9089170433581,
+        "max": 343.1591389235109
+      },
+      "all_success": true,
+      "ordinary_renderer_ms": {
+        "n": 10,
+        "median": 115.75,
+        "min": 106.39999997615814,
+        "max": 138.5
+      },
+      "collection_wall_ms": {
+        "n": 10,
+        "median": 186.5,
+        "min": 167,
+        "max": 202
+      },
+      "candidate_count": [
+        9
+      ],
+      "inspections": [
+        13147
+      ]
+    },
+    {
+      "batch": 0,
+      "browser": "ferric-candidate",
+      "captured_labels_ms": {
+        "n": 10,
+        "median": 295.2117805252783,
+        "min": 235.91207899153233,
+        "max": 330.3456479916349
+      },
+      "all_success": true,
+      "ordinary_renderer_ms": {
+        "n": 10,
+        "median": 104.25,
+        "min": 92.60000002384186,
+        "max": 113.29999995231628
+      },
+      "collection_wall_ms": {
+        "n": 10,
+        "median": 168.0,
+        "min": 156,
+        "max": 185
+      },
+      "candidate_count": [
+        9
+      ],
+      "inspections": [
+        13147
+      ]
+    },
+    {
+      "batch": 1,
+      "browser": "ferric-baseline",
+      "captured_labels_ms": {
+        "n": 10,
+        "median": 308.6032674764283,
+        "min": 289.1088699689135,
+        "max": 326.10464200843126
+      },
+      "all_success": true,
+      "ordinary_renderer_ms": {
+        "n": 10,
+        "median": 110.60000002384186,
+        "min": 101.89999997615814,
+        "max": 131
+      },
+      "collection_wall_ms": {
+        "n": 10,
+        "median": 180.0,
+        "min": 156,
+        "max": 204
+      },
+      "candidate_count": [
+        9
+      ],
+      "inspections": [
+        13147
+      ]
+    },
+    {
+      "batch": 1,
+      "browser": "ferric-candidate",
+      "captured_labels_ms": {
+        "n": 10,
+        "median": 303.36394655751064,
+        "min": 243.75378200784326,
+        "max": 346.0152790648863
+      },
+      "all_success": true,
+      "ordinary_renderer_ms": {
+        "n": 10,
+        "median": 100.79999995231628,
+        "min": 95.60000002384186,
+        "max": 132.20000004768372
+      },
+      "collection_wall_ms": {
+        "n": 10,
+        "median": 167.5,
+        "min": 155,
+        "max": 209
+      },
+      "candidate_count": [
+        9
+      ],
+      "inspections": [
+        13147
+      ]
+    }
+  ],
+  "memory": [
+    {
+      "round": 0,
+      "browser": "qute",
+      "stage": "fresh_one_tab",
+      "totals_kib": {
+        "Pss": 331641,
+        "Private_Clean": 103172,
+        "Private_Dirty": 128024,
+        "Anonymous": 171532,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 14993,
+          "Private_Clean": 9504,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 96219,
+          "Private_Clean": 0,
+          "Private_Dirty": 92720,
+          "Anonymous": 103156,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 2909,
+          "Private_Clean": 1264,
+          "Private_Dirty": 512,
+          "Anonymous": 32,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 66004,
+          "Private_Clean": 8928,
+          "Private_Dirty": 15192,
+          "Anonymous": 31532,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 4372,
+          "Private_Clean": 0,
+          "Private_Dirty": 2596,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 22785,
+          "Private_Clean": 8464,
+          "Private_Dirty": 2572,
+          "Anonymous": 5644,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 124359,
+          "Private_Clean": 75012,
+          "Private_Dirty": 11560,
+          "Anonymous": 28296,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 207370,
+            "Private_Clean": 54240,
+            "Private_Dirty": 104320,
+            "Anonymous": 101220,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 26083,
+            "Private_Clean": 168,
+            "Private_Dirty": 15816,
+            "Anonymous": 15816,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 15473,
+            "Private_Clean": 120,
+            "Private_Dirty": 120,
+            "Anonymous": 15820,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 5699,
+            "Private_Clean": 0,
+            "Private_Dirty": 108,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 77016,
+            "Private_Clean": 48644,
+            "Private_Dirty": 7660,
+            "Anonymous": 22852,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "browser": "ferric",
+      "stage": "fresh_one_tab",
+      "totals_kib": {
+        "Pss": 371831,
+        "Private_Clean": 84124,
+        "Private_Dirty": 154492,
+        "Anonymous": 196072,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 22988,
+          "Private_Clean": 22236,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 119962,
+          "Private_Clean": 0,
+          "Private_Dirty": 116960,
+          "Anonymous": 128424,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 16023,
+          "Private_Clean": 0,
+          "Private_Dirty": 13912,
+          "Anonymous": 12412,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3271,
+          "Private_Clean": 1896,
+          "Private_Dirty": 504,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 27670,
+          "Private_Clean": 100,
+          "Private_Dirty": 6360,
+          "Anonymous": 10600,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 45939,
+          "Private_Clean": 27764,
+          "Private_Dirty": 3692,
+          "Anonymous": 8444,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 135978,
+          "Private_Clean": 32128,
+          "Private_Dirty": 12312,
+          "Anonymous": 35440,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 245897,
+            "Private_Clean": 78528,
+            "Private_Dirty": 127364,
+            "Anonymous": 125360,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 21488,
+            "Private_Clean": 20,
+            "Private_Dirty": 11220,
+            "Anonymous": 11220,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 13268,
+            "Private_Clean": 8,
+            "Private_Dirty": 96,
+            "Anonymous": 11232,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 3481,
+            "Private_Clean": 0,
+            "Private_Dirty": 100,
+            "Anonymous": 11240,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39579,
+            "Private_Clean": 512,
+            "Private_Dirty": 6300,
+            "Anonymous": 16952,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 48118,
+            "Private_Clean": 5056,
+            "Private_Dirty": 9412,
+            "Anonymous": 20068,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "browser": "qute",
+      "stage": "eight_visited_tabs",
+      "totals_kib": {
+        "Pss": 471037,
+        "Private_Clean": 55516,
+        "Private_Dirty": 259720,
+        "Anonymous": 408280,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 14993,
+          "Private_Clean": 9504,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 224461,
+          "Private_Clean": 0,
+          "Private_Dirty": 221144,
+          "Anonymous": 254476,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 12392,
+          "Private_Clean": 0,
+          "Private_Dirty": 3824,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 2899,
+          "Private_Clean": 520,
+          "Private_Dirty": 512,
+          "Anonymous": 88,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 65509,
+          "Private_Clean": 5280,
+          "Private_Dirty": 15388,
+          "Anonymous": 69808,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 22805,
+          "Private_Clean": 8556,
+          "Private_Dirty": 2572,
+          "Anonymous": 12812,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 127978,
+          "Private_Clean": 31656,
+          "Private_Dirty": 13408,
+          "Anonymous": 68224,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 233583,
+            "Private_Clean": 54140,
+            "Private_Dirty": 138588,
+            "Anonymous": 135220,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 24257,
+            "Private_Clean": 168,
+            "Private_Dirty": 15816,
+            "Anonymous": 15816,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 10065,
+            "Private_Clean": 120,
+            "Private_Dirty": 124,
+            "Anonymous": 15820,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 1907,
+            "Private_Clean": 0,
+            "Private_Dirty": 112,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19216,
+            "Private_Clean": 128,
+            "Private_Dirty": 7732,
+            "Anonymous": 22916,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 32488,
+            "Private_Clean": 0,
+            "Private_Dirty": 21044,
+            "Anonymous": 36228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 23140,
+            "Private_Clean": 960,
+            "Private_Dirty": 10360,
+            "Anonymous": 25544,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19587,
+            "Private_Clean": 0,
+            "Private_Dirty": 7744,
+            "Anonymous": 22928,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 33170,
+            "Private_Clean": 0,
+            "Private_Dirty": 21020,
+            "Anonymous": 36132,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 20930,
+            "Private_Clean": 0,
+            "Private_Dirty": 8484,
+            "Anonymous": 23620,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19586,
+            "Private_Clean": 0,
+            "Private_Dirty": 7732,
+            "Anonymous": 22916,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 33108,
+            "Private_Clean": 0,
+            "Private_Dirty": 20964,
+            "Anonymous": 35316,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "browser": "ferric",
+      "stage": "eight_visited_tabs",
+      "totals_kib": {
+        "Pss": 531888,
+        "Private_Clean": 78684,
+        "Private_Dirty": 308720,
+        "Anonymous": 423572,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23180,
+          "Private_Clean": 22428,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 270812,
+          "Private_Clean": 0,
+          "Private_Dirty": 267928,
+          "Anonymous": 298468,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 23084,
+          "Private_Clean": 0,
+          "Private_Dirty": 15212,
+          "Anonymous": 12440,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3254,
+          "Private_Clean": 1896,
+          "Private_Dirty": 504,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 27235,
+          "Private_Clean": 100,
+          "Private_Dirty": 6444,
+          "Anonymous": 18104,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 45861,
+          "Private_Clean": 27188,
+          "Private_Dirty": 3692,
+          "Anonymous": 16760,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 138462,
+          "Private_Clean": 27072,
+          "Private_Dirty": 14188,
+          "Anonymous": 77048,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 265027,
+            "Private_Clean": 78272,
+            "Private_Dirty": 151648,
+            "Anonymous": 149352,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 20114,
+            "Private_Clean": 20,
+            "Private_Dirty": 11220,
+            "Anonymous": 11220,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 10095,
+            "Private_Clean": 8,
+            "Private_Dirty": 96,
+            "Anonymous": 11232,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 1460,
+            "Private_Clean": 0,
+            "Private_Dirty": 100,
+            "Anonymous": 11240,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 15556,
+            "Private_Clean": 320,
+            "Private_Dirty": 6300,
+            "Anonymous": 16952,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19283,
+            "Private_Clean": 64,
+            "Private_Dirty": 9576,
+            "Anonymous": 20228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39279,
+            "Private_Clean": 0,
+            "Private_Dirty": 29612,
+            "Anonymous": 40260,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 20485,
+            "Private_Clean": 0,
+            "Private_Dirty": 10536,
+            "Anonymous": 21184,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19120,
+            "Private_Clean": 0,
+            "Private_Dirty": 9512,
+            "Anonymous": 20164,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 40109,
+            "Private_Clean": 0,
+            "Private_Dirty": 29764,
+            "Anonymous": 40292,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 21161,
+            "Private_Clean": 0,
+            "Private_Dirty": 10612,
+            "Anonymous": 21176,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19568,
+            "Private_Clean": 0,
+            "Private_Dirty": 9492,
+            "Anonymous": 20144,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 40631,
+            "Private_Clean": 0,
+            "Private_Dirty": 30252,
+            "Anonymous": 40128,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "browser": "qute",
+      "stage": "after_closing_seven",
+      "totals_kib": {
+        "Pss": 390333,
+        "Private_Clean": 55188,
+        "Private_Dirty": 184184,
+        "Anonymous": 242044,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 14993,
+          "Private_Clean": 9504,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 151351,
+          "Private_Clean": 0,
+          "Private_Dirty": 147780,
+          "Anonymous": 161464,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 2927,
+          "Private_Clean": 520,
+          "Private_Dirty": 512,
+          "Anonymous": 40,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 66631,
+          "Private_Clean": 5280,
+          "Private_Dirty": 15220,
+          "Anonymous": 37000,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 5995,
+          "Private_Clean": 0,
+          "Private_Dirty": 3404,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 23103,
+          "Private_Clean": 8612,
+          "Private_Dirty": 2572,
+          "Anonymous": 6668,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 125333,
+          "Private_Clean": 31272,
+          "Private_Dirty": 11824,
+          "Anonymous": 34000,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 238029,
+            "Private_Clean": 54580,
+            "Private_Dirty": 138548,
+            "Anonymous": 135420,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 25508,
+            "Private_Clean": 168,
+            "Private_Dirty": 15816,
+            "Anonymous": 15816,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 13837,
+            "Private_Clean": 120,
+            "Private_Dirty": 124,
+            "Anonymous": 15820,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 4601,
+            "Private_Clean": 0,
+            "Private_Dirty": 120,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 46660,
+            "Private_Clean": 128,
+            "Private_Dirty": 7732,
+            "Anonymous": 22916,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 61698,
+            "Private_Clean": 192,
+            "Private_Dirty": 21844,
+            "Anonymous": 36248,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "browser": "ferric",
+      "stage": "after_closing_seven",
+      "totals_kib": {
+        "Pss": 396219,
+        "Private_Clean": 84252,
+        "Private_Dirty": 178256,
+        "Anonymous": 219828,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23180,
+          "Private_Clean": 22428,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 143706,
+          "Private_Clean": 0,
+          "Private_Dirty": 140708,
+          "Anonymous": 152164,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 16239,
+          "Private_Clean": 0,
+          "Private_Dirty": 13928,
+          "Anonymous": 12428,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3249,
+          "Private_Clean": 1896,
+          "Private_Dirty": 504,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 27512,
+          "Private_Clean": 100,
+          "Private_Dirty": 6360,
+          "Anonymous": 10600,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 45971,
+          "Private_Clean": 27764,
+          "Private_Dirty": 3692,
+          "Anonymous": 8444,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 136362,
+          "Private_Clean": 32064,
+          "Private_Dirty": 12312,
+          "Anonymous": 35440,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 269798,
+            "Private_Clean": 78720,
+            "Private_Dirty": 150864,
+            "Anonymous": 148860,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 21472,
+            "Private_Clean": 20,
+            "Private_Dirty": 11220,
+            "Anonymous": 11220,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 13252,
+            "Private_Clean": 8,
+            "Private_Dirty": 96,
+            "Anonymous": 11232,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 3486,
+            "Private_Clean": 0,
+            "Private_Dirty": 104,
+            "Anonymous": 11240,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39481,
+            "Private_Clean": 384,
+            "Private_Dirty": 6300,
+            "Anonymous": 16952,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 48730,
+            "Private_Clean": 5120,
+            "Private_Dirty": 9672,
+            "Anonymous": 20324,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "browser": "ferric",
+      "stage": "fresh_one_tab",
+      "totals_kib": {
+        "Pss": 370382,
+        "Private_Clean": 84532,
+        "Private_Dirty": 152532,
+        "Anonymous": 194124,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23212,
+          "Private_Clean": 22460,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 117842,
+          "Private_Clean": 0,
+          "Private_Dirty": 114844,
+          "Anonymous": 126292,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 16207,
+          "Private_Clean": 0,
+          "Private_Dirty": 14068,
+          "Anonymous": 12596,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 27781,
+          "Private_Clean": 108,
+          "Private_Dirty": 6360,
+          "Anonymous": 10600,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 45990,
+          "Private_Clean": 27776,
+          "Private_Dirty": 3692,
+          "Anonymous": 8444,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3372,
+          "Private_Clean": 1996,
+          "Private_Dirty": 504,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 135978,
+          "Private_Clean": 32192,
+          "Private_Dirty": 12312,
+          "Anonymous": 35440,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 246369,
+            "Private_Clean": 78864,
+            "Private_Dirty": 127448,
+            "Anonymous": 125472,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 21500,
+            "Private_Clean": 28,
+            "Private_Dirty": 11216,
+            "Anonymous": 11216,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 13352,
+            "Private_Clean": 0,
+            "Private_Dirty": 96,
+            "Anonymous": 11228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 3480,
+            "Private_Clean": 0,
+            "Private_Dirty": 100,
+            "Anonymous": 11236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39615,
+            "Private_Clean": 564,
+            "Private_Dirty": 6296,
+            "Anonymous": 16944,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 46066,
+            "Private_Clean": 5076,
+            "Private_Dirty": 7376,
+            "Anonymous": 18028,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "browser": "qute",
+      "stage": "fresh_one_tab",
+      "totals_kib": {
+        "Pss": 331018,
+        "Private_Clean": 102980,
+        "Private_Dirty": 127596,
+        "Anonymous": 171080,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 14926,
+          "Private_Clean": 9424,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 95769,
+          "Private_Clean": 0,
+          "Private_Dirty": 92260,
+          "Anonymous": 102704,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 2914,
+          "Private_Clean": 1268,
+          "Private_Dirty": 512,
+          "Anonymous": 32,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 4372,
+          "Private_Clean": 0,
+          "Private_Dirty": 2628,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 66039,
+          "Private_Clean": 8848,
+          "Private_Dirty": 15192,
+          "Anonymous": 31532,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 22767,
+          "Private_Clean": 8472,
+          "Private_Dirty": 2572,
+          "Anonymous": 5644,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 124231,
+          "Private_Clean": 74968,
+          "Private_Dirty": 11560,
+          "Anonymous": 28296,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 206872,
+            "Private_Clean": 54176,
+            "Private_Dirty": 103904,
+            "Anonymous": 100772,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 26119,
+            "Private_Clean": 132,
+            "Private_Dirty": 15820,
+            "Anonymous": 15820,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 15481,
+            "Private_Clean": 160,
+            "Private_Dirty": 116,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 5707,
+            "Private_Clean": 0,
+            "Private_Dirty": 108,
+            "Anonymous": 15828,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 76839,
+            "Private_Clean": 48512,
+            "Private_Dirty": 7648,
+            "Anonymous": 22836,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "browser": "ferric",
+      "stage": "eight_visited_tabs",
+      "totals_kib": {
+        "Pss": 516319,
+        "Private_Clean": 79136,
+        "Private_Dirty": 292400,
+        "Anonymous": 407448,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23468,
+          "Private_Clean": 22716,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 254530,
+          "Private_Clean": 0,
+          "Private_Dirty": 251664,
+          "Anonymous": 282160,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 23268,
+          "Private_Clean": 0,
+          "Private_Dirty": 15156,
+          "Anonymous": 12624,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 27331,
+          "Private_Clean": 108,
+          "Private_Dirty": 6444,
+          "Anonymous": 18104,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 45924,
+          "Private_Clean": 27180,
+          "Private_Dirty": 3692,
+          "Anonymous": 16760,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3337,
+          "Private_Clean": 1996,
+          "Private_Dirty": 504,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 138461,
+          "Private_Clean": 27136,
+          "Private_Dirty": 14188,
+          "Anonymous": 77048,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 265514,
+            "Private_Clean": 78672,
+            "Private_Dirty": 151576,
+            "Anonymous": 149520,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 20133,
+            "Private_Clean": 28,
+            "Private_Dirty": 11216,
+            "Anonymous": 11216,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 10183,
+            "Private_Clean": 0,
+            "Private_Dirty": 96,
+            "Anonymous": 11228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 1458,
+            "Private_Clean": 0,
+            "Private_Dirty": 100,
+            "Anonymous": 11236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 15602,
+            "Private_Clean": 372,
+            "Private_Dirty": 6296,
+            "Anonymous": 16944,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 17230,
+            "Private_Clean": 64,
+            "Private_Dirty": 7540,
+            "Anonymous": 18188,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 37234,
+            "Private_Clean": 0,
+            "Private_Dirty": 27576,
+            "Anonymous": 38220,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 18441,
+            "Private_Clean": 0,
+            "Private_Dirty": 8496,
+            "Anonymous": 19140,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 17088,
+            "Private_Clean": 0,
+            "Private_Dirty": 7472,
+            "Anonymous": 18120,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 38085,
+            "Private_Clean": 0,
+            "Private_Dirty": 27724,
+            "Anonymous": 38236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19125,
+            "Private_Clean": 0,
+            "Private_Dirty": 8576,
+            "Anonymous": 19140,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 17580,
+            "Private_Clean": 0,
+            "Private_Dirty": 7480,
+            "Anonymous": 18128,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 38646,
+            "Private_Clean": 0,
+            "Private_Dirty": 28252,
+            "Anonymous": 38132,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "browser": "qute",
+      "stage": "eight_visited_tabs",
+      "totals_kib": {
+        "Pss": 468086,
+        "Private_Clean": 54216,
+        "Private_Dirty": 258472,
+        "Anonymous": 405244,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 14926,
+          "Private_Clean": 9424,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 221412,
+          "Private_Clean": 0,
+          "Private_Dirty": 218100,
+          "Anonymous": 251440,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 13592,
+          "Private_Clean": 0,
+          "Private_Dirty": 5620,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 2926,
+          "Private_Clean": 524,
+          "Private_Dirty": 512,
+          "Anonymous": 88,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 65557,
+          "Private_Clean": 5200,
+          "Private_Dirty": 15388,
+          "Anonymous": 69808,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 22787,
+          "Private_Clean": 8564,
+          "Private_Dirty": 2572,
+          "Anonymous": 12812,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 126886,
+          "Private_Clean": 30504,
+          "Private_Dirty": 13408,
+          "Anonymous": 68224,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 234139,
+            "Private_Clean": 53924,
+            "Private_Dirty": 139572,
+            "Anonymous": 134668,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 24297,
+            "Private_Clean": 132,
+            "Private_Dirty": 15820,
+            "Anonymous": 15820,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 10074,
+            "Private_Clean": 160,
+            "Private_Dirty": 120,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 1908,
+            "Private_Clean": 0,
+            "Private_Dirty": 112,
+            "Anonymous": 15828,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19098,
+            "Private_Clean": 0,
+            "Private_Dirty": 7728,
+            "Anonymous": 22912,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 31669,
+            "Private_Clean": 0,
+            "Private_Dirty": 20224,
+            "Anonymous": 35408,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 20245,
+            "Private_Clean": 0,
+            "Private_Dirty": 8428,
+            "Anonymous": 23612,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19517,
+            "Private_Clean": 0,
+            "Private_Dirty": 7696,
+            "Anonymous": 22880,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 32657,
+            "Private_Clean": 0,
+            "Private_Dirty": 20556,
+            "Anonymous": 35584,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 20917,
+            "Private_Clean": 0,
+            "Private_Dirty": 8532,
+            "Anonymous": 23612,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19537,
+            "Private_Clean": 0,
+            "Private_Dirty": 7724,
+            "Anonymous": 22908,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 34028,
+            "Private_Clean": 0,
+            "Private_Dirty": 21960,
+            "Anonymous": 36188,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "browser": "ferric",
+      "stage": "after_closing_seven",
+      "totals_kib": {
+        "Pss": 397479,
+        "Private_Clean": 84788,
+        "Private_Dirty": 179476,
+        "Anonymous": 219860,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23532,
+          "Private_Clean": 22780,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 143566,
+          "Private_Clean": 0,
+          "Private_Dirty": 140572,
+          "Anonymous": 152012,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 17023,
+          "Private_Clean": 0,
+          "Private_Dirty": 15284,
+          "Anonymous": 12612,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 27625,
+          "Private_Clean": 108,
+          "Private_Dirty": 6360,
+          "Anonymous": 10600,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 46022,
+          "Private_Clean": 27776,
+          "Private_Dirty": 3692,
+          "Anonymous": 8444,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3350,
+          "Private_Clean": 1996,
+          "Private_Dirty": 504,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 136361,
+          "Private_Clean": 32128,
+          "Private_Dirty": 12312,
+          "Anonymous": 35440,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 270933,
+            "Private_Clean": 79184,
+            "Private_Dirty": 152084,
+            "Anonymous": 148908,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 21486,
+            "Private_Clean": 28,
+            "Private_Dirty": 11216,
+            "Anonymous": 11216,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 13338,
+            "Private_Clean": 0,
+            "Private_Dirty": 96,
+            "Anonymous": 11228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 3485,
+            "Private_Clean": 0,
+            "Private_Dirty": 104,
+            "Anonymous": 11236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39515,
+            "Private_Clean": 436,
+            "Private_Dirty": 6296,
+            "Anonymous": 16944,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 48722,
+            "Private_Clean": 5140,
+            "Private_Dirty": 9680,
+            "Anonymous": 20328,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "browser": "qute",
+      "stage": "after_closing_seven",
+      "totals_kib": {
+        "Pss": 388780,
+        "Private_Clean": 54848,
+        "Private_Dirty": 182972,
+        "Anonymous": 240668,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 14926,
+          "Private_Clean": 9424,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 149971,
+          "Private_Clean": 0,
+          "Private_Dirty": 146396,
+          "Anonymous": 160088,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 5995,
+          "Private_Clean": 0,
+          "Private_Dirty": 3576,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 2935,
+          "Private_Clean": 524,
+          "Private_Dirty": 512,
+          "Anonymous": 40,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 66665,
+          "Private_Clean": 5200,
+          "Private_Dirty": 15220,
+          "Anonymous": 37000,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 23085,
+          "Private_Clean": 8620,
+          "Private_Dirty": 2572,
+          "Anonymous": 6668,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 125203,
+          "Private_Clean": 31080,
+          "Private_Dirty": 11824,
+          "Anonymous": 34000,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 237299,
+            "Private_Clean": 54364,
+            "Private_Dirty": 138024,
+            "Anonymous": 134852,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 25546,
+            "Private_Clean": 132,
+            "Private_Dirty": 15820,
+            "Anonymous": 15820,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 13848,
+            "Private_Clean": 160,
+            "Private_Dirty": 124,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 4603,
+            "Private_Clean": 0,
+            "Private_Dirty": 120,
+            "Anonymous": 15828,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 46530,
+            "Private_Clean": 0,
+            "Private_Dirty": 7728,
+            "Anonymous": 22912,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 60954,
+            "Private_Clean": 192,
+            "Private_Dirty": 21156,
+            "Anonymous": 35432,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "browser": "qute",
+      "stage": "fresh_one_tab",
+      "totals_kib": {
+        "Pss": 331209,
+        "Private_Clean": 103228,
+        "Private_Dirty": 127624,
+        "Anonymous": 171088,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 15080,
+          "Private_Clean": 9576,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 95782,
+          "Private_Clean": 0,
+          "Private_Dirty": 92284,
+          "Anonymous": 102712,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 65941,
+          "Private_Clean": 8916,
+          "Private_Dirty": 15192,
+          "Anonymous": 31532,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 2933,
+          "Private_Clean": 1236,
+          "Private_Dirty": 512,
+          "Anonymous": 32,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 4372,
+          "Private_Clean": 0,
+          "Private_Dirty": 2632,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 22870,
+          "Private_Clean": 8556,
+          "Private_Dirty": 2572,
+          "Anonymous": 5644,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 124231,
+          "Private_Clean": 74944,
+          "Private_Dirty": 11560,
+          "Anonymous": 28296,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 206923,
+            "Private_Clean": 54364,
+            "Private_Dirty": 103900,
+            "Anonymous": 100764,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 25980,
+            "Private_Clean": 100,
+            "Private_Dirty": 15816,
+            "Anonymous": 15816,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 15707,
+            "Private_Clean": 252,
+            "Private_Dirty": 124,
+            "Anonymous": 15820,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 5706,
+            "Private_Clean": 0,
+            "Private_Dirty": 112,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 76893,
+            "Private_Clean": 48512,
+            "Private_Dirty": 7672,
+            "Anonymous": 22864,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "browser": "ferric",
+      "stage": "fresh_one_tab",
+      "totals_kib": {
+        "Pss": 370093,
+        "Private_Clean": 84340,
+        "Private_Dirty": 152576,
+        "Anonymous": 194144,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 22988,
+          "Private_Clean": 22236,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 117850,
+          "Private_Clean": 0,
+          "Private_Dirty": 114848,
+          "Anonymous": 126312,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 16207,
+          "Private_Clean": 0,
+          "Private_Dirty": 14108,
+          "Anonymous": 12596,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 27768,
+          "Private_Clean": 168,
+          "Private_Dirty": 6360,
+          "Anonymous": 10600,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 46027,
+          "Private_Clean": 27836,
+          "Private_Dirty": 3692,
+          "Anonymous": 8444,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3276,
+          "Private_Clean": 1908,
+          "Private_Dirty": 504,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 135977,
+          "Private_Clean": 32192,
+          "Private_Dirty": 12312,
+          "Anonymous": 35440,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 246232,
+            "Private_Clean": 78684,
+            "Private_Dirty": 127512,
+            "Anonymous": 125496,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 21450,
+            "Private_Clean": 4,
+            "Private_Dirty": 11216,
+            "Anonymous": 11216,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 13317,
+            "Private_Clean": 32,
+            "Private_Dirty": 96,
+            "Anonymous": 11228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 3477,
+            "Private_Clean": 0,
+            "Private_Dirty": 96,
+            "Anonymous": 11236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39522,
+            "Private_Clean": 512,
+            "Private_Dirty": 6292,
+            "Anonymous": 16944,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 46095,
+            "Private_Clean": 5108,
+            "Private_Dirty": 7364,
+            "Anonymous": 18024,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "browser": "qute",
+      "stage": "eight_visited_tabs",
+      "totals_kib": {
+        "Pss": 467569,
+        "Private_Clean": 54552,
+        "Private_Dirty": 257788,
+        "Anonymous": 404572,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 15080,
+          "Private_Clean": 9576,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 220708,
+          "Private_Clean": 0,
+          "Private_Dirty": 217444,
+          "Anonymous": 250768,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 13592,
+          "Private_Clean": 0,
+          "Private_Dirty": 5592,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 65475,
+          "Private_Clean": 5268,
+          "Private_Dirty": 15388,
+          "Anonymous": 69808,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 2935,
+          "Private_Clean": 492,
+          "Private_Dirty": 512,
+          "Anonymous": 88,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 22890,
+          "Private_Clean": 8648,
+          "Private_Dirty": 2572,
+          "Anonymous": 12812,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 126889,
+          "Private_Clean": 30568,
+          "Private_Dirty": 13408,
+          "Anonymous": 68224,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 234208,
+            "Private_Clean": 54200,
+            "Private_Dirty": 139540,
+            "Anonymous": 134660,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 24158,
+            "Private_Clean": 100,
+            "Private_Dirty": 15816,
+            "Anonymous": 15816,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 10288,
+            "Private_Clean": 252,
+            "Private_Dirty": 128,
+            "Anonymous": 15820,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 1904,
+            "Private_Clean": 0,
+            "Private_Dirty": 116,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19087,
+            "Private_Clean": 0,
+            "Private_Dirty": 7744,
+            "Anonymous": 22928,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 32018,
+            "Private_Clean": 0,
+            "Private_Dirty": 20624,
+            "Anonymous": 35808,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 20241,
+            "Private_Clean": 0,
+            "Private_Dirty": 8424,
+            "Anonymous": 23608,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19540,
+            "Private_Clean": 0,
+            "Private_Dirty": 7704,
+            "Anonymous": 22888,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 32420,
+            "Private_Clean": 0,
+            "Private_Dirty": 20352,
+            "Anonymous": 35344,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 20926,
+            "Private_Clean": 0,
+            "Private_Dirty": 8496,
+            "Anonymous": 23616,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19596,
+            "Private_Clean": 0,
+            "Private_Dirty": 7740,
+            "Anonymous": 22924,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 33183,
+            "Private_Clean": 0,
+            "Private_Dirty": 21104,
+            "Anonymous": 35336,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "browser": "ferric",
+      "stage": "eight_visited_tabs",
+      "totals_kib": {
+        "Pss": 515877,
+        "Private_Clean": 78844,
+        "Private_Dirty": 292476,
+        "Anonymous": 407360,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23180,
+          "Private_Clean": 22428,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 254431,
+          "Private_Clean": 0,
+          "Private_Dirty": 251540,
+          "Anonymous": 282072,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 23268,
+          "Private_Clean": 0,
+          "Private_Dirty": 15356,
+          "Anonymous": 12624,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 27333,
+          "Private_Clean": 168,
+          "Private_Dirty": 6444,
+          "Anonymous": 18104,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 45956,
+          "Private_Clean": 27272,
+          "Private_Dirty": 3692,
+          "Anonymous": 16760,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3246,
+          "Private_Clean": 1904,
+          "Private_Dirty": 504,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 138463,
+          "Private_Clean": 27072,
+          "Private_Dirty": 14188,
+          "Anonymous": 77048,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 265190,
+            "Private_Clean": 78424,
+            "Private_Dirty": 151628,
+            "Anonymous": 149472,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 20081,
+            "Private_Clean": 4,
+            "Private_Dirty": 11216,
+            "Anonymous": 11216,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 10149,
+            "Private_Clean": 32,
+            "Private_Dirty": 96,
+            "Anonymous": 11228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 1459,
+            "Private_Clean": 0,
+            "Private_Dirty": 100,
+            "Anonymous": 11236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 15552,
+            "Private_Clean": 320,
+            "Private_Dirty": 6292,
+            "Anonymous": 16944,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 17237,
+            "Private_Clean": 64,
+            "Private_Dirty": 7532,
+            "Anonymous": 18184,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 37231,
+            "Private_Clean": 0,
+            "Private_Dirty": 27572,
+            "Anonymous": 38220,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 18436,
+            "Private_Clean": 0,
+            "Private_Dirty": 8480,
+            "Anonymous": 19128,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 17089,
+            "Private_Clean": 0,
+            "Private_Dirty": 7464,
+            "Anonymous": 18116,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 38044,
+            "Private_Clean": 0,
+            "Private_Dirty": 27704,
+            "Anonymous": 38196,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19132,
+            "Private_Clean": 0,
+            "Private_Dirty": 8604,
+            "Anonymous": 19148,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 17548,
+            "Private_Clean": 0,
+            "Private_Dirty": 7448,
+            "Anonymous": 18100,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 38729,
+            "Private_Clean": 0,
+            "Private_Dirty": 28340,
+            "Anonymous": 38172,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "browser": "qute",
+      "stage": "after_closing_seven",
+      "totals_kib": {
+        "Pss": 367442,
+        "Private_Clean": 103504,
+        "Private_Dirty": 163096,
+        "Anonymous": 205336,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 15080,
+          "Private_Clean": 9576,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 130042,
+          "Private_Clean": 0,
+          "Private_Dirty": 126556,
+          "Anonymous": 136960,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 5572,
+          "Private_Clean": 0,
+          "Private_Dirty": 3832,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 65941,
+          "Private_Clean": 8916,
+          "Private_Dirty": 15192,
+          "Anonymous": 31532,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 2933,
+          "Private_Clean": 1236,
+          "Private_Dirty": 512,
+          "Anonymous": 32,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 23132,
+          "Private_Clean": 8704,
+          "Private_Dirty": 2572,
+          "Anonymous": 5644,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 124742,
+          "Private_Clean": 75072,
+          "Private_Dirty": 11560,
+          "Anonymous": 28296,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 243063,
+            "Private_Clean": 54832,
+            "Private_Dirty": 139264,
+            "Anonymous": 134928,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 25976,
+            "Private_Clean": 100,
+            "Private_Dirty": 15816,
+            "Anonymous": 15816,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 15704,
+            "Private_Clean": 252,
+            "Private_Dirty": 128,
+            "Anonymous": 15820,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 5724,
+            "Private_Clean": 0,
+            "Private_Dirty": 124,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 76975,
+            "Private_Clean": 48320,
+            "Private_Dirty": 7764,
+            "Anonymous": 22948,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "browser": "ferric",
+      "stage": "after_closing_seven",
+      "totals_kib": {
+        "Pss": 396686,
+        "Private_Clean": 84468,
+        "Private_Dirty": 178372,
+        "Anonymous": 219916,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23180,
+          "Private_Clean": 22428,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 143618,
+          "Private_Clean": 0,
+          "Private_Dirty": 140628,
+          "Anonymous": 152068,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 16423,
+          "Private_Clean": 0,
+          "Private_Dirty": 14124,
+          "Anonymous": 12612,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 27768,
+          "Private_Clean": 168,
+          "Private_Dirty": 6360,
+          "Anonymous": 10600,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 46059,
+          "Private_Clean": 27836,
+          "Private_Dirty": 3692,
+          "Anonymous": 8444,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3276,
+          "Private_Clean": 1908,
+          "Private_Dirty": 504,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 136362,
+          "Private_Clean": 32128,
+          "Private_Dirty": 12312,
+          "Anonymous": 35440,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 270188,
+            "Private_Clean": 78876,
+            "Private_Dirty": 150996,
+            "Anonymous": 148980,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 21449,
+            "Private_Clean": 4,
+            "Private_Dirty": 11216,
+            "Anonymous": 11216,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 13318,
+            "Private_Clean": 32,
+            "Private_Dirty": 100,
+            "Anonymous": 11228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 3486,
+            "Private_Clean": 0,
+            "Private_Dirty": 108,
+            "Anonymous": 11236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39480,
+            "Private_Clean": 384,
+            "Private_Dirty": 6292,
+            "Anonymous": 16944,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 48765,
+            "Private_Clean": 5172,
+            "Private_Dirty": 9660,
+            "Anonymous": 20312,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "browser": "qute",
+      "stage": "native_fresh_one_tab",
+      "totals_kib": {
+        "Pss": 348781,
+        "Private_Clean": 110344,
+        "Private_Dirty": 136128,
+        "Anonymous": 179624,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 15451,
+          "Private_Clean": 10088,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 103922,
+          "Private_Clean": 0,
+          "Private_Dirty": 100428,
+          "Anonymous": 110872,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3376,
+          "Private_Clean": 1392,
+          "Private_Dirty": 708,
+          "Anonymous": 32,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 2670,
+          "Private_Clean": 0,
+          "Private_Dirty": 2416,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 67617,
+          "Private_Clean": 8792,
+          "Private_Dirty": 15572,
+          "Anonymous": 31908,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 24230,
+          "Private_Clean": 9380,
+          "Private_Dirty": 2572,
+          "Anonymous": 5644,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 131515,
+          "Private_Clean": 80692,
+          "Private_Dirty": 11560,
+          "Anonymous": 28296,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 224924,
+            "Private_Clean": 62500,
+            "Private_Dirty": 112384,
+            "Anonymous": 109268,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 26132,
+            "Private_Clean": 80,
+            "Private_Dirty": 15820,
+            "Anonymous": 15820,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 15520,
+            "Private_Clean": 84,
+            "Private_Dirty": 116,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 5703,
+            "Private_Clean": 0,
+            "Private_Dirty": 108,
+            "Anonymous": 15828,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 76502,
+            "Private_Clean": 47680,
+            "Private_Dirty": 7700,
+            "Anonymous": 22884,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "browser": "ferric",
+      "stage": "native_fresh_one_tab",
+      "totals_kib": {
+        "Pss": 386860,
+        "Private_Clean": 94328,
+        "Private_Dirty": 156240,
+        "Anonymous": 198628,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23056,
+          "Private_Clean": 22304,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 121694,
+          "Private_Clean": 0,
+          "Private_Dirty": 118696,
+          "Anonymous": 130136,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3908,
+          "Private_Clean": 1244,
+          "Private_Dirty": 624,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 13589,
+          "Private_Clean": 0,
+          "Private_Dirty": 13016,
+          "Anonymous": 12468,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 31028,
+          "Private_Clean": 656,
+          "Private_Dirty": 7136,
+          "Anonymous": 11376,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 51657,
+          "Private_Clean": 32172,
+          "Private_Dirty": 3704,
+          "Anonymous": 8456,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 141928,
+          "Private_Clean": 37952,
+          "Private_Dirty": 12312,
+          "Anonymous": 35440,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 261576,
+            "Private_Clean": 88632,
+            "Private_Dirty": 131348,
+            "Anonymous": 130176,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 22533,
+            "Private_Clean": 52,
+            "Private_Dirty": 11216,
+            "Anonymous": 11216,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 14311,
+            "Private_Clean": 8,
+            "Private_Dirty": 96,
+            "Anonymous": 11228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 3481,
+            "Private_Clean": 0,
+            "Private_Dirty": 100,
+            "Anonymous": 11236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39429,
+            "Private_Clean": 516,
+            "Private_Dirty": 6164,
+            "Anonymous": 16808,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 45530,
+            "Private_Clean": 5120,
+            "Private_Dirty": 7316,
+            "Anonymous": 17964,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "browser": "qute",
+      "stage": "native_eight_visited_tabs",
+      "totals_kib": {
+        "Pss": 453867,
+        "Private_Clean": 62772,
+        "Private_Dirty": 239792,
+        "Anonymous": 389008,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 15451,
+          "Private_Clean": 10088,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 204736,
+          "Private_Clean": 0,
+          "Private_Dirty": 201480,
+          "Anonymous": 234828,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 4738,
+          "Private_Clean": 0,
+          "Private_Dirty": 2984,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3406,
+          "Private_Clean": 648,
+          "Private_Dirty": 708,
+          "Anonymous": 88,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 67247,
+          "Private_Clean": 5032,
+          "Private_Dirty": 15768,
+          "Anonymous": 70184,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 24241,
+          "Private_Clean": 9472,
+          "Private_Dirty": 2572,
+          "Anonymous": 12812,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 134048,
+          "Private_Clean": 37532,
+          "Private_Dirty": 13408,
+          "Anonymous": 68224,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 225854,
+            "Private_Clean": 62480,
+            "Private_Dirty": 124244,
+            "Anonymous": 120560,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 24288,
+            "Private_Clean": 80,
+            "Private_Dirty": 15820,
+            "Anonymous": 15820,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 10100,
+            "Private_Clean": 84,
+            "Private_Dirty": 116,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 1900,
+            "Private_Clean": 0,
+            "Private_Dirty": 108,
+            "Anonymous": 15828,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19377,
+            "Private_Clean": 128,
+            "Private_Dirty": 7712,
+            "Anonymous": 22892,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 31284,
+            "Private_Clean": 0,
+            "Private_Dirty": 19876,
+            "Anonymous": 35060,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19996,
+            "Private_Clean": 0,
+            "Private_Dirty": 8200,
+            "Anonymous": 23384,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 18930,
+            "Private_Clean": 0,
+            "Private_Dirty": 7572,
+            "Anonymous": 22756,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 31164,
+            "Private_Clean": 0,
+            "Private_Dirty": 19756,
+            "Anonymous": 34940,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 20009,
+            "Private_Clean": 0,
+            "Private_Dirty": 8204,
+            "Anonymous": 23388,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 18958,
+            "Private_Clean": 0,
+            "Private_Dirty": 7580,
+            "Anonymous": 22764,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 32007,
+            "Private_Clean": 0,
+            "Private_Dirty": 20604,
+            "Anonymous": 35792,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "browser": "ferric",
+      "stage": "native_eight_visited_tabs",
+      "totals_kib": {
+        "Pss": 517233,
+        "Private_Clean": 89152,
+        "Private_Dirty": 284676,
+        "Anonymous": 401240,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23248,
+          "Private_Clean": 22496,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 247719,
+          "Private_Clean": 0,
+          "Private_Dirty": 244836,
+          "Anonymous": 275296,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 15690,
+          "Private_Clean": 0,
+          "Private_Dirty": 13296,
+          "Anonymous": 12492,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3902,
+          "Private_Clean": 1232,
+          "Private_Dirty": 680,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 30745,
+          "Private_Clean": 612,
+          "Private_Dirty": 7220,
+          "Anonymous": 18880,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 51455,
+          "Private_Clean": 31660,
+          "Private_Dirty": 3704,
+          "Anonymous": 16772,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 144474,
+          "Private_Clean": 33152,
+          "Private_Dirty": 14188,
+          "Anonymous": 77048,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 269124,
+            "Private_Clean": 88652,
+            "Private_Dirty": 145960,
+            "Anonymous": 144476,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 21097,
+            "Private_Clean": 52,
+            "Private_Dirty": 11216,
+            "Anonymous": 11216,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 11078,
+            "Private_Clean": 8,
+            "Private_Dirty": 96,
+            "Anonymous": 11228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 1462,
+            "Private_Clean": 0,
+            "Private_Dirty": 100,
+            "Anonymous": 11236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 15504,
+            "Private_Clean": 376,
+            "Private_Dirty": 6164,
+            "Anonymous": 16808,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 17177,
+            "Private_Clean": 64,
+            "Private_Dirty": 7452,
+            "Anonymous": 18096,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 37090,
+            "Private_Clean": 0,
+            "Private_Dirty": 27436,
+            "Anonymous": 38076,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 18288,
+            "Private_Clean": 0,
+            "Private_Dirty": 8348,
+            "Anonymous": 18988,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 17058,
+            "Private_Clean": 0,
+            "Private_Dirty": 7396,
+            "Anonymous": 18040,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 37025,
+            "Private_Clean": 0,
+            "Private_Dirty": 27396,
+            "Anonymous": 38036,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 18272,
+            "Private_Clean": 0,
+            "Private_Dirty": 8344,
+            "Anonymous": 18984,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 16978,
+            "Private_Clean": 0,
+            "Private_Dirty": 7360,
+            "Anonymous": 18004,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 37080,
+            "Private_Clean": 0,
+            "Private_Dirty": 27408,
+            "Anonymous": 38052,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "browser": "qute",
+      "stage": "native_after_closing_seven",
+      "totals_kib": {
+        "Pss": 361381,
+        "Private_Clean": 110572,
+        "Private_Dirty": 147900,
+        "Anonymous": 191300,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 15451,
+          "Private_Clean": 10088,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 115606,
+          "Private_Clean": 0,
+          "Private_Dirty": 112120,
+          "Anonymous": 122548,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3428,
+          "Private_Clean": 1392,
+          "Private_Dirty": 760,
+          "Anonymous": 32,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 2698,
+          "Private_Clean": 0,
+          "Private_Dirty": 2444,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 67741,
+          "Private_Clean": 8680,
+          "Private_Dirty": 15572,
+          "Anonymous": 31908,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 24495,
+          "Private_Clean": 9528,
+          "Private_Dirty": 2572,
+          "Anonymous": 5644,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 131962,
+          "Private_Clean": 80884,
+          "Private_Dirty": 11560,
+          "Anonymous": 28296,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 237600,
+            "Private_Clean": 62984,
+            "Private_Dirty": 124092,
+            "Anonymous": 120896,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 26127,
+            "Private_Clean": 80,
+            "Private_Dirty": 15820,
+            "Anonymous": 15820,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 15518,
+            "Private_Clean": 84,
+            "Private_Dirty": 120,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 5719,
+            "Private_Clean": 0,
+            "Private_Dirty": 116,
+            "Anonymous": 15828,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 76417,
+            "Private_Clean": 47424,
+            "Private_Dirty": 7752,
+            "Anonymous": 22932,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "browser": "ferric",
+      "stage": "native_after_closing_seven",
+      "totals_kib": {
+        "Pss": 404396,
+        "Private_Clean": 94732,
+        "Private_Dirty": 172844,
+        "Anonymous": 215096,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23248,
+          "Private_Clean": 22496,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 138154,
+          "Private_Clean": 0,
+          "Private_Dirty": 135160,
+          "Anonymous": 146592,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 4012,
+          "Private_Clean": 1244,
+          "Private_Dirty": 728,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 13633,
+          "Private_Clean": 0,
+          "Private_Dirty": 13052,
+          "Anonymous": 12480,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 31253,
+          "Private_Clean": 612,
+          "Private_Dirty": 7136,
+          "Anonymous": 11376,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 51721,
+          "Private_Clean": 32236,
+          "Private_Dirty": 3704,
+          "Anonymous": 8456,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 142375,
+          "Private_Clean": 38144,
+          "Private_Dirty": 12312,
+          "Anonymous": 35440,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 278655,
+            "Private_Clean": 88972,
+            "Private_Dirty": 147740,
+            "Anonymous": 146440,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 22532,
+            "Private_Clean": 52,
+            "Private_Dirty": 11216,
+            "Anonymous": 11216,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 14310,
+            "Private_Clean": 8,
+            "Private_Dirty": 96,
+            "Anonymous": 11228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 3486,
+            "Private_Clean": 0,
+            "Private_Dirty": 104,
+            "Anonymous": 11236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39407,
+            "Private_Clean": 452,
+            "Private_Dirty": 6164,
+            "Anonymous": 16808,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 46006,
+            "Private_Clean": 5248,
+            "Private_Dirty": 7524,
+            "Anonymous": 18168,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "browser": "ferric",
+      "stage": "native_fresh_one_tab",
+      "totals_kib": {
+        "Pss": 390971,
+        "Private_Clean": 94524,
+        "Private_Dirty": 160112,
+        "Anonymous": 202384,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23228,
+          "Private_Clean": 22476,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 125450,
+          "Private_Clean": 0,
+          "Private_Dirty": 122452,
+          "Anonymous": 133892,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3946,
+          "Private_Clean": 1264,
+          "Private_Dirty": 632,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 13589,
+          "Private_Clean": 0,
+          "Private_Dirty": 13124,
+          "Anonymous": 12468,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 30968,
+          "Private_Clean": 576,
+          "Private_Dirty": 7136,
+          "Anonymous": 11376,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 51862,
+          "Private_Clean": 32320,
+          "Private_Dirty": 3704,
+          "Anonymous": 8456,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 141928,
+          "Private_Clean": 37888,
+          "Private_Dirty": 12312,
+          "Anonymous": 35440,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 263539,
+            "Private_Clean": 88852,
+            "Private_Dirty": 133064,
+            "Anonymous": 131776,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 22518,
+            "Private_Clean": 0,
+            "Private_Dirty": 11212,
+            "Anonymous": 11212,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 14318,
+            "Private_Clean": 8,
+            "Private_Dirty": 96,
+            "Anonymous": 11228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 3481,
+            "Private_Clean": 0,
+            "Private_Dirty": 100,
+            "Anonymous": 11236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39564,
+            "Private_Clean": 544,
+            "Private_Dirty": 6324,
+            "Anonymous": 16968,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 47551,
+            "Private_Clean": 5120,
+            "Private_Dirty": 9316,
+            "Anonymous": 19964,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "browser": "qute",
+      "stage": "native_fresh_one_tab",
+      "totals_kib": {
+        "Pss": 343277,
+        "Private_Clean": 110232,
+        "Private_Dirty": 130832,
+        "Anonymous": 174336,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 15424,
+          "Private_Clean": 10052,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 98646,
+          "Private_Clean": 0,
+          "Private_Dirty": 95140,
+          "Anonymous": 105584,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3351,
+          "Private_Clean": 1396,
+          "Private_Dirty": 700,
+          "Anonymous": 32,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 2670,
+          "Private_Clean": 0,
+          "Private_Dirty": 2416,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 67585,
+          "Private_Clean": 8704,
+          "Private_Dirty": 15572,
+          "Anonymous": 31908,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 24215,
+          "Private_Clean": 9388,
+          "Private_Dirty": 2572,
+          "Anonymous": 5644,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 131386,
+          "Private_Clean": 80692,
+          "Private_Dirty": 11560,
+          "Anonymous": 28296,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 219656,
+            "Private_Clean": 62548,
+            "Private_Dirty": 107160,
+            "Anonymous": 104052,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 26080,
+            "Private_Clean": 60,
+            "Private_Dirty": 15816,
+            "Anonymous": 15816,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 15599,
+            "Private_Clean": 72,
+            "Private_Dirty": 116,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 5703,
+            "Private_Clean": 0,
+            "Private_Dirty": 108,
+            "Anonymous": 15828,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 76239,
+            "Private_Clean": 47552,
+            "Private_Dirty": 7632,
+            "Anonymous": 22816,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "browser": "ferric",
+      "stage": "native_eight_visited_tabs",
+      "totals_kib": {
+        "Pss": 532637,
+        "Private_Clean": 89304,
+        "Private_Dirty": 300136,
+        "Anonymous": 416380,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23404,
+          "Private_Clean": 22652,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 262848,
+          "Private_Clean": 0,
+          "Private_Dirty": 259976,
+          "Anonymous": 290436,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 15690,
+          "Private_Clean": 0,
+          "Private_Dirty": 13596,
+          "Anonymous": 12492,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3951,
+          "Private_Clean": 1224,
+          "Private_Dirty": 700,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 30611,
+          "Private_Clean": 532,
+          "Private_Dirty": 7220,
+          "Anonymous": 18880,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 51659,
+          "Private_Clean": 31808,
+          "Private_Dirty": 3704,
+          "Anonymous": 16772,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 144474,
+          "Private_Clean": 33088,
+          "Private_Dirty": 14188,
+          "Anonymous": 77048,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 268201,
+            "Private_Clean": 88856,
+            "Private_Dirty": 144960,
+            "Anonymous": 143156,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 21082,
+            "Private_Clean": 0,
+            "Private_Dirty": 11212,
+            "Anonymous": 11212,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 11077,
+            "Private_Clean": 8,
+            "Private_Dirty": 96,
+            "Anonymous": 11228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 1461,
+            "Private_Clean": 0,
+            "Private_Dirty": 100,
+            "Anonymous": 11236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 15651,
+            "Private_Clean": 376,
+            "Private_Dirty": 6324,
+            "Anonymous": 16968,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19111,
+            "Private_Clean": 64,
+            "Private_Dirty": 9436,
+            "Anonymous": 20080,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39081,
+            "Private_Clean": 0,
+            "Private_Dirty": 29460,
+            "Anonymous": 40100,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 20333,
+            "Private_Clean": 0,
+            "Private_Dirty": 10408,
+            "Anonymous": 21048,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19059,
+            "Private_Clean": 0,
+            "Private_Dirty": 9424,
+            "Anonymous": 20068,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39115,
+            "Private_Clean": 0,
+            "Private_Dirty": 29460,
+            "Anonymous": 40100,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 20350,
+            "Private_Clean": 0,
+            "Private_Dirty": 10400,
+            "Anonymous": 21040,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19069,
+            "Private_Clean": 0,
+            "Private_Dirty": 9428,
+            "Anonymous": 20072,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39047,
+            "Private_Clean": 0,
+            "Private_Dirty": 29428,
+            "Anonymous": 40072,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "browser": "qute",
+      "stage": "native_eight_visited_tabs",
+      "totals_kib": {
+        "Pss": 455325,
+        "Private_Clean": 62588,
+        "Private_Dirty": 241420,
+        "Anonymous": 390728,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 15424,
+          "Private_Clean": 10052,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 206476,
+          "Private_Clean": 0,
+          "Private_Dirty": 203200,
+          "Anonymous": 236548,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3395,
+          "Private_Clean": 652,
+          "Private_Dirty": 700,
+          "Anonymous": 88,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 4738,
+          "Private_Clean": 0,
+          "Private_Dirty": 2900,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 67152,
+          "Private_Clean": 5000,
+          "Private_Dirty": 15768,
+          "Anonymous": 70184,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 24222,
+          "Private_Clean": 9480,
+          "Private_Dirty": 2572,
+          "Anonymous": 12812,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 133918,
+          "Private_Clean": 37404,
+          "Private_Dirty": 13408,
+          "Anonymous": 68224,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 226755,
+            "Private_Clean": 62456,
+            "Private_Dirty": 125224,
+            "Anonymous": 121632,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 24225,
+            "Private_Clean": 60,
+            "Private_Dirty": 15816,
+            "Anonymous": 15816,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 10154,
+            "Private_Clean": 72,
+            "Private_Dirty": 116,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 1902,
+            "Private_Clean": 0,
+            "Private_Dirty": 108,
+            "Anonymous": 15828,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19193,
+            "Private_Clean": 0,
+            "Private_Dirty": 7664,
+            "Anonymous": 22844,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 32246,
+            "Private_Clean": 0,
+            "Private_Dirty": 20820,
+            "Anonymous": 36004,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19966,
+            "Private_Clean": 0,
+            "Private_Dirty": 8168,
+            "Anonymous": 23352,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 18901,
+            "Private_Clean": 0,
+            "Private_Dirty": 7536,
+            "Anonymous": 22720,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 31480,
+            "Private_Clean": 0,
+            "Private_Dirty": 20044,
+            "Anonymous": 35228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 19999,
+            "Private_Clean": 0,
+            "Private_Dirty": 8188,
+            "Anonymous": 23372,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 18938,
+            "Private_Clean": 0,
+            "Private_Dirty": 7588,
+            "Anonymous": 22772,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 31566,
+            "Private_Clean": 0,
+            "Private_Dirty": 20148,
+            "Anonymous": 35336,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "browser": "ferric",
+      "stage": "native_after_closing_seven",
+      "totals_kib": {
+        "Pss": 405890,
+        "Private_Clean": 95104,
+        "Private_Dirty": 174076,
+        "Anonymous": 216172,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Ferric-executable-resources": {
+          "Pss": 23532,
+          "Private_Clean": 22780,
+          "Private_Dirty": 752,
+          "Anonymous": 752,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 139230,
+          "Private_Clean": 0,
+          "Private_Dirty": 136240,
+          "Anonymous": 147664,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 4078,
+          "Private_Clean": 1264,
+          "Private_Dirty": 764,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 13637,
+          "Private_Clean": 0,
+          "Private_Dirty": 13168,
+          "Anonymous": 12484,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 31111,
+          "Private_Clean": 532,
+          "Private_Dirty": 7136,
+          "Anonymous": 11376,
+          "Swap": 0
+        },
+        "bundled-Qt-other": {
+          "Pss": 51926,
+          "Private_Clean": 32384,
+          "Private_Dirty": 3704,
+          "Anonymous": 8456,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 142376,
+          "Private_Clean": 38144,
+          "Private_Dirty": 12312,
+          "Anonymous": 35440,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 278063,
+            "Private_Clean": 89368,
+            "Private_Dirty": 146808,
+            "Anonymous": 145360,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 22508,
+            "Private_Clean": 0,
+            "Private_Dirty": 11212,
+            "Anonymous": 11212,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 14310,
+            "Private_Clean": 8,
+            "Private_Dirty": 100,
+            "Anonymous": 11228,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 3488,
+            "Private_Clean": 0,
+            "Private_Dirty": 108,
+            "Anonymous": 11236,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 39551,
+            "Private_Clean": 480,
+            "Private_Dirty": 6324,
+            "Anonymous": 16968,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 47970,
+            "Private_Clean": 5248,
+            "Private_Dirty": 9524,
+            "Anonymous": 20168,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "browser": "qute",
+      "stage": "native_after_closing_seven",
+      "totals_kib": {
+        "Pss": 362186,
+        "Private_Clean": 110452,
+        "Private_Dirty": 148980,
+        "Anonymous": 192380,
+        "Swap": 0
+      },
+      "mapping_groups_kib": {
+        "Python-PyQt": {
+          "Pss": 15424,
+          "Private_Clean": 10052,
+          "Private_Dirty": 2872,
+          "Anonymous": 2872,
+          "Swap": 0
+        },
+        "anonymous": {
+          "Pss": 116698,
+          "Private_Clean": 0,
+          "Private_Dirty": 113200,
+          "Anonymous": 123628,
+          "Swap": 0
+        },
+        "other-files": {
+          "Pss": 3415,
+          "Private_Clean": 1396,
+          "Private_Dirty": 764,
+          "Anonymous": 32,
+          "Swap": 0
+        },
+        "shared-memory": {
+          "Pss": 2694,
+          "Private_Clean": 0,
+          "Private_Dirty": 2440,
+          "Anonymous": 0,
+          "Swap": 0
+        },
+        "other-libraries": {
+          "Pss": 67641,
+          "Private_Clean": 8648,
+          "Private_Dirty": 15572,
+          "Anonymous": 31908,
+          "Swap": 0
+        },
+        "system-Qt-other": {
+          "Pss": 24480,
+          "Private_Clean": 9536,
+          "Private_Dirty": 2572,
+          "Anonymous": 5644,
+          "Swap": 0
+        },
+        "QtWebEngineCore": {
+          "Pss": 131834,
+          "Private_Clean": 80820,
+          "Private_Dirty": 11560,
+          "Anonymous": 28296,
+          "Swap": 0
+        },
+        "kernel-special": {
+          "Pss": 0,
+          "Private_Clean": 0,
+          "Private_Dirty": 0,
+          "Anonymous": 0,
+          "Swap": 0
+        }
+      },
+      "processes": [
+        {
+          "role": "main",
+          "totals_kib": {
+            "Pss": 238646,
+            "Private_Clean": 63024,
+            "Private_Dirty": 125232,
+            "Anonymous": 122036,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 26050,
+            "Private_Clean": 60,
+            "Private_Dirty": 15816,
+            "Anonymous": 15816,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 15571,
+            "Private_Clean": 72,
+            "Private_Dirty": 120,
+            "Anonymous": 15824,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "zygote",
+          "totals_kib": {
+            "Pss": 5723,
+            "Private_Clean": 0,
+            "Private_Dirty": 116,
+            "Anonymous": 15828,
+            "Swap": 0
+          }
+        },
+        {
+          "role": "renderer",
+          "totals_kib": {
+            "Pss": 76196,
+            "Private_Clean": 47296,
+            "Private_Dirty": 7696,
+            "Anonymous": 22876,
+            "Swap": 0
+          }
+        }
+      ]
+    }
+  ],
+  "graph": {
+    "elements": 9,
+    "annotation_chars": 92552,
+    "fragment_chars": 3460,
+    "documents": 1,
+    "roots": 302,
+    "outcomes": [
+      {
+        "kind": "anchor-observed",
+        "targets": 1
+      },
+      {
+        "kind": "collection-observed",
+        "items": 300,
+        "items_with_targets": 5
+      }
+    ]
+  },
+  "cpu_self_ms": {
+    "(idle)": 2690.852,
+    "(program)": 320.266,
+    "getBoundingClientRect": 192.017,
+    "(anonymous)": 130.569,
+    "scan": 130.287,
+    "inventoryNode": 99.781,
+    "matches": 65.991,
+    "record": 55.365,
+    "ftCachedRect": 39.108,
+    "graphCheck": 35.833,
+    "visit": 35.205,
+    "node": 34.22,
+    "measure": 27.831,
+    "targetNodes": 27.66,
+    "find": 27.177,
+    "observedItems": 21.723,
+    "nextNode": 20.844,
+    "ftLocalVisible": 18.973,
+    "string": 18.687,
+    "ftHintDescription": 16.526,
+    "run": 13.621,
+    "ftHintMatchesAny": 12.987,
+    "getRootNode": 10.951,
+    "compound": 10.0,
+    "nodeRef": 9.793,
+    "fragments": 9.545,
+    "observe": 9.483,
+    "ftHintViewportIntersects": 9.415,
+    "add": 7.091,
+    "resolveSteps": 6.949,
+    "elementFromPoint": 6.829,
+    "physicalDepth": 6.618,
+    "rememberNode": 6.592,
+    "at": 6.188,
+    "ftParent": 5.478,
+    "reserve": 5.461,
+    "ftStyleChainVisible": 5.405,
+    "materialize": 5.307,
+    "knownExcluded": 4.959,
+    "encode": 4.873,
+    "suspend": 4.565,
+    "ftAxisScrollable": 4.428,
+    "deref": 4.39,
+    "ftInert": 4.382,
+    "ftInteractionAnnotationJson": 4.37,
+    "targets": 4.251,
+    "ftHintFamilyPolicy": 4.245,
+    "ftIntersect": 4.202,
+    "take": 3.577,
+    "ftProjectedRect": 3.371,
+    "capture": 3.364,
+    "targetFacts": 3.332,
+    "documentRecord": 3.288,
+    "charge": 3.284,
+    "ftHintPresentation": 3.283,
+    "rememberTarget": 3.275,
+    "ftHintNameValue": 3.251,
+    "ftInteractionAnnotationSize": 3.217,
+    "(garbage collector)": 3.2,
+    "ftHit": 2.852,
+    "tick": 2.79,
+    "kind": 2.636,
+    "attributes": 2.445,
+    "getClientRects": 2.375,
+    "ftHintSelectors": 2.367,
+    "hasAttribute": 2.25,
+    "ftRoot": 2.238,
+    "contains": 2.236,
+    "begin": 2.213,
+    "getComputedStyle": 2.145,
+    "ftClippedRect": 2.125,
+    "ftAncestorClip": 2.112,
+    "clear": 1.156,
+    "prove": 1.108,
+    "validateSelector": 1.108,
+    "shape": 1.107,
+    "ftReachableFromTopDocument": 1.106,
+    "localDocument": 1.105,
+    "ftHintFragmentHit": 1.1,
+    "sameJson": 1.099,
+    "queue": 1.098,
+    "ftHintFamilyAccepts": 1.097,
+    "ftDeepHit": 1.089,
+    "intersects": 1.089,
+    "inventory": 1.088,
+    "id": 1.088,
+    "ftComputedStyle": 1.081,
+    "finish": 1.076,
+    "resolve": 1.074,
+    "hasPreferredLink": 1.073,
+    "window.__ferric_selectionMetadata": 1.051,
+    "use": 0.994,
+    "finalize": 0.639,
+    "within": 0.434,
+    "ftRendered": 0.266
+  },
+  "native_policy": [
+    {
+      "test": "real_desktop_tab_focus_type",
+      "browser": "ferric",
+      "snapshot": {
+        "type": "probe",
+        "b": "native-ferric",
+        "id": "",
+        "token": "",
+        "url": "http://127.0.0.1:36893/?b=native-ferric&kind=forms",
+        "scroll": 0,
+        "visible": "visible",
+        "viewport": [
+          640,
+          694
+        ],
+        "value": "xyz",
+        "draft": "",
+        "active": "entry",
+        "user_activated": true,
+        "cookie": "",
+        "t": 982447.95610107
+      }
+    },
+    {
+      "test": "real_desktop_media_policy",
+      "browser": "ferric",
+      "pause_ms": 100.0,
+      "success": true,
+      "event": {
+        "type": "play",
+        "b": "native-ferric",
+        "id": "",
+        "token": "",
+        "url": "http://127.0.0.1:36893/?b=native-ferric&kind=media",
+        "scroll": 0,
+        "visible": "visible",
+        "viewport": [
+          640,
+          694
+        ],
+        "active": "",
+        "user_activated": true,
+        "cookie": "",
+        "count": 1,
+        "t": 982449.469792658
+      }
+    },
+    {
+      "test": "real_desktop_media_policy",
+      "browser": "ferric",
+      "pause_ms": 700.0,
+      "success": true,
+      "event": {
+        "type": "play",
+        "b": "native-ferric",
+        "id": "",
+        "token": "",
+        "url": "http://127.0.0.1:36893/?b=native-ferric&kind=media",
+        "scroll": 0,
+        "visible": "visible",
+        "viewport": [
+          640,
+          694
+        ],
+        "active": "",
+        "user_activated": true,
+        "cookie": "",
+        "count": 2,
+        "t": 982450.392481434
+      }
+    }
+  ]
+}

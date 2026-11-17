@@ -1,0 +1,169 @@
+{
+  "baseline_commit": "38dba93",
+  "installed_source_commit": "8c27c75a371861dc7e5040fd09226b0461a95486",
+  "installed_sha256": "0f374110d84b4a6e576fe0ebf63a1fefd883b62b7378c2ed6015154f02472e38",
+  "machine": "Linux-7.2.11-arch1-1-x86_64-with-glibc2.44",
+  "local_artifacts": "/home/tom/Projects/Ferric/ferric-browser/target/browser-followup-20261117",
+  "files": {
+    "target/browser-followup-20261117/memory.py": {
+      "bytes": 3305,
+      "sha256": "8c6f9edb0b37612274a3203661e4a2242eb0d70a09f0d34fbf756eabff9cc373"
+    },
+    "target/browser-followup-20261117/native_memory.py": {
+      "bytes": 2516,
+      "sha256": "7dcd47ad215956241131ede40f43b763e61d0d910730bca565f1da959ff1fe48"
+    },
+    "target/browser-followup-20261117/policies.py": {
+      "bytes": 3357,
+      "sha256": "33bec797b011efcd7f752ad75aad21150e85544aba8e2c3daf73880907c7f129"
+    },
+    "target/browser-followup-20261117/instrument.py": {
+      "bytes": 4752,
+      "sha256": "168e8436b4e95e35da7c7f9f541e4519ed91ef75bca142af94b618cbd87f8099"
+    },
+    "target/browser-followup-20261117/scaling.py": {
+      "bytes": 2032,
+      "sha256": "6d3b50fca8b2310b78a23ba037043955b7b2bb8a24764c775a5ddf998feda9a6"
+    },
+    "target/browser-followup-20261117/scale_fixture.py": {
+      "bytes": 15922,
+      "sha256": "f1d03477d0dbada37806c7434ae9c940b378008ca0ee47f5a29ab3b87f5ec26c"
+    },
+    "target/browser-followup-20261117/native_policy.py": {
+      "bytes": 4351,
+      "sha256": "1dc2ea18da6b7e474f679a4e6a7bea09d82665d74025e4a20ad5adebb29ff9ec"
+    },
+    "target/browser-followup-20261117/cpu.py": {
+      "bytes": 2710,
+      "sha256": "d3060e35bedd2307a575ad25c4a43fda9fa06b7363465e2d91af405cda335899"
+    },
+    "target/browser-followup-20261117/cdp.mjs": {
+      "bytes": 1246,
+      "sha256": "df0a7dd82b7d70c282dd7bd601da8ee05c6864b74c8d928898ccad1a795886b3"
+    },
+    "target/browser-followup-20261117/inventory_experiment.py": {
+      "bytes": 3664,
+      "sha256": "bf9631e9cb473c5339abaea49fe5ab5022bc1dfe77715bde2dbf79d1a6065ea7"
+    },
+    "target/browser-followup-20261117/overlay-provenance.json": {
+      "bytes": 403,
+      "sha256": "5175051c76e74a9fc4e08db0730c6eef189ffe6fdb59cd7397dc631de2580517"
+    },
+    "target/browser-followup-20261117/inventory-candidate/provenance.json": {
+      "bytes": 360,
+      "sha256": "40767b9e8ca5cff63216343d76882e8171d36f21bc336de3c6b7a56fc047f468"
+    },
+    "target/browser-followup-20261117/memory.jsonl": {
+      "bytes": 408841,
+      "sha256": "c0160b2708a7e34eb15fc0021f91322a871c2c9ea82e692a59f2da5bbf5e51bf"
+    },
+    "target/browser-followup-20261117/memory-classified.json": {
+      "bytes": 622870,
+      "sha256": "5da9343dce0744b50d1e35ba89c6ce5c51e342f37ed20f7d7fc7a39fc7a5bc97"
+    },
+    "target/browser-followup-20261117/policy-stages.jsonl": {
+      "bytes": 109327,
+      "sha256": "808bd2933ba9bd23e27ea0f96acd727fc48f9e5f84ea93ca14ceb3ed73bd4d64"
+    },
+    "target/browser-followup-20261117/scaling-stages.jsonl": {
+      "bytes": 31490,
+      "sha256": "d5a330b46d482e2b6e9d273d82ce34ee8468da4590f7824031c8271f45b83d5b"
+    },
+    "target/browser-followup-20261117/inventory-stages.jsonl": {
+      "bytes": 93167,
+      "sha256": "ec69e23284b450857aa4ea639fc892d6914dcd65ecb3b76c6d7255e46f5408ba"
+    },
+    "target/browser-followup-20261117/cpu/full-feed.cpuprofile": {
+      "bytes": 182766,
+      "sha256": "7b0bd23701afdaa456db60c5488b0571ba110b4c2715ed254c42a58fdd8a5643"
+    },
+    "target/browser-comparison-20261117/compare.py": {
+      "bytes": 15902,
+      "sha256": "3771f5e9f64415ba271dac394c6cc39a171b26fdfbeb57d64387b755c272836b"
+    },
+    "target/hint-profile-20261116/host-build/libferrichintprofileearly.so": {
+      "bytes": 16944,
+      "sha256": "46f43abf41a803c986ef02ef65e515622c20012e948625b5608f4a85ca6d02d2"
+    },
+    "target/browser-followup-20261117/memory-0/observations.jsonl": {
+      "bytes": 463,
+      "sha256": "f1c31dc12f276414ed348bd181e0f3660333f3a955334a7414675478ca7370f9"
+    },
+    "target/browser-followup-20261117/memory-1/observations.jsonl": {
+      "bytes": 464,
+      "sha256": "a29fb73f0c3ed7e60f0e492b675d9a70831883609b21a0f32c776687466ce4d1"
+    },
+    "target/browser-followup-20261117/memory-2/observations.jsonl": {
+      "bytes": 464,
+      "sha256": "9099d20ad42596cd4d8071e22f2a5a96df317a35f102911074b071270c9b3ce1"
+    },
+    "target/browser-followup-20261117/policy-stages-setup-keycode/observations.jsonl": {
+      "bytes": 246,
+      "sha256": "0099f42b533847541b8423c7c36b9733987abcaccfe6bd27cc2864b140eae588"
+    },
+    "target/browser-followup-20261117/policy-stages/observations.jsonl": {
+      "bytes": 12755,
+      "sha256": "7794e4d6174cdf352dfe26da26a71a729da9319938c49ede935e5287aa37fd2f"
+    },
+    "target/browser-followup-20261117/policy-control/observations.jsonl": {
+      "bytes": 10824,
+      "sha256": "e0ad406dd49e8635d3aa4de72c4b8033c14791ddea6d86e5dabc6d928b6b1340"
+    },
+    "target/browser-followup-20261117/native-policy/observations.jsonl": {
+      "bytes": 1113,
+      "sha256": "f43103199f8cfb738e863c493ab8dd4ff4acab05c93a29bc3cb21eba51c48034"
+    },
+    "target/browser-followup-20261117/scaling/observations.jsonl": {
+      "bytes": 4472,
+      "sha256": "97aa4ad805d8ffa2fcf25fc65abeeea8466e39e05d94744729737d63f5179746"
+    },
+    "target/browser-followup-20261117/cpu/observations.jsonl": {
+      "bytes": 247,
+      "sha256": "491802d55ae0f2ad23f1eb80982f98d27462a07647063fd063d74ad2deb13b0a"
+    },
+    "target/browser-followup-20261117/inventory-experiment/observations.jsonl": {
+      "bytes": 9216,
+      "sha256": "3d388e419021634c9a2e4b993959d7fbd1c9c3d2748d69d214ef762a32f40b62"
+    },
+    "target/browser-followup-20261117/memory.log": {
+      "bytes": 5574,
+      "sha256": "2d950b16b7ea3daf2f6c848ebc51fd12dc2527eb15c27ed6f3cbe9ffdc5db023"
+    },
+    "target/browser-followup-20261117/policies-setup-keycode.log": {
+      "bytes": 1241,
+      "sha256": "3f8afbdfafc72a383eeb5b3c15ba43ad4facce069c4519f975cff905410677a9"
+    },
+    "target/browser-followup-20261117/policies.log": {
+      "bytes": 24017,
+      "sha256": "da243b56a71ebe0c7bbeb20a88397711fb405e119f5162ec451fc6cc4531e996"
+    },
+    "target/browser-followup-20261117/native-memory.log": {
+      "bytes": 2850,
+      "sha256": "d1d43368bc65b42b36295671319ee58802f0009996e75ddb2e78cc12a3061763"
+    },
+    "target/browser-followup-20261117/native-policy.log": {
+      "bytes": 1113,
+      "sha256": "f43103199f8cfb738e863c493ab8dd4ff4acab05c93a29bc3cb21eba51c48034"
+    },
+    "target/browser-followup-20261117/scaling.log": {
+      "bytes": 4587,
+      "sha256": "a5ce9e03168f674bebaf6cb9c0639102b62c23d11c2a90d9fa77412a7053d549"
+    },
+    "target/browser-followup-20261117/cpu.log": {
+      "bytes": 498,
+      "sha256": "b04e40c20e3b30435e3f29cbf7872de10cb55cf00a51f26ff727efe10d86f462"
+    },
+    "target/browser-followup-20261117/inventory-experiment.log": {
+      "bytes": 9250,
+      "sha256": "19b43c4e2137fbd7ce596279e2ec7c7f5ec4a601f50ba04db41647f50b347b7d"
+    },
+    "target/browser-followup-20261117/summarize.py": {
+      "bytes": 5467,
+      "sha256": "7315785e5c0cf6a556149c564db679062c5f7619c0ecb61c01541d942555e55a"
+    }
+  },
+  "scope": "Investigation only. Diagnostic resource overlays and one unqualified inventory ablation were confined to owned processes. No installed or production source changes.",
+  "cpu_model": "Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz",
+  "logical_cpus": 4,
+  "mem_total_kib": 16122132
+}

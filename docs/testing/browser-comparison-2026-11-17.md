@@ -6,6 +6,11 @@ process-tree memory. Ferric offers useful additional interaction features and
 filters unusable hint targets more carefully. These results support improving
 Ferric's remaining costs without discarding its correctness checks.
 
+The [follow-up investigation](browser-followup-2026-11-17.md) separates policy
+costs, repeats matched memory measurements on the actual desktop, and records
+the owner's intended transient-editing workflow. Its combined-policy desktop
+check passed despite the isolated absent-root anomaly described below.
+
 This was a bounded comparison of the **installed applications**, using clean,
 temporary profiles. No implementation changes, personal profile changes, or
 new installations were made. It is not a release qualification or a long-term
@@ -125,6 +130,14 @@ form with Enter let the following `j` scroll the page. Qutebrowser's default
 insert workflow instead appended `j` to the field until Escape was pressed.
 Ferric's behaviour saves a mode-exit step for short searches and submissions.
 
+Transient Insert is an intentional design for common search and AI prompt
+workflows. Locked Insert (`I`) supports extended multiline editing. Modified
+Enter, including Ctrl+Return, also keeps transient editing active: the key is
+forwarded unchanged, and the website determines whether it inserts a newline
+or performs another action. The owner's Ctrl+Return newline workflow was not
+included in the comparison trials. Plain Enter alone is therefore not a
+complete comparison of the available multiline workflows.
+
 On the simple page, sending `f` and the known first label with **zero deliberate
 gap** succeeded in Ferric 3/3 times and qutebrowser 0/3. With a 50 ms or 250 ms
 gap, both succeeded 3/3. This is a deliberately extreme automation case: it
@@ -140,13 +153,12 @@ qutebrowser hint usage loses input.
 2. **Memory use was lower in both sampled sessions.** The difference varied,
    but its direction was consistent. A matched fresh-start memory breakdown is
    a sensible next investigation before changing process architecture.
-3. **Default multiline editing needed less mode knowledge.** Qutebrowser kept
-   `first`, Enter, `jjj` as `first\njjj`. Ferric's transient `i` returned to
-   browsing on Enter, so the `j` keys scrolled instead. Ferric's documented
-   Locked Insert `I` preserved `first\njjj` correctly. This is a UX trade-off:
-   Ferric is convenient for short submissions, while users writing comments
-   need to know when to use Locked Insert. The case does not justify globally
-   removing transient Insert.
+
+The multiline trial observed a deliberate design difference, not an editing
+defect or a reason to change Ferric: qutebrowser kept `first`, Enter, `jjj` as
+`first\njjj`; Ferric's transient `i` returned to browsing on plain Enter, while
+Locked Insert `I` preserved the multiline text. Modified Enter provides another
+way to keep composing in transient Insert, as described above.
 
 ## Everyday workflows and live-page checks
 
@@ -199,9 +211,7 @@ documented `i`/`I` trials and the real-desktop check are reported separately.
 2. Attribute the memory difference using matched fresh sessions and process/
    allocation breakdowns. Establish whether the additional process, SDK/runtime,
    renderer settings or application state accounts for it before redesigning.
-3. Make transient versus Locked Insert clear at the point of use, especially for
-   multiline comments. Retain the short-form benefit and the working `I` path.
-4. Give configured policies a small, representative regression set: numbered
+3. Give configured policies a small, representative regression set: numbered
    feeds, key-only media pages, and rules whose collection targets are absent.
    Improve diagnostics if users cannot tell why an otherwise valid gesture is
    unavailable. Do not add website-specific production exceptions from this test.
