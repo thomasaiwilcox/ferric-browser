@@ -12,7 +12,7 @@ import time
 
 def rows(path):
     marker = 'FERRIC_OPT_SAMPLE '
-    return [json.loads(line.split(marker, 1)[1]) for line in path.read_text().splitlines() if marker in line]
+    return [json.loads(line.split(marker, 1)[1]) for line in path.read_text().splitlines(keepends=True) if marker in line and line.endswith('\n')]
 
 
 def digest(path):
@@ -26,6 +26,7 @@ def main():
     parser.add_argument('--candidate', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--controls', action='store_true')
+    parser.add_argument('--case-filter', help='Run one named case, e.g. full-300-1800')
     parser.add_argument('--smoke', action='store_true')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
@@ -34,6 +35,10 @@ def main():
     if args.controls:
         cases = [('none', 8, 0), ('none', 300, 0), ('keys', 300, 0), ('anchor', 300, 0),
                  ('collection', 30, 0), ('collection', 100, 0)]
+    if args.case_filter:
+        cases = [c for c in cases if f'{c[0]}-{c[1]}-{c[2]}' == args.case_filter]
+        if not cases:
+            parser.error('case filter matched no workload')
     warmups, measured = (1, 2) if args.smoke else (5, 10 if args.controls else 20)
     summary = {'baseline_sha256': digest(args.baseline), 'candidate_sha256': digest(args.candidate),
                'endpoint': 'constructed Qt input to synchronized/swapped labels; excludes compositor presentation',
