@@ -1595,8 +1595,10 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(BROWSER_SCRIPT_FACADE.contains("var PAGE_INTERACTION_VERSION = \"10\""));
     assert!(BROWSER_SCRIPT_FACADE.contains("script-version-mismatch"));
     assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"10\""));
-    assert!(BROWSER_SCRIPT_FACADE.contains("function hintFinishInteraction(interactionRequest, pendingId, budget, omitCandidates)"));
-    assert!(BROWSER_SCRIPT_FACADE.contains("interactionScript(\"hintFinishInteraction\", [interactionRequest, pendingId, budget, omitCandidates])"));
+    let finish_signature = "function hintFinishInteraction(interactionRequest, pendingId, budget, omitCandidates, refreshScript)";
+    assert!(BROWSER_SCRIPT_FACADE.contains(finish_signature));
+    assert!(PAGE_INTERACTION_SCRIPT.contains(finish_signature));
+    assert!(BROWSER_SCRIPT_FACADE.contains("interactionScript(\"hintFinishInteraction\", [interactionRequest, pendingId, budget, omitCandidates, refreshScript])"));
     let manifest: serde_json::Value = serde_json::from_str(BROWSER_SCRIPT_MANIFEST).unwrap();
     let entry = manifest["resources"]
         .as_array()
@@ -1648,7 +1650,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("function ftFocusEligible(element)"));
     assert!(script.contains("function ftHintPolicy(kind,family)"));
     assert!(script.contains("frame.contentWindow!==childView"));
-    assert!(script.contains("function ftHintDescription(el,family,linkSelector,cache,evidence)"));
+    assert!(script.contains("function ftHintDescription(el,family,linkSelector,cache,evidence,deferName)"));
     assert!(script.contains("function ftHintNameEvidence(element,visibleText)"));
     assert!(script.contains("evidence.name=ftHintNameEvidence(el,kind!=='scrollable')"));
     assert!(script.contains("description.kind!==record.kind"));

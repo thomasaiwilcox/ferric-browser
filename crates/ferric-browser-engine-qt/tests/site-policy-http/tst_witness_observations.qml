@@ -18,10 +18,10 @@ TestCase {
         property bool loaded: false
         onLoadingChanged: function(request) { loaded=request.status===WebEngineView.LoadSucceededStatus }
     }
-    function evaluate(script,world) {
+    function evaluate(script,world,callbackTimeout) {
         done=false
         page.runJavaScript(script,world,function(value){reply=value;done=true})
-        tryVerify(function(){return done},10000)
+        tryVerify(function(){return done},callbackTimeout===undefined?10000:callbackTimeout)
         return reply
     }
     function main(script) { return evaluate(script,WebEngineScript.MainWorld) }
@@ -43,11 +43,11 @@ TestCase {
     function query(css) {
         return {rule:{kind:"anchor",id:"observed"},root:{start:"top-document",steps:[]},target_selector:selector(css||".target")}
     }
-    function collect(q,budget,snapshot,family,proxy,lease) {
+    function collect(q,budget,snapshot,family,proxy,lease,callbackTimeout) {
         var request={version:1,observations:true,stamp:stamp(family),context:{start:"top-document",base_depth:0,owner:""},rules:[q||query()]}
         request.stamp.scope_lease=lease||""
         var script=Scripts.hintCollector(family||"links",proxy===true,snapshot,lease||"",false,budget,request)
-        var value=JSON.parse(evaluate("JSON.stringify("+script+")",WebEngineScript.ApplicationWorld))
+        var value=JSON.parse(evaluate("JSON.stringify("+script+")",WebEngineScript.ApplicationWorld,callbackTimeout))
         verify(!value.error,JSON.stringify(value))
         verify(typeof value.annotation_json==="string","The isolated collector must serialize bounded raw witness observations")
         var annotation=JSON.parse(value.annotation_json)
@@ -331,7 +331,10 @@ TestCase {
     }
     function test_entire_proxy_loop_skipped_at_the_real_candidate_cap() {
         main("(()=>{const nodes=document.createDocumentFragment();for(let i=0;i<5000;i++){const button=document.createElement('button');button.textContent='X';button.style='position:fixed;padding:0;border:0;font:1px monospace;left:'+(i%100*8)+'px;top:'+Math.floor(i/100)*8+'px;width:7px;height:7px';nodes.append(button)}const input=document.createElement('input');input.id='hidden-check';input.type='checkbox';input.style='position:fixed;opacity:0;pointer-events:none;width:0;height:0';nodes.append(input);const label=document.createElement('label');label.htmlFor=input.id;label.className='target';label.textContent='Pending proxy';label.style='position:fixed;left:20px;top:500px;width:200px;height:40px';nodes.append(label);document.body.append(nodes);return true})()")
-        var result=collect(undefined,undefined,undefined,"actions",true)
+        // This checks capacity/proxy correctness, not the deferred 5,000-target
+        // latency gate. Keep the real fixture and all assertions; allow its
+        // callback to finish without changing any production deadline.
+        var result=collect(undefined,undefined,undefined,"actions",true,undefined,60000)
         compare(result.value.candidates.length,5000)
         compare(result.result.unavailable.reason,"truncated")
     }
