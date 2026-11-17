@@ -26,4 +26,3 @@ primary_selector = "a.fixture-thumbnail"
 identity_attributes = ["data-video-id"]
 order = "top-to-bottom"
 codes = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
-
