@@ -1,6 +1,7 @@
 #include "public_page_host.h"
 
 #include "public_page_owner.h"
+#include "site_policy_observation.h"
 #include "credential_boundary.h"
 
 #include <QQuickWidget>
@@ -300,6 +301,7 @@ bool FerricPublicPageHost::registerInitialPage(
     m_tabId = ownerTabId;
     m_pageView->setEnabled(true);
     bindPageSignals();
+    observeSitePolicyAssociation();
     m_detached = false;
     if (m_browserUi->property("feature_phone_passkeys_requested").toString() == "on")
         prepareCredentialBoundary();
@@ -405,6 +407,7 @@ bool FerricPublicPageHost::applyNativeRequest(const QVariant &request)
         m_layout->addWidget(view, 1);
         view->show();
         m_detached = false;
+        observeSitePolicyAssociation();
         if (restoreFocus) {
             view->setFocus(Qt::OtherFocusReason);
         }
@@ -473,6 +476,7 @@ bool FerricPublicPageHost::acceptTransferredPage(
     pageHostRegistry().owner_hosts.insert(pageOwnerToken, this);
     owner->invalidatePresentation();
     bindPageSignals();
+    observeSitePolicyAssociation();
     if (owner->findChild<FerricCredentialBoundary *>()) prepareCredentialBoundary();
     if (restoreFocus) {
         view->setFocus(Qt::OtherFocusReason);
@@ -630,6 +634,33 @@ bool FerricPublicPageHost::executeCaptured(const QVariant &request)
     // Consume before any reentrant Qt call, including validation failures.
     m_lastExecutedRequest = serial;
     return executePageCommand(row);
+}
+
+void FerricPublicPageHost::observeSitePolicyAssociation()
+{
+    const QPointer<FerricPublicPageHost> self(this);
+    const QPointer<FerricPublicPageOwner> owner(m_pageOwner);
+    const QPointer<QWebEnginePage> page(owner ? owner->page() : nullptr);
+    const QPointer<QObject> ui(m_browserUi);
+    const QString token = m_pageOwnerToken, tab = m_tabId;
+    if (!owner || !page || !ui || tab.isEmpty()) return;
+    const auto hostGeneration = owner->hostGeneration();
+    const auto pageGeneration = owner->pageGeneration();
+    const auto presentationGeneration = owner->presentationGeneration();
+    const auto documentGeneration = owner->documentGeneration();
+    auto current = [=] {
+        return self && owner && page && ui && !owner->isClosed()
+            && self->m_pageOwner == owner && self->m_browserUi == ui && !self->m_detached
+            && self->m_pageView && self->m_pageView->page() == page && owner->page() == page
+            && self->m_tabId == tab && self->m_pageOwnerToken == token
+            && owner->profile() == self->m_profile
+            && pageHostRegistry().owner_hosts.value(token) == self
+            && pageHostRegistry().owner_profiles.value(token) == self->m_profileId
+            && owner->hostGeneration() == hostGeneration && owner->pageGeneration() == pageGeneration
+            && owner->presentationGeneration() == presentationGeneration
+            && owner->documentGeneration() == documentGeneration;
+    };
+    ferric_observe_public_site_policy(ui, tab, current, [page] { return page ? page->url() : QUrl(); });
 }
 
 void FerricPublicPageHost::bindPageSignals()

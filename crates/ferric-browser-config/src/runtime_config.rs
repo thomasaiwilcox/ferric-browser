@@ -1,19 +1,24 @@
 //! Configuration composition, overrides, loading, and persistence.
+use crate::configuration_diagnostic::{bounded_context, bounded_diagnostic, bounded_path};
+use std::io::Read;
+
+mod interaction_edits;
+mod trace;
+pub use trace::{AppliedRuntimeOverrides, RuntimeOverrideAssignment};
 
 use super::{
     ActionTargetConfig, BTreeMap, BTreeSet, BlockingConfig, CURRENT_SCHEMA_VERSION, ContentConfig,
     ContextsConfig, Deserialize, DesktopConfig, DiscoveryConfig, DownloadsConfig,
     HintSelectorPolicy, HintsConfig, HistoryConfig, HyprlandConfig, InputConfig, IpcConfig,
-    LinksConfig, LoggingConfig, MAX_INCLUDE_DEPTH, MAX_RUNTIME_SETTINGS, MAX_RUNTIME_VALUE_BYTES,
-    MAX_TOTAL_BYTES, NavigationConfig, PasskeysConfig, Path, PathBuf, PermissionRuleConfig,
-    PermissionsConfig, PrivacyConfig, ProfileDefinition, ProfilesConfig, RUNTIME_SCHEMA_VERSION,
-    Serialize, SessionConfig, SiteDoctorConfig, SiteRule, SpellcheckConfig, SwitcherConfig,
-    SystemTime, TabsConfig, ThemeConfig, ToolsConfig, UNIX_EPOCH, UiConfig, Write,
-    default_search_engines, fs, io_error, runtime_site_rule_id, selector_setting_family,
-    set_private_file_mode, set_private_permissions, setting_supports_site_scope, validate,
-    validate_contexts, validate_profile_definition, validate_profiles, validate_runtime_binding,
-    validate_runtime_key, validate_runtime_overrides, validate_runtime_site_pattern,
-    validate_selector_policy_map,
+    LinksConfig, LoggingConfig, MAX_INCLUDE_DEPTH, MAX_RUNTIME_VALUE_BYTES, MAX_TOTAL_BYTES,
+    NavigationConfig, PasskeysConfig, Path, PathBuf, PermissionRuleConfig, PermissionsConfig,
+    PrivacyConfig, ProfileDefinition, ProfilesConfig, RUNTIME_SCHEMA_VERSION, Serialize,
+    SessionConfig, SiteDoctorConfig, SiteRule, SpellcheckConfig, SwitcherConfig, SystemTime,
+    TabsConfig, ThemeConfig, ToolsConfig, UNIX_EPOCH, UiConfig, Write, default_search_engines, fs,
+    io_error, runtime_site_rule_id, selector_setting_family, set_private_file_mode,
+    set_private_permissions, setting_supports_site_scope, validate, validate_contexts,
+    validate_profile_definition, validate_profiles, validate_runtime_binding, validate_runtime_key,
+    validate_runtime_overrides, validate_runtime_site_pattern, validate_selector_policy_map,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -120,7 +125,7 @@ impl Default for Config {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum ConfigError {
     Io { path: PathBuf, message: String },
     Parse { path: PathBuf, message: String },
@@ -133,22 +138,24 @@ pub enum ConfigError {
 
 impl std::fmt::Display for ConfigError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        let message = match self {
             Self::Io { path, message } | Self::Parse { path, message } => {
-                write!(formatter, "{}: {message}", path.display())
+                bounded_diagnostic(format_args!("{}: {message}", bounded_path(path)))
             }
-            Self::IncludeDepth { path } => write!(
-                formatter,
+            Self::IncludeDepth { path } => bounded_diagnostic(format_args!(
                 "include depth exceeds {MAX_INCLUDE_DEPTH}: {}",
-                path.display()
-            ),
-            Self::IncludeCycle { path } => write!(formatter, "include cycle at {}", path.display()),
-            Self::IncludeRepeated { path } => {
-                write!(formatter, "include repeated: {}", path.display())
+                bounded_path(path)
+            )),
+            Self::IncludeCycle { path } => {
+                bounded_diagnostic(format_args!("include cycle at {}", bounded_path(path)))
             }
-            Self::SizeLimit => formatter.write_str("configuration includes exceed 2 MiB"),
-            Self::Validation(message) => formatter.write_str(message),
-        }
+            Self::IncludeRepeated { path } => {
+                bounded_diagnostic(format_args!("include repeated: {}", bounded_path(path)))
+            }
+            Self::SizeLimit => "configuration includes exceed 2 MiB".into(),
+            Self::Validation(message) => bounded_diagnostic(format_args!("{message}")),
+        };
+        formatter.write_str(&message)
     }
 }
 
@@ -158,6 +165,9 @@ impl std::error::Error for ConfigError {}
 pub struct LoadedConfig {
     pub config: Config,
     pub sources: Vec<PathBuf>,
+    /// Authored policy inputs before include replacement, shared immutably
+    /// with validation and publication. Never merged back into `config`.
+    pub authored: std::sync::Arc<crate::ConfigurationSources>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -268,8 +278,9 @@ impl RuntimeOverrides {
     }
 
     /// Adds or replaces a generated site-scoped setting for a validated
-    /// pattern. Runtime rules use the highest priority so they remain above
-    /// authored site rules, matching CONFIG-002's generated-override layer.
+    /// pattern. Only the canonical generated rule ID is edited; custom rules
+    /// with the same pattern remain untouched. New rules use the highest
+    /// priority, matching CONFIG-002's generated-override layer.
     pub fn set_site_literal(
         &mut self,
         pattern: &str,
@@ -296,24 +307,23 @@ impl RuntimeOverrides {
     ) -> Result<(), ConfigError> {
         validate_runtime_site_pattern(pattern)?;
         if !setting_supports_site_scope(key) {
-            return Err(ConfigError::Validation(format!(
-                "configuration key {key} does not support site scope"
+            return Err(ConfigError::validation(format_args!(
+                "configuration key {} does not support site scope",
+                bounded_context(format_args!("{key}"))
             )));
         }
+        let existing = self.canonical_site_rule_index(pattern)?;
         let mut candidate = self.clone();
-        let index = if let Some(index) = candidate
-            .site_rules
-            .iter()
-            .position(|rule| rule.pattern == pattern)
-        {
+        let index = if let Some(index) = existing {
             index
         } else {
-            if candidate.site_rules.len() >= MAX_RUNTIME_SETTINGS {
+            if candidate.site_rules.len() >= crate::MAX_SITE_RULES {
                 return Err(ConfigError::Validation(
                     "at most 256 runtime site rules are supported".into(),
                 ));
             }
             candidate.site_rules.push(SiteRule {
+                interaction: None,
                 id: runtime_site_rule_id(pattern),
                 pattern: pattern.to_owned(),
                 priority: i32::MAX,
@@ -329,27 +339,60 @@ impl RuntimeOverrides {
         Ok(())
     }
 
-    /// Removes one generated setting and deletes an empty generated rule.
+    /// Removes one setting from the canonical generated rule, pruning it only
+    /// when no ordinary setting or Interaction section remains. A custom rule
+    /// with the same pattern never substitutes for a missing canonical rule.
     pub fn unset_site_setting(&mut self, pattern: &str, key: &str) -> Result<bool, ConfigError> {
         validate_runtime_site_pattern(pattern)?;
         if !setting_supports_site_scope(key) {
-            return Err(ConfigError::Validation(format!(
-                "configuration key {key} does not support site scope"
+            return Err(ConfigError::validation(format_args!(
+                "configuration key {} does not support site scope",
+                bounded_context(format_args!("{key}"))
             )));
         }
-        let Some(index) = self
-            .site_rules
-            .iter()
-            .position(|rule| rule.pattern == pattern)
-        else {
+        let Some(index) = self.canonical_site_rule_index(pattern)? else {
             return Ok(false);
         };
-        let changed = self.site_rules[index].set.remove(key).is_some();
-        if self.site_rules[index].set.is_empty() {
-            self.site_rules.remove(index);
+        let mut candidate = self.clone();
+        if candidate.site_rules[index].set.remove(key).is_none() {
+            return Ok(false);
         }
-        validate_runtime_overrides(self)?;
-        Ok(changed)
+        if candidate.site_rules[index].set.is_empty()
+            && candidate.site_rules[index].interaction.is_none()
+        {
+            candidate.site_rules.remove(index);
+        }
+        validate_runtime_overrides(&candidate)?;
+        *self = candidate;
+        Ok(true)
+    }
+
+    fn canonical_site_rule_index(&self, pattern: &str) -> Result<Option<usize>, ConfigError> {
+        self.exact_site_rule_index(&runtime_site_rule_id(pattern), pattern)
+    }
+
+    fn exact_site_rule_index(&self, id: &str, pattern: &str) -> Result<Option<usize>, ConfigError> {
+        super::validate_slug(id, "site rule id")?;
+        validate_runtime_site_pattern(pattern)?;
+        let mut matching = self
+            .site_rules
+            .iter()
+            .enumerate()
+            .filter(|(_, rule)| rule.id == id);
+        let Some((index, rule)) = matching.next() else {
+            return Ok(None);
+        };
+        if matching.next().is_some() {
+            return Err(ConfigError::validation(format_args!(
+                "site rule {id} is duplicated"
+            )));
+        }
+        if rule.pattern != pattern {
+            return Err(ConfigError::validation(format_args!(
+                "site rule {id} belongs to a different pattern"
+            )));
+        }
+        Ok(Some(index))
     }
 
     /// Adds or replaces a generated binding. An empty command is the explicit
@@ -366,11 +409,15 @@ impl RuntimeOverrides {
         command: &str,
     ) -> Result<(), ConfigError> {
         validate_runtime_binding(mode, keychain, command)?;
-        self.bindings
-            .entry(mode.to_owned())
-            .or_default()
-            .insert(keychain.to_owned(), command.to_owned());
-        validate_runtime_overrides(self)
+        let mut candidate = self.clone();
+        crate::binding_config::replace(
+            candidate.bindings.entry(mode.to_owned()).or_default(),
+            keychain,
+            command.to_owned(),
+        );
+        validate_runtime_overrides(&candidate)?;
+        *self = candidate;
+        Ok(())
     }
 }
 
@@ -383,7 +430,7 @@ impl RuntimeOverrides {
 /// violates the runtime override bounds.
 pub fn load_runtime_overrides(path: impl AsRef<Path>) -> Result<RuntimeOverrides, ConfigError> {
     let path = path.as_ref();
-    let bytes = match fs::read(path) {
+    let bytes = match read_configuration_bytes(path, MAX_TOTAL_BYTES) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(RuntimeOverrides::default());
@@ -398,10 +445,7 @@ pub fn load_runtime_overrides(path: impl AsRef<Path>) -> Result<RuntimeOverrides
         message: error.to_string(),
     })?;
     let overrides: RuntimeOverrides =
-        toml::from_str(&text).map_err(|error| ConfigError::Parse {
-            path: path.to_owned(),
-            message: error.to_string(),
-        })?;
+        toml::from_str(&text).map_err(|error| ConfigError::from_toml(path, error))?;
     validate_runtime_overrides(&overrides)?;
     Ok(overrides)
 }
@@ -439,7 +483,7 @@ fn write_runtime_overrides(
     validate_runtime_overrides(overrides)?;
     let bytes = toml::to_string_pretty(overrides)
         .map_err(|error| {
-            ConfigError::Validation(format!("could not serialize overrides: {error}"))
+            ConfigError::validation(format_args!("could not serialize overrides: {error}"))
         })?
         .into_bytes();
     if bytes.len() as u64 > MAX_TOTAL_BYTES {
@@ -492,20 +536,66 @@ pub fn apply_runtime_overrides(
     config: &Config,
     overrides: &RuntimeOverrides,
 ) -> Result<Config, ConfigError> {
+    apply_runtime_overrides_observed(config, overrides, None)
+}
+
+/// Observes the same assignments as `apply_runtime_overrides`, including
+/// selector overlays and explicit binding unsets. This installs nothing.
+///
+/// # Errors
+/// Rejects the same inputs as the ordinary compiler, without partial output.
+pub fn apply_runtime_overrides_traced(
+    config: &Config,
+    overrides: &RuntimeOverrides,
+) -> Result<AppliedRuntimeOverrides, ConfigError> {
+    let mut assignments = Vec::new();
+    let configuration =
+        apply_runtime_overrides_observed(config, overrides, Some(&mut assignments))?;
+    Ok(AppliedRuntimeOverrides {
+        configuration,
+        assignments,
+    })
+}
+
+fn apply_runtime_overrides_observed(
+    config: &Config,
+    overrides: &RuntimeOverrides,
+    mut trace: Option<&mut Vec<RuntimeOverrideAssignment>>,
+) -> Result<Config, ConfigError> {
     validate_runtime_overrides(overrides)?;
+    for (mode, bindings) in &config.bindings {
+        crate::binding_config::validate_keys(mode, bindings.keys().map(String::as_str))?;
+    }
     let mut value = toml::Value::try_from(config).map_err(|error| {
-        ConfigError::Validation(format!("could not encode configuration: {error}"))
+        ConfigError::validation(format_args!("could not encode configuration: {error}"))
     })?;
     for (key, override_value) in &overrides.settings {
         let parts = key.split('.').collect::<Vec<_>>();
         set_config_value(&mut value, &parts, override_value, key)?;
+        if let Some(trace) = &mut trace {
+            let assigned = parts
+                .iter()
+                .try_fold(&value, |value, part| value.get(*part))
+                .ok_or_else(|| {
+                    ConfigError::validation(format_args!("assigned runtime setting disappeared"))
+                })?;
+            trace.push(RuntimeOverrideAssignment {
+                path: parts.iter().map(|part| (*part).to_owned()).collect(),
+                input: override_value.clone(),
+                assigned: assigned.clone(),
+            });
+        }
     }
     let mut updated: Config = value.try_into().map_err(|error: toml::de::Error| {
-        ConfigError::Validation(format!("runtime override has the wrong type: {error}"))
+        ConfigError::validation(format_args!("runtime override has the wrong type: {error}"))
     })?;
     for (mode, bindings) in &overrides.bindings {
         let layer = updated.bindings.entry(mode.clone()).or_default();
+        let mut index = crate::binding_config::BindingIndex::new(layer.keys().map(String::as_str));
         for (keychain, command) in bindings {
+            if let Some(lower) = index.insert(keychain) {
+                layer.remove(&lower);
+            }
             layer.insert(
                 keychain.clone(),
                 if command.is_empty() {
@@ -514,6 +604,13 @@ pub fn apply_runtime_overrides(
                     command.clone()
                 },
             );
+            if let Some(trace) = &mut trace {
+                trace.push(RuntimeOverrideAssignment {
+                    path: vec!["bindings".into(), mode.clone(), keychain.clone()],
+                    input: toml::Value::String(command.clone()),
+                    assigned: toml::Value::String(layer[keychain].clone()),
+                });
+            }
         }
     }
     for rule in &overrides.site_rules {
@@ -599,15 +696,14 @@ fn set_config_value(
     key: &str,
 ) -> Result<(), ConfigError> {
     let table = cursor.as_table_mut().ok_or_else(|| {
-        ConfigError::Validation(format!("configuration key is not a table path: {key}"))
+        ConfigError::validation(format_args!("configuration key is not a table path: {key}"))
     })?;
-    let part = parts
-        .first()
-        .copied()
-        .ok_or_else(|| ConfigError::Validation(format!("configuration key is empty: {key}")))?;
+    let part = parts.first().copied().ok_or_else(|| {
+        ConfigError::validation(format_args!("configuration key is empty: {key}"))
+    })?;
     if parts.len() == 1 {
         if !table.contains_key(part) && selector_setting_family(key).is_none() {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "configuration key not found: {key}"
             )));
         }
@@ -616,7 +712,7 @@ fn set_config_value(
                 .clone()
                 .try_into::<HintSelectorPolicy>()
                 .map_err(|error| {
-                    ConfigError::Validation(format!(
+                    ConfigError::validation(format_args!(
                         "selector policy for {key} has the wrong type: {error}"
                     ))
                 })?;
@@ -626,14 +722,14 @@ fn set_config_value(
                 .map(toml::Value::try_into::<HintSelectorPolicy>)
                 .transpose()
                 .map_err(|error| {
-                    ConfigError::Validation(format!(
+                    ConfigError::validation(format_args!(
                         "inherited selector policy for {key} has the wrong type: {error}"
                     ))
                 })?;
             let merged = HintSelectorPolicy::overlay(inherited.as_ref(), incoming)
-                .map_err(ConfigError::Validation)?;
+                .map_err(|message| ConfigError::validation(format_args!("{message}")))?;
             toml::Value::try_from(merged).map_err(|error| {
-                ConfigError::Validation(format!(
+                ConfigError::validation(format_args!(
                     "could not encode selector policy for {key}: {error}"
                 ))
             })?
@@ -643,9 +739,9 @@ fn set_config_value(
         table.insert(part.to_owned(), value);
         return Ok(());
     }
-    let child = table
-        .get_mut(part)
-        .ok_or_else(|| ConfigError::Validation(format!("configuration key not found: {key}")))?;
+    let child = table.get_mut(part).ok_or_else(|| {
+        ConfigError::validation(format_args!("configuration key not found: {key}"))
+    })?;
     set_config_value(child, &parts[1..], replacement, key)
 }
 
@@ -699,19 +795,19 @@ pub fn load(path: impl AsRef<Path>) -> Result<LoadedConfig, ConfigError> {
         active: BTreeSet::new(),
         seen: BTreeSet::new(),
         sources: Vec::new(),
+        authored: crate::ConfigurationSources::default(),
     };
     let value = state.read_file(&root, 0)?;
     let config: Config = value
         .try_into()
-        .map_err(|error: toml::de::Error| ConfigError::Parse {
-            path: root.clone(),
-            message: error.to_string(),
-        })?;
-    validate_selector_policy_map(&config.hints.selectors).map_err(ConfigError::Validation)?;
+        .map_err(|error| ConfigError::from_toml(&root, error))?;
+    validate_selector_policy_map(&config.hints.selectors)
+        .map_err(|message| ConfigError::validation(format_args!("{message}")))?;
     validate(&config)?;
     Ok(LoadedConfig {
         config,
         sources: state.sources,
+        authored: std::sync::Arc::new(state.authored),
     })
 }
 
@@ -733,7 +829,8 @@ pub fn validate_contexts_configuration(config: &ContextsConfig) -> Result<(), Co
 /// Returns an I/O, TOML, size, schema, or context/routing validation error.
 pub fn load_contexts(path: impl AsRef<Path>) -> Result<ContextsConfig, ConfigError> {
     let path = path.as_ref();
-    let bytes = fs::read(path).map_err(|error| io_error(path, &error))?;
+    let bytes =
+        read_configuration_bytes(path, MAX_TOTAL_BYTES).map_err(|error| io_error(path, &error))?;
     if bytes.len() as u64 > MAX_TOTAL_BYTES {
         return Err(ConfigError::SizeLimit);
     }
@@ -741,10 +838,8 @@ pub fn load_contexts(path: impl AsRef<Path>) -> Result<ContextsConfig, ConfigErr
         path: path.to_owned(),
         message: error.to_string(),
     })?;
-    let config: ContextsConfig = toml::from_str(&text).map_err(|error| ConfigError::Parse {
-        path: path.to_owned(),
-        message: error.to_string(),
-    })?;
+    let config: ContextsConfig =
+        toml::from_str(&text).map_err(|error| ConfigError::from_toml(path, error))?;
     validate_contexts(&config)?;
     Ok(config)
 }
@@ -759,7 +854,8 @@ pub fn load_contexts(path: impl AsRef<Path>) -> Result<ContextsConfig, ConfigErr
 /// Returns an I/O, TOML, size, schema, or profile validation error.
 pub fn load_profiles(path: impl AsRef<Path>) -> Result<ProfilesConfig, ConfigError> {
     let path = path.as_ref();
-    let bytes = fs::read(path).map_err(|error| io_error(path, &error))?;
+    let bytes =
+        read_configuration_bytes(path, MAX_TOTAL_BYTES).map_err(|error| io_error(path, &error))?;
     if bytes.len() as u64 > MAX_TOTAL_BYTES {
         return Err(ConfigError::SizeLimit);
     }
@@ -767,10 +863,8 @@ pub fn load_profiles(path: impl AsRef<Path>) -> Result<ProfilesConfig, ConfigErr
         path: path.to_owned(),
         message: error.to_string(),
     })?;
-    let config: ProfilesConfig = toml::from_str(&text).map_err(|error| ConfigError::Parse {
-        path: path.to_owned(),
-        message: error.to_string(),
-    })?;
+    let config: ProfilesConfig =
+        toml::from_str(&text).map_err(|error| ConfigError::from_toml(path, error))?;
     validate_profiles(&config)?;
     Ok(config)
 }
@@ -806,7 +900,9 @@ pub fn save_contexts_atomic(
     let path = path.as_ref();
     validate_contexts(config)?;
     let bytes = toml::to_string_pretty(config)
-        .map_err(|error| ConfigError::Validation(format!("could not serialize contexts: {error}")))?
+        .map_err(|error| {
+            ConfigError::validation(format_args!("could not serialize contexts: {error}"))
+        })?
         .into_bytes();
     if bytes.len() as u64 > MAX_TOTAL_BYTES {
         return Err(ConfigError::SizeLimit);
@@ -845,6 +941,21 @@ struct LoadState {
     active: BTreeSet<PathBuf>,
     seen: BTreeSet<PathBuf>,
     sources: Vec<PathBuf>,
+    authored: crate::ConfigurationSources,
+}
+
+fn read_configuration_bytes(path: &Path, remaining: u64) -> std::io::Result<Vec<u8>> {
+    read_bounded(fs::File::open(path)?, remaining)
+}
+
+fn read_bounded(reader: impl Read, remaining: u64) -> std::io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    // One extra byte distinguishes exact-cap EOF from oversize input without
+    // trusting metadata or allocating the entire file first.
+    reader
+        .take(remaining.saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    Ok(bytes)
 }
 
 impl LoadState {
@@ -863,7 +974,9 @@ impl LoadState {
         if !self.seen.insert(canonical.clone()) {
             return Err(ConfigError::IncludeRepeated { path: canonical });
         }
-        let bytes = fs::read(&canonical).map_err(|error| io_error(&canonical, &error))?;
+        let bytes =
+            read_configuration_bytes(&canonical, MAX_TOTAL_BYTES.saturating_sub(self.total_bytes))
+                .map_err(|error| io_error(&canonical, &error))?;
         self.total_bytes = self.total_bytes.saturating_add(bytes.len() as u64);
         if self.total_bytes > MAX_TOTAL_BYTES {
             return Err(ConfigError::SizeLimit);
@@ -873,27 +986,32 @@ impl LoadState {
             message: error.to_string(),
         })?;
         let mut value: toml::Value =
-            toml::from_str(&text).map_err(|error: toml::de::Error| ConfigError::Parse {
-                path: canonical.clone(),
-                message: error.to_string(),
-            })?;
-        let includes = value
-            .get("include")
-            .and_then(toml::Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+            toml::from_str(&text).map_err(|error| ConfigError::from_toml(&canonical, error))?;
+        // Validate each source before any array/table replacement can hide it.
+        // Keep sparse authored inputs rather than default-filled Config copies.
+        let authored = crate::ConfigurationSourceDocument::parse(&canonical, &value)?;
+        let includes = match value.get("include") {
+            None => Vec::new(),
+            Some(toml::Value::Array(values)) => values.clone(),
+            Some(_) => {
+                return Err(ConfigError::validation(format_args!(
+                    "{}: include must be an array of trusted literal local paths",
+                    crate::configuration_diagnostic::bounded_path(&canonical)
+                )));
+            }
+        };
         let mut merged = toml::Value::Table(toml::map::Map::new());
         for include in includes {
             let include = include.as_str().ok_or_else(|| {
-                ConfigError::Validation(format!(
+                ConfigError::validation(format_args!(
                     "{}: include entries must be strings",
-                    canonical.display()
+                    crate::configuration_diagnostic::bounded_path(&canonical)
                 ))
             })?;
             if include.contains('\0') || include.contains("$HOME") || include.contains("${") {
-                return Err(ConfigError::Validation(format!(
+                return Err(ConfigError::validation(format_args!(
                     "{}: include must be a trusted literal local path",
-                    canonical.display()
+                    crate::configuration_diagnostic::bounded_path(&canonical)
                 )));
             }
             let include_path = canonical.parent().unwrap_or(Path::new(".")).join(include);
@@ -905,29 +1023,86 @@ impl LoadState {
         }
         merge(&mut merged, &value);
         self.active.remove(&canonical);
+        self.authored.push(authored);
         self.sources.push(canonical);
         Ok(merged)
     }
 }
 
-fn merge(destination: &mut toml::Value, source: &toml::Value) {
-    if let (Some(destination), Some(source)) = (destination.as_table_mut(), source.as_table()) {
-        for (key, value) in source {
-            if let Some(existing) = destination.get_mut(key)
-                && existing.is_table()
-                && value.is_table()
-            {
-                merge(existing, value);
-            } else {
-                destination.insert(key.clone(), value.clone());
+pub(crate) fn merge(destination: &mut toml::Value, source: &toml::Value) {
+    #[derive(Clone, Copy)]
+    enum Scope {
+        Root,
+        Bindings,
+        Mode,
+        Other,
+    }
+    fn merge_at(destination: &mut toml::Value, source: &toml::Value, scope: Scope) {
+        if let (Some(destination), Some(source)) = (destination.as_table_mut(), source.as_table()) {
+            let mut index = matches!(scope, Scope::Mode).then(|| {
+                crate::binding_config::BindingIndex::new(destination.keys().map(String::as_str))
+            });
+            for (key, value) in source {
+                if let Some(index) = &mut index
+                    && let Some(lower) = index.insert(key)
+                {
+                    destination.remove(&lower);
+                }
+                if let Some(existing) = destination.get_mut(key)
+                    && existing.is_table()
+                    && value.is_table()
+                {
+                    let child = match scope {
+                        Scope::Root if key == "bindings" => Scope::Bindings,
+                        Scope::Bindings => Scope::Mode,
+                        _ => Scope::Other,
+                    };
+                    merge_at(existing, value, child);
+                } else {
+                    destination.insert(key.clone(), value.clone());
+                }
             }
         }
     }
+    merge_at(destination, source, Scope::Root);
 }
 
 #[cfg(test)]
 mod persistence_tests {
     use super::*;
+
+    #[test]
+    fn bounded_reader_consumes_only_the_remaining_budget_and_one_sentinel() {
+        struct Source<'a> {
+            remaining: usize,
+            observed: &'a std::cell::Cell<usize>,
+        }
+        impl Read for Source<'_> {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                let count = self.remaining.min(buffer.len()).min(3);
+                buffer[..count].fill(b' ');
+                self.remaining -= count;
+                self.observed.set(self.observed.get() + count);
+                Ok(count)
+            }
+        }
+        for budget in [0, 7, 8, 9] {
+            for length in [0, 6, 7, 8, 9, 100] {
+                let observed = std::cell::Cell::new(0);
+                let bytes = read_bounded(
+                    Source {
+                        remaining: length,
+                        observed: &observed,
+                    },
+                    budget,
+                )
+                .unwrap();
+                let expected = length.min(usize::try_from(budget).unwrap() + 1);
+                assert_eq!(bytes.len(), expected);
+                assert_eq!(observed.get(), expected);
+            }
+        }
+    }
 
     #[test]
     fn directory_sync_failure_is_a_committed_outcome() {

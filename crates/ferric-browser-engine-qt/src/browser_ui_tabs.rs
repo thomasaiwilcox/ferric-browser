@@ -967,6 +967,9 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
         route: Option<&IpcRoute>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<Value, String> {
         let (id, encoded_arguments) = match command.arguments.as_slice() {
             [id] => (id.as_str(), None),
@@ -1036,7 +1039,10 @@ impl qobject::BrowserUi {
                     .validate(&parsed, mode)
                     .map_err(|error| error.to_string())?;
                 if let Some(route) = route {
-                    let result = self.as_mut().execute_ipc_command(parsed, route)?;
+                    let result = self
+                        .as_mut()
+                        .execute_ipc_command_in_turn(parsed, route, None, preparation)
+                        .map_err(|error| error.to_string())?;
                     return Ok(serde_json::json!({
                         "status": "accepted",
                         "action": "execute",
@@ -1044,7 +1050,12 @@ impl qobject::BrowserUi {
                         "result": result
                     }));
                 }
-                if !self.as_mut().execute_parsed_commands(vec![parsed]) {
+                if !self.as_mut().execute_counted_parsed_commands_in_turn(
+                    vec![parsed],
+                    1,
+                    &mut None,
+                    preparation,
+                ) {
                     return Err(self.as_ref().rust().status_text.to_string());
                 }
                 Ok(serde_json::json!({

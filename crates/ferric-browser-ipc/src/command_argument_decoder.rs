@@ -23,6 +23,9 @@ pub(super) fn decode_command_arguments(
     envelope: &CommandEnvelope,
 ) -> Result<ParsedCommand, String> {
     let command_name = envelope.command.clone();
+    if crate::command_codec::command_codec_site_policy::is_site_policy_command(&command_name) {
+        return crate::command_codec::command_codec_site_policy::decode(envelope);
+    }
     let name = command_name.as_str();
     let arguments = Some(&envelope.arguments);
     let text_argument = |key: &str| -> Result<String, String> {
@@ -465,7 +468,18 @@ pub(super) fn decode_command_arguments(
             }
             args
         }
-        "mode-enter" => vec![text_argument("mode")?],
+        "mode-enter" => {
+            let mut args = vec![text_argument("mode")?];
+            if arguments
+                .and_then(|arguments| arguments.get("raw"))
+                .and_then(Value::as_bool)
+                == Some(true)
+            {
+                args.push("--raw".into());
+            }
+            ferric_browser_core::parse_mode_enter(&args).map_err(|error| error.to_string())?;
+            args
+        }
         "caret-move" => {
             let mut args = vec![text_argument("direction")?];
             if let Some(count) = arguments.and_then(|arguments| arguments.get("count")) {

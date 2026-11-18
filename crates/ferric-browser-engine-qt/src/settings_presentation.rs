@@ -8,6 +8,19 @@ use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, Q
 use ferric_browser_config::{PendingSettingChange, setting_metadata_all};
 use serde_json::Value;
 
+pub(super) fn saved_configuration_status(
+    outcome: &ferric_browser_config::RuntimeOverrideWriteOutcome,
+) -> String {
+    let mut message = "Settings saved for the original profile, but not activated. Reload that profile's configuration; some changes require a browser restart.".to_owned();
+    if let ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(warning) =
+        outcome
+    {
+        message.push_str(" A system crash could lose the saved change: ");
+        message.push_str(warning);
+    }
+    message
+}
+
 pub(super) fn configuration_status(status: &str, pending: &[PendingSettingChange]) -> String {
     let mut status = status.to_owned();
     if pending.iter().any(|change| change.apply_time == "reload") {
@@ -267,6 +280,23 @@ fn value_at<'a>(root: &'a Value, key: &str) -> Option<&'a Value> {
 mod tests {
     use super::*;
     use ferric_browser_config::Config;
+
+    #[test]
+    fn saved_inactive_status_retains_the_original_profile_and_durability_warning() {
+        use ferric_browser_config::RuntimeOverrideWriteOutcome;
+
+        let durable = saved_configuration_status(&RuntimeOverrideWriteOutcome::Durable);
+        assert!(durable.contains("saved for the original profile"));
+        assert!(durable.contains("not activated"));
+        assert!(durable.contains("Reload that profile's configuration"));
+        assert!(durable.contains("some changes require a browser restart"));
+        let uncertain = saved_configuration_status(
+            &RuntimeOverrideWriteOutcome::DurabilityUncertain("directory sync failed".into()),
+        );
+        assert!(uncertain.starts_with(&durable));
+        assert!(uncertain.contains("system crash could lose"));
+        assert!(uncertain.contains("directory sync failed"));
+    }
 
     #[test]
     fn rows_follow_the_authoritative_registry_and_effective_values() {

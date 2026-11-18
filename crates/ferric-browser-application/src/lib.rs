@@ -46,25 +46,51 @@ pub use operations::{
 };
 
 mod configuration_write;
-pub use configuration_write::PersistedConfigurationUpdate;
+pub use configuration_write::{
+    ConfigurationPersistenceOutcome, ConfigurationWriteObserver, PersistedConfigurationUpdate,
+};
 
 mod configuration;
+pub use configuration::{
+    InteractionEditCapture, InteractionRuleChange, InteractionRuleEdit, InteractionRuleSnapshot,
+    PreparedInteractionEdits, SavedRuntimeEditCapture,
+};
+mod interaction_cache;
+mod interaction_scope;
+pub use interaction_cache::{
+    CompiledHintDiscovery, CompiledInteractionSnapshot, CompiledSitePolicySnapshot,
+    InteractionCacheUnavailable, InteractionCompilationState, SitePolicyMatchContext,
+    SitePolicyObservation,
+};
+mod site_policy_limits;
+pub use site_policy_limits::{
+    MAX_SITE_POLICY_CAPTURES_PER_WINDOW, MAX_SITE_POLICY_DRAFTS_PER_PROFILE,
+    MAX_SITE_POLICY_PREVIEWS,
+};
 mod configuration_reservation;
 pub use configuration_reservation::ConfigurationReservation;
 mod contexts;
 mod download_catalog;
 mod profile;
 mod profile_configuration;
+#[cfg(test)]
+mod profile_validation_tests;
 mod userscript_jobs;
 pub use userscript_jobs::{
     UserscriptManagerRequest, UserscriptManagerResult, UserscriptMutationOutcome,
 };
 mod profile_open;
 mod profile_session;
+mod site_policy_drafts;
 pub use download_catalog::{
     DownloadFailure, DownloadRetryState, DownloadRow, DownloadSaveFailure, DownloadSessionError,
 };
 pub use profile_session::ProfileInstanceId;
+pub use site_policy_drafts::{
+    MAX_SITE_POLICY_DRAFTS, PreparedSitePolicyPreview, SitePolicyApplyOutcome,
+    SitePolicyDraftApply, SitePolicyDraftOperation, SitePolicyDraftResolution, SitePolicyDraftRule,
+    SitePolicyDraftValidation, SitePolicyDraftView, SitePolicyPreviewReceipt,
+};
 mod session_download_retries;
 pub use session_download_retries::DownloadRetryPermit;
 mod session_downloads;
@@ -73,14 +99,31 @@ mod session_permissions;
 mod storage;
 
 use configuration::ConfigurationState;
-pub use configuration::{ConfigurationLayers, ConfigurationSnapshot, PreparedConfigurationUpdate};
+pub use configuration::{
+    ConfigurationInspectionCandidate, ConfigurationInspectionCandidateStage,
+    ConfigurationInspectionInputs, ConfigurationLayers, ConfigurationPolicySources,
+    ConfigurationRequestCapture, ConfigurationSnapshot, EffectiveHintProxyTargets,
+    HintProxyCompositionTrace, HintProxyContribution, InspectedHintProxyTargets,
+    InspectedHintSelectors, InspectedInteractionContribution, InspectedInteractionPolicy,
+    InspectedInteractionValue, InspectedSettingContribution, InspectedSettingValue,
+    InspectionBoundary, InspectionOrigin, InspectionProfile, InspectionValidationStage,
+    InteractionInspection, InteractionInspectionExplanation, InteractionInspectionRequest,
+    InteractionInspectionValues, PreparedConfigurationConsumer, PreparedConfigurationUpdate,
+    SettingActivationBoundary, SettingExplanation, SettingInspection, SettingInspectionPending,
+    SettingInspectionRequest, SettingInspectionValidation,
+};
 pub use contexts::{ContextCatalog, ContextReloadEffect, ContextReloadError, ContextReloadJob};
 pub use ferric_browser_storage::StorageCommand as StorageRequest;
 use profile::ActiveProfile;
 use profile::ProfileActivation;
 pub use profile::{ContextChange, ContextCommand, ContextEffect, ProfileSnapshot};
-use profile_open::{PreparedProfile, ProfileOpenCoordinator};
-pub use profile_open::{ProfileOpenEffect, ProfileOpenError, ProfileOpenRequest, ProfileStorage};
+#[cfg(test)]
+use profile_open::PreparedProfile;
+use profile_open::ProfileOpenCoordinator;
+pub use profile_open::{
+    ProfileOpenCandidate, ProfileOpenEffect, ProfileOpenError, ProfileOpenRequest,
+    ProfileOpenValidationCapture, ProfileStorage,
+};
 pub use session_permissions::{
     PermissionPreferencesStatus, PermissionResolution, SavedPermissionPreferences,
     SessionPermissionError,
@@ -110,17 +153,29 @@ pub struct BrowserApplication {
     userscript_worker: Option<userscript_jobs::UserscriptManagerWorker>,
     runtime: BrowserRuntime,
     configuration: ConfigurationState,
+    configuration_owner: Arc<()>,
+    interaction_cache: interaction_cache::InteractionPolicyCache,
+    interaction_compilations: std::sync::atomic::AtomicU64,
     configuration_reservation: Arc<AtomicBool>,
     configuration_write: Option<configuration_write::ConfigurationWrite>,
     active_profile: Option<ActiveProfile>,
+    // Context metadata, independent of global configuration ownership. Each
+    // native owner binds its own Core domain at explicit profile activation.
+    core_profile_scope: Option<ProfileId>,
+    shared_policy_owner: Option<profile_configuration::OwnerRegistration>,
+    policy_owner_preparing: bool,
+    policy_context_waker: Option<Arc<dyn Fn() + Send + Sync>>,
     next_profile_generation: u64,
     download_owner: uuid::Uuid,
     storage: StorageCoordinator,
     profile_open: Option<ProfileOpenCoordinator>,
+    profile_open_validation: Option<profile_open::PublishedProfileValidation>,
 }
 
 impl Drop for BrowserApplication {
     fn drop(&mut self) {
+        self.retire_site_policy_drafts();
+        self.shared_policy_owner.take();
         self.close_session_storage();
     }
 }
@@ -135,13 +190,21 @@ impl BrowserApplication {
             userscript_worker: None,
             runtime: BrowserRuntime::new(),
             configuration: ConfigurationState::new(configuration),
+            configuration_owner: Arc::new(()),
+            interaction_cache: interaction_cache::InteractionPolicyCache::default(),
+            interaction_compilations: std::sync::atomic::AtomicU64::new(0),
             configuration_reservation: Arc::default(),
             configuration_write: None,
             active_profile: None,
+            core_profile_scope: None,
+            shared_policy_owner: None,
+            policy_owner_preparing: false,
+            policy_context_waker: None,
             next_profile_generation: 1,
             download_owner: uuid::Uuid::new_v4(),
             storage: StorageCoordinator::default(),
             profile_open: None,
+            profile_open_validation: None,
         }
     }
 
@@ -158,13 +221,21 @@ impl BrowserApplication {
             userscript_worker: None,
             runtime,
             configuration: ConfigurationState::new(configuration),
+            configuration_owner: Arc::new(()),
+            interaction_cache: interaction_cache::InteractionPolicyCache::default(),
+            interaction_compilations: std::sync::atomic::AtomicU64::new(0),
             configuration_reservation: Arc::default(),
             configuration_write: None,
             active_profile: None,
+            core_profile_scope: None,
+            shared_policy_owner: None,
+            policy_owner_preparing: false,
+            policy_context_waker: None,
             next_profile_generation: 1,
             download_owner: uuid::Uuid::new_v4(),
             storage: StorageCoordinator::default(),
             profile_open: None,
+            profile_open_validation: None,
         }
     }
 
@@ -201,21 +272,33 @@ impl BrowserApplication {
         storage
             .replace(profile.storage_path())
             .map_err(|error| ProfileOpenError::InvalidRequest(error.to_string()))?;
-        Ok(Self {
+        let core_profile_scope =
+            interaction_scope::capture_core_profile_scope(runtime.view(), profile.privacy());
+        let mut inherited = Self {
             operations: OperationCatalog::default(),
             page_scripts: self.page_scripts.clone(),
             userscript_root: self.userscript_root.clone(),
             userscript_worker: None,
             runtime,
             configuration: self.configuration.clone(),
+            configuration_owner: Arc::new(()),
+            interaction_cache: interaction_cache::InteractionPolicyCache::default(),
+            interaction_compilations: std::sync::atomic::AtomicU64::new(0),
             configuration_reservation: self.configuration_reservation.clone(),
             configuration_write: None,
             active_profile: Some(profile.clone()),
+            core_profile_scope,
+            shared_policy_owner: None,
+            policy_owner_preparing: false,
+            policy_context_waker: None,
             next_profile_generation: self.next_profile_generation,
             download_owner: uuid::Uuid::new_v4(),
             storage,
             profile_open: None,
-        })
+            profile_open_validation: None,
+        };
+        inherited.register_shared_policy_owner();
+        Ok(inherited)
     }
 
     /// Creates initial state through the same application boundary used after
@@ -239,13 +322,21 @@ impl BrowserApplication {
                 userscript_worker: None,
                 runtime,
                 configuration: ConfigurationState::new(configuration),
+                configuration_owner: Arc::new(()),
+                interaction_cache: interaction_cache::InteractionPolicyCache::default(),
+                interaction_compilations: std::sync::atomic::AtomicU64::new(0),
                 configuration_reservation: Arc::default(),
                 configuration_write: None,
                 active_profile: None,
+                core_profile_scope: None,
+                shared_policy_owner: None,
+                policy_owner_preparing: false,
+                policy_context_waker: None,
                 next_profile_generation: 1,
                 download_owner: uuid::Uuid::new_v4(),
                 storage: StorageCoordinator::default(),
                 profile_open: None,
+                profile_open_validation: None,
             },
             window,
             tab,
@@ -392,6 +483,14 @@ impl BrowserApplication {
         self.configuration.layers()
     }
 
+    /// Captures immutable desired/reload source inputs paired with the current
+    /// configuration revision. Policy compilation must also honor the active
+    /// projection and profile identity; these inputs are not action permits.
+    #[must_use]
+    pub fn configuration_policy_sources(&self) -> ConfigurationPolicySources {
+        self.configuration.policy_sources()
+    }
+
     #[must_use]
     pub const fn configuration(&self) -> &Config {
         self.configuration.effective()
@@ -454,7 +553,21 @@ impl BrowserApplication {
         &mut self,
         input: RuntimeInput,
     ) -> Result<Vec<RuntimeEffect>, RuntimeError> {
-        self.runtime.handle(input)
+        // A same-window MoveTab can be only a reorder/no-op. Capture its
+        // source window before reduction, without scanning tabs on key input.
+        let moved_from = match &input {
+            RuntimeInput::Lifecycle(ferric_browser_core::Event::MoveTab { tab, .. })
+            | RuntimeInput::EngineFact(ferric_browser_core::Event::MoveTab { tab, .. })
+            | RuntimeInput::UserDecision(ferric_browser_core::Event::MoveTab { tab, .. }) => {
+                self.tabs().get(tab).map(|page| (*tab, page.window))
+            }
+            _ => None,
+        };
+        let context_mutation = self.begin_shared_runtime_mutation(&input);
+        let effects = self.runtime.handle(input)?;
+        self.finish_shared_runtime_mutation(context_mutation, &effects);
+        self.retire_observed_policy_targets(&effects, moved_from);
+        Ok(effects)
     }
 
     /// Atomically activates every configuration layer during bootstrap.
@@ -467,7 +580,20 @@ impl BrowserApplication {
         layers: ConfigurationLayers,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
         self.ensure_configuration_writable()?;
-        self.configuration.activate_layers(layers)
+        let expected_shared_revision = self.profile_configuration_revision()?;
+        let mut configuration = self.configuration.clone();
+        let snapshot = configuration.activate_layers(layers)?;
+        self.validate_open_interaction_sources(&configuration.policy_sources())?;
+        let interaction_cache = self.stage_interaction_cache(configuration.policy_sources());
+        let mutation = self.begin_shared_source_mutation(
+            expected_shared_revision,
+            &configuration.layers().runtime,
+        )?;
+        self.configuration = configuration;
+        self.interaction_cache = interaction_cache;
+        self.refresh_shared_policy_owner(true);
+        Self::finish_shared_source_mutation(mutation);
+        Ok(snapshot)
     }
 
     /// Atomically updates live settings and preserves pending reload-,
@@ -513,13 +639,18 @@ impl BrowserApplication {
         boundary: ConfigurationApplyBoundary,
     ) -> Result<PreparedConfigurationUpdate, ConfigError> {
         self.ensure_configuration_writable()?;
-        self.check_profile_configuration(&layers)?;
+        // Stamp the revision whose runtime layer was checked. A peer update
+        // during composition must make this preparation stale.
+        let profile_revision = self.profile_configuration_revision_for(&layers)?;
         let mut state = self.configuration.clone();
         state.update_layers_at(layers, boundary)?;
         Ok(PreparedConfigurationUpdate {
+            owner: configuration::ConfigurationOwner::capture(self),
             expected_revision: self.configuration.revision(),
-            profile_revision: self.profile_configuration_revision()?,
+            profile_revision,
             state,
+            preparation_identity: Arc::new(()),
+            admission: configuration::ConfigurationAdmission::Fresh,
         })
     }
 
@@ -534,7 +665,25 @@ impl BrowserApplication {
         prepared: PreparedConfigurationUpdate,
         persist: impl FnOnce() -> Result<(), ConfigError>,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
+        self.publish_configuration_transaction(prepared, |_| persist())
+            .map(|(snapshot, ())| snapshot)
+    }
+
+    /// The single synchronous publication authority. The final callback may
+    /// persist or refresh context metadata; it must not reenter configuration
+    /// methods or acquire the shared configuration lock held here.
+    pub(crate) fn publish_configuration_transaction<T>(
+        &mut self,
+        prepared: PreparedConfigurationUpdate,
+        before_commit: impl FnOnce(&mut Self) -> Result<T, ConfigError>,
+    ) -> Result<(ConfigurationSnapshot, T), ConfigError> {
         self.ensure_configuration_writable()?;
+        self.check_configuration_owner(&prepared.owner)?;
+        let shared_contexts = if prepared.admission.requires_context_preflight() {
+            self.preflight_shared_policy_contexts(&prepared)?
+        } else {
+            None
+        };
         let session = self
             .active_profile
             .as_ref()
@@ -547,26 +696,111 @@ impl BrowserApplication {
                 })
             })
             .transpose()?;
-        if self.configuration.revision() != prepared.expected_revision
-            || shared.as_ref().map_or(0, |shared| shared.revision) != prepared.profile_revision
+        self.ensure_configuration_writable()?;
+        self.check_configuration_preparation(
+            &prepared,
+            shared.as_ref().map_or(0, |shared| shared.revision),
+        )?;
+        let runtime = &prepared.state.layers().runtime;
+        let shared_runtime_changed = shared
+            .as_ref()
+            .is_some_and(|shared| shared.runtime.as_ref() != Some(runtime));
+        if let configuration::ConfigurationAdmission::CommittedPeer(captured) = &prepared.admission
         {
-            return Err(ConfigError::Validation(
-                "prepared configuration became stale".into(),
-            ));
-        }
-        persist()?;
-        if let Some(shared) = shared.as_mut() {
-            let runtime = &prepared.state.layers().runtime;
-            if shared.runtime.as_ref() != Some(runtime) {
-                shared.runtime = Some(runtime.clone());
-                shared.revision = shared.revision.saturating_add(1);
+            let actual = session.as_ref().ok_or_else(|| {
+                ConfigError::validation(format_args!(
+                    "The committed peer configuration owner is unavailable"
+                ))
+            })?;
+            if !std::sync::Weak::ptr_eq(captured, &Arc::downgrade(&actual.0.configuration))
+                || shared.as_ref().and_then(|shared| shared.runtime.as_ref()) != Some(runtime)
+            {
+                return Err(ConfigError::validation(format_args!(
+                    "The committed peer configuration became stale"
+                )));
             }
         }
+        if let Some(contexts) = shared_contexts {
+            let actual = session.as_ref().ok_or_else(|| {
+                ConfigError::validation(format_args!("The sharing profile became unavailable"))
+            })?;
+            contexts.check_current(&actual.0.configuration)?;
+        }
+        let next_revision = shared
+            .as_ref()
+            .map(|shared| shared.revision_for(runtime))
+            .transpose()?;
+        let interaction_cache = self.stage_interaction_cache(prepared.state.policy_sources());
+        let result = before_commit(self)?;
+        if let Some(shared) = shared.as_mut() {
+            if shared.runtime.as_ref() != Some(runtime) {
+                shared.runtime = Some(runtime.clone());
+            }
+            shared.revision = next_revision.expect("shared revision was preflighted");
+        }
         self.configuration = prepared.state;
-        Ok(self.configuration.snapshot())
+        self.interaction_cache = interaction_cache;
+        self.refresh_shared_policy_owner(true);
+        drop(shared);
+        if shared_runtime_changed && let Some(session) = session {
+            session.0.configuration.wake_policy_owners();
+        }
+        Ok((self.configuration.snapshot(), result))
     }
 
-    /// Replaces the effective configuration for compatibility bootstrap paths.
+    pub(crate) fn check_configuration_owner(
+        &self,
+        owner: &configuration::ConfigurationOwner,
+    ) -> Result<(), ConfigError> {
+        if owner.matches(self) {
+            Ok(())
+        } else {
+            Err(ConfigError::validation(format_args!(
+                "configuration preparation belongs to a different or retired owner"
+            )))
+        }
+    }
+
+    /// Checks identity and both revision domains without taking another lock.
+    /// Admission under an owned reservation deliberately uses this check while
+    /// its shared gate is busy; ordinary publication separately checks the gate.
+    pub(crate) fn check_configuration_preparation(
+        &self,
+        prepared: &PreparedConfigurationUpdate,
+        profile_revision: u64,
+    ) -> Result<(), ConfigError> {
+        self.check_configuration_owner(&prepared.owner)?;
+        if self.configuration.revision() != prepared.expected_revision
+            || profile_revision != prepared.profile_revision
+        {
+            return Err(ConfigError::validation(format_args!(
+                "prepared configuration became stale"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Publishes an already compiled consumer through the existing transaction.
+    /// Freshness/reservation checks and persistence run in the same coordinator
+    /// as ordinary configuration updates. No fallible consumer work follows
+    /// persistence. Runtime caches may install the returned immutable output.
+    ///
+    /// # Errors
+    /// Returns the existing publisher's error, exposing no consumer output on
+    /// stale preparation, reservation conflict or persistence rejection.
+    pub fn publish_configuration_consumer<T>(
+        &mut self,
+        prepared: PreparedConfigurationConsumer<T>,
+        persist: impl FnOnce() -> Result<(), ConfigError>,
+    ) -> Result<(ConfigurationSnapshot, T), ConfigError> {
+        let configuration = self.publish_configuration_update(prepared.configuration, persist)?;
+        Ok((configuration, prepared.consumer))
+    }
+
+    /// Replaces the configuration with a standalone in-memory document for
+    /// compatibility bootstrap paths. This deliberately clears authored source
+    /// metadata, including when installing built-in safe defaults. To retain
+    /// an authored base, activate its complete `ConfigurationLayers` instead.
     ///
     /// # Errors
     ///
@@ -576,7 +810,18 @@ impl BrowserApplication {
         configuration: Config,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
         self.ensure_configuration_writable()?;
-        self.configuration.replace_effective(configuration)
+        let expected_shared_revision = self.profile_configuration_revision()?;
+        let mut candidate = self.configuration.clone();
+        let snapshot = candidate.replace_effective(configuration)?;
+        self.validate_open_interaction_sources(&candidate.policy_sources())?;
+        let interaction_cache = self.stage_interaction_cache(candidate.policy_sources());
+        let mutation = self
+            .begin_shared_source_mutation(expected_shared_revision, &candidate.layers().runtime)?;
+        self.configuration = candidate;
+        self.interaction_cache = interaction_cache;
+        self.refresh_shared_policy_owner(true);
+        Self::finish_shared_source_mutation(mutation);
+        Ok(snapshot)
     }
 
     /// Activates a prepared profile and transfers all durable resources to the
@@ -590,12 +835,33 @@ impl BrowserApplication {
         &mut self,
         activation: ProfileActivation,
     ) -> Result<ProfileSnapshot, StorageWorkerError> {
+        let generation = self.next_profile_generation;
+        let next_generation = generation.checked_add(1).ok_or_else(|| {
+            StorageWorkerError::Spawn("profile activation generation is exhausted".into())
+        })?;
+        let core_profile_scope =
+            interaction_scope::capture_core_profile_scope(self.runtime.view(), activation.privacy);
+        self.validate_open_interaction_sources_for_profile(
+            &self.configuration.policy_sources(),
+            Some(configuration::InteractionValidationProfile {
+                scope: core_profile_scope,
+                name: &activation.name,
+                generation,
+            }),
+            None,
+        )
+        .map_err(|error| StorageWorkerError::Spawn(error.to_string()))?;
+        let _incoming_policy_owner =
+            profile_configuration::PendingRootOwner::for_activation(&activation);
+        let mutation = self.begin_shared_policy_mutation();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         self.drain_session_downloads(deadline);
         self.storage
             .replace_until(activation.storage_path.as_deref(), deadline)?;
-        let generation = self.next_profile_generation;
-        self.next_profile_generation = self.next_profile_generation.saturating_add(1);
+        self.next_profile_generation = next_generation;
+        self.interaction_cache.retire();
+        self.core_profile_scope = core_profile_scope;
+        self.retire_site_policy_drafts();
         self.active_profile = Some(ActiveProfile::activate(generation, activation));
         self.configuration_reservation = self
             .active_profile
@@ -605,112 +871,18 @@ impl BrowserApplication {
             .0
             .configuration_gate
             .clone();
-        self.initialize_profile_configuration()
+        self.register_shared_policy_owner();
+        Self::finish_shared_source_mutation(mutation);
+        self.initialize_profile_configuration_from_runtime(&self.configuration.layers().runtime)
             .map_err(|error| StorageWorkerError::Spawn(error.to_string()))?;
         self.profile_snapshot().ok_or(StorageWorkerError::Stopped)
     }
 
-    /// Starts one bounded, application-owned profile bootstrap operation.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for an invalid request, a pending request, or worker
-    /// startup/admission failure.
-    pub fn request_profile_open(
-        &mut self,
-        request: ProfileOpenRequest,
-    ) -> Result<(), ProfileOpenError> {
-        if self.profile_open.is_none() {
-            self.profile_open = Some(ProfileOpenCoordinator::spawn()?);
-        }
-        self.profile_open
-            .as_mut()
-            .ok_or(ProfileOpenError::WorkerStopped)?
-            .submit(request)
-    }
-
-    /// Polls profile bootstrap and atomically installs its application state.
-    pub fn poll_profile_open(&mut self) -> Option<Result<ProfileOpenEffect, ProfileOpenError>> {
-        let prepared = self.profile_open.as_mut()?.poll()?;
-        self.profile_open = None;
-        Some(prepared.and_then(|prepared| self.install_prepared_profile(prepared)))
-    }
-
-    fn install_prepared_profile(
-        &mut self,
-        mut prepared: PreparedProfile,
-    ) -> Result<ProfileOpenEffect, ProfileOpenError> {
-        let configuration = match self.configuration.activate_layers(prepared.layers) {
-            Ok(snapshot) => snapshot,
-            Err(error) => {
-                prepared
-                    .configuration_error
-                    .get_or_insert_with(|| error.to_string());
-                self.configuration
-                    .replace_effective(prepared.fallback_configuration)
-                    .map_err(|error| ProfileOpenError::InvalidRequest(error.to_string()))?
-            }
-        };
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        self.drain_session_downloads(deadline);
-        if let Err(error) = self
-            .storage
-            .replace_until(prepared.activation.storage_path.as_deref(), deadline)
-        {
-            prepared
-                .storage_error
-                .get_or_insert_with(|| error.to_string());
-            prepared.activation.storage_path = None;
-            self.storage.close();
-        }
-        self.page_scripts = prepared.page_scripts;
-        self.userscript_root = prepared.userscript_root;
-        self.userscript_worker = None;
-        let generation = self.next_profile_generation;
-        self.next_profile_generation = self.next_profile_generation.saturating_add(1);
-        self.active_profile = Some(ActiveProfile::activate(generation, prepared.activation));
-        self.configuration_reservation = self
-            .active_profile
-            .as_ref()
-            .unwrap()
-            .session
-            .0
-            .configuration_gate
-            .clone();
-        if let Err(error) = self.initialize_profile_configuration() {
-            prepared.configuration_error = Some(error.to_string());
-        }
-        let profile = self
-            .profile_snapshot()
-            .ok_or(ProfileOpenError::WorkerStopped)?;
-        // Independently opened windows share the first owner's startup source
-        // set. Later bootstrap scans can already contain this run's files.
-        let recovery_paths = self
-            .active_profile
-            .as_ref()
-            .unwrap()
-            .session
-            .0
-            .recovery_paths
-            .get_or_init(|| prepared.recovery_paths)
-            .clone();
-        Ok(ProfileOpenEffect {
-            configuration,
-            profile,
-            config_sources: prepared.config_sources,
-            profile_overrides: prepared.profile_overrides,
-            runtime_overrides: prepared.runtime_overrides,
-            session_path: prepared.session_path,
-            session_state_root: prepared.session_state_root,
-            recovery_paths,
-            storage_error: prepared.storage_error,
-            configuration_error: prepared.configuration_error,
-            context_error: prepared.context_error,
-        })
-    }
-
     /// Closes the active profile after draining its durable worker.
     pub fn close_profile(&mut self) {
+        self.retire_site_policy_drafts();
+        self.shared_policy_owner.take();
+        self.interaction_cache.retire();
         self.operations.retire();
         self.configuration_write.take();
         self.userscript_worker.take();
@@ -718,6 +890,7 @@ impl BrowserApplication {
         self.page_scripts = Ok(Arc::default());
         self.close_session_storage();
         self.active_profile = None;
+        self.core_profile_scope = None;
     }
 
     /// Applies a context mutation to the active profile registry.
@@ -801,6 +974,8 @@ impl BrowserApplication {
     /// Installs a nonblocking notification for newly admitted durable work.
     /// The owner must continue polling while `storage_work_pending` is true.
     pub fn set_storage_waker(&mut self, wake: std::sync::Arc<dyn Fn() + Send + Sync>) {
+        self.policy_context_waker = Some(Arc::clone(&wake));
+        self.update_shared_policy_waker();
         self.storage.set_waker(wake);
     }
 
@@ -1329,6 +1504,7 @@ mod tests {
                 privacy: PrivacyKind::Normal,
                 storage: ProfileStorage::Durable(RootSpec::Base(base.clone())),
                 base_configuration: Config::default(),
+                base_authored: std::sync::Arc::default(),
                 initial_profile_overrides: RuntimeOverrides::default(),
                 command_line_overrides: command_line,
                 config_path: None,
@@ -1389,6 +1565,7 @@ mod tests {
                     privacy: PrivacyKind::Normal,
                     storage: ProfileStorage::Durable(RootSpec::Base(base.to_path_buf())),
                     base_configuration: Config::default(),
+                    base_authored: std::sync::Arc::default(),
                     initial_profile_overrides: RuntimeOverrides::default(),
                     command_line_overrides: RuntimeOverrides::default(),
                     config_path: None,

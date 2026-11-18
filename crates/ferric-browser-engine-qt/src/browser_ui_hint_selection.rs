@@ -1,16 +1,31 @@
 use super::browser_ui_scope_handoff::{hint_capabilities_json, known_hint_capability_id};
 use super::hint_policy::{HintScopePurpose, LocalInteractionOperation, LocalInteractionOwner};
 use super::{
-    CommandSource, CxxQtType, DispatchTarget, Effect, EngineEffect, Event, HintTarget,
-    HintTransport, IpcOpenTarget, IpcRoute, JourneyEdgeKind, Mode, ParsedCommand, Pin, QString,
-    TabId, ValidatedUrl, Value, clean_link, current_target, external_hint_target,
-    hint_intent_for_candidate, hint_kind_name, hint_uses_url_action, link_cleaning_policy,
-    parse_hint_candidate, qobject, rapid_hint_keeps_mode, safe_ipc_url,
+    CommandSource, CxxQtType, Effect, EngineEffect, Event, HintTarget, HintTransport,
+    JourneyEdgeKind, Mode, ParsedCommand, Pin, QString, TabId, ValidatedUrl, Value, clean_link,
+    current_target, external_hint_target, hint_intent_for_candidate, hint_kind_name,
+    hint_uses_url_action, link_cleaning_policy, parse_hint_candidate, qobject,
+    rapid_hint_keeps_mode, safe_ipc_url,
 };
 
 const HINT_CAPABILITY_ACTION_PREFIX: &str = "hint.capability.";
 
 impl qobject::BrowserUi {
+    pub(super) fn policy_hint_needs_freshness(&self, label: &str) -> bool {
+        self.rust().interaction.hint_policy_proof.is_some()
+            && self
+                .rust()
+                .interaction
+                .hint_interaction
+                .as_ref()
+                .is_some_and(|interaction| {
+                    interaction
+                        .reservations()
+                        .iter()
+                        .any(|reservation| reservation.declaration().code == label)
+                })
+    }
+
     pub(super) fn select_hint_action(
         mut self: Pin<&mut Self>,
         label: &QString,
@@ -56,9 +71,12 @@ impl qobject::BrowserUi {
                     .get_mut()
                     .hint_rapid_target,
             );
-            let response =
-                self.as_mut()
-                    .select_hint_internal(label, fresh_candidate_json, is_palette_entry);
+            let response = self.as_mut().select_hint_internal(
+                label,
+                fresh_candidate_json,
+                is_palette_entry,
+                None,
+            );
             if is_palette_entry
                 && serde_json::from_str::<Value>(&response.to_string())
                     .ok()
@@ -124,42 +142,11 @@ impl qobject::BrowserUi {
         }
     }
 
-    fn open_hint_in_background_tab(
+    fn open_hint_in_tab(
         mut self: Pin<&mut Self>,
         source_tab: TabId,
         url: &ValidatedUrl,
-    ) -> Result<Value, String> {
-        let response = self.as_mut().execute_ipc_command(
-            ParsedCommand {
-                name: "open".into(),
-                arguments: vec![url.to_string()],
-            },
-            &IpcRoute {
-                selector: DispatchTarget::Tab(source_tab),
-                open_target: IpcOpenTarget::BackgroundTab,
-                profile: None,
-                context: None,
-                external_open: false,
-                source: CommandSource::Ipc,
-            },
-        )?;
-        self.as_mut()
-            .set_status_text(QString::from("Hint link opened in background"));
-        let mut result = serde_json::json!({
-            "action":"tab-bg",
-            "action_id":"browser.link.open",
-            "kind":"link"
-        });
-        if let Some(tab_id) = response.get("tab_id") {
-            result["tab_id"] = tab_id.clone();
-        }
-        Ok(result)
-    }
-
-    fn open_hint_in_foreground_tab(
-        mut self: Pin<&mut Self>,
-        source_tab: TabId,
-        url: &ValidatedUrl,
+        background: bool,
     ) -> Result<Value, String> {
         let (window, journey_parent) = {
             let binding = self.as_ref();
@@ -183,7 +170,7 @@ impl qobject::BrowserUi {
             .reduce_event(Event::OpenTabWithNavigation {
                 window,
                 url: url.clone(),
-                background: false,
+                background,
             })
             .map_err(|error| error.clone())?;
         let tab = effects
@@ -192,16 +179,19 @@ impl qobject::BrowserUi {
                 Effect::Engine(EngineEffect::Navigate { target, .. }) => Some(target.tab),
                 _ => None,
             })
-            .ok_or_else(|| "foreground hint tab did not produce a navigation target".to_owned())?;
+            .ok_or_else(|| "hint tab did not produce a navigation target".to_owned())?;
         if let Some(parent) = journey_parent {
             self.as_mut().mark_journey_parent(&effects, parent);
         }
         self.as_mut().sync_tab_order_from_core();
         self.as_mut().set_pending_engine_action(&effects);
-        self.as_mut()
-            .set_status_text(QString::from("Hint link opened in a foreground tab"));
+        self.as_mut().set_status_text(QString::from(if background {
+            "Hint link opened in a background tab"
+        } else {
+            "Hint link opened in a foreground tab"
+        }));
         Ok(serde_json::json!({
-            "action":"tab",
+            "action":if background {"tab-bg"} else {"tab"},
             "action_id":"browser.link.open",
             "kind":"link",
             "tab_id":tab.to_string()
@@ -215,7 +205,43 @@ impl qobject::BrowserUi {
         fresh_candidate_json: &QString,
     ) -> QString {
         self.as_mut()
-            .select_hint_internal(label, fresh_candidate_json, false)
+            .select_hint_internal(label, fresh_candidate_json, false, None)
+    }
+
+    pub(super) fn select_initial_hint(
+        mut self: Pin<&mut Self>,
+        session_id: &QString,
+        fresh_candidate_json: &QString,
+    ) -> QString {
+        let initial = self
+            .as_mut()
+            .rust_mut()
+            .get_mut()
+            .interaction
+            .initial_hint
+            .take();
+        let Some((id, candidate)) =
+            initial.filter(|(id, _)| id.to_string() == session_id.to_string())
+        else {
+            return QString::from(r#"{"error":"initial-selection-expired"}"#);
+        };
+        if !self.as_ref().rust().hint_first
+            || self
+                .as_ref()
+                .rust()
+                .interaction
+                .hint_session
+                .as_ref()
+                .is_none_or(|session| session.id != id)
+        {
+            return QString::from(r#"{"error":"initial-selection-expired"}"#);
+        }
+        self.select_hint_internal(
+            &QString::default(),
+            fresh_candidate_json,
+            false,
+            Some(candidate),
+        )
     }
 
     fn select_hint_internal(
@@ -223,7 +249,26 @@ impl qobject::BrowserUi {
         label: &QString,
         fresh_candidate_json: &QString,
         allow_local_palette: bool,
+        initial: Option<ferric_browser_core::HintCandidate>,
     ) -> QString {
+        if self.as_ref().rust().hint_first && initial.is_none() {
+            return QString::from(r#"{"error":"initial-selection-required"}"#);
+        }
+
+        if initial.is_none()
+            && self
+                .as_ref()
+                .policy_hint_needs_freshness(&label.to_string())
+            && !super::hint_request_capture::consume_hint_anchor_confirmation(
+                self.as_mut().rust_mut().get_mut(),
+                &label.to_string(),
+            )
+        {
+            self.set_status_text(QString::from(
+                "Policy Hint requires its uniqueness and freshness check",
+            ));
+            return QString::from(r#"{"error":"policy-freshness-required"}"#);
+        }
         if self.as_ref().rust().hint_pointer_mode {
             self.set_status_text(QString::from(
                 "Pointer Hint selection requires Enter release; no DOM click was sent",
@@ -276,12 +321,10 @@ impl qobject::BrowserUi {
             ));
             return QString::from(r#"{"error":"stale-configuration"}"#);
         }
-        let selector_snapshot = match super::browser_ui_navigation::effective_hint_selector_snapshot(
-            &self.as_ref().rust().config_json.to_string(),
-            &self.as_ref().rust().current_url.to_string(),
-            configuration_revision,
-            &self.as_ref().rust().hint_family.to_string(),
-        ) {
+        let selector_snapshot = match self
+            .as_ref()
+            .current_hint_selector_snapshot(&self.as_ref().rust().hint_family.to_string())
+        {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 self.set_status_text(QString::from(format!(
@@ -290,10 +333,7 @@ impl qobject::BrowserUi {
                 return QString::from(r#"{"error":"selector-policy-unavailable"}"#);
             }
         };
-        let current_selector_revision = selector_snapshot
-            .get("selector_revision")
-            .and_then(Value::as_str)
-            .and_then(|revision| u64::from_str_radix(revision, 16).ok());
+        let current_selector_revision = Some(selector_snapshot.revision);
         if self
             .as_ref()
             .rust()
@@ -315,19 +355,32 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Hint session has expired"));
                 return QString::from(r#"{"error":"no-session"}"#);
             };
-            session
-                .select(
-                    &label.to_string(),
-                    HintTarget {
-                        tab: target.tab,
-                        generation: target.generation,
-                        document: target.document,
-                    },
-                    &fresh.frame_path,
-                    visible,
-                    fresh.geometry,
-                )
-                .cloned()
+            let target = HintTarget {
+                tab: target.tab,
+                generation: target.generation,
+                document: target.document,
+            };
+            if let Some(candidate) = &initial {
+                session
+                    .select_candidate(
+                        candidate,
+                        target,
+                        &fresh.frame_path,
+                        visible,
+                        fresh.geometry,
+                    )
+                    .cloned()
+            } else {
+                session
+                    .select(
+                        &label.to_string(),
+                        target,
+                        &fresh.frame_path,
+                        visible,
+                        fresh.geometry,
+                    )
+                    .cloned()
+            }
         };
         let selected = match selected {
             Ok(candidate)
@@ -608,7 +661,7 @@ impl qobject::BrowserUi {
                                 return QString::from(r#"{"error":"rapid-tab-limit"}"#);
                             }
                             let result =
-                                match self.as_mut().open_hint_in_background_tab(target.tab, &url) {
+                                match self.as_mut().open_hint_in_tab(target.tab, &url, true) {
                                     Ok(result) => result,
                                     Err(error) => {
                                         self.set_status_text(QString::from(format!(
@@ -709,7 +762,7 @@ impl qobject::BrowserUi {
                         "url":copied
                     })
                 } else if self.as_ref().rust().hint_rapid_target == "tab-bg" {
-                    match self.as_mut().open_hint_in_background_tab(target.tab, &url) {
+                    match self.as_mut().open_hint_in_tab(target.tab, &url, true) {
                         Ok(result) => result,
                         Err(error) => {
                             self.set_status_text(QString::from(format!(
@@ -719,7 +772,7 @@ impl qobject::BrowserUi {
                         }
                     }
                 } else if self.as_ref().rust().hint_rapid_target == "tab" {
-                    match self.as_mut().open_hint_in_foreground_tab(target.tab, &url) {
+                    match self.as_mut().open_hint_in_tab(target.tab, &url, false) {
                         Ok(result) => result,
                         Err(error) => {
                             self.set_status_text(QString::from(format!(

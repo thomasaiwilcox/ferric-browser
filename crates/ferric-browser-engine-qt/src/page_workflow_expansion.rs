@@ -61,6 +61,7 @@ fn recorded_route(mut saved: RepeatableCommand, caller: Option<&IpcRoute>) -> Re
 struct Expansion<'a> {
     registry: &'a CommandRegistry,
     registered_actions: &'a [(String, String)],
+    actions_known: bool,
     state: MacroState,
     steps: Vec<RepeatableCommand>,
     bytes: usize,
@@ -143,6 +144,9 @@ impl Expansion<'_> {
                     continue;
                 }
                 "action" => {
+                    if !self.actions_known {
+                        return Err("The action catalogue is not ready. Try again.".into());
+                    }
                     // Registered userscript actions remain leaves in the caller;
                     // built-in command actions are the ones that can select owners.
                     let registered = step.command.arguments.get(0..2).is_some_and(|arguments| {
@@ -242,9 +246,32 @@ pub(super) fn expand(
     state: MacroState,
     commands: Vec<RepeatableCommand>,
 ) -> Result<Vec<RepeatableCommand>, String> {
+    expand_inner(registry, Some(registered_actions), state, commands)
+}
+
+pub(super) fn expand_with_catalog(
+    registry: &CommandRegistry,
+    registered_actions: Option<&[(String, String)]>,
+    state: MacroState,
+    commands: Vec<RepeatableCommand>,
+) -> Result<Vec<RepeatableCommand>, String> {
+    if let Some(actions) = registered_actions {
+        expand(registry, actions, state, commands)
+    } else {
+        expand_inner(registry, None, state, commands)
+    }
+}
+
+fn expand_inner(
+    registry: &CommandRegistry,
+    registered_actions: Option<&[(String, String)]>,
+    state: MacroState,
+    commands: Vec<RepeatableCommand>,
+) -> Result<Vec<RepeatableCommand>, String> {
     let mut expansion = Expansion {
         registry,
-        registered_actions,
+        registered_actions: registered_actions.unwrap_or_default(),
+        actions_known: registered_actions.is_some(),
         state,
         steps: Vec::new(),
         bytes: 0,
@@ -325,6 +352,29 @@ mod tests {
         assert_eq!(local_steps[0].command.name, "tab-next");
         assert_eq!(remote_steps[0].command.name, "action");
         assert_eq!(remote_steps[0].command.arguments, ["tab", "next"]);
+    }
+
+    #[test]
+    fn unknown_catalogue_does_not_reinterpret_a_registered_action() {
+        let registry = CommandRegistry::default_v1();
+        let mut action = step("action", &["tab", "next"]);
+        action.route = Some(
+            crate::typed_ipc_command(
+                &serde_json::json!({"command":"repeat","context":{"source":"cli"}}),
+            )
+            .unwrap()
+            .1,
+        );
+        let state = MacroState::default();
+        let request = vec![action];
+        assert!(
+            expand_with_catalog(&registry, None, state.clone(), request.clone())
+                .unwrap_err()
+                .contains("catalogue")
+        );
+        let actions = [("tab".into(), "next".into())];
+        let expanded = expand_with_catalog(&registry, Some(&actions), state, request).unwrap();
+        assert_eq!(expanded[0].command.name, "action");
     }
 
     #[test]

@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native and local document depth boundary</title>
+<style>body { margin: 0 } iframe { width: 900px; height: 700px; border: 0 }</style>
+<script>
+addEventListener('DOMContentLoaded', () => {
+  const value = Number(new URL(location.href).searchParams.get('remaining'));
+  const remaining = Number.isInteger(value) && value >= 0 && value <= 8 ? value : 0;
+  const frame = document.createElement('iframe');
+  if (remaining) {
+    frame.id = 'chain';
+    frame.src = 'native-document-chain.html?remaining=' + (remaining - 1);
+  } else {
+    const button = document.createElement('button');
+    button.id = 'leaf-focus';
+    button.textContent = 'Native leaf';
+    document.body.append(button);
+    frame.id = 'nested';
+    frame.srcdoc = '<button>Local descendant</button>';
+  }
+  document.body.append(frame);
+});
+</script>

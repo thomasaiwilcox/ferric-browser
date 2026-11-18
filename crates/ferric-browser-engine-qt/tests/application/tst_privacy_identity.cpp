@@ -56,8 +56,11 @@ void ApplicationTests::productPolishPrivacyIdentity() {
     evaluate(pageReceiver+".forceActiveFocus()"); // Initial focus only.
     page("document.title='Page title';document.body.innerHTML='<button>needle action</button><p>needle text</p><div style=\"height:2200px\"></div>';true");
     QVERIFY(evaluate(ui+".set_runtime_setting('ui.tabs','never',true)").toBool());
+    QTRY_COMPARE(evaluate(ui+".setting_action_state").toString(),QString("succeeded"));
     QVERIFY(evaluate(ui+".set_runtime_setting('ui.statusbar','never',true)").toBool());
+    QTRY_COMPARE(evaluate(ui+".setting_action_state").toString(),QString("succeeded"));
     QVERIFY(evaluate(ui+".set_runtime_setting('ui.font_size_pt','26',true)").toBool());
+    QTRY_COMPARE(evaluate(ui+".setting_action_state").toString(),QString("succeeded"));
     host->resize(360,640);QTRY_COMPARE(host->width(),360);
     QSignalSpy frame(host,&QQuickWindow::frameSwapped);host->update();QTRY_VERIFY(!frame.isEmpty());
     auto viewportView=qobject_cast<QQuickItem *>(evaluate(pageReceiver).value<QObject *>());QVERIFY(viewportView);
@@ -97,6 +100,7 @@ void ApplicationTests::productPolishPrivacyIdentity() {
     };
     for (const auto &policy : {QString("always"),QString("never"),QString("in-mode")}) {
         QVERIFY(evaluate(ui+".set_runtime_setting('ui.statusbar',"+quoted(policy)+",true)").toBool());
+        QTRY_COMPARE(evaluate(ui+".setting_action_state").toString(),QString("succeeded"));
         const auto viewport=page("JSON.stringify([innerWidth,innerHeight])").toString();
         QVERIFY(assertIdentity());
         sendOwnedBrowserKey(host,Qt::Key_Colon,Qt::ShiftModifier,"AC10");
@@ -120,7 +124,9 @@ void ApplicationTests::productPolishPrivacyIdentity() {
     }
     for (const auto &position : {QString("top"),QString("bottom"),QString("left"),QString("right")}) {
         QVERIFY(evaluate(ui+".set_runtime_setting('ui.tab_position',"+quoted(position)+",true)").toBool());
+        QTRY_COMPARE(evaluate(ui+".setting_action_state").toString(),QString("succeeded"));
         QVERIFY(evaluate(ui+".set_runtime_setting('ui.tabs','always',true)").toBool());
+        QTRY_COMPARE(evaluate(ui+".setting_action_state").toString(),QString("succeeded"));
         frame.clear();host->update();QTRY_VERIFY(!frame.isEmpty());
         QVERIFY(assertIdentity());
         if (header && header->isVisible()) {

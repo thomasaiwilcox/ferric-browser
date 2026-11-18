@@ -44,6 +44,7 @@ fn open(roots: &TestRoots, contexts: ContextsConfig) -> BrowserApplication {
             roots.0.temporary_root().unwrap().to_owned(),
         )),
         base_configuration: Config::default(),
+        base_authored: std::sync::Arc::default(),
         initial_profile_overrides: RuntimeOverrides::default(),
         command_line_overrides: RuntimeOverrides::default(),
         config_path: None,
@@ -94,9 +95,12 @@ fn delayed_reload_result_cannot_replace_a_newer_catalog() -> Result<(), String> 
     let mut other = app.inherit_profile(runtime).unwrap();
     let mut next = work();
     next.contexts[0].label = "After work".into();
+    let job = app.prepare_context_reload(&work(), next).unwrap().unwrap();
+    let prepared = app
+        .prepare_configuration_reload(app.configuration_layers().clone())
+        .unwrap();
     let effect = app
-        .prepare_context_reload(&work(), next)
-        .unwrap()
+        .admit_context_reload(&prepared, job)
         .unwrap()
         .run()
         .unwrap();
@@ -123,9 +127,15 @@ fn removing_a_definition_clears_the_logical_window_context() -> Result<(), Strin
         context: Some("work".into()),
     }))
     .unwrap();
-    let effect = app
+    let job = app
         .prepare_context_reload(&work(), ContextsConfig::default())
         .unwrap()
+        .unwrap();
+    let prepared = app
+        .prepare_configuration_reload(app.configuration_layers().clone())
+        .unwrap();
+    let effect = app
+        .admit_context_reload(&prepared, job)
         .unwrap()
         .run()
         .unwrap();

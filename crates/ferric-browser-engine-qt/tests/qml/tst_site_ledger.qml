@@ -168,11 +168,14 @@ TestCase {
     function test_private_data_is_withheld_and_copy_cannot_disclose_host() {
         var value = sampleData(); value.private = true; value.origin = null
         value.interaction.private_url_forbidden = "https://private.test/?token=secret"
+        value.site_doctor.last_result = {id:"private-fix",kind:"blocker-exception",origin:"https://private.test",state:"applied"}
         host.siteLedgerData = value
         var surface = create()
         verify(findChild(surface, "siteFactSummary-network.blocking").text.indexOf("withheld") >= 0)
         var hostConsent = findChild(surface, "siteReportHost")
         verify(!hostConsent.visible)
+        compare(findChild(surface,"siteDoctorProposalStatus").text, "")
+        verify(!findChild(surface,"siteDoctorApplyButton").visible)
         hostConsent.checked = true
         var spy = createTemporaryObject(spyFixture, surface, {target: surface, signalName: "sanitizedReportCopyRequested"})
         findChild(surface, "siteReportCopyButton").clicked()
@@ -199,6 +202,58 @@ TestCase {
         reveal(surface, apply); mouseClick(apply)
         compare(fixSpy.signalArguments[0][0], "fix-reviewed")
         verify(!findChild(surface, "siteDoctorProposalConfirmation").checked)
+    }
+    function test_receipt_states_data() {
+        return [
+            {tag:"review", state:"pending-confirmation", phrase:"The test suggests", canApply:true},
+            {tag:"queued", state:"preparing", phrase:"Saving has not completed"},
+            {tag:"saving", state:"applying", phrase:"activation is not yet confirmed"},
+            {tag:"saved-pending", state:"saved-policy-pending", phrase:"update is pending"},
+            {tag:"active", state:"applied", phrase:"matching blocking rules are active"},
+            {tag:"active-uncertain", state:"applied", phrase:"matching blocking rules are active", uncertain:true},
+            {tag:"failed-policy", state:"saved-policy-failed", phrase:"saved, but blocking rules could not be activated"},
+            {tag:"stale-policy", state:"saved-policy-inactive", phrase:"update is no longer current"},
+            {tag:"inactive-config", state:"saved-configuration-inactive", phrase:"configuration could not be activated"},
+            {tag:"rejected", state:"failed", phrase:"No successful save receipt"},
+            {tag:"lost", state:"completion-lost", phrase:"completion is unavailable"},
+            {tag:"unknown", state:"constructor", phrase:"completion is unavailable"}
+        ]
+    }
+    function test_receipt_states(row) {
+        var value = sampleData()
+        value.site_doctor.last_result = {id:"fix-receipt",kind:"blocker-exception",origin:value.origin,
+            state:row.state,durability_uncertain:row.uncertain === true}
+        host.siteLedgerData = value
+        var surface = create()
+        var status = findChild(surface, "siteDoctorProposalStatus")
+        verify(status.visible)
+        compare(status.textFormat, Text.PlainText)
+        verify(status.text.indexOf(row.phrase) >= 0, status.text)
+        compare(status.text.indexOf("may not survive a system crash") >= 0, row.uncertain === true)
+        var consent = findChild(surface, "siteDoctorProposalConfirmation")
+        consent.checked = true
+        compare(findChild(surface, "siteDoctorApplyButton").visible, row.canApply === true)
+        compare(consent.visible, row.canApply === true)
+        if (!row.canApply) verify(status.text.indexOf("The test suggests") < 0)
+    }
+    function test_receipt_refresh_preserves_host_consent_and_retires_fix_consent() {
+        var value = sampleData()
+        value.site_doctor.last_result = {id:"fix-current",kind:"blocker-exception",origin:value.origin,state:"pending-confirmation"}
+        host.siteLedgerData = value
+        var surface = create()
+        var hostConsent = findChild(surface,"siteReportHost")
+        var fixConsent = findChild(surface,"siteDoctorProposalConfirmation")
+        hostConsent.checked = true; fixConsent.checked = true
+        value = sampleData()
+        value.site_doctor.last_result = {id:"fix-current",kind:"blocker-exception",origin:value.origin,state:"preparing"}
+        host.siteLedgerData = value
+        compare(hostConsent.checked,true)
+        compare(fixConsent.checked,false)
+        verify(!findChild(surface,"siteDoctorApplyButton").visible)
+        host.siteLedgerVisible = false
+        host.siteLedgerVisible = true
+        compare(hostConsent.checked,false)
+        compare(fixConsent.checked,false)
     }
     function test_saved_permission_availability_data() {
         return [{tag:"loading",status:"pending",expected:"Checking saved permission rules…"},

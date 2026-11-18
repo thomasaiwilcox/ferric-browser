@@ -5,7 +5,6 @@
 //! configuration graph.
 
 use crate::input_validation::is_bounded_untrusted_text;
-use ferric_browser_config::RuntimeOverrides;
 use serde_json::Value;
 use std::path::Path;
 
@@ -69,33 +68,10 @@ pub(super) fn configured_editor_argv(
     Ok((executable, arguments))
 }
 
-#[must_use]
-pub(super) fn config_value_at_path<'a>(root: &'a Value, key: &str) -> Option<&'a Value> {
-    key.split('.')
-        .try_fold(root, |value, part| value.as_object()?.get(part))
-}
-
-pub(super) fn runtime_override_value(overrides: &RuntimeOverrides, key: &str) -> Option<Value> {
-    overrides
-        .settings
-        .get(key)
-        .and_then(|value| serde_json::to_value(value).ok())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn lookup_preserves_the_typed_value_at_a_dotted_path() {
-        let value = json!({"downloads": {"directory": {"path": "/tmp/downloads"}}});
-        assert_eq!(
-            config_value_at_path(&value, "downloads.directory.path"),
-            Some(&json!("/tmp/downloads"))
-        );
-        assert!(config_value_at_path(&value, "downloads.unknown").is_none());
-    }
 
     #[test]
     fn editor_argv_requires_one_complete_file_placeholder() {

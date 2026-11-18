@@ -340,9 +340,9 @@ def run_case(executable, base, artifacts, enabled):
                 return value.get('tabs') == []
             wait_for(private_ready, bool)
             cli('command', 'set --temp downloads.directory=' + json.dumps(str(private)))
-            cli('command', 'set --temp downloads.ask_destination=false')
-            folder = cli('query', 'config', 'downloads.directory', '--format', 'json')['value']
-            assert folder == {'path': str(private)}, folder
+            folder = wait_for(lambda: cli('query', 'config', 'downloads.directory', '--format', 'json')['value'],
+                              lambda value: value == {'path': str(private)})
+            # The private owner inherits the fixture's destination policy.
             assert cli('query', 'config', 'downloads.ask_destination', '--format', 'json')['value'] is False
             facts['private_folder_preflight'] = folder
             cli('command', f'open http://127.0.0.1:{server.server_port}/private-transfer')

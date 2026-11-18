@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Explicit root and slot qualification fixture</title>
+<style>
+  body { margin: 12px; font: 16px sans-serif; }
+  iframe { width: 400px; height: 120px; }
+  catalog-shell { display: block; margin: 12px; }
+</style>
+<catalog-shell id="catalog">
+  <a id="slotted-primary" slot="primary" href="#slotted">Slotted primary</a>
+</catalog-shell>
+<iframe id="same-origin" title="Same origin fixture"
+  srcdoc="<!doctype html><a id='frame-primary' href='#frame'>Frame primary</a><catalog-card id='frame-card'></catalog-card><script>document.querySelector('catalog-card').attachShadow({mode:'open'}).innerHTML='<a href=#nested>Frame shadow primary</a>';</script>"></iframe>
+<div id="covered" style="position:relative;width:220px;height:50px">
+  <a href="#covered">Covered primary</a>
+  <div style="position:absolute;inset:0;background:white" aria-hidden="true"></div>
+</div>
+<div id="delayed"></div>
+<script>
+  const catalog = document.querySelector('#catalog');
+  catalog.attachShadow({ mode: 'open' }).innerHTML =
+    '<div id="structural" style="display:contents"><slot id="primary-slot" name="primary"></slot></div>';
+  window.rootFixture = {
+    addAssignedDuplicate: () => {
+      const duplicate = document.querySelector('#slotted-primary').cloneNode(true);
+      duplicate.id = 'slotted-duplicate';
+      catalog.append(duplicate);
+    },
+    reassignSlot: () => { document.querySelector('#slotted-primary').slot = 'other'; },
+    addDelayed: () => {
+      const button = document.createElement('button');
+      button.textContent = 'Delayed primary';
+      document.querySelector('#delayed').append(button);
+    }
+  };
+</script>

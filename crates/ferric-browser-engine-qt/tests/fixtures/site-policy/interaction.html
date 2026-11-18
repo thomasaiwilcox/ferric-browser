@@ -1,0 +1,106 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Explicit site-policy qualification fixture</title>
+<style>
+  body { margin: 20px; font: 16px sans-serif; }
+  nav { display: flex; gap: 24px; }
+  #fixture-grid { display: grid; grid-template-columns: repeat(3, 180px); gap: 12px; }
+  .fixture-video-card { border: 1px solid; padding: 12px; }
+  #tall-card { height: 1200px; }
+  video-card { display: block; min-height: 80px; }
+</style>
+<nav id="fixture-global-nav">
+  <a href="#mac">Mac</a><a href="#watch">Watch</a><a href="#iphone">iPhone</a>
+</nav>
+<a href="#outside-mac">Mac</a>
+<section id="fixture-suggestions">
+  <article class="fixture-video-card" data-video-id="one">
+    <a class="fixture-thumbnail" href="#video-one">Video one</a>
+    <a href="#channel-one">Channel</a><button>Menu one</button>
+  </article>
+  <article class="fixture-video-card" data-video-id="two">
+    <a class="fixture-thumbnail" href="#video-one">Distinct card, same URL</a>
+    <button>Menu two</button>
+  </article>
+  <article class="fixture-video-card" id="tall-card" data-video-id="three">
+    <a class="fixture-thumbnail" href="#video-three">Tall card primary</a>
+  </article>
+</section>
+<section id="fixture-grid"></section>
+<input id="editor" aria-label="Editable receiver">
+<div id="rich-editor" contenteditable="true" role="textbox" aria-label="Rich editor"></div>
+<button id="command-target">Noneditable receiver</button>
+<script>
+  // Local test instrumentation only. No persistence, networking or live-site data.
+  const grid = document.querySelector('#fixture-grid');
+  for (let i = 0; i < 9; ++i) {
+    const card = document.createElement('video-card');
+    card.id = `shadow-card-${i}`;
+    card.dataset.id = `grid-${i}`;
+    const shadow = card.attachShadow({ mode: 'open' });
+    const primary = document.createElement('a');
+    primary.className = 'primary';
+    primary.id = `shadow-primary-${i}`;
+    primary.href = `#grid-${i}`;
+    primary.textContent = `Grid video ${i + 1}`;
+    shadow.append(primary);
+    grid.append(card);
+  }
+  const events = [];
+  let activations = 0;
+  const identity = element => element instanceof Element
+    ? { tag: element.localName, id: element.id } : null;
+  const focusedPath = () => {
+    const path = [];
+    let active = document.activeElement;
+    for (let depth = 0; active && depth < 8; ++depth) {
+      path.push(identity(active));
+      active = active.shadowRoot && active.shadowRoot.activeElement;
+    }
+    return path;
+  };
+  for (const type of ['keydown', 'keyup', 'beforeinput', 'input',
+                      'compositionstart', 'compositionend', 'click', 'submit']) {
+    document.addEventListener(type, event => {
+      if (type === 'click' || type === 'submit') ++activations;
+      if (events.length >= 4096) events.shift();
+      const active = document.activeElement;
+      events.push({ type, key: event.key, code: event.code,
+        logicalText: event.key && event.key.length === 1 ? event.key : null,
+        inputData: event.data === undefined ? null : event.data,
+        keyCode: event.keyCode, charCode: event.charCode, which: event.which,
+        location: event.location, repeat: event.repeat,
+        ctrl: event.ctrlKey, alt: event.altKey, meta: event.metaKey,
+        shift: event.shiftKey, trusted: event.isTrusted,
+        caps: typeof event.getModifierState === 'function' && event.getModifierState('CapsLock'),
+        num: typeof event.getModifierState === 'function' && event.getModifierState('NumLock'),
+        altGraph: typeof event.getModifierState === 'function' && event.getModifierState('AltGraph'),
+        composing: event.isComposing, inputType: event.inputType,
+        focus: active && active.id,
+        focusPath: focusedPath(),
+        targetPath: event.composedPath().slice(0, 8).map(identity).filter(Boolean),
+        selectionStart: active && active.selectionStart,
+        selectionEnd: active && active.selectionEnd,
+        activation: navigator.userActivation.isActive });
+      if (type === 'submit') event.preventDefault();
+    }, true);
+  }
+  window.policyFixture = {
+    snapshot: () => ({ events: events.slice(), activations }),
+    clear: () => { events.length = 0; activations = 0; },
+    removeWatch: () => document.querySelector('a[href="#watch"]').remove(),
+    duplicateMac: () => {
+      const nav = document.querySelector('#fixture-global-nav');
+      nav.append(nav.firstElementChild.cloneNode(true));
+    },
+    reorder: () => {
+      const list = document.querySelector('#fixture-suggestions');
+      list.prepend(list.lastElementChild);
+    },
+    recycle: () => {
+      const item = document.querySelector('.fixture-video-card');
+      item.dataset.videoId = 'replacement';
+      item.querySelector('a').href = '#replacement';
+    }
+  };
+</script>

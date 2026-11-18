@@ -17,12 +17,17 @@ pub(super) struct EditorWriteWorker {
 }
 
 struct NetworkPolicyRequest {
+    generation: u64,
     roots: Option<StorageRoots>,
     config: Value,
 }
 
 pub(super) struct NetworkPolicyWorker {
-    inner: SingleFlightWorker<NetworkPolicyRequest, Result<network_policy::PolicySnapshot, String>>,
+    inner: SingleFlightWorker<
+        NetworkPolicyRequest,
+        (u64, Result<network_policy::PolicySnapshot, String>),
+    >,
+    pending_generation: Option<u64>,
 }
 
 pub(super) enum HyprlandRequest {
@@ -231,32 +236,56 @@ impl NetworkPolicyWorker {
     pub(super) fn spawn() -> Result<Self, String> {
         let inner = SingleFlightWorker::spawn(
             "ferric-browser-network-policy",
-            |NetworkPolicyRequest { roots, config }| {
-                Ok(network_policy::load(roots.as_ref(), &config))
+            |NetworkPolicyRequest {
+                 generation,
+                 roots,
+                 config,
+             }| {
+                (
+                    generation,
+                    Ok(network_policy::load(roots.as_ref(), &config)),
+                )
             },
         )
         .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            pending_generation: None,
+        })
     }
 
     pub(super) fn request(
         &mut self,
+        generation: u64,
         roots: Option<StorageRoots>,
         config: Value,
     ) -> Result<(), String> {
-        match self.inner.submit(NetworkPolicyRequest { roots, config }) {
-            Ok(()) => Ok(()),
+        match self.inner.submit(NetworkPolicyRequest {
+            generation,
+            roots,
+            config,
+        }) {
+            Ok(()) => {
+                self.pending_generation = Some(generation);
+                Ok(())
+            }
             Err(SubmitError::Busy) => Err("network policy load is already pending".into()),
             Err(SubmitError::QueueFull) => Err("network policy queue is full".into()),
             Err(SubmitError::Stopped) => Err("network policy worker stopped".into()),
         }
     }
 
-    pub(super) fn poll(&mut self) -> Option<Result<network_policy::PolicySnapshot, String>> {
+    pub(super) fn poll(&mut self) -> Option<(u64, Result<network_policy::PolicySnapshot, String>)> {
         match self.inner.poll() {
             WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(Err("network policy worker stopped".into())),
+            WorkerPoll::Ready(result) => {
+                self.pending_generation = None;
+                Some(result)
+            }
+            WorkerPoll::Stopped => self
+                .pending_generation
+                .take()
+                .map(|generation| (generation, Err("network policy worker stopped".into()))),
         }
     }
 

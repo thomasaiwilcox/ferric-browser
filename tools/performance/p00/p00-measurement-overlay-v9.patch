@@ -1,0 +1,2857 @@
+diff --git a/crates/ferric-browser-engine-qt/tests/application/tst_application.h b/crates/ferric-browser-engine-qt/tests/application/tst_application.h
+--- a/crates/ferric-browser-engine-qt/tests/application/tst_application.h
++++ b/crates/ferric-browser-engine-qt/tests/application/tst_application.h
+@@ -26,6 +26,8 @@
+     QPointer<QObject> setupWindow;
+     bool setupWindowDestroyed = false;
+     int frameCallbackCount = 0;
++    QVariant frameCallbackResult;
++    qint64 frameCallbackNsecs = 0;
+     QString pageReceiver = "testWindow.activeWebView()";
+     QVariant evaluate(const QString &source);
+     QString text(const QString &property);
+@@ -270,6 +272,23 @@
+     void hintNativeControls();
+     void hintEarlyInput_data();
+     void hintEarlyInput();
++    void sitePolicyCommandRenderPerformance();
++    void sitePolicyHintRenderPerformance_data();
++    void sitePolicyHintRenderPerformance();
++    void sitePolicyPassiveRefreshPerformance_data();
++    void sitePolicyPassiveRefreshPerformance();
++    void sitePolicyReadyHintPerformance_data();
++    void sitePolicyReadyHintPerformance();
++    void sitePolicyActivationPerformance_data();
++    void sitePolicyActivationPerformance();
++    void sitePolicyRootRenderPerformance_data();
++    void sitePolicyRootRenderPerformance();
++    void sitePolicyRootStagesPerformance_data();
++    void sitePolicyRootStagesPerformance();
++    void sitePolicyOrdinaryLifetime_data();
++    void sitePolicyOrdinaryLifetime();
++    void sitePolicyWindowLifetime_data();
++    void sitePolicyWindowLifetime();
+     void mixedReservedKeysAndUnmappedDelivery();
+     void heldPageKeyRetainsOwnerAcrossPolicyChange();
+     void nativePointerRequiresLocalEntryAndClicksOnce();
+diff --git a/crates/ferric-browser-engine-qt/tests/application/tst_application.cpp b/crates/ferric-browser-engine-qt/tests/application/tst_application.cpp
+--- a/crates/ferric-browser-engine-qt/tests/application/tst_application.cpp
++++ b/crates/ferric-browser-engine-qt/tests/application/tst_application.cpp
+@@ -1,4 +1,5 @@
+ #include "tst_application.h"
++#include <chrono>
+ #include "owned_renderer_process.h"
+ #include "owned_browser_keyboard.h"
+ #include "../../src/url_display.h"
+@@ -146,7 +147,8 @@
+ }
+ 
+ void ApplicationTests::frameOperationComplete(const QVariant &value) {
+-    ++frameCallbackCount;scriptResult=value;
++    ++frameCallbackCount;scriptResult=value;frameCallbackResult=value;
++    frameCallbackNsecs = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+ }
+ 
+ void ApplicationTests::initTestCase() {
+diff --git a/crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt b/crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt
+--- a/crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt
++++ b/crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt
+@@ -397,3 +397,8 @@
+ 
+ include("${CMAKE_CURRENT_LIST_DIR}/../EngineArchive.cmake")
+ ferric_require_current_engine_archive("${FERRIC_ENGINE_LIBRARY}")
++
++# P00 measurement-only overlay against original production source.
++target_sources(application_tests PRIVATE tst_site_policy_performance.cpp)
++set_source_files_properties(tst_site_policy_performance.cpp PROPERTIES
++    COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU,Clang>:-O2>")
+diff --git a/crates/ferric-browser-engine-qt/tests/application/tst_site_policy_performance.cpp b/crates/ferric-browser-engine-qt/tests/application/tst_site_policy_performance.cpp
+new file mode 100644
+--- /dev/null
++++ b/crates/ferric-browser-engine-qt/tests/application/tst_site_policy_performance.cpp
+@@ -0,0 +1,1933 @@
++#include "tst_application.h"
++#include <QElapsedTimer>
++#include <QEventLoop>
++#include <QtWebEngineCore/qtwebenginecoreglobal.h>
++#include <QFile>
++#include <QJSValue>
++#include <QGuiApplication>
++#include <QJsonArray>
++#include <QJsonDocument>
++#include <QJsonObject>
++#include <QKeyEvent>
++#include <QQuickItem>
++#include <QScopeGuard>
++#include <QSet>
++#include <QTimer>
++#include <QtTest>
++#include <atomic>
++#include <algorithm>
++#include <cmath>
++#include <vector>
++#include <chrono>
++#include <functional>
++
++namespace {
++QJsonObject runtimeFingerprint() {
++    return {{"qt", QString::fromLatin1(qVersion())},
++        {"webengine", QString::fromLatin1(qWebEngineVersion())},
++        {"chromium", QString::fromLatin1(qWebEngineChromiumVersion())},
++        {"security_patch", QString::fromLatin1(qWebEngineChromiumSecurityPatchVersion())}};
++}
++qint64 monotonicNsecs() {
++    return std::chrono::duration_cast<std::chrono::nanoseconds>(
++        std::chrono::steady_clock::now().time_since_epoch()).count();
++}
++
++// Production rendering observer only. QML/item state is read on the GUI
++// thread. Render-thread callbacks capture shared atomic state, never test
++// stack references or QML objects. Polling wakes the waiter, not the clock.
++class RenderedStateObserver {
++    struct State {
++        std::atomic<quint64> requested{0}, armed{0}, synchronized{0}, completed{0};
++        std::atomic<qint64> started{0}, elapsed{0}, predicateNsecs{0};
++    };
++    std::shared_ptr<State> state = std::make_shared<State>();
++    QList<QMetaObject::Connection> connections;
++    quint64 generation = 0;
++public:
++    RenderedStateObserver(QQuickWindow *window, std::function<bool()> ready) {
++        const auto shared = state;
++        connections << QObject::connect(window, &QQuickWindow::afterAnimating, window,
++            [shared, ready = std::move(ready)] {
++                const auto requested = shared->requested.load();
++                if (!requested) { shared->armed.store(0); return; }
++                const auto began = monotonicNsecs();
++                const bool matched = ready();
++                shared->predicateNsecs.fetch_add(monotonicNsecs() - began);
++                shared->armed.store(matched ? requested : 0);
++            }, Qt::DirectConnection);
++        connections << QObject::connect(window, &QQuickWindow::afterSynchronizing, window,
++            [shared] { shared->synchronized.store(shared->armed.load()); }, Qt::DirectConnection);
++        connections << QObject::connect(window, &QQuickWindow::frameSwapped, window,
++            [shared] {
++                const auto current = shared->synchronized.exchange(0);
++                if (!current || current != shared->requested.load() || shared->completed.load() == current) return;
++                shared->elapsed.store(monotonicNsecs() - shared->started.load());
++                shared->completed.store(current);
++            }, Qt::DirectConnection);
++    }
++    ~RenderedStateObserver() {
++        for (const auto &connection : connections) QObject::disconnect(connection);
++    }
++    double predicateMillis() const { return state->predicateNsecs.load() / 1e6; }
++    double measure(const std::function<void()> &deliver, int deadlineMs = 5000) {
++        state->predicateNsecs.store(0);
++        state->requested.store(0);
++        state->armed.store(0);
++        state->synchronized.store(0);
++        const auto current = ++generation;
++        state->started.store(monotonicNsecs());
++        state->requested.store(current);
++        deliver();
++        QEventLoop loop;
++        QTimer notify, deadline;
++        notify.setInterval(5);
++        deadline.setSingleShot(true);
++        QObject::connect(&notify, &QTimer::timeout, &loop, [&] {
++            if (state->completed.load() == current) loop.quit();
++        });
++        QObject::connect(&deadline, &QTimer::timeout, &loop, &QEventLoop::quit);
++        notify.start(); deadline.start(deadlineMs);
++        if (state->completed.load() != current) loop.exec();
++        state->requested.store(0);
++        return state->completed.load() == current ? state->elapsed.load() / 1e6 : -1;
++    }
++};
++void gesture(QQuickWindow *window, int key, const QString &text = {}) {
++    QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, text);
++    QCoreApplication::sendEvent(window, &press);
++    QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, text);
++    QCoreApplication::sendEvent(window, &release);
++}
++}
++
++void ApplicationTests::sitePolicyCommandRenderPerformance() {
++    const bool smoke = qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF_SMOKE");
++    if (!smoke && !qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF"))
++        QSKIP("Opt-in 1000-sample production input/render baseline");
++    const int warmups = smoke ? 1 : 10, measured = smoke ? 2 : 1000;
++    QJsonArray samples;
++    int failures = 1, failedIndex = -1;
++    QString stage = "setup";
++    double p95 = -1, p99 = -1, maximum = -1;
++    const auto report = qScopeGuard([&] {
++        QJsonObject result{{"journey", "normal-colon-to-command-render"}, {"warmups", warmups},
++            {"run_kind", smoke ? "functional-smoke-not-baseline" : "performance-baseline"},
++            {"requested_measured_samples", measured}, {"completed_measured_samples", samples.size()},
++            {"samples_ms", samples}, {"qpa", QGuiApplication::platformName()}, {"runtime", runtimeFingerprint()},
++            {"dpr", window->devicePixelRatio()}, {"viewport_width", window->width()},
++            {"viewport_height", window->height()}, {"failures", failures},
++            {"failed_sample_index", failures ? failedIndex : -1}, {"stage", stage},
++            {"p95_ms", p95}, {"p99_ms", p99}, {"max_ms", maximum},
++            {"p95_ceiling_ms", 20}, {"p99_ceiling_ms", 50},
++            {"method", "nearest rank; render-signal timestamps; reset frame outside interval"},
++            {"boundary", "constructed Qt input through production router to matching Quick frameSwapped; excludes compositor presentation"}};
++        qInfo().noquote() << "FERRIC_SITE_POLICY_RENDER_JSON " + QJsonDocument(result).toJson(QJsonDocument::Compact);
++    });
++    auto *input = window->findChild<QQuickItem *>("commandLineInput");
++    auto *surface = window->findChild<QQuickItem *>("commandSurface");
++    auto *ui = evaluate("testWindow.browserUi").value<QObject *>();
++    QVERIFY(input && surface && ui);
++    window->requestActivate();
++    QTRY_VERIFY(window->isActive());
++    evaluate("testWindow.activeWebView().forceActiveFocus()");
++    RenderedStateObserver commandFrame(window, [=] {
++        return ui->property("mode").toString() == "command" && surface->isVisible()
++            && surface->width() > 0 && surface->height() > 0 && input->isVisible()
++            && input->width() > 0 && input->height() > 0 && input->hasActiveFocus()
++            && input->property("text").toString().isEmpty();
++    });
++    RenderedStateObserver normalFrame(window, [=] {
++        return ui->property("mode").toString() == "normal" && !surface->isVisible();
++    });
++    for (int index = 0; index < warmups + measured; ++index) {
++        failedIndex = index;
++        stage = index < warmups ? "warmup-entry" : "measured-entry";
++        const auto elapsed = commandFrame.measure([&] { gesture(window, Qt::Key_Colon, ":"); });
++        qInfo().noquote() << "FERRIC_SITE_POLICY_SAMPLE_JSON " + QJsonDocument(QJsonObject{
++            {"journey", "normal-colon-to-command-render"}, {"iteration", index},
++            {"warmup", index < warmups}, {"elapsed_ms", elapsed}, {"smoke", smoke}}).toJson(QJsonDocument::Compact);
++        QVERIFY2(elapsed >= 0, "Command state did not reach a matching synchronized/swapped frame within 5s");
++        if (index >= warmups) samples.append(elapsed);
++        stage = index < warmups ? "warmup-reset" : "measured-reset";
++        const auto reset = normalFrame.measure([&] { gesture(window, Qt::Key_Escape); });
++        QVERIFY2(reset >= 0, "Normal reset frame timed out outside the measured interval");
++    }
++    if (smoke) { failures = 0; stage = "smoke-complete"; return; }
++    std::vector<double> ordered;
++    ordered.reserve(samples.size());
++    for (const auto value : samples) ordered.push_back(value.toDouble());
++    std::sort(ordered.begin(), ordered.end());
++    p95 = ordered[std::ceil(ordered.size() * .95) - 1];
++    p99 = ordered[std::ceil(ordered.size() * .99) - 1];
++    maximum = ordered.back();
++    stage = "thresholds";
++    failedIndex = -1;
++    QVERIFY2(p95 <= 20, "Normal colon-to-render p95 exceeds the existing 20ms ceiling");
++    QVERIFY2(p99 <= 50, "Normal colon-to-render p99 exceeds the existing 50ms ceiling");
++    failures = 0;
++    stage = "complete";
++}
++
++void ApplicationTests::sitePolicyHintRenderPerformance_data() {
++    QTest::addColumn<int>("count");
++    QTest::addColumn<double>("zoom");
++    QTest::newRow("500-80") << 500 << .8;
++    QTest::newRow("500-100") << 500 << 1.;
++    QTest::newRow("500-125") << 500 << 1.25;
++    QTest::newRow("1000-100") << 1000 << 1.;
++    QTest::newRow("5000-100") << 5000 << 1.;
++}
++void ApplicationTests::sitePolicyHintRenderPerformance() {
++    const bool smoke = qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF_SMOKE");
++    if (!smoke && !qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF"))
++        QSKIP("Opt-in cold-document production Hint/render baseline");
++    const int warmups = smoke ? 1 : 10, measured = smoke ? 2 : 100;
++    QFETCH(int, count);
++    QFETCH(double, zoom);
++    QJsonArray samples, markerCounts, epochs, viewports, observerCosts;
++    QJsonObject failedEndpoint;
++    int failures = 1, failedIndex = -1, renderedMarkers = 0;
++    QString stage = "setup";
++    double p95 = -1, maximum = -1;
++    const auto report = qScopeGuard([&] {
++        const QJsonObject result{{"journey", "cold-document-hint-to-usable-render"},
++            {"count", count}, {"zoom", zoom}, {"dpr", window->devicePixelRatio()},
++            {"warmups", warmups}, {"requested_measured_samples", measured},
++            {"run_kind", smoke ? "functional-smoke-not-baseline" : "performance-baseline"},
++            {"samples_ms", samples}, {"completed_measured_samples", samples.size()},
++            {"page_viewports", viewports}, {"generation_observer_predicate_ms", observerCosts},
++            {"observer_policy", "inclusive timings; generation-wide observer cost until waiter return, not a latency component; never subtracted"},
++            {"rendered_marker_counts", markerCounts},
++            {"collection_epochs", epochs}, {"failures", failures},
++            {"failed_sample_index", failures ? failedIndex : -1}, {"stage", stage},
++            {"p95_ms", p95}, {"max_ms", maximum}, {"failed_endpoint", failedEndpoint},
++            {"qpa", QGuiApplication::platformName()}, {"runtime", runtimeFingerprint()},
++            {"viewport_width", window->width()}, {"viewport_height", window->height()},
++            {"boundary", "fresh document/collector realm in warm process; constructed Qt input to production synchronized/swapped Hint overlay; no compositor presentation"}};
++        qInfo().noquote() << "FERRIC_SITE_POLICY_RENDER_JSON " + QJsonDocument(result).toJson(QJsonDocument::Compact);
++    });
++    QFile fixture(QFINDTESTDATA("../fixtures/site-policy/render-targets.html"));
++    QVERIFY(fixture.open(QIODevice::ReadOnly));
++    fixtureHtml = fixture.readAll();
++    QVERIFY(command("set --temp hints.auto_follow=never"));
++    QVERIFY(command("set --temp hints.min_chars=2"));
++    auto *ui = evaluate("testWindow.browserUi").value<QObject *>();
++    auto *view = evaluate("testWindow.activeWebView()").value<QObject *>();
++    auto *repeater = window->findChild<QQuickItem *>("hintMarkerRepeater");
++    QVERIFY(ui && view && repeater);
++    auto *overlay = repeater->parentItem();
++    QVERIFY(overlay);
++    int startingEpoch = 0;
++    const auto length = [](const QVariant &value) {
++        if (value.metaType() == QMetaType::fromType<QJSValue>())
++            return value.value<QJSValue>().property("length").toInt();
++        return int(value.toList().size());
++    };
++    RenderedStateObserver visibleFrame(window, [&] {
++        if (ui->property("mode").toString() != "hint" || !ui->property("hint_visible").toBool()
++            || window->property("hintRefreshPending").toBool()
++            || window->property("hintTrackingView").value<QObject *>() != view
++            || window->property("hintCollectionEpoch").toInt() <= startingEpoch
++            || !overlay->isVisible() || ui->property("hint_values").toString().isEmpty()
++            || length(overlay->property("laidOutHints")) != count) return false;
++        const auto displayed = length(overlay->property("displayedMarkers"));
++        if (displayed <= 0 || repeater->property("count").toInt() != displayed
++            || (count == 500 && displayed != 500)) return false;
++        for (int index = 0; index < displayed; ++index) {
++            QQuickItem *marker = nullptr;
++            if (!QMetaObject::invokeMethod(repeater, "itemAt", Qt::DirectConnection,
++                    Q_RETURN_ARG(QQuickItem *, marker), Q_ARG(int, index))
++                || !marker || !marker->isVisible() || marker->opacity() <= 0
++                || marker->width() <= 0 || marker->height() <= 0) return false;
++            bool label = false;
++            for (auto *child : marker->childItems())
++                if (child->isVisible() && child->width() > 0 && child->height() > 0
++                    && !child->property("text").toString().isEmpty()) { label = true; break; }
++            if (!label) return false;
++        }
++        renderedMarkers = displayed;
++        return true;
++    });
++    RenderedStateObserver normalFrame(window, [&] {
++        return ui->property("mode").toString() == "normal" && !overlay->isVisible();
++    });
++    for (int index = 0; index < warmups + measured; ++index) {
++        failedIndex = index; stage = "fresh-document";
++        const auto url = QString("http://127.0.0.1:%1/site-policy-render?count=%2&iteration=%3").arg(server.serverPort()).arg(count).arg(index);
++        QVERIFY(command("open " + url));
++        QTRY_VERIFY_WITH_TIMEOUT(page("location.href===" + quoted(url) + " && document.body.dataset.ready==='true'").toBool(), 15000);
++        QCOMPARE(page("document.querySelectorAll('a').length").toInt(), count);
++        // Workload zoom is explicit fixture preparation, outside timing. A
++        // saved setting alone does not establish the current native view value.
++        QVERIFY(view->setProperty("zoomFactor", zoom));
++        QTRY_COMPARE_WITH_TIMEOUT(view->property("zoomFactor").toDouble(), zoom, 5000);
++        const auto viewportReady = QString("Math.abs(innerWidth-%1)<=1 && Math.abs(innerHeight-%2)<=1 && Number(document.body.dataset.layoutWidth)===innerWidth && Number(document.body.dataset.layoutHeight)===innerHeight")
++            .arg(QString::number(view->property("width").toDouble() / zoom, 'g', 17),
++                 QString::number(view->property("height").toDouble() / zoom, 'g', 17));
++        QTRY_VERIFY_WITH_TIMEOUT(page(viewportReady).toBool(), 5000);
++        const auto beforeViewport = QJsonObject::fromVariantMap(page("({width:innerWidth,height:innerHeight,layout_width:Number(document.body.dataset.layoutWidth),layout_height:Number(document.body.dataset.layoutHeight)})").toMap());
++        QVERIFY(beforeViewport["width"].toDouble() > 0 && beforeViewport["height"].toDouble() > 0);
++        QVERIFY(page("typeof window.__ferric_browserHintState==='undefined'", 1).toBool());
++        window->requestActivate(); QTRY_VERIFY(window->isActive());
++        evaluate("testWindow.activeWebView().forceActiveFocus()");
++        startingEpoch = window->property("hintCollectionEpoch").toInt();
++        stage = index < warmups ? "warmup-entry" : "measured-entry";
++        const auto elapsed = visibleFrame.measure([&] { gesture(window, Qt::Key_F, "f"); }, 30000);
++        qInfo().noquote() << "FERRIC_SITE_POLICY_SAMPLE_JSON " + QJsonDocument(QJsonObject{
++            {"journey", "cold-document-hint-to-usable-render"}, {"iteration", index},
++            {"count", count}, {"zoom", zoom}, {"warmup", index < warmups},
++            {"elapsed_ms", elapsed}, {"smoke", smoke}}).toJson(QJsonDocument::Compact);
++        if (elapsed < 0) {
++            failedEndpoint = QJsonObject{{"mode", ui->property("mode").toString()},
++                {"status", ui->property("status_text").toString()},
++                {"hint_visible", ui->property("hint_visible").toBool()},
++                {"refresh_pending", window->property("hintRefreshPending").toBool()},
++                {"tracking_view_matches", window->property("hintTrackingView").value<QObject *>() == view},
++                {"starting_epoch", startingEpoch}, {"current_epoch", window->property("hintCollectionEpoch").toInt()},
++                {"overlay_visible", overlay->isVisible()}, {"overlay_opacity", overlay->opacity()},
++                {"laid_out_count", length(overlay->property("laidOutHints"))},
++                {"displayed_count", length(overlay->property("displayedMarkers"))},
++                {"repeater_count", repeater->property("count").toInt()},
++                {"rust_values_count", QJsonDocument::fromJson(ui->property("hint_values").toString().toUtf8()).array().size()},
++                {"actual_zoom", view->property("zoomFactor").toDouble()}};
++        }
++        QVERIFY2(elapsed >= 0, "Cold Hint session/delegates did not reach the matching rendered frame");
++        if (index >= warmups) {
++            samples.append(elapsed); markerCounts.append(renderedMarkers);
++            epochs.append(window->property("hintCollectionEpoch").toInt());
++            observerCosts.append(visibleFrame.predicateMillis());
++            const auto afterViewport = QJsonObject::fromVariantMap(page("({width:innerWidth,height:innerHeight,layout_width:Number(document.body.dataset.layoutWidth),layout_height:Number(document.body.dataset.layoutHeight)})").toMap());
++            QVERIFY(afterViewport["width"].toDouble() > 0 && afterViewport["height"].toDouble() > 0);
++            viewports.append(QJsonObject{{"before_css", beforeViewport}, {"after_css", afterViewport},
++                {"actual_zoom", view->property("zoomFactor").toDouble()},
++                {"view_width", view->property("width").toDouble()}, {"view_height", view->property("height").toDouble()}});
++        }
++        stage = "untimed-reset";
++        QVERIFY(normalFrame.measure([&] { gesture(window, Qt::Key_Escape); }) >= 0);
++    }
++    if (smoke) { failures = 0; stage = "smoke-complete"; return; }
++    std::vector<double> ordered;
++    for (const auto value : samples) ordered.push_back(value.toDouble());
++    std::sort(ordered.begin(), ordered.end());
++    p95 = ordered[std::size_t(std::ceil(ordered.size() * .95)) - 1];
++    maximum = ordered.back(); stage = "thresholds"; failedIndex = -1;
++    if (count == 500) QVERIFY2(p95 <= 200, "500-target cold Hint-to-render p95 exceeds the existing 200ms ceiling");
++    failures = 0; stage = "complete";
++}
++
++void ApplicationTests::sitePolicyPassiveRefreshPerformance_data() {
++    QTest::addColumn<int>("count");
++    QTest::newRow("1000-targets") << 1000;
++    QTest::newRow("500-visible") << 500;
++}
++
++void ApplicationTests::sitePolicyPassiveRefreshPerformance() {
++    const bool smoke = qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF_SMOKE");
++    if (!smoke && !qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF"))
++        QSKIP("Opt-in production passive refresh/render baseline with 1000 actual mutations");
++    QFETCH(int, count);
++    constexpr int mutationsPerSample = 1000;
++    const int warmups = smoke ? 1 : 10, measured = smoke ? 2 : 100;
++    QJsonArray samples, markerCounts, epochs, mutations, observerCosts, sessionIds;
++    QJsonObject viewport, failedEndpoint;
++    int failures = 1, failedIndex = -1, renderedMarkers = 0;
++    QString stage = "setup";
++    double p95 = -1, maximum = -1;
++    const auto report = qScopeGuard([&] {
++        const QJsonObject result{{"journey", "1000-mutations-to-passive-hint-render"},
++            {"count", count}, {"mutations_per_sample", mutationsPerSample}, {"zoom", 1},
++            {"warmups", warmups}, {"requested_measured_samples", measured},
++            {"run_kind", smoke ? "functional-smoke-not-baseline" : "performance-baseline"},
++            {"samples_ms", samples}, {"completed_measured_samples", samples.size()},
++            {"rendered_marker_counts", markerCounts}, {"collection_epochs", epochs},
++            {"published_session_ids", sessionIds},
++            {"mutation_receipts", mutations}, {"page_viewport", viewport},
++            {"generation_observer_predicate_ms", observerCosts},
++            {"observer_policy", "inclusive timings; generation-wide observer cost until waiter return; never subtracted"},
++            {"failures", failures}, {"failed_sample_index", failures ? failedIndex : -1},
++            {"stage", stage}, {"failed_endpoint", failedEndpoint}, {"p95_ms", p95}, {"max_ms", maximum},
++            {"qpa", QGuiApplication::platformName()}, {"runtime", runtimeFingerprint()},
++            {"dpr", window->devicePixelRatio()}, {"viewport_width", window->width()},
++            {"viewport_height", window->height()},
++            {"method", "nearest rank; 1000 style mutations per sample; one continuous Hint invocation; no direct refresh/collector call"},
++            {"boundary", "browser JavaScript dispatch through production dirty observer/timer/collection to matching Quick frameSwapped; excludes compositor presentation"}};
++        qInfo().noquote() << "FERRIC_SITE_POLICY_RENDER_JSON " + QJsonDocument(result).toJson(QJsonDocument::Compact);
++    });
++    QFile fixture(QFINDTESTDATA("../fixtures/site-policy/render-refresh-targets.html"));
++    QVERIFY(fixture.open(QIODevice::ReadOnly));
++    fixtureHtml = fixture.readAll();
++    QVERIFY(command("set --temp hints.auto_follow=never"));
++    QVERIFY(command("set --temp hints.min_chars=2"));
++    const auto url = QString("http://127.0.0.1:%1/site-policy-passive-refresh?count=%2")
++        .arg(server.serverPort()).arg(count);
++    QVERIFY(command("open " + url));
++    QTRY_VERIFY_WITH_TIMEOUT(page("location.href===" + quoted(url) + " && document.body.dataset.ready==='true'").toBool(), 15000);
++    auto *workspace = evaluate("testWindow.hintWorkspace").value<QObject *>();
++    auto *ui = evaluate("testWindow.browserUi").value<QObject *>();
++    auto *view = evaluate("testWindow.activeWebView()").value<QObject *>();
++    auto *repeater = window->findChild<QQuickItem *>("hintMarkerRepeater");
++    QVERIFY(workspace && ui && view && repeater);
++    auto *overlay = repeater->parentItem();
++    QVERIFY(overlay);
++    QVERIFY(view->setProperty("zoomFactor", 1.));
++    QTRY_COMPARE(view->property("zoomFactor").toDouble(), 1.);
++    const auto viewportReady = QString("Math.abs(innerWidth-%1)<=1 && Math.abs(innerHeight-%2)<=1 && Number(document.body.dataset.layoutWidth)===innerWidth && Number(document.body.dataset.layoutHeight)===innerHeight")
++        .arg(QString::number(view->property("width").toDouble(), 'g', 17),
++             QString::number(view->property("height").toDouble(), 'g', 17));
++    QTRY_VERIFY_WITH_TIMEOUT(page(viewportReady).toBool(), 5000);
++    viewport = QJsonObject::fromVariantMap(page("({width:innerWidth,height:innerHeight,layout_width:Number(document.body.dataset.layoutWidth),layout_height:Number(document.body.dataset.layoutHeight)})").toMap());
++    QVERIFY(viewport["width"].toDouble() > 0 && viewport["height"].toDouble() > 0);
++    QCOMPARE(page("document.querySelectorAll('a').length").toInt(), count);
++    window->requestActivate(); QTRY_VERIFY(window->isActive());
++    evaluate("testWindow.activeWebView().forceActiveFocus()");
++    const auto array = [&](const QVariant &value) {
++        return value.metaType() == QMetaType::fromType<QJSValue>()
++            ? value.value<QJSValue>() : engine->toScriptValue(value);
++    };
++    struct Geometry { double x, y, width, height; };
++    QHash<QString, Geometry> original;
++    int startingEpoch = window->property("hintCollectionEpoch").toInt();
++    int expectedRevision = 0, callbacksBefore = 0;
++    double projectedShift = 0;
++    QString sessionId;
++    RenderedStateObserver visibleFrame(window, [&] {
++        if (ui->property("mode").toString() != "hint" || !ui->property("hint_visible").toBool()
++            || window->property("hintRefreshPending").toBool()
++            || window->property("hintTrackingView").value<QObject *>() != view
++            || window->property("hintCollectionEpoch").toInt() <= startingEpoch
++            || !overlay->isVisible()) return false;
++        if (expectedRevision) {
++            const auto receipt = frameCallbackResult.toMap();
++            if (frameCallbackCount != callbacksBefore + 1
++                || receipt["revision"].toInt() != expectedRevision
++                || receipt["targets"].toInt() != count
++                || receipt["mutations"].toInt() != mutationsPerSample
++                || receipt["total_mutations"].toInt() != mutationsPerSample * expectedRevision) return false;
++            // Ordinary refresh preserves HintInteraction meanings, but publishes
++            // a new HintSession authority for the freshly collected snapshot.
++            const auto currentSession = workspace->property("hintPresentationSessionId").toString();
++            if (currentSession.isEmpty() || currentSession == sessionId) return false;
++        }
++        const auto rows = array(overlay->property("laidOutHints"));
++        if (!rows.isArray() || rows.property("length").toInt() != count) return false;
++        if (expectedRevision) {
++            // layout_key contains the assigned label and full candidate identity.
++            // Check every target, rather than accepting any new collection epoch
++            // or a single representative whose geometry happened to change.
++            QSet<QString> seen;
++            for (int index = 0; index < count; ++index) {
++                const auto row = rows.property(quint32(index));
++                const auto identity = row.property("layout_key").toString();
++                const auto found = original.constFind(identity);
++                if (found == original.cend() || seen.contains(identity)) return false;
++                seen.insert(identity);
++                const auto close = [](double a, double b) { return std::isfinite(a) && std::abs(a - b) < .01; };
++                if (!close(row.property("x").toNumber(), found->x + projectedShift)
++                    || !close(row.property("y").toNumber(), found->y)
++                    || !close(row.property("width").toNumber(), found->width)
++                    || !close(row.property("height").toNumber(), found->height)) return false;
++            }
++        }
++        const auto displayed = array(overlay->property("displayedMarkers"));
++        const auto displayedCount = displayed.property("length").toInt();
++        if (displayedCount <= 0 || repeater->property("count").toInt() != displayedCount
++            || (count == 500 && displayedCount != 500)) return false;
++        for (int index = 0; index < displayedCount; ++index) {
++            QQuickItem *marker = nullptr;
++            const auto row = displayed.property(quint32(index));
++            if (!QMetaObject::invokeMethod(repeater, "itemAt", Qt::DirectConnection,
++                    Q_RETURN_ARG(QQuickItem *, marker), Q_ARG(int, index))
++                || !marker || !marker->isVisible() || marker->opacity() <= 0
++                || marker->width() <= 0 || marker->height() <= 0
++                || std::abs(marker->x() - row.property("marker_x").toNumber()) > .01
++                || std::abs(marker->y() - row.property("marker_y").toNumber()) > .01) return false;
++            bool label = false;
++            for (auto *child : marker->childItems()) {
++                if (child->isVisible() && child->width() > 0 && child->height() > 0
++                    && child->property("text").toString() == row.property("label").toString()) {
++                    label = true; break;
++                }
++            }
++            if (!label) return false;
++        }
++        renderedMarkers = displayedCount;
++        return true;
++    });
++    stage = "untimed-initial-session";
++    QVERIFY2(visibleFrame.measure([&] { gesture(window, Qt::Key_F, "f"); }, 30000) >= 0,
++             "Initial Hint session did not render the required candidates and marker delegates");
++    sessionId = workspace->property("hintPresentationSessionId").toString();
++    QVERIFY(!sessionId.isEmpty());
++    const auto navigationTarget = evaluate("testWindow.browserUi.navigation_target_for_index(testWindow.activeWebView().tabIndex)").toMap();
++    QVERIFY(!navigationTarget["tabId"].toString().isEmpty()
++        && !navigationTarget["documentId"].toString().isEmpty());
++    const auto selectorSnapshot = evaluate("testWindow.browserUi.hint_selector_policy('all')").toString();
++    QVERIFY(!selectorSnapshot.isEmpty());
++    const auto initial = array(overlay->property("laidOutHints"));
++    for (int index = 0; index < count; ++index) {
++        const auto row = initial.property(quint32(index));
++        const auto identity = row.property("layout_key").toString();
++        QVERIFY(!identity.isEmpty() && !original.contains(identity));
++        const Geometry geometry{row.property("x").toNumber(), row.property("y").toNumber(),
++            row.property("width").toNumber(), row.property("height").toNumber()};
++        QVERIFY(std::isfinite(geometry.x) && std::isfinite(geometry.y)
++            && std::isfinite(geometry.width) && std::isfinite(geometry.height));
++        original.insert(identity, geometry);
++    }
++    const auto scaleX = overlay->width() / viewport["width"].toDouble();
++    QVERIFY(std::isfinite(scaleX) && scaleX >= .2 && scaleX <= 5);
++    for (int index = 0; index < warmups + measured; ++index) {
++        failedIndex = index; expectedRevision = index + 1;
++        projectedShift = expectedRevision % 2 ? scaleX : 0;
++        callbacksBefore = frameCallbackCount;
++        startingEpoch = window->property("hintCollectionEpoch").toInt();
++        sessionId = workspace->property("hintPresentationSessionId").toString();
++        stage = index < warmups ? "warmup-passive-refresh" : "measured-passive-refresh";
++        const auto elapsed = visibleFrame.measure([&] {
++            // Dispatch only the DOM mutation. The ordinary production observer,
++            // dirty poll, collection and presentation own all subsequent work.
++            evaluate("testWindow.activeWebView().runJavaScript('window.refreshFixture.mutate()',0,function(v){testProbe.frameOperationComplete(v)})");
++        }, 30000);
++        qInfo().noquote() << "FERRIC_SITE_POLICY_SAMPLE_JSON " + QJsonDocument(QJsonObject{
++            {"journey", "1000-mutations-to-passive-hint-render"}, {"iteration", index},
++            {"warmup", index < warmups}, {"count", count}, {"mutations", mutationsPerSample}, {"elapsed_ms", elapsed},
++            {"before_session_id", sessionId},
++            {"after_session_id", workspace->property("hintPresentationSessionId").toString()},
++            {"before_collection_epoch", startingEpoch},
++            {"after_collection_epoch", window->property("hintCollectionEpoch").toInt()},
++            {"mutation_receipt", QJsonObject::fromVariantMap(frameCallbackResult.toMap())},
++            {"smoke", smoke}}).toJson(QJsonDocument::Compact);
++        if (elapsed < 0) {
++            failedEndpoint = QJsonObject{{"mode", ui->property("mode").toString()},
++                {"status", ui->property("status_text").toString()}, {"starting_epoch", startingEpoch},
++                {"current_epoch", window->property("hintCollectionEpoch").toInt()},
++                {"refresh_pending", window->property("hintRefreshPending").toBool()},
++                {"session_id", workspace->property("hintPresentationSessionId").toString()},
++                {"pre_refresh_session_id", sessionId}, {"expected_revision", expectedRevision},
++                {"laid_out_count", array(overlay->property("laidOutHints")).property("length").toInt()},
++                {"rendered_marker_count", renderedMarkers},
++                {"mutation_receipt", QJsonObject::fromVariantMap(frameCallbackResult.toMap())}};
++        }
++        QVERIFY2(elapsed >= 0, "Production passive refresh did not render the stable identities, labels and changed geometries");
++        QCOMPARE(evaluate("testWindow.browserUi.navigation_target_for_index(testWindow.activeWebView().tabIndex)").toMap(), navigationTarget);
++        QCOMPARE(evaluate("testWindow.browserUi.hint_selector_policy('all')").toString(), selectorSnapshot);
++        if (index >= warmups) {
++            samples.append(elapsed); markerCounts.append(renderedMarkers);
++            epochs.append(window->property("hintCollectionEpoch").toInt());
++            sessionIds.append(workspace->property("hintPresentationSessionId").toString());
++            mutations.append(QJsonObject::fromVariantMap(frameCallbackResult.toMap()));
++            observerCosts.append(visibleFrame.predicateMillis());
++        }
++    }
++    if (smoke) { failures = 0; stage = "smoke-complete"; return; }
++    std::vector<double> ordered;
++    for (const auto value : samples) ordered.push_back(value.toDouble());
++    std::sort(ordered.begin(), ordered.end());
++    p95 = ordered[std::size_t(std::ceil(ordered.size() * .95)) - 1];
++    maximum = ordered.back(); failures = 0; stage = "complete";
++}
++
++// P00 measurement-only draft. Append beside RenderedStateObserver in the
++// performance translation unit; not compiled or qualified yet.
++void ApplicationTests::sitePolicyReadyHintPerformance_data() {
++    QTest::addColumn<int>("count");
++    QTest::addColumn<double>("zoom");
++    QTest::addColumn<QString>("operation");
++    for (const auto operation : {"prefix", "selection", "query", "queued-prefix"}) {
++        for (const auto size : {500, 1000, 5000}) {
++            for (const auto scale : {.8, 1., 1.25}) {
++                if (size != 500 && scale != 1.) continue;
++                const auto name = QString("%1-%2-%3").arg(size).arg(qRound(scale * 100)).arg(operation).toUtf8();
++                QTest::newRow(name.constData()) << size << scale << QString::fromLatin1(operation);
++            }
++        }
++    }
++}
++
++void ApplicationTests::sitePolicyReadyHintPerformance() {
++    const bool smoke = qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF_SMOKE");
++    if (!smoke && !qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF"))
++        QSKIP("Opt-in production ready/queued Hint input to matching rendered frame");
++    QFETCH(int, count);
++    QFETCH(double, zoom);
++    QFETCH(QString, operation);
++    const bool queued = operation == "queued-prefix";
++    const bool queryInput = operation == "query";
++    const int warmups = smoke ? 1 : 10, measured = smoke ? 2 : 100;
++    QJsonArray samples, observerCosts, markerCounts, sessionIds, epochs;
++    QJsonObject viewport, failedEndpoint;
++    QString stage = "setup";
++    int failures = 1, failedIndex = -1, renderedMarkers = 0;
++    double p95 = -1, maximum = -1;
++    const auto report = qScopeGuard([&] {
++        const QJsonObject row{{"journey", queued ? "queued-prefix-to-hint-render" : "ready-" + operation + "-to-hint-render"},
++            {"count", count}, {"zoom", zoom}, {"dpr", window->devicePixelRatio()},
++            {"warmups", warmups}, {"requested_measured_samples", measured},
++            {"run_kind", smoke ? "functional-smoke-not-baseline" : "performance-baseline"},
++            {"samples_ms", samples}, {"completed_measured_samples", samples.size()},
++            {"generation_observer_predicate_ms", observerCosts},
++            {"observer_policy", "inclusive; never subtract validation/observer work"},
++            {"rendered_marker_counts", markerCounts}, {"session_ids", sessionIds},
++            {"collection_epochs", epochs}, {"page_viewport", viewport},
++            {"failures", failures}, {"failed_sample_index", failures ? failedIndex : -1},
++            {"stage", stage}, {"failed_endpoint", failedEndpoint}, {"p95_ms", p95}, {"max_ms", maximum},
++            {"qpa", QGuiApplication::platformName()}, {"runtime", runtimeFingerprint()},
++            {"viewport_width", window->width()}, {"viewport_height", window->height()},
++            {"boundary", queued
++                ? "start immediately before genuinely queued prefix key; earlier invocation outside interval; includes remaining production collection/replay to matching Quick frameSwapped"
++                : "established session; constructed native key through production router/model/delegates to matching Quick frameSwapped"},
++            {"excludes", "compositor presentation and final activation/fresh proof; no p99 claim"}};
++        qInfo().noquote() << "FERRIC_SITE_POLICY_RENDER_JSON " + QJsonDocument(row).toJson(QJsonDocument::Compact);
++    });
++    QFile fixture(QFINDTESTDATA("../fixtures/site-policy/render-targets.html"));
++    QVERIFY(fixture.open(QIODevice::ReadOnly));
++    fixtureHtml = fixture.readAll();
++    QVERIFY(command("set --temp hints.auto_follow=never"));
++    QVERIFY(command("set --temp hints.min_chars=2"));
++    const auto url = QString("http://127.0.0.1:%1/site-policy-ready?count=%2").arg(server.serverPort()).arg(count)
++        + (queryInput ? QStringLiteral("&text=1") : QString());
++    QVERIFY(command("open " + url));
++    QTRY_VERIFY_WITH_TIMEOUT(page("location.href===" + quoted(url) + " && document.body.dataset.ready==='true'").toBool(), 15000);
++    QCOMPARE(page("document.querySelectorAll('a').length").toInt(), count);
++    auto *workspace = evaluate("testWindow.hintWorkspace").value<QObject *>();
++    auto *ui = evaluate("testWindow.browserUi").value<QObject *>();
++    auto *view = evaluate("testWindow.activeWebView()").value<QObject *>();
++    auto *repeater = window->findChild<QQuickItem *>("hintMarkerRepeater");
++    QVERIFY(workspace && ui && view && repeater);
++    auto *overlay = repeater->parentItem();
++    QVERIFY(overlay);
++    QVERIFY(view->setProperty("zoomFactor", zoom));
++    QTRY_COMPARE(view->property("zoomFactor").toDouble(), zoom);
++    const auto viewportReady = QString("Math.abs(innerWidth-%1)<=1 && Math.abs(innerHeight-%2)<=1 && Number(document.body.dataset.layoutWidth)===innerWidth && Number(document.body.dataset.layoutHeight)===innerHeight")
++        .arg(QString::number(view->property("width").toDouble() / zoom, 'g', 17),
++             QString::number(view->property("height").toDouble() / zoom, 'g', 17));
++    QTRY_VERIFY_WITH_TIMEOUT(page(viewportReady).toBool(), 5000);
++    viewport = QJsonObject::fromVariantMap(page("({width:innerWidth,height:innerHeight,layout_width:Number(document.body.dataset.layoutWidth),layout_height:Number(document.body.dataset.layoutHeight)})").toMap());
++    window->requestActivate(); QTRY_VERIFY(window->isActive());
++    evaluate("testWindow.activeWebView().forceActiveFocus()");
++    const auto object = [&](const QVariant &value) {
++        return value.metaType() == QMetaType::fromType<QJSValue>() ? value.value<QJSValue>() : engine->toScriptValue(value);
++    };
++    QString wantedPrefix, wantedQuery, wantedActive, wantedSession, previousSession;
++    QStringList wantedMatches;
++    int wantedEpoch = -1;
++    bool compareState = false;
++    const auto matchesFrame = [&] {
++        if (ui->property("mode").toString() != "hint" || !ui->property("hint_visible").toBool()
++            || window->property("hintRefreshPending").toBool() || !overlay->isVisible()
++            || window->property("hintTrackingView").value<QObject *>() != view) return false;
++        const auto rows = object(overlay->property("laidOutHints"));
++        const auto displayed = object(overlay->property("displayedMarkers"));
++        if (rows.property("length").toInt() != count || displayed.property("length").toInt() <= 0
++            || displayed.property("length").toInt() != repeater->property("count").toInt()
++            || (count == 500 && displayed.property("length").toInt() != (compareState ? wantedMatches.size() : 500))) return false;
++        const auto session = workspace->property("hintPresentationSessionId").toString();
++        if (session.isEmpty()) return false;
++        const auto state = object(workspace->property("hintState"));
++        if (compareState) {
++            if ((!wantedSession.isEmpty() && session != wantedSession)
++                || (wantedSession.isEmpty() && (session == previousSession
++                    || window->property("hintCollectionEpoch").toInt() <= wantedEpoch))
++                || (!wantedSession.isEmpty() && window->property("hintCollectionEpoch").toInt() != wantedEpoch)
++                || state.property("mode").toString() != (queryInput ? "text" : "label")
++                || state.property("prefix").toString() != wantedPrefix
++                || state.property("query").toString() != wantedQuery
++                || state.property("active_label").toString() != wantedActive
++                || object(workspace->property("pendingHintInputs")).property("length").toInt() != 0) return false;
++            const auto matches = state.property("matching_labels");
++            if (matches.property("length").toInt() != wantedMatches.size()) return false;
++            for (int index = 0; index < wantedMatches.size(); ++index)
++                if (matches.property(quint32(index)).toString() != wantedMatches[index]) return false;
++        }
++        const auto prefix = state.property("prefix").toString();
++        const auto active = state.property("active_label").toString();
++        QSet<QString> matching, expectedClusters, seenClusters;
++        const auto labels = state.property("matching_labels");
++        for (int index = 0; index < labels.property("length").toInt(); ++index)
++            matching.insert(labels.property(quint32(index)).toString());
++        for (int index = 0; index < count; ++index) {
++            const auto row = rows.property(quint32(index));
++            if (matching.contains(row.property("label").toString()))
++                expectedClusters.insert(row.property("cluster_key").toString());
++        }
++        if (displayed.property("length").toInt() != expectedClusters.size()) return false;
++        bool activeVisible = active.isEmpty();
++        for (int index = 0; index < displayed.property("length").toInt(); ++index) {
++            QQuickItem *marker = nullptr;
++            const auto row = displayed.property(quint32(index));
++            const auto label = row.property("label").toString();
++            const auto cluster = row.property("cluster_key").toString();
++            if (!matching.contains(label) || !expectedClusters.contains(cluster) || seenClusters.contains(cluster)) return false;
++            seenClusters.insert(cluster);
++            if (!QMetaObject::invokeMethod(repeater, "itemAt", Qt::DirectConnection,
++                    Q_RETURN_ARG(QQuickItem *, marker), Q_ARG(int, index))
++                || !marker || !marker->isVisible() || marker->opacity() <= 0
++                || marker->width() <= 0 || marker->height() <= 0) return false;
++            const auto richText = !prefix.isEmpty() && label.startsWith(prefix)
++                ? "<u>" + prefix.toHtmlEscaped() + "</u>" + label.mid(prefix.size()).toHtmlEscaped()
++                : label.toHtmlEscaped();
++            bool textMatches = false;
++            for (auto *child : marker->childItems())
++                if (child->isVisible() && child->width() > 0 && child->height() > 0
++                    && child->property("text").toString() == richText) { textMatches = true; break; }
++            if (!textMatches || marker->z() != (label == active ? 3 : 1)) return false;
++            if (label == active) activeVisible = true;
++        }
++        renderedMarkers = displayed.property("length").toInt();
++        return activeVisible;
++    };
++    RenderedStateObserver rendered(window, matchesFrame);
++    RenderedStateObserver normal(window, [&] {
++        return ui->property("mode").toString() == "normal" && !overlay->isVisible();
++    });
++    stage = "untimed-initial-session";
++    QVERIFY2(rendered.measure([&] { gesture(window, Qt::Key_F, "f"); }, 30000) >= 0, "Initial Hint overlay unavailable");
++    if (count == 500) QCOMPARE(renderedMarkers, 500);
++    const auto navigationTarget = evaluate("testWindow.browserUi.navigation_target_for_index(testWindow.activeWebView().tabIndex)").toMap();
++    QVERIFY(!navigationTarget["tabId"].toString().isEmpty() && !navigationTarget["documentId"].toString().isEmpty());
++    const auto selectorSnapshot = evaluate("testWindow.browserUi.hint_selector_policy('all')").toString();
++    QVERIFY(!selectorSnapshot.isEmpty());
++    QStringList allMatches;
++    const auto initial = object(workspace->property("hintState")).property("matching_labels");
++    for (int index = 0; index < initial.property("length").toInt(); ++index)
++        allMatches.append(initial.property(quint32(index)).toString());
++    QCOMPARE(allMatches.size(), count);
++    const auto prefix = allMatches.front().left(1);
++    QVERIFY(prefix.size() == 1 && prefix.front() >= QLatin1Char('a') && prefix.front() <= QLatin1Char('z'));
++    QStringList prefixMatches;
++    for (const auto &label : allMatches) if (label.startsWith(prefix)) prefixMatches.append(label);
++    QVERIFY(!prefixMatches.isEmpty());
++    const int keyCode = Qt::Key_A + prefix.front().unicode() - 'a';
++    QStringList queryMatches;
++    if (queryInput) {
++        stage = "untimed-enter-text-mode";
++        const auto hints = QJsonDocument::fromJson(ui->property("hint_values").toString().toUtf8()).array();
++        QCOMPARE(hints.size(), count);
++        QSet<QString> textLabels, candidateLabels;
++        for (const auto &value : hints) {
++            const auto candidate = value.toObject();
++            const auto label = candidate["label"].toString();
++            const auto text = candidate["text"].toString();
++            QVERIFY(!label.isEmpty() && !candidateLabels.contains(label));
++            QVERIFY(text == "x" || text == "z");
++            QVERIFY(!candidate["href"].toString().contains(QLatin1Char('z'), Qt::CaseInsensitive));
++            candidateLabels.insert(label);
++            if (text == "z") textLabels.insert(label);
++        }
++        for (const auto &label : allMatches) {
++            QVERIFY(candidateLabels.contains(label));
++            if (textLabels.contains(label)) queryMatches.append(label);
++        }
++        QCOMPARE(queryMatches.size(), (count + 2) / 3);
++        wantedSession = workspace->property("hintPresentationSessionId").toString();
++        wantedEpoch = window->property("hintCollectionEpoch").toInt();
++        wantedMatches = allMatches;
++        wantedActive = allMatches.front();
++        compareState = true;
++        QVERIFY2(rendered.measure([&] { gesture(window, Qt::Key_Slash, "/"); }, 30000) >= 0,
++                 "Slash did not establish the unfiltered text mode in the same Hint session");
++        stage = "untimed-text-mode-ready";
++        QElapsedTimer stable;
++        QVERIFY2(QTest::qWaitFor([&] {
++            const auto session = workspace->property("hintPresentationSessionId").toString();
++            const auto epoch = window->property("hintCollectionEpoch").toInt();
++            if (!stable.isValid() || session != wantedSession || epoch != wantedEpoch) {
++                wantedSession = session;
++                wantedEpoch = epoch;
++                stable.start();
++            }
++            if (!matchesFrame()) { stable.restart(); return false; }
++            return stable.elapsed() >= 200;
++        }, 5000), "Text mode did not settle over two passive refresh intervals");
++        QVERIFY2(rendered.measure([&] { window->update(); }) >= 0,
++                 "The settled text-mode session did not render before query input");
++    }
++    for (int index = 0; index < warmups + measured; ++index) {
++        failedIndex = index;
++        wantedSession = workspace->property("hintPresentationSessionId").toString();
++        wantedEpoch = window->property("hintCollectionEpoch").toInt();
++        const bool selection = operation == "selection";
++        wantedPrefix = selection || queryInput ? QString() : prefix;
++        wantedQuery = queryInput ? QStringLiteral("z") : QString();
++        wantedMatches = selection ? allMatches : queryInput ? queryMatches : prefixMatches;
++        wantedActive = selection ? allMatches[1] : wantedMatches.front();
++        bool noSession = true, genuinelyQueued = true;
++        if (queued) {
++            stage = "untimed-close-and-invocation";
++            previousSession = wantedSession;
++            compareState = false;
++            QVERIFY(normal.measure([&] { gesture(window, Qt::Key_Escape); }) >= 0);
++            gesture(window, Qt::Key_F, "f");
++            // No event pumping: the existing Rust no-session response proves
++            // the next key genuinely enters the production pending-input queue.
++            noSession = evaluate("JSON.parse(testWindow.browserUi.update_hint_interaction('clear','')).error").toString() == "no-session";
++            wantedSession.clear();
++        }
++        compareState = true;
++        stage = index < warmups ? "warmup-input" : "measured-input";
++        const auto elapsed = rendered.measure([&] {
++            if (selection) gesture(window, Qt::Key_Tab);
++            else if (queryInput) gesture(window, Qt::Key_Z, wantedQuery);
++            else gesture(window, keyCode, prefix);
++            if (queued) genuinelyQueued = object(workspace->property("pendingHintInputs")).property("length").toInt() == 1;
++        }, 30000);
++        qInfo().noquote() << "FERRIC_SITE_POLICY_SAMPLE_JSON " + QJsonDocument(QJsonObject{
++            {"journey", queued ? "queued-prefix-to-hint-render" : "ready-" + operation + "-to-hint-render"},
++            {"count", count}, {"zoom", zoom}, {"iteration", index}, {"warmup", index < warmups},
++            {"elapsed_ms", elapsed}, {"smoke", smoke}, {"no_session_before_queued_key", noSession},
++            {"genuinely_queued", genuinelyQueued}, {"rendered_marker_count", renderedMarkers},
++            {"session_id", workspace->property("hintPresentationSessionId").toString()},
++            {"collection_epoch", window->property("hintCollectionEpoch").toInt()}}).toJson(QJsonDocument::Compact);
++        if (elapsed < 0 || !noSession || !genuinelyQueued) failedEndpoint = QJsonObject{
++            {"mode", ui->property("mode").toString()}, {"status", ui->property("status_text").toString()},
++            {"state", QJsonObject::fromVariantMap(object(workspace->property("hintState")).toVariant().toMap())},
++            {"pending", object(workspace->property("pendingHintInputs")).property("length").toInt()},
++            {"epoch", window->property("hintCollectionEpoch").toInt()},
++            {"expected_epoch", wantedEpoch}, {"expected_session_id", wantedSession},
++            {"actual_session_id", workspace->property("hintPresentationSessionId").toString()},
++            {"expected_active", wantedActive}, {"expected_match_count", wantedMatches.size()},
++            {"displayed_count", object(overlay->property("displayedMarkers")).property("length").toInt()},
++            {"laid_out_count", object(overlay->property("laidOutHints")).property("length").toInt()},
++            {"no_session_before_queued_key", noSession}, {"genuinely_queued", genuinelyQueued},
++            {"elapsed_ms", elapsed}, {"rendered_marker_count", renderedMarkers}};
++        QVERIFY2(noSession && genuinelyQueued, "Queued-input sample did not prove a real pending key");
++        QVERIFY2(elapsed >= 0, "Input state and actual delegates did not reach a matching rendered frame");
++        QCOMPARE(evaluate("testWindow.browserUi.navigation_target_for_index(testWindow.activeWebView().tabIndex)").toMap(), navigationTarget);
++        QCOMPARE(evaluate("testWindow.browserUi.hint_selector_policy('all')").toString(), selectorSnapshot);
++        if (index >= warmups) {
++            samples.append(elapsed); observerCosts.append(rendered.predicateMillis()); markerCounts.append(renderedMarkers);
++            sessionIds.append(workspace->property("hintPresentationSessionId").toString());
++            epochs.append(window->property("hintCollectionEpoch").toInt());
++        }
++        if (!queued && index + 1 < warmups + measured) {
++            stage = "untimed-reset";
++            wantedPrefix.clear(); wantedQuery.clear(); wantedMatches = allMatches; wantedActive = allMatches.front();
++            wantedSession = workspace->property("hintPresentationSessionId").toString();
++            wantedEpoch = window->property("hintCollectionEpoch").toInt();
++            // Reset through the production Clear action, outside the measured
++            // key path. Wait for the actual delegates before requesting a frame.
++            const bool cleared = evaluate("testWindow.hintWorkspace.applyHintInteraction('clear','')").toBool();
++            const bool ready = cleared && QTest::qWaitFor(matchesFrame, 5000);
++            const bool swapped = ready && rendered.measure([&] { window->update(); }) >= 0;
++            if (!swapped) {
++                const auto actualState = object(workspace->property("hintState"));
++                failedEndpoint = QJsonObject{{"clear_accepted", cleared}, {"delegates_ready", ready},
++                    {"mode", ui->property("mode").toString()}, {"hint_mode", actualState.property("mode").toString()},
++                    {"prefix", actualState.property("prefix").toString()}, {"query", actualState.property("query").toString()},
++                    {"active", actualState.property("active_label").toString()}, {"expected_active", wantedActive},
++                    {"match_count", actualState.property("matching_labels").property("length").toInt()},
++                    {"displayed_count", object(overlay->property("displayedMarkers")).property("length").toInt()},
++                    {"collection_epoch", window->property("hintCollectionEpoch").toInt()}, {"expected_epoch", wantedEpoch},
++                    {"session_id", workspace->property("hintPresentationSessionId").toString()}, {"expected_session_id", wantedSession}};
++            }
++            QVERIFY2(swapped, "Ready Hint setup did not restore the unfiltered rendered state");
++        }
++    }
++    if (smoke) { failures = 0; stage = "smoke-complete"; return; }
++    std::vector<double> ordered;
++    for (const auto value : samples) ordered.push_back(value.toDouble());
++    std::sort(ordered.begin(), ordered.end());
++    p95 = ordered[std::size_t(std::ceil(ordered.size() * .95)) - 1]; maximum = ordered.back();
++    failures = 0; failedIndex = -1; stage = "complete";
++}
++
++// P00 measurement-only draft. Requires frameCallbackNsecs to be recorded in
++// the existing native frameOperationComplete callback on the same steady clock.
++void ApplicationTests::sitePolicyActivationPerformance_data() {
++    sitePolicyHintRenderPerformance_data();
++}
++
++void ApplicationTests::sitePolicyActivationPerformance() {
++    const bool smoke = qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF_SMOKE");
++    if (!smoke && !qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF"))
++        QSKIP("Opt-in production selected Hint through fresh proof to actual DOM activation");
++    QFETCH(int, count);
++    QFETCH(double, zoom);
++    const int warmups = smoke ? 1 : 10, measured = smoke ? 2 : 100;
++    QJsonArray samples, receipts, preparationCosts;
++    QJsonObject viewport, failedEndpoint;
++    QString stage = "setup";
++    int failures = 1, failedIndex = -1;
++    double p95 = -1, maximum = -1;
++    const auto report = qScopeGuard([&] {
++        const QJsonObject row{{"journey", "selected-hint-enter-to-dom-activation"},
++            {"count", count}, {"zoom", zoom}, {"dpr", window->devicePixelRatio()},
++            {"warmups", warmups}, {"requested_measured_samples", measured},
++            {"run_kind", smoke ? "functional-smoke-not-baseline" : "performance-baseline"},
++            {"samples_ms", samples}, {"completed_measured_samples", samples.size()},
++            {"activation_receipts", receipts}, {"untimed_preparation_predicate_ms", preparationCosts},
++            {"page_viewport", viewport}, {"failures", failures},
++            {"failed_sample_index", failures ? failedIndex : -1}, {"stage", stage},
++            {"failed_endpoint", failedEndpoint}, {"p95_ms", p95}, {"max_ms", maximum},
++            {"qpa", QGuiApplication::platformName()}, {"runtime", runtimeFingerprint()},
++            {"viewport_width", window->width()}, {"viewport_height", window->height()},
++            {"poll_interval_ms", 5},
++            {"boundary", "constructed Enter on an already selected real Hint; production fresh validation/action to callback observing exact DOM click receipt; polling/transport included"},
++            {"excludes", "collection, label preparation, DOM paint/compositor presentation; no p99 or native-transform/trust qualification"}};
++        qInfo().noquote() << "FERRIC_SITE_POLICY_RENDER_JSON " + QJsonDocument(row).toJson(QJsonDocument::Compact);
++    });
++    QFile fixture(QFINDTESTDATA("../fixtures/site-policy/render-targets.html"));
++    QVERIFY(fixture.open(QIODevice::ReadOnly));
++    fixtureHtml = fixture.readAll();
++    // Derive the same layout with non-navigating buttons. Ordinary Link uses
++    // browser navigation; it cannot stand in for a DOM activation benchmark.
++    for (const auto &old : {QByteArray("a {"), QByteArray("createElement('a')"),
++             QByteArray("anchor.href = '#target-' + index;"), QByteArray("querySelectorAll('a')")})
++        QCOMPARE(fixtureHtml.count(old), 1);
++    fixtureHtml.replace("a {", "button { border:0; padding:0;");
++    fixtureHtml.replace("createElement('a')", "createElement('button')");
++    fixtureHtml.replace("anchor.href = '#target-' + index;", "anchor.type = 'button'; anchor.id = 'target-' + index;");
++    fixtureHtml.replace("querySelectorAll('a')", "querySelectorAll('button')");
++    // Observe only real activation. The fixture never calls click itself.
++    fixtureHtml += R"(<script>
++window.activationFixture={count:0,id:'',name:'',trusted:false};
++document.addEventListener('click',event=>{
++ const button=event.target.closest&&event.target.closest('button');if(!button)return;
++ window.activationFixture={count:window.activationFixture.count+1,
++ id:button.id,name:button.getAttribute('aria-label'),trusted:event.isTrusted};
++},true);
++</script>)";
++    QVERIFY(command("set --temp hints.auto_follow=never"));
++    QVERIFY(command("set --temp hints.min_chars=2"));
++    const auto url = QString("http://127.0.0.1:%1/site-policy-activation?count=%2").arg(server.serverPort()).arg(count);
++    QVERIFY(command("open " + url));
++    QTRY_VERIFY_WITH_TIMEOUT(page("location.href===" + quoted(url) + " && document.body.dataset.ready==='true' && !!window.activationFixture").toBool(), 15000);
++    QCOMPARE(page("document.querySelectorAll('button').length").toInt(), count);
++    auto *workspace = evaluate("testWindow.hintWorkspace").value<QObject *>();
++    auto *ui = evaluate("testWindow.browserUi").value<QObject *>();
++    auto *view = evaluate("testWindow.activeWebView()").value<QObject *>();
++    auto *repeater = window->findChild<QQuickItem *>("hintMarkerRepeater");
++    QVERIFY(workspace && ui && view && repeater);
++    auto *overlay = repeater->parentItem();
++    QVERIFY(overlay);
++    QVERIFY(view->setProperty("zoomFactor", zoom));
++    QTRY_COMPARE(view->property("zoomFactor").toDouble(), zoom);
++    const auto viewportReady = QString("Math.abs(innerWidth-%1)<=1 && Math.abs(innerHeight-%2)<=1 && Number(document.body.dataset.layoutWidth)===innerWidth && Number(document.body.dataset.layoutHeight)===innerHeight")
++        .arg(QString::number(view->property("width").toDouble() / zoom, 'g', 17),
++             QString::number(view->property("height").toDouble() / zoom, 'g', 17));
++    QTRY_VERIFY_WITH_TIMEOUT(page(viewportReady).toBool(), 5000);
++    viewport = QJsonObject::fromVariantMap(page("({width:innerWidth,height:innerHeight,layout_width:Number(document.body.dataset.layoutWidth),layout_height:Number(document.body.dataset.layoutHeight)})").toMap());
++    window->requestActivate(); QTRY_VERIFY(window->isActive());
++    evaluate("testWindow.activeWebView().forceActiveFocus()");
++    const auto object = [&](const QVariant &value) {
++        return value.metaType() == QMetaType::fromType<QJSValue>() ? value.value<QJSValue>() : engine->toScriptValue(value);
++    };
++    QString selectedLabel;
++    int startingEpoch = -1;
++    RenderedStateObserver prepared(window, [&] {
++        if (ui->property("mode").toString() != "hint" || !ui->property("hint_visible").toBool()
++            || window->property("hintRefreshPending").toBool() || !overlay->isVisible()
++            || window->property("hintTrackingView").value<QObject *>() != view
++            || window->property("hintCollectionEpoch").toInt() <= startingEpoch) return false;
++        const auto rows = object(overlay->property("laidOutHints"));
++        const auto displayed = object(overlay->property("displayedMarkers"));
++        if (rows.property("length").toInt() != count || displayed.property("length").toInt() <= 0
++            || displayed.property("length").toInt() != repeater->property("count").toInt()
++            || (count == 500 && displayed.property("length").toInt() != (selectedLabel.isEmpty() ? 500 : 1))) return false;
++        const auto state = object(workspace->property("hintState"));
++        if (!selectedLabel.isEmpty() && (state.property("prefix").toString() != selectedLabel
++            || state.property("active_label").toString() != selectedLabel
++            || state.property("matching_labels").property("length").toInt() != 1)) return false;
++        bool selectedVisible = selectedLabel.isEmpty();
++        for (int index = 0; index < displayed.property("length").toInt(); ++index) {
++            QQuickItem *marker = nullptr;
++            const auto label = displayed.property(quint32(index)).property("label").toString();
++            if (!QMetaObject::invokeMethod(repeater, "itemAt", Qt::DirectConnection,
++                    Q_RETURN_ARG(QQuickItem *, marker), Q_ARG(int, index))
++                || !marker || !marker->isVisible() || marker->opacity() <= 0
++                || marker->width() <= 0 || marker->height() <= 0) return false;
++            if (label == selectedLabel) {
++                const auto expected = "<u>" + label.toHtmlEscaped() + "</u>";
++                bool textMatches = false;
++                for (auto *child : marker->childItems())
++                    if (child->isVisible() && child->width() > 0 && child->height() > 0
++                        && child->property("text").toString() == expected) { textMatches = true; break; }
++                if (!textMatches || marker->z() != 3) return false;
++                selectedVisible = true;
++            }
++        }
++        return selectedVisible;
++    });
++    const auto navigationTarget = evaluate("testWindow.browserUi.navigation_target_for_index(testWindow.activeWebView().tabIndex)").toMap();
++    QVERIFY(!navigationTarget["tabId"].toString().isEmpty() && !navigationTarget["documentId"].toString().isEmpty());
++    const auto selectorSnapshot = evaluate("testWindow.browserUi.hint_selector_policy('all')").toString();
++    QVERIFY(!selectorSnapshot.isEmpty());
++    for (int index = 0; index < warmups + measured; ++index) {
++        failedIndex = index; stage = "untimed-preparation";
++        QCOMPARE(page("window.activationFixture.count").toInt(), index);
++        selectedLabel.clear(); startingEpoch = window->property("hintCollectionEpoch").toInt();
++        QVERIFY2(prepared.measure([&] { gesture(window, Qt::Key_F, "f"); }, 30000) >= 0, "Hint preparation unavailable");
++        const auto collectionObserverMs = prepared.predicateMillis();
++        const auto hints = QJsonDocument::fromJson(ui->property("hint_values").toString().toUtf8()).array();
++        QCOMPARE(hints.size(), count);
++        const auto selected = hints.first().toObject();
++        selectedLabel = selected["label"].toString();
++        QCOMPARE(selected["kind"].toString(), QString("button"));
++        const auto targetName = selected["text"].toString();
++        QVERIFY(!selectedLabel.isEmpty() && !targetName.isEmpty());
++        const auto targetIds = page("Array.from(document.querySelectorAll('button')).filter(b=>b.getAttribute('aria-label')==="
++            + quoted(targetName) + ").map(b=>b.id)").toList();
++        QCOMPARE(targetIds.size(), 1);
++        const auto targetId = targetIds.first().toString();
++        QVERIFY(!targetId.isEmpty());
++        for (const auto character : selectedLabel)
++            QVERIFY(character >= QLatin1Char('a') && character <= QLatin1Char('z'));
++        QVERIFY(prepared.measure([&] {
++            for (const auto character : selectedLabel) {
++                gesture(window, Qt::Key_A + character.unicode() - 'a', QString(character));
++            }
++        }) >= 0);
++        QCOMPARE(page("window.activationFixture.count").toInt(), index);
++        const auto session = workspace->property("hintPresentationSessionId").toString();
++        QVERIFY(!session.isEmpty());
++        const int expectedCount = index + 1;
++        QEventLoop loop;
++        QTimer poll, deadline;
++        poll.setInterval(5); deadline.setSingleShot(true);
++        int previousCallbacks = frameCallbackCount;
++        bool pending = false;
++        qint64 completedAt = 0;
++        QVariantMap receipt;
++        QObject::connect(&poll, &QTimer::timeout, &loop, [&] {
++            if (pending && frameCallbackCount == previousCallbacks) return;
++            if (pending) {
++                pending = false;
++                const auto value = frameCallbackResult.toMap();
++                if (value["count"].toInt() == expectedCount && value["id"].toString() == targetId
++                    && value["name"].toString() == targetName) {
++                    receipt = value; completedAt = frameCallbackNsecs; loop.quit(); return;
++                }
++            }
++            previousCallbacks = frameCallbackCount; pending = true;
++            evaluate("testWindow.activeWebView().runJavaScript('window.activationFixture',0,function(v){testProbe.frameOperationComplete(v)})");
++        });
++        QObject::connect(&deadline, &QTimer::timeout, &loop, &QEventLoop::quit);
++        stage = index < warmups ? "warmup-activation" : "measured-activation";
++        const auto started = monotonicNsecs();
++        gesture(window, Qt::Key_Return, "\r");
++        poll.start(); deadline.start(5000); loop.exec(); poll.stop(); deadline.stop();
++        const auto elapsed = completedAt >= started ? (completedAt - started) / 1e6 : -1.;
++        qInfo().noquote() << "FERRIC_SITE_POLICY_SAMPLE_JSON " + QJsonDocument(QJsonObject{
++            {"journey", "selected-hint-enter-to-dom-activation"}, {"count", count}, {"zoom", zoom},
++            {"iteration", index}, {"warmup", index < warmups}, {"elapsed_ms", elapsed},
++            {"smoke", smoke}, {"activation_receipt", QJsonObject::fromVariantMap(receipt)},
++            {"pre_activation_session_id", session}}).toJson(QJsonDocument::Compact);
++        if (elapsed < 0) failedEndpoint = QJsonObject{{"mode", ui->property("mode").toString()},
++            {"status", ui->property("status_text").toString()},
++            {"last_receipt", QJsonObject::fromVariantMap(frameCallbackResult.toMap())}};
++        QVERIFY2(elapsed >= 0, "The production selected Hint did not produce its exact DOM activation receipt");
++        QTRY_COMPARE(ui->property("mode").toString(), QString("normal"));
++        QCOMPARE(page("window.activationFixture.count").toInt(), expectedCount);
++        QCOMPARE(evaluate("testWindow.browserUi.navigation_target_for_index(testWindow.activeWebView().tabIndex)").toMap(), navigationTarget);
++        QCOMPARE(evaluate("testWindow.browserUi.hint_selector_policy('all')").toString(), selectorSnapshot);
++        if (index >= warmups) {
++            samples.append(elapsed); receipts.append(QJsonObject::fromVariantMap(receipt));
++            preparationCosts.append(QJsonObject{{"collection", collectionObserverMs}, {"label", prepared.predicateMillis()}});
++        }
++    }
++    if (smoke) { failures = 0; stage = "smoke-complete"; return; }
++    std::vector<double> ordered;
++    for (const auto value : samples) ordered.push_back(value.toDouble());
++    std::sort(ordered.begin(), ordered.end());
++    p95 = ordered[std::size_t(std::ceil(ordered.size() * .95)) - 1]; maximum = ordered.back();
++    failures = 0; failedIndex = -1; stage = "complete";
++}
++
++// P00 measurement-only draft beside the existing RenderedStateObserver.
++void ApplicationTests::sitePolicyRootRenderPerformance_data() {
++    QTest::addColumn<int>("count");
++    QTest::addColumn<double>("zoom");
++    QTest::addColumn<QString>("shape");
++    for (const auto shape : {"shadow-2", "slots", "same-origin-2", "foreign-2", "clipping"})
++        for (const auto size : {500, 1000, 5000})
++            for (const auto scale : {.8, 1., 1.25}) {
++                if (size != 500 && scale != 1.) continue;
++                const auto tag = QString("%1-%2-%3").arg(shape).arg(size).arg(qRound(scale * 100)).toUtf8();
++                QTest::newRow(tag.constData()) << size << scale << QString::fromLatin1(shape);
++            }
++}
++
++void ApplicationTests::sitePolicyRootRenderPerformance() {
++    const bool smoke = qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF_SMOKE");
++    if (!smoke && !qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF"))
++        QSKIP("Opt-in ordinary rooted production collection/render baseline");
++    QFETCH(int, count);
++    QFETCH(double, zoom);
++    QFETCH(QString, shape);
++    const bool foreign = shape == "foreign-2";
++    const bool frames = foreign || shape == "same-origin-2";
++    const int expectedShadowDepth = shape == "shadow-2" ? 2 : shape == "slots" ? 1 : 0;
++    const int warmups = smoke ? 1 : 10, measured = smoke ? 2 : 100;
++    QJsonArray samples, observerCosts, markerCounts, rootFacts, observedPaths, truncationFlags;
++    QJsonObject failedEndpoint;
++    QString stage = "setup";
++    int failures = 1, failedIndex = -1, renderedMarkers = 0;
++    double p95 = -1, maximum = -1;
++    const auto report = qScopeGuard([&] {
++        const QJsonObject row{{"journey", "rooted-buttons-command-to-usable-render"},
++            {"shape", shape}, {"family", "buttons"}, {"count", count}, {"zoom", zoom},
++            {"dpr", window->devicePixelRatio()}, {"warmups", warmups},
++            {"requested_measured_samples", measured},
++            {"run_kind", smoke ? "functional-smoke-not-baseline" : "performance-baseline"},
++            {"samples_ms", samples}, {"completed_measured_samples", samples.size()},
++            {"generation_observer_predicate_ms", observerCosts},
++            {"observer_policy", "inclusive; no validation or observer cost subtracted"},
++            {"rendered_marker_counts", markerCounts}, {"fixture_root_facts", rootFacts},
++            {"observed_frame_paths", observedPaths}, {"failures", failures},
++            {"collection_truncated", truncationFlags},
++            {"failed_sample_index", failures ? failedIndex : -1}, {"stage", stage},
++            {"failed_endpoint", failedEndpoint}, {"p95_ms", p95}, {"max_ms", maximum},
++            {"qpa", QGuiApplication::platformName()}, {"runtime", runtimeFingerprint()},
++            {"viewport_width", window->width()}, {"viewport_height", window->height()},
++            {"entry", "public BrowserUi command: hint buttons; native-key entry is a separate journey"},
++            {"boundary", "fresh document/collector realm, production ordinary rooted discovery/broker/Rust/layout to matching Quick frameSwapped; no compositor presentation"},
++            {"limits", "inspection counters and component collection/fresh timings require separate measurements; no p99 claim"}};
++        qInfo().noquote() << "FERRIC_SITE_POLICY_RENDER_JSON " + QJsonDocument(row).toJson(QJsonDocument::Compact);
++    });
++    QFile fixture(QFINDTESTDATA("../fixtures/site-policy/root-render-targets.html"));
++    QVERIFY(fixture.open(QIODevice::ReadOnly));
++    fixtureHtml = fixture.readAll();
++    QVERIFY(command("set --temp hints.auto_follow=never"));
++    QVERIFY(command("set --temp hints.min_chars=2"));
++    auto *ui = evaluate("testWindow.browserUi").value<QObject *>();
++    auto *view = evaluate("testWindow.activeWebView()").value<QObject *>();
++    auto *provider = evaluate("testWindow.hintFrameProvider").value<QObject *>();
++    auto *repeater = window->findChild<QQuickItem *>("hintMarkerRepeater");
++    QVERIFY(ui && view && provider && repeater);
++    auto *overlay = repeater->parentItem();
++    QVERIFY(overlay);
++    const auto object = [&](const QVariant &value) {
++        return value.metaType() == QMetaType::fromType<QJSValue>() ? value.value<QJSValue>() : engine->toScriptValue(value);
++    };
++    QSet<QString> expectedNames, currentPaths;
++    for (int index = 0; index < count; ++index) expectedNames.insert(QString("Leaf %1").arg(index));
++    int startingEpoch = 0;
++    QJsonObject viewport;
++    RenderedStateObserver rendered(window, [&] {
++        if (ui->property("mode").toString() != "hint" || !ui->property("hint_visible").toBool()
++            || window->property("hintRefreshPending").toBool() || !overlay->isVisible()
++            || window->property("hintTrackingView").value<QObject *>() != view
++            || window->property("hintCollectionEpoch").toInt() <= startingEpoch
++            || (count == 500 && window->property("hintCollectionTruncated").toBool())) return false;
++        const auto hints = QJsonDocument::fromJson(ui->property("hint_values").toString().toUtf8()).array();
++        const auto rows = object(overlay->property("laidOutHints"));
++        const auto displayed = object(overlay->property("displayedMarkers"));
++        if (hints.size() != count || rows.property("length").toInt() != count
++            || displayed.property("length").toInt() <= 0
++            || displayed.property("length").toInt() != repeater->property("count").toInt()
++            || (count == 500 && displayed.property("length").toInt() != 500)) return false;
++        QSet<QString> names, identities, paths;
++        const auto sources = object(provider->property("sources"));
++        const auto rootOwner = provider->property("rootOwner").toString();
++        for (const auto value : hints) {
++            const auto hint = value.toObject();
++            const auto name = hint["text"].toString();
++            const auto path = hint["frame_path"].toString();
++            const auto owner = hint["frame_owner"].toString();
++            const auto identity = owner + "|" + path + "|" + hint["element_id"].toVariant().toString();
++            if (hint["kind"].toString() != "button" || !expectedNames.contains(name)
++                || names.contains(name) || identities.contains(identity)) return false;
++            names.insert(name); identities.insert(identity); paths.insert(path);
++            for (const auto key : {"x", "y", "width", "height"})
++                if (!hint[key].isDouble() || !std::isfinite(hint[key].toDouble())) return false;
++            if (hint["x"].toDouble() < -.01 || hint["y"].toDouble() < -.01
++                || hint["width"].toDouble() <= 0 || hint["height"].toDouble() <= 0
++                || hint["x"].toDouble() + hint["width"].toDouble() > viewport["width"].toDouble() + .01
++                || hint["y"].toDouble() + hint["height"].toDouble() > viewport["height"].toDouble() + .01) return false;
++            if (shape == "same-origin-2" && path != "0.0.0") return false;
++            if (foreign) {
++                if (owner.isEmpty() || rootOwner.isEmpty()) return false;
++                QString current = owner;
++                QSet<QString> seen;
++                int hops = 0;
++                while (current != rootOwner && hops < 8) {
++                    if (current.isEmpty() || seen.contains(current)) return false;
++                    seen.insert(current);
++                    const auto source = sources.property(current);
++                    if (!source.isObject()) return false;
++                    current = source.property("parent").toString(); ++hops;
++                }
++                if (current != rootOwner || hops != 2 || provider->property("leaseCount").toInt() != 3) return false;
++            } else if (!owner.isEmpty()) return false;
++        }
++        for (int index = 0; index < displayed.property("length").toInt(); ++index) {
++            QQuickItem *marker = nullptr;
++            const auto row = displayed.property(quint32(index));
++            const auto label = row.property("label").toString();
++            if (label.isEmpty() || !QMetaObject::invokeMethod(repeater, "itemAt", Qt::DirectConnection,
++                    Q_RETURN_ARG(QQuickItem *, marker), Q_ARG(int, index))
++                || !marker || !marker->isVisible() || marker->opacity() <= 0
++                || !std::isfinite(marker->opacity()) || !std::isfinite(marker->width())
++                || !std::isfinite(marker->height()) || marker->width() <= 0 || marker->height() <= 0) return false;
++            const auto x = row.property("marker_x").toNumber(), y = row.property("marker_y").toNumber();
++            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(marker->x()) || !std::isfinite(marker->y())
++                || std::abs(marker->x() - x) > .01 || std::abs(marker->y() - y) > .01) return false;
++            bool textMatches = false;
++            for (auto *child : marker->childItems())
++                if (child->isVisible() && child->width() > 0 && child->height() > 0
++                    && child->property("text").toString() == label.toHtmlEscaped()) { textMatches = true; break; }
++            if (!textMatches) return false;
++        }
++        currentPaths = paths; renderedMarkers = displayed.property("length").toInt();
++        return true;
++    });
++    RenderedStateObserver normal(window, [&] {
++        return ui->property("mode").toString() == "normal" && !overlay->isVisible();
++    });
++    for (int index = 0; index < warmups + measured; ++index) {
++        failedIndex = index; stage = "fresh-document";
++        const auto url = QString("http://127.0.0.1:%1/site-policy-root-render?count=%2&shape=%3&iteration=%4")
++            .arg(server.serverPort()).arg(count).arg(shape).arg(index);
++        QVERIFY(command("open " + url));
++        QTRY_VERIFY_WITH_TIMEOUT(page("location.href===" + quoted(url) + " && document.body.dataset.ready==='true' && window.rootFixture.ready && window.rootFixture.targetCount===" + QString::number(count)).toBool(), 15000);
++        QVERIFY(view->setProperty("zoomFactor", zoom));
++        QTRY_COMPARE(view->property("zoomFactor").toDouble(), zoom);
++        const auto readyViewport = QString("window.rootFixture.ready && window.rootFixture.readyGeneration===window.rootFixture.layoutGeneration && Math.abs(innerWidth-%1)<=1 && Math.abs(innerHeight-%2)<=1 && Number(document.body.dataset.layoutWidth)===innerWidth && Number(document.body.dataset.layoutHeight)===innerHeight")
++            .arg(QString::number(view->property("width").toDouble() / zoom, 'g', 17), QString::number(view->property("height").toDouble() / zoom, 'g', 17));
++        QTRY_VERIFY_WITH_TIMEOUT(page(readyViewport).toBool(), 5000);
++        window->requestActivate(); QTRY_VERIFY(window->isActive());
++        evaluate("testWindow.activeWebView().forceActiveFocus()");
++        if (foreign) {
++            QVERIFY(page("window.rootFixture.focus()").toBool());
++            QTRY_VERIFY_WITH_TIMEOUT(page("window.rootFixture.ready && window.rootFixture.focused").toBool(), 5000);
++        }
++        const auto facts = QJsonObject::fromVariantMap(page("window.rootFixture.snapshot()").toMap());
++        QCOMPARE(facts["targetCount"].toInt(), count);
++        QCOMPARE(facts["physicalButtons"].toInt(), count + (shape == "clipping" ? 2 : 0));
++        QCOMPARE(facts["frameHops"].toInt(), frames ? 2 : 0);
++        QCOMPARE(facts["shadowRoots"].toInt(), expectedShadowDepth * count);
++        QCOMPARE(facts["slots"].toInt(), shape == "slots" ? count : 0);
++        QCOMPARE(facts["shadowDepthMin"].toInt(), expectedShadowDepth);
++        QCOMPARE(facts["shadowDepthMax"].toInt(), expectedShadowDepth);
++        QCOMPARE(facts["clippedSentinels"].toInt(), shape == "clipping" ? 2 : 0);
++        viewport = facts["viewport"].toObject();
++        QVERIFY(viewport["width"].toDouble() > 0 && viewport["height"].toDouble() > 0);
++        QVERIFY(page("typeof window.__ferric_browserHintState==='undefined'", 1).toBool());
++        startingEpoch = window->property("hintCollectionEpoch").toInt();
++        currentPaths.clear();
++        renderedMarkers = 0;
++        bool accepted = false;
++        stage = index < warmups ? "warmup-entry" : "measured-entry";
++        const auto elapsed = rendered.measure([&] { accepted = command("hint buttons"); }, 30000);
++        qInfo().noquote() << "FERRIC_SITE_POLICY_SAMPLE_JSON " + QJsonDocument(QJsonObject{
++            {"journey", "rooted-buttons-command-to-usable-render"}, {"shape", shape}, {"count", count},
++            {"zoom", zoom}, {"iteration", index}, {"warmup", index < warmups}, {"elapsed_ms", elapsed},
++            {"command_accepted", accepted}, {"smoke", smoke}, {"fixture_root_facts", facts},
++            {"rendered_marker_count", renderedMarkers}, {"lease_count", provider->property("leaseCount").toInt()},
++            {"collection_truncated", window->property("hintCollectionTruncated").toBool()}}).toJson(QJsonDocument::Compact);
++        if (elapsed < 0 || !accepted) failedEndpoint = QJsonObject{
++            {"mode", ui->property("mode").toString()}, {"status", ui->property("status_text").toString()},
++            {"epoch", window->property("hintCollectionEpoch").toInt()},
++            {"refresh_pending", window->property("hintRefreshPending").toBool()},
++            {"laid_out_count", object(overlay->property("laidOutHints")).property("length").toInt()},
++            {"displayed_count", object(overlay->property("displayedMarkers")).property("length").toInt()},
++            {"collection_truncated", window->property("hintCollectionTruncated").toBool()},
++            {"lease_count", provider->property("leaseCount").toInt()}, {"fixture_root_facts", facts}};
++        QVERIFY2(accepted && elapsed >= 0, "Ordinary rooted buttons did not reach the exact candidate/delegate endpoint");
++        if (index >= warmups) {
++            samples.append(elapsed); observerCosts.append(rendered.predicateMillis()); markerCounts.append(renderedMarkers);
++            rootFacts.append(facts);
++            truncationFlags.append(window->property("hintCollectionTruncated").toBool());
++            QStringList paths(currentPaths.begin(), currentPaths.end()); paths.sort();
++            observedPaths.append(QJsonArray::fromStringList(paths));
++        }
++        stage = "untimed-reset";
++        QVERIFY(normal.measure([&] { gesture(window, Qt::Key_Escape); }) >= 0);
++        QTRY_COMPARE(provider->property("leaseCount").toInt(), 0);
++    }
++    if (smoke) { failures = 0; stage = "smoke-complete"; return; }
++    std::vector<double> ordered;
++    for (const auto value : samples) ordered.push_back(value.toDouble());
++    std::sort(ordered.begin(), ordered.end());
++    p95 = ordered[std::size_t(std::ceil(ordered.size() * .95)) - 1]; maximum = ordered.back();
++    failedIndex = -1; stage = "thresholds";
++    if (count == 500) QVERIFY2(p95 <= 200, "500-visible rooted Hint render p95 exceeds the existing 200ms ceiling");
++    failures = 0; stage = "complete";
++}
++
++// Independent P00 component measurements. A failed render row cannot prevent
++// these raw provider operations, or the explicitly separate one-leaf controls.
++#include <limits>
++#include <tuple>
++#include <utility>
++void ApplicationTests::sitePolicyRootStagesPerformance_data() {
++    QTest::addColumn<int>("count");
++    QTest::addColumn<double>("zoom");
++    QTest::addColumn<QString>("shape");
++    QTest::addColumn<bool>("smallControl");
++    QTest::addColumn<QString>("metric");
++    for (const auto shape : {"shadow-2", "slots", "same-origin-2", "foreign-2", "clipping"}) {
++        for (const auto size : {500, 1000, 5000})
++            for (const auto scale : {.8, 1., 1.25}) {
++                if (size != 500 && scale != 1.) continue;
++                for (const auto metric : {"collect", "fresh"}) {
++                    const auto tag = QString("%1-%2-%3-%4").arg(shape).arg(size).arg(qRound(scale * 100)).arg(metric).toUtf8();
++                    QTest::newRow(tag.constData()) << size << scale << QString::fromLatin1(shape) << false << QString::fromLatin1(metric);
++                }
++            }
++        const auto tag = QString("%1-independent-small-control").arg(shape).toUtf8();
++        QTest::newRow(tag.constData()) << 1 << 1. << QString::fromLatin1(shape) << true << QString("fresh");
++    }
++}
++
++void ApplicationTests::sitePolicyRootStagesPerformance() {
++    const bool smoke = qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF_SMOKE");
++    if (!smoke && !qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF"))
++        QSKIP("Opt-in ordinary raw rooted collection and fresh-proof controls");
++    QFETCH(int, count);
++    QFETCH(double, zoom);
++    QFETCH(QString, shape);
++    QFETCH(bool, smallControl);
++    QFETCH(QString, metric);
++    const bool measureFresh = metric == "fresh";
++    const bool foreign = shape == "foreign-2", frames = foreign || shape == "same-origin-2";
++    const int depth = shape == "shadow-2" ? 2 : shape == "slots" ? 1 : 0;
++    const int warmups = smoke ? 1 : 10, measured = smoke ? 2 : 100;
++    QJsonArray collections, freshSamples, inspections, truncations, factsLog, geometries;
++    QJsonObject failedEndpoint;
++    QString stage = "setup", freshAvailability = measureFresh ? "not-attempted-no-valid-collection" : "not-requested-collection-row";
++    int failures = 1, failedIndex = -1, cleanupFailures = 0;
++    double collectionP95 = -1, collectionMax = -1, freshP95 = -1, freshMax = -1;
++    const auto optionalNumber = [](double value) { return value >= 0 ? QJsonValue(value) : QJsonValue(QJsonValue::Null); };
++    const auto report = qScopeGuard([&] {
++        const QJsonObject row{{"journey", measureFresh ? "rooted-provider-fresh" : "rooted-provider-collection"}, {"metric", metric},
++            {"shape", shape}, {"family", "buttons"}, {"count", count}, {"zoom", zoom},
++            {"independent_small_control", smallControl}, {"dpr", window->devicePixelRatio()},
++            {"warmups", warmups}, {"requested_measured_samples", measured},
++            {"run_kind", smoke ? "functional-smoke-not-baseline" : "performance-baseline"},
++            {"samples_ms", measureFresh ? freshSamples : collections},
++            {"completed_measured_samples", measureFresh ? freshSamples.size() : collections.size()},
++            {"collection_samples_ms", collections}, {"completed_collection_samples", collections.size()},
++            {"collection_role", measureFresh ? "setup observations; the independent collect row owns its baseline" : "primary measurement"},
++            {"fresh_samples_ms", freshSamples}, {"completed_fresh_samples", freshSamples.size()},
++            {"inspected_nodes", inspections}, {"collection_truncated", truncations},
++            {"fixture_root_facts", factsLog}, {"fresh_geometries", geometries},
++            {"fresh_availability", freshAvailability}, {"cleanup_failures", cleanupFailures},
++            {"failures", failures}, {"failed_sample_index", failures ? failedIndex : -1},
++            {"stage", stage}, {"failed_endpoint", failedEndpoint},
++            {"p95_ms", optionalNumber(measureFresh ? freshP95 : collectionP95)},
++            {"max_ms", optionalNumber(measureFresh ? freshMax : collectionMax)},
++            {"fresh_p95_ms", optionalNumber(freshP95)}, {"fresh_max_ms", optionalNumber(freshMax)},
++            {"qpa", QGuiApplication::platformName()}, {"runtime", runtimeFingerprint()},
++            {"viewport_width", window->width()}, {"viewport_height", window->height()},
++            {"boundary", "unmodified production FrameProvider.collect/fresh to native callback observation on the same steady clock; includes transport; no Hint overlay or activation"},
++            {"control_scope", smallControl ? "separate one-leaf availability control; never a replacement for a large failed workload" : "prescribed-size ordinary root workload"},
++            {"method", "fresh document per iteration; 10warmups/100samples; nearest rank; no p99 or compositor claim"}};
++        qInfo().noquote() << "FERRIC_SITE_POLICY_RENDER_JSON " + QJsonDocument(row).toJson(QJsonDocument::Compact);
++    });
++    QFile fixture(QFINDTESTDATA("../fixtures/site-policy/root-render-targets.html"));
++    QVERIFY(fixture.open(QIODevice::ReadOnly)); fixtureHtml = fixture.readAll();
++    auto *ui = evaluate("testWindow.browserUi").value<QObject *>();
++    auto *view = evaluate("testWindow.activeWebView()").value<QObject *>();
++    auto *provider = evaluate("testWindow.hintFrameProvider").value<QObject *>();
++    QVERIFY(ui && view && provider);
++    const auto object = [&](const QVariant &value) {
++        return value.metaType() == QMetaType::fromType<QJSValue>() ? value.value<QJSValue>() : engine->toScriptValue(value);
++    };
++    struct Reply { double elapsed; QVariant value; bool completed; int callbacks; };
++    const auto measure = [&](const std::function<void()> &submit) {
++        const int before = frameCallbackCount;
++        QEventLoop loop; QTimer notify, deadline;
++        notify.setInterval(5); deadline.setSingleShot(true);
++        QObject::connect(&notify, &QTimer::timeout, &loop, [&] { if (frameCallbackCount != before) loop.quit(); });
++        QObject::connect(&deadline, &QTimer::timeout, &loop, &QEventLoop::quit);
++        const auto start = monotonicNsecs(); submit();
++        notify.start(); deadline.start(5000);
++        if (frameCallbackCount == before) loop.exec();
++        const bool completed = frameCallbackCount == before + 1 && frameCallbackNsecs >= start;
++        return Reply{completed ? (frameCallbackNsecs - start) / 1e6 : -1., frameCallbackResult, completed, frameCallbackCount - before};
++    };
++    const auto cleanup = [&] {
++        bool ok = true;
++        const auto script = evaluate("testWindow.hintStopTrackingScript('')").toString();
++        const auto owners = object(evaluate("Object.keys(testWindow.hintFrameProvider.sources)"));
++        QStringList ids;
++        for (int index = 0; index < owners.property("length").toInt(); ++index) ids.append(owners.property(quint32(index)).toString());
++        if (evaluate("testWindow.hintFrameProvider.view !== null").toBool()) {
++            const auto reply = measure([&] { evaluate("testWindow.hintFrameProvider.root(" + quoted(script)
++                + ",function(v){testProbe.frameOperationComplete(v)})"); });
++            const auto value = object(reply.value);
++            ok = reply.completed && value.isBool() && value.toBool();
++        }
++        for (const auto &id : ids) {
++            const auto reply = measure([&] { evaluate("testWindow.hintFrameProvider.run(" + quoted(id) + "," + quoted(script)
++                + ",function(v){testProbe.frameOperationComplete(v)})"); });
++            const auto value = object(reply.value);
++            ok = reply.completed && value.isBool() && value.toBool() && ok;
++        }
++        evaluate("testWindow.hintFrameProvider.stop();testWindow.closeHints()");
++        if (!ok) ++cleanupFailures;
++        return ok;
++    };
++    QSet<QString> expectedNames;
++    for (int index = 0; index < count; ++index) expectedNames.insert(QString("Leaf %1").arg(index));
++    for (int index = 0; index < warmups + measured; ++index) {
++        failedIndex = index; stage = "fresh-document";
++        const auto url = QString("http://127.0.0.1:%1/site-policy-root-stages?count=%2&shape=%3&iteration=%4%5")
++            .arg(server.serverPort()).arg(count).arg(shape).arg(index).arg(smallControl ? "&control=fresh" : "");
++        QVERIFY(command("open " + url));
++        QTRY_VERIFY_WITH_TIMEOUT(page("location.href===" + quoted(url) + " && document.body.dataset.ready==='true' && window.rootFixture.ready && window.rootFixture.targetCount===" + QString::number(count)).toBool(), 15000);
++        QVERIFY(view->setProperty("zoomFactor", zoom)); QTRY_COMPARE(view->property("zoomFactor").toDouble(), zoom);
++        const auto readyViewport = QString("window.rootFixture.ready && window.rootFixture.readyGeneration===window.rootFixture.layoutGeneration && Math.abs(innerWidth-%1)<=1 && Math.abs(innerHeight-%2)<=1 && Number(document.body.dataset.layoutWidth)===innerWidth && Number(document.body.dataset.layoutHeight)===innerHeight")
++            .arg(QString::number(view->property("width").toDouble() / zoom, 'g', 17), QString::number(view->property("height").toDouble() / zoom, 'g', 17));
++        QTRY_VERIFY_WITH_TIMEOUT(page(readyViewport).toBool(), 5000);
++        // Public options and cancellation in one synchronous evaluation. No
++        // collection callback can run between them; Normal retains this family.
++        QVERIFY(evaluate("(function(){var ok=testWindow.browserUi.execute_command('hint buttons');testWindow.closeHints();return ok&&testWindow.browserUi.mode==='normal'&&testWindow.browserUi.hint_family==='buttons';})()").toBool());
++        QTRY_VERIFY_WITH_TIMEOUT(page(readyViewport).toBool(), 5000);
++        window->requestActivate(); QTRY_VERIFY(window->isActive()); evaluate("testWindow.activeWebView().forceActiveFocus()");
++        if (foreign) { QVERIFY(page("window.rootFixture.focus()").toBool()); QTRY_VERIFY_WITH_TIMEOUT(page("window.rootFixture.ready && window.rootFixture.focused").toBool(), 5000); }
++        const auto facts = QJsonObject::fromVariantMap(page("window.rootFixture.snapshot()").toMap());
++        QCOMPARE(facts["targetCount"].toInt(), count); QCOMPARE(facts["freshControl"].toBool(), smallControl);
++        QCOMPARE(facts["physicalButtons"].toInt(), count + (shape == "clipping" ? 2 : 0));
++        QCOMPARE(facts["frameHops"].toInt(), frames ? 2 : 0); QCOMPARE(facts["shadowRoots"].toInt(), depth * count);
++        QCOMPARE(facts["slots"].toInt(), shape == "slots" ? count : 0);
++        QCOMPARE(facts["shadowDepthMin"].toInt(), depth); QCOMPARE(facts["shadowDepthMax"].toInt(), depth);
++        const auto snapshot = evaluate("testWindow.hintSelectorPolicySnapshot('buttons')").toString();
++        QVERIFY(!snapshot.isEmpty());
++        const auto target = evaluate("testWindow.browserUi.navigation_target_for_index(testWindow.activeWebView().tabIndex)").toMap();
++        QVERIFY(!target["tabId"].toString().isEmpty() && !target["documentId"].toString().isEmpty());
++        const auto layoutGeneration = facts["layoutGeneration"].toDouble(-1);
++        QVERIFY(std::isfinite(layoutGeneration) && layoutGeneration >= 0 && std::floor(layoutGeneration) == layoutGeneration);
++        const auto stableLayout = QString("window.rootFixture.ready && window.rootFixture.readyGeneration===%1 && window.rootFixture.layoutGeneration===%1 && window.rootFixture.targetCount===%2")
++            .arg(QString::number(layoutGeneration, 'g', 17)).arg(count);
++        const auto unchanged = [&] {
++            return ui->property("mode").toString() == "normal" && ui->property("hint_family").toString() == "buttons"
++                && evaluate("testWindow.browserUi.navigation_target_for_index(testWindow.activeWebView().tabIndex)").toMap() == target
++                && evaluate("testWindow.hintSelectorPolicySnapshot('buttons')").toString() == snapshot
++                && page(stableLayout).toBool();
++        };
++        QVERIFY(unchanged());
++        bool cleaned = false;
++        const auto cleanupGuard = qScopeGuard([&] { if (!cleaned) cleanup(); });
++        freshAvailability = measureFresh ? "not-attempted-no-valid-collection" : "not-requested-collection-row";
++        stage = index < warmups ? "warmup-collection" : "measured-collection";
++        const auto collected = measure([&] {
++            evaluate("(function(){var s=" + quoted(snapshot) + ";testWindow.hintFrameProvider.collect(testWindow.activeWebView(),"
++                "testWindow.hintCollectorScript('buttons',s,'',false),{family:'buttons',proxy:testWindow.browserUi.hint_proxy_targets_enabled,selectors:s,scope:'',pointer:false},"
++                "function(v){testProbe.frameOperationComplete(v)})})()");
++        });
++        const auto raw = QJsonObject::fromVariantMap(object(collected.value).toVariant().toMap());
++        const auto candidates = raw["candidates"].toArray();
++        qInfo().noquote() << "FERRIC_SITE_POLICY_SAMPLE_JSON " + QJsonDocument(QJsonObject{
++            {"journey", measureFresh ? "rooted-provider-fresh-collection-setup" : "rooted-provider-collection"}, {"metric", metric}, {"shape", shape}, {"count", count}, {"zoom", zoom},
++            {"independent_small_control", smallControl}, {"iteration", index}, {"warmup", index < warmups},
++            {"elapsed_ms", collected.elapsed}, {"smoke", smoke}, {"candidate_count", candidates.size()},
++            {"callback_count", collected.callbacks},
++            {"inspected_nodes", raw["inspected_nodes"]}, {"truncated", raw["truncated"]},
++            {"error", raw["error"].toString().left(256)}, {"fixture_root_facts", facts}}).toJson(QJsonDocument::Compact);
++        if (!collected.completed || raw.contains("error") || candidates.size() != count)
++            failedEndpoint = QJsonObject{{"operation", "collect"}, {"completed", collected.completed},
++                {"error", raw["error"].toString().left(256)}, {"candidate_count", candidates.size()},
++                {"inspected_nodes", raw["inspected_nodes"]}, {"truncated", raw["truncated"]}, {"fixture_root_facts", facts}};
++        QVERIFY2(collected.completed && !raw.contains("error") && candidates.size() == count, "Raw rooted collection unavailable; no fresh candidate or successful latency sample");
++        const auto inspected = raw["inspected_nodes"].toDouble(-1);
++        QVERIFY(std::isfinite(inspected) && inspected >= count && inspected <= 50000 && std::floor(inspected) == inspected);
++        QVERIFY(raw["truncated"].isBool());
++        QCOMPARE(raw["selector_revision"], QJsonDocument::fromJson(snapshot.toUtf8()).object()["selector_revision"]);
++        QSet<QString> names, identities;
++        const auto sources = object(provider->property("sources"));
++        const auto rootOwner = provider->property("rootOwner").toString();
++        for (const auto value : candidates) {
++            const auto candidate = value.toObject(); const auto name = candidate["text"].toString();
++            const auto path = candidate["frame_path"].toString(), owner = candidate["frame_owner"].toString();
++            const auto identity = owner + "|" + path + "|" + candidate["element_id"].toVariant().toString();
++            QVERIFY(candidate["kind"].toString() == "button" && expectedNames.contains(name) && !names.contains(name) && !identities.contains(identity));
++            names.insert(name); identities.insert(identity);
++            const auto geometry = candidate["geometry"].toObject(), viewport = facts["viewport"].toObject();
++            for (const auto key : {"x", "y", "width", "height"})
++                QVERIFY(geometry[key].isDouble() && std::isfinite(geometry[key].toDouble()));
++            QVERIFY(geometry["x"].toDouble() >= -.01 && geometry["y"].toDouble() >= -.01
++                && geometry["width"].toDouble() > 0 && geometry["height"].toDouble() > 0
++                && geometry["x"].toDouble() + geometry["width"].toDouble() <= viewport["width"].toDouble() + .01
++                && geometry["y"].toDouble() + geometry["height"].toDouble() <= viewport["height"].toDouble() + .01);
++            if (shape == "same-origin-2") QCOMPARE(path, QString("0.0.0"));
++            if (foreign) {
++                QString current = owner; QSet<QString> seen; int hops = 0;
++                while (current != rootOwner && hops < 8) { QVERIFY(!current.isEmpty() && !seen.contains(current)); seen.insert(current); const auto source = sources.property(current); QVERIFY(source.isObject()); current = source.property("parent").toString(); ++hops; }
++                QVERIFY(!owner.isEmpty() && !rootOwner.isEmpty() && current == rootOwner && hops == 2);
++                QCOMPARE(provider->property("leaseCount").toInt(), 3);
++            } else QVERIFY(owner.isEmpty());
++        }
++        QVERIFY2(unchanged(), "Collection changed its Core target, selector policy or fixture layout subject");
++        // Keep each validated collection even if a later fresh/cleanup step
++        // fails. Independent collect rows never attempt the fresh operation.
++        if (index >= warmups) { collections.append(collected.elapsed); inspections.append(inspected); truncations.append(raw["truncated"].toBool()); factsLog.append(facts); }
++        if (measureFresh) {
++            const auto selected = candidates.first().toObject();
++            const auto selectedJson = QString::fromUtf8(QJsonDocument(selected).toJson(QJsonDocument::Compact));
++            freshAvailability = "attempted"; stage = index < warmups ? "warmup-fresh" : "measured-fresh";
++            const auto fresh = measure([&] { evaluate("(function(){var c=JSON.parse(" + quoted(selectedJson)
++                + ");testWindow.hintFrameProvider.fresh(c,testWindow.hintFreshScript(c),function(v){testProbe.frameOperationComplete(v)})})()"); });
++            const auto checked = QJsonObject::fromVariantMap(object(fresh.value).toVariant().toMap());
++            qInfo().noquote() << "FERRIC_SITE_POLICY_SAMPLE_JSON " + QJsonDocument(QJsonObject{
++                {"journey", "rooted-provider-fresh"}, {"shape", shape}, {"count", count}, {"zoom", zoom},
++                {"independent_small_control", smallControl}, {"iteration", index}, {"warmup", index < warmups},
++                {"elapsed_ms", fresh.elapsed}, {"smoke", smoke}, {"visible", checked["visible"]},
++                {"callback_count", fresh.callbacks},
++                {"error", checked["error"].toString().left(256)}}).toJson(QJsonDocument::Compact);
++            if (!fresh.completed || !checked["visible"].toBool()) failedEndpoint = QJsonObject{
++                {"operation", "fresh"}, {"completed", fresh.completed}, {"visible", checked["visible"]},
++                {"error", checked["error"].toString().left(256)}, {"fixture_root_facts", facts}};
++            QVERIFY2(fresh.completed && checked["visible"].toBool(), "The exact retained root candidate did not pass production fresh proof");
++            QCOMPARE(checked["text"], selected["text"]); QCOMPARE(checked["kind"], selected["kind"]);
++            QCOMPARE(checked["href"], selected["href"]); QCOMPARE(checked["element_id"], selected["element_id"]);
++            QCOMPARE(checked["related_element_id"], selected["related_element_id"]);
++            QCOMPARE(checked["frame_owner"], selected["frame_owner"]);
++            QCOMPARE(checked["frame_path"], selected["frame_path"]);
++            for (const auto key : {"x", "y", "width", "height"}) {
++                const auto expected = selected["geometry"].toObject()[key].toDouble(std::numeric_limits<double>::quiet_NaN());
++                const auto actual = checked["geometry"].toObject()[key].toDouble(std::numeric_limits<double>::quiet_NaN());
++                QVERIFY(std::isfinite(expected) && std::isfinite(actual) && std::abs(expected - actual) <= .75);
++            }
++            QVERIFY2(unchanged(), "Fresh proof changed its Core target, selector policy or fixture layout subject");
++            freshAvailability = "observed-valid";
++            if (index >= warmups) { freshSamples.append(fresh.elapsed); geometries.append(checked["geometry"]); }
++        }
++        stage = "untimed-cleanup"; const bool cleanupOk = cleanup(); cleaned = true;
++        QVERIFY2(cleanupOk, "Every reached root must acknowledge tracking teardown before provider release");
++        QCOMPARE(provider->property("leaseCount").toInt(), 0);
++    }
++    if (smoke) { failures = 0; stage = "smoke-complete"; return; }
++    const auto summarize = [](const QJsonArray &values) { std::vector<double> ordered; for (const auto value : values) ordered.push_back(value.toDouble()); std::sort(ordered.begin(), ordered.end()); return std::pair{ordered[std::size_t(std::ceil(ordered.size() * .95)) - 1], ordered.back()}; };
++    if (measureFresh) std::tie(freshP95, freshMax) = summarize(freshSamples);
++    else std::tie(collectionP95, collectionMax) = summarize(collections);
++    failures = 0; failedIndex = -1; stage = "complete";
++}
++
++// P00 measurement-only candidate; not built or run. No production cleanup is
++// added. Native frame handles below are read-only observations, not authority.
++#include <QDir>
++#include <QMap>
++#include <QtWebEngineCore/QWebEngineFrame>
++#include <optional>
++
++namespace {
++QString p00RenderedButtonId(QQmlApplicationEngine *engine,QObject *ui,QQuickItem *repeater,
++                           const QString &name,const QString &expectedElementId,bool foreign) {
++    if (!engine || !ui || !repeater) return {};
++    const auto hints=QJsonDocument::fromJson(ui->property("hint_values").toString().toUtf8()).array();
++    QJsonObject target;
++    for (const auto &value:hints) {
++        const auto row=value.toObject();
++        if (row["text"].toString()!=name || row["kind"].toString()!="button") continue;
++        if (!target.isEmpty()) return {};
++        target=row;
++    }
++    const auto id=target["element_id"].toVariant().toString(), label=target["label"].toString();
++    if (id.isEmpty() || label.isEmpty() || target["frame_owner"].toString().isEmpty()==foreign) return {};
++    if (!expectedElementId.isEmpty() && id!=expectedElementId) return {};
++    auto *overlay=repeater->parentItem();
++    if (!overlay) return {};
++    const auto rawDisplayed=overlay->property("displayedMarkers");
++    const auto displayed=rawDisplayed.metaType()==QMetaType::fromType<QJSValue>() ? rawDisplayed.value<QJSValue>() : engine->toScriptValue(rawDisplayed);
++    for (int index=0;index<displayed.property("length").toInt();++index) {
++        const auto row=displayed.property(quint32(index));
++        if (row.property("label").toString()!=label) continue;
++        QQuickItem *marker=nullptr;
++        if (!QMetaObject::invokeMethod(repeater,"itemAt",Qt::DirectConnection,
++            Q_RETURN_ARG(QQuickItem *,marker),Q_ARG(int,index)) || !marker || !marker->isVisible()
++            || !std::isfinite(marker->opacity()) || marker->opacity()<=0
++            || !std::isfinite(marker->width()) || marker->width()<=0
++            || !std::isfinite(marker->height()) || marker->height()<=0
++            || !std::isfinite(marker->x()) || !std::isfinite(marker->y())) return {};
++        const auto x=row.property("marker_x").toNumber(),y=row.property("marker_y").toNumber();
++        if (!std::isfinite(x) || !std::isfinite(y) || std::abs(marker->x()-x)>.01 || std::abs(marker->y()-y)>.01) return {};
++        bool textMatches=false;
++        for (auto *child:marker->childItems()) if (child->isVisible()
++            && std::isfinite(child->width()) && child->width()>0 && std::isfinite(child->height()) && child->height()>0
++            && child->property("text").toString()==label.toHtmlEscaped()) {textMatches=true;break;}
++        if (!textMatches) return {};
++        return id;
++    }
++    return {};
++}
++QJsonObject p00ProcessResources() {
++    const auto number = [](const QByteArray &bytes, const QByteArray &key) -> std::optional<qint64> {
++        for (const auto &line : bytes.split('\n')) {
++            if (!line.startsWith(key)) continue;
++            bool ok = false;
++            const auto value = line.mid(key.size()).simplified().split(' ').value(0).toLongLong(&ok);
++            if (ok && value >= 0) return value;
++        }
++        return std::nullopt;
++    };
++    // Same PPID closure as pinned xtask::process_tree_pids; children may be
++    // created by any thread. This is an observed, non-atomic /proc snapshot.
++    QMap<qint64,QPair<qint64,QByteArray>> parents;
++    QDir proc("/proc");
++    for (const auto &name:proc.entryList(QDir::Dirs|QDir::NoDotAndDotDot)) {
++        bool numeric=false; const auto pid=name.toLongLong(&numeric);
++        if (!numeric || pid<=0) continue;
++        QFile file("/proc/"+name+"/stat");
++        if (!file.open(QIODevice::ReadOnly)) continue;
++        const auto stat=file.readAll(); const auto end=stat.lastIndexOf(')');
++        if (end<0) continue;
++        const auto fields=stat.mid(end+2).simplified().split(' ');
++        bool valid=false; const auto parent=fields.value(1).toLongLong(&valid);
++        if (valid && fields.size()>19) parents.insert(pid,{parent,fields[19]});
++    }
++    QSet<qint64> tree{QCoreApplication::applicationPid()};
++    for (;;) {
++        const auto before=tree.size();
++        for (auto entry=parents.cbegin();entry!=parents.cend();++entry)
++            if (tree.contains(entry.value().first)) tree.insert(entry.key());
++        if (tree.size()==before) break;
++    }
++    QList<qint64> pending=tree.values();
++    std::sort(pending.begin(),pending.end());
++    QSet<qint64> visited;
++    QJsonArray observations;
++    qint64 rss = 0, pss = 0, threads = 0, descriptors = 0;
++    bool complete = true, pssComplete = true;
++    for (int index = 0; index < pending.size() && index < 256; ++index) {
++        const auto pid = pending[index];
++        if (visited.contains(pid)) continue;
++        visited.insert(pid);
++        const auto directory = QString("/proc/%1/").arg(pid);
++        const auto read = [&](const QString &name) {
++            QFile file(directory + name);
++            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray{};
++        };
++        const auto stat = read("stat");
++        const auto end = stat.lastIndexOf(')');
++        const auto fields = end >= 0 ? stat.mid(end + 2).simplified().split(' ') : QList<QByteArray>{};
++        bool identityOk = false;
++        const auto birth = fields.value(19).toULongLong(&identityOk);
++        const auto status = read("status");
++        const auto resident = number(status, "VmRSS:");
++        const auto threadCount = number(status, "Threads:");
++        const auto proportional = number(read("smaps_rollup"), "Pss:");
++        QDir fdDirectory(directory + "fd");
++        const bool fdAvailable = fdDirectory.exists() && fdDirectory.isReadable();
++        const int fdCount = fdAvailable ? fdDirectory.entryList(QDir::AllEntries | QDir::System | QDir::NoDotAndDotDot).size() : -1;
++        const auto current = read("stat");
++        const auto currentEnd = current.lastIndexOf(')');
++        const auto currentFields = currentEnd >= 0 ? current.mid(currentEnd + 2).simplified().split(' ') : QList<QByteArray>{};
++        const bool identityStable = identityOk && parents.contains(pid)
++            && parents.value(pid).second==QByteArray::number(birth)
++            && currentFields.value(19) == QByteArray::number(birth);
++        const auto command = read("cmdline");
++        const bool renderer = command.contains("--type=renderer");
++        const bool available = identityStable && resident && threadCount && fdAvailable;
++        complete = complete && available;
++        pssComplete = pssComplete && available && proportional.has_value();
++        if (available) { rss += *resident; threads += *threadCount; descriptors += fdCount; }
++        if (available && proportional) pss += *proportional;
++        observations.append(QJsonObject{{"pid",pid},{"start_ticks",QString::number(birth)},
++            {"identity_stable",identityStable},{"renderer",renderer},{"available",available},
++            {"rss_kib",resident ? QJsonValue(*resident) : QJsonValue(QJsonValue::Null)},
++            {"pss_kib",proportional ? QJsonValue(*proportional) : QJsonValue(QJsonValue::Null)},
++            {"threads",threadCount ? QJsonValue(*threadCount) : QJsonValue(QJsonValue::Null)},
++            {"fd_count",fdAvailable ? QJsonValue(fdCount) : QJsonValue(QJsonValue::Null)}});
++    }
++    if (visited.size() < pending.size()) complete = pssComplete = false;
++    return {{"snapshot","non-atomic observed PPID descendant closure; exited/inaccessible/capped subjects unavailable"},{"process_cap",256},{"complete",complete},{"pss_complete",pssComplete},{"processes",observations},
++        {"process_count",observations.size()},
++        {"rss_kib",complete ? QJsonValue(rss) : QJsonValue(QJsonValue::Null)},
++        {"pss_kib",pssComplete ? QJsonValue(pss) : QJsonValue(QJsonValue::Null)},
++        {"threads",complete ? QJsonValue(threads) : QJsonValue(QJsonValue::Null)},
++        {"fd_count",complete ? QJsonValue(descriptors) : QJsonValue(QJsonValue::Null)}};
++}
++}
++
++void ApplicationTests::sitePolicyOrdinaryLifetime_data() {
++    QTest::addColumn<bool>("foreign");
++    QTest::newRow("ordinary-established") << false;
++    QTest::newRow("foreign-established") << true;
++}
++void ApplicationTests::sitePolicyOrdinaryLifetime() {
++    const bool smoke = qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF_SMOKE");
++    if (!smoke && !qEnvironmentVariableIsSet("FERRIC_P00_LIFETIME"))
++        QSKIP("Opt-in original ordinary lifecycle resource observations");
++    QFETCH(bool, foreign);
++    const int warmups = smoke ? 1 : 10, cycles = smoke ? 2 : 1000;
++    QJsonArray snapshots;
++    int completed = 0, completedWarmups=0, failedCycle=-1, failures = 1;
++    QString stage = "setup";
++    const auto report = qScopeGuard([&] {
++        qInfo().noquote() << "FERRIC_P00_LIFETIME_JSON " + QJsonDocument(QJsonObject{
++            {"journey",foreign ? "foreign-established-lifetime" : "ordinary-established-lifetime"},
++            {"run_kind",smoke ? "functional-smoke-not-baseline" : "lifecycle-baseline"},
++            {"warmups",warmups},{"requested_cycles",cycles},{"completed_cycles",completed},
++            {"failures",failures},{"failed_cycle",failures?failedCycle:-1},{"completed_warmups",completedWarmups},{"stage",stage},{"snapshots",snapshots},
++            {"qpa",QGuiApplication::platformName()},{"dpr",window->devicePixelRatio()},
++            {"runtime",runtimeFingerprint()},
++            {"scope","Established ordinary Hint cycles; native F/Escape, actual current session/render. Read-only native-frame observations after production close; no injected stop/collect/GC before cleanup observations. No callback-retirement or detached-DOM collection claim."}
++        }).toJson(QJsonDocument::Compact);
++    });
++    const auto port = server.serverPort();
++    const QString childUrl = QString("http://localhost:%1/p00-lifetime-child").arg(port);
++    const QString rootUrl = QString("http://127.0.0.1:%1/p00-lifetime-root").arg(port);
++    const QByteArray marker = "<script>document.documentElement.dataset.p00LifetimeDocument=crypto.randomUUID()</script>";
++    const QByteArray control = "<!doctype html><meta charset='utf-8'>" + marker + "<button id='p00-life' style='width:180px;height:35px'>Lifetime control</button>";
++    frameFixtures["/p00-lifetime-child"] = control;
++    fixtureHtml = foreign ? QString("<!doctype html><iframe id='p00-frame' style='width:400px;height:250px' src='%1'></iframe>").arg(childUrl).toUtf8() + marker : control;
++    QVERIFY(command("open " + rootUrl));
++    QTRY_COMPARE(page("location.href").toString(),rootUrl);
++    if (foreign) QTRY_VERIFY(page("!!document.getElementById('p00-frame')").toBool());
++    QVERIFY(command("set --temp hints.auto_follow=never"));
++    QVERIFY(command("bind f hint all"));
++    auto *workspace = evaluate("testWindow.hintWorkspace").value<QObject *>();
++    auto *ui = evaluate("testWindow.browserUi").value<QObject *>();
++    auto *view = evaluate("testWindow.activeWebView()").value<QObject *>();
++    auto *repeater = window->findChild<QQuickItem *>("hintMarkerRepeater");
++    QVERIFY(workspace && ui && view && repeater);
++    QString previousSession, expectedElementId;
++    int previousEpoch = -1;
++    RenderedStateObserver rendered(window,[&] {
++        if (!ui->property("hint_visible").toBool() || ui->property("mode").toString() != "hint"
++            || workspace->property("hintRefreshPending").toBool()
++            || workspace->property("hintTrackingView").value<QObject *>() != view
++            || workspace->property("hintCollectionEpoch").toInt() <= previousEpoch
++            || workspace->property("hintPresentationSessionId").toString().isEmpty()
++            || workspace->property("hintPresentationSessionId").toString() == previousSession
++            || repeater->property("count").toInt() < 1 || !repeater->parentItem() || !repeater->parentItem()->isVisible()) return false;
++        const auto id=p00RenderedButtonId(engine.get(),ui,repeater,"Lifetime control",expectedElementId,foreign);
++        if (id.isEmpty()) return false;
++        expectedElementId=id;
++        return true;
++    });
++    const QString stateScript=R"JS((()=>{const s=window.__ferric_browserHintState,map=!!s&&s.elements instanceof Map,observers=!!s&&Array.isArray(s.observers),windows=!!s&&Array.isArray(s.windows);const valid=map&&observers&&windows&&typeof s.tracking==='boolean'&&(s.scopeLease===null||typeof s.scopeLease==='object');return {url:location.href,document:document.documentElement.dataset.p00LifetimeDocument,present:!!s,shape_valid:!!valid,elements:map?s.elements.size:null,observers:observers?s.observers.length:null,windows:windows?s.windows.length:null,scope:valid?!!s.scopeLease:null,tracking:valid?s.tracking:null,target_ids:map?Array.from(s.elements).filter(([id,r])=>r&&r.element&&r.element.id==='p00-life').map(([id])=>String(id)):null,heap_available:!!performance.memory,heap:performance.memory?{used:performance.memory.usedJSHeapSize,total:performance.memory.totalJSHeapSize,limit:performance.memory.jsHeapSizeLimit}:null};})())JS";
++    struct ObservedFrame { QWebEngineFrame frame; QString url, document; QVariantMap before; };
++    QList<ObservedFrame> frames;
++    const auto readFrame = [](QWebEngineFrame frame,const QString &script) -> QVariantMap {
++        const auto reply=std::make_shared<std::optional<QVariant>>();
++        frame.runJavaScript(script,1,[reply](const QVariant &value){*reply=value;});
++        if (!QTest::qWaitFor([reply]{return reply->has_value();},5000)) return {};
++        return reply->value().toMap();
++    };
++    const auto rememberFrames = [&] {
++        frames.clear();
++        QList<QWebEngineFrame> reached;
++        std::function<void(QWebEngineFrame,int)> visit = [&](QWebEngineFrame frame,int depth) {
++            if (!frame.isValid() || depth > 2) return;
++            reached.append(frame);
++            for (const auto &child : frame.children()) visit(child,depth+1);
++        };
++        visit(evaluate("testWindow.activeWebView().mainFrame").value<QWebEngineFrame>(),0);
++        if (reached.size() != (foreign ? 2 : 1)) return false;
++        QSet<QString> documents;
++        for (auto frame : reached) {
++            const auto identity=readFrame(frame,stateScript);
++            const auto url=identity.value("url").toString(), document=identity.value("document").toString();
++            if ((url!=rootUrl && (!foreign || url!=childUrl)) || document.isEmpty() || documents.contains(document)) return false;
++            if (!identity.value("present").toBool() || !identity.value("shape_valid").toBool()
++                || !identity.value("tracking").toBool() || identity.value("observers").toInt()<1 || identity.value("windows").toInt()<1) return false;
++            const auto ids=identity.value("target_ids").toStringList();
++            const bool targetRealm=!foreign || url==childUrl;
++            if (targetRealm ? ids!=QStringList{expectedElementId} : !ids.isEmpty()) return false;
++            documents.insert(document);
++            frames.append({frame,url,document,identity});
++        }
++        return true;
++    };
++
++    const auto observe = [&](int cycle) {
++        QJsonArray realms;
++        bool clean = true;
++        for (auto observed : frames) {
++            auto frame=observed.frame;
++            if (!frame.isValid()) { realms.append(QJsonObject{{"available",false}}); clean=false; continue; }
++            const auto state=readFrame(frame,stateScript);
++            const bool current=state.value("url").toString()==observed.url
++                && state.value("document").toString()==observed.document;
++            const bool empty = current && state.value("present").toBool() && state.value("shape_valid").toBool() && state.contains("elements") && state.value("elements").toInt()==0
++                && state.value("observers").toInt()==0 && state.value("windows").toInt()==0
++                && !state.value("scope").toBool() && !state.value("tracking").toBool();
++            auto row = QJsonObject::fromVariantMap(state);
++            row.insert("available",current && state.value("shape_valid").toBool()); row.insert("clean",empty);
++            row.insert("before_close",QJsonObject::fromVariantMap(observed.before));
++            realms.append(row); clean = clean && empty;
++        }
++        const auto owned = evaluate("(()=>{const w=testWindow.hintWorkspace,p=w.hintFrameProvider;return {leases:p.leaseCount,sources:Object.keys(p.sources).length,poll_pending:p.pollPending,provider_view:!!p.view,root_owner:!!p.rootOwner,scoped_owner:!!p.scopedOwner,tracking_view:!!w.hintTrackingView,pending_inputs:w.pendingHintInputs.length,pending_view:!!w.pendingHintInputView,refresh_pending:w.hintRefreshPending,hint_visible:testWindow.browserUi.hint_visible,mode:testWindow.browserUi.mode};})()").toMap();
++        const bool released = owned.contains("leases") && owned.value("leases").toInt()==0
++            && owned.value("sources").toInt()==0 && owned.value("pending_inputs").toInt()==0
++            && !owned.value("poll_pending").toBool() && !owned.value("provider_view").toBool()
++            && !owned.value("root_owner").toBool() && !owned.value("scoped_owner").toBool()
++            && !owned.value("tracking_view").toBool() && !owned.value("pending_view").toBool()
++            && !owned.value("refresh_pending").toBool() && !owned.value("hint_visible").toBool()
++            && owned.value("mode").toString()=="normal";
++        snapshots.append(QJsonObject{{"cycle",cycle},{"monotonic_ns",QString::number(monotonicNsecs())},{"realms",realms},{"owned",QJsonObject::fromVariantMap(owned)},
++            {"qt_descendants",window->findChildren<QObject *>().size()},
++            {"qt_windows",QGuiApplication::allWindows().size()},{"process_resources",p00ProcessResources()},
++            {"cleanup_clean",clean && released}});
++        qInfo().noquote()<<"FERRIC_P00_LIFETIME_CHECKPOINT_JSON "+QJsonDocument(snapshots.last().toObject()).toJson(QJsonDocument::Compact);
++        frames.clear(); // Do not retain frame observation handles across cycles.
++        return clean && released;
++    };
++    window->requestActivate(); QTRY_VERIFY(window->isActive());
++    evaluate("testWindow.activeWebView().forceActiveFocus()");
++    for (int index=-warmups; index<cycles; ++index) {
++        failedCycle=index; stage="establish";
++        if (foreign) page("document.getElementById('p00-frame').focus();true");
++        previousEpoch=workspace->property("hintCollectionEpoch").toInt();
++        const auto elapsed=rendered.measure([&]{gesture(window,Qt::Key_F,"f");},5000);
++        QVERIFY2(elapsed>=0,"An established current Hint session/render is required; cancellation-only cycles are insufficient");
++        previousSession=workspace->property("hintPresentationSessionId").toString();
++        const bool checkpoint=index==-1 || index>=0 && ((index+1)%100==0 || index+1==cycles);
++        if (checkpoint) QVERIFY(rememberFrames());
++        stage="production-close";
++        key(Qt::Key_Escape);
++        QTRY_COMPARE(evaluate("testWindow.hintFrameProvider.leaseCount").toInt(),0);
++        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
++        if (index>=0) completed=index+1; else ++completedWarmups;
++        if (checkpoint) {
++            stage="read-only-post-close-observation";
++            QVERIFY2(observe(index<0?0:index+1),"Production close retained renderer or browser Hint state; raw checkpoint retained");
++        }
++    }
++    stage="complete"; failures=0;
++}
++
++// Additional P00 measurement-only candidate; not compiled/run/integrated.
++#include <QQmlContext>
++// UI close decision follows the pinned tst_page_windows.cpp:33-54 helper.
++namespace {
++QQuickItem *p00VisibleItem(QQuickItem *parent,const QString &name) {
++    if (!parent) return nullptr;
++    if (parent->isVisible() && parent->objectName()==name) return parent;
++    for (auto *child:parent->childItems()) if (auto *found=p00VisibleItem(child,name)) return found;
++    return nullptr;
++}
++bool p00ProceedClose(QQuickWindow *host, bool requireClick = false) {
++    QPointer<QQuickWindow> guarded(host);
++    if (!guarded || !guarded->isVisible()) return !requireClick;
++    QSignalSpy frame(host,&QQuickWindow::frameSwapped);
++    host->update();
++    if (!QTest::qWaitFor([&]{return !guarded || !guarded->isVisible() || !frame.isEmpty();},5000)) return false;
++    if (!guarded || !guarded->isVisible()) return !requireClick;
++    QPointer<QQuickItem> button;
++    if (!QTest::qWaitFor([&]{
++        if (!guarded || !guarded->isVisible()) return true;
++        button=p00VisibleItem(guarded->contentItem(),"shutdownProceedButton");
++        return !button.isNull();
++    },5000)) return false;
++    if (!guarded || !guarded->isVisible()) return !requireClick;
++    if (!button || !button->isEnabled()) return false;
++    QTest::mouseClick(guarded,Qt::LeftButton,Qt::NoModifier,button->mapToScene(button->boundingRect().center()).toPoint());
++    return true;
++}
++}
++void ApplicationTests::sitePolicyWindowLifetime_data() {
++    QTest::addColumn<bool>("privateWindow");
++    QTest::newRow("shared-profile-window") << false;
++    QTest::newRow("private-profile-window") << true;
++}
++void ApplicationTests::sitePolicyWindowLifetime() {
++    const bool smoke=qEnvironmentVariableIsSet("FERRIC_SITE_POLICY_PERF_SMOKE");
++    if (!smoke && !qEnvironmentVariableIsSet("FERRIC_P00_LIFETIME"))
++        QSKIP("Opt-in original shared/private profile window/view teardown observations");
++    QFETCH(bool,privateWindow);
++    const int warmups=smoke?1:10, cycles=smoke?2:100;
++    int completed=0,completedWarmups=0,failedCycle=-1,failures=1;
++    QJsonArray snapshots,outcomes;
++    QString stage="setup";
++    const auto report=qScopeGuard([&]{
++        qInfo().noquote()<<"FERRIC_P00_LIFETIME_JSON "+QJsonDocument(QJsonObject{
++            {"journey",privateWindow?"private-profile-window-lifetime":"shared-profile-window-lifetime"},
++            {"run_kind",smoke?"functional-smoke-not-baseline":"lifecycle-baseline"},
++            {"warmups",warmups},{"requested_cycles",cycles},{"completed_cycles",completed},
++            {"failures",failures},{"failed_cycle",failures?failedCycle:-1},{"completed_warmups",completedWarmups},{"stage",stage},{"snapshots",snapshots},{"outcomes",outcomes},
++            {"runtime",runtimeFingerprint()},{"qpa",QGuiApplication::platformName()},{"dpr",window->devicePixelRatio()},
++            {"scope","Real secondary host/view and shared or distinct private profile; public open, established Hint, native window close and rendered prompt acceptance. Released/hidden hosts are distinct from destroyed hosts. No named durable profile switching or capture/draft claim."}
++        }).toJson(QJsonDocument::Compact);
++    });
++    fixtureHtml="<!doctype html><button style='width:180px;height:35px'>Window lifetime control</button>";
++    const auto url=QString("http://127.0.0.1:%1/p00-window-lifetime").arg(server.serverPort());
++    QVERIFY(command("open "+url));
++    QTRY_COMPARE(page("location.href").toString(),url);
++    QVERIFY(command("set --temp hints.auto_follow=never"));
++    const QString ledger="testWindow.profileResourceRegistry.groups.map(g=>({transient:g.transientProfile,views:g.lifetime.viewCount,windows:g.lifetime.windowCount,popup_leases:g.lifetime.popupOpenerLeaseCount()}))";
++    QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),1);
++    const auto baselineLedger=evaluate(ledger).toList();
++    QVERIFY(!baselineLedger.isEmpty());
++    const auto capture=[&](int cycle){
++        snapshots.append(QJsonObject{{"cycle",cycle},{"monotonic_ns",QString::number(monotonicNsecs())},{"ledger",QJsonArray::fromVariantList(evaluate(ledger).toList())},
++            {"live_windows",evaluate("testWindow.liveWindowEntries().length").toInt()},
++            {"qt_windows",QGuiApplication::allWindows().size()},
++            {"qt_descendants",window->findChildren<QObject *>().size()},
++            {"process_resources",p00ProcessResources()}});
++        qInfo().noquote()<<"FERRIC_P00_LIFETIME_CHECKPOINT_JSON "+QJsonDocument(snapshots.last().toObject()).toJson(QJsonDocument::Compact);
++    };
++    const auto clearContext=qScopeGuard([&]{
++        pageReceiver="testWindow.activeWebView()";
++        engine->rootContext()->setContextProperty("p00LifetimeHost",static_cast<QObject *>(nullptr));
++    });
++    for (int index=-warmups;index<cycles;++index) {
++        failedCycle=index; stage="public-open";
++        QVERIFY(command(QString("open --target %1 %2").arg(privateWindow?"private-window":"window",url)));
++        evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
++        QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),2);
++        const QString entry="testWindow.liveWindowEntries().find(e=>e.host!==testWindow)";
++        QPointer<QQuickWindow> host(qobject_cast<QQuickWindow *>(evaluate(entry+".host").value<QObject *>()));
++        QVERIFY(host);
++        engine->rootContext()->setContextProperty("p00LifetimeHost",host.data());
++        QTRY_VERIFY(evaluate("p00LifetimeHost.profileBootstrapComplete && !!p00LifetimeHost.activeView").toBool());
++        QPointer<QObject> view(evaluate("p00LifetimeHost.activeView").value<QObject *>());
++        QPointer<QObject> group(evaluate("testWindow.profileResourceRegistry.forProfile(p00LifetimeHost.activeView.profile)").value<QObject *>());
++        QVERIFY(view && group);
++        QCOMPARE(evaluate("p00LifetimeHost.activeView.profile===testWindow.browserProfile").toBool(),!privateWindow);
++        pageReceiver="p00LifetimeHost.activeView";
++        QTRY_COMPARE(page("location.href").toString(),url);
++        QTRY_VERIFY(host->isVisible());
++        QVERIFY(evaluate("p00LifetimeHost.windowUi.execute_command('set --temp hints.auto_follow=never')").toBool());
++        stage="child-established-hint";
++        {
++            auto *ui=evaluate("p00LifetimeHost.windowUi").value<QObject *>();
++            auto *workspace=evaluate("p00LifetimeHost.hintWorkspace").value<QObject *>();
++            auto *repeater=host->findChild<QQuickItem *>("hintMarkerRepeater");
++            QVERIFY(ui && workspace && repeater);
++            RenderedStateObserver rendered(host,[&]{
++                return host && view && ui->property("mode").toString()=="hint" && ui->property("hint_visible").toBool()
++                    && !workspace->property("hintRefreshPending").toBool()
++                    && workspace->property("hintTrackingView").value<QObject *>()==view.data()
++                    && !workspace->property("hintPresentationSessionId").toString().isEmpty()
++                    && repeater->parentItem() && repeater->parentItem()->isVisible()
++                    && repeater->property("count").toInt()==1
++                    && !p00RenderedButtonId(engine.get(),ui,repeater,"Window lifetime control",{},false).isEmpty();
++            });
++            bool accepted=false;
++            const auto elapsed=rendered.measure([&]{accepted=evaluate("p00LifetimeHost.windowUi.execute_command('hint all')").toBool();},5000);
++            QVERIFY(accepted && elapsed>=0);
++        } // Observer no longer captures child objects when retirement begins.
++        stage="native-window-close";
++        // The native close event enters the regular secondary-window shutdown
++        // while the Hint session is live. tab-close requires Normal/Command.
++        QVERIFY(host);
++        host->close();
++        QTRY_VERIFY(host && host->isVisible() && evaluate("p00LifetimeHost.windowCloseConfirmationVisible").toBool());
++        stage="initial-rendered-close-confirmation";
++        QVERIFY(p00ProceedClose(host,true));
++        QTRY_VERIFY(!host || !host->isVisible() || !evaluate("p00LifetimeHost.windowCloseConfirmationVisible").toBool());
++        stage="secondary-close-decision";
++        QTRY_VERIFY(!host || !host->isVisible() || evaluate("p00LifetimeHost.windowShutdownPagePromptVisible").toBool());
++        if (host && host->isVisible()) QVERIFY(p00ProceedClose(host));
++        const bool released=QTest::qWaitFor([&]{
++            return (!host || !host->isVisible()) && view.isNull()
++                && evaluate("testWindow.liveWindowEntries().length").toInt()==1
++                && evaluate(ledger).toList()==baselineLedger;
++        },5000);
++        const auto observedLedger=evaluate(ledger).toList();
++        const QJsonObject outcome{{"index",index},{"warmup",index<0},
++            {"initial_rendered_close_confirmed",true},
++            {"view_destroyed",view.isNull()},{"host_destroyed",host.isNull()},
++            {"host_hidden",host && !host->isVisible()},{"group_destroyed",group.isNull()},
++            {"live_windows",evaluate("testWindow.liveWindowEntries().length").toInt()},
++            {"observed_ledger",QJsonArray::fromVariantList(observedLedger)},
++            {"ledger_returned_to_baseline",observedLedger==baselineLedger},{"released",released}};
++        outcomes.append(outcome);
++        qInfo().noquote()<<"FERRIC_P00_LIFETIME_WINDOW_CYCLE_JSON "+QJsonDocument(outcome).toJson(QJsonDocument::Compact);
++        if (!released) capture(index<0?0:index+1);
++        QVERIFY2(released,"Window/view/native profile ledger did not return to warmed baseline; observed state retained");
++        if (index>=0) completed=index+1; else ++completedWarmups;
++        // Qt/QML references are cleared after measuring release, never by
++        // manually deleting a surviving host or its private profile.
++        engine->rootContext()->setContextProperty("p00LifetimeHost",static_cast<QObject *>(nullptr));
++        pageReceiver="testWindow.activeWebView()";
++        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
++        if (index==-1 || index>=0 && ((index+1)%10==0 || index+1==cycles)) capture(index<0?0:index+1);
++    }
++    stage="complete";failures=0;
++}
+diff --git a/crates/ferric-browser-engine-qt/tests/application/run_site_policy_performance.py b/crates/ferric-browser-engine-qt/tests/application/run_site_policy_performance.py
+new file mode 100644
+--- /dev/null
++++ b/crates/ferric-browser-engine-qt/tests/application/run_site_policy_performance.py
+@@ -0,0 +1,459 @@
++#!/usr/bin/env python3
++"""Run opt-in production rendering measurements and preserve exact input metadata."""
++from __future__ import annotations
++
++import argparse
++from datetime import datetime, timezone
++import hashlib
++import json
++import math
++import os
++from pathlib import Path
++import platform
++import signal
++import subprocess
++
++ROOT = Path(__file__).resolve().parents[4]
++BASELINE = 'f2c5d6deebd97eb861084503f25613a6a819949d'
++MEASUREMENT_FILES = {
++    'crates/ferric-browser-engine-qt/tests/application/tst_application.h',
++    'crates/ferric-browser-engine-qt/tests/application/tst_application.cpp',
++    'crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt',
++    'crates/ferric-browser-engine-qt/tests/application/tst_site_policy_performance.cpp',
++    'crates/ferric-browser-engine-qt/tests/application/run_site_policy_performance.py',
++    'crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-targets.html',
++    'crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-refresh-targets.html',
++    'crates/ferric-browser-engine-qt/tests/fixtures/site-policy/root-render-targets.html',
++}
++DIAGNOSTIC_FILES = {
++    'crates/ferric-browser-engine-qt/src/hint_frame_broker.cpp',
++    'crates/ferric-browser-engine-qt/src/hint_frame_broker.h',
++    'crates/ferric-browser-engine-qt/qml/components/FerricHintFrameProvider.qml',
++}
++
++
++def digest(path):
++    with path.open('rb') as stream:
++        return hashlib.file_digest(stream, 'sha256').hexdigest()
++
++
++def finite_number(value):
++    try:
++        return type(value) in (int, float) and math.isfinite(value)
++    except OverflowError:
++        return False
++
++
++def valid_samples(value, expected):
++    return (isinstance(value, list) and len(value) == expected
++            and all(finite_number(item) and item >= 0 for item in value))
++
++
++def source_inventory():
++    names = subprocess.check_output(
++        ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=ROOT
++    ).split(b'\0')
++    result = {}
++    for raw in sorted(set(names) - {b''}):
++        name = os.fsdecode(raw)
++        path = ROOT / name
++        if path.is_symlink() or not path.is_file():
++            raise RuntimeError('Source inventory requires a regular file: ' + name)
++        result[name] = digest(path)
++    return result
++
++
++def production_differences(manifest):
++    entries = subprocess.check_output(['git', 'ls-tree', '--full-tree', '-r', '-z', BASELINE], cwd=ROOT).split(b'\0')
++    original = {}
++    for entry in entries:
++        if not entry:
++            continue
++        identity, raw_name = entry.split(b'\t', 1)
++        mode, kind, oid = identity.split()
++        if kind != b'blob' or mode not in (b'100644', b'100755'):
++            raise RuntimeError('Original baseline requires regular source files')
++        original[os.fsdecode(raw_name)] = oid.decode('ascii')
++    differences = []
++    for name in sorted((set(original) | set(manifest)) - MEASUREMENT_FILES):
++        if name not in original or name not in manifest:
++            differences.append(name)
++            continue
++        content = (ROOT / name).read_bytes()
++        # Compare exact Git blob identity; the complete SHA-256 inventory is
++        # independently retained for the actual run, including harness files.
++        blob = b'blob ' + str(len(content)).encode('ascii') + b'\0' + content
++        if hashlib.sha1(blob).hexdigest() != original[name]:
++            differences.append(name)
++    return differences
++
++
++def terminate_group(child):
++    try:
++        os.killpg(child.pid, signal.SIGTERM)
++    except ProcessLookupError:
++        child.wait()
++        return
++    try:
++        child.wait(timeout=5)
++    except subprocess.TimeoutExpired:
++        pass
++    finally:
++        # The main process may exit before its renderer children. Retire any
++        # remaining members of this owned session even after main-process exit.
++        try:
++            os.killpg(child.pid, signal.SIGKILL)
++        except ProcessLookupError:
++            pass
++        child.wait()
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--binary', type=Path, required=True)
++    parser.add_argument('--archive', type=Path, required=True)
++    parser.add_argument('--output-dir', type=Path, required=True)
++    parser.add_argument('--kind', choices=['command', 'hints', 'refresh', 'refresh-visible', 'ready', 'activation', 'roots', 'root-stages', 'lifetime', 'all'], default='all')
++    parser.add_argument('--dpr', type=int, choices=[1, 2], default=1)
++    parser.add_argument('--smoke', action='store_true', help='Functional handshake only; never a baseline')
++    args = parser.parse_args()
++    try:
++        git_root = Path(subprocess.check_output(
++            ['git', 'rev-parse', '--show-toplevel'], cwd=ROOT, text=True, stderr=subprocess.STDOUT
++        ).strip()).resolve()
++    except subprocess.CalledProcessError:
++        parser.error('Install this measurement harness in its actual repository worktree')
++    if git_root != ROOT:
++        parser.error('Measurement ROOT must equal the Git worktree root; nested archives/draft directories are not a baseline')
++    if os.environ.get('FERRIC_P00_BROKER_TRACE') is not None and not args.smoke:
++        parser.error('Instrumented broker tracing is diagnostic smoke only; remove the overlay for unprofiled timing')
++    binary, archive, output = args.binary.resolve(), args.archive.resolve(), args.output_dir.resolve()
++    if not binary.is_file() or not archive.is_file():
++        parser.error('The matching production archive and built test binary are required')
++    output.mkdir(parents=True, exist_ok=False)
++    log_path = output / 'test.log'
++    metadata = {
++        'purpose': 'Measurement metadata, not a release qualification receipt',
++        'started_utc': datetime.now(timezone.utc).isoformat(),
++        'run_kind': 'functional-smoke-not-baseline' if args.smoke else 'lifecycle-baseline' if args.kind == 'lifetime' else 'performance-baseline',
++        'requested_dpr': args.dpr,
++        'broker_tracing': os.environ.get('FERRIC_P00_BROKER_TRACE') is not None,
++        'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
++        'machine': {'platform': platform.platform(), 'cpuinfo': Path('/proc/cpuinfo').read_text().split('model name', 1)[-1].splitlines()[0],
++                    'memory': Path('/proc/meminfo').read_text().splitlines()[0], 'loadavg': Path('/proc/loadavg').read_text().strip()},
++        'binary': {'path': str(binary), 'sha256': digest(binary)},
++        'archive': {'path': str(archive), 'sha256': digest(archive)},
++        'input': 'Per journey: constructed QKeyEvent through production QWindow/router, or explicit public BrowserUi hint-buttons command for rooted-render rows, or direct production provider callbacks for component rows',
++        'endpoint': 'Post-production-close resource observations; no latency percentile' if args.kind == 'lifetime' else 'matching Qt Quick synchronized/swapped frame; excludes compositor presentation',
++        'policy': {'full_command': '10warmups/1000samples', 'full_hint': '10warmups/100fresh-document samples per size/zoom',
++                   'full_refresh': '10warmups/100samples; 1000 actual style mutations per sample; production passive refresh',
++                   'full_ready': '10warmups/100samples per size/zoom/input operation; final activation/fresh proof separate',
++                   'full_activation': '10warmups/100samples per size/zoom; selected button Enter through production fresh/action to observed exact DOM click receipt; polling/transport included',
++                   'full_roots': '10warmups/100fresh-document samples per5root-shapes x5sizes/zooms; public hint-buttons command to exact production candidate/marker render endpoint',
++                   'smoke': '1warmup/2samples; no percentile/gate claims', 'reset': 'outside measured interval',
++                   'observer': 'inclusive latency; generation-wide observer cost recorded separately, never subtracted'},
++        'environment': {}, 'exit_code': None, 'timed_out': False,
++    }
++    manifest = source_inventory()
++    differences = production_differences(manifest)
++    production_ok = not differences or (args.smoke and set(differences) <= DIAGNOSTIC_FILES)
++    metadata['production_baseline'] = BASELINE
++    metadata['production_differences'] = differences
++    metadata['instrumented_production'] = bool(differences)
++    metadata['production_preflight_exit_code'] = 0 if production_ok else 1
++    (output / 'source-inputs.json').write_text(json.dumps(manifest, indent=2) + '\n')
++    metadata['source_manifest_sha256'] = digest(output / 'source-inputs.json')
++    harness = Path(__file__).resolve().parent
++    binary_inputs = [archive, harness / 'tst_application.cpp', harness / 'tst_application.h',
++                     harness / 'tst_site_policy_performance.cpp', harness / 'CMakeLists.txt',
++                     harness.parent / 'EngineArchive.cmake']
++    outdated = [str(path) for path in binary_inputs if path.stat().st_mtime_ns > binary.stat().st_mtime_ns]
++    metadata['binary_input_preflight'] = {'inputs': [str(path) for path in binary_inputs], 'newer_than_binary': outdated}
++    flags = binary.parent / 'CMakeFiles/application_tests.dir/flags.make'
++    if flags.is_file():
++        metadata['harness_build_flags'] = flags.read_text()
++    env = dict(os.environ)
++    env.pop('FERRIC_P00_LIFETIME', None)
++    if args.kind == 'lifetime' and not args.smoke:
++        env['FERRIC_P00_LIFETIME'] = '1'
++    env.pop('FERRIC_SITE_POLICY_PERF', None)
++    env.pop('FERRIC_SITE_POLICY_PERF_SMOKE', None)
++    env['FERRIC_SITE_POLICY_PERF_SMOKE' if args.smoke else 'FERRIC_SITE_POLICY_PERF'] = '1'
++    env.update(QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', QT_QPA_PLATFORMTHEME='',
++               QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu', QTEST_FUNCTION_TIMEOUT='3600000',
++               QT_SCALE_FACTOR=str(args.dpr))
++    for key in ['QT_QPA_PLATFORM', 'QT_QUICK_BACKEND', 'QT_QPA_PLATFORMTHEME', 'QTWEBENGINE_CHROMIUM_FLAGS',
++                'QTEST_FUNCTION_TIMEOUT', 'FERRIC_SITE_POLICY_PERF', 'FERRIC_SITE_POLICY_PERF_SMOKE',
++                'FERRIC_P00_LIFETIME', 'QSG_RENDER_LOOP', 'QMAKE', 'LD_LIBRARY_PATH', 'QT_SCALE_FACTOR', 'FERRIC_P00_BROKER_TRACE']:
++        if key in env:
++            metadata['environment'][key] = env[key]
++    selectors = []
++    if args.kind in ['command', 'all']:
++        selectors.append('sitePolicyCommandRenderPerformance')
++    if args.kind in ['hints', 'all']:
++        selectors.append('sitePolicyHintRenderPerformance')
++    if args.kind == 'all':
++        selectors.append('sitePolicyPassiveRefreshPerformance')
++    elif args.kind == 'refresh':
++        selectors.append('sitePolicyPassiveRefreshPerformance:1000-targets')
++    elif args.kind == 'refresh-visible':
++        selectors.append('sitePolicyPassiveRefreshPerformance:500-visible')
++    if args.kind in ['ready', 'all']:
++        selectors.append('sitePolicyReadyHintPerformance')
++    if args.kind in ['activation', 'all']:
++        selectors.append('sitePolicyActivationPerformance')
++    if args.kind in ['roots', 'all']:
++        selectors.append('sitePolicyRootRenderPerformance')
++    if args.kind in ['root-stages', 'all']:
++        selectors.append('sitePolicyRootStagesPerformance')
++    if args.kind == 'lifetime':
++        selectors = ['sitePolicyOrdinaryLifetime', 'sitePolicyWindowLifetime']
++    command = [str(binary), *selectors, '-nocrashhandler']
++    metadata['command'] = command
++    record = output / 'run-metadata.json'
++    def save():
++        record.write_text(json.dumps(metadata, indent=2) + '\n')
++    save()
++    def interrupted(_signum, _frame):
++        raise KeyboardInterrupt('Performance fixture interrupted')
++    previous_term = signal.signal(signal.SIGTERM, interrupted)
++    child = None
++    try:
++        with log_path.open('w') as log:
++            guard = ['cmake', '-DFERRIC_ARCHIVE_TO_CHECK=' + str(archive), '-DFERRIC_SOURCE_ROOT=' + str(ROOT),
++                     '-P', str(ROOT / 'crates/ferric-browser-engine-qt/tests/EngineArchive.cmake')]
++            if not production_ok:
++                log.write('Production source differs from the pinned baseline: ' + ', '.join(differences) + '\n')
++                log.flush()
++                metadata['exit_code'] = 1
++                preflight_code = 1
++            elif outdated:
++                log.write('Test binary predates required archive/harness inputs: ' + ', '.join(outdated) + '\n')
++                log.flush()
++                metadata['binary_input_preflight_exit_code'] = 1
++                metadata['exit_code'] = 1
++                preflight_code = 1
++            else:
++                metadata['binary_input_preflight_exit_code'] = 0
++                preflight_code = subprocess.run(guard, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, check=False).returncode
++                metadata['archive_preflight_exit_code'] = preflight_code
++                metadata['exit_code'] = preflight_code
++            if preflight_code == 0:
++                child = subprocess.Popen(command, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
++                try:
++                    metadata['exit_code'] = child.wait(timeout=7200)
++                except subprocess.TimeoutExpired:
++                    metadata['timed_out'] = True
++                    terminate_group(child)
++                    metadata['exit_code'] = child.returncode
++    except BaseException as error:
++        metadata['interrupted'] = isinstance(error, KeyboardInterrupt)
++        metadata['harness_error'] = type(error).__name__ + ': ' + str(error)
++        if child is not None:
++            terminate_group(child)
++        metadata['exit_code'] = 130 if isinstance(error, KeyboardInterrupt) else 1
++    finally:
++        signal.signal(signal.SIGTERM, previous_term)
++        rows, samples, errors = [], [], []
++        for number, line in enumerate(log_path.read_text(errors='replace').splitlines(), 1):
++            for marker, destination in [('FERRIC_SITE_POLICY_RENDER_JSON ', rows),
++                                        ('FERRIC_SITE_POLICY_SAMPLE_JSON ', samples),
++                                        ('FERRIC_P00_LIFETIME_JSON ', rows),
++                                        ('FERRIC_P00_LIFETIME_CHECKPOINT_JSON ', samples),
++                                        ('FERRIC_P00_LIFETIME_WINDOW_CYCLE_JSON ', samples)]:
++                if marker not in line:
++                    continue
++                try:
++                    value = json.loads(line.split(marker, 1)[1])
++                    if not isinstance(value, dict):
++                        raise ValueError('Expected a JSON object record')
++                    destination.append(value)
++                except ValueError as error:
++                    errors.append({'line': number, 'error': str(error), 'marker': marker})
++        (output / 'sample-events.json').write_text(json.dumps(samples, indent=2) + '\n')
++        (output / 'raw-results.json').write_text(json.dumps(rows, indent=2) + '\n')
++        metadata['result_rows'] = len(rows)
++        metadata['sample_events'] = len(samples)
++        metadata['parse_errors'] = errors
++        metadata['child_exit_code'] = child.returncode if child is not None else None
++        expected = 4 if args.kind == 'lifetime' else ((1 if args.kind in ['command', 'all'] else 0)
++                    + (5 if args.kind in ['hints', 'all'] else 0)
++                    + (2 if args.kind == 'all' else 1 if args.kind in ['refresh', 'refresh-visible'] else 0)
++                    + (20 if args.kind in ['ready', 'all'] else 0)
++                    + (5 if args.kind in ['activation', 'all'] else 0)
++                    + (25 if args.kind in ['roots', 'all'] else 0)
++                    + (55 if args.kind in ['root-stages', 'all'] else 0))
++        validation_errors = []
++        if len(rows) != expected:
++            validation_errors.append(f'Expected {expected} result rows, received {len(rows)}')
++        for row in rows:
++            if row.get('run_kind') != metadata['run_kind']:
++                validation_errors.append('Result kind does not match requested smoke/full mode')
++            if row.get('failures') != 0:
++                validation_errors.append('Result reports a failed stage')
++            dpr = row.get('dpr')
++            if not finite_number(dpr) or abs(dpr - args.dpr) > .01:
++                validation_errors.append('Actual DPR does not match requested DPR')
++            if args.kind == 'lifetime':
++                window_row = row.get('journey') in ['shared-profile-window-lifetime', 'private-profile-window-lifetime']
++                requested = 2 if args.smoke else 100 if window_row else 1000
++                warmups = 1 if args.smoke else 10
++                if (not all(type(row.get(key)) is int for key in ['completed_cycles', 'requested_cycles', 'completed_warmups', 'warmups'])
++                    or row['completed_cycles'] != requested or row.get('requested_cycles') != requested or row.get('completed_warmups') != warmups
++                    or row.get('warmups') != warmups):
++                    validation_errors.append('Lifecycle cycles/warmups are incomplete')
++                snapshots = row.get('snapshots')
++                if not isinstance(snapshots, list) or not all(isinstance(item, dict) for item in snapshots):
++                    validation_errors.append('Invalid lifecycle snapshots')
++                    continue
++                interval = 10 if window_row else 100
++                wanted_cycles = {0, 2} if args.smoke else {0, *range(interval, requested + 1, interval)}
++                actual_cycles = [item.get('cycle') for item in snapshots]
++                if (not all(type(item) is int for item in actual_cycles)
++                    or len(actual_cycles) != len(wanted_cycles) or set(actual_cycles) != wanted_cycles):
++                    validation_errors.append('Lifecycle checkpoint matrix is incomplete or duplicated')
++                for snapshot in snapshots:
++                    resources = snapshot.get('process_resources')
++                    if (not isinstance(resources, dict) or resources.get('complete') is not True
++                        or resources.get('pss_complete') is not True):
++                        validation_errors.append('Lifecycle process-resource snapshot is incomplete')
++                    elif (not all(type(resources.get(key)) is int and resources[key] >= 0
++                                  for key in ['rss_kib', 'pss_kib', 'threads', 'fd_count', 'process_count'])
++                          or not isinstance(resources.get('processes'), list)
++                          or resources['process_count'] != len(resources['processes'])
++                          or resources['process_count'] < 1):
++                        validation_errors.append('Invalid lifecycle aggregate resources')
++                    if not all(type(snapshot.get(key)) is int and snapshot[key] >= 0
++                               for key in ['qt_descendants', 'qt_windows']):
++                        validation_errors.append('Invalid lifecycle Qt counts')
++                    if not window_row and snapshot.get('cleanup_clean') is not True:
++                        validation_errors.append('Lifecycle renderer/browser cleanup was not established')
++                if window_row:
++                    outcomes = row.get('outcomes')
++                    if (not isinstance(outcomes, list) or len(outcomes) != requested + warmups
++                        or not all(isinstance(item, dict) and item.get('released') is True
++                                   and item.get('view_destroyed') is True
++                                   and item.get('initial_rendered_close_confirmed') is True
++                                   and item.get('ledger_returned_to_baseline') is True for item in outcomes)):
++                        validation_errors.append('Window/profile release outcomes are incomplete')
++                    elif (not all(type(item.get('index')) is int and type(item.get('warmup')) is bool
++                                  and item['warmup'] == (item['index'] < 0) for item in outcomes)
++                          or sorted(item['index'] for item in outcomes) != list(range(-warmups, requested))):
++                        validation_errors.append('Window/profile release cycle matrix is incomplete or duplicated')
++                continue
++            requested = 2 if args.smoke else 1000 if row.get('journey') == 'normal-colon-to-command-render' else 100
++            if row.get('completed_measured_samples') != requested or not valid_samples(row.get('samples_ms'), requested):
++                validation_errors.append('Result sample count is incomplete')
++        if args.kind == 'lifetime':
++            journeys = [row.get('journey') for row in rows]
++            wanted = {'ordinary-established-lifetime', 'foreign-established-lifetime',
++                      'shared-profile-window-lifetime', 'private-profile-window-lifetime'}
++            if (not all(type(item) is str for item in journeys)
++                or len(journeys) != len(wanted) or set(journeys) != wanted):
++                validation_errors.append('Lifecycle journey matrix is incomplete or duplicated')
++        try:
++            after = source_inventory()
++            metadata['source_postcheck_exact_match'] = after == manifest
++            if after != manifest:
++                metadata['source_changed_paths'] = sorted(
++                    name for name in set(after) | set(manifest) if after.get(name) != manifest.get(name)
++                )
++                validation_errors.append('Source inventory changed during measurement')
++        except Exception as error:
++            metadata['source_postcheck_exact_match'] = False
++            metadata['source_postcheck_error'] = type(error).__name__ + ': ' + str(error)
++            validation_errors.append('Source inventory could not be verified after measurement')
++        root_shapes = ['shadow-2', 'slots', 'same-origin-2', 'foreign-2', 'clipping']
++        root_sizes = [(500, .8), (500, 1), (500, 1.25), (1000, 1), (5000, 1)]
++        if args.kind in ['refresh', 'refresh-visible', 'all']:
++            wanted = [500, 1000] if args.kind == 'all' else [500 if args.kind == 'refresh-visible' else 1000]
++            refresh = [row for row in rows if row.get('journey') == '1000-mutations-to-passive-hint-render']
++            counts = [row.get('count') for row in refresh]
++            if not all(type(count) is int for count in counts) or sorted(counts) != wanted:
++                validation_errors.append('Passive refresh workload matrix is incomplete or duplicated')
++            for row in refresh:
++                if type(row.get('mutations_per_sample')) is not int or row['mutations_per_sample'] != 1000:
++                    validation_errors.append('Passive refresh mutation workload changed')
++                if row.get('count') == 500:
++                    markers = row.get('rendered_marker_counts')
++                    completed = row.get('completed_measured_samples')
++                    if (type(completed) is not int or not isinstance(markers, list) or len(markers) != completed
++                            or any(type(value) is not int or value != 500 for value in markers)):
++                        validation_errors.append('Passive refresh did not retain 500 rendered markers')
++                    receipts = row.get('mutation_receipts')
++                    warmups = 1 if args.smoke else 10
++                    if (not isinstance(receipts, list) or len(receipts) != completed
++                            or any(not isinstance(receipt, dict)
++                                   or not all(type(receipt.get(key)) is int for key in ('revision', 'targets', 'mutations', 'total_mutations'))
++                                   or receipt['revision'] != index + warmups + 1 or receipt['targets'] != 500
++                                   or receipt['mutations'] != 1000 or receipt['total_mutations'] != 1000 * receipt['revision']
++                                   for index, receipt in enumerate(receipts))):
++                        validation_errors.append('Passive refresh is missing its exact mutation receipts')
++        if args.kind in ['ready', 'all']:
++            journeys = ('ready-prefix-to-hint-render', 'ready-selection-to-hint-render',
++                        'ready-query-to-hint-render', 'queued-prefix-to-hint-render')
++            actual = []
++            for row in rows:
++                if row.get('journey') not in journeys:
++                    continue
++                if type(row.get('count')) is not int or not finite_number(row.get('zoom')):
++                    validation_errors.append('Invalid ready Hint workload fields')
++                    continue
++                actual.append((row['journey'], row['count'], row['zoom']))
++            wanted = {(journey, count, zoom) for journey in journeys for count, zoom in root_sizes}
++            if len(actual) != len(wanted) or set(actual) != wanted:
++                validation_errors.append('Ready Hint workload matrix is incomplete or duplicated')
++        if args.kind in ['roots', 'all']:
++            actual = []
++            for row in rows:
++                if row.get('journey') != 'rooted-buttons-command-to-usable-render':
++                    continue
++                if type(row.get('shape')) is not str or type(row.get('count')) is not int or not finite_number(row.get('zoom')):
++                    validation_errors.append('Invalid root render workload fields')
++                    continue
++                actual.append((row['shape'], row['count'], row['zoom']))
++            wanted = {(shape, count, zoom) for shape in root_shapes for count, zoom in root_sizes}
++            if len(actual) != len(wanted) or set(actual) != wanted:
++                validation_errors.append('Root render workload matrix is incomplete or duplicated')
++        if args.kind in ['root-stages', 'all']:
++            component_rows = [row for row in rows if row.get('journey') in
++                              ['rooted-provider-collection', 'rooted-provider-fresh']]
++            actual = []
++            for row in component_rows:
++                if (type(row.get('metric')) is not str or type(row.get('shape')) is not str
++                    or type(row.get('count')) is not int or not finite_number(row.get('zoom'))
++                    or type(row.get('independent_small_control')) is not bool):
++                    validation_errors.append('Invalid root component workload fields')
++                    continue
++                actual.append((row['metric'], row['shape'], row['count'], row['zoom'], row['independent_small_control']))
++            wanted = {(metric, shape, count, zoom, False) for metric in ['collect', 'fresh']
++                      for shape in root_shapes for count, zoom in root_sizes}
++            wanted |= {('fresh', shape, 1, 1, True) for shape in root_shapes}
++            if len(actual) != len(wanted) or set(actual) != wanted:
++                validation_errors.append('Root component workload matrix is incomplete or duplicated')
++            for row in component_rows:
++                requested = 2 if args.smoke else 100
++                if row.get('completed_collection_samples') != requested or not valid_samples(row.get('collection_samples_ms'), requested):
++                    validation_errors.append('Root component collection observations are incomplete')
++                expected_fresh = requested if row.get('metric') == 'fresh' else 0
++                if row.get('completed_fresh_samples') != expected_fresh or not valid_samples(row.get('fresh_samples_ms'), expected_fresh):
++                    validation_errors.append('Root component fresh observations are incomplete')
++                if row.get('cleanup_failures') != 0:
++                    validation_errors.append('Root component tracking cleanup failed')
++        metadata['result_validation_errors'] = validation_errors
++        if metadata['timed_out']:
++            metadata['exit_code'] = 124
++        elif metadata['exit_code'] is None:
++            metadata['exit_code'] = 1
++        elif metadata['exit_code'] < 0:
++            metadata['exit_code'] = 128 - metadata['exit_code']
++        elif (errors or validation_errors) and metadata['exit_code'] == 0:
++            metadata['exit_code'] = 1
++        metadata['finished_utc'] = datetime.now(timezone.utc).isoformat()
++        save()
++    print(record)
++    return metadata['exit_code']
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
+diff --git a/crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-targets.html b/crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-targets.html
+new file mode 100644
+--- /dev/null
++++ b/crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-targets.html
+@@ -0,0 +1,49 @@
++<!doctype html>
++<meta charset="utf-8">
++<title>Cold-document Hint rendering baseline</title>
++<style>
++  html, body { margin:0; width:100%; height:100%; overflow:hidden; }
++  a { position:absolute; display:block; color:black; font:1px sans-serif; line-height:1; }
++</style>
++<script>
++  // Deterministic local subjects only. Each navigation creates a fresh realm;
++  // there is no collector warmup, event tracing, or page activation.
++  const parameters = new URL(location.href).searchParams;
++  const requested = Number(parameters.get('count'));
++  const textWorkload = parameters.get('text') === '1';
++  if (![500, 1000, 5000].includes(requested)) throw new Error('Unsupported fixture size');
++  document.addEventListener('DOMContentLoaded', () => {
++    const fragment = document.createDocumentFragment();
++    for (let index = 0; index < requested; ++index) {
++      const anchor = document.createElement('a');
++      anchor.href = '#target-' + index;
++      const text = textWorkload && index % 3 === 0 ? 'z' : 'x';
++      anchor.textContent = text;
++      anchor.setAttribute('aria-label', textWorkload ? text : 'Target ' + index);
++      fragment.append(anchor);
++    }
++    document.body.append(fragment);
++    const anchors = Array.from(document.querySelectorAll('a'));
++    function layout() {
++      const columns = requested === 500 ? 20 : requested === 1000 ? 40 : 100;
++      const rows = Math.ceil(requested / columns);
++      const cellWidth = (innerWidth - 24) / columns;
++      const cellHeight = (innerHeight - 24) / rows;
++      for (let index = 0; index < anchors.length; ++index) {
++        const width = Math.max(2, Math.min(12, cellWidth / 2));
++        const height = Math.max(2, Math.min(10, cellHeight / 2));
++        Object.assign(anchors[index].style, {
++          left: (12 + (index % columns + .5) * cellWidth - width / 2) + 'px',
++          top: (12 + (Math.floor(index / columns) + .5) * cellHeight - height / 2) + 'px',
++          width: width + 'px', height: height + 'px'
++        });
++      }
++      document.body.dataset.layoutWidth = String(innerWidth);
++      document.body.dataset.layoutHeight = String(innerHeight);
++    }
++    addEventListener('resize', layout);
++    layout();
++    document.body.dataset.ready = 'true';
++    document.body.dataset.targetCount = String(requested);
++  });
++</script>
+diff --git a/crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-refresh-targets.html b/crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-refresh-targets.html
+new file mode 100644
+--- /dev/null
++++ b/crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-refresh-targets.html
+@@ -0,0 +1,60 @@
++<!doctype html>
++<meta charset="utf-8">
++<title>Ordinary passive Hint refresh workload</title>
++<style>
++  html, body { margin:0; width:100%; height:100%; overflow:hidden; }
++  a { position:absolute; display:block; color:black; font:1px sans-serif; line-height:1; }
++</style>
++<script>
++  const count = Number(new URL(location.href).searchParams.get('count') || 1000);
++  if (![500, 1000].includes(count)) throw new Error('Unsupported refresh fixture size');
++  document.addEventListener('DOMContentLoaded', () => {
++    const fragment = document.createDocumentFragment();
++    const anchors = [];
++    for (let index = 0; index < count; ++index) {
++      const anchor = document.createElement('a');
++      anchor.id = 'refresh-target-' + index;
++      anchor.href = '#target-' + index;
++      anchor.textContent = 'x';
++      anchor.setAttribute('aria-label', 'Target ' + index);
++      anchors.push(anchor);
++      fragment.append(anchor);
++    }
++    document.body.append(fragment);
++    function layout() {
++      const columns = count === 500 ? 20 : 40;
++      const rows = count / columns;
++      const cellWidth = (innerWidth - 24) / columns;
++      const cellHeight = (innerHeight - 24) / rows;
++      anchors.forEach((anchor, index) => {
++        const width = Math.max(2, Math.min(12, cellWidth / 2));
++        const height = Math.max(2, Math.min(10, cellHeight / 2));
++        Object.assign(anchor.style, {
++          left: (12 + (index % columns + .5) * cellWidth - width / 2) + 'px',
++          top: (12 + (Math.floor(index / columns) + .5) * cellHeight - height / 2) + 'px',
++          width: width + 'px', height: height + 'px'
++        });
++      });
++      document.body.dataset.layoutWidth = String(innerWidth);
++      document.body.dataset.layoutHeight = String(innerHeight);
++    }
++    let revision = 0, writes = 0;
++    window.refreshFixture = Object.freeze({
++      mutate() {
++        ++revision;
++        const previousWrites = writes;
++        // The 500-visible case makes two distinct style changes per target.
++        // The 1,000-target case makes one. Both end with the same shift per
++        // target and leave labels, hrefs and element identities intact.
++        const transform = revision % 2 ? 'translateX(1px)' : 'translateX(0px)';
++        if (count === 500) anchors.forEach(anchor => { anchor.style.transform = 'translateX(2px)'; ++writes; });
++        anchors.forEach(anchor => { anchor.style.transform = transform; ++writes; });
++        return { revision, targets: anchors.length, mutations: writes - previousWrites, total_mutations: writes };
++      },
++      snapshot() { return { revision, total_mutations: writes, targets: anchors.length }; }
++    });
++    addEventListener('resize', layout);
++    layout();
++    document.body.dataset.ready = 'true';
++  });
++</script>
+diff --git a/crates/ferric-browser-engine-qt/tests/fixtures/site-policy/root-render-targets.html b/crates/ferric-browser-engine-qt/tests/fixtures/site-policy/root-render-targets.html
+new file mode 100644
+--- /dev/null
++++ b/crates/ferric-browser-engine-qt/tests/fixtures/site-policy/root-render-targets.html
+@@ -0,0 +1,264 @@
++<!doctype html>
++<meta charset="utf-8">
++<title>Ordinary rooted Hint baseline</title>
++<style>
++  html, body { margin:0; width:100%; height:100%; overflow:hidden; }
++  iframe { position:fixed; left:6px; top:6px; width:calc(100% - 16px); height:calc(100% - 16px); border:2px solid black; }
++</style>
++<script>
++'use strict';
++const parameters = new URL(location.href).searchParams;
++const requested = Number(parameters.get('count'));
++const shape = parameters.get('shape');
++const freshControl = parameters.get('control') === 'fresh';
++const remaining = Number(parameters.get('remaining') || '0');
++const shapes = ['shadow-2','slots','same-origin-2','foreign-2','clipping'];
++const frameShape = shape === 'same-origin-2' || shape === 'foreign-2';
++if ((!freshControl && ![500,1000,5000].includes(requested)) || (freshControl && requested !== 1)
++    || !shapes.includes(shape)
++    || !Number.isInteger(remaining) || remaining < 0 || remaining > 2
++    || !frameShape && remaining !== 0)
++  throw new Error('Unsupported baseline subject');
++const parentOrigin = parameters.get('parentOrigin');
++const parentUrl = parentOrigin ? new URL(parentOrigin) : null;
++if (parentUrl && (!['127.0.0.1','localhost'].includes(parentUrl.hostname)
++    || parentUrl.port !== location.port || parentUrl.protocol !== location.protocol))
++  throw new Error('Unexpected fixture parent origin');
++const state = window.rootFixture = {
++  shape, requested, freshControl, targetCount:0, shadowRoots:0, slots:0, frameHops:0,
++  physicalButtons:0, clippedSentinels:0, focused:false, ready:false,
++  shadowDepthMin:0, shadowDepthMax:0,
++  layoutGeneration:0, readyGeneration:-1, viewport:{}, leafViewport:{}
++};
++// These are fixture readiness/expected-workload facts. They grant no frame
++// authority; production collection must independently establish its own route.
++let frame = null, childOrigin = '', targets = [], container = null, initialized = false;
++let parentLayoutRequest = 0, childLayoutRequest = 0, lastChildGeneration = -1;
++let childReady = false, focusWanted = false;
++let focusGeneration = 0, focusLayoutGeneration = -1, parentFocusRequest = 0;
++let lastParentFocusRequest = 0;
++function snapshot() {
++  return {shape, requested, freshControl, targetCount:state.targetCount, shadowRoots:state.shadowRoots,
++    slots:state.slots, frameHops:state.frameHops, physicalButtons:state.physicalButtons,
++    clippedSentinels:state.clippedSentinels, layoutGeneration:state.layoutGeneration,
++    shadowDepthMin:state.shadowDepthMin, shadowDepthMax:state.shadowDepthMax,
++    viewport:{width:innerWidth,height:innerHeight}, leafViewport:state.leafViewport};
++}
++function send(type, extra = {}) {
++  if (parentOrigin) parent.postMessage(Object.assign({type},snapshot(),extra),parentOrigin);
++}
++function ready(generation) {
++  if (generation !== state.layoutGeneration) return;
++  state.ready = true;
++  state.readyGeneration = generation;
++  state.viewport = {width:innerWidth,height:innerHeight};
++  document.body.dataset.layoutWidth = String(innerWidth);
++  document.body.dataset.layoutHeight = String(innerHeight);
++  document.body.dataset.ready = 'true';
++  send('p00-root-ready',{request:parentLayoutRequest});
++  if (focusWanted) tryFocus();
++}
++function pending() {
++  ++state.layoutGeneration;
++  state.ready = false;
++  state.readyGeneration = -1;
++  state.focused = false;
++  ++focusGeneration;
++  document.body.dataset.ready = 'false';
++  send('p00-root-pending',{request:parentLayoutRequest});
++  return state.layoutGeneration;
++}
++function requestFocus() {
++  focusWanted = true;
++  return tryFocus();
++}
++function tryFocus() {
++  if (!initialized || !state.ready || state.readyGeneration !== state.layoutGeneration) return false;
++  state.focused = false;
++  const request = ++focusGeneration;
++  focusLayoutGeneration = state.layoutGeneration;
++  if (frame) {
++    frame.focus();
++    frame.contentWindow.postMessage({type:'p00-root-focus',shape,requested,
++      request,layoutRequest:childLayoutRequest},childOrigin);
++  } else {
++    targets[0].focus();
++    let active = document.activeElement;
++    while (active && active.shadowRoot && active.shadowRoot.activeElement) active = active.shadowRoot.activeElement;
++    state.focused = document.hasFocus() && active === targets[0];
++    if (state.focused) focusWanted = false;
++    send('p00-root-focused',{focused:state.focused,request:parentFocusRequest,
++      layoutRequest:parentLayoutRequest});
++  }
++  return true;
++}
++state.focus = requestFocus;
++state.snapshot = snapshot;
++function resize() {
++  if (!initialized) return;
++  if (!frame) { layout(); return; }
++  pending();
++  ++childLayoutRequest;
++  childReady = false;
++  frame.contentWindow.postMessage({type:'p00-root-layout',shape,requested,
++    request:childLayoutRequest},childOrigin);
++}
++window.addEventListener('message',event=>{
++  const value = event.data;
++  if (!value || value.shape !== shape || value.requested !== requested) return;
++  if (event.source === parent && parentOrigin && event.origin === parentOrigin) {
++    if (value.type === 'p00-root-focus') {
++      if (!Number.isSafeInteger(value.request) || value.request <= lastParentFocusRequest
++          || value.layoutRequest !== parentLayoutRequest) return;
++      lastParentFocusRequest = value.request;
++      parentFocusRequest = value.request;
++      requestFocus(); return;
++    }
++    if (value.type === 'p00-root-layout') {
++      if (!Number.isSafeInteger(value.request) || value.request <= parentLayoutRequest) return;
++      parentLayoutRequest = value.request;
++      focusWanted = false;
++      resize(); return;
++    }
++  }
++  if (!frame || event.source !== frame.contentWindow || event.origin !== childOrigin) return;
++  if (value.type === 'p00-root-pending') {
++    if (value.request !== childLayoutRequest || !Number.isSafeInteger(value.layoutGeneration)
++        || value.layoutGeneration <= lastChildGeneration) return;
++    lastChildGeneration = value.layoutGeneration;
++    childReady = false;
++    // Invalidate ancestors without issuing another child layout request.
++    // A pending->request feedback loop would never become ready.
++    pending(); return;
++  }
++  if (value.type === 'p00-root-ready') {
++    if (value.request !== childLayoutRequest
++        || !Number.isSafeInteger(value.layoutGeneration) || value.layoutGeneration < lastChildGeneration
++        || value.layoutGeneration === lastChildGeneration && childReady
++        || !value.viewport || !Number.isFinite(value.viewport.width) || !Number.isFinite(value.viewport.height)
++        || Math.abs(value.viewport.width-frame.clientWidth)>1
++        || Math.abs(value.viewport.height-frame.clientHeight)>1) return;
++    if (value.layoutGeneration > lastChildGeneration) pending();
++    state.targetCount = value.targetCount;
++    lastChildGeneration = value.layoutGeneration;
++    childReady = true;
++    state.shadowRoots = value.shadowRoots;
++    state.slots = value.slots;
++    state.shadowDepthMin = value.shadowDepthMin;
++    state.shadowDepthMax = value.shadowDepthMax;
++    state.frameHops = value.frameHops+1;
++    state.clippedSentinels = value.clippedSentinels;
++    state.physicalButtons = value.physicalButtons;
++    state.leafViewport = value.leafViewport;
++    ready(state.layoutGeneration);
++  } else if (value.type === 'p00-root-focused') {
++    if (!state.ready || focusLayoutGeneration !== state.layoutGeneration
++        || value.request !== focusGeneration || value.layoutRequest !== childLayoutRequest) return;
++    state.focused = value.focused === true && document.hasFocus() && document.activeElement === frame;
++    if (state.focused) focusWanted = false;
++    send('p00-root-focused',{focused:state.focused,request:parentFocusRequest,
++      layoutRequest:parentLayoutRequest});
++  }
++});
++function button(index, name = 'Leaf '+index) {
++  const value = document.createElement('button');
++  value.type = 'button'; value.id = 'leaf-'+index;
++  value.textContent = 'x'; value.setAttribute('aria-label',name);
++  value.style.cssText = 'position:absolute;display:block;color:black;font:1px sans-serif;line-height:1;border:0;padding:0;';
++  return value;
++}
++function layout() {
++  const generation = pending();
++  const width = container ? container.clientWidth : innerWidth;
++  const height = container ? container.clientHeight : innerHeight;
++  const columns = freshControl ? 1 : requested === 500 ? 20 : requested === 1000 ? 40 : 100;
++  const rows = Math.ceil(requested/columns);
++  const cellWidth = (width-24)/columns, cellHeight = (height-24)/rows;
++  for (let index=0;index<targets.length;++index) {
++    const w = Math.max(2,Math.min(12,cellWidth/2));
++    const h = Math.max(2,Math.min(10,cellHeight/2));
++    Object.assign(targets[index].style,{
++      left:(12+(index%columns+.5)*cellWidth-w/2)+'px',
++      top:(12+(Math.floor(index/columns)+.5)*cellHeight-h/2)+'px',
++      width:w+'px',height:h+'px'
++    });
++  }
++  if (container) {
++    const clipped = document.getElementById('leaf-clipped');
++    clipped.style.left = (width+2)+'px';
++  }
++  state.targetCount = targets.filter(value=>value.isConnected).length;
++  const roots = new Set(), slots = new Set(), depths = [];
++  for (const control of targets) {
++    let node = control, depth = 0;
++    while (node) {
++      const assigned = node.assignedSlot;
++      if (assigned) slots.add(assigned);
++      const root = (assigned || node).getRootNode();
++      if (!root.host) break;
++      roots.add(root); ++depth; node = root.host;
++    }
++    depths.push(depth);
++  }
++  state.shadowRoots = roots.size; state.slots = slots.size;
++  state.shadowDepthMin = Math.min(...depths); state.shadowDepthMax = Math.max(...depths);
++  state.physicalButtons = state.targetCount + (container ?
++    ['leaf-clipped','leaf-covered'].filter(id=>document.getElementById(id).isConnected).length : 0);
++  state.leafViewport = {width:innerWidth,height:innerHeight};
++  requestAnimationFrame(()=>requestAnimationFrame(()=>ready(generation)));
++}
++document.addEventListener('DOMContentLoaded',()=>{
++  const level = parameters.has('remaining') ? remaining : frameShape ? 2 : 0;
++  if (level > 0) {
++    const child = new URL(location.href);
++    child.searchParams.set('remaining',String(level-1));
++    child.searchParams.set('parentOrigin',location.origin);
++    if (shape === 'foreign-2') child.hostname = location.hostname === '127.0.0.1' ? 'localhost' : '127.0.0.1';
++    childOrigin = child.origin;
++    frame = document.createElement('iframe'); frame.id = 'root-frame'; frame.src = child.href;
++    frame.addEventListener('load',()=>{
++      // The WindowProxy can survive a document replacement, while its local
++      // generation restarts. A new request fences every old acknowledgment.
++      lastChildGeneration = -1; childReady = false; resize();
++    });
++    document.body.append(frame);
++    initialized = true;
++    window.addEventListener('resize',resize);
++    resize();
++    return;
++  }
++  const fragment = document.createDocumentFragment();
++  if (shape === 'clipping') {
++    container = document.createElement('section');
++    container.style.cssText = 'position:fixed;left:12px;top:12px;width:calc(100% - 36px);height:calc(100% - 36px);overflow:hidden;';
++    document.body.append(container);
++  }
++  for (let index=0;index<requested;++index) {
++    const control = button(index); targets.push(control);
++    if (shape === 'shadow-2' || shape === 'slots') {
++      const host = document.createElement('div'); host.id = 'host-'+index; host.style.display='contents';
++      const root = host.attachShadow({mode:'open'}); ++state.shadowRoots;
++      if (shape === 'shadow-2') {
++        const inner = document.createElement('div'); inner.style.display='contents'; root.append(inner);
++        inner.attachShadow({mode:'open'}).append(control); ++state.shadowRoots;
++      } else {
++        const slot = document.createElement('slot'); slot.name='leaf'; root.append(slot);
++        control.slot='leaf'; host.append(control); ++state.slots;
++      }
++      fragment.append(host);
++    } else fragment.append(control);
++  }
++  (container || document.body).append(fragment);
++  if (container) {
++    const clipped = button('clipped','Excluded clipped');
++    Object.assign(clipped.style,{top:'2px',width:'12px',height:'8px'}); container.append(clipped);
++    const covered = button('covered','Excluded covered');
++    Object.assign(covered.style,{left:'2px',top:'2px',width:'8px',height:'8px'}); container.append(covered);
++    const cover = document.createElement('div');
++    cover.style.cssText='position:absolute;left:0;top:0;width:12px;height:12px;background:black;z-index:2;';
++    container.append(cover); state.clippedSentinels=2;
++  }
++  initialized = true;
++  window.addEventListener('resize',resize); layout();
++});
++</script>

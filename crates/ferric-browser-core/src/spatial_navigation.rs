@@ -321,6 +321,8 @@ pub struct SpatialScope {
     pub frame_path: String,
     pub kind: crate::HintKind,
     pub configuration_revision: u64,
+    /// Family whose frozen selector policy authorized this scope.
+    pub selector_family: String,
     pub selector_policy_revision: u64,
     pub scroll_revision: u64,
     pub css_viewport_width_bits: u64,
@@ -334,6 +336,20 @@ impl SpatialScope {
         !self.lease_id.is_empty()
             && self.lease_id.len() <= 128
             && self.element_id > 0
+            && matches!(
+                self.selector_family.as_str(),
+                "all"
+                    | "links"
+                    | "inputs"
+                    | "buttons"
+                    | "images"
+                    | "media"
+                    | "scrollables"
+                    | "regions"
+                    | "surfaces"
+                    | "actions"
+                    | "focus"
+            )
             && !self.frame_path.is_empty()
             && self.frame_path.len() <= 256
             && matches!(
@@ -1013,11 +1029,38 @@ mod tests {
             frame_path: "0".to_owned(),
             kind: crate::HintKind::Region,
             configuration_revision: 3,
+            selector_family: "regions".into(),
             selector_policy_revision: 9,
             scroll_revision: 0,
             css_viewport_width_bits: 1000.0_f64.to_bits(),
             css_viewport_height_bits: 700.0_f64.to_bits(),
             zoom_factor_bits: 1.0_f64.to_bits(),
+        }
+    }
+
+    #[test]
+    fn scope_preserves_supported_selector_family_identity() {
+        for family in [
+            "all",
+            "links",
+            "inputs",
+            "buttons",
+            "images",
+            "media",
+            "scrollables",
+            "regions",
+            "surfaces",
+            "actions",
+            "focus",
+        ] {
+            let mut scope = region_scope();
+            scope.selector_family = family.into();
+            assert!(scope.is_valid());
+        }
+        for family in ["", "unknown", "REGIONS"] {
+            let mut scope = region_scope();
+            scope.selector_family = family.into();
+            assert!(!scope.is_valid());
         }
     }
 

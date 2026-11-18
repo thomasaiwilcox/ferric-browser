@@ -136,10 +136,12 @@ TestCase {
                 "function __profiledComputedStyleInner(element,view,styleCache){",
                 "computed style cache")
         }
-        var profilesLocalHit = source.indexOf("function ftHit(element,rect,linkAlias){") >= 0
+        var localHitSignature=source.indexOf("function ftHit(element,rect,linkAlias,cache){")>=0
+                ?"function ftHit(element,rect,linkAlias,cache){":"function ftHit(element,rect,linkAlias){"
+        var profilesLocalHit = source.indexOf(localHitSignature) >= 0
         if (profilesLocalHit) {
-            source = replaceOnce(source, "function ftHit(element,rect,linkAlias){",
-                "function __profiledLocalHitInner(element,rect,linkAlias){", "local hit test")
+            source = replaceOnce(source, localHitSignature,
+                localHitSignature.replace("function ftHit(","function __profiledLocalHitInner("), "local hit test")
         }
         var profilesAncestorChain = source.indexOf("function ftStyleChainVisible(element,view,policy,cache){") >= 0
         if (profilesAncestorChain) {
@@ -209,10 +211,10 @@ TestCase {
                     + "try{return __profiledClippedRectInner.apply(null,arguments);}"
                     + "finally{__profile.clip_rect_ms+=performance.now()-started;}}"
         }
-        source = replaceOnce(source,
-            "const out=[];const seen=new Set();const activeIds=new Set();",
-            prelude + "const out=[];const seen=new Set();const activeIds=new Set();",
-            "collector prelude")
+        var collectorPrelude=source.indexOf("const out=[];seen=new Set();const activeIds=new Set();")>=0
+                ?"const out=[];seen=new Set();const activeIds=new Set();"
+                :"const out=[];const seen=new Set();const activeIds=new Set();"
+        source = replaceOnce(source,collectorPrelude,prelude+collectorPrelude,"collector prelude")
         if (source.indexOf("__profile.root_traversal_ms+=") < 0
                 || source.indexOf("__profile.selector_match_ms+=") < 0)
             throw new Error("T043 instrumentation did not find traversal and selector stages")
@@ -235,6 +237,52 @@ TestCase {
             + "ancestor_chain_cache_hits:__profile.ancestor_chain_cache_hits}}",
             "collector result")
         return source
+    }
+
+    // One-shot component diagnosis, separate from the unprofiled release samples.
+    function test_P15_hit_cache_is_per_collection() {
+        page.loaded=false
+        page.loadHtml("<!doctype html><style>a{position:absolute;top:20px;width:30px;height:20px}</style>"
+            +"<a id=a href='#a' style='left:20px'>A</a><a id=b href='#b' style='left:70px'>B</a>"
+            +"<a id=c href='#c' style='left:120px'>C</a><a id=d href='#d' style='left:170px'>D</a>")
+        tryVerify(function(){return page.loaded},10000)
+        evaluate("window.p15HitCalls=0;const original=document.elementFromPoint.bind(document);document.elementFromPoint=function(x,y){p15HitCalls++;return original(x,y)};true")
+        var source=BrowserScripts.hintCollector("links")
+        var first=evaluate(source)
+        compare(first.candidates.length,4)
+        compare(evaluate("p15HitCalls"),4,"Repeated preference checks reuse the same native point query")
+        evaluate("const cover=document.createElement('div');cover.style='position:absolute;left:20px;top:20px;width:30px;height:20px;z-index:10;background:black';document.body.append(cover);true")
+        var second=evaluate(source)
+        compare(second.candidates.length,3,"A fresh collection sees the new occluder")
+        verify(evaluate("p15HitCalls")>4,"No hit result survives the collection")
+        evaluate(BrowserScripts.hintStopTracking())
+    }
+    function test_P15_cold_diagnostic_data() {
+        return [{tag:"500",count:500},{tag:"1000",count:1000},{tag:"5000",count:5000}]
+    }
+    function test_P15_native_hit_cost_data() {return test_P15_cold_diagnostic_data()}
+    function test_P15_native_hit_cost(data) {
+        page.loaded=false
+        page.url=Qt.resolvedUrl("../fixtures/site-policy/render-targets.html?count="+data.count)
+        tryVerify(function(){return page.loaded},10000)
+        tryVerify(function(){return evaluate("document.body.dataset.ready")==="true"},10000)
+        var measured=runTimed("(()=>{const began=performance.now(),links=Array.from(document.querySelectorAll('a')),rects=links.map(el=>el.getBoundingClientRect()),ready=performance.now();let matched=0;for(let i=0;i<links.length;i++){const r=rects[i];if(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)===links[i])matched++;}return {layout_ms:ready-began,hit_ms:performance.now()-ready,matched:matched}})()")
+        compare(measured.value.matched,data.count)
+        console.info("FERRIC_P15_NATIVE_HIT_DIAGNOSTIC "+JSON.stringify({count:data.count,measurement:measured.value,round_trip_ms:measured.round_trip_ms}))
+    }
+    function test_P15_cold_diagnostic(data) {
+        page.loaded=false
+        page.url=Qt.resolvedUrl("../fixtures/site-policy/render-targets.html?count="+data.count)
+        tryVerify(function(){return page.loaded},10000)
+        tryVerify(function(){return evaluate("document.body.dataset.ready")==="true"},10000)
+        var source=BrowserScripts.hintCollector("all")
+        var timed=runTimed("(()=>{const began=performance.now();const result="+source+";return {script_ms:performance.now()-began,result:result}})()")
+        compare(timed.value.result.candidates.length,data.count)
+        console.info("FERRIC_P15_COLLECTOR_DIAGNOSTIC "+JSON.stringify({count:data.count,script_ms:timed.value.script_ms,round_trip_ms:timed.round_trip_ms}))
+        var profiled=runTimed(profiledCollectorScript(source))
+        compare(profiled.value.candidates.length,data.count)
+        console.info("FERRIC_P15_STAGE_DIAGNOSTIC "+JSON.stringify({count:data.count,stages:profiled.value.profile}))
+        evaluate(BrowserScripts.hintStopTracking())
     }
 
     function test_T043_samples_data() {

@@ -360,6 +360,7 @@ mod tests {
             privacy: PrivacyKind::Ephemeral,
             storage: ProfileStorage::Transient,
             base_configuration: config,
+            base_authored: std::sync::Arc::default(),
             initial_profile_overrides: RuntimeOverrides::default(),
             command_line_overrides: RuntimeOverrides::default(),
             config_path: None,

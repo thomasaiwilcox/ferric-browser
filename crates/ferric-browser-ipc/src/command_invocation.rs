@@ -241,6 +241,72 @@ mod tests {
     }
 
     #[test]
+    fn raw_passthrough_round_trips_and_rejects_invalid_envelopes() {
+        for mode in [
+            "passthrough",
+            "pass-through",
+            "passthrough-once",
+            "pass-through-once",
+        ] {
+            let command = ferric_browser_core::ParsedCommand {
+                name: "mode-enter".into(),
+                arguments: vec![mode.into(), "--raw".into()],
+            };
+            let envelope = encode_command(&command).unwrap();
+            assert_eq!(envelope["arguments"], json!({"mode":mode,"raw":true}));
+            assert_eq!(
+                decode_command_invocation(&envelope).unwrap().command,
+                command
+            );
+            let binding = ferric_browser_core::ParsedCommand {
+                name: "bind".into(),
+                arguments: vec!["u".into(), "mode-enter".into(), mode.into(), "--raw".into()],
+            };
+            assert_eq!(
+                decode_command_invocation(&encode_command(&binding).unwrap())
+                    .unwrap()
+                    .command
+                    .arguments,
+                [
+                    "--mode".to_owned(),
+                    "normal".to_owned(),
+                    "u".to_owned(),
+                    format!("mode-enter {mode} --raw")
+                ]
+            );
+        }
+        for mode in [
+            "normal",
+            "insert",
+            "insert-locked",
+            "caret",
+            "hint",
+            "bogus",
+        ] {
+            assert!(
+                decode_command_invocation(
+                    &json!({"command":"mode-enter","arguments":{"mode":mode,"raw":true}})
+                )
+                .is_err()
+            );
+        }
+        for raw in [json!(null), json!(1), json!("true"), json!([])] {
+            assert!(
+                decode_command_invocation(
+                    &json!({"command":"mode-enter","arguments":{"mode":"passthrough","raw":raw}})
+                )
+                .is_err()
+            );
+        }
+        assert!(decode_command_invocation(&json!({"command":"mode-enter","arguments":{"mode":"passthrough","raw":true,"unknown":true}})).is_err());
+        let duplicate = ferric_browser_core::ParsedCommand {
+            name: "mode-enter".into(),
+            arguments: vec!["passthrough".into(), "--raw".into(), "--raw".into()],
+        };
+        assert!(encode_command(&duplicate).is_err());
+    }
+
+    #[test]
     fn locked_insert_binding_commands_round_trip_through_the_public_envelope() {
         for text in [
             "bind --mode insert-locked Escape mode-enter normal",

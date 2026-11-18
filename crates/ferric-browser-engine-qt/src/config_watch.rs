@@ -1,7 +1,7 @@
 //! Portable configuration-file watching with an inotify fast path on Linux.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
     sync::{
@@ -28,11 +28,12 @@ pub(super) struct ConfigWatch {
     #[cfg(target_os = "linux")]
     thread: Option<thread::JoinHandle<()>>,
     watched_paths: Vec<PathBuf>,
+    sources: BTreeSet<PathBuf>,
     signatures: BTreeMap<PathBuf, WatchSignature>,
     pending_since: Option<Instant>,
 }
 
-fn watch_signature(path: &Path) -> WatchSignature {
+fn watch_signature(path: &Path, source: bool) -> WatchSignature {
     let Ok(metadata) = fs::symlink_metadata(path) else {
         return WatchSignature {
             exists: false,
@@ -41,6 +42,16 @@ fn watch_signature(path: &Path) -> WatchSignature {
             modified_ns: None,
         };
     };
+    // Parent watches detect source replacement/disappearance. Their unrelated
+    // directory entries must not turn an explicit export into a config reload.
+    if metadata.is_dir() && !source {
+        return WatchSignature {
+            exists: true,
+            is_directory: true,
+            length: 0,
+            modified_ns: None,
+        };
+    }
     let modified_ns = metadata
         .modified()
         .ok()
@@ -59,6 +70,7 @@ impl ConfigWatch {
     fn new() -> Self {
         Self {
             watched_paths: Vec::new(),
+            sources: BTreeSet::new(),
             signatures: BTreeMap::new(),
             pending_since: None,
         }
@@ -71,6 +83,7 @@ impl ConfigWatch {
             stop: None,
             thread: None,
             watched_paths: Vec::new(),
+            sources: BTreeSet::new(),
             signatures: BTreeMap::new(),
             pending_since: None,
         }
@@ -87,10 +100,16 @@ impl ConfigWatch {
         }
         paths.sort();
         paths.dedup();
+        self.sources = source_paths.into_iter().collect();
         self.watched_paths = paths.clone();
         self.signatures = paths
             .iter()
-            .map(|path| (path.clone(), watch_signature(path)))
+            .map(|path| {
+                (
+                    path.clone(),
+                    watch_signature(path, self.sources.contains(path)),
+                )
+            })
             .collect();
         #[cfg(target_os = "linux")]
         self.start_inotify(&paths);
@@ -118,7 +137,21 @@ impl ConfigWatch {
             .iter()
             .filter_map(|path| path.parent().map(Path::to_owned))
             .collect::<std::collections::BTreeSet<_>>();
-        let Some((receiver, stop, thread)) = spawn_inotify_watcher(directories) else {
+        let source_directories = self
+            .sources
+            .iter()
+            .filter(|path| {
+                self.signatures
+                    .get(*path)
+                    .is_some_and(|signature| signature.is_directory)
+            })
+            .cloned()
+            .collect();
+        let Some((receiver, stop, thread)) = spawn_inotify_watcher(
+            directories,
+            paths.iter().cloned().collect(),
+            source_directories,
+        ) else {
             return;
         };
         self.receiver = Some(receiver);
@@ -174,7 +207,7 @@ impl ConfigWatch {
     fn poll_signatures_changed(&mut self) -> bool {
         let mut changed = false;
         for path in &self.watched_paths {
-            let signature = watch_signature(path);
+            let signature = watch_signature(path, self.sources.contains(path));
             if self.signatures.get(path).copied() != Some(signature) {
                 changed = true;
                 self.signatures.insert(path.clone(), signature);
@@ -201,6 +234,8 @@ impl Drop for ConfigWatch {
 #[allow(unsafe_code)]
 fn spawn_inotify_watcher(
     directories: std::collections::BTreeSet<PathBuf>,
+    targets: BTreeSet<PathBuf>,
+    source_directories: BTreeSet<PathBuf>,
 ) -> Option<(
     std::sync::mpsc::Receiver<()>,
     Arc<AtomicBool>,
@@ -218,16 +253,20 @@ fn spawn_inotify_watcher(
         | libc::IN_CREATE
         | libc::IN_DELETE
         | libc::IN_ATTRIB
-        | libc::IN_MODIFY;
-    let mut watched = false;
+        | libc::IN_MODIFY
+        | libc::IN_MOVE_SELF
+        | libc::IN_DELETE_SELF;
+    let mut watched: BTreeMap<i32, Vec<PathBuf>> = BTreeMap::new();
     for directory in directories {
         let Ok(path) = std::ffi::CString::new(directory.as_os_str().as_bytes()) else {
             continue;
         };
         let watch = unsafe { libc::inotify_add_watch(descriptor, path.as_ptr(), mask) };
-        watched |= watch >= 0;
+        if watch >= 0 {
+            watched.entry(watch).or_default().push(directory);
+        }
     }
-    if !watched {
+    if watched.is_empty() {
         unsafe {
             libc::close(descriptor);
         }
@@ -251,7 +290,18 @@ fn spawn_inotify_watcher(
                 if ready > 0 && pollfd.revents & libc::POLLIN != 0 {
                     let read =
                         unsafe { libc::read(descriptor, buffer.as_mut_ptr().cast(), buffer.len()) };
-                    if read > 0 {
+                    if read > 0
+                        && usize::try_from(read).ok().is_none_or(|count| {
+                            buffer.get(..count).is_none_or(|bytes| {
+                                inotify_events_relevant(
+                                    bytes,
+                                    &watched,
+                                    &targets,
+                                    &source_directories,
+                                )
+                            })
+                        })
+                    {
                         let _ = sender.send(());
                     }
                 }
@@ -262,6 +312,55 @@ fn spawn_inotify_watcher(
         })
         .ok()?;
     Some((receiver, stop, thread))
+}
+
+#[cfg(target_os = "linux")]
+fn inotify_events_relevant(
+    mut bytes: &[u8],
+    watched: &BTreeMap<i32, Vec<PathBuf>>,
+    targets: &BTreeSet<PathBuf>,
+    source_directories: &BTreeSet<PathBuf>,
+) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    while !bytes.is_empty() {
+        // Linux inotify headers are four native-endian 32-bit words followed
+        // by a bounded, NUL-padded filename. Parse slices without pointer casts.
+        if bytes.len() < 16 {
+            return true;
+        }
+        let descriptor = i32::from_ne_bytes(bytes[..4].try_into().expect("checked header"));
+        let mask = u32::from_ne_bytes(bytes[4..8].try_into().expect("checked header"));
+        let length = u32::from_ne_bytes(bytes[12..16].try_into().expect("checked header"));
+        let Some(end) = usize::try_from(length)
+            .ok()
+            .and_then(|length| length.checked_add(16))
+        else {
+            return true;
+        };
+        if end > bytes.len() || mask & libc::IN_Q_OVERFLOW != 0 {
+            return true;
+        }
+        let Some(paths) = watched.get(&descriptor) else {
+            return true;
+        };
+        let name = &bytes[16..end];
+        let name = &name[..name
+            .iter()
+            .position(|byte| *byte == 0)
+            .unwrap_or(name.len())];
+        if name.is_empty() {
+            return true;
+        }
+        let name = std::ffi::OsStr::from_bytes(name);
+        if paths
+            .iter()
+            .any(|path| source_directories.contains(path) || targets.contains(&path.join(name)))
+        {
+            return true;
+        }
+        bytes = &bytes[end..];
+    }
+    false
 }
 
 #[cfg(test)]

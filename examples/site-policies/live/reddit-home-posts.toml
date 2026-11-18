@@ -1,0 +1,40 @@
+# Opt-in live example checked on 15 November 2026. Family all only.
+# Signed-out home variant: code 1 Live; 2 and 3 Missing and reserved.
+# Missing code 2 did not activate; code 1 followed the public post title.
+# An earlier feed variant returned Incomplete. Recapture and preview first.
+format = "ferric-site-interaction"
+format_version = 1
+required_capabilities = [
+    "collections-v1",
+    "explicit-roots-v1",
+    "interaction-policy-v1",
+    "predicates-v1",
+]
+
+[[rules]]
+operation = "upsert-interaction"
+id = "reddit-live-visible-20261115"
+pattern = "https://www.reddit.com/"
+priority = 0
+
+[rules.interaction]
+enabled = true
+
+[[rules.interaction.collections]]
+id = "posts"
+families = ["all"]
+codes = [
+    "1",
+    "2",
+    "3",
+]
+item_selector = "shreddit-post"
+order = "top-to-bottom"
+container_selector = "shreddit-feed"
+primary_root_steps = []
+primary_selector = "a.block"
+identity_attributes = ["id"]
+
+[rules.interaction.collections.root]
+start = "top-document"
+steps = []

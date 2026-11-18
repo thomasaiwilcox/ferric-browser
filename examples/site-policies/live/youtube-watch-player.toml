@@ -1,0 +1,22 @@
+# Opt-in live example, manually checked on 15 November 2026.
+# One-shot p->k tested using virtual Wayland input on one public video.
+# Hint-context and physical-hardware delivery remain unqualified.
+# /watch scope covers all video queries; review and test before applying.
+format = "ferric-site-interaction"
+format_version = 1
+
+[[rules]]
+operation = "upsert-interaction"
+id = "youtube-live-player-20261115"
+pattern = "https://www.youtube.com/watch"
+priority = 0
+
+[rules.interaction]
+enabled = true
+hint_page_keys = ["p"]
+
+[[rules.interaction.remaps]]
+id = "play"
+from = "p"
+to = "k"
+contexts = ["hint-page-key", "passthrough-once"]

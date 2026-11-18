@@ -18,10 +18,82 @@ use ferric_browser_core::{MixedPolicyLayer, resolve_mixed_key_policy};
 use serde::{Deserialize, Serialize};
 
 mod appearance;
+mod binding_config;
 mod browser_config;
 mod config_model;
+mod configuration_diagnostic;
+mod configuration_sources;
+pub use configuration_diagnostic::MAX_CONFIGURATION_DIAGNOSTIC_BYTES;
+pub use configuration_sources::{
+    AuthoredHintSelectors, AuthoredHints, ConfigurationSourceDocument, ConfigurationSources,
+};
 mod download_directory;
+mod interaction_capabilities;
+mod interaction_codebook;
+pub use interaction_codebook::CompiledInvocationHintCodebook;
+mod interaction_effective;
+mod interaction_keys;
+mod interaction_name;
+mod interaction_predicate_match;
+pub use interaction_predicate_match::{
+    CompiledInteractionAttributeTest, CompiledInteractionHrefMatch, CompiledInteractionPredicates,
+    CompiledInteractionRoleMatch, InteractionAttributeEvidence, InteractionPredicateEvidenceError,
+    InteractionPredicateFacts, InteractionPredicateWork, MAX_INTERACTION_HREF_EVIDENCE_BYTES,
+    MAX_INTERACTION_PREDICATE_STEPS,
+};
+mod interaction_policy;
+pub use interaction_capabilities::{
+    NativeReceiverScopeRequirement, NativeRemapCapabilityRequirement, PageKeyDestinationClass,
+};
+pub use interaction_effective::*;
+pub use interaction_keys::{CompiledInteractionKeys, CompiledInteractionRemap};
+pub use interaction_name::{
+    CompiledInteractionNameMatch, InteractionNameEvidence, InteractionNameEvidenceError,
+    InteractionNameOperator, MAX_INTERACTION_NAME_EVIDENCE_BYTES,
+    MAX_INTERACTION_NAME_EVIDENCE_CHARS,
+};
+mod interaction_predicates;
+pub use interaction_policy::*;
+mod interaction_roots;
+mod interaction_selector;
+mod interaction_selectors;
+pub use interaction_selectors::InteractionSelectorSource;
+mod interaction_validation;
+mod site_policy_interchange;
+mod site_policy_limits;
+pub use site_policy_interchange::{
+    SITE_POLICY_EXCHANGE_CAPABILITIES, SitePolicyExchange, SitePolicyExchangeOperation,
+};
+mod site_policy_rules;
+mod site_policy_section;
+mod site_policy_shared;
 pub use download_directory::DownloadDirectory;
+pub use interaction_predicates::{
+    InteractionAttributeTest, InteractionHrefMatch, InteractionNameMatch, InteractionNumericRange,
+    InteractionPredicates, InteractionTextCase, MAX_INTERACTION_ATTRIBUTE_TESTS,
+    MAX_INTERACTION_MATCH_BYTES, validate_interaction_attribute_name,
+};
+pub use interaction_roots::{
+    InteractionPageReceiver, InteractionRoot, InteractionRootStart, InteractionRootStep,
+    InteractionRootStepKind, MAX_INTERACTION_RECEIVER_ORIGINS, MAX_INTERACTION_ROOT_STEPS,
+    MAX_INTERACTION_SELECTOR_BYTES, is_canonical_interaction_origin,
+    validate_interaction_primary_root_steps,
+};
+pub use interaction_selector::{
+    InteractionSelector, InteractionSelectorAttributeOperator, InteractionSelectorError,
+    InteractionSelectorRelation, InteractionSelectorStep, InteractionSelectorTest,
+};
+pub use interaction_validation::StaticInteractionValidation;
+pub use site_policy_limits::{
+    MAX_SITE_POLICY_IMPORT_OPERATIONS, MAX_SITE_POLICY_INTERCHANGE_BYTES,
+};
+pub use site_policy_rules::{
+    AuthoredSitePolicyArray, ReplacedSitePolicyArray, ResolvedSitePolicyRules,
+    RetiredSitePolicyRule, SelectedSitePolicyRule, SelectedSitePolicyRules, ShadowedSitePolicyRule,
+    SitePolicySelectionTrace, SitePolicySourceRevisions, SitePolicySurvivorTrace,
+    SurvivingSitePolicyRule, resolve_site_policy_rules, select_site_policy_rules,
+};
+pub use site_policy_section::{SitePolicySection, compose_site_policy_section};
 mod routing;
 mod runtime_config;
 mod selector_config;
@@ -55,8 +127,13 @@ use validation::{
 /// Configuration documents prior to v3 belong to the pre-application-layer
 /// layout and are intentionally not interpreted by this clean break.
 const CURRENT_SCHEMA_VERSION: u64 = 3;
-const MAX_INCLUDE_DEPTH: usize = 8;
-const MAX_TOTAL_BYTES: u64 = 2 * 1024 * 1024;
+pub const MAX_CONFIGURATION_INCLUDE_DEPTH: usize = 8;
+/// Existing outer configuration and per-source site-rule bound.
+pub const MAX_SITE_RULES: usize = 256;
+pub const MAX_CONFIGURATION_BYTES: u64 = 2 * 1024 * 1024;
+pub const MAX_SITE_RULE_SETTINGS: usize = 32;
+const MAX_INCLUDE_DEPTH: usize = MAX_CONFIGURATION_INCLUDE_DEPTH;
+const MAX_TOTAL_BYTES: u64 = MAX_CONFIGURATION_BYTES;
 const MAX_RUNTIME_SETTINGS: usize = 256;
 const MAX_RUNTIME_KEY_BYTES: usize = 256;
 const MAX_RUNTIME_VALUE_BYTES: usize = 16 * 1024;
@@ -71,12 +148,23 @@ pub struct SiteRule {
     pub priority: i32,
     #[serde(default)]
     pub set: BTreeMap<String, toml::Value>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::interaction_policy::deserialize_present_option"
+    )]
+    pub interaction: Option<InteractionPolicyPatch>,
 }
 
 /// Validates one site rule independently of the surrounding configuration.
 /// Runtime-generated rules use this same contract before they can be merged
 /// into the effective configuration.
 pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
+    if let Some(interaction) = &rule.interaction {
+        interaction
+            .validate_authored()
+            .map_err(|message| ConfigError::validation(format_args!("{message}")))?;
+    }
     if validate_slug(&rule.id, "site rule id").is_err() {
         return Err(ConfigError::Validation(
             "site rule IDs must be unique, nonempty, and lowercase slugs".into(),
@@ -87,13 +175,13 @@ pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
         || rule.pattern.chars().any(char::is_control)
         || parse_site_pattern(&rule.pattern).is_err()
     {
-        return Err(ConfigError::Validation(format!(
+        return Err(ConfigError::validation(format_args!(
             "site rule {} has an invalid HTTP(S) pattern",
             rule.id
         )));
     }
-    if rule.set.len() > 32 {
-        return Err(ConfigError::Validation(format!(
+    if rule.set.len() > MAX_SITE_RULE_SETTINGS {
+        return Err(ConfigError::validation(format_args!(
             "site rule {} has too many settings",
             rule.id
         )));
@@ -145,7 +233,7 @@ pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
             _ => false,
         };
         if !setting_supports_site_scope(key) || !valid {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "site rule {} has an invalid or unsupported setting {key}",
                 rule.id
             )));
@@ -155,14 +243,14 @@ pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
                 .clone()
                 .try_into::<HintSelectorPolicy>()
                 .map_err(|error| {
-                    ConfigError::Validation(format!(
+                    ConfigError::validation(format_args!(
                         "site rule {} has an invalid selector policy for {key}: {error}",
                         rule.id
                     ))
                 })?;
             selector_rule_bytes = selector_rule_bytes.saturating_add(policy.selector_bytes());
             if selector_rule_bytes > MAX_SELECTOR_RULE_BYTES {
-                return Err(ConfigError::Validation(format!(
+                return Err(ConfigError::validation(format_args!(
                     "site rule {} exceeds the 16 KiB selector string limit",
                     rule.id
                 )));
@@ -202,7 +290,7 @@ fn set_private_file_mode(options: &mut fs::OpenOptions) {
 fn io_error(path: &Path, error: &std::io::Error) -> ConfigError {
     ConfigError::Io {
         path: path.to_owned(),
-        message: error.to_string(),
+        message: configuration_diagnostic::bounded_diagnostic(format_args!("{error}")),
     }
 }
 fn default_true() -> bool {

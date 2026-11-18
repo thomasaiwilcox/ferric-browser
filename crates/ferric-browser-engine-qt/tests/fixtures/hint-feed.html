@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><style>
+body{margin:0}article{height:380px;width:560px;border-bottom:1px solid gray}button,a{display:block;width:160px;height:24px}.scroll{overflow:auto;width:180px;height:40px}.spacer{height:120px}
+</style><button id="sticky" style="position:fixed;right:0;top:0">Sticky</button>
+<div style="position:absolute;top:-300px;overflow:visible"><button id="overflow" style="position:relative;top:350px;left:380px">Overflow descendant</button></div><main id="feed"></main><script>
+let serial=0;function post(){const p=document.createElement('article');p.id='post-'+serial++;for(let i=0;i<18;i++){const host=document.createElement('feed-control');p.append(host);const root=host.attachShadow({mode:'open'});root.innerHTML='<div class="scroll" style="overflow:auto;width:180px;height:32px"><a href="/post/'+p.id+'">Title '+i+'</a><div style="height:80px"></div></div><slot></slot>';const b=document.createElement('button');b.textContent='Action '+i;host.append(b);}return p;}
+for(let i=0;i<30;i++)feed.append(post());window.changeFeed=()=>{feed.children[5].replaceWith(post());feed.append(post());};
+</script>

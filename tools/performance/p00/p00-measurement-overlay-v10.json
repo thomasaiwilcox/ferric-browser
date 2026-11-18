@@ -1,0 +1,43 @@
+{
+  "status": "prepared-source-reviewed-build-pending",
+  "revision": "f2c5d6deebd97eb861084503f25613a6a819949d",
+  "supersedes": "v9 for stable ready starting frames; retain all v9 evidence",
+  "scope": "Same eight measurement-only paths. Untimed ready setup can follow a replacement authority for the same fixture, then verifies a stable starting frame. Each timed ready event requires the same session and epoch; queued events require an independently observed new session and pending key.",
+  "patch_sha256": "1c552d36eb87f1ace85deb9159fdd7abfc28cf33b7f7381c702d4f2c44de6288",
+  "materialization": "/home/tom/Projects/Ferric/ferric-browser/target/site-policy-baseline/p00-measurement-syntax/v10",
+  "synthetic_receipt_checks": "p00-ready-receipt-probe-v10/summary.json",
+  "inputs": {
+    "crates/ferric-browser-engine-qt/tests/application/tst_application.h": {
+      "original_sha256": "8528a154721cb4218a9fea413b2cf24229a4cc9ebdd0fa6fd36cb34f00b4dd62",
+      "overlay_sha256": "682af725a2c7d9ba78cc822f6dec8c3a8c0808566bde10c2c6f90bb383e9790a"
+    },
+    "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp": {
+      "original_sha256": "90dcb77f808959fcc0c9333edacf296d95c508b2709b2a6d68f9b27a469ca268",
+      "overlay_sha256": "6fe900b9995f6e953894444a8b15d2a7b9d5bd6b2f616fde1ddb60cd1a6e7d9d"
+    },
+    "crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt": {
+      "original_sha256": "74810e8d9ed99d1682c8f3cdbc79e1fb8b1f7badc82fe3f9bb11b481976b705b",
+      "overlay_sha256": "750768fe9fb186357713b748d4edf32b8486416393176d6b165e6c2987510eb5"
+    },
+    "crates/ferric-browser-engine-qt/tests/application/tst_site_policy_performance.cpp": {
+      "original_sha256": null,
+      "overlay_sha256": "cd7558b311f6409e97b2327c32fd97dc2b3e44ea9baba68127b63110ebc9e6be"
+    },
+    "crates/ferric-browser-engine-qt/tests/application/run_site_policy_performance.py": {
+      "original_sha256": null,
+      "overlay_sha256": "4411c5eeb62c817456fdb48c0a2acc48d1242a05f6407e23022880d5fde7cc4a"
+    },
+    "crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-targets.html": {
+      "original_sha256": null,
+      "overlay_sha256": "0e47faac4277aedca81630d52547a402c0bde6bde43ba16423b2b823501a594b"
+    },
+    "crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-refresh-targets.html": {
+      "original_sha256": null,
+      "overlay_sha256": "52d033948b49fa46d993bdeb5305139abe5091f86ebf0de8341f6ed1ec075814"
+    },
+    "crates/ferric-browser-engine-qt/tests/fixtures/site-policy/root-render-targets.html": {
+      "original_sha256": null,
+      "overlay_sha256": "f620df998ffa64e145c46cf4874c1837c36dea40a6707c56c8897a1a2bdf7600"
+    }
+  }
+}

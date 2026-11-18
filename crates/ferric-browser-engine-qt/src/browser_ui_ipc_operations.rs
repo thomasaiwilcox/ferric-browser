@@ -63,16 +63,25 @@ impl qobject::BrowserUi {
             .pending_selector_validation
             .as_ref()
             .is_some_and(|pending| pending.operation_id.as_deref() == Some(id));
-        let setting_feedback = if selector_cancelled {
-            this.configuration_io
-                .pending_selector_validation
-                .take()
-                .and_then(|pending| pending.setting_feedback)
+        let preview = this
+            .configuration_io
+            .site_policy_preview
+            .as_ref()
+            .filter(|pending| format!("op-{}", pending.prepared.receipt().id) == id)
+            .map(|pending| pending.prepared.receipt().id.clone());
+        let cancelled = if selector_cancelled {
+            this.configuration_io.pending_selector_validation.take()
         } else {
             None
         };
         cancel_pending_selection_operation(this, id);
         drop(rust);
+        if let Some(preview) = preview {
+            self.as_mut()
+                .site_policy_preview_cancel(&QString::from(preview));
+        }
+        let setting_feedback = cancelled
+            .and_then(super::browser_ui_configuration_preparation::finish_replaced_preparation);
         if selector_cancelled {
             self.as_mut().finish_setting_feedback(
                 setting_feedback,

@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Frame chain and opaque-origin baseline subjects</title>
+<style>body { margin: 12px } iframe { width: 600px; height: 180px; display:block; margin:8px }</style>
+<iframe id="chain" title="Same-origin frame chain"></iframe>
+<iframe id="foreign" title="Opaque-origin focused receiver" sandbox="allow-scripts"></iframe>
+<script>
+  const foreign = document.querySelector('#foreign');
+  window.frameFixture = { ready: false, focused: false, origin: '', activations: 0 };
+  addEventListener('message', event => {
+    if (event.source !== foreign.contentWindow) return;
+    if (event.data === 'fixture-ready') {
+      frameFixture.ready = true;
+      frameFixture.origin = event.origin;
+    }
+    if (event.data === 'fixture-focused') frameFixture.focused = true;
+    if (event.data === 'fixture-activated') ++frameFixture.activations;
+  });
+  document.querySelector('#chain').srcdoc = `<!doctype html>
+    <iframe id="inner" style="width:500px;height:100px" srcdoc="<!doctype html><a id='deep-primary' href='#deep'>Deep frame primary</a>"></iframe>`;
+  foreign.srcdoc = `<!doctype html><input id="receiver" aria-label="Foreign editor">
+    <a href="#foreign" onclick="parent.postMessage('fixture-activated','*')">Foreign primary</a>
+    <script>
+      addEventListener('message', event => {
+        if (event.source !== parent || event.data !== 'fixture-focus') return;
+        document.querySelector('input').focus();
+        if (document.activeElement.id === 'receiver') parent.postMessage('fixture-focused','*');
+      });
+      parent.postMessage('fixture-ready','*');
+    <\/script>`;
+</script>

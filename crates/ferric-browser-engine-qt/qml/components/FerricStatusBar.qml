@@ -11,6 +11,7 @@ Rectangle {
     required property var browserWindow
     required property bool statusVisible
     required property string mode
+    property bool rawPassthrough: false
     required property string displayUrl
     property string hintPreviewText: ""
     signal copyUrlRequested()
@@ -39,7 +40,7 @@ Rectangle {
     visible: statusVisible
 
     Accessible.name: "Browser status bar. " + mode + ". " + displayUrl
-        + ". " + hintPreviewText + ". " + statusText + accessibleDetails + ". " + ChromePresentation.inputModeDescription(mode)
+        + ". " + hintPreviewText + ". " + statusText + accessibleDetails + ". " + ChromePresentation.inputModeDescription(mode, rawPassthrough)
     Accessible.role: Accessible.StatusBar
 
     // The bar overlays WebEngine; unused chrome space must still own pointer input.
@@ -82,14 +83,14 @@ Rectangle {
             color: statusBar.modeColor()
             HoverHandler { id: modeHover }
             ToolTip.visible: modeHover.hovered && ChromePresentation.passThroughMode(statusBar.mode)
-            ToolTip.text: ChromePresentation.inputModeDescription(statusBar.mode)
+            ToolTip.text: ChromePresentation.inputModeDescription(statusBar.mode, statusBar.rawPassthrough)
 
             Label {
                 textFormat: Text.PlainText
                 id: statusModeLabel
                 objectName: "inputModeLabel"
                 anchors.centerIn: parent
-                text: ChromePresentation.inputModeLabel(statusBar.mode)
+                text: ChromePresentation.inputModeLabel(statusBar.mode, statusBar.rawPassthrough)
                 color: statusBar.mode === "normal"
                        ? statusBar.browserWindow.primaryTextColor
                        : statusBar.browserWindow.contrastText(parent.color)

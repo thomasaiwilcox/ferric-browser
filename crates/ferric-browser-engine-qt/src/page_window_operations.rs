@@ -401,6 +401,7 @@ mod tests {
                     ProfileStorage::Durable(ferric_browser_storage::RootSpec::Base(root))
                 }),
                 base_configuration: configuration,
+                base_authored: std::sync::Arc::default(),
                 initial_profile_overrides: ferric_browser_config::RuntimeOverrides::default(),
                 command_line_overrides: ferric_browser_config::RuntimeOverrides::default(),
                 config_path: None,

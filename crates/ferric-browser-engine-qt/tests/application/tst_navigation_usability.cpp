@@ -427,7 +427,7 @@ void ApplicationTests::productPolishStopState() {
     QCOMPARE(evaluate(ui+".load_state").toString(),expected);
     QCOMPARE(before,active?1:phase=="failed"?4:3);
     QCOMPARE(after,active?5:phase=="failed"?4:3);
-    QCOMPARE(evaluate(ui+".current_url").toString(),view->property("url").toUrl().toString());
+    QTRY_COMPARE(evaluate(ui+".current_url").toString(),view->property("url").toUrl().toString());
     if(!active)QCOMPARE(events.count(),eventsBeforeStop);
     QCOMPARE(evaluate("JSON.stringify("+ui+".navigation_target_for_index("+ui+".active_tab_index))").toString(),target);
     if(phase=="complete") {
@@ -1189,8 +1189,10 @@ void ApplicationTests::urlCopyStatusBar() {
     // The default in-mode policy deliberately hides all status chrome in
     // Normal mode. Showing a copy control must not override that preference.
     QVERIFY(evaluate(ui + ".set_runtime_setting('ui.statusbar','in-mode',true)").toBool());
+    QTRY_COMPARE(evaluate(ui + ".setting_action_state").toString(), QString("succeeded"));
     QTRY_VERIFY(!button->isVisible());
     QVERIFY(evaluate(ui + ".set_runtime_setting('ui.statusbar','always',true)").toBool());
+    QTRY_COMPARE(evaluate(ui + ".setting_action_state").toString(), QString("succeeded"));
     QTRY_VERIFY(!evaluate(owner + ".tabStripVisible").toBool());
     QTRY_VERIFY(button->isVisible() && button->isEnabled());
     hostWindow->requestActivate();
@@ -1249,7 +1251,9 @@ void ApplicationTests::bottomChromeOverlay() {
     QVERIFY(host);
     QTRY_VERIFY(page("document.readyState==='complete' && !!document.getElementById('button')").toBool());
     QVERIFY(evaluate(ui + ".set_runtime_setting('ui.tabs','always',true)").toBool());
+    QTRY_COMPARE(evaluate(ui + ".setting_action_state").toString(), QString("succeeded"));
     QVERIFY(evaluate(ui + ".set_runtime_setting('ui.tab_position'," + quoted(tabPosition) + ",true)").toBool());
+    QTRY_COMPARE(evaluate(ui + ".setting_action_state").toString(), QString("succeeded"));
     evaluate(owner + ".commandNoticeVisible=false");
     auto notice = host->findChild<QQuickItem *>("profileHealthNotice");
     QVERIFY(notice);
@@ -1296,9 +1300,11 @@ void ApplicationTests::bottomChromeOverlay() {
     evaluate(owner + ".commandNoticeVisible=false");
     for (const auto policy : {"always", "never", "in-mode"}) {
         QVERIFY(evaluate(ui + ".set_runtime_setting('ui.statusbar','" + policy + "',true)").toBool());
+        QTRY_COMPARE(evaluate(ui + ".setting_action_state").toString(), QString("succeeded"));
         verifyStable();
     }
     QVERIFY(evaluate(ui + ".set_runtime_setting('ui.statusbar','always',true)").toBool());
+    QTRY_COMPARE(evaluate(ui + ".setting_action_state").toString(), QString("succeeded"));
     auto bar = host->findChild<QQuickItem *>("browserStatusBar");
     QVERIFY(bar);
     QTRY_VERIFY(bar->isVisible());
@@ -1348,6 +1354,7 @@ void ApplicationTests::bottomChromeOverlay() {
     QTest::qWait(100);
     QCOMPARE(page("window.allClicks||0").toInt(), clicks);
     QVERIFY(evaluate(ui + ".set_runtime_setting('ui.statusbar','never',true)").toBool());
+    QTRY_COMPARE(evaluate(ui + ".setting_action_state").toString(), QString("succeeded"));
     QTRY_VERIFY(!bar->isVisible());
     click();
     QTRY_COMPARE(page("window.allClicks||0").toInt(), clicks + 1);

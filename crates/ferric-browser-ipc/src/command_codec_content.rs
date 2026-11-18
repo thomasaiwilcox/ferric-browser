@@ -195,25 +195,13 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             serde_json::Value::Object(object)
         }
         "mode-enter" => {
-            if command.arguments.len() != 1
-                || !matches!(
-                    command.arguments[0].as_str(),
-                    "normal"
-                        | "insert"
-                        | "insert-locked"
-                        | "caret"
-                        | "passthrough"
-                        | "passthrough-once"
-                        | "pass-through"
-                        | "pass-through-once"
-                )
-            {
-                return Err(
-                    "mode-enter requires one of normal, insert, insert-locked, caret, passthrough, passthrough-once"
-                        .into(),
-                );
+            let options = ferric_browser_core::parse_mode_enter(&command.arguments)
+                .map_err(|error| error.to_string())?;
+            let mut arguments = serde_json::json!({"mode": command.arguments[0]});
+            if options.raw {
+                arguments["raw"] = serde_json::Value::Bool(true);
             }
-            serde_json::json!({"mode": command.arguments[0]})
+            arguments
         }
         "caret-move" => {
             if !(1..=3).contains(&command.arguments.len())

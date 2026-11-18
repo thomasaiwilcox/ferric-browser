@@ -3,10 +3,27 @@
 use crate::{BrowserApplication, ConfigurationLayers};
 use ferric_browser_config::{ConfigError, RuntimeOverrides};
 
+mod peer_adoption;
+mod shared_preflight;
+pub(crate) use shared_preflight::ProfileOpenContexts;
+pub(crate) use shared_preflight::{OwnerRegistration, PendingRootOwner, SharedOwnerRegistry};
+
 #[derive(Default)]
 pub(crate) struct ProfileConfiguration {
     pub(crate) revision: u64,
     pub(crate) runtime: Option<RuntimeOverrides>,
+}
+
+impl ProfileConfiguration {
+    pub(crate) fn revision_for(&self, runtime: &RuntimeOverrides) -> Result<u64, ConfigError> {
+        if self.runtime.as_ref() == Some(runtime) {
+            Ok(self.revision)
+        } else {
+            self.revision.checked_add(1).ok_or_else(|| {
+                ConfigError::validation(format_args!("profile configuration revision is exhausted"))
+            })
+        }
+    }
 }
 
 /// Persistent overrides use one file per state root, even when multiple named
@@ -15,6 +32,7 @@ pub(crate) struct ProfileConfiguration {
 pub(crate) struct SharedConfiguration {
     pub(crate) gate: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub(crate) state: std::sync::Mutex<ProfileConfiguration>,
+    pub(crate) owners: std::sync::Mutex<SharedOwnerRegistry>,
     pub(crate) userscript_gate: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -69,12 +87,12 @@ impl BrowserApplication {
         Ok(shared.revision)
     }
 
-    pub(crate) fn check_profile_configuration(
+    pub(crate) fn profile_configuration_revision_for(
         &self,
         layers: &ConfigurationLayers,
-    ) -> Result<(), ConfigError> {
+    ) -> Result<u64, ConfigError> {
         let Some(profile) = self.active_profile.as_ref() else {
-            return Ok(());
+            return Ok(0);
         };
         let shared = profile
             .session
@@ -91,10 +109,13 @@ impl BrowserApplication {
                 "Another window saved newer settings. Wait for synchronization and retry.".into(),
             ));
         }
-        Ok(())
+        Ok(shared.revision)
     }
 
-    pub(crate) fn initialize_profile_configuration(&self) -> Result<(), ConfigError> {
+    pub(crate) fn initialize_profile_configuration_from_runtime(
+        &self,
+        runtime: &RuntimeOverrides,
+    ) -> Result<(), ConfigError> {
         let Some(profile) = self.active_profile.as_ref() else {
             return Ok(());
         };
@@ -105,10 +126,10 @@ impl BrowserApplication {
             .state
             .lock()
             .map_err(|_| ConfigError::Validation("Profile settings are unavailable.".into()))?;
-        let runtime = &self.configuration.layers().runtime;
         if shared.runtime.is_none() {
+            let revision = shared.revision_for(runtime)?;
             shared.runtime = Some(runtime.clone());
-            shared.revision = shared.revision.saturating_add(1);
+            shared.revision = revision;
         }
         Ok(())
     }

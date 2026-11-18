@@ -1,0 +1,10 @@
+[[remaps]]
+id = "play"
+from = "p"
+to = "k"
+contexts = ["passthrough-once", "passthrough", "normal-page-key", "hint-page-key"]
+[[remaps]]
+id = "reverse"
+from = "k"
+to = "p"
+contexts = ["passthrough-once"]

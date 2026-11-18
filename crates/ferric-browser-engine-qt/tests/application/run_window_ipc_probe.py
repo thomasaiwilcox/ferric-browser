@@ -47,7 +47,7 @@ def main():
                     data += block
                 return data
 
-            def rpc(method, params, ok=True, allow_busy=False):
+            def rpc(method, params, ok=True, allow_busy=False, allow_private_pending=False):
                 nonlocal serial
                 serial += 1
                 packet = json.dumps({'id': str(serial), 'method': method, 'params': params}).encode()
@@ -59,6 +59,9 @@ def main():
                 assert result['id'] == str(serial), result
                 if allow_busy and result.get('error', {}).get('code') == 'E_BUSY':
                     return {}
+                if allow_private_pending and result.get('error', {}).get('code') == 'E_INVALID_ARGUMENT' \
+                        and result['error']['message'] == 'Private operation queries are disabled by configuration.':
+                    return None
                 if ok:
                     assert 'error' not in result, (method, params, result)
                     return result['result']
@@ -187,7 +190,9 @@ def main():
                 rpc('operations.query', {'window': private['id'], 'include_private': True}, ok=False)
                 setting = subprocess.run([*prefix, 'command', '--window', private['id'], '--', 'set', '--temp', 'ipc.private_queries=true'], env=env, capture_output=True, text=True, timeout=12)
                 assert setting.returncode == 0, (setting.stdout, setting.stderr)
-                visible = rpc('operations.query', {'window': private['id'], 'include_private': True})['operations']
+                visible = wait_for(lambda: rpc('operations.query',
+                    {'window': private['id'], 'include_private': True}, allow_private_pending=True),
+                    lambda value: value is not None)['operations']
                 assert any(row['operation_id'] == private_operation for row in visible), visible
                 record['checks'].append('private operations require configured explicit opt-in')
                 before_new = rpc('windows.query', {})

@@ -526,6 +526,17 @@ impl qobject::BrowserUi {
                 .finish_hint_pointer_action("Selected Hint target changed; no action was sent");
             return false;
         }
+        if self.as_ref().policy_hint_needs_freshness(&label)
+            && !super::hint_request_capture::consume_hint_anchor_confirmation(
+                self.as_mut().rust_mut().get_mut(),
+                &label,
+            )
+        {
+            self.as_mut().finish_hint_pointer_action(
+                "Policy Hint freshness was not confirmed; no action was sent",
+            );
+            return false;
+        }
         let dispatch_identity = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -667,6 +678,9 @@ impl qobject::BrowserUi {
                     session.id == owner.session
                         && session.target == owner.target
                         && session.configuration_revision == owner.configuration_revision
+                        && self
+                            .current_hint_selector_snapshot(&rust.hint_family.to_string())
+                            .is_ok_and(|policy| policy.revision == session.selector_policy_revision)
                 })
             && HintTarget {
                 tab: target.tab,
@@ -694,6 +708,10 @@ impl qobject::BrowserUi {
             this.interaction.hint_pointer_source = None;
             this.interaction.hint_session = None;
             this.interaction.hint_interaction = None;
+            this.interaction.hint_loading_interaction = None;
+            this.interaction.initial_hint = None;
+            this.interaction.hint_policy_proof = None;
+            this.interaction.confirmed_hint_anchor = None;
             this.interaction.hint_consumed.clear();
             this.hint_values = QString::default();
             this.pending_hint_action = None;

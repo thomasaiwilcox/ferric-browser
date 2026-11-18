@@ -108,6 +108,18 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn set_core_mode(mut self: Pin<&mut Self>, mode: Mode) {
+        self.as_mut().set_core_mode_with_raw(mode, false);
+    }
+
+    pub(super) fn set_core_mode_with_raw(mut self: Pin<&mut Self>, mode: Mode, raw: bool) {
+        // Bypass new transforms before epoch/mode notifications can reenter.
+        // Keep a departing raw session bypassed until the new Core mode exists.
+        if raw {
+            self.as_mut().set_raw_passthrough(true);
+        }
+        // Retire before Qt notifications, then discard any capture reentered
+        // during those notifications before publishing the completed mode.
+        self.as_mut().rust_mut().get_mut().interaction.hint_request = None;
         let epoch = self.as_ref().rust().input_epoch.wrapping_add(1);
         self.as_mut().set_input_epoch(epoch);
         let leaving_grid = self.as_ref().rust().core_mode == Mode::Grid && mode != Mode::Grid;
@@ -116,6 +128,7 @@ impl qobject::BrowserUi {
         }
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
+        this.interaction.hint_request = None;
         if !this.interaction.native_prompt_transition {
             this.interaction.native_prompt_leases.clear("mode-change");
         }
@@ -123,6 +136,10 @@ impl qobject::BrowserUi {
         this.navigation.pending_same_document_pass_through = None;
         if let Some(bindings) = this.bindings.as_mut() {
             bindings.set_mode(mode);
+        }
+        drop(rust);
+        if !raw {
+            self.as_mut().set_raw_passthrough(false);
         }
     }
 
@@ -1435,14 +1452,76 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn set_active_tab_properties(mut self: Pin<&mut Self>, index: i32, tab: TabId) {
-        let changed =
-            self.as_ref().rust().active_tab_index != index || self.as_ref().rust().tab != Some(tab);
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .selected_context_projection_depth += 1;
+        self.as_mut().project_active_tab_properties(index, tab);
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .selected_context_projection_depth -= 1;
+    }
+
+    /// Currentness for the existing cold policy refresh. A partial projection
+    /// cannot be treated as a completed selected owner, even at the same URL.
+    pub(super) fn active_tab_projection_is_current(&self) -> bool {
+        let rust = self.rust();
+        let Some(state) = rust.state.as_ref() else {
+            return false;
+        };
+        let Some(tab) = rust
+            .window
+            .and_then(|window| state.windows().get(&window))
+            .and_then(|window| window.active_tab)
+        else {
+            return false;
+        };
+        rust.url_projection_is_current()
+            && rust.tab == Some(tab)
+            && usize::try_from(rust.active_tab_index)
+                .ok()
+                .and_then(|index| rust.tab_ids.get(index))
+                == Some(&tab)
+            && state.capture_target(tab).is_some_and(|target| {
+                rust.active_tab_projection == Some((rust.active_tab_index, target))
+            })
+    }
+
+    fn project_active_tab_properties(mut self: Pin<&mut Self>, index: i32, tab: TabId) {
+        let Some(capture) =
+            super::policy_refresh_capture::CoreSelectionCapture::capture(self.as_ref().get_ref())
+                .filter(|capture| capture.target.tab == tab)
+        else {
+            return;
+        };
+        macro_rules! notify {
+            ($effect:expr) => {{
+                if !capture.is_current(self.as_ref().get_ref()) {
+                    return;
+                }
+                $effect;
+                if !capture.is_current(self.as_ref().get_ref()) {
+                    return;
+                }
+            }};
+        }
+        // Callers may already have assigned rust.tab. Compare with the last
+        // completed projection, including same-index/same-URL replacements.
+        let projection = current_target(self.as_ref().rust().state.as_ref(), Some(tab))
+            .map(|target| (index, target));
+        let changed = self.as_ref().rust().active_tab_projection != projection;
         if changed {
-            self.as_mut().reset_editing_session();
+            notify!(self.as_mut().request_interaction_policy_refresh());
+            notify!(self.as_mut().reset_editing_session());
         }
         if self.as_ref().rust().core_mode == Mode::Grid {
-            self.as_mut()
-                .spatial_invalidated(&QString::from("target-changed"));
+            notify!(
+                self.as_mut()
+                    .spatial_invalidated(&QString::from("target-changed"))
+            );
         }
         let (url, title, load_state) = {
             let rust = self.as_ref().get_ref().rust();
@@ -1452,11 +1531,23 @@ impl qobject::BrowserUi {
             let Some(tab_state) = state.tabs().get(&tab) else {
                 return;
             };
+            // Preserve the latest trusted URL fact during a provisional load
+            // or an interrupted publication, only in its exact Core scope.
+            let url = rust
+                .url_projection_input
+                .as_ref()
+                .filter(|input| input.context_is_current(rust))
+                .map_or_else(
+                    || {
+                        tab_state
+                            .url
+                            .clone()
+                            .unwrap_or_else(|| "about:blank".into())
+                    },
+                    |input| input.url.to_string(),
+                );
             (
-                tab_state
-                    .url
-                    .clone()
-                    .unwrap_or_else(|| "about:blank".into()),
+                url,
                 tab_state.title.clone(),
                 format!("{:?}", tab_state.loading).to_ascii_lowercase(),
             )
@@ -1469,17 +1560,34 @@ impl qobject::BrowserUi {
                 .as_ref()
                 .and_then(|state| state.tabs().get(&tab))
                 .and_then(|tab| tab.search.clone());
-            self.as_mut().set_search_text(QString::from(
+            notify!(self.as_mut().set_search_text(QString::from(
                 search.as_ref().map_or("", |search| search.query.as_str()),
-            ));
-            self.as_mut()
-                .set_search_backward(search.is_some_and(|search| search.backward));
+            )));
+            notify!(
+                self.as_mut()
+                    .set_search_backward(search.is_some_and(|search| search.backward))
+            );
         }
-        self.as_mut().set_active_tab_index(index);
-        self.as_mut().update_current_url(QString::from(&url));
-        self.as_mut().set_initial_url(QString::from(&url));
-        self.as_mut().set_page_title(QString::from(&title));
-        self.as_mut().set_load_state(QString::from(&load_state));
+        notify!(self.as_mut().set_active_tab_index(index));
+        // Background metadata refreshes also project the selected tab. An
+        // unchanged identity/address must not invalidate its input policy.
+        // Actual navigation observations still refresh on same-URL reloads.
+        if changed
+            || self.as_ref().rust().current_url.to_string() != url
+            || !self.as_ref().rust().url_projection_is_current()
+        {
+            notify!(self.as_mut().update_current_url(QString::from(&url)));
+        }
+        notify!(self.as_mut().set_initial_url(QString::from(&url)));
+        notify!(self.as_mut().set_page_title(QString::from(&title)));
+        notify!(self.as_mut().set_load_state(QString::from(&load_state)));
+        // Only a completed projection may suppress a future same-context
+        // refresh. Reentry can change configuration while retaining the Target.
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .active_tab_projection = projection;
     }
 }
 

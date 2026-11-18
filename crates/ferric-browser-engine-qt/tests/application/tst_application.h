@@ -7,6 +7,8 @@
 #include <QVariant>
 #include <QPointer>
 #include <memory>
+#include <functional>
+#include <QSet>
 
 // Production policy stays in the linked engine; this object only drives and
 // observes tests.
@@ -14,6 +16,9 @@ class ApplicationTests final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariant savedSelection MEMBER savedSelection)
     QVariant savedSelection;
+    QPointer<QObject> hintAdapterDestructionTarget;
+    bool hintAdapterSawProbe = false;
+    bool hintAdapterCompletedBeforeProbe = false;
     std::unique_ptr<QQmlApplicationEngine> engine;
     QQuickWindow *window = nullptr;
     QTemporaryDir directory;
@@ -21,11 +26,15 @@ class ApplicationTests final : public QObject {
     QByteArray fixtureHtml;
     QHash<QByteArray, QByteArray> frameFixtures;
     QHash<QByteArray, int> fixtureResponseDelays;
+    QSet<QByteArray> fixtureHeldPaths;
+    QHash<QByteArray, QList<std::function<void()>>> fixtureHeldResponses;
     QVariant scriptResult;
     bool scriptDone = false;
     QPointer<QObject> setupWindow;
     bool setupWindowDestroyed = false;
     int frameCallbackCount = 0;
+    QVariant frameCallbackResult;
+    qint64 frameCallbackNsecs = 0;
     QString pageReceiver = "testWindow.activeWebView()";
     QVariant evaluate(const QString &source);
     QString text(const QString &property);
@@ -44,12 +53,59 @@ class ApplicationTests final : public QObject {
                                QQuickWindow *&host);
 
   public:
+    Q_INVOKABLE void blockEventLoopForSelectorDeadline();
     Q_INVOKABLE void accept(const QVariant &value);
     Q_INVOKABLE void frameOperationComplete(const QVariant &value);
     Q_INVOKABLE QObject *createObject(QObject *parent, const QVariantMap &properties);
   public slots:
     void destroySetupWindow();
+    void destroyHintRequestAdapter();
   private slots:
+    void bindingAliases_data();
+    void bindingAliases();
+    void bindingAliasGuide();
+    void sitePolicyNativeProductionGesture_data();
+    void sitePolicyNativeProductionGesture();
+    void sitePolicyNativeProductionPrompt();
+    void sitePolicyNativeProductionViewDestruction();
+    void sitePolicyDraftWorkflow_data();
+    void sitePolicyDraftWorkflow();
+    void sitePolicyWorkspaceEditor();
+    void sitePolicyWorkspaceSharing();
+    void sitePolicyIndependentWindows();
+    void sitePolicySourceCopies();
+    void sitePolicyBuilderStart();
+    void sitePolicyBuilderCapture_data();
+    void sitePolicyBuilderCapture();
+    void sitePolicyBuilderPageTest_data();
+    void sitePolicyBuilderPageTest();
+    void sitePolicyBuilderKeyboard_data();
+    void sitePolicyBuilderKeyboard();
+    void sitePolicyEditorReceipts_data();
+    void sitePolicyEditorReceipts();
+    void sitePolicyLivePreview_data();
+    void sitePolicyLivePreview();
+    void hintRequestNativeOwnership_data();
+    void hintRequestNativeOwnership();
+    void hintRequestCaptureClassification_data();
+    void hintRequestCaptureClassification();
+    void hintRequestWorkspaceCollection_data();
+    void hintRequestWorkspaceCollection();
+    void hintInputIntegration_data();
+    void hintInputIntegration();
+    void hintPageKeyRouting_data();
+    void hintPageKeyRouting();
+    void hintPageKeyAcrossTabs();
+    void hintFamilyPolicyIntegration_data();
+    void hintFamilyPolicyIntegration();
+    void hintCollectionActivation_data();
+    void hintCollectionActivation();
+    void hintAnchorActivation_data();
+    void hintAnchorActivation();
+    void hintRequestCollectionBinding_data();
+    void hintRequestCollectionBinding();
+    void hintRequestObservationDocuments_data();
+    void hintRequestObservationDocuments();
     void credentialViewAssociation_data();
     void credentialViewAssociation();
     void pageWindowPresentation_data();
@@ -57,6 +113,14 @@ class ApplicationTests final : public QObject {
     void repeatWindowRouting();
     void repeatKeyboardCount_data();
     void repeatKeyboardCount();
+    void unavailableBindingsKeepBrowserOwnership();
+    void invalidProfileBindingsUseValidatedFallback();
+    void profileMetadataWaitsForEngineValidation_data();
+    void profileMetadataWaitsForEngineValidation();
+    void inheritedProfileReentryKeepsConfiguration();
+    void releasedProfileSelectorCannotRestoreResources();
+    void heldBrowserRepeatKeepsCommandAuthority_data();
+    void heldBrowserRepeatKeepsCommandAuthority();
     void repeatAdmission_data();
     void repeatAdmission();
     void repeatCommonCommands_data();
@@ -155,6 +219,12 @@ class ApplicationTests final : public QObject {
     void crossOriginFrameInvalidation();
     void crossOriginFrameLifetimeCycles();
     void crossOriginFrameOperationLifetimes();
+    void hintCollectionTimeoutSettlement_data();
+    void hintCollectionTimeoutSettlement();
+    void crossOriginUnsupportedScopedActions_data();
+    void crossOriginUnsupportedScopedActions();
+    void crossOriginHostileFacetResults_data();
+    void crossOriginHostileFacetResults();
     void embeddedResourceParity();
     void stretchedPostTitleKeyboardNavigation_data();
     void stretchedPostTitleKeyboardNavigation();
@@ -260,6 +330,20 @@ class ApplicationTests final : public QObject {
     void productPolishLocalFilePaths();
     void productPolishUnavailableStorage();
     void productPolishBookmarkTransfer();
+    void committedPeerSelectorRevisionAba();
+    void sharedPolicyPreparingOwner_data();
+    void sharedPolicyPreparingOwner();
+    void mixedLoadedEnumNormalization_data();
+    void mixedLoadedEnumNormalization();
+    void mixedPolicySelectedTabOwnership();
+    void sharedPolicyPrivateErrorRecovery();
+    void durablePersistenceSelectorPreparationAba();
+    void savedRuntimeSelectorRepair_data();
+    void savedRuntimeSelectorRepair();
+    void runtimeEditsBeforeProfile();
+    void transientRuntimeEditsUseMemoryOnly();
+    void profileFallbackConfigurationMirrors_data();
+    void profileFallbackConfigurationMirrors();
     void initTestCase();
     void init();
     void cleanup();
@@ -271,8 +355,40 @@ class ApplicationTests final : public QObject {
     void hintEarlyInput_data();
     void hintEarlyInput();
     void mixedReservedKeysAndUnmappedDelivery();
+    void sitePolicyProtectedRecovery_data();
+    void sitePolicyProtectedRecovery();
+    void hintCollectionOptimisationPerformance();
+    void sitePolicyCommandRenderPerformance();
+    void sitePolicyHintRenderPerformance_data();
+    void sitePolicyHintRenderPerformance();
+    void sitePolicyPassiveRefreshPerformance_data();
+    void sitePolicyPassiveRefreshPerformance();
+    void sitePolicyReadyHintPerformance_data();
+    void sitePolicyReadyHintPerformance();
+    void sitePolicyActivationPerformance_data();
+    void sitePolicyActivationPerformance();
+    void sitePolicyRootRenderPerformance_data();
+    void sitePolicyRootRenderPerformance();
+    void sitePolicyRootStagesPerformance_data();
+    void sitePolicyRootStagesPerformance();
+    void sitePolicyOrdinaryLifetime_data();
+    void sitePolicyAuthoringLifetime();
+    void sitePolicyOrdinaryLifetime();
+    void sitePolicyWindowLifetime_data();
+    void sitePolicyWindowLifetime();
     void heldPageKeyRetainsOwnerAcrossPolicyChange();
     void nativePointerRequiresLocalEntryAndClicksOnce();
+    void policyCacheDirtyClosesPendingActions_data();
+    void policyCacheDirtyClosesPendingActions();
+    void policyCacheLoadingCancellation_data();
+    void policyCacheLoadingCancellation();
+    void runtimeSettingsDeferPreparation();
+    void siteDoctorCompletion_data();
+    void siteDoctorCompletion();
+    void runtimeSettingsHandoffCompletion();
+    void runtimeSettingsHandoffCompletion_data();
+    void sitePolicyTransferObservation_data();
+    void sitePolicyTransferObservation();
     void nativePointerControlFamilies_data();
     void nativePointerControlFamilies();
     void nativePointerFrameAndShadow_data();
@@ -290,6 +406,12 @@ class ApplicationTests final : public QObject {
     void selectorReloadTimeoutPreservesConfiguration();
     void selectorDiscoveryUsesProductionPolicy_data();
     void selectorDiscoveryUsesProductionPolicy();
+    void profilePublicationReentryKeepsNewRequest();
+    void configurationCheckCannotReplaceProfileValidation();
+    void replacedStartupSelectorCallbackCannotPublish_data();
+    void replacedStartupSelectorCallbackCannotPublish();
+    void lateStartupSelectorCallbackUsesSafeFallback_data();
+    void lateStartupSelectorCallbackUsesSafeFallback();
     void startupSelectorValidation_data();
     void startupSelectorValidation();
     void staleSelectorCallbackCannotPublish();

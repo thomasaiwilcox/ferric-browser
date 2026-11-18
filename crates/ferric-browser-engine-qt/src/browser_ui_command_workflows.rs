@@ -59,6 +59,20 @@ impl qobject::BrowserUi {
         Ok(serde_json::json!({"status": "accepted", "surface": command.name}))
     }
 
+    pub(super) fn validate_configuration_get_route(
+        &self,
+        route: &IpcRoute,
+    ) -> Result<(), PublicError> {
+        if route.context.is_some() {
+            return Err(PublicError::new(
+                ErrorCode::InvalidArgument,
+                "This command can't be combined with a context selector.",
+                "get received context routing",
+            ));
+        }
+        self.validate_ipc_route_public(route)
+    }
+
     pub(super) fn dispatch_support_command(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
@@ -66,7 +80,7 @@ impl qobject::BrowserUi {
     ) -> Option<Result<Value, PublicError>> {
         if !matches!(
             command.name.as_str(),
-            "help" | "version" | "diagnostics" | "settings" | "profiles" | "sessions" | "get"
+            "help" | "version" | "diagnostics" | "settings" | "profiles" | "sessions"
         ) {
             return None;
         }
@@ -103,7 +117,6 @@ impl qobject::BrowserUi {
             }
         }
         Some(match command.name.as_str() {
-            "get" => self.as_mut().execute_config_get_command(command),
             "help" => self
                 .as_mut()
                 .execute_help_command(command)
@@ -124,6 +137,9 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         command: &mut ParsedCommand,
         registry: &CommandRegistry,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> CommandDispatchControl {
         if !self.as_mut().admit_macro_command() {
             return CommandDispatchControl::Failed;
@@ -275,6 +291,24 @@ impl qobject::BrowserUi {
             }
             return CommandDispatchControl::Continue;
         }
+        if matches!(
+            command.name.as_str(),
+            "site-policy-apply" | "site-policy-edit" | "site-policy-discard"
+        ) {
+            let mode = self.as_ref().rust().core_mode;
+            let result = registry
+                .validate(command, mode)
+                .map_err(|error| error.to_string())
+                .and_then(|()| {
+                    self.as_mut()
+                        .execute_site_policy_command(command, preparation)
+                });
+            if let Err(error) = result {
+                self.set_status_text(QString::from(error));
+                return CommandDispatchControl::Failed;
+            }
+            return CommandDispatchControl::Continue;
+        }
         if matches!(command.name.as_str(), "set" | "unset" | "bind" | "unbind") {
             let mode = self.as_ref().rust().core_mode;
             if let Err(error) = registry.validate(command, mode) {
@@ -282,9 +316,19 @@ impl qobject::BrowserUi {
                 return CommandDispatchControl::Failed;
             }
             let result = if matches!(command.name.as_str(), "bind" | "unbind") {
-                self.as_mut().execute_runtime_binding_command(command)
+                if preparation.is_some() {
+                    self.as_mut()
+                        .prepare_runtime_binding_command(command, preparation)
+                } else {
+                    self.as_mut().execute_runtime_binding_command(command)
+                }
             } else {
-                self.as_mut().execute_runtime_config_command(command)
+                if preparation.is_some() {
+                    self.as_mut()
+                        .prepare_runtime_config_command(command, preparation)
+                } else {
+                    self.as_mut().execute_runtime_config_command(command)
+                }
             };
             if let Err(error) = result {
                 self.set_status_text(QString::from(error));

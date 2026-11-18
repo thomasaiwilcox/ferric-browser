@@ -1,4 +1,4 @@
-// Native input for the public context CLI fixture's explicit Quit decision.
+// Native input for owned CLI fixtures' explicit shutdown decisions.
 // This is a standalone test plugin, never linked into or shipped with Ferric.
 #include <QDir>
 #include <QFile>
@@ -9,6 +9,7 @@
 #include <QPointer>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QSaveFile>
 #include <QTimer>
 #include <QtTest>
 
@@ -21,6 +22,8 @@ class OwnedQuitInput final : public QObject {
     bool armed = false;
     bool decisionSent = false;
     QPointer<QQuickWindow> confirmedWindow;
+    QString confirmedWindowId;
+    bool destroyRequested = false;
     QByteArray previousState;
 
     static QQuickItem *find(QQuickItem *parent, const QString &name) {
@@ -33,23 +36,44 @@ class OwnedQuitInput final : public QObject {
     }
 
     void recordOutcome() {
-        QJsonObject state{{"windowAlive", !confirmedWindow.isNull()}};
+        if (confirmedWindow && !confirmedWindowId.isEmpty() && !destroyRequested
+                && confirmedWindow->property("runtimeReleased").toBool()) {
+            auto ui = confirmedWindow->property("windowUi").value<QObject *>();
+            QFile decision(root + "/destroy-retired-window");
+            if (ui && !ui->property("view_alive").toBool()
+                    && decision.open(QIODevice::ReadOnly)
+                    && decision.readAll() == confirmedWindowId.toUtf8() + "\n") {
+                decision.close();
+                if (!QFile::remove(decision.fileName())) qFatal("Owned destruction authorization could not be consumed");
+                destroyRequested = true;
+                confirmedWindow->deleteLater();
+            }
+        }
+        QJsonObject state{{"windowAlive", !confirmedWindow.isNull()}, {"window_id", confirmedWindowId}};
         if (confirmedWindow) {
             for (const auto name :
                  {"shutdownConfirmationVisible", "shutdownPromptVisible",
                   "shutdownPagePromptVisible", "applicationShutdownInProgress",
-                  "applicationShutdownForcePromptVisible", "applicationShutdownStage"})
+                  "applicationShutdownForcePromptVisible", "applicationShutdownStage",
+                  "runtimeReleased", "runtimeReleaseComplete", "visible",
+                  "windowShutdownApproved", "windowCloseConfirmationVisible",
+                  "windowShutdownPromptVisible", "windowShutdownPagePromptVisible",
+                  "windowShutdownStoragePromptVisible"})
                 state[name] = QJsonValue::fromVariant(confirmedWindow->property(name));
-            auto ui = confirmedWindow->property("primaryBrowserUi").value<QObject *>();
-            if (ui)
+            auto ui = confirmedWindow->property("windowUi").value<QObject *>();
+            if (!ui) ui = confirmedWindow->property("primaryBrowserUi").value<QObject *>();
+            if (ui) {
                 state["status"] = QJsonValue::fromVariant(ui->property("status_text"));
+                state["viewAlive"] = QJsonValue::fromVariant(ui->property("view_alive"));
+                state["coreWindowId"] = QJsonValue::fromVariant(ui->property("core_window_id"));
+            }
         }
         const auto bytes = QJsonDocument(state).toJson(QJsonDocument::Compact);
         if (bytes != previousState) {
-            previousState = bytes;
-            QFile file(root + "/quit-observed-state.json");
-            if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-                file.write(bytes);
+            QSaveFile file(root + "/quit-observed-state.json");
+            if (file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size()
+                    && file.commit())
+                previousState = bytes;
         }
     }
 
@@ -61,9 +85,22 @@ class OwnedQuitInput final : public QObject {
         if (QGuiApplication::platformName() != "offscreen")
             return;
         QFile authorization(root + "/confirm-quit");
+        bool closeWindow = false;
+        QString targetWindow;
         if (!authorization.open(QIODevice::ReadOnly) ||
-            authorization.readAll() != "Confirm this fixture's browser quit.\n")
-            return;
+            authorization.readAll() != "Confirm this fixture's browser quit.\n") {
+            authorization.close();
+            authorization.setFileName(root + "/confirm-window-close");
+            if (!authorization.open(QIODevice::ReadOnly)) return;
+            const auto request = QJsonDocument::fromJson(authorization.readAll()).object();
+            targetWindow = request["window_id"].toString();
+            if (request["authorization"].toString() != "Confirm this fixture's secondary window close." || targetWindow.isEmpty())
+                return;
+            closeWindow = true;
+        }
+        const QString expectedTitle = closeWindow ? "Close this browser window?" : "Quit Ferric Browser?";
+        const QString expectedCommand = closeWindow ? ":window-close" : ":quit";
+        const QString expectedChoice = closeWindow ? "Close window" : "Quit browser";
         if (!armed) {
             qInfo("Owned context Quit input armed");
             armed = true;
@@ -75,16 +112,20 @@ class OwnedQuitInput final : public QObject {
             auto window = qobject_cast<QQuickWindow *>(candidate);
             if (!window || !window->isVisible())
                 continue;
+            if (closeWindow) {
+                auto ui = window->property("windowUi").value<QObject *>();
+                if (!ui || ui->property("core_window_id").toString() != targetWindow) continue;
+            }
             auto dialog = find(window->contentItem(), "shutdownDecisionDialog");
-            if (!dialog || dialog->property("title").toString() != "Quit Ferric Browser?" ||
-                dialog->property("commandText").toString() != ":quit")
+            if (!dialog || dialog->property("title").toString() != expectedTitle ||
+                dialog->property("commandText").toString() != expectedCommand)
                 continue;
             observed["dialogFound"] = true;
             observed["presented"] = presented;
             observed["windowActive"] = window->isActive();
             auto choice = find(dialog, "shutdownProceedButton");
             if (!choice || !choice->isEnabled() ||
-                choice->property("text").toString() != "Quit browser")
+                choice->property("text").toString() != expectedChoice)
                 continue;
             if (pendingDialog != dialog) {
                 QObject::disconnect(frameConnection);
@@ -105,16 +146,18 @@ class OwnedQuitInput final : public QObject {
             if (!window->isActive())
                 return;
             authorization.close();
-            if (!QFile::remove(root + "/confirm-quit"))
+            if (!QFile::remove(authorization.fileName()))
                 qFatal("Owned Quit authorization could not be consumed");
             confirmedWindow = window;
+            confirmedWindowId = targetWindow;
             decisionSent = true;
             QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, bounds.center().toPoint());
-            QFile evidence(root + "/quit-confirmed.json");
+            QFile evidence(root + (closeWindow ? "/window-close-confirmed.json" : "/quit-confirmed.json"));
             if (!evidence.open(QIODevice::WriteOnly | QIODevice::NewOnly))
                 qFatal("Owned Quit evidence could not be created");
             evidence.write(QJsonDocument(QJsonObject{{"input", "native mouse click"},
-                                                     {"choice", "Quit browser"},
+                                                     {"choice", expectedChoice},
+                                                     {"window_id", targetWindow},
                                                      {"presented", true}})
                                .toJson());
             evidence.close();

@@ -264,12 +264,11 @@ QtObject {
             return
         }
         var epoch = ui.input_epoch
+        var target = ui.navigation_target_for_index(index)
         window.runBrowserFrameScript(view, frame, window.focusProbeScript(), window.browserScriptWorld, function(value) {
-            var state = value || {sequence: 0, editable: false,
-                                  user_activated: false, kind: "unknown"}
-            ui.page_focus_observed_for(index, url, framePath,
-                Number(state.sequence) || 0, epoch, Number(state.context) || 0,
-                !!state.editable, !!state.user_activated)
+            if (!target || !value) return
+            ui.page_key_focus_observed_for(index, url, framePath, epoch,
+                JSON.stringify({target:target,state:value}))
         })
         var children = frame.children || []
         for (var i = 0; i < children.length; ++i) {
@@ -332,7 +331,8 @@ QtObject {
         }
         var provider = window.selectionProviderFor(view)
         if (provider) provider.capture()
-        if (message === "__ferric_browser_selection_changed" || (ui.mode !== "insert" && ui.mode !== "insert-locked")) return
+        if (message === "__ferric_browser_selection_changed" || (ui.mode !== "insert"
+                && ui.mode !== "insert-locked" && !ui.page_key_routing_active())) return
         // Transferred views carry index -1; resolve against their current owner.
         window.probeActiveFocus(ui, index < 0 ? ui.active_tab_index : index, view)
     }
@@ -344,6 +344,21 @@ QtObject {
         var provider = window.selectionProviderFor(view)
         if (provider) provider.capture()
         window.probeFocusFrame(ui, index, view.mainFrame, "0", view.url.toString(), view)
+        var owner = diagnosticsOwner(ui, null)
+        if (owner && owner.view === view && ui.page_key_routing_active()) {
+            var router = owner.host.browserKeyRouterObject
+            if (router) router.probePageReceiver(view, window.focusProbeScript(), ui.input_epoch)
+        }
+    }
+
+    function acceptPageReceiverObservation(ui, view, epoch, framePath, facts) {
+        var owner = diagnosticsOwner(ui, null)
+        if (!owner || owner.view !== view || epoch !== ui.input_epoch) return
+        var receipt = JSON.parse(facts)
+        receipt.target = ui.navigation_target_for_index(ui.active_tab_index)
+        if (!receipt.target) return
+        ui.page_key_focus_observed_for(ui.active_tab_index, view.url.toString(), framePath,
+            epoch, JSON.stringify(receipt))
     }
 
     function cosmeticHostMatches(host, pattern) {
@@ -1014,7 +1029,14 @@ QtObject {
     function diagnosticsOwner(ui, host) {
         if (!ui) return null
         var owner = window.browserWindowEntryForUi(ui)
-        if (owner) return !host || owner.host === host ? owner : null
+        if (owner) {
+            if (host && owner.host !== host) return null
+            host = owner.host
+            if (!host || host.runtimeReleased === true || host.runtimeDisposing === true) return null
+            // Registration captures a view at window creation. Receiver proofs
+            // must belong to the page selected now, including after tab switches.
+            return Object.assign({}, owner, {view: host.activeWebView()})
+        }
         host = host || (ui === window.browserUi ? window : null)
         if (!host || host.runtimeReleased === true || host.runtimeDisposing === true) return null
         if (host === window ? ui !== window.browserUi

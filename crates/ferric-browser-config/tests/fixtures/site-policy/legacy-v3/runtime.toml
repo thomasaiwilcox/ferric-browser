@@ -1,0 +1,14 @@
+schema_version = 3
+
+[settings]
+"hints.min_chars" = 2
+
+[bindings]
+
+[[site_rules]]
+id = "runtime-site-22f371d9341ac28f"
+pattern = "https://example.test/*"
+priority = 2147483647
+
+[site_rules.set]
+"content.zoom" = 1.25

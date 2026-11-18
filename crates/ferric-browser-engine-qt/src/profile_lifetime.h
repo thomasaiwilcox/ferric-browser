@@ -86,6 +86,7 @@ class FerricProfileLifetime : public QObject {
                             const std::function<bool()> &sourceProof = {});
   signals:
     void viewRetiring(QQuickItem *view);
+    void sitePolicyAssociationChanged(QQuickItem *view);
     void policyUiChanged();
     void consumersChanged();
     void drained();

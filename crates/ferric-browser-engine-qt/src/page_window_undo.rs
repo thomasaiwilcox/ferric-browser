@@ -275,6 +275,7 @@ mod tests {
                 privacy,
                 storage: ProfileStorage::Transient,
                 base_configuration: Config::default(),
+                base_authored: std::sync::Arc::default(),
                 initial_profile_overrides: RuntimeOverrides::default(),
                 command_line_overrides: RuntimeOverrides::default(),
                 config_path: None,

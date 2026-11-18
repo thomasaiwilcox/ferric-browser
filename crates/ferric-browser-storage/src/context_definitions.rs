@@ -35,6 +35,17 @@ impl ContextRegistry {
         previous_names: &[String],
         definitions: &[ContextDefinitionUpdate],
     ) -> Result<(), ContextRegistryError> {
+        let lock = crate::durable::RegistryLock::acquire(&self.path)
+            .map_err(|error| super::context_io(&self.path, &error))?;
+        self.reconcile_configured_locked(previous_names, definitions, &lock)
+    }
+
+    pub(crate) fn reconcile_configured_locked(
+        &mut self,
+        previous_names: &[String],
+        definitions: &[ContextDefinitionUpdate],
+        lock: &crate::durable::RegistryLock,
+    ) -> Result<(), ContextRegistryError> {
         let mut names = BTreeSet::new();
         for definition in definitions {
             validate_definition(definition)?;
@@ -45,7 +56,7 @@ impl ContextRegistry {
         for name in previous_names {
             validate_name(name)?;
         }
-        self.mutate_document(
+        self.mutate_document_locked(
             |document| {
                 let removed = document
                     .configured_names
@@ -68,6 +79,7 @@ impl ContextRegistry {
                 Ok(changed)
             },
             |_| Ok(()),
+            lock,
         )
     }
 

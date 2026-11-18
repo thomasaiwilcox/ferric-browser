@@ -1,0 +1,50 @@
+# Desktop watch pages: familiar player keys plus numbered recommendations.
+# Works alone; its collections/anchors replace youtube-browse's on /watch.
+# Opt-in. Player aliases apply in Hint and explicit passthrough modes. See README.md.
+format = "ferric-site-interaction"
+format_version = 1
+
+[[rules]]
+operation = "upsert-interaction"
+id = "youtube-watch"
+pattern = "https://www.youtube.com/watch"
+priority = 20
+
+[rules.interaction]
+enabled = true
+hint_page_keys = ["j", "k", "l", "m", "f", "c", "p"]
+
+[[rules.interaction.anchors]]
+id = "home"
+code = "h"
+families = ["links", "actions", "all"]
+target_selector = "ytd-masthead a#logo[href='/']"
+
+[[rules.interaction.anchors]]
+id = "search"
+code = "s"
+families = ["inputs", "actions", "all"]
+target_selector = "input[name='search_query']"
+
+[[rules.interaction.collections]]
+id = "recommendations"
+families = ["links", "actions", "all"]
+codes = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+container_selector = "ytd-watch-next-secondary-results-renderer"
+item_selector = "yt-lockup-view-model"
+primary_selector = "a.ytLockupMetadataViewModelTitle"
+order = "top-to-bottom"
+
+[rules.interaction.collections.root]
+start = "top-document"
+steps = []
+
+[rules.interaction.collections.primary_predicates.href]
+origin = "https://www.youtube.com"
+path = "/watch"
+
+[[rules.interaction.remaps]]
+id = "play-pause"
+from = "p"
+to = "k"
+contexts = ["hint-page-key", "passthrough-once", "passthrough"]

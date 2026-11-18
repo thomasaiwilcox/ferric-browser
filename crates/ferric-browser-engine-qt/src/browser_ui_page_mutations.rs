@@ -147,6 +147,9 @@ impl qobject::BrowserUi {
         commands: Vec<(ParsedCommand, super::IpcRoute)>,
         operation_id: Option<&str>,
         handoff: &mut Option<PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<super::Value, super::PublicError> {
         if route.context.is_some() {
             return Err("context routing is not valid for page state changes".into());
@@ -163,6 +166,7 @@ impl qobject::BrowserUi {
             },
             operation_id,
             handoff,
+            preparation,
         )?;
         self.as_mut()
             .note_repeatable_invocation(command, Some(route), 1);
@@ -175,6 +179,9 @@ impl qobject::BrowserUi {
         continuation: PageContinuation,
         operation_id: Option<&str>,
         handoff: &mut Option<PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<super::Value, String> {
         self.as_ref()
             .rust()
@@ -222,9 +229,12 @@ impl qobject::BrowserUi {
         let result_window = target.owner.window;
         let source_token = self.as_ref().rust().window_token.to_string();
         let source_thread = self.as_ref().get_ref().qt_thread();
-        let receipt = self
-            .as_mut()
-            .prepare_page_handoff(handoff.clone(), &source, operation_id)?;
+        let receipt = self.as_mut().prepare_page_handoff(
+            handoff.clone(),
+            &source,
+            operation_id,
+            preparation,
+        )?;
         target
             .owner
             .thread

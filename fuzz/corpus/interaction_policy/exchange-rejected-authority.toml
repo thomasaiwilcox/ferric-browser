@@ -1,0 +1,7 @@
+format='ferric-site-interaction'
+format_version=1
+include=['another.toml']
+[[rules]]
+operation='unset-interaction'
+id='remove'
+pattern='https://example.test/*'

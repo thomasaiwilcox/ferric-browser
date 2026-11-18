@@ -11,8 +11,32 @@ pub(crate) use crate::credential_actor::{CredentialActor, new_credential_actor};
 pub(crate) use crate::page_window_focus::{
     current_page_focus, page_focus_intent_current, supersede_page_focus, validate_page_focus,
 };
+pub(crate) use crate::startup_configuration::{
+    StartupConfiguration, install_startup_configuration, load_startup_configuration,
+    startup_base_json,
+};
 
 pub(crate) use crate::browser_ui_page_transfer::{PageRollbackProof, capture_page_rollback};
+pub(crate) use crate::browser_ui_policy_association::{
+    SitePolicyAssociation, begin_association, complete_association,
+};
+pub(crate) use crate::hint_request_capture::{
+    HintRequestCapture, accept_hint_collection_ordinary, begin_hint_collection_work,
+    begin_hint_document_validation, begin_hint_preview_request, begin_hint_request,
+    classify_hint_observation, commit_hint_document_binding, complete_hint_collection_policy,
+    complete_hint_native_work, complete_hint_observation_documents,
+    complete_hint_observation_objects, finalize_hint_request, finish_hint_anchor_check,
+    finish_hint_collection, finish_hint_document_validation, freeze_hint_anchor,
+    hint_anchor_manifest, hint_anchor_state, hint_builder_candidate,
+    hint_collection_policy_annotation, hint_collection_policy_geometry,
+    hint_collection_policy_input, hint_collection_policy_manifest, hint_collection_work_plan,
+    hint_observation_annotation, hint_observation_documents_checked,
+    hint_observation_focused_documents, hint_observation_objects_checked, hint_observation_scope,
+    hint_observation_stamp, hint_request_classification, hint_request_is_current,
+    hint_request_plan, hint_request_selectors, prepare_hint_collection_policy,
+    prepare_hint_observation_documents, publish_hint_collection, reject_hint_collection_work,
+    reserve_hint_native_work,
+};
 pub(crate) use crate::page_window_native::{
     native_window_changed, native_window_invalidated, native_window_retired,
 };
@@ -50,6 +74,13 @@ pub(crate) mod qobject {
     }
 
     unsafe extern "C++" {
+        include!("startup_configuration.h");
+        fn ferric_startup_configuration_value(captured: Box<StartupConfiguration>) -> QVariant;
+        fn ferric_install_startup_configuration(
+            value: &QVariant,
+            ui: Pin<&mut BrowserUi>,
+            base_json: &QString,
+        ) -> bool;
         include!("credential_process.h");
         include!("credential_network_policy.h");
         include!("cxx-qt-lib/qstring.h");
@@ -75,6 +106,7 @@ pub(crate) mod qobject {
 
         fn ferric_browser_native_page_window_identity(ui: &BrowserUi) -> NativeWindowSnapshot;
         fn ferric_browser_page_window_marker(ui: &BrowserUi) -> QString;
+        fn ferric_browser_can_enter_raw_passthrough(ui: &BrowserUi) -> bool;
 
         fn ferric_public_page_for_request(request: &QVariant) -> QVariant;
 
@@ -143,6 +175,229 @@ pub(crate) mod qobject {
     }
 
     extern "Rust" {
+        #[namespace = "ferric::hints"]
+        type HintRequestCapture;
+        #[namespace = "ferric::hints"]
+        fn begin_hint_request(
+            ui: Pin<&mut BrowserUi>,
+            tab: &QString,
+            index: i32,
+            view: &QString,
+            view_generation: u64,
+        ) -> Box<HintRequestCapture>;
+        #[namespace = "ferric::hints"]
+        fn hint_request_classification(ui: &BrowserUi, capture: &HintRequestCapture) -> QString;
+        #[namespace = "ferric::hints"]
+        fn begin_hint_preview_request(
+            ui: Pin<&mut BrowserUi>,
+            tab: &QString,
+            index: i32,
+            view: &QString,
+            view_generation: u64,
+            preview: &QString,
+            family: &QString,
+        ) -> Box<HintRequestCapture>;
+        #[namespace = "ferric::hints"]
+        fn hint_builder_candidate(
+            ui: &BrowserUi,
+            capture: &HintRequestCapture,
+            label: &QString,
+        ) -> QString;
+        #[namespace = "ferric::hints"]
+        fn hint_request_is_current(
+            ui: &BrowserUi,
+            capture: &HintRequestCapture,
+            tab: &QString,
+            index: i32,
+            view: &QString,
+            url: &QString,
+        ) -> bool;
+        #[namespace = "ferric::hints"]
+        fn finalize_hint_request(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            roles_json: &QString,
+        ) -> bool;
+        #[namespace = "ferric::hints"]
+        fn hint_request_plan(ui: &BrowserUi, capture: &HintRequestCapture) -> QString;
+        #[namespace = "ferric::hints"]
+        fn hint_request_selectors(ui: &BrowserUi, capture: &HintRequestCapture) -> QString;
+        #[namespace = "ferric::hints"]
+        fn begin_hint_collection_work(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            required_owner: &QString,
+        ) -> bool;
+        #[namespace = "ferric::hints"]
+        fn hint_collection_work_plan(ui: &BrowserUi, capture: &HintRequestCapture) -> QString;
+        #[namespace = "ferric::hints"]
+        fn finish_hint_collection(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            projections: &QString,
+        ) -> QString;
+        #[namespace = "ferric::hints"]
+        fn publish_hint_collection(
+            ui: Pin<&mut BrowserUi>,
+            capture: &mut HintRequestCapture,
+        ) -> QString;
+        #[namespace = "ferric::hints"]
+        fn hint_anchor_state(ui: &BrowserUi, label: &QString) -> QString;
+        #[namespace = "ferric::hints"]
+        fn freeze_hint_anchor(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            label: &QString,
+        ) -> bool;
+        #[namespace = "ferric::hints"]
+        fn hint_anchor_manifest(ui: &BrowserUi, capture: &HintRequestCapture) -> QString;
+        #[namespace = "ferric::hints"]
+        fn finish_hint_anchor_check(
+            ui: Pin<&mut BrowserUi>,
+            capture: &mut HintRequestCapture,
+            valid: bool,
+        ) -> QString;
+        #[namespace = "ferric::hints"]
+        fn reserve_hint_native_work(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            specification: &QString,
+        ) -> QString;
+        #[namespace = "ferric::hints"]
+        fn commit_hint_document_binding(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            binding: &QString,
+        ) -> bool;
+        #[namespace = "ferric::hints"]
+        fn begin_hint_document_validation(ui: &BrowserUi, capture: &mut HintRequestCapture)
+        -> bool;
+        #[namespace = "ferric::hints"]
+        fn finish_hint_document_validation(capture: &mut HintRequestCapture);
+        #[namespace = "ferric::hints"]
+        fn complete_hint_native_work(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            token: &QString,
+            binding: &QString,
+            report: &QString,
+        ) -> bool;
+        #[namespace = "ferric::hints"]
+        fn accept_hint_collection_ordinary(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            stage: &QString,
+            owner: &QString,
+            candidates: &QString,
+            metadata: &QString,
+        ) -> bool;
+        #[namespace = "ferric::hints"]
+        fn reject_hint_collection_work(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            stage: &QString,
+            owner: &QString,
+        ) -> bool;
+        #[namespace = "ferric::hints"]
+        fn prepare_hint_collection_policy(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            stage: &QString,
+            owner: &QString,
+            annotation: &QString,
+            metadata: &QString,
+        ) -> bool;
+        #[namespace = "ferric::hints"]
+        fn hint_collection_policy_manifest(
+            ui: &BrowserUi,
+            capture: &HintRequestCapture,
+            stage: &QString,
+            owner: &QString,
+        ) -> QString;
+        #[namespace = "ferric::hints"]
+        fn hint_collection_policy_annotation(
+            ui: &BrowserUi,
+            capture: &HintRequestCapture,
+            stage: &QString,
+            owner: &QString,
+        ) -> QString;
+        #[namespace = "ferric::hints"]
+        fn hint_collection_policy_geometry(
+            ui: &BrowserUi,
+            capture: &HintRequestCapture,
+            stage: &QString,
+            owner: &QString,
+        ) -> QString;
+        #[namespace = "ferric::hints"]
+        fn hint_collection_policy_input(
+            ui: &BrowserUi,
+            capture: &HintRequestCapture,
+            stage: &QString,
+            owner: &QString,
+        ) -> QString;
+        #[namespace = "ferric::hints"]
+        fn complete_hint_collection_policy(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            stage: &QString,
+            owner: &QString,
+            valid: bool,
+        ) -> bool;
+        #[namespace = "ferric::hints"]
+        fn prepare_hint_observation_documents(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            candidates: &QString,
+            annotation: &QString,
+        ) -> QString;
+        #[namespace = "ferric::hints"]
+        fn hint_observation_stamp(ui: &BrowserUi, capture: &HintRequestCapture) -> QString;
+        #[namespace = "ferric::hints"]
+        fn hint_observation_focused_documents(
+            ui: &BrowserUi,
+            capture: &HintRequestCapture,
+        ) -> QString;
+        #[namespace = "ferric::hints"]
+        fn hint_observation_annotation(ui: &BrowserUi, capture: &HintRequestCapture) -> QString;
+        #[namespace = "ferric::hints"]
+        fn hint_observation_scope(ui: &BrowserUi, capture: &HintRequestCapture) -> QString;
+        #[namespace = "ferric::hints"]
+        fn classify_hint_observation(ui: &BrowserUi, capture: &mut HintRequestCapture) -> bool;
+        #[namespace = "ferric::hints"]
+        fn complete_hint_observation_documents(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            valid: bool,
+        ) -> bool;
+        #[namespace = "ferric::hints"]
+        fn complete_hint_observation_objects(
+            ui: &BrowserUi,
+            capture: &mut HintRequestCapture,
+            valid: bool,
+        ) -> bool;
+        #[namespace = "ferric::hints"]
+        fn hint_observation_objects_checked(ui: &BrowserUi, capture: &HintRequestCapture) -> bool;
+        #[namespace = "ferric::hints"]
+        fn hint_observation_documents_checked(ui: &BrowserUi, capture: &HintRequestCapture)
+        -> bool;
+        #[namespace = "ferric::site_policy"]
+        type SitePolicyAssociation;
+        #[namespace = "ferric::site_policy"]
+        fn begin_association(ui: Pin<&mut BrowserUi>, tab: &QString) -> Box<SitePolicyAssociation>;
+        #[namespace = "ferric::site_policy"]
+        fn complete_association(
+            ui: Pin<&mut BrowserUi>,
+            capture: &SitePolicyAssociation,
+            url: &QString,
+        ) -> bool;
+        type StartupConfiguration;
+        fn load_startup_configuration(path: &QString) -> Result<QVariant>;
+        fn startup_base_json(captured: &StartupConfiguration) -> QString;
+        fn install_startup_configuration(
+            captured: &StartupConfiguration,
+            ui: Pin<&mut BrowserUi>,
+            base_json: &QString,
+        ) -> bool;
         #[namespace = "ferric::page_windows"]
         fn native_window_changed(tag: &QString, generation: u64, tag_submitted: bool);
         #[namespace = "ferric::page_windows"]
@@ -274,6 +529,7 @@ pub(crate) mod qobject {
         #[qproperty(bool, navigation_failure_visible)]
         #[qproperty(QString, mode)]
         #[qproperty(i32, input_epoch)]
+        #[qproperty(bool, raw_passthrough)]
         #[qproperty(bool, learning_mode)]
         #[qproperty(bool, view_alive)]
         #[qproperty(i32, active_tab_index)]
@@ -444,6 +700,7 @@ pub(crate) mod qobject {
         #[qproperty(QString, external_navigation_uri)]
         #[qproperty(QString, external_navigation_scheme)]
         #[qproperty(bool, external_navigation_visible)]
+        #[qproperty(QString, hint_invocation)]
         #[qproperty(QString, hint_values)]
         #[qproperty(bool, hint_visible)]
         #[qproperty(bool, target_search_active)]
@@ -500,6 +757,7 @@ pub(crate) mod qobject {
         #[qproperty(QString, runtime_setting_error)]
         #[qproperty(QString, setting_action_id)]
         #[qproperty(QString, setting_action_state)]
+        #[qproperty(QString, site_policy_result)]
         #[qproperty(QString, setting_action_message)]
         #[qproperty(QString, setting_action_detail)]
         #[qproperty(QString, chrome_font_family)]
@@ -607,6 +865,9 @@ pub(crate) mod qobject {
 
         #[qsignal]
         fn runtime_work_available(self: Pin<&mut BrowserUi>);
+
+        #[qsignal]
+        fn input_bindings_changed(self: Pin<&mut BrowserUi>, context: QString);
 
         #[qsignal]
         fn switcher_sources_changed(self: Pin<&mut BrowserUi>);
@@ -735,7 +996,11 @@ pub(crate) mod qobject {
             profile_overrides: &QString,
             path: &QString,
             source: &QString,
+            captured: &QVariant,
         ) -> bool;
+
+        #[qinvokable]
+        fn capture_startup_configuration(self: &BrowserUi) -> QVariant;
 
         #[qinvokable]
         fn complete_selector_validation(
@@ -903,6 +1168,9 @@ pub(crate) mod qobject {
         fn key_has_binding(self: &BrowserUi, key: &QString) -> bool;
 
         #[qinvokable]
+        fn binding_context(self: &BrowserUi) -> QString;
+
+        #[qinvokable]
         fn recover_session(self: Pin<&mut BrowserUi>) -> QString;
 
         #[qinvokable]
@@ -1000,6 +1268,25 @@ pub(crate) mod qobject {
             self: Pin<&mut BrowserUi>,
             action: &QString,
             text: &QString,
+        ) -> QString;
+
+        #[qinvokable]
+        fn hint_input_context(self: &BrowserUi) -> QString;
+
+        #[qinvokable]
+        fn page_key_route(self: &BrowserUi, source: &QString) -> QString;
+
+        #[qinvokable]
+        fn page_key_routing_active(self: &BrowserUi) -> bool;
+
+        #[qinvokable]
+        fn commit_hint_page_command(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn select_initial_hint(
+            self: Pin<&mut BrowserUi>,
+            session_id: &QString,
+            fresh_candidate_json: &QString,
         ) -> QString;
 
         #[qinvokable]
@@ -1671,6 +1958,16 @@ pub(crate) mod qobject {
         ) -> bool;
 
         #[qinvokable]
+        fn page_key_focus_observed_for(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            url: &QString,
+            frame_path: &QString,
+            epoch: i32,
+            receipt: &QString,
+        );
+
+        #[qinvokable]
         fn page_focus_observed_for(
             self: Pin<&mut BrowserUi>,
             index: i32,
@@ -1721,6 +2018,29 @@ pub(crate) mod qobject {
 
         #[qinvokable]
         fn select_site_rule_settings(self: Pin<&mut BrowserUi>, url: &QString) -> bool;
+
+        /// Read-only diagnostics for the eager source-compilation cache.
+        #[qinvokable]
+        fn interaction_policy_snapshot(self: &BrowserUi) -> QString;
+        #[qinvokable]
+        fn site_policy_draft_snapshot(self: &BrowserUi, id: &QString) -> QString;
+        #[qinvokable]
+        fn site_policy_editor_request(self: Pin<&mut BrowserUi>, payload: &QString) -> QString;
+        #[qinvokable]
+        fn site_policy_preview_failed(
+            self: Pin<&mut BrowserUi>,
+            id: &QString,
+            family: &QString,
+            reason: &QString,
+        ) -> QString;
+        #[qinvokable]
+        fn site_policy_preview_cancel(self: Pin<&mut BrowserUi>, id: &QString);
+        #[qinvokable]
+        fn site_policy_preview_pending(&self, id: &QString) -> bool;
+
+        /// Drained only by the existing runtime-work timer, outside key routing.
+        #[qinvokable]
+        fn poll_interaction_policy_refresh(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
         fn navigation_kind_for(self: Pin<&mut BrowserUi>, index: i32, history: bool);

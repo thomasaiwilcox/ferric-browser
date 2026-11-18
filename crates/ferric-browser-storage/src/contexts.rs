@@ -155,6 +155,25 @@ impl ContextRegistry {
         })
     }
 
+    pub(crate) fn open_locked(
+        roots: &StorageRoots,
+        lock: &RegistryLock,
+    ) -> Result<Self, ContextRegistryError> {
+        let path = roots.state.join("contexts.json");
+        if !lock.protects(&path) {
+            return Err(context_io(
+                &path,
+                &io::Error::other("incorrect context registry lock"),
+            ));
+        }
+        let document = document::load(&path)?;
+        Ok(Self {
+            path,
+            contexts: document.contexts,
+            revision: document.revision,
+        })
+    }
+
     /// Reads a command-created context for startup selection without rewriting
     /// the catalog or treating a removed configuration definition as user data.
     ///
@@ -412,10 +431,25 @@ impl ContextRegistry {
     fn mutate_document(
         &mut self,
         mutation: impl FnOnce(&mut ContextDocument) -> Result<bool, ContextRegistryError>,
-        mut hook: impl FnMut(ContextSaveStep) -> Result<(), ContextRegistryError>,
+        hook: impl FnMut(ContextSaveStep) -> Result<(), ContextRegistryError>,
     ) -> Result<(), ContextRegistryError> {
-        let _lock =
+        let lock =
             RegistryLock::acquire(&self.path).map_err(|error| context_io(&self.path, &error))?;
+        self.mutate_document_locked(mutation, hook, &lock)
+    }
+
+    fn mutate_document_locked(
+        &mut self,
+        mutation: impl FnOnce(&mut ContextDocument) -> Result<bool, ContextRegistryError>,
+        mut hook: impl FnMut(ContextSaveStep) -> Result<(), ContextRegistryError>,
+        lock: &RegistryLock,
+    ) -> Result<(), ContextRegistryError> {
+        if !lock.protects(&self.path) {
+            return Err(context_io(
+                &self.path,
+                &io::Error::other("incorrect context registry lock"),
+            ));
+        }
         let mut document = document::load(&self.path)?;
         let changed = mutation(&mut document)?;
         document

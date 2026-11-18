@@ -1,4 +1,5 @@
 //! Configuration invariant validation.
+use crate::configuration_diagnostic::bounded_context;
 
 use super::{
     BTreeSet, CURRENT_SCHEMA_VERSION, Config, ConfigError, ContextsConfig, HintSelectorPolicy,
@@ -19,7 +20,7 @@ use ferric_browser_core::{MixedPolicyLayer, resolve_mixed_key_policy};
 #[allow(clippy::too_many_lines)]
 pub fn validate(config: &Config) -> Result<(), ConfigError> {
     if config.schema_version != CURRENT_SCHEMA_VERSION {
-        return Err(ConfigError::Validation(format!(
+        return Err(ConfigError::validation(format_args!(
             "unsupported schema_version {}",
             config.schema_version
         )));
@@ -94,7 +95,7 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
         ));
     }
     validate_resolved_selector_policy_map(&config.hints.selectors)
-        .map_err(ConfigError::Validation)?;
+        .map_err(|message| ConfigError::validation(format_args!("{message}")))?;
     if !(100..=2_000).contains(&config.discovery.keychain_overlay_delay_ms) {
         return Err(ConfigError::Validation(
             "discovery.keychain_overlay_delay_ms must be 100..=2000".into(),
@@ -112,8 +113,9 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
             || template.contains('{') && template.replace("{query}", "").contains('{')
             || template.contains('}') && template.replace("{query}", "").contains('}')
         {
-            return Err(ConfigError::Validation(format!(
-                "search engine {name:?} must be an HTTPS template with exactly one {{query}}"
+            return Err(ConfigError::validation(format_args!(
+                "search engine {} must be an HTTPS template with exactly one {{query}}",
+                bounded_context(format_args!("{name:?}"))
             )));
         }
     }
@@ -163,7 +165,7 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
     for (name, target) in &config.action_targets {
         validate_slug(name, "action target name")?;
         if target.subject_types.is_empty() || target.subject_types.len() > 4 {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "action target {name} must declare 1..=4 subject types"
             )));
         }
@@ -172,7 +174,7 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
             if !matches!(subject.as_str(), "url" | "link" | "selection" | "tab")
                 || !subjects.insert(subject.as_str())
             {
-                return Err(ConfigError::Validation(format!(
+                return Err(ConfigError::validation(format_args!(
                     "action target {name} has an unsupported or duplicate subject type"
                 )));
             }
@@ -182,12 +184,12 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
             || target.executable.starts_with('-')
             || target.executable.chars().any(char::is_control)
         {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "action target {name} has an invalid executable"
             )));
         }
         if target.argv.len() > 256 {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "action target {name} has too many argv values"
             )));
         }
@@ -196,13 +198,13 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
                 || argument.len() > 4 * 1024
                 || argument.chars().any(char::is_control)
             {
-                return Err(ConfigError::Validation(format!(
+                return Err(ConfigError::validation(format_args!(
                     "action target {name} has an invalid argv value"
                 )));
             }
             if argument.contains('{') || argument.contains('}') {
                 if !matches!(argument.as_str(), "{url}" | "{title}" | "{selection}") {
-                    return Err(ConfigError::Validation(format!(
+                    return Err(ConfigError::validation(format_args!(
                         "action target {name} uses an invalid or non-complete placeholder"
                     )));
                 }
@@ -212,7 +214,7 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
                     && !subjects.contains("link")
                     && !subjects.contains("tab")
                 {
-                    return Err(ConfigError::Validation(format!(
+                    return Err(ConfigError::validation(format_args!(
                         "action target {name} declares {{url}} without a URL subject"
                     )));
                 }
@@ -221,12 +223,12 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
                     && !subjects.contains("link")
                     && !subjects.contains("tab")
                 {
-                    return Err(ConfigError::Validation(format!(
+                    return Err(ConfigError::validation(format_args!(
                         "action target {name} declares {{title}} without a URL subject"
                     )));
                 }
                 if placeholder == "selection" && !subjects.contains("selection") {
-                    return Err(ConfigError::Validation(format!(
+                    return Err(ConfigError::validation(format_args!(
                         "action target {name} declares {{selection}} without a selection subject"
                     )));
                 }
@@ -334,7 +336,7 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
             rule.permission.as_str(),
             "camera" | "microphone" | "notifications" | "geolocation" | "clipboard" | "local-fonts"
         ) {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "permission rule {} uses an unsupported permission",
                 rule.id
             )));
@@ -345,13 +347,13 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
             rule.permission.as_str(),
         );
         if !permission_rule_keys.insert(key) {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "permission rule {} duplicates a profile/origin/type key",
                 rule.id
             )));
         }
     }
-    if config.site_rules.len() > 256 {
+    if config.site_rules.len() > crate::MAX_SITE_RULES {
         return Err(ConfigError::Validation(
             "at most 256 site rules are supported".into(),
         ));
@@ -378,18 +380,20 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
                 | "pass-through"
                 | "pass-through-once"
         ) {
-            return Err(ConfigError::Validation(format!(
-                "bindings mode {mode:?} is not supported"
+            return Err(ConfigError::validation(format_args!(
+                "bindings mode {} is not supported",
+                bounded_context(format_args!("{mode:?}"))
             )));
         }
+        crate::binding_config::validate_keys(mode, bindings.keys().map(String::as_str))?;
         for (keychain, command) in bindings {
             if ferric_browser_core::binding_key_tokens(keychain).is_none() {
-                return Err(ConfigError::Validation(format!(
+                return Err(ConfigError::validation(format_args!(
                     "binding keychain in mode {mode:?} is not a bounded canonical key sequence"
                 )));
             }
             if command.is_empty() || command.len() > 256 || command.chars().any(char::is_control) {
-                return Err(ConfigError::Validation(format!(
+                return Err(ConfigError::validation(format_args!(
                     "binding {keychain:?} in mode {mode:?} has an invalid command"
                 )));
             }
@@ -405,7 +409,17 @@ fn validate_mixed_input_policy(
     let layer = MixedPolicyLayer::new(shortcut_policy, page_keys);
     resolve_mixed_key_policy(None, Some(&layer), None, None)
         .map(|_| ())
-        .map_err(|error| ConfigError::Validation(error.to_string()))
+        .map_err(|error| match &error {
+            ferric_browser_core::MixedPolicyError::InvalidPageKey { source, reason, .. } => {
+                ConfigError::validation(format_args!("{source} input.page_keys: {reason}; {error}"))
+            }
+            ferric_browser_core::MixedPolicyError::UnknownShortcutPolicy { source, .. } => {
+                ConfigError::validation(format_args!(
+                    "{source} input.shortcut_policy must be browser-first or mixed; {error}"
+                ))
+            }
+            _ => ConfigError::validation(format_args!("{error}")),
+        })
 }
 
 pub(crate) fn validate_profile_definition(profile: &ProfileDefinition) -> Result<(), ConfigError> {
@@ -414,13 +428,13 @@ pub(crate) fn validate_profile_definition(profile: &ProfileDefinition) -> Result
         || profile.label.len() > 128
         || profile.label.chars().any(char::is_control)
     {
-        return Err(ConfigError::Validation(format!(
+        return Err(ConfigError::validation(format_args!(
             "profile {} has an invalid label",
             profile.name
         )));
     }
     if profile.overrides.len() > 128 {
-        return Err(ConfigError::Validation(format!(
+        return Err(ConfigError::validation(format_args!(
             "profile {} has too many overrides",
             profile.name
         )));
@@ -433,13 +447,13 @@ pub(crate) fn validate_profile_definition(profile: &ProfileDefinition) -> Result
         ) || key.starts_with("site_rules.")
             || key.starts_with("permission_rules.")
         {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "profile {} cannot override configuration key {key}",
                 profile.name
             )));
         }
         if value.to_string().len() > MAX_RUNTIME_VALUE_BYTES {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "profile {} override {key} is too large",
                 profile.name
             )));
@@ -456,7 +470,7 @@ pub(crate) fn validate_profile_definition(profile: &ProfileDefinition) -> Result
 
 pub(crate) fn validate_profiles(config: &ProfilesConfig) -> Result<(), ConfigError> {
     if config.schema_version != CURRENT_SCHEMA_VERSION {
-        return Err(ConfigError::Validation(format!(
+        return Err(ConfigError::validation(format_args!(
             "unsupported profiles schema_version {}",
             config.schema_version
         )));
@@ -471,7 +485,7 @@ pub(crate) fn validate_profiles(config: &ProfilesConfig) -> Result<(), ConfigErr
     for profile in &config.profiles {
         validate_profile_definition(profile)?;
         if !names.insert(&profile.name) {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "duplicate profile name: {}",
                 profile.name
             )));
@@ -493,7 +507,7 @@ pub(crate) fn validate_contexts(config: &ContextsConfig) -> Result<(), ConfigErr
     const ALLOWED_ROUTE_ENTRY_POINTS: [&str; 3] =
         ["external-open", "explicit-open", "typed-initial-url"];
     if config.schema_version != CURRENT_SCHEMA_VERSION {
-        return Err(ConfigError::Validation(format!(
+        return Err(ConfigError::validation(format_args!(
             "unsupported contexts schema_version {}",
             config.schema_version
         )));
@@ -511,7 +525,7 @@ pub(crate) fn validate_contexts(config: &ContextsConfig) -> Result<(), ConfigErr
         }
         validate_slug(&context.profile, "context profile")?;
         if !names.insert(&context.name) {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "duplicate context name: {}",
                 context.name
             )));
@@ -522,7 +536,7 @@ pub(crate) fn validate_contexts(config: &ContextsConfig) -> Result<(), ConfigErr
                 .iter()
                 .any(|session| validate_slug(session, "context session").is_err())
         {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "context {} has invalid session references",
                 context.name
             )));
@@ -532,7 +546,7 @@ pub(crate) fn validate_contexts(config: &ContextsConfig) -> Result<(), ConfigErr
                 || workspace.len() > 128
                 || workspace.chars().any(char::is_control))
         {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "context {} has an invalid workspace selector",
                 context.name
             )));
@@ -540,7 +554,7 @@ pub(crate) fn validate_contexts(config: &ContextsConfig) -> Result<(), ConfigErr
         if let Some(accent) = context.accent.as_deref()
             && !valid_accent(accent)
         {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "context {} has an invalid accent",
                 context.name
             )));
@@ -549,7 +563,7 @@ pub(crate) fn validate_contexts(config: &ContextsConfig) -> Result<(), ConfigErr
             context.default_target.as_str(),
             "reuse" | "reuse-or-window" | "window"
         ) {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "context {} has an invalid default_target",
                 context.name
             )));
@@ -571,19 +585,19 @@ pub(crate) fn validate_contexts(config: &ContextsConfig) -> Result<(), ConfigErr
             || route.pattern.chars().any(char::is_control)
             || parse_context_pattern(&route.pattern).is_none()
         {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "context route {} has an invalid HTTP(S) match pattern",
                 route.id
             )));
         }
         if !names.contains(&route.context) {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "context route {} references unknown context {}",
                 route.id, route.context
             )));
         }
         if !matches!(route.behavior.as_str(), "prompt" | "suggest") {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "context route {} behavior must be prompt or suggest",
                 route.id
             )));
@@ -596,7 +610,7 @@ pub(crate) fn validate_contexts(config: &ContextsConfig) -> Result<(), ConfigErr
                     || !ALLOWED_ROUTE_ENTRY_POINTS.contains(&entry.as_str())
             })
         {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "context route {} has invalid entry points; allowed values are external-open, explicit-open, and typed-initial-url",
                 route.id
             )));
@@ -614,7 +628,7 @@ pub(crate) fn validate_contexts(config: &ContextsConfig) -> Result<(), ConfigErr
                         .any(|candidate| candidate == entry)
                 })
         }) {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "context route {} conflicts with another route using pattern {:?} and priority {}",
                 route.id, route.pattern, route.priority
             )));
@@ -630,7 +644,7 @@ pub(super) fn validate_slug(value: &str, label: &str) -> Result<(), ConfigError>
             !(character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-')
         })
     {
-        Err(ConfigError::Validation(format!(
+        Err(ConfigError::validation(format_args!(
             "{label} must be a 1–32 character lowercase slug"
         )))
     } else {
@@ -724,8 +738,9 @@ fn validate_spellcheck_languages(languages: &[String]) -> Result<(), ConfigError
             ));
         }
         if !valid_bcp47_tag(language) {
-            return Err(ConfigError::Validation(format!(
-                "spellcheck language {language:?} is not a valid BCP 47 tag"
+            return Err(ConfigError::validation(format_args!(
+                "spellcheck language {} is not a valid BCP 47 tag",
+                bounded_context(format_args!("{language:?}"))
             )));
         }
         if !seen.insert(language.to_ascii_lowercase()) {
@@ -903,7 +918,7 @@ pub(super) fn validate_runtime_key(key: &str) -> Result<(), ConfigError> {
 
 pub(super) fn validate_runtime_overrides(overrides: &RuntimeOverrides) -> Result<(), ConfigError> {
     if overrides.schema_version != RUNTIME_SCHEMA_VERSION {
-        return Err(ConfigError::Validation(format!(
+        return Err(ConfigError::validation(format_args!(
             "unsupported runtime override schema_version {}",
             overrides.schema_version
         )));
@@ -916,10 +931,11 @@ pub(super) fn validate_runtime_overrides(overrides: &RuntimeOverrides) -> Result
     for (key, value) in &overrides.settings {
         validate_runtime_key(key)?;
         if value.to_string().len() > MAX_RUNTIME_VALUE_BYTES {
-            return Err(ConfigError::Validation(format!(
+            return Err(ConfigError::validation(format_args!(
                 "runtime override value for {key:?} is too large"
             )));
         }
+        crate::binding_config::validate_setting(key, value)?;
         if key == "downloads.directory" {
             super::download_directory::normalize(value.clone())?;
         }
@@ -928,12 +944,12 @@ pub(super) fn validate_runtime_overrides(overrides: &RuntimeOverrides) -> Result
                 .clone()
                 .try_into::<HintSelectorPolicy>()
                 .map_err(|error| {
-                    ConfigError::Validation(format!(
+                    ConfigError::validation(format_args!(
                         "runtime selector policy for {key} has the wrong type: {error}"
                     ))
                 })?;
             policy.validate().map_err(|error| {
-                ConfigError::Validation(format!("runtime selector policy for {key}: {error}"))
+                ConfigError::validation(format_args!("runtime selector policy for {key}: {error}"))
             })?;
         }
     }
@@ -944,15 +960,17 @@ pub(super) fn validate_runtime_overrides(overrides: &RuntimeOverrides) -> Result
     }
     for (mode, bindings) in &overrides.bindings {
         if bindings.len() > MAX_RUNTIME_SETTINGS {
-            return Err(ConfigError::Validation(format!(
-                "runtime binding mode {mode:?} has too many entries"
+            return Err(ConfigError::validation(format_args!(
+                "runtime binding mode {} has too many entries",
+                bounded_context(format_args!("{mode:?}"))
             )));
         }
+        crate::binding_config::validate_keys(mode, bindings.keys().map(String::as_str))?;
         for (key, command) in bindings {
             validate_runtime_binding(mode, key, command)?;
         }
     }
-    if overrides.site_rules.len() > MAX_RUNTIME_SETTINGS {
+    if overrides.site_rules.len() > crate::MAX_SITE_RULES {
         return Err(ConfigError::Validation(
             "at most 256 runtime site rules are supported".into(),
         ));
@@ -1002,8 +1020,9 @@ pub(super) fn validate_runtime_binding(
             | "pass-through"
             | "pass-through-once"
     ) {
-        return Err(ConfigError::Validation(format!(
-            "runtime binding mode {mode:?} is not supported"
+        return Err(ConfigError::validation(format_args!(
+            "runtime binding mode {} is not supported",
+            bounded_context(format_args!("{mode:?}"))
         )));
     }
     if ferric_browser_core::binding_key_tokens(keychain).is_none() {

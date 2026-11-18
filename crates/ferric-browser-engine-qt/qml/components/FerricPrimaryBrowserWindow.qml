@@ -41,6 +41,8 @@ ApplicationWindow {
     readonly property alias runtime_browserWindowComponent: browserWindowComponent
     readonly property alias runtime_keyboardHelpSurface: keyboardHelpSurface
     readonly property alias runtime_settingsWorkspace: settingsWorkspace
+    readonly property alias runtime_policyWorkspace: policyWorkspace
+    readonly property alias sitePolicyPreviewWorkspace: sitePolicyPreview
     readonly property alias runtime_libraryManager: libraryManager
     readonly property alias runtime_switcherSurface: switcherSurface
     readonly property alias runtime_webViews: webViews
@@ -547,6 +549,7 @@ ApplicationWindow {
     property int rendererFailureCount: 0
     property string startupConfigJson: ""
     property string startupConfigBaseJson: ""
+    property var startupConfigurationBundle: null
     property string startupCliOverridesJson: "{}"
     property string startupProfileOverridesJson: "{}"
     property string startupConfigPath: ""
@@ -714,6 +717,7 @@ ApplicationWindow {
     property var bindingHelpRows: []
     property bool bindingOverlayVisible: false
     property bool settingsVisible: false
+    property bool sitePoliciesVisible: false
     property bool settingsTemporary: false
     property string settingsSearch: ""
     property string settingsNotice: ""
@@ -860,6 +864,7 @@ ApplicationWindow {
         || (window.diagnosticsVisible && (window.diagnosticsHost || window) === window)
         || window.bindingHelpVisible
         || window.settingsVisible
+        || window.sitePoliciesVisible
         || window.libraryManagerVisible
         || window.privateHistoryTransferVisible
         || window.linkPreviewVisible
@@ -1122,6 +1127,10 @@ ApplicationWindow {
 
     BrowserUi {
         id: browserUi
+        onInput_bindings_changed: function(context) { browserKeyRouter.policyContext = context }
+        onInput_epochChanged: Qt.callLater(function() {
+            if (window && !window.runtimeDisposing && browserUi && browserUi.page_key_routing_active()) window.scheduleFocusProbe(2)
+        })
         page_window_ordinary: true
         status_text: "Ready"
         onRuntime_work_available: {
@@ -1133,6 +1142,7 @@ ApplicationWindow {
         }
         onStatus_textChanged: {
             window.scheduleRuntimeWork(0)
+            if (window.siteLedgerVisible) Qt.callLater(window.refreshVisibleSiteLedger)
             if (window.commandNoticeVisible && browserUi.mode !== "command"
                     && browserUi.status_text !== "Normal mode") {
                 var loweredStatus = browserUi.status_text.toLowerCase()
@@ -1147,10 +1157,15 @@ ApplicationWindow {
 
     BrowserKeyRouter {
         id: browserKeyRouter
+        captureOnly:policyCapture.opened
+        onPageReceiverObserved: function(view, epoch, framePath, facts) {
+            runtimeServices.acceptPageReceiverObservation(browserUi, view, epoch, framePath, facts)
+        }
         transientInsert: browserUi.mode === "insert"
         passNextKey: browserUi.mode === "pass-through-once"
         passThrough: browserUi.mode === "pass-through"
         inputEpoch: browserUi.input_epoch
+        policyContext: browserUi.binding_context()
         onPassNextKeyDispatched: function(epoch) {
             if (browserUi.mode === "pass-through-once" && browserUi.input_epoch === epoch) {
                 window.cancelFocusProbes()
@@ -1175,10 +1190,20 @@ ApplicationWindow {
                      || browserUi.mode === "pass-through"
                      || browserUi.mode === "pass-through-once")
         onClipboardShortcutOverride: function(key, modifiers) {
+            if (policyCapture.opened) { browserKeyRouter.acceptCurrentEvent();return }
             var logical = window.logicalNormalKeyText({key: key, modifiers: modifiers, text: ""})
             if (!window.nativePromptActiveFor(browserUi) && browserUi.clipboard_shortcut_browser_owned(logical)) browserKeyRouter.acceptCurrentEvent()
         }
         onKeyPressed: function(text, key, modifiers, isAutoRepeat, browserOwnedRepeat) {
+            if (!browserKeyRouter.captureBindingContext(browserUi.binding_context())) {
+                browserKeyRouter.acceptCurrentEvent()
+                return
+            }
+            if (policyCapture.opened) {
+                browserKeyRouter.acceptCurrentEvent()
+                policyCapture.handlePageKey(text,key,modifiers,isAutoRepeat)
+                return
+            }
             var event = {
                 text: text,
                 key: key,
@@ -1333,6 +1358,7 @@ ApplicationWindow {
 
     function focusProbeScript() { return runtimeServices.focusProbeScript() }
 
+    function acceptPageReceiverObservation(ui, view, epoch, framePath, facts) { return runtimeServices.acceptPageReceiverObservation(ui, view, epoch, framePath, facts) }
     function probeFocusFrame(ui, index, frame, framePath, url, view) { return runtimeServices.probeFocusFrame(ui, index, frame, framePath, url, view) }
 
     function probeNativePromptFocus(ui, view, leaseId) { return runtimeServices.probeNativePromptFocus(ui, view, leaseId) }
@@ -2854,6 +2880,11 @@ GridLayout {
             window.closeInternalSurface()
         }
         onRefreshRequested: window.showSiteLedger()
+        onSitePoliciesRequested: {
+            window.siteLedgerVisible = false
+            window.closeInternalSurface()
+            browserUi.execute_interactive_command("site-policy")
+        }
         onActiveOriginDataClearRequested: {
             if (!window.siteLedgerSnapshotIsCurrent()) {
                 siteLedgerSurface.showNotice(browserUi.status_text, true)
@@ -2953,6 +2984,30 @@ GridLayout {
             window.bindingHelpSearch = text
             window.refreshBindingHelp()
         }
+    }
+
+    FerricSitePolicyPreview {
+        id: sitePolicyPreview
+        rootWindow: window
+        hostWindow: window
+        browserUi: window.browserUi
+        onFailed: function(reason) { policyWorkspace.notice = reason }
+        onInspectionFinished: policyWorkspace.finishFocusedPreview()
+    }
+    FerricSitePolicyWorkspace {
+        id: policyWorkspace
+        browserWindow: window
+        browserUi: window.browserUi
+        onPreviewCloseRequested: sitePolicyPreview.stop()
+        onOpening: window.openInternalSurface()
+        onClosed: { sitePolicyPreview.stop(); window.closeInternalSurface() }
+    }
+    FerricSitePolicyCapture {
+        id:policyCapture
+        browserWindow: window
+        browserUi: window.browserUi
+        workspace: policyWorkspace
+        runtime: sitePolicyPreview
     }
 
     FerricSettingsWorkspace {
@@ -3241,6 +3296,7 @@ GridLayout {
         browserWindow: window
         statusVisible: window.statusBarVisible
         mode: browserUi.mode
+        rawPassthrough: browserUi.raw_passthrough
         displayUrl: browserUi.display_url
         hintPreviewText: browserUi.mode === "hint" && !browserUi.target_search_active ? window.hintWorkspace.previewText : primaryPageSearch.previewText
         statusText: window.commandNoticeVisible
@@ -3644,7 +3700,8 @@ GridLayout {
         if (!browserUi.set_startup_configuration(
                     window.startupConfigJson, window.startupConfigBaseJson,
                     window.startupCliOverridesJson, window.startupProfileOverridesJson,
-                    window.startupConfigPath, window.startupConfigSource)) {
+                    window.startupConfigPath, window.startupConfigSource,
+                    window.startupConfigurationBundle)) {
             Qt.quit()
             return
         }

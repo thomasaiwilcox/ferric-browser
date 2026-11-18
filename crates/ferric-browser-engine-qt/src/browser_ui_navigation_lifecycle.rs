@@ -20,13 +20,18 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn navigation_started(mut self: Pin<&mut Self>, url: QString) {
+        let observation_index = self.as_ref().rust().active_tab_index;
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
             Err(error) => {
+                self.as_mut()
+                    .reject_observed_policy_context_for(observation_index);
                 self.set_status_text(QString::from(format!("Navigation URL rejected: {error}")));
                 return;
             }
         };
+        self.as_mut()
+            .accept_observed_policy_context_for(observation_index);
         let started_url = url.to_string();
         if let Some(target) = current_target(
             self.as_ref().rust().state.as_ref(),
@@ -74,6 +79,7 @@ impl qobject::BrowserUi {
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
             Err(error) => {
+                self.as_mut().reject_observed_policy_context_for(index);
                 if index == self.as_ref().rust().active_tab_index {
                     self.set_status_text(QString::from(format!(
                         "Navigation URL rejected: {error}"
@@ -82,6 +88,7 @@ impl qobject::BrowserUi {
                 return;
             }
         };
+        self.as_mut().accept_observed_policy_context_for(index);
         let started_url = url.to_string();
         if let Some(target) = self.as_ref().get_ref().target_for_index(index) {
             self.as_mut().retire_native_document_work(target);
@@ -128,15 +135,20 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn navigation_url_changed(mut self: Pin<&mut Self>, url: QString) {
+        let observation_index = self.as_ref().rust().active_tab_index;
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
             Err(error) => {
+                self.as_mut()
+                    .reject_observed_policy_context_for(observation_index);
                 self.as_mut().set_status_text(QString::from(format!(
                     "Address could not be opened: {error}"
                 )));
                 return;
             }
         };
+        self.as_mut()
+            .accept_observed_policy_context_for(observation_index);
         let active_index = self.as_ref().rust().active_tab_index;
         if self.as_ref().rust().core_mode == super::Mode::Grid {
             self.as_mut()
@@ -144,6 +156,8 @@ impl qobject::BrowserUi {
         }
         self.as_mut().clear_focus_observation_state(active_index);
         let Ok(parsed) = ValidatedUrl::parse(url.to_string()) else {
+            self.as_mut()
+                .reject_observed_policy_context_for(observation_index);
             self.set_status_text(QString::from("Engine returned an invalid URL"));
             return;
         };
@@ -228,23 +242,28 @@ impl qobject::BrowserUi {
         document_id: &QString,
         epoch: i32,
     ) {
+        let document_id = document_id.to_string();
+        let supplied_tab_id = tab_id.to_string();
+        if !self.as_ref().policy_observation_identity_is_current(
+            index,
+            &supplied_tab_id,
+            &document_id,
+            epoch,
+        ) {
+            return;
+        }
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
             Err(error) => {
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Address could not be opened: {error}"
-                )));
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .navigation
-                    .pending_same_document_pass_through = None;
+                self.as_mut().reject_observed_policy_context_for(index);
+                if index == self.as_ref().rust().active_tab_index {
+                    self.as_mut().set_status_text(QString::from(format!(
+                        "Address could not be opened: {error}"
+                    )));
+                }
                 return;
             }
         };
-        let document_id = document_id.to_string();
-        let supplied_tab_id = tab_id.to_string();
         let target = self.as_ref().get_ref().target_for_index(index);
         let identity_proven = target.is_some_and(|target| {
             supplied_tab_id == target.tab.to_string()
@@ -280,7 +299,7 @@ impl qobject::BrowserUi {
         ) && active_target;
 
         self.as_mut()
-            .navigation_url_changed_for_identity(index, url.clone());
+            .navigation_url_changed_for_identity(index, url.clone(), identity_proven);
 
         if should_suspend {
             let Some(target) = target else {
@@ -355,6 +374,13 @@ impl qobject::BrowserUi {
         let Some(target) = self.as_ref().get_ref().target_for_index(index) else {
             return;
         };
+        self.as_mut().recover_policy_observation_from_probe(
+            index,
+            &supplied_tab_id,
+            &canonical_url,
+            &document_id,
+            epoch,
+        );
         let pending = self
             .as_ref()
             .rust()
@@ -416,13 +442,19 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn navigation_url_changed_for(self: Pin<&mut Self>, index: i32, url: QString) {
-        self.navigation_url_changed_for_identity(index, url);
+        self.navigation_url_changed_for_identity(index, url, true);
     }
 
-    fn navigation_url_changed_for_identity(mut self: Pin<&mut Self>, index: i32, url: QString) {
+    fn navigation_url_changed_for_identity(
+        mut self: Pin<&mut Self>,
+        index: i32,
+        url: QString,
+        allow_rejected_recovery: bool,
+    ) {
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
             Err(error) => {
+                self.as_mut().reject_observed_policy_context_for(index);
                 if index == self.as_ref().rust().active_tab_index {
                     self.set_status_text(QString::from(format!(
                         "Address could not be opened: {error}"
@@ -431,6 +463,9 @@ impl qobject::BrowserUi {
                 return;
             }
         };
+        if allow_rejected_recovery {
+            self.as_mut().accept_observed_policy_context_for(index);
+        }
         if index == self.as_ref().rust().active_tab_index
             && self.as_ref().rust().core_mode == super::Mode::Grid
         {
@@ -470,6 +505,7 @@ impl qobject::BrowserUi {
                 .finish_site_doctor_experiment(&QString::from(id), false);
         }
         let Ok(parsed) = ValidatedUrl::parse(url.to_string()) else {
+            self.as_mut().reject_observed_policy_context_for(index);
             if index == self.as_ref().rust().active_tab_index {
                 self.set_status_text(QString::from("Engine returned an invalid URL"));
             }
@@ -501,19 +537,26 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn navigation_committed(mut self: Pin<&mut Self>, url: QString, title: QString) {
+        let observation_index = self.as_ref().rust().active_tab_index;
         let canonical_url = match canonical_engine_url(url) {
             Ok(url) => url,
             Err(error) => {
+                self.as_mut()
+                    .reject_observed_policy_context_for(observation_index);
                 self.set_status_text(QString::from(format!(
                     "Address could not be opened: {error}"
                 )));
                 return;
             }
         };
+        self.as_mut()
+            .accept_observed_policy_context_for(observation_index);
         let raw_title = title.to_string();
         drop(title);
         let title = sanitize_untrusted_title(&raw_title);
         let Ok(parsed) = ValidatedUrl::parse(canonical_url.clone()) else {
+            self.as_mut()
+                .reject_observed_policy_context_for(observation_index);
             self.set_status_text(QString::from("Engine returned an invalid URL"));
             return;
         };
@@ -575,6 +618,7 @@ impl qobject::BrowserUi {
         let canonical_url = match canonical_engine_url(url) {
             Ok(url) => url,
             Err(error) => {
+                self.as_mut().reject_observed_policy_context_for(index);
                 if index == self.as_ref().rust().active_tab_index {
                     self.set_status_text(QString::from(format!(
                         "Address could not be opened: {error}"
@@ -583,10 +627,12 @@ impl qobject::BrowserUi {
                 return;
             }
         };
+        self.as_mut().accept_observed_policy_context_for(index);
         let raw_title = title.to_string();
         drop(title);
         let title = sanitize_untrusted_title(&raw_title);
         let Ok(parsed) = ValidatedUrl::parse(canonical_url.clone()) else {
+            self.as_mut().reject_observed_policy_context_for(index);
             if index == self.as_ref().rust().active_tab_index {
                 self.set_status_text(QString::from("Engine returned an invalid URL"));
             }
@@ -648,6 +694,7 @@ impl qobject::BrowserUi {
             ));
             return false;
         }
+        self.as_mut().retire_configuration_observers();
         self.as_mut().cancel_diagnostics();
         {
             let mut rust = self.as_mut().rust_mut();
@@ -767,7 +814,7 @@ impl qobject::BrowserUi {
             this.core_window_id = QString::default();
             this.live_window_registry.clear();
             this.tab = None;
-            this.bindings = None;
+            this.replace_input_bindings(None);
             this.learning_mode = false;
             this.configuration_io.config_watch = ConfigWatch::default();
             this.configuration_io.theme_watch = ConfigWatch::default();
@@ -793,6 +840,8 @@ impl qobject::BrowserUi {
                 cancellations.clear();
             }
         }
+        let binding_context = self.as_ref().binding_context();
+        self.as_mut().input_bindings_changed(binding_context);
         self.as_mut().sync_context_choices();
         self.as_mut().sync_macro_status_text();
         self.as_mut().set_active_tab_index(0);

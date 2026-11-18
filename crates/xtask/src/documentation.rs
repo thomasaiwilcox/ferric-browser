@@ -198,15 +198,13 @@ pub(super) fn render_user_docs() -> Result<(String, String, String, String), Str
     ));
     append_download_folder_docs(&mut configuration);
     append_hint_selector_docs(&mut configuration);
-    configuration.push_str(concat!(
-        "\n## Validated hint proxies\n\n",
-        "`hints.proxy_targets` accepts `off` (the default) or `validated` and can be set globally, in a profile, or with a site rule. `validated` enables only the browser's checked editor-container and native label/control pairings; it does not let selectors nominate hidden receivers or grant a general visibility exception. Editor proxies must remain connected, enabled, editable, non-inert, and visible through their editor container. The feature does not read editor contents or change page focusability styles. Structural fixtures do not establish compatibility with a particular editor framework build.\n",
-    ));
+    append_hint_proxy_docs(&mut configuration);
     configuration.push_str("\n## Starter configuration\n\n```toml\n");
     let starter = toml::to_string_pretty(&Config::default())
         .map_err(|error| format!("could not serialize default configuration: {error}"))?;
     configuration.push_str(&starter);
     configuration.push_str("```\n");
+    configuration.push_str("\nSee [Site Policies](site-policies.md) for guided anchors/collections, reviewed\nactivation, page-key mappings, raw recovery and local import/export.\n");
     Ok((
         commands,
         configuration,
@@ -241,9 +239,20 @@ pub(super) fn append_hint_selector_docs(configuration: &mut String) {
         "\n## Hint selector policies\n\n",
         "Configure the seven existing Hint families (`all`, `links`, `inputs`, `buttons`, `images`, `media`, and `scrollables`) with `mode = \"extend\"` or `mode = \"replace\"`. With no entry, Ferric uses that family's built-in selectors. `extend` adds unique selectors in stable order; `replace` uses only the listed selectors. An empty `replace` list disables that family. For example:\n\n",
         "```toml\n[hints.selectors.buttons]\nmode = \"extend\"\nselectors = ['button[data-action]']\n```\n\n",
-        "The effective global/profile/runtime settings form the base policy. Matching site rules then apply in the repository's existing priority and source order; each family layers independently, and `all` is not an implicit union of the other families. `scrollables` must still match an actually scrollable element. Selectors control discovery only: semantic type checks, visibility, disabled/inert checks, and the existing action or proxy guards still decide what a target can do.\n\n",
+        "Selectors compose from the merged base and profile globals, then authored matching site rules. Generated site rules apply next, followed by explicitly supplied generated globals, CLI globals, temporary site rules and explicit temporary globals. Higher sources beat lower sources regardless of numeric priority; within one source, priority and authored order decide the result. A higher-source rule replaces the entire lower rule with the same ID before URL matching, even when the replacement does not match the current URL. Different IDs with the same pattern remain separate.\n\n",
+        "This corrects the earlier behavior in which matching sites were applied after flattened global settings. An explicit generated global selector or proxy preference can now override a lower-source site value, and an explicit empty selector `replace` can clear it. Absent globals do not reset earlier sites. Include selector tables still merge by leaf once; `extend` retains inherited replace mode and appends unique selectors in stable order.\n\n",
+        "Each family layers independently, and `all` is not an implicit union of the other families. `scrollables` must still match an actually scrollable element. Selectors control discovery only: semantic type checks, visibility, disabled/inert checks, and the existing action or proxy guards still decide what a target can do. Selector settings and site rules take effect on `:config-reload`, not a webpage reload; pending changes do not enter a current Hint snapshot.\n\n",
         "Each authored family entry allows at most 16 selectors, each up to 1,024 UTF-8 bytes, and at most 16 KiB of selector strings. A site rule has a shared 16 KiB selector-string budget across its families. After layering, each family allows at most 32 selectors and 32 KiB; the resolved policy across all families is also capped at 32 KiB. Empty strings, control characters, and duplicate selectors in one entry are rejected. The WebEngine CSS parser checks syntax before a selector setting is committed.\n\n",
+        "A higher-source `replace` can repair an intermediate site union exceeding the effective limit; an unrepaired final overflow rejects the policy. Every raw entry must still satisfy its own limits, even when a later replacement supersedes it.\n\n",
         "A Hint snapshot inspects at most 50,000 DOM nodes and returns at most 5,000 candidates. Truncation is reported in the Hint status. These limits bound traversal and output; one CSS selector match is synchronous and cannot be interrupted by a timeout.\n",
+    ));
+}
+
+fn append_hint_proxy_docs(configuration: &mut String) {
+    configuration.push_str(concat!(
+        "\n## Validated hint proxies\n\n",
+        "`hints.proxy_targets` accepts `off` (the default) or `validated` and can be set globally, in a profile, or with a site rule. `validated` enables only the browser's checked editor-container and native label/control pairings; it does not let selectors nominate hidden receivers or grant a general visibility exception. Editor proxies must remain connected, enabled, editable, non-inert, and visible through their editor container. The feature does not read editor contents or change page focusability styles. Structural fixtures do not establish compatibility with a particular editor framework build.\n",
+        "\nExplicit global proxy preferences are live; site-rule changes still require `:config-reload`. A live generated global `off` therefore overrides an active lower-source site's `validated` preference while pending site rules remain inactive. Removing that global exposes the lower-source value again. Changes to the effective proxy policy retire existing Hint authority even when the flattened global configuration values are identical.\n",
     ));
 }
 

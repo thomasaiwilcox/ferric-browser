@@ -1,0 +1,148 @@
+{
+  "annotation": {
+    "version": 1,
+    "stamp": {
+      "profile": "profileid-1",
+      "window": "windowid-1",
+      "tab": "tabid-2",
+      "document": "documentid-3",
+      "profile_revision": "18446744073709551615",
+      "configuration_revision": "9007199254740993",
+      "policy_revision": "3",
+      "target_generation": "18446744073709551615",
+      "selector_revision": "0",
+      "view_generation": "0",
+      "viewport_generation": "0",
+      "collection_epoch": "0",
+      "provider_epoch": "0",
+      "request_id": "18446744073709551615",
+      "scope_lease": "",
+      "family": "links"
+    },
+    "documents": [
+      {
+        "id": 2,
+        "frame_owner": "",
+        "frame_path": "0",
+        "epoch": "04190181-af17-459d-afa9-23c14e6374e9",
+        "origin": "http://127.0.0.1:8766",
+        "document_node": 2,
+        "parent_host": null
+      }
+    ],
+    "roots": [
+      {
+        "id": 1,
+        "start": {
+          "document": 2,
+          "node": 2
+        },
+        "start_kind": "document",
+        "hops": [],
+        "resolved": {
+          "document": 2,
+          "node": 2
+        },
+        "resolved_kind": "document"
+      }
+    ],
+    "outcomes": [
+      {
+        "rule": {
+          "kind": "anchor",
+          "id": "observed"
+        },
+        "result": {
+          "anchor-observed": {
+            "root": 1,
+            "scope": {
+              "document": 2,
+              "node": 2
+            },
+            "scope_kind": "document",
+            "targets": [
+              {
+                "candidate": {
+                  "index": 0,
+                  "frame_owner": "",
+                  "frame_path": "0",
+                  "element_id": 1,
+                  "related_element_id": null
+                },
+                "name": {
+                  "complete-present": {
+                    "value": "Item 0"
+                  }
+                },
+                "href": {
+                  "complete-present": {
+                    "value": "http://127.0.0.1:8766/roots.html#item-0"
+                  }
+                },
+                "role": {
+                  "complete-absent": {}
+                },
+                "attributes": [],
+                "target_border_box_css": {
+                  "width": 200,
+                  "height": 40
+                },
+                "projected_primary_fragment_css": {
+                  "x": 20,
+                  "y": 20,
+                  "width": 200,
+                  "height": 40
+                },
+                "fragment_index": 0,
+                "top_viewport_css": {
+                  "width": 1000,
+                  "height": 800
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "discovery_work": {
+      "predicate_steps": 38,
+      "inspections": 21
+    }
+  },
+  "candidates": [
+    {
+      "element_id": 1,
+      "related_element_id": null,
+      "kind": "link",
+      "frame_path": "0",
+      "text": "Item 0",
+      "href": "http://127.0.0.1:8766/roots.html#item-0",
+      "presentation": null,
+      "geometry": {
+        "x": 20,
+        "y": 20,
+        "width": 200,
+        "height": 40
+      }
+    }
+  ],
+  "patch": {
+    "enabled": true,
+    "anchors": [
+      {
+        "id": "observed",
+        "code": "x",
+        "families": [
+          "links"
+        ],
+        "target_selector": ".target"
+      }
+    ]
+  },
+  "provenance": {
+    "scope": "Real WebEngine ApplicationWorld producer and ordinary candidate output; not a live/native-authority fixture",
+    "record": "target/site-policy-p05-revalidation/witness-observations-http-second-1/record.json",
+    "source_archive_sha256": "e817e6bd9c82124fcd1e461f9673a933ebcc836e9392702e9efbbaddc777e685",
+    "test": "PolicyWitnessObservations::test_complete_target_sets(one)"
+  }
+}

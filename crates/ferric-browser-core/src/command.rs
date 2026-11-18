@@ -20,6 +20,61 @@ pub struct ParsedCommand {
     pub arguments: Vec<String>,
 }
 
+/// A validated explicit mode change. Raw forwarding is session-local and is
+/// available only for the two passthrough modes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ModeEnterOptions {
+    pub mode: Mode,
+    pub raw: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModeEnterError {
+    MissingMode,
+    UnknownMode,
+    InvalidArguments,
+    RawRequiresPassthrough,
+}
+
+impl fmt::Display for ModeEnterError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::MissingMode => "mode-enter requires a mode",
+            Self::UnknownMode => "unknown mode; expected normal, insert, insert-locked, caret, passthrough, or passthrough-once",
+            Self::InvalidArguments => "mode-enter accepts MODE followed by an optional --raw",
+            Self::RawRequiresPassthrough => "--raw requires passthrough or passthrough-once",
+        })
+    }
+}
+
+impl std::error::Error for ModeEnterError {}
+
+/// Parses `mode-enter MODE [--raw]`, including the existing pass-through aliases.
+///
+/// # Errors
+/// Rejects missing/unknown modes, extra or duplicate flags and raw on other modes.
+pub fn parse_mode_enter(arguments: &[String]) -> Result<ModeEnterOptions, ModeEnterError> {
+    let (mode, raw) = match arguments {
+        [] => return Err(ModeEnterError::MissingMode),
+        [mode] => (mode, false),
+        [mode, flag] if flag == "--raw" => (mode, true),
+        _ => return Err(ModeEnterError::InvalidArguments),
+    };
+    let mode = match mode.as_str() {
+        "normal" => Mode::Normal,
+        "insert" => Mode::Insert,
+        "insert-locked" => Mode::InsertLocked,
+        "caret" => Mode::Caret,
+        "passthrough" | "pass-through" => Mode::PassThrough,
+        "passthrough-once" | "pass-through-once" => Mode::PassThroughOnce,
+        _ => return Err(ModeEnterError::UnknownMode),
+    };
+    if raw && !matches!(mode, Mode::PassThrough | Mode::PassThroughOnce) {
+        return Err(ModeEnterError::RawRequiresPassthrough);
+    }
+    Ok(ModeEnterOptions { mode, raw })
+}
+
 impl ParsedCommand {
     /// Encodes tokens for the browser command grammar. Shell syntax remains
     /// literal data, including separators, quotes, backslashes and empty values.
@@ -1016,10 +1071,12 @@ impl CommandRegistry {
                     Mode::Insert,
                     Mode::InsertLocked,
                     Mode::Caret,
+                    Mode::PassThrough,
+                    Mode::PassThroughOnce,
                 ],
                 CountPolicy::NotSupported,
                 false,
-                "Enter Insert, Caret, Pass-through, or Pass Next Key. Pass-through sends webpage shortcuts; Ctrl+Escape returns to Normal.",
+                "Enter Insert, Caret, Pass-through, or Pass Next Key. Pass-through sends webpage shortcuts; add --raw to bypass remaps for this session. Release transformed keys first. Ctrl+Escape returns to Normal.",
             ),
             definition(
                 "caret-move",
@@ -1659,7 +1716,179 @@ impl CommandRegistry {
                 false,
                 "Open the saved-session manager.",
             ),
+            definition(
+                "site-policy-apply",
+                &[],
+                vec![Mode::Normal, Mode::Command],
+                CountPolicy::NotSupported,
+                false,
+                "Apply an exact reviewed Site Policies draft revision; optionally activate configuration.",
+            ),
+            definition(
+                "site-policy-edit",
+                &[],
+                vec![Mode::Normal, Mode::Command],
+                CountPolicy::NotSupported,
+                false,
+                "Create an exact-source Site Policies draft or explicitly rebase its reviewed revision.",
+            ),
         ]);
+        for (name, description, effect, example, arguments) in [
+            (
+                "site-policy-list",
+                "List exact-source Site Policies and their saved/active state.",
+                EffectClass::Query,
+                "site-policy-list --all",
+                vec![
+                    ("url", ArgumentKind::Text, false),
+                    ("all", ArgumentKind::Boolean, false),
+                ],
+            ),
+            (
+                "site-policy-discard",
+                "Discard an uncommitted Site Policies draft owned by this window.",
+                EffectClass::Mutating,
+                "site-policy-discard reviewed-draft",
+                vec![("draft", ArgumentKind::Text, true)],
+            ),
+            (
+                "site-policy-explain",
+                "Explain effective Site Policies, exact source rules, keys or hint codes without activation.",
+                EffectClass::Query,
+                "site-policy-explain --url https://example.test/ --key p",
+                vec![
+                    ("url", ArgumentKind::Text, false),
+                    ("source", ArgumentKind::Text, false),
+                    ("id", ArgumentKind::Text, false),
+                    ("key", ArgumentKind::Text, false),
+                    ("code", ArgumentKind::Text, false),
+                ],
+            ),
+            (
+                "site-policy-import",
+                "Read a constrained local exchange into one isolated Site Policies draft batch.",
+                EffectClass::Sensitive,
+                "site-policy-import policy.toml --temp --replace-existing",
+                vec![
+                    ("path", ArgumentKind::Text, true),
+                    ("temporary", ArgumentKind::Boolean, false),
+                    ("replace_existing", ArgumentKind::Boolean, false),
+                ],
+            ),
+            (
+                "site-policy-export",
+                "Export an exact rule or draft without unrelated settings; overwrite only explicitly.",
+                EffectClass::Sensitive,
+                "site-policy-export policy.toml --source generated --id player",
+                vec![
+                    ("path", ArgumentKind::Text, true),
+                    ("source", ArgumentKind::Text, false),
+                    ("id", ArgumentKind::Text, false),
+                    ("draft", ArgumentKind::Text, false),
+                    ("overwrite", ArgumentKind::Boolean, false),
+                ],
+            ),
+            (
+                "site-policy",
+                "Open the unified native Site Policies workspace without activating configuration.",
+                EffectClass::Query,
+                "site-policy --url https://example.test/",
+                vec![("url", ArgumentKind::Text, false)],
+            ),
+            (
+                "site-policy-preview",
+                "Validate a frozen draft; optionally inspect all invocations on a live tab without activation.",
+                EffectClass::Mutating,
+                "site-policy-preview reviewed-draft --tab TAB_ID",
+                vec![
+                    ("draft", ArgumentKind::Text, true),
+                    ("tab", ArgumentKind::Text, false),
+                ],
+            ),
+        ] {
+            let mut command = definition(
+                name,
+                &[],
+                vec![Mode::Normal, Mode::Command],
+                CountPolicy::NotSupported,
+                false,
+                description,
+            );
+            command.scope = CommandScope::Window;
+            command.effect = effect;
+            command.sensitive = effect == EffectClass::Sensitive;
+            command.arguments = arguments
+                .into_iter()
+                .map(|(name, kind, required)| ArgumentDefinition {
+                    name: name.into(),
+                    kind,
+                    required,
+                })
+                .collect();
+            command.examples = vec![example.into()];
+            if name == "site-policy-explain" {
+                command.modes.push(Mode::Hint);
+            }
+            registry.definitions.push(command);
+        }
+        if let Some(command) = registry
+            .definitions
+            .iter_mut()
+            .find(|command| command.name == "site-policy-edit")
+        {
+            command.scope = CommandScope::Window;
+            command.arguments = [
+                "source",
+                "id",
+                "new",
+                "pattern",
+                "priority",
+                "remove_interaction",
+                "enabled",
+                "draft",
+                "revision",
+                "rebase",
+            ]
+            .into_iter()
+            .map(|name| ArgumentDefinition {
+                name: name.into(),
+                required: false,
+                kind: match name {
+                    "new" | "remove_interaction" | "enabled" | "rebase" => ArgumentKind::Boolean,
+                    "priority" | "revision" => ArgumentKind::Integer,
+                    _ => ArgumentKind::Text,
+                },
+            })
+            .collect();
+            command.examples = vec!["site-policy-edit --source temporary --id player --new --pattern https://example.test/* --enabled true".into(),
+                "site-policy-edit --draft reviewed-draft --revision 1 --rebase".into()];
+        }
+        if let Some(command) = registry
+            .definitions
+            .iter_mut()
+            .find(|command| command.name == "site-policy-apply")
+        {
+            command.scope = CommandScope::Profile;
+            command.arguments = vec![
+                ArgumentDefinition {
+                    name: "draft".into(),
+                    kind: ArgumentKind::Text,
+                    required: true,
+                },
+                ArgumentDefinition {
+                    name: "revision".into(),
+                    kind: ArgumentKind::Integer,
+                    required: true,
+                },
+                ArgumentDefinition {
+                    name: "activate".into(),
+                    kind: ArgumentKind::Boolean,
+                    required: false,
+                },
+            ];
+            command.examples =
+                vec!["site-policy-apply reviewed-draft --revision 1 --activate".into()];
+        }
         for command in &mut registry.definitions {
             if matches!(command.name.as_str(), "settings" | "profiles" | "sessions") {
                 command.scope = CommandScope::Window;
@@ -2841,12 +3070,23 @@ impl CommandRegistry {
             .iter_mut()
             .find(|definition| definition.name == "mode-enter")
         {
-            command.arguments = vec![ArgumentDefinition {
-                name: "mode".into(),
-                kind: ArgumentKind::Enum,
-                required: true,
-            }];
-            command.examples = vec!["mode-enter caret".into()];
+            command.arguments = vec![
+                ArgumentDefinition {
+                    name: "mode".into(),
+                    kind: ArgumentKind::Enum,
+                    required: true,
+                },
+                ArgumentDefinition {
+                    name: "raw".into(),
+                    kind: ArgumentKind::Boolean,
+                    required: false,
+                },
+            ];
+            command.examples = vec![
+                "mode-enter caret".into(),
+                "mode-enter passthrough --raw".into(),
+                "mode-enter passthrough-once --raw".into(),
+            ];
         }
         if let Some(command) = registry
             .definitions
@@ -3791,7 +4031,7 @@ mod tests {
             .remove(0);
         assert_eq!(registry.resolve(&command.name).unwrap().name, "open");
         assert!(registry.validate(&command, Mode::Normal).is_ok());
-        assert_eq!(registry.definitions().len(), 149);
+        assert_eq!(registry.definitions().len(), 158);
         for name in ["settings", "profiles", "sessions"] {
             let surface = registry.resolve(name).unwrap();
             assert_eq!(surface.scope, CommandScope::Window);

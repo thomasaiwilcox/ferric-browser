@@ -1,0 +1,229 @@
+[
+  {
+    "tag": "native-case",
+    "setup": "document.body.insertAdjacentHTML('beforeend','<input type=text>');true",
+    "patch": {
+      "enabled": true,
+      "anchors": [
+        {
+          "id": "native-case",
+          "code": "N",
+          "families": [
+            "links"
+          ],
+          "scope_selector": "input[type=TEXT]",
+          "target_selector": "a"
+        },
+        {
+          "id": "other-family",
+          "code": "B",
+          "families": [
+            "buttons"
+          ],
+          "target_selector": "button"
+        }
+      ]
+    },
+    "rules": [
+      {
+        "rule": {
+          "kind": "anchor",
+          "id": "native-case"
+        },
+        "root": {
+          "start": "top-document",
+          "steps": []
+        },
+        "scope_selector": {
+          "steps": [
+            [
+              null,
+              "input[type=TEXT]",
+              2
+            ]
+          ]
+        },
+        "target_selector": {
+          "steps": [
+            [
+              null,
+              "a",
+              1
+            ]
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "tag": "slotted-scope",
+    "setup": "document.getElementById('slotted-primary').innerHTML='<span>Slotted primary</span>';true",
+    "patch": {
+      "enabled": true,
+      "anchors": [
+        {
+          "id": "slotted",
+          "code": "S",
+          "families": [
+            "links"
+          ],
+          "root": {
+            "start": "top-document",
+            "steps": [
+              {
+                "kind": "open-shadow",
+                "host_selector": "#catalog"
+              },
+              {
+                "kind": "assigned-slot",
+                "host_selector": "#primary-slot",
+                "assigned_selector": "a"
+              }
+            ]
+          },
+          "scope_selector": "a > span",
+          "target_selector": "a"
+        }
+      ]
+    },
+    "rules": [
+      {
+        "rule": {
+          "kind": "anchor",
+          "id": "slotted"
+        },
+        "root": {
+          "start": "top-document",
+          "steps": [
+            {
+              "kind": "open-shadow",
+              "host_selector": {
+                "steps": [
+                  [
+                    null,
+                    "#catalog",
+                    1
+                  ]
+                ]
+              }
+            },
+            {
+              "kind": "assigned-slot",
+              "host_selector": {
+                "steps": [
+                  [
+                    null,
+                    "#primary-slot",
+                    1
+                  ]
+                ]
+              },
+              "assigned_selector": {
+                "steps": [
+                  [
+                    null,
+                    "a",
+                    1
+                  ]
+                ]
+              }
+            }
+          ]
+        },
+        "scope_selector": {
+          "steps": [
+            [
+              null,
+              "a",
+              1
+            ],
+            [
+              "child",
+              "span",
+              1
+            ]
+          ]
+        },
+        "target_selector": {
+          "steps": [
+            [
+              null,
+              "a",
+              1
+            ]
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "tag": "structural-collection",
+    "setup": "true",
+    "patch": {
+      "enabled": true,
+      "collections": [
+        {
+          "id": "cards",
+          "codes": [
+            "1"
+          ],
+          "families": [
+            "links"
+          ],
+          "root": {
+            "start": "top-document",
+            "steps": [
+              {
+                "kind": "open-shadow",
+                "host_selector": "#catalog"
+              }
+            ]
+          },
+          "container_self": true,
+          "item_selector": "slot",
+          "primary_self": true,
+          "order": "dom"
+        }
+      ]
+    },
+    "rules": [
+      {
+        "rule": {
+          "kind": "collection",
+          "id": "cards"
+        },
+        "root": {
+          "start": "top-document",
+          "steps": [
+            {
+              "kind": "open-shadow",
+              "host_selector": {
+                "steps": [
+                  [
+                    null,
+                    "#catalog",
+                    1
+                  ]
+                ]
+              }
+            }
+          ]
+        },
+        "slot_count": 1,
+        "container_self": true,
+        "item_selector": {
+          "steps": [
+            [
+              null,
+              "slot",
+              1
+            ]
+          ]
+        },
+        "primary_root_steps": [],
+        "primary_self": true,
+        "order": "dom"
+      }
+    ]
+  }
+]

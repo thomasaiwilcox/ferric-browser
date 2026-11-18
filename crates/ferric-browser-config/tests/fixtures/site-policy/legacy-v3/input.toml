@@ -1,0 +1,19 @@
+schema_version = 3
+[hints]
+chars = 'asdfjklgh'
+min_chars = 2
+[[site_rules]]
+id = 'articles'
+pattern = 'https://example.test/articles/*'
+priority = 10
+[site_rules.set]
+'content.zoom' = 1.25
+'hints.proxy_targets' = 'validated'
+'hints.selectors.links' = {mode='extend', selectors=['a.article']}
+[[site_rules]]
+id = 'site-keys'
+pattern = 'https://example.test/*'
+priority = -1
+[site_rules.set]
+'input.shortcut_policy' = 'mixed'
+'input.page_keys' = ['k', 'f']

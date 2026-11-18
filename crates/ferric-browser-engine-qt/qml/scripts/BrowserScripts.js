@@ -3,7 +3,7 @@
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "28"
+var VERSION = "30"
 
 // Page userscripts are trusted local content, but their failure boundary is
 // browser policy. Keeping the wrappers here prevents QML from assembling page
@@ -151,8 +151,8 @@ function clearSiteData() {
 function focusProbe() {
     return "(function(){var state=window.__ferric_browserReadFocusState?window.__ferric_browserReadFocusState():window.__ferric_browserFocusState;"
         + "return state?{sequence:Number(state.sequence)||0,context:Number(state.context)||0,editable:!!state.editable,"
-        + "user_activated:!!state.user_activated,kind:String(state.kind||'unknown')}"
-        + ":{sequence:0,editable:false,user_activated:false,kind:'unknown'};})()"
+        + "user_activated:!!state.user_activated,kind:String(state.kind||'unknown'),focused:document.hasFocus()}"
+        + ":{sequence:0,context:0,editable:false,user_activated:false,kind:'unknown',focused:false};})()"
 }
 
 function historyTraversalProbe() {
@@ -161,7 +161,7 @@ function historyTraversalProbe() {
 }
 
 function focusObserverSource() {
-    return "(function(){"
+    return PageInteractionScripts.hintNativeAncestryLifecycle() + ";(function(){"
         + "if(window.__ferric_browserFocusObserverInstalled)return;"
         + "window.__ferric_browserFocusObserverInstalled=true;"
         + "var selectionRevision=0,selectionIdentities=new WeakMap(),selectionNextIdentity=0;"
@@ -182,6 +182,12 @@ function focusObserverSource() {
         + "var sequence=0;var userGestureUntil=0;var identities=new WeakMap();var nextIdentity=0;var watchedElement=null;var watchedParent=null;"
         + "var removalObserver=new MutationObserver(function(){window.__ferric_browserReadFocusState();});"
         + "function watch(element){var parent=element&&element.parentNode;if(element===watchedElement&&parent===watchedParent)return;removalObserver.disconnect();watchedElement=element;watchedParent=parent;var node=parent;for(var depth=0;node&&depth<64;depth++,node=node.parentNode||node.host){removalObserver.observe(node,{childList:true});}}"
+        // Media players commonly focus a plain wrapper rather than the video.
+        // Recognize that wrapper during observation, with editor/canvas vetoes;
+        // arbitrary focusable divs remain unknown. No DOM work runs per key.
+        + "function mediaReceiver(element,tag){return tag==='div'&&element.hasAttribute('tabindex')"
+        + "&&!element.shadowRoot&&!element.hasAttribute('role')&&!element.hasAttribute('aria-multiline')"
+        + "&&!!element.querySelector('video,audio')&&!element.querySelector('textarea,select,canvas,[contenteditable],[aria-multiline],[role=\"textbox\"],[role=\"searchbox\"],[role=\"combobox\"],input:not([type=\"button\"]):not([type=\"checkbox\"]):not([type=\"file\"]):not([type=\"hidden\"]):not([type=\"image\"]):not([type=\"radio\"]):not([type=\"range\"]):not([type=\"reset\"]):not([type=\"submit\"])');}"
         + "function classify(){"
         + "var element=document.activeElement;var depth=0;"
         + "while(element&&element.shadowRoot&&depth<16&&element.shadowRoot.activeElement){"
@@ -192,11 +198,13 @@ function focusObserverSource() {
         + "var editable=!!element&&(element.isContentEditable===true||tag==='textarea'||tag==='select'||"
         + "(tag==='input'&&excluded.indexOf(type)<0));"
         + "var kind=editable?(tag==='textarea'?'textarea':element.isContentEditable?'contenteditable':"
-        + "tag==='input'&&type==='password'?'password':'input'):tag==='iframe'?'frame':'other';"
+        + "tag==='input'&&type==='password'?'password':'input'):tag==='iframe'||tag==='frame'?'frame':"
+        + "element&&depth<16&&(['html','body','a','button','summary','input','video','audio'].indexOf(tag)>=0||mediaReceiver(element,tag))"
+        + "&&!element.hasAttribute('aria-multiline')&&(!element.getAttribute('role')||['button','link','checkbox','radio','switch'].indexOf(element.getAttribute('role'))>=0)?'noneditable':'unknown';"
         + "var context=0;if(editable){if(!identities.has(element))identities.set(element,++nextIdentity);context=identities.get(element);}return {editable:editable,kind:kind,context:context,element:editable?element:null};}"
         + "function publish(userActivated){var state=classify();watch(state.element);"
         + "window.__ferric_browserFocusState={sequence:++sequence,context:state.context,editable:state.editable,user_activated:!!userActivated,kind:state.kind};console.debug('__ferric_browser_focus_changed');}"
-        + "window.__ferric_browserReadFocusState=function(){var current=classify();watch(current.element);var old=window.__ferric_browserFocusState;if(!old||old.context!==current.context||old.editable!==current.editable)publish(false);return window.__ferric_browserFocusState;};"
+        + "window.__ferric_browserReadFocusState=function(){var current=classify();watch(current.element);var old=window.__ferric_browserFocusState;if(!old||old.context!==current.context||old.editable!==current.editable||old.kind!==current.kind)publish(false);return window.__ferric_browserFocusState;};"
         + "window.__ferric_browserAuthorizeExplicitFocus=function(){userGestureUntil=performance.now()+1500;};"
         + "function noteGesture(event){if(event.isTrusted!==false){userGestureUntil=performance.now()+1500;publish(true);}}"
         + "document.addEventListener('pointerdown',noteGesture,true);"
@@ -246,7 +254,7 @@ function shutdownPageProbe() {
 // The imported resource is independently versioned and covered by the build
 // manifest. Every compatibility entry point fails closed if that contract is
 // unavailable or mismatched.
-var PAGE_INTERACTION_VERSION = "8"
+var PAGE_INTERACTION_VERSION = "10"
 
 function interactionFailureScript(code) {
     return "(function(){return {ok:false,error:" + JSON.stringify(code) + "};})()"
@@ -283,8 +291,12 @@ function scrollTargetStatus() {
     return interactionScript("scrollTargetStatus", [])
 }
 
-function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget) {
-    return interactionScript("hintCollector", [family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget])
+function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget, interactionRequest, deferInteraction) {
+    return interactionScript("hintCollector", [family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget, interactionRequest, deferInteraction])
+}
+
+function hintFinishInteraction(interactionRequest, pendingId, budget, omitCandidates, refreshScript) {
+    return interactionScript("hintFinishInteraction", [interactionRequest, pendingId, budget, omitCandidates, refreshScript])
 }
 
 function hintDirtyRevision() {
@@ -293,6 +305,10 @@ function hintDirtyRevision() {
 
 function hintStopTracking(scopeLeaseId) {
     return interactionScript("hintStopTracking", [scopeLeaseId])
+}
+
+function hintNativeAncestryLifecycle() {
+    return PageInteractionScripts.hintNativeAncestryLifecycle()
 }
 
 function hintAcquireScopeLease(request, candidate, selectorSnapshot) {
@@ -309,6 +325,9 @@ function spatialScopeGeometry(scopeLeaseId) {
 
 function hintFresh(candidate, selectorSnapshot) {
     return interactionScript("hintFresh", [candidate, selectorSnapshot])
+}
+function hintCaptureFacts(candidate, selectorSnapshot) {
+    return interactionScript("hintCaptureFacts", [candidate, selectorSnapshot])
 }
 
 function hintPointerPreflight(candidate, viewWidth, viewHeight, selectorSnapshot) {

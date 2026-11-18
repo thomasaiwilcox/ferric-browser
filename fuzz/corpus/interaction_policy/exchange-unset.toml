@@ -1,0 +1,6 @@
+format='ferric-site-interaction'
+format_version=1
+[[rules]]
+operation='unset-interaction'
+id='remove'
+pattern='https://example.test/*'

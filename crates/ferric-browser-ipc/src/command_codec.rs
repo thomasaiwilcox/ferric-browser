@@ -15,6 +15,8 @@ mod command_codec_contexts;
 mod command_codec_library;
 #[path = "command_codec_navigation.rs"]
 mod command_codec_navigation;
+#[path = "command_codec_site_policy.rs"]
+pub(crate) mod command_codec_site_policy;
 #[path = "command_codec_spatial.rs"]
 mod command_codec_spatial;
 #[path = "command_codec_tabs_windows.rs"]
@@ -44,6 +46,7 @@ pub(super) fn validate_command_text(value: &str, label: &str) -> Result<(), Stri
 pub fn encode_command(command: &ParsedCommand) -> Result<Value, String> {
     let mut encoded = None;
     for encode in [
+        command_codec_site_policy::encode,
         command_codec_navigation::encode,
         command_codec_configuration::encode,
         command_codec_library::encode,

@@ -1,0 +1,14 @@
+[hints.selectors.links]
+mode = 'replace'
+selectors = ['a[']
+
+[[site_rules]]
+id = 'hidden'
+pattern = 'https://example.com/*'
+[site_rules.interaction]
+enabled = false
+[[site_rules.interaction.anchors]]
+id = 'hidden-control'
+code = 'm'
+families = ['buttons']
+target_selector = 'button.hidden'

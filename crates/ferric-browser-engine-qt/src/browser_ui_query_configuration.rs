@@ -8,7 +8,9 @@ impl qobject::BrowserUi {
     pub(super) fn execute_config_get_command(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
+        turn: &super::browser_ui_configuration_read::ConfigurationReadTurn,
     ) -> Result<Value, PublicError> {
+        turn.validate(self.as_ref().get_ref())?;
         self.as_ref()
             .rust()
             .registry
@@ -61,8 +63,11 @@ impl qobject::BrowserUi {
         let mut status = format!("{key} = {value} (source: {source}, apply: {apply_time}");
         if pending {
             status.push_str(", pending");
+        } else if result.get("pending_state").and_then(Value::as_str) == Some("unknown") {
+            status.push_str(", pending state unknown");
         }
         status.push(')');
+        turn.validate(self.as_ref().get_ref())?;
         self.as_mut().set_status_text(QString::from(status));
         Ok(result)
     }
@@ -103,144 +108,50 @@ impl qobject::BrowserUi {
                 "config.get explain must be a boolean".into(),
             ));
         }
-        let mut value = &self.rust().config;
-        for part in key.split('.') {
-            value = value
-                .as_object()
-                .and_then(|object| object.get(part))
-                .ok_or_else(|| {
-                    IpcQueryError::NotFound(format!("configuration key not found: {key}"))
-                })?;
+        if setting_metadata(key).is_none() {
+            return Err(IpcQueryError::NotFound(format!(
+                "configuration key not found: {key}"
+            )));
         }
         if requested_url.is_some() && !setting_supports_site_scope(key) {
             return Err(IpcQueryError::Invalid(format!(
                 "The setting {key} applies to the whole profile. Omit --url to inspect it."
             )));
         }
-        let base_value = value.clone();
-        let metadata = setting_metadata(key).ok_or_else(|| {
-            IpcQueryError::Invalid(format!(
-                "configuration key is not in the setting registry: {key}"
-            ))
-        })?;
-        let pending_value = self
-            .rust()
-            .configuration_io
-            .pending_config
-            .as_ref()
-            .and_then(|pending| config_value_at_path(pending, key))
-            .filter(|pending| *pending != &base_value)
-            .cloned();
-        let mut effective_value = base_value.clone();
-        let mut effective_source = self.rust().config_source.to_string();
-        let mut effective_scope = "global";
-        let mut contributors = vec![serde_json::json!({
-            "layer": "global",
-            "source": self.rust().config_source.to_string(),
-            "value": config_value_at_path(&self.rust().base_config, key)
-                .cloned()
-                .unwrap_or_else(|| base_value.clone()),
-            "status": "contributing"
-        })];
-        for (layer, overrides, scope) in [
-            ("profile", &self.rust().profile_overrides, "profile"),
-            ("runtime", &self.rust().runtime_overrides, "global"),
-            ("cli", &self.rust().cli_overrides, "global"),
-            ("temporary", &self.rust().temporary_overrides, "global"),
-        ] {
-            if let Some(layer_value) = runtime_override_value(overrides, key) {
-                effective_source = layer.to_owned();
-                effective_scope = scope;
-                effective_value = layer_value.clone();
-                contributors.push(serde_json::json!({
-                    "layer": layer,
-                    "value": layer_value,
-                    "status": "contributing"
-                }));
-            }
-        }
-        if let Some(url) = requested_url {
-            let config = self
-                .rust()
-                .state
+        // Retain internal origins for the legacy source summary; detailed
+        // projection is controlled solely by the explicit explain flag.
+        let request =
+            ferric_browser_application::SettingInspectionRequest::new(key, requested_url, true)
+                .map_err(|error| {
+                    IpcQueryError::Invalid(if requested_url.is_some() {
+                        "Use an HTTP or HTTPS page address with --url.".into()
+                    } else {
+                        error
+                    })
+                })?;
+        let report = self.inspect_configuration_setting(&request)?;
+        if ferric_browser_config::selector_setting_family(key).is_none()
+            && report
+                .active
                 .as_ref()
-                .ok_or_else(|| IpcQueryError::Invalid("application is unavailable".into()))?
-                .configuration();
-            for rule in matching_site_rules(config, url) {
-                if let Some(site_value) = rule.set.get(key)
-                    && let Ok(site_value) = serde_json::to_value(site_value)
-                {
-                    effective_value = site_value.clone();
-                    effective_source = format!("site-rule:{}", rule.id);
-                    effective_scope = "site";
-                    let contributor = serde_json::json!({
-                        "layer": "site-rule",
-                        "id": rule.id,
-                        "priority": rule.priority,
-                        "value": site_value,
-                        "status": "contributing"
-                    });
-                    contributors.push(contributor);
-                }
-            }
-        }
-        let mut result = serde_json::json!({
-            "sequence": self.rust().ipc_sequence,
-            "key": key,
-            "value": effective_value,
-            "metadata": {
-                "type": metadata.value_type,
-                "default": metadata.default_value,
-                "supported_scopes": metadata.supported_scopes,
-                "apply_time": metadata.apply_time,
-                "prerequisite": metadata.prerequisite,
-                "sensitivity": metadata.sensitivity
-            },
-            "source": effective_source,
-            "scope": effective_scope,
-            "supported_scopes": setting_supported_scopes(key),
-            "site_scope": if setting_supports_site_scope(key) {
-                serde_json::json!({"supported": true, "mechanism": "validated-site-rule"})
-            } else {
-                serde_json::json!({
-                    "supported": false,
-                    "mechanism": "profile-or-global-value",
-                    "reason": "changing an engine-wide value on tab focus would leak across tabs"
-                })
-            },
-            "apply_time": metadata.apply_time,
-            "restart_required": metadata.apply_time == "restart",
-            "reload_required": matches!(metadata.apply_time, "reload" | "startup"),
-            "pending": pending_value.is_some(),
-            "pending_value": pending_value,
-        });
-        if object
-            .get("explain")
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
+                .is_ok_and(|value| value.value.is_none())
+            && report
+                .desired
+                .as_ref()
+                .is_ok_and(|value| value.value.is_none())
         {
-            for contributor in &mut contributors {
-                let layer = contributor.get("layer").and_then(Value::as_str);
-                let source = contributor.get("source").and_then(Value::as_str);
-                let site_id = contributor.get("id").and_then(Value::as_str);
-                let winner = layer == Some(effective_source.as_str())
-                    || source == Some(effective_source.as_str())
-                    || effective_source
-                        .strip_prefix("site-rule:")
-                        .is_some_and(|id| layer == Some("site-rule") && site_id == Some(id));
-                if winner {
-                    contributor["status"] = serde_json::json!("winner");
-                } else if contributor.get("status").and_then(Value::as_str) == Some("contributing")
-                {
-                    contributor["status"] = serde_json::json!("shadowed");
-                }
-            }
-            result["explanation"] = serde_json::json!({
-                "contributors": contributors,
-                "winner": result["source"].clone(),
-                "scope": result["scope"].clone()
-            });
+            return Err(IpcQueryError::NotFound(format!(
+                "configuration key not found: {key}"
+            )));
         }
-        Ok(result)
+        crate::configuration_inspection_projection::project(
+            &report,
+            self.rust().ipc_sequence,
+            object
+                .get("explain")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        )
+        .map_err(IpcQueryError::Unavailable)
     }
 }

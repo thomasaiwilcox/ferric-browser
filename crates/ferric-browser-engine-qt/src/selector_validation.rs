@@ -1,9 +1,13 @@
 //! Browser-owned selector syntax validation request construction.
 
-use std::collections::BTreeSet;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 
 use ferric_browser_config::{
-    Config, HintSelectorFamily, HintSelectorPolicy, ProfilesConfig, RuntimeOverrides,
+    Config, ConfigurationSources, HintSelectorFamily, HintSelectorPolicy, ProfilesConfig,
+    RuntimeOverrides, SiteRule,
 };
 use serde::{Deserialize, Serialize};
 
@@ -57,21 +61,123 @@ pub(super) fn selector_validation_items(
     layers: &ConfigurationLayers,
 ) -> Vec<SelectorValidationItem> {
     let mut items = Vec::new();
-    let mut seen = BTreeSet::new();
-    append_config(&mut items, &mut seen, &layers.base, "base");
-    append_overrides(&mut items, &mut seen, &layers.profile, "profile");
-    append_overrides(&mut items, &mut seen, &layers.runtime, "runtime");
-    append_overrides(&mut items, &mut seen, &layers.command_line, "command-line");
-    append_overrides(&mut items, &mut seen, &layers.temporary, "temporary");
+    let mut seen = SelectorOccurrences::default();
+    append_layers(&mut items, &mut seen, layers);
     items
+}
+
+/// Exact syntax-source occurrences before deduplication. Paths stay private to
+/// the browser; equality never relies on diagnostic strings or a hash alone.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct SelectorValidationInventory {
+    documents: Vec<SelectorDocumentInventory>,
+    // Fixed base/profile/runtime/command-line/temporary order. Typed raw rules
+    // retain indices, IDs and fields independently of diagnostic formatting.
+    layers: [SelectorLayerInventory; 5],
+    pub(super) items: Vec<SelectorValidationItem>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SelectorDocumentInventory {
+    path: PathBuf,
+    selectors: Option<BTreeMap<HintSelectorFamily, ferric_browser_config::AuthoredHintSelectors>>,
+    rules: Option<Vec<SiteRule>>,
+}
+#[derive(Clone, Debug, PartialEq)]
+struct SelectorLayerInventory {
+    selectors: BTreeMap<HintSelectorFamily, HintSelectorPolicy>,
+    rules: Vec<SiteRule>,
+}
+impl SelectorLayerInventory {
+    fn overrides(input: &RuntimeOverrides) -> Self {
+        Self {
+            selectors: input
+                .settings
+                .iter()
+                .filter_map(|(key, value)| {
+                    Some((family_for_key(key)?, value.clone().try_into().ok()?))
+                })
+                .collect(),
+            rules: input.site_rules.clone(),
+        }
+    }
+}
+
+pub(super) fn selector_validation_inventory(
+    layers: &ConfigurationLayers,
+) -> SelectorValidationInventory {
+    let mut items = Vec::new();
+    let mut seen = SelectorOccurrences {
+        deduplicate: false,
+        ..SelectorOccurrences::default()
+    };
+    append_layers(&mut items, &mut seen, layers);
+    SelectorValidationInventory {
+        documents: layers
+            .base_authored
+            .documents()
+            .iter()
+            .map(|document| SelectorDocumentInventory {
+                path: document.path().to_owned(),
+                selectors: document.hints().and_then(|hints| hints.selectors.clone()),
+                rules: document.site_rules().map(<[SiteRule]>::to_vec),
+            })
+            .collect(),
+        layers: [
+            SelectorLayerInventory {
+                selectors: layers.base.hints.selectors.clone(),
+                rules: layers.base.site_rules.clone(),
+            },
+            SelectorLayerInventory::overrides(&layers.profile),
+            SelectorLayerInventory::overrides(&layers.runtime),
+            SelectorLayerInventory::overrides(&layers.command_line),
+            SelectorLayerInventory::overrides(&layers.temporary),
+        ],
+        items,
+    }
+}
+
+fn append_layers(
+    items: &mut Vec<SelectorValidationItem>,
+    seen: &mut SelectorOccurrences,
+    layers: &ConfigurationLayers,
+) {
+    append_authored_sources(items, seen, &layers.base_authored);
+    append_config(items, seen, &layers.base, "base");
+    append_overrides(items, seen, &layers.profile, "profile");
+    append_overrides(items, seen, &layers.runtime, "runtime");
+    append_overrides(items, seen, &layers.command_line, "command-line");
+    append_overrides(items, seen, &layers.temporary, "temporary");
+}
+
+/// Validation requests deduplicate literal CSS; inventories retain every source
+/// occurrence so a duplicate cannot erase ownership of another layer or field.
+struct SelectorOccurrences {
+    deduplicate: bool,
+    seen: BTreeSet<String>,
+}
+impl Default for SelectorOccurrences {
+    fn default() -> Self {
+        Self {
+            deduplicate: true,
+            seen: BTreeSet::new(),
+        }
+    }
+}
+impl SelectorOccurrences {
+    fn insert(&mut self, selector: String) -> bool {
+        !self.deduplicate || self.seen.insert(selector)
+    }
 }
 
 pub(super) fn selector_validation_items_for_check(
     config: &Config,
     profiles: Option<&ProfilesConfig>,
+    authored: &ConfigurationSources,
 ) -> Vec<SelectorValidationItem> {
     let mut items = Vec::new();
-    let mut seen = BTreeSet::new();
+    let mut seen = SelectorOccurrences::default();
+    append_authored_sources(&mut items, &mut seen, authored);
     append_config(&mut items, &mut seen, config, "base");
     if let Some(profiles) = profiles {
         for profile in &profiles.profiles {
@@ -90,9 +196,35 @@ pub(super) fn selector_validation_items_for_check(
     items
 }
 
+fn append_authored_sources(
+    output: &mut Vec<SelectorValidationItem>,
+    seen: &mut SelectorOccurrences,
+    authored: &ConfigurationSources,
+) {
+    for (index, document) in authored.documents().iter().enumerate() {
+        let source = format!("base document {}", index + 1);
+        if let Some(hints) = document.hints()
+            && let Some(families) = &hints.selectors
+        {
+            for (family, policy) in families {
+                append_selector_strings(
+                    output,
+                    seen,
+                    *family,
+                    policy.selectors.as_deref().unwrap_or_default(),
+                    &source,
+                );
+            }
+        }
+        for rule in document.site_rules().unwrap_or_default() {
+            append_site_rule(output, seen, rule, &source);
+        }
+    }
+}
+
 fn append_config(
     output: &mut Vec<SelectorValidationItem>,
-    seen: &mut BTreeSet<String>,
+    seen: &mut SelectorOccurrences,
     config: &Config,
     source: &str,
 ) {
@@ -100,26 +232,13 @@ fn append_config(
         append_policy(output, seen, *family, policy, source);
     }
     for rule in &config.site_rules {
-        for (key, value) in &rule.set {
-            let Some(family) = family_for_key(key) else {
-                continue;
-            };
-            if let Ok(policy) = value.clone().try_into::<HintSelectorPolicy>() {
-                append_policy(
-                    output,
-                    seen,
-                    family,
-                    &policy,
-                    &format!("{source} site rule {}", rule.id),
-                );
-            }
-        }
+        append_site_rule(output, seen, rule, source);
     }
 }
 
 fn append_overrides(
     output: &mut Vec<SelectorValidationItem>,
-    seen: &mut BTreeSet<String>,
+    seen: &mut SelectorOccurrences,
     overrides: &RuntimeOverrides,
     source: &str,
 ) {
@@ -132,18 +251,40 @@ fn append_overrides(
         }
     }
     for rule in &overrides.site_rules {
-        for (key, value) in &rule.set {
-            let Some(family) = family_for_key(key) else {
-                continue;
-            };
-            if let Ok(policy) = value.clone().try_into::<HintSelectorPolicy>() {
-                append_policy(
-                    output,
-                    seen,
-                    family,
-                    &policy,
-                    &format!("{source} site rule {}", rule.id),
-                );
+        append_site_rule(output, seen, rule, source);
+    }
+}
+
+fn append_site_rule(
+    output: &mut Vec<SelectorValidationItem>,
+    seen: &mut SelectorOccurrences,
+    rule: &SiteRule,
+    source: &str,
+) {
+    for (key, value) in &rule.set {
+        let Some(family) = family_for_key(key) else {
+            continue;
+        };
+        if let Ok(policy) = value.clone().try_into::<HintSelectorPolicy>() {
+            append_policy(
+                output,
+                seen,
+                family,
+                &policy,
+                &format!("{source} site rule {}", rule.id),
+            );
+        }
+    }
+
+    if let Some(policy) = &rule.interaction {
+        for (index, field) in policy.selector_sources().into_iter().enumerate() {
+            if seen.insert(field.selector.to_owned()) {
+                output.push(SelectorValidationItem {
+                    family: "interaction".into(),
+                    index,
+                    selector: field.selector.to_owned(),
+                    rule: format!("{source} site rule {} interaction {}", rule.id, field.path),
+                });
             }
         }
     }
@@ -151,12 +292,22 @@ fn append_overrides(
 
 fn append_policy(
     output: &mut Vec<SelectorValidationItem>,
-    seen: &mut BTreeSet<String>,
+    seen: &mut SelectorOccurrences,
     family: HintSelectorFamily,
     policy: &HintSelectorPolicy,
     rule: &str,
 ) {
-    for (index, selector) in policy.selectors.iter().enumerate() {
+    append_selector_strings(output, seen, family, &policy.selectors, rule);
+}
+
+fn append_selector_strings(
+    output: &mut Vec<SelectorValidationItem>,
+    seen: &mut SelectorOccurrences,
+    family: HintSelectorFamily,
+    selectors: &[String],
+    rule: &str,
+) {
+    for (index, selector) in selectors.iter().enumerate() {
         if seen.insert(selector.clone()) {
             output.push(SelectorValidationItem {
                 family: family.as_str().to_owned(),
@@ -181,6 +332,33 @@ mod tests {
     use ferric_browser_config::{HintSelectorMode, HintSelectorPolicy};
 
     use super::*;
+
+    #[test]
+    fn config_check_validates_sources_hidden_by_parent_array_replacement() {
+        let loaded = ferric_browser_config::load(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../ferric-browser-config/tests/fixtures/site-policy/includes/root.toml"
+        ))
+        .unwrap();
+        assert_eq!(loaded.config.site_rules.len(), 0);
+        assert_eq!(
+            loaded.config.hints.selectors[&HintSelectorFamily::Links]
+                .selectors
+                .len(),
+            0
+        );
+        let items = selector_validation_items_for_check(&loaded.config, None, &loaded.authored);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].selector, "a[");
+        assert_eq!(items[0].family, "links");
+        assert_eq!(items[0].rule, "base document 1");
+        assert_eq!(items[1].selector, "button.hidden");
+        assert_eq!(items[1].family, "interaction");
+        assert!(items[1].rule.contains("base document 1 site rule hidden"));
+        let mut layers = ConfigurationLayers::new(loaded.config);
+        layers.base_authored = loaded.authored;
+        assert_eq!(selector_validation_items(&layers), items);
+    }
 
     #[test]
     fn validation_items_cover_layers_and_deduplicate_css_syntax_checks() {
@@ -227,10 +405,55 @@ mod tests {
             }],
         };
 
-        let items = selector_validation_items_for_check(&Config::default(), Some(&profiles));
+        let items = selector_validation_items_for_check(
+            &Config::default(),
+            Some(&profiles),
+            &ConfigurationSources::default(),
+        );
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].rule, "profile work");
         assert_eq!(items[0].selector, ".profile-control");
+    }
+
+    #[test]
+    fn interaction_selectors_include_disabled_and_shadowed_raw_rules() {
+        let mut config: Config = toml::from_str(include_str!(
+            "../../ferric-browser-config/tests/fixtures/site-policy/frame-shadow-grid.toml"
+        ))
+        .unwrap();
+        config.site_rules[0].interaction.as_mut().unwrap().enabled = Some(false);
+        ferric_browser_config::validate(&config).unwrap();
+        let mut higher = config.site_rules[0].clone();
+        higher.pattern = "https://other.example.test/*".into();
+        higher
+            .interaction
+            .as_mut()
+            .unwrap()
+            .collections
+            .as_mut()
+            .unwrap()[0]
+            .primary_selector = Some(".higher-primary".into());
+        let mut layers = ConfigurationLayers::new(config);
+        layers.temporary.site_rules.push(higher);
+        let items = selector_validation_items(&layers);
+        assert_eq!(items.len(), 6);
+        assert!(items.iter().all(|item| item.family == "interaction"));
+        for selector in [
+            "iframe#fixture-frame",
+            "catalog-shell",
+            "#fixture-grid",
+            "video-card",
+            "a.primary",
+            ".higher-primary",
+        ] {
+            assert!(
+                items.iter().any(|item| item.selector == selector),
+                "{selector}"
+            );
+        }
+        assert!(items.iter().any(|item| item.selector == "a.primary" && item.rule.starts_with("base site rule")));
+        assert!(items.iter().any(|item| item.selector == ".higher-primary"
+            && item.rule.starts_with("temporary site rule")));
     }
 
     #[test]

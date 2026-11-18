@@ -29,6 +29,9 @@ impl qobject::BrowserUi {
         commands: Vec<(ParsedCommand, crate::IpcRoute)>,
         operation: Option<&str>,
         handoff: &mut Option<PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<Value, PublicError> {
         if route.context.is_some() {
             return Err("context routing is not valid for page group changes".into());
@@ -46,6 +49,7 @@ impl qobject::BrowserUi {
                 },
                 operation,
                 handoff,
+                preparation,
             )
             .map_err(Into::into)
     }
@@ -56,6 +60,9 @@ impl qobject::BrowserUi {
         continuation: PageContinuation,
         operation: Option<&str>,
         incoming: &mut Option<PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<Value, String> {
         self.as_ref()
             .rust()
@@ -111,9 +118,12 @@ impl qobject::BrowserUi {
             },
             |owner| owner.snapshot.group.clone(),
         );
-        let handoff = self
-            .as_mut()
-            .prepare_page_handoff(incoming.clone(), &source, operation)?;
+        let handoff = self.as_mut().prepare_page_handoff(
+            incoming.clone(),
+            &source,
+            operation,
+            preparation,
+        )?;
         if !singleton {
             let result = self.as_mut().begin_live_page_regroup(
                 source,

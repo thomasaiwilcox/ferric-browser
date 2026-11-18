@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 pub(crate) struct RegistryLock {
     _file: File,
+    path: PathBuf,
 }
 
 impl RegistryLock {
@@ -23,7 +24,14 @@ impl RegistryLock {
         }
         let file = options.open(lock_path)?;
         file.lock_exclusive()?;
-        Ok(Self { _file: file })
+        Ok(Self {
+            _file: file,
+            path: registry_path.to_owned(),
+        })
+    }
+
+    pub(crate) fn protects(&self, registry_path: &Path) -> bool {
+        self.path == registry_path
     }
 }
 

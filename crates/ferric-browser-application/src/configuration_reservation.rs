@@ -1,5 +1,5 @@
 //! A bounded publication reservation, released automatically on cancellation.
-use crate::{BrowserApplication, ProfileSnapshot};
+use crate::{BrowserApplication, configuration::ConfigurationOwner};
 use ferric_browser_config::ConfigError;
 use ferric_browser_core::ShutdownState;
 use std::sync::{
@@ -10,18 +10,25 @@ use std::sync::{
 #[derive(Debug)]
 pub struct ConfigurationReservation {
     gate: Arc<AtomicBool>,
-    _shared: Option<Arc<crate::profile_configuration::SharedConfiguration>>,
+    shared: Option<Arc<crate::profile_configuration::SharedConfiguration>>,
     revision: u64,
-    profile: Option<ProfileSnapshot>,
+    owner: ConfigurationOwner,
 }
 impl Drop for ConfigurationReservation {
     fn drop(&mut self) {
         self.gate.store(false, Ordering::Release);
+        if let Some(shared) = self.shared.as_ref() {
+            shared.wake_policy_owners();
+        }
     }
 }
 impl BrowserApplication {
     pub(crate) fn ensure_configuration_writable(&self) -> Result<(), ConfigError> {
-        if self.configuration_reservation.load(Ordering::Acquire) {
+        if self.profile_open.is_some() || self.runtime.view().shutdown() != ShutdownState::Running {
+            Err(ConfigError::validation(format_args!(
+                "This window is not ready to update settings."
+            )))
+        } else if self.configuration_reservation.load(Ordering::Acquire) {
             Err(ConfigError::Validation(
                 "Settings are being reloaded. Try again in a moment.".into(),
             ))
@@ -43,13 +50,13 @@ impl BrowserApplication {
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map_err(|_| ConfigError::Validation("Settings are already being reloaded.".into()))?;
         Ok(ConfigurationReservation {
-            _shared: self
+            shared: self
                 .active_profile
                 .as_ref()
                 .map(|profile| profile.session.0.configuration.clone()),
             gate: self.configuration_reservation.clone(),
             revision: self.configuration.revision(),
-            profile: self.profile_snapshot(),
+            owner: ConfigurationOwner::capture(self),
         })
     }
     /// Checks the original owner and releases the reservation immediately before
@@ -62,9 +69,7 @@ impl BrowserApplication {
     ) -> Result<(), ConfigError> {
         if !Arc::ptr_eq(&self.configuration_reservation, &reservation.gate)
             || self.configuration.revision() != reservation.revision
-            || self.profile_snapshot() != reservation.profile
-            || self.profile_open.is_some()
-            || self.runtime.view().shutdown() != ShutdownState::Running
+            || !reservation.owner.matches(self)
         {
             return Err(ConfigError::Validation(
                 "The window changed during settings reload. Try again.".into(),

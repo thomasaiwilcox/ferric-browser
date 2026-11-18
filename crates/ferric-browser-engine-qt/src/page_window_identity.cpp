@@ -1,4 +1,5 @@
 #include "page_window_identity.h"
+#include "browser_key_router.h"
 #include "ferric-browser-engine-qt/src/bridge.cxxqt.h"
 #include "ferric-browser-engine-qt/src/bridge.cxx.h"
 
@@ -93,6 +94,18 @@ Host actualHost(const BrowserUi &ui) {
 QString ferric_browser_page_window_marker(const BrowserUi &ui) {
     const auto host = actualHost(ui);
     return host.marker ? host.marker->tag() : QString();
+}
+
+bool ferric_browser_can_enter_raw_passthrough(const BrowserUi &ui) {
+    const auto host = actualHost(ui);
+    if (!host.window) return false;
+    FerricBrowserKeyRouter *owner = nullptr;
+    for (auto *router : host.window->findChildren<FerricBrowserKeyRouter *>()) {
+        if (router->targetWindow() != host.window) continue;
+        if (owner) return false;
+        owner = router;
+    }
+    return owner && owner->canEnterRawPassThrough();
 }
 
 QString FerricPageWindowIdentity::supersedePageFocus() {

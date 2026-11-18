@@ -196,6 +196,8 @@ ApplicationWindow {
         activeView: secondaryWindow.activeView
     }
     readonly property alias hintWorkspace: secondaryHintWorkspace
+    readonly property alias runtime_policyWorkspace: secondaryPolicyWorkspace
+    readonly property alias sitePolicyPreviewWorkspace: secondaryPolicyPreview
     readonly property bool rapidHintConfirmationVisible: secondaryHintWorkspace.rapidHintConfirmationVisible
     readonly property alias tabsModel: secondaryTabs
     readonly property alias tabViewControllerObject: secondaryTabController
@@ -249,7 +251,9 @@ ApplicationWindow {
     property bool profileBootstrapComplete: false
     property bool popupRequestAdopted: false
     property bool runtimeReleased: false
+    property bool windowDestructionScheduled: false
     property bool bindingHelpVisible: false
+    property bool sitePoliciesVisible: false
     property bool bindingHelpCreated: false
     property string bindingHelpSearch: ""
     property bool windowShutdownApproved: false
@@ -305,10 +309,15 @@ ApplicationWindow {
 
     BrowserKeyRouter {
         id: secondaryKeyRouter
+        captureOnly:secondaryPolicyCapture.opened
+        onPageReceiverObserved: function(view, epoch, framePath, facts) {
+            rootWindow.acceptPageReceiverObservation(secondaryUi, view, epoch, framePath, facts)
+        }
         transientInsert: secondaryUi.mode === "insert"
         passNextKey: secondaryUi.mode === "pass-through-once"
         passThrough: secondaryUi.mode === "pass-through"
         inputEpoch: secondaryUi.input_epoch
+        policyContext: secondaryUi.binding_context()
         onPassNextKeyDispatched: function(epoch) {
             if (secondaryUi.mode === "pass-through-once" && secondaryUi.input_epoch === epoch) {
                 secondaryUi.escape()
@@ -331,10 +340,20 @@ ApplicationWindow {
                      || secondaryUi.mode === "pass-through"
                      || secondaryUi.mode === "pass-through-once")
         onClipboardShortcutOverride: function(key, modifiers) {
+            if (secondaryPolicyCapture.opened) { secondaryKeyRouter.acceptCurrentEvent();return }
             var logical = rootWindow.logicalNormalKeyText({key: key, modifiers: modifiers, text: ""})
             if (!rootWindow.nativePromptActiveFor(secondaryUi) && secondaryUi.clipboard_shortcut_browser_owned(logical)) secondaryKeyRouter.acceptCurrentEvent()
         }
         onKeyPressed: function(text, key, modifiers, isAutoRepeat, browserOwnedRepeat) {
+            if (!secondaryKeyRouter.captureBindingContext(secondaryUi.binding_context())) {
+                secondaryKeyRouter.acceptCurrentEvent()
+                return
+            }
+            if (secondaryPolicyCapture.opened) {
+                secondaryKeyRouter.acceptCurrentEvent()
+                secondaryPolicyCapture.handlePageKey(text,key,modifiers,isAutoRepeat)
+                return
+            }
             var event = {
                 text: text,
                 key: key,
@@ -398,6 +417,7 @@ ApplicationWindow {
     onClosing: function(close) {
         if (secondaryWindow.windowShutdownApproved) {
             secondaryWindow.releaseWindowResources()
+            secondaryWindow.scheduleWindowDestruction()
             return
         }
         close.accepted = false
@@ -736,6 +756,12 @@ ApplicationWindow {
 
     BrowserUi {
         id: secondaryUi
+        onInput_bindings_changed: function(context) { secondaryKeyRouter.policyContext = context }
+        onInput_epochChanged: Qt.callLater(function() {
+            if (secondaryWindow && !secondaryWindow.runtimeReleased && secondaryUi
+                    && rootWindow && !rootWindow.runtimeDisposing && secondaryUi.page_key_routing_active()) rootWindow.probeActiveFocus(secondaryUi,
+                secondaryUi.active_tab_index, secondaryWindow.activeView)
+        })
         page_window_ordinary: secondaryWindow.windowOrdinaryPage
         hint_chrome_available: true
         status_text: "Ready"
@@ -769,6 +795,31 @@ ApplicationWindow {
         browserUi: secondaryUi
         hostWindow: secondaryWindow
         themeWindow: rootWindow
+    }
+    FerricSitePolicyPreview {
+        id: secondaryPolicyPreview
+        rootWindow: secondaryWindow.rootWindow
+        hostWindow: secondaryWindow
+        browserUi: secondaryUi
+        onFailed: function(reason) { secondaryPolicyWorkspace.notice = reason }
+        onInspectionFinished: secondaryPolicyWorkspace.finishFocusedPreview()
+    }
+    FerricSitePolicyWorkspace {
+        id: secondaryPolicyWorkspace
+        browserWindow: secondaryAppearance
+        hostWindow: secondaryWindow
+        browserUi: secondaryUi
+        onPreviewCloseRequested: secondaryPolicyPreview.stop()
+        onOpening: rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
+        onClosed: { secondaryPolicyPreview.stop(); rootWindow.restoreOverlayFocus(secondaryWindow) }
+    }
+    FerricSitePolicyCapture {
+        id:secondaryPolicyCapture
+        browserWindow: secondaryAppearance
+        hostWindow: secondaryWindow
+        browserUi: secondaryUi
+        workspace: secondaryPolicyWorkspace
+        runtime: secondaryPolicyPreview
     }
     FerricSettingsWorkspace {
         id: secondarySettings
@@ -1090,6 +1141,24 @@ function onContext_workspaceChanged() {
             secondarySettings.show(action === "show-settings" ? undefined : action.slice("show-settings\t".length))
             return
         }
+        if (action.indexOf("show-site-policies\t") === 0) {
+            secondaryPolicyWorkspace.show(action.substring("show-site-policies\t".length))
+            return
+        }
+        if (action.indexOf("site-policy-capture\t") === 0) {
+            var captureParts=action.split("\t")
+            secondaryPolicyPreview.startCapture(captureParts[1],captureParts[2],captureParts[3]==="true",captureParts[4])
+            return
+        }
+        if (action.indexOf("site-policy-preview\t") === 0) {
+            var previewParts = action.split("\t")
+            secondaryPolicyPreview.start(previewParts[1], previewParts[2], previewParts[3] === "true")
+            return
+        }
+        if (action.indexOf("site-policy-preview-close\t") === 0) {
+            if (secondaryPolicyPreview.requestId === action.split("\t")[1]) secondaryPolicyPreview.stop()
+            return
+        }
         if (action.indexOf("tab-close\t") === 0) {
             var tabCloseParts = action.split("\t")
             var tabCloseId = tabCloseParts.length >= 2 ? tabCloseParts[1] : ""
@@ -1307,6 +1376,7 @@ function onContext_workspaceChanged() {
         secondaryWindow.syncTabModel()
         secondaryWindow.applySwitcherEngineAction()
         secondaryUi.poll_config()
+        secondaryUi.poll_interaction_policy_refresh()
         secondaryManagers.presentCommandRequest()
         secondaryWindow.syncTabModel()
         rootWindow.updateBrowserWindowView(secondaryUi, secondaryWindow.activeView)
@@ -1853,6 +1923,7 @@ function onContext_workspaceChanged() {
         browserWindow: secondaryAppearance
         statusVisible: secondaryWindow.statusBarVisible
         mode: secondaryUi.mode
+        rawPassthrough: secondaryUi.raw_passthrough
         displayUrl: secondaryUi.display_url
         hintPreviewText: secondaryUi.mode === "hint" && !secondaryUi.target_search_active ? secondaryHintWorkspace.previewText : secondaryPageSearch.previewText
         statusText: secondaryWindow.commandNoticeVisible
@@ -2049,11 +2120,15 @@ function onContext_workspaceChanged() {
         }
         secondaryWindow.syncTabModel()
         rootWindow.installFocusObserver(secondaryWindow.activeView)
-        secondaryUi.set_startup_configuration(
+        if (!secondaryUi.set_startup_configuration(
                     rootWindow.primaryBrowserUi.config_json, rootWindow.primaryBrowserUi.config_base_json,
                     rootWindow.primaryBrowserUi.cli_overrides_json,
                     secondaryUi.profile_overrides_json,
-                    rootWindow.primaryBrowserUi.config_path, rootWindow.primaryBrowserUi.config_source)
+                    rootWindow.primaryBrowserUi.config_path, rootWindow.primaryBrowserUi.config_source,
+                    rootWindow.primaryBrowserUi.capture_startup_configuration())) {
+            secondaryWindow.rejectPopupAdmission()
+            return
+        }
         secondaryUi.set_contexts_configuration(rootWindow.primaryBrowserUi.contexts_json)
         secondaryUi.configure_profile(
                                       secondaryWindow.windowPrivateProfile,
@@ -2084,7 +2159,7 @@ function onContext_workspaceChanged() {
             if (secondaryWindow.runtimeReleased) return
             secondaryWindow.windowShutdownApproved=true
             secondaryWindow.close()
-            secondaryWindow.destroy()
+            secondaryWindow.scheduleWindowDestruction()
         })
     }
 
@@ -2320,6 +2395,14 @@ function onContext_workspaceChanged() {
         browserUi: secondaryUi
     }
 
+    function scheduleWindowDestruction() {
+        if (windowDestructionScheduled) return
+        windowDestructionScheduled = true
+        // Retire the factory-created host after its native close handler,
+        // including the browser-owned selector parser view it contains.
+        Qt.callLater(function() { if (secondaryWindow) secondaryWindow.destroy() })
+    }
+
     function releaseWindowResources() {
         if (secondaryWindow.runtimeReleased) return
         if (secondaryWindow.windowShutdownApproved
@@ -2329,6 +2412,8 @@ function onContext_workspaceChanged() {
         if (windowPreparedPageMode) rootWindow.pageWindowCoordinator.releasePreparedPage(secondaryWindow)
         if (windowLivePageMode) rootWindow.pageWindowCoordinator.releaseLivePage(secondaryWindow)
         secondaryWindow.bindingHelpVisible = false
+        secondaryPolicyPreview.stop()
+        secondaryWindow.sitePoliciesVisible = false
         secondaryDownloads.shutdown()
         secondaryDevTools.close()
         rootWindow.discardOverlayFocus(secondaryWindow)

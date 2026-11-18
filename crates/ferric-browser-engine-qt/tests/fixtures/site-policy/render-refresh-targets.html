@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Ordinary passive Hint refresh workload</title>
+<style>
+  html, body { margin:0; width:100%; height:100%; overflow:hidden; }
+  a { position:absolute; display:block; color:black; font:1px sans-serif; line-height:1; }
+</style>
+<script>
+  const count = Number(new URL(location.href).searchParams.get('count') || 1000);
+  if (![500, 1000].includes(count)) throw new Error('Unsupported refresh fixture size');
+  document.addEventListener('DOMContentLoaded', () => {
+    const fragment = document.createDocumentFragment();
+    const anchors = [];
+    for (let index = 0; index < count; ++index) {
+      const anchor = document.createElement('a');
+      anchor.id = 'refresh-target-' + index;
+      anchor.href = '#target-' + index;
+      anchor.textContent = 'x';
+      anchor.setAttribute('aria-label', 'Target ' + index);
+      anchors.push(anchor);
+      fragment.append(anchor);
+    }
+    document.body.append(fragment);
+    function layout() {
+      const columns = count === 500 ? 20 : 40;
+      const rows = count / columns;
+      const cellWidth = (innerWidth - 24) / columns;
+      const cellHeight = (innerHeight - 24) / rows;
+      anchors.forEach((anchor, index) => {
+        const width = Math.max(2, Math.min(12, cellWidth / 2));
+        const height = Math.max(2, Math.min(10, cellHeight / 2));
+        Object.assign(anchor.style, {
+          left: (12 + (index % columns + .5) * cellWidth - width / 2) + 'px',
+          top: (12 + (Math.floor(index / columns) + .5) * cellHeight - height / 2) + 'px',
+          width: width + 'px', height: height + 'px'
+        });
+      });
+      document.body.dataset.layoutWidth = String(innerWidth);
+      document.body.dataset.layoutHeight = String(innerHeight);
+    }
+    let revision = 0, writes = 0;
+    window.refreshFixture = Object.freeze({
+      mutate() {
+        ++revision;
+        const previousWrites = writes;
+        // The 500-visible case makes two distinct style changes per target.
+        // The 1,000-target case makes one. Both end with the same shift per
+        // target and leave labels, hrefs and element identities intact.
+        const transform = revision % 2 ? 'translateX(1px)' : 'translateX(0px)';
+        if (count === 500) anchors.forEach(anchor => { anchor.style.transform = 'translateX(2px)'; ++writes; });
+        anchors.forEach(anchor => { anchor.style.transform = transform; ++writes; });
+        return { revision, targets: anchors.length, mutations: writes - previousWrites, total_mutations: writes };
+      },
+      snapshot() { return { revision, total_mutations: writes, targets: anchors.length }; }
+    });
+    addEventListener('resize', layout);
+    layout();
+    document.body.dataset.ready = 'true';
+  });
+</script>

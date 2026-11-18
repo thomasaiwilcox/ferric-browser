@@ -61,6 +61,7 @@ pub enum NativeOperationOutcome {
     Failed,
     Rejected,
     OwnerLost,
+    SettingsSavedReloadRequired { durability_uncertain: bool },
     ClosedPartially { closed: u16, requested: u16 },
 }
 
@@ -78,6 +79,16 @@ impl NativeOperationOutcome {
             Self::OwnerLost => OperationUpdate::failed(
                 FailureKind::Engine,
                 "native outcome unknown because its reporter was lost",
+            ),
+            Self::SettingsSavedReloadRequired {
+                durability_uncertain,
+            } => OperationUpdate::failed(
+                FailureKind::Config,
+                if durability_uncertain {
+                    "settings saved with durability uncertainty, but not active; configuration reload required; startup-only settings still require browser restart"
+                } else {
+                    "settings saved but not active; configuration reload required; startup-only settings still require browser restart"
+                },
             ),
             Self::ClosedPartially { closed, requested }
                 if requested <= 100 && closed < requested =>
@@ -141,6 +152,7 @@ struct NativeOperationState {
     identity: Arc<NativeOperationIdentity>,
     retention_order: u64,
     record: Mutex<OperationRecord>,
+    settings_durability_uncertain: AtomicBool,
     ledger: Arc<Mutex<Ledger>>,
 }
 
@@ -159,14 +171,38 @@ impl NativeOperationState {
     }
 
     fn finish(&self, outcome: NativeOperationOutcome) -> bool {
-        let Some(update) = outcome.update() else {
-            return false;
-        };
         let Ok(mut record) = self.record.lock() else {
             return false;
         };
         if record.state.is_terminal() {
             return false;
+        }
+        let uncertain = self.settings_durability_uncertain.load(Ordering::Relaxed);
+        let outcome = match outcome {
+            NativeOperationOutcome::SettingsSavedReloadRequired { .. } if uncertain => {
+                NativeOperationOutcome::SettingsSavedReloadRequired {
+                    durability_uncertain: true,
+                }
+            }
+            outcome => outcome,
+        };
+        let Some(mut update) = outcome.update() else {
+            return false;
+        };
+        if uncertain
+            && !matches!(
+                outcome,
+                NativeOperationOutcome::SettingsSavedReloadRequired { .. }
+            )
+        {
+            let detail = format!(
+                "settings saved with durability uncertainty; {}",
+                update.detail
+            );
+            update = match update.failure {
+                Some(failure) => OperationUpdate::failed(failure.kind, detail),
+                None => OperationUpdate::new(update.state, detail, None),
+            };
         }
         // No callbacks occur under either lock. The reserved active slot only
         // becomes free together with its terminal notification, so concurrent
@@ -223,6 +259,24 @@ impl NativeOperationReporter {
     #[must_use]
     pub fn id(&self) -> &str {
         &self.0.state.identity.id
+    }
+
+    /// Retains the actual save's uncertainty until this same native operation
+    /// finishes. It does not finish the command or change its focus/error result.
+    #[must_use]
+    pub fn settings_saved_with_durability_uncertainty(&self) -> bool {
+        let state = &self.0.state;
+        let Ok(record) = state.record.lock() else {
+            return false;
+        };
+        if record.state.is_terminal() {
+            return false;
+        }
+        // The record lock orders this fact with terminal completion.
+        state
+            .settings_durability_uncertain
+            .store(true, Ordering::Relaxed);
+        true
     }
 
     #[must_use]
@@ -316,6 +370,7 @@ impl NativeOperationRegistry {
             identity: Arc::clone(&identity),
             retention_order,
             record: Mutex::new(record),
+            settings_durability_uncertain: AtomicBool::new(false),
             ledger: Arc::clone(&self.ledger),
         });
         catalog
@@ -447,6 +502,114 @@ mod tests {
                 ProfileId::from_display(&format!("profileid-{number}")).unwrap(),
             ),
             privacy,
+        }
+    }
+
+    #[test]
+    fn saved_uncertainty_preserves_native_terminal_outcomes_and_original_identity() {
+        let outcomes = [
+            NativeOperationOutcome::Applied,
+            NativeOperationOutcome::Activated,
+            NativeOperationOutcome::ActivationUnknown,
+            NativeOperationOutcome::Failed,
+            NativeOperationOutcome::Stale,
+            NativeOperationOutcome::Rejected,
+            NativeOperationOutcome::OwnerLost,
+            NativeOperationOutcome::SettingsSavedReloadRequired {
+                durability_uncertain: false,
+            },
+            NativeOperationOutcome::SettingsSavedReloadRequired {
+                durability_uncertain: true,
+            },
+        ];
+        for outcome in outcomes {
+            let mut catalog = OperationCatalog::default();
+            let original = scope(&catalog, 11, PrivacyKind::Private);
+            catalog.admit("uncertain".into()).unwrap();
+            let mut registry = NativeOperationRegistry::default();
+            let reporter = registry
+                .begin_handoff(&mut catalog, original, "uncertain")
+                .unwrap();
+            let pending = registry.get("uncertain").unwrap();
+            drop(catalog);
+            let worker = reporter.clone();
+            assert!(
+                std::thread::spawn(move || worker.settings_saved_with_durability_uncertainty())
+                    .join()
+                    .unwrap()
+            );
+            assert!(reporter.settings_saved_with_durability_uncertainty());
+            assert_eq!(registry.get("uncertain").unwrap(), pending);
+            assert_eq!(registry.drain_completions().len(), 0);
+            assert!(reporter.finish(outcome));
+            let receipt = registry.get("uncertain").unwrap();
+            let expected = outcome.update().unwrap();
+            assert_eq!(receipt.scope, original);
+            assert_eq!(receipt.record.id, pending.record.id);
+            assert_eq!(receipt.record.sequence, pending.record.sequence);
+            assert_eq!(receipt.record.state, expected.state);
+            assert_eq!(
+                receipt.record.failure.as_ref().map(|failure| failure.kind),
+                expected.failure.as_ref().map(|failure| failure.kind)
+            );
+            assert!(
+                receipt
+                    .record
+                    .detail
+                    .contains("settings saved with durability uncertainty")
+            );
+            if matches!(
+                outcome,
+                NativeOperationOutcome::SettingsSavedReloadRequired { .. }
+            ) {
+                assert!(receipt.record.detail.contains("not active"));
+                assert!(receipt.record.detail.contains("browser restart"));
+            }
+            let late = reporter.clone();
+            assert!(
+                !std::thread::spawn(move || late.settings_saved_with_durability_uncertainty())
+                    .join()
+                    .unwrap()
+            );
+            assert!(!reporter.finish(NativeOperationOutcome::Failed));
+            assert_eq!(registry.get("uncertain").unwrap(), receipt);
+            let completions = registry.drain_completions();
+            assert_eq!(completions.len(), 1);
+            assert_eq!(completions[0].scope, original);
+            assert_eq!(completions[0].completion.id, pending.record.id);
+            assert_eq!(completions[0].completion.sequence, pending.record.sequence);
+            assert_eq!(registry.drain_completions().len(), 0);
+        }
+    }
+
+    #[test]
+    fn saved_unpublished_native_receipt_preserves_commit_fact_and_restart_boundary() {
+        for durability_uncertain in [false, true] {
+            let mut catalog = OperationCatalog::default();
+            let original = scope(&catalog, 7, PrivacyKind::Private);
+            catalog.admit("saved".into()).unwrap();
+            let mut registry = NativeOperationRegistry::default();
+            let reporter = registry
+                .begin_handoff(&mut catalog, original, "saved")
+                .unwrap();
+            assert!(
+                reporter.finish(NativeOperationOutcome::SettingsSavedReloadRequired {
+                    durability_uncertain
+                })
+            );
+            assert!(!reporter.finish(NativeOperationOutcome::Failed));
+            let receipt = registry.get("saved").unwrap();
+            assert_eq!(receipt.scope, original);
+            assert_eq!(receipt.record.state, OperationState::Failed);
+            assert!(receipt.record.detail.contains("saved"));
+            assert!(receipt.record.detail.contains("not active"));
+            assert!(receipt.record.detail.contains("browser restart"));
+            assert_eq!(
+                receipt.record.detail.contains("durability uncertainty"),
+                durability_uncertain
+            );
+            assert_eq!(registry.drain_completions().len(), 1);
+            assert_eq!(registry.drain_completions().len(), 0);
         }
     }
 

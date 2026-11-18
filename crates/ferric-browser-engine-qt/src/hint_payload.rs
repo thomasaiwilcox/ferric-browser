@@ -8,24 +8,34 @@ use ferric_browser_core::{
     MAX_HINT_CANDIDATES,
 };
 use serde_json::Value;
-use std::collections::BTreeSet;
 
-const MAX_HINT_FRAME_DEPTH: usize = 8;
+mod decoding;
+
+#[cfg(test)]
+mod decoding_tests;
+
+pub(super) struct DecodedHintPayload {
+    pub(super) candidates: Vec<HintCandidate>,
+    pub(super) selector_revision: Option<String>,
+    pub(super) scope_lease_id: Option<String>,
+}
+
+const MAX_HINT_FRAME_DEPTH: usize = ferric_browser_core::MAX_HINT_ROOT_DEPTH;
+
+const CANDIDATE_KEYS: &[&str] = &[
+    "element_id",
+    "related_element_id",
+    "kind",
+    "frame_path",
+    "frame_owner",
+    "text",
+    "href",
+    "geometry",
+    "visible",
+    "presentation",
+];
 
 pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, String> {
-    const CANDIDATE_KEYS: &[&str] = &[
-        "element_id",
-        "related_element_id",
-        "kind",
-        "frame_path",
-        "frame_owner",
-        "text",
-        "href",
-        "geometry",
-        "visible",
-        "presentation",
-    ];
-
     let object = value
         .as_object()
         .ok_or_else(|| "hint candidate must be an object".to_owned())?;
@@ -102,10 +112,11 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
     {
         return Err("hint candidate text or frame path is invalid".into());
     }
-    let href = object
-        .get("href")
-        .and_then(|href| if href.is_null() { None } else { href.as_str() })
-        .map(str::to_owned);
+    let href = match object.get("href") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(href)) => Some(href.clone()),
+        Some(_) => return Err("hint candidate href must be a string or null".into()),
+    };
     if href.as_ref().is_some_and(|href| {
         href.is_empty() || href.len() > 8_192 || href.chars().any(char::is_control)
     }) {
@@ -218,37 +229,11 @@ fn parse_presentation(
 }
 
 pub(super) fn parse_hint_payload(raw: &str) -> Result<Vec<HintCandidate>, String> {
-    let values = serde_json::from_str::<Value>(raw)
-        .map_err(|error| format!("hint candidate JSON is invalid: {error}"))?;
-    let values = if let Some(values) = values.as_array() {
-        values
-    } else {
-        let object = values
-            .as_object()
-            .ok_or_else(|| "hint payload must be an array or object".to_owned())?;
-        object
-            .get("candidates")
-            .and_then(Value::as_array)
-            .ok_or_else(|| "hint payload candidates must be an array".to_owned())?
-    };
-    if values.len() > MAX_HINT_CANDIDATES {
-        return Err(format!(
-            "hint candidate count {} exceeds {MAX_HINT_CANDIDATES}",
-            values.len()
-        ));
-    }
-    let candidates = values
-        .iter()
-        .map(parse_hint_candidate)
-        .collect::<Result<Vec<_>, _>>()?;
-    let unique_ids = candidates
-        .iter()
-        .map(|candidate| (&candidate.frame_owner, candidate.element_id))
-        .collect::<BTreeSet<_>>();
-    if unique_ids.len() != candidates.len() {
-        return Err("hint candidate element_id values must be unique".into());
-    }
-    Ok(candidates)
+    parse_hint_envelope(raw).map(|payload| payload.candidates)
+}
+
+pub(super) fn parse_hint_envelope(raw: &str) -> Result<DecodedHintPayload, String> {
+    decoding::decode(raw)
 }
 
 pub(super) fn validate_hint_candidates_for_family(
@@ -312,6 +297,21 @@ pub(super) fn hint_kind_name(kind: HintKind) -> &'static str {
         HintKind::Surface => "surface",
         HintKind::FocusableSurface => "focusable-surface",
     }
+}
+
+pub(super) fn candidate_json(candidate: &HintCandidate) -> Value {
+    let rect =
+        |r: HintGeometry| serde_json::json!({"x":r.x,"y":r.y,"width":r.width,"height":r.height});
+    serde_json::json!({
+        "element_id":candidate.element_id,"related_element_id":candidate.related_element_id,
+        "kind":hint_kind_name(candidate.kind),"frame_path":candidate.frame_path,
+        "frame_owner":candidate.frame_owner,"text":candidate.text,"href":candidate.href,
+        "geometry":rect(candidate.geometry),
+        "presentation":candidate.presentation.as_ref().map(|presentation| serde_json::json!({
+            "anchor":{"x":presentation.anchor.x,"y":presentation.anchor.y},
+            "fragments":presentation.fragments.iter().copied().map(rect).collect::<Vec<_>>()
+        }))
+    })
 }
 
 fn hint_action_label(kind: HintKind, rapid: bool, target: &str) -> &'static str {

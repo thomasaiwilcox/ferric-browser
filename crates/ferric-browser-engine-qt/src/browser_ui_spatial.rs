@@ -435,6 +435,10 @@ impl qobject::BrowserUi {
                 && view_matches
                 && owner.surface == stamp
                 && rust.interaction.hint_configuration_revision == scope.configuration_revision
+                && self
+                    .as_ref()
+                    .current_hint_selector_snapshot(&scope.selector_family)
+                    .is_ok_and(|policy| policy.revision == scope.selector_policy_revision)
                 && rust.spatial_scope_lease_id.to_string() == scope.lease_id
                 && scope.scroll_revision == integer("scroll_revision").unwrap_or(u64::MAX)
                 && scope.css_viewport_width_bits == css_viewport_width.to_bits()

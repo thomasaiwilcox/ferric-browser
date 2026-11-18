@@ -258,6 +258,10 @@ Item {
         settingsModel: settingsModel
         onCloseRequested: workspace.close()
         onRefreshRequested: workspace.refresh()
+        onSitePoliciesRequested: {
+            workspace.close()
+            workspace.browserUi.execute_interactive_command("site-policy")
+        }
         onInstallUserscriptRequested: workspace.installManifestRequested()
         onTemporaryChangeRequested: function (temporary) {
             workspace.state.settingsTemporary = temporary;

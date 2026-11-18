@@ -3,6 +3,7 @@
 
 use super::{CxxQtType, ParsedCommand, Pin, PrivacyKind, QString, TabId, qobject};
 use cxx_qt::{CxxQtThread, Threading};
+use ferric_browser_application::NativeOperationOutcome;
 use ferric_browser_application::ProfileInstanceId;
 use std::sync::{
     Arc, Mutex,
@@ -17,16 +18,294 @@ struct PageHandoffState {
     anchor: Mutex<PageAnchor>,
     operation: Option<String>,
     reporter: Option<ferric_browser_application::NativeOperationReporter>,
-    finished: AtomicBool,
+    completion: Mutex<PageCompletionJoin>,
     focus_requested: AtomicBool,
     terminal_focus_started: Arc<AtomicBool>,
     admitted_focus_generation: u64,
     focus_generation: AtomicU64,
 }
 
+enum PageTerminal {
+    Command {
+        selected: bool,
+        succeeded: bool,
+        destination: Option<crate::page_window_focus::Destination>,
+    },
+    Outcome(NativeOperationOutcome),
+    SettingsObserverRetired,
+}
+
+#[derive(Default)]
+struct PageCompletionJoin {
+    sealed: bool,
+    pending: u16,
+    terminal: Option<PageTerminal>,
+    settings_outcome: Option<NativeOperationOutcome>,
+}
+
+impl PageCompletionJoin {
+    fn begin_settings(&mut self) -> Result<(), String> {
+        if self.sealed {
+            return Err("The page command has already finished".into());
+        }
+        self.pending = self
+            .pending
+            .checked_add(1)
+            .ok_or("Too many pending settings changes")?;
+        Ok(())
+    }
+
+    fn seal(&mut self, terminal: PageTerminal) -> Option<PageTerminal> {
+        if self.sealed {
+            return None;
+        }
+        self.sealed = true;
+        self.terminal = Some(terminal);
+        self.take_ready()
+    }
+
+    fn resolve_settings(&mut self, outcome: NativeOperationOutcome) -> Option<PageTerminal> {
+        debug_assert!(self.pending > 0);
+        self.pending = self.pending.checked_sub(1)?;
+        if outcome != NativeOperationOutcome::Applied {
+            // An irreversible save must remain visible even if another step
+            // failed or its observer disappeared. No raw diagnostic crosses
+            // the original native reporter's privacy boundary.
+            let saved = matches!(
+                outcome,
+                NativeOperationOutcome::SettingsSavedReloadRequired { .. }
+            );
+            let already_saved = matches!(
+                self.settings_outcome,
+                Some(NativeOperationOutcome::SettingsSavedReloadRequired { .. })
+            );
+            if self.settings_outcome.is_none() || (saved && !already_saved) {
+                self.settings_outcome = Some(outcome);
+            } else if let (
+                Some(NativeOperationOutcome::SettingsSavedReloadRequired {
+                    durability_uncertain,
+                }),
+                NativeOperationOutcome::SettingsSavedReloadRequired {
+                    durability_uncertain: next,
+                },
+            ) = (&mut self.settings_outcome, outcome)
+            {
+                *durability_uncertain |= next;
+            }
+        }
+        self.take_ready()
+    }
+
+    fn take_ready(&mut self) -> Option<PageTerminal> {
+        if self.pending != 0 {
+            return None;
+        }
+        let terminal = self.terminal.take()?;
+        Some(match (self.settings_outcome, terminal) {
+            (Some(saved @ NativeOperationOutcome::SettingsSavedReloadRequired { .. }), _) => {
+                PageTerminal::Outcome(saved)
+            }
+            (_, terminal @ PageTerminal::Outcome(outcome))
+                if outcome != NativeOperationOutcome::Applied =>
+            {
+                terminal
+            }
+            (Some(outcome), _) => PageTerminal::Outcome(outcome),
+            (None, PageTerminal::SettingsObserverRetired) => {
+                PageTerminal::Outcome(NativeOperationOutcome::OwnerLost)
+            }
+            (None, terminal) => terminal,
+        })
+    }
+}
+
+/// One obligation per mutation, moved through CSS and persistence. Dropping
+/// an unresolved observer means an unknown outcome, never a rolled-back save.
+pub(super) struct PageSettingsCompletion {
+    handoff: PageHandoff,
+    unresolved: bool,
+}
+
+impl AdmittedPageSettingsCompletion {
+    pub(super) fn observe(
+        completion: Option<PageSettingsCompletion>,
+    ) -> (
+        AdmittedPageSettingsCompletion,
+        ferric_browser_application::ConfigurationWriteObserver,
+    ) {
+        let state = Arc::new(Mutex::new(AdmittedSettingsState {
+            completion,
+            persistence: None,
+            retired: false,
+        }));
+        let delivery = Arc::clone(&state);
+        let observer = Box::new(move |outcome| {
+            let completion = {
+                let Ok(mut state) = delivery.lock() else {
+                    return;
+                };
+                state.persistence = Some(outcome);
+                if state.retired {
+                    state.completion.take()
+                } else {
+                    None
+                }
+            };
+            if let Some(completion) = completion {
+                finish_detached_settings(completion, outcome);
+            }
+        });
+        (AdmittedPageSettingsCompletion { state }, observer)
+    }
+}
+
+impl PageSettingsCompletion {
+    pub(super) fn note_durability_uncertainty(&self) {
+        if let Some(reporter) = &self.handoff.0.reporter {
+            let _ = reporter.settings_saved_with_durability_uncertainty();
+        }
+    }
+
+    pub(super) fn finish(mut self, outcome: NativeOperationOutcome) {
+        self.unresolved = false;
+        self.handoff.resolve_settings(outcome);
+    }
+}
+
+impl Drop for PageSettingsCompletion {
+    fn drop(&mut self) {
+        if self.unresolved {
+            self.handoff
+                .resolve_settings(NativeOperationOutcome::OwnerLost);
+        }
+    }
+}
+
+/// Observation of one admitted write. Retirement leaves the original ticket
+/// with the existing writer's result; it cannot turn a pending save into loss.
+pub(super) struct AdmittedPageSettingsCompletion {
+    state: Arc<Mutex<AdmittedSettingsState>>,
+}
+
+struct AdmittedSettingsState {
+    completion: Option<PageSettingsCompletion>,
+    persistence: Option<ferric_browser_application::ConfigurationPersistenceOutcome>,
+    retired: bool,
+}
+
+impl AdmittedPageSettingsCompletion {
+    pub(super) fn has_handoff(&self) -> bool {
+        self.state
+            .lock()
+            .map_or(true, |state| state.completion.is_some())
+    }
+
+    pub(super) fn attach_handoff(&self, handoff: &PageHandoff) -> Result<(), String> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "The settings receipt is unavailable")?;
+        if state.retired {
+            return Err("The settings observer has retired".into());
+        }
+        if let Some(completion) = state.completion.as_ref() {
+            if !completion.handoff.same_root(handoff) {
+                return Err("The settings receipt belongs to another command".into());
+            }
+        } else {
+            state.completion = Some(handoff.begin_settings()?);
+        }
+        Ok(())
+    }
+
+    pub(super) fn note_durability_uncertainty(&self) {
+        if let Ok(state) = self.state.lock()
+            && let Some(completion) = &state.completion
+        {
+            completion.note_durability_uncertainty();
+        }
+    }
+
+    pub(super) fn finish(self, outcome: NativeOperationOutcome) {
+        self.resolve(outcome, true);
+    }
+
+    pub(super) fn rejected(self) {
+        self.resolve(NativeOperationOutcome::Failed, false);
+    }
+
+    fn resolve(self, outcome: NativeOperationOutcome, admitted: bool) {
+        let completed = self.state.lock().ok().and_then(|mut state| {
+            state
+                .completion
+                .take()
+                .map(|ticket| (ticket, state.persistence))
+        });
+        if let Some((completion, persistence)) = completed {
+            completion.finish(
+                if admitted
+                    && persistence
+                        == Some(
+                            ferric_browser_application::ConfigurationPersistenceOutcome::Unknown,
+                        )
+                {
+                    NativeOperationOutcome::OwnerLost
+                } else {
+                    outcome
+                },
+            );
+        }
+    }
+}
+
+impl Drop for AdmittedPageSettingsCompletion {
+    fn drop(&mut self) {
+        let retired = self.state.lock().ok().map(|mut state| {
+            state.retired = true;
+            let handoff = state
+                .completion
+                .as_ref()
+                .map(|ticket| ticket.handoff.clone());
+            let ready = state
+                .persistence
+                .and_then(|outcome| state.completion.take().map(|ticket| (ticket, outcome)));
+            (handoff, ready)
+        });
+        if let Some((handoff, ready)) = retired {
+            // Sealing does not complete while this write's ticket is pending.
+            if let Some(handoff) = handoff {
+                handoff.retire_settings_observer();
+            }
+            if let Some((completion, outcome)) = ready {
+                finish_detached_settings(completion, outcome);
+            }
+        }
+    }
+}
+
+fn finish_detached_settings(
+    completion: PageSettingsCompletion,
+    outcome: ferric_browser_application::ConfigurationPersistenceOutcome,
+) {
+    completion.handoff.clone().retire_settings_observer();
+    completion.finish(match outcome {
+        ferric_browser_application::ConfigurationPersistenceOutcome::Saved {
+            durability_uncertain,
+        } => NativeOperationOutcome::SettingsSavedReloadRequired {
+            durability_uncertain,
+        },
+        ferric_browser_application::ConfigurationPersistenceOutcome::Failed => {
+            NativeOperationOutcome::Failed
+        }
+        ferric_browser_application::ConfigurationPersistenceOutcome::Unknown => {
+            NativeOperationOutcome::OwnerLost
+        }
+    });
+}
+
 impl Drop for PageHandoffState {
     fn drop(&mut self) {
-        if self.finished.load(Ordering::Acquire) {
+        if self.completion.get_mut().is_ok_and(|join| join.sealed) {
             return;
         }
         // Qt discards queued callbacks when their receiver is destroyed.
@@ -78,6 +357,45 @@ impl PageAnchor {
 }
 
 impl PageHandoff {
+    pub(super) fn same_root(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+    pub(super) fn begin_settings(&self) -> Result<PageSettingsCompletion, String> {
+        self.0
+            .completion
+            .lock()
+            .map_err(|_| "The page command completion is unavailable")?
+            .begin_settings()?;
+        Ok(PageSettingsCompletion {
+            handoff: self.clone(),
+            unresolved: true,
+        })
+    }
+
+    fn resolve_settings(&self, outcome: NativeOperationOutcome) {
+        let terminal = self
+            .0
+            .completion
+            .lock()
+            .ok()
+            .and_then(|mut join| join.resolve_settings(outcome));
+        if let Some(terminal) = terminal {
+            self.clone().dispatch_terminal(terminal);
+        }
+    }
+
+    fn request_terminal(self, terminal: PageTerminal) {
+        let ready = self
+            .0
+            .completion
+            .lock()
+            .ok()
+            .and_then(|mut join| join.seal(terminal));
+        if let Some(ready) = ready {
+            self.dispatch_terminal(ready);
+        }
+    }
+
     pub(super) fn authorize_regroup(&self, source: &PageWindowSnapshot, group: &str) -> bool {
         let Ok(mut anchor) = self.0.anchor.lock() else {
             return false;
@@ -190,19 +508,15 @@ impl PageHandoff {
     }
 
     pub(super) fn finish_close(self, outcome: ferric_browser_application::NativeOperationOutcome) {
-        if !self.0.finished.swap(true, Ordering::AcqRel)
-            && let Some(reporter) = &self.0.reporter
-        {
-            let _ = reporter.finish(outcome);
-        }
+        self.request_terminal(PageTerminal::Outcome(outcome));
     }
 
     pub(super) fn owner_lost(self) {
-        if !self.0.finished.swap(true, Ordering::AcqRel)
-            && let Some(reporter) = &self.0.reporter
-        {
-            let _ = reporter.finish(ferric_browser_application::NativeOperationOutcome::OwnerLost);
-        }
+        self.request_terminal(PageTerminal::Outcome(NativeOperationOutcome::OwnerLost));
+    }
+
+    fn retire_settings_observer(self) {
+        self.request_terminal(PageTerminal::SettingsObserverRetired);
     }
 
     pub(super) fn terminal_focus_guard(&self) -> Arc<AtomicBool> {
@@ -254,10 +568,28 @@ impl PageHandoff {
 
     pub(super) fn finish(self, selected: bool, succeeded: bool, target: &qobject::BrowserUi) {
         let destination = crate::page_window_focus::Destination::capture(target);
-        let root = self.0;
-        if root.finished.swap(true, Ordering::AcqRel) {
+        self.request_terminal(PageTerminal::Command {
+            selected,
+            succeeded,
+            destination,
+        });
+    }
+
+    fn dispatch_terminal(self, terminal: PageTerminal) {
+        let PageTerminal::Command {
+            selected,
+            succeeded,
+            destination,
+        } = terminal
+        else {
+            if let PageTerminal::Outcome(outcome) = terminal
+                && let Some(reporter) = &self.0.reporter
+            {
+                let _ = reporter.finish(outcome);
+            }
             return;
-        }
+        };
+        let root = self.0;
         let Ok(anchor) = root.anchor.lock().map(|anchor| anchor.clone()) else {
             return;
         };
@@ -662,10 +994,25 @@ impl qobject::BrowserUi {
         incoming: Option<PageHandoff>,
         source: &PageWindowSnapshot,
         operation_id: Option<&str>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<PageHandoff, String> {
+        if let Some(turn) = preparation {
+            turn.validate_handoff(self.as_ref().get_ref(), operation_id, incoming.as_ref())?;
+        }
         if let Some(incoming) = incoming {
-            if incoming.0.finished.load(Ordering::Acquire) {
+            if incoming
+                .0
+                .completion
+                .lock()
+                .map_or(true, |join| join.sealed)
+            {
                 return Err("The page command has already finished".into());
+            }
+            if let Some(turn) = preparation {
+                self.as_mut()
+                    .attach_configuration_handoff(&incoming, turn)?;
             }
             return Ok(incoming);
         }
@@ -677,7 +1024,7 @@ impl qobject::BrowserUi {
             })
             .transpose()?;
         let operation = reporter.as_ref().map(|reporter| reporter.id().to_owned());
-        Ok(PageHandoff(Arc::new(PageHandoffState {
+        let handoff = PageHandoff(Arc::new(PageHandoffState {
             thread: self.as_ref().get_ref().qt_thread(),
             anchor: Mutex::new(PageAnchor {
                 thread: self.as_ref().get_ref().qt_thread(),
@@ -689,12 +1036,16 @@ impl qobject::BrowserUi {
             }),
             operation,
             reporter,
-            finished: AtomicBool::new(false),
+            completion: Mutex::new(PageCompletionJoin::default()),
             focus_requested: AtomicBool::new(false),
             terminal_focus_started: Arc::new(AtomicBool::new(false)),
             admitted_focus_generation: crate::page_window_focus::generation(),
             focus_generation: AtomicU64::new(0),
-        })))
+        }));
+        if let Some(turn) = preparation {
+            self.as_mut().attach_configuration_handoff(&handoff, turn)?;
+        }
+        Ok(handoff)
     }
 
     pub(super) fn in_page_window_mode(&self) -> bool {
@@ -710,6 +1061,9 @@ impl qobject::BrowserUi {
         route: &super::IpcRoute,
         commands: Vec<(ParsedCommand, super::IpcRoute)>,
         operation_id: Option<&str>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<super::Value, super::PublicError> {
         self.execute_page_window_ipc_selection_with_handoff(
             command,
@@ -717,6 +1071,7 @@ impl qobject::BrowserUi {
             commands,
             operation_id,
             &mut None,
+            preparation,
         )
     }
 
@@ -727,6 +1082,9 @@ impl qobject::BrowserUi {
         commands: Vec<(ParsedCommand, super::IpcRoute)>,
         operation_id: Option<&str>,
         handoff: &mut Option<PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<super::Value, super::PublicError> {
         if route.context.is_some() {
             return Err("context routing is not valid for page selection".into());
@@ -760,6 +1118,7 @@ impl qobject::BrowserUi {
             },
             operation_id,
             handoff.clone(),
+            preparation,
         )?;
         handoff.take();
         self.as_mut()
@@ -774,6 +1133,9 @@ impl qobject::BrowserUi {
         continuation: PageContinuation,
         operation_id: Option<&str>,
         handoff: Option<PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
     ) -> Result<super::Value, String> {
         let source = PageWindowSnapshot::capture_checked(self.as_ref().get_ref())?;
         let current = self.as_ref().rust().tab.ok_or("No active page")?;
@@ -805,9 +1167,9 @@ impl qobject::BrowserUi {
         let result_window = target.owner.window;
         let source_token = self.as_ref().rust().window_token.to_string();
         let same_owner = source_token == target_token;
-        let handoff = self
-            .as_mut()
-            .prepare_page_handoff(handoff, &source, operation_id)?;
+        let handoff =
+            self.as_mut()
+                .prepare_page_handoff(handoff, &source, operation_id, preparation)?;
         handoff.request_focus();
         let scope = source.scope;
         let group = source.group;
@@ -960,34 +1322,49 @@ impl qobject::BrowserUi {
         self.as_mut().runtime_work_available();
     }
 
-    pub(super) fn execute_page_window_ipc_chain(
-        self: Pin<&mut Self>,
-        commands: Vec<ParsedCommand>,
-        route: &super::IpcRoute,
-        operation_id: Option<&str>,
-    ) -> Result<super::Value, super::PublicError> {
-        self.execute_routed_ipc_chain(
-            commands
-                .into_iter()
-                .map(|command| (command, route.clone()))
-                .collect(),
-            operation_id,
-        )
-    }
-
-    pub(super) fn execute_routed_ipc_chain(
+    pub(super) fn execute_routed_ipc_chain_with_handoff(
         self: Pin<&mut Self>,
         commands: Vec<(ParsedCommand, super::IpcRoute)>,
         operation_id: Option<&str>,
+        handoff: &mut Option<PageHandoff>,
     ) -> Result<super::Value, super::PublicError> {
-        self.execute_routed_ipc_chain_with_handoff(commands, operation_id, &mut None)
+        self.execute_routed_ipc_chain_in_turn(commands, operation_id, handoff, None)
     }
 
-    pub(super) fn execute_routed_ipc_chain_with_handoff(
+    pub(super) fn execute_routed_ipc_chain_in_turn(
+        self: Pin<&mut Self>,
+        commands: Vec<(ParsedCommand, super::IpcRoute)>,
+        operation_id: Option<&str>,
+        handoff: &mut Option<PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
+    ) -> Result<super::Value, super::PublicError> {
+        let read = preparation
+            .filter(|turn| turn.is_current(self.as_ref().get_ref()))
+            .and_then(|_| {
+                super::browser_ui_configuration_read::ConfigurationReadTurn::capture(
+                    self.as_ref().get_ref(),
+                )
+            });
+        self.execute_routed_ipc_chain_with_read(
+            commands,
+            operation_id,
+            handoff,
+            preparation,
+            read.as_ref(),
+        )
+    }
+
+    pub(super) fn execute_routed_ipc_chain_with_read(
         mut self: Pin<&mut Self>,
         commands: Vec<(ParsedCommand, super::IpcRoute)>,
         operation_id: Option<&str>,
         handoff: &mut Option<PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
+        read: Option<&super::browser_ui_configuration_read::ConfigurationReadTurn>,
     ) -> Result<super::Value, super::PublicError> {
         // Expand and check the entire external chain before its first effect.
         // Each step keeps its own open/profile/context policy; only the active
@@ -1029,7 +1406,7 @@ impl qobject::BrowserUi {
                 .iter()
                 .any(|(command, _)| is_command_workflow(command))
         {
-            return self.execute_page_workflow(
+            return self.execute_page_workflow_with_read(
                 expanded
                     .into_iter()
                     .map(|(command, route)| crate::RepeatableCommand {
@@ -1040,10 +1417,118 @@ impl qobject::BrowserUi {
                     .collect(),
                 operation_id,
                 handoff,
+                preparation,
+                read,
+            );
+        }
+        if !self.as_ref().in_page_window_mode()
+            && super::browser_ui_page_workflows::needs_read_expansion(
+                expanded.iter().map(|(command, _)| command),
+            )
+            && let Some(commands) = super::browser_ui_page_workflows::expanded_read_workflow(
+                self.as_ref().rust(),
+                expanded
+                    .iter()
+                    .cloned()
+                    .map(|(command, route)| crate::RepeatableCommand {
+                        command,
+                        count: 1,
+                        route: Some(route),
+                    })
+                    .collect(),
+            )
+        {
+            return self.execute_page_recorded_commands_with_read(
+                commands,
+                operation_id,
+                handoff,
+                preparation,
+                read,
             );
         }
         let mut operations = Vec::new();
         for (index, (command, route)) in expanded.iter().enumerate() {
+            if index > 0 {
+                self.as_mut().queue_pending_engine_action();
+            }
+            if index > 0
+                && preparation.is_none()
+                && let Some(read) = read
+            {
+                read.validate_continuation(self.as_ref().get_ref())?;
+            }
+            if operation_id.is_some_and(|id| {
+                self.as_ref()
+                    .rust()
+                    .operation(id)
+                    .is_none_or(|record| record.state.is_terminal())
+            }) {
+                return Err(crate::PublicError::new(
+                    ferric_browser_ipc::ErrorCode::Cancelled,
+                    "The command was cancelled.",
+                    "command continuation operation is no longer live",
+                ));
+            }
+
+            if command.name == "get" || super::browser_ui_site_policy::uses_read_turn(command) {
+                if preparation.is_some_and(|turn| !turn.is_current(self.as_ref().get_ref())) {
+                    return Err("The command owner changed during settings preparation".into());
+                }
+                if operation_id.is_some_and(|id| {
+                    self.as_ref()
+                        .rust()
+                        .operation(id)
+                        .is_none_or(|record| record.state.is_terminal())
+                }) {
+                    return Err(crate::PublicError::new(
+                        ferric_browser_ipc::ErrorCode::Cancelled,
+                        "The command was cancelled.",
+                        "read operation is no longer live",
+                    ));
+                }
+
+                let rebound = preparation
+                    .filter(|turn| turn.is_current(self.as_ref().get_ref()))
+                    .and_then(|_| {
+                        super::browser_ui_configuration_read::ConfigurationReadTurn::capture(
+                            self.as_ref().get_ref(),
+                        )
+                    });
+                let read = rebound.as_ref().or(read);
+                self.as_ref().validate_configuration_get_route(route)?;
+                let Some(read) = read else {
+                    return self.queue_configuration_read(
+                        command.clone(),
+                        PageContinuation::Ipc {
+                            commands: expanded[index + 1..].to_vec(),
+                            route: route.clone(),
+                        },
+                        operation_id,
+                        handoff,
+                    );
+                };
+                result = self
+                    .as_mut()
+                    .execute_configuration_read_command(command, read)?;
+                continue;
+            }
+            if preparation.is_some_and(|turn| !turn.is_current(self.as_ref().get_ref())) {
+                return Err("The command owner changed during settings preparation".into());
+            }
+            if preparation.is_none()
+                && !(super::browser_ui_site_policy::is_draft_management(command) && read.is_some())
+                && super::browser_ui_configuration_preparation::needs_preparation(
+                    command,
+                    &self.as_ref().rust().registry,
+                )
+            {
+                self.as_ref().validate_ipc_route_public(route)?;
+                return self.queue_configuration_preparation(
+                    super::browser_ui_configuration_preparation::DeferredConfigurationAction::Commands(PageContinuation::Ipc {
+                        commands: expanded[index..].to_vec(), route: route.clone(),
+                    }), operation_id, handoff,
+                ).map_err(Into::into);
+            }
             if self.as_ref().in_page_window_mode()
                 && super::browser_ui_page_creation::handles(command, Some(route))
             {
@@ -1054,6 +1539,7 @@ impl qobject::BrowserUi {
                         expanded[index + 1..].to_vec(),
                         operation_id,
                         handoff,
+                        preparation,
                     )
                     .map_err(|error| error.after_accepted_commands(index));
             }
@@ -1065,6 +1551,7 @@ impl qobject::BrowserUi {
                         expanded[index + 1..].to_vec(),
                         operation_id,
                         handoff,
+                        preparation,
                     )
                     .map_err(|error| error.after_accepted_commands(index));
             }
@@ -1078,6 +1565,7 @@ impl qobject::BrowserUi {
                         expanded[index + 1..].to_vec(),
                         operation_id,
                         handoff,
+                        preparation,
                     )
                     .map_err(|error| error.after_accepted_commands(index));
             }
@@ -1091,6 +1579,7 @@ impl qobject::BrowserUi {
                         expanded[index + 1..].to_vec(),
                         operation_id,
                         handoff,
+                        preparation,
                     )
                     .map_err(|error| error.after_accepted_commands(index));
             }
@@ -1102,12 +1591,13 @@ impl qobject::BrowserUi {
                         expanded[index + 1..].to_vec(),
                         operation_id,
                         handoff,
+                        preparation,
                     )
                     .map_err(|error| error.after_accepted_commands(index));
             }
             result = self
                 .as_mut()
-                .execute_ipc_command_with_operation(command.clone(), route, None)
+                .execute_ipc_command_with_read(command.clone(), route, None, preparation, read)
                 .map_err(|error| error.after_accepted_commands(index))?;
             if let Some(id) = result.get("operation_id").and_then(super::Value::as_str) {
                 operations.push(id.to_owned());
@@ -1121,6 +1611,152 @@ impl qobject::BrowserUi {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn terminal_outcome(terminal: Option<PageTerminal>) -> Option<NativeOperationOutcome> {
+        terminal.map(|terminal| match terminal {
+            PageTerminal::Outcome(outcome) => outcome,
+            PageTerminal::Command { .. } => panic!("unexpected focus completion"),
+            PageTerminal::SettingsObserverRetired => panic!("unresolved settings retirement"),
+        })
+    }
+
+    #[test]
+    fn retired_settings_wait_for_the_actual_receipt_in_either_order() {
+        for outcome in [
+            NativeOperationOutcome::SettingsSavedReloadRequired {
+                durability_uncertain: false,
+            },
+            NativeOperationOutcome::SettingsSavedReloadRequired {
+                durability_uncertain: true,
+            },
+            NativeOperationOutcome::Failed,
+            NativeOperationOutcome::OwnerLost,
+        ] {
+            for receipt_first in [false, true] {
+                let mut join = PageCompletionJoin::default();
+                join.begin_settings().unwrap();
+                let result = if receipt_first {
+                    assert!(join.resolve_settings(outcome).is_none());
+                    join.seal(PageTerminal::SettingsObserverRetired)
+                } else {
+                    assert!(join.seal(PageTerminal::SettingsObserverRetired).is_none());
+                    assert!(join.begin_settings().is_err());
+                    join.resolve_settings(outcome)
+                };
+                assert_eq!(terminal_outcome(result), Some(outcome));
+                assert!(join.seal(PageTerminal::SettingsObserverRetired).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn settings_join_waits_for_all_receipts_and_seals_new_work() {
+        let mut join = PageCompletionJoin::default();
+        join.begin_settings().unwrap();
+        join.begin_settings().unwrap();
+        assert!(
+            join.seal(PageTerminal::Outcome(NativeOperationOutcome::Applied))
+                .is_none()
+        );
+        assert!(join.begin_settings().is_err());
+        assert!(
+            join.resolve_settings(NativeOperationOutcome::Applied)
+                .is_none()
+        );
+        assert_eq!(
+            terminal_outcome(join.resolve_settings(NativeOperationOutcome::Applied)),
+            Some(NativeOperationOutcome::Applied)
+        );
+        assert!(
+            join.seal(PageTerminal::Outcome(NativeOperationOutcome::Failed))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn settings_join_remembers_receipt_failure_before_tail_finishes() {
+        let mut join = PageCompletionJoin::default();
+        join.begin_settings().unwrap();
+        assert!(
+            join.resolve_settings(NativeOperationOutcome::Failed)
+                .is_none()
+        );
+        assert_eq!(
+            terminal_outcome(join.seal(PageTerminal::Command {
+                selected: true,
+                succeeded: true,
+                destination: None,
+            })),
+            Some(NativeOperationOutcome::Failed)
+        );
+    }
+
+    #[test]
+    fn settings_join_keeps_committed_save_when_tail_or_observer_fails() {
+        for tail in [
+            NativeOperationOutcome::Failed,
+            NativeOperationOutcome::OwnerLost,
+        ] {
+            for saved_first in [false, true] {
+                let mut join = PageCompletionJoin::default();
+                join.begin_settings().unwrap();
+                join.begin_settings().unwrap();
+                let saved = NativeOperationOutcome::SettingsSavedReloadRequired {
+                    durability_uncertain: true,
+                };
+                let (first, last) = if saved_first {
+                    (saved, NativeOperationOutcome::OwnerLost)
+                } else {
+                    (NativeOperationOutcome::OwnerLost, saved)
+                };
+                assert!(join.resolve_settings(first).is_none());
+                assert!(join.seal(PageTerminal::Outcome(tail)).is_none());
+                assert_eq!(terminal_outcome(join.resolve_settings(last)), Some(saved));
+            }
+        }
+    }
+
+    #[test]
+    fn settings_join_preserves_partial_close_receipt_and_durability_warning() {
+        let partial = NativeOperationOutcome::ClosedPartially {
+            closed: 1,
+            requested: 2,
+        };
+        let mut join = PageCompletionJoin::default();
+        join.begin_settings().unwrap();
+        assert!(join.seal(PageTerminal::Outcome(partial)).is_none());
+        assert_eq!(
+            terminal_outcome(join.resolve_settings(NativeOperationOutcome::Failed)),
+            Some(partial)
+        );
+
+        let mut join = PageCompletionJoin::default();
+        join.begin_settings().unwrap();
+        join.begin_settings().unwrap();
+        join.resolve_settings(NativeOperationOutcome::SettingsSavedReloadRequired {
+            durability_uncertain: false,
+        });
+        join.resolve_settings(NativeOperationOutcome::SettingsSavedReloadRequired {
+            durability_uncertain: true,
+        });
+        assert_eq!(
+            terminal_outcome(join.seal(PageTerminal::Outcome(NativeOperationOutcome::Applied))),
+            Some(NativeOperationOutcome::SettingsSavedReloadRequired {
+                durability_uncertain: true
+            })
+        );
+    }
+
+    #[test]
+    fn settings_join_bounds_pending_receipts_without_wraparound() {
+        let mut join = PageCompletionJoin {
+            pending: u16::MAX,
+            ..Default::default()
+        };
+        assert!(join.begin_settings().is_err());
+        assert_eq!(join.pending, u16::MAX);
+        assert!(!join.sealed);
+    }
+
     fn id(number: u64) -> TabId {
         TabId::from_display(&format!("tabid-{number}")).unwrap()
     }

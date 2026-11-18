@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- Add opt-in Site Policies for semantic hint anchors, ordered collections and
+  native page-key transformations, with guided capture, nonactivating preview,
+  reviewed application and local import/export. The optional Interaction section
+  retains config schema version 3; older builds cannot read it. See the Site
+  Policies guide for canonical key tokens and qualified capability limits.
+
+- Work around a confirmed Qt 6.11.2 QML JIT garbage-collector corruption bug by
+  selecting Qt's supported interpreter mode before UI startup. This also
+  disables QML AOT execution; WebEngine page JavaScript remains unchanged.
+  The fallback is version-specific pending qualification of a fixed SDK.
+
+- Restore existing Library, list and Downloads Tab navigation by limiting custom
+  modal Tab traversal to the Site Policies editor.
+
+- Preserve unfinished numeric input in policy lists by requiring correction
+  before adding, removing or reordering entries. Explicit list clearing remains
+  available.
+
+- Corrected Hint selector and proxy precedence across configuration sources.
+  Higher-source rules win before numeric priority, and explicit generated/CLI/
+  temporary globals apply after the corresponding site layers. Whole-ID
+  replacement happens before URL matching. This changes configurations without
+  Interaction tables too: explicit global overrides and empty selector replaces
+  now take effect instead of being overwritten by lower-source sites. Selectors
+  and site rules remain reload-scoped; live proxy globals do not activate pending
+  rules. Source-only policy changes retire stale Hint authority.
+
 - Navigating the active document now ends Hint mode even when navigation
   retires an activation callback. Leaving Hint mode clears pending collection
   tokens; background tab loads preserve the active hint session. Hint visibility

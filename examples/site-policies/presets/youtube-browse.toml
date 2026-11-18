@@ -1,0 +1,75 @@
+# Desktop YouTube: search, home, subscriptions and visible video positions.
+# Opt-in. Preview in your own layout before applying. See README.md.
+format = "ferric-site-interaction"
+format_version = 1
+
+[[rules]]
+operation = "upsert-interaction"
+id = "youtube-browse"
+pattern = "https://www.youtube.com/*"
+priority = 10
+
+[rules.interaction]
+enabled = true
+
+[[rules.interaction.anchors]]
+id = "home"
+code = "h"
+families = ["links", "actions", "all"]
+target_selector = "ytd-masthead a#logo[href='/']"
+
+[[rules.interaction.anchors]]
+id = "search"
+code = "s"
+families = ["inputs", "actions", "all"]
+target_selector = "input[name='search_query']"
+
+[[rules.interaction.anchors]]
+id = "subscriptions"
+code = "u"
+families = ["links", "actions", "all"]
+target_selector = "a#endpoint[href='/feed/subscriptions']"
+
+[[rules.interaction.collections]]
+id = "videos"
+families = ["links", "actions", "all"]
+codes = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+container_selector = "ytd-page-manager"
+item_selector = "ytd-rich-item-renderer"
+primary_selector = "a.ytLockupMetadataViewModelTitle"
+order = "row-major-ltr"
+row_tolerance_px = 8
+
+[rules.interaction.collections.root]
+start = "top-document"
+steps = []
+
+[rules.interaction.collections.primary_predicates.href]
+origin = "https://www.youtube.com"
+path = "/watch"
+
+# Search results use their own numbered video collection.
+[[rules]]
+operation = "upsert-interaction"
+id = "youtube-search-results"
+pattern = "https://www.youtube.com/results"
+priority = 20
+
+[rules.interaction]
+
+[[rules.interaction.collections]]
+id = "search-videos"
+families = ["links", "actions", "all"]
+codes = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+container_selector = "ytd-search"
+item_selector = "ytd-video-renderer"
+primary_selector = "a#video-title"
+order = "top-to-bottom"
+
+[rules.interaction.collections.root]
+start = "top-document"
+steps = []
+
+[rules.interaction.collections.primary_predicates.href]
+origin = "https://www.youtube.com"
+path = "/watch"

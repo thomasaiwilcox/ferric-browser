@@ -1,0 +1,43 @@
+{
+  "status": "prepared-runtime-correction-build-pending",
+  "revision": "f2c5d6deebd97eb861084503f25613a6a819949d",
+  "supersedes": "v7 for additional workloads; all v7 evidence remains separate",
+  "scope": "Eight test-only paths, 113 timing rows and four lifecycle rows. Adds five native ready text-query rows and one combined 500-visible/1000-style-write refresh row.",
+  "patch_sha256": "406481df214da0b8976c365b04a98e25ecab1160f3e9ec304195d984651e99fd",
+  "materialization": "/home/tom/Projects/Ferric/ferric-browser/target/site-policy-baseline/p00-measurement-syntax/v8",
+  "inputs": {
+    "crates/ferric-browser-engine-qt/tests/application/tst_application.h": {
+      "original_sha256": "8528a154721cb4218a9fea413b2cf24229a4cc9ebdd0fa6fd36cb34f00b4dd62",
+      "overlay_sha256": "682af725a2c7d9ba78cc822f6dec8c3a8c0808566bde10c2c6f90bb383e9790a"
+    },
+    "crates/ferric-browser-engine-qt/tests/application/tst_application.cpp": {
+      "original_sha256": "90dcb77f808959fcc0c9333edacf296d95c508b2709b2a6d68f9b27a469ca268",
+      "overlay_sha256": "6fe900b9995f6e953894444a8b15d2a7b9d5bd6b2f616fde1ddb60cd1a6e7d9d"
+    },
+    "crates/ferric-browser-engine-qt/tests/application/CMakeLists.txt": {
+      "original_sha256": "74810e8d9ed99d1682c8f3cdbc79e1fb8b1f7badc82fe3f9bb11b481976b705b",
+      "overlay_sha256": "750768fe9fb186357713b748d4edf32b8486416393176d6b165e6c2987510eb5"
+    },
+    "crates/ferric-browser-engine-qt/tests/application/tst_site_policy_performance.cpp": {
+      "original_sha256": null,
+      "overlay_sha256": "f87ed3d65e760ac3b4b216af693808db33f0edc030a45fd09220c30b97a323f7"
+    },
+    "crates/ferric-browser-engine-qt/tests/application/run_site_policy_performance.py": {
+      "original_sha256": null,
+      "overlay_sha256": "1a4d50dda41f922fc5b89b3c96803bf4019c87576dac6e5defa2df4fbb719d83"
+    },
+    "crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-targets.html": {
+      "original_sha256": null,
+      "overlay_sha256": "0e47faac4277aedca81630d52547a402c0bde6bde43ba16423b2b823501a594b"
+    },
+    "crates/ferric-browser-engine-qt/tests/fixtures/site-policy/render-refresh-targets.html": {
+      "original_sha256": null,
+      "overlay_sha256": "52d033948b49fa46d993bdeb5305139abe5091f86ebf0de8341f6ed1ec075814"
+    },
+    "crates/ferric-browser-engine-qt/tests/fixtures/site-policy/root-render-targets.html": {
+      "original_sha256": null,
+      "overlay_sha256": "f620df998ffa64e145c46cf4874c1837c36dea40a6707c56c8897a1a2bdf7600"
+    }
+  },
+  "window_lifetime_correction": "V7 smoke reproduced rejection of tab-close in Hint mode. V8 exercises native QQuickWindow::close while Hint is established and the regular rendered confirmation/teardown."
+}

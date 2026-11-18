@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtTest
 import "../../qml/components"
+import "../../qml/scripts/KeyboardPresentation.js" as KeyboardPresentation
 
 TestCase {
     id: test
@@ -148,8 +149,77 @@ TestCase {
         property var browserUi: ui
         property var nativePage: null
         function activeWebView() { return {nativeUrl:"rb://start",startPage:nativePage} }
+        function nativePromptActiveFor(owner) { return false }
+        function handleMediaKey(event) { return false }
+        function logicalNormalKeyText(event) { return KeyboardPresentation.logicalNormalKeyText(event) }
+        function completeBrowserKeyAction(owner, window) {}
     }
     Component { id: runtimeFixture; FerricRuntimeController { host: runtimeHost } }
+    property var routingUi: ({mode:"hint",hint_pointer_mode:false,search_text:"",
+        boundToken:"",lastKey:"",escape:function(){this.mode="normal"},
+        mixed_key_route:function(token){return "browser"},
+        key_has_binding:function(token){return this.boundToken===token},
+        handle_key:function(token){this.lastKey=token;return true}})
+    QtObject {
+        id: routingHints
+        property var browserUi: routingUi
+        property var intents: []
+        function applyHintInteraction(action, text) { intents = intents.concat([{action:action,text:text}]) }
+    }
+    QtObject {
+        id: routingHost
+        property var activeView: null
+        property var hintWorkspace: routingHints
+    }
+
+    function test_canonical_hint_literals_reach_the_input_reducer() {
+        var runtime=createTemporaryObject(runtimeFixture,test)
+        routingUi.mode="hint";routingHints.intents=[]
+        for (var event of [
+            {key:Qt.Key_Plus,text:"+",modifiers:Qt.ShiftModifier},
+            {key:Qt.Key_Space,text:"",modifiers:Qt.NoModifier},
+            {key:Qt.Key_Space,text:" ",modifiers:Qt.ShiftModifier},
+            {key:Qt.Key_P,text:"",modifiers:Qt.ShiftModifier},
+            {key:Qt.Key_unknown,text:"é",modifiers:Qt.NoModifier}
+        ]) verify(runtime.handleBrowserKey(routingUi,routingHost,event))
+        compare(JSON.stringify(routingHints.intents),JSON.stringify([
+            {action:"character",text:"+"},{action:"character",text:" "},
+            {action:"character",text:" "},{action:"character",text:"P"},
+            {action:"character",text:"é"}
+        ]))
+        verify(runtime.handleBrowserKey(routingUi,routingHost,
+            {key:Qt.Key_K,text:"k",modifiers:Qt.ControlModifier}))
+        compare(routingHints.intents.length,5)
+    }
+
+    function test_both_protected_passthrough_rescue_chords_remain_browser_owned() {
+        var runtime=createTemporaryObject(runtimeFixture,test)
+        for (var mods of [Qt.ControlModifier,Qt.ControlModifier|Qt.ShiftModifier]) {
+            routingUi.mode="pass-through"
+            verify(runtime.handleBrowserKey(routingUi,routingHost,{key:Qt.Key_Escape,text:"",modifiers:mods}))
+            compare(routingUi.mode,"normal")
+        }
+    }
+
+    function test_canonical_vocabulary_preserves_normal_input_ownership() {
+        var runtime=createTemporaryObject(runtimeFixture,test)
+        routingUi.mode="normal";routingUi.boundToken="";routingUi.lastKey=""
+        verify(!runtime.handleBrowserKey(routingUi,routingHost,
+            {key:Qt.Key_Left,text:"",modifiers:Qt.NoModifier}))
+        verify(!runtime.handleBrowserKey(routingUi,routingHost,
+            {key:Qt.Key_K,text:"",modifiers:Qt.ControlModifier|Qt.MetaModifier}))
+        verify(!runtime.handleBrowserKey(routingUi,routingHost,
+            {key:Qt.Key_Space,text:" ",modifiers:Qt.ControlModifier|Qt.ShiftModifier|Qt.AltModifier}))
+        compare(routingUi.lastKey,"")
+        routingUi.boundToken="Ctrl+Meta+k"
+        verify(runtime.handleBrowserKey(routingUi,routingHost,
+            {key:Qt.Key_K,text:"K",modifiers:Qt.ControlModifier|Qt.MetaModifier}))
+        compare(routingUi.lastKey,"Ctrl+Meta+k")
+        routingUi.boundToken=""
+        verify(runtime.handleBrowserKey(routingUi,routingHost,
+            {key:Qt.Key_N,text:"N",modifiers:Qt.ControlModifier}))
+        compare(routingUi.lastKey,"Ctrl+n")
+    }
     function test_guide_focus_callbacks_do_not_outlive_the_view() {
         failOnWarning(/TypeError|ReferenceError/)
         var loader = createTemporaryObject(lifecycleFixture, host.contentItem)

@@ -1,0 +1,34 @@
+# Local sidebar.html fixture only; no live-site selectors.
+format = 'ferric-site-interaction'
+format_version = 1
+[[rules]]
+operation = 'upsert-interaction'
+id = 'fixture-grid-sidebar'
+pattern = 'https://video.example.test/*'
+priority = 100
+[rules.interaction]
+enabled = true
+[rules.interaction.labels]
+alphabet = 'asdfghjkl'
+fallback_prefix = 'z'
+min_chars = 2
+auto_follow = 'never'
+[[rules.interaction.collections]]
+id = 'main-grid'
+families = ['links', 'actions', 'all']
+container_selector = '#grid'
+item_selector = 'article'
+primary_selector = 'a.primary'
+identity_attributes = ['data-id']
+order = 'row-major-ltr'
+row_tolerance_px = 8
+codes = ['11', '12', '21', '22']
+[[rules.interaction.collections]]
+id = 'related-sidebar'
+families = ['links', 'actions', 'all']
+container_selector = '#sidebar'
+item_selector = 'article'
+primary_selector = 'a.primary'
+identity_attributes = ['data-id']
+order = 'top-to-bottom'
+codes = ['sa', 'ss', 'sd', 'sg']

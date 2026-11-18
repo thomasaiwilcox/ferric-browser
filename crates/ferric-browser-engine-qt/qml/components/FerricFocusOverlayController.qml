@@ -12,8 +12,14 @@ QtObject {
     property bool followTabFocus: false
     readonly property var activeView: followTabFocus ? browserWindow.activeWebView() : null
     readonly property string activeNativeUrl: activeView ? String(activeView.nativeUrl || "") : ""
+    readonly property bool hostActive: followTabFocus && browserWindow.active === true
+    readonly property bool activePageLoading: activeView ? activeView.loading : false
     onActiveViewChanged: pageTimer.restart()
     onActiveNativeUrlChanged: pageTimer.restart()
+    // A page can initialize before its window receives keyboard focus.
+    // Activation must complete the same guarded content-focus handoff.
+    onHostActiveChanged: if (hostActive) pageTimer.restart()
+    onActivePageLoadingChanged: if (hostActive && !activePageLoading) pageTimer.restart()
     property Timer pageTimer: Timer {
         interval: 0
         onTriggered: controller.applyPageFocus()

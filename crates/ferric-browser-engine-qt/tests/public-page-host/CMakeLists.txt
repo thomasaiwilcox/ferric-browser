@@ -130,6 +130,9 @@ if(BUILD_TESTING)
     add_test(NAME credential_production_lifetime COMMAND public_page_host_integration_tests productionCredentialBoundaryInvalidation)
     set_tests_properties(credential_production_boundary credential_production_lifetime PROPERTIES TIMEOUT 120 LABELS "application;credential;webengine")
     add_test(NAME public_page_captured_commands COMMAND public_page_host_integration_tests capturedCommandsUseProductionDispatcher)
+    add_test(NAME public_page_site_policy_transfer COMMAND public_page_host_integration_tests sitePolicyTransferObservation)
+    set_tests_properties(public_page_site_policy_transfer PROPERTIES TIMEOUT 90
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
     set_tests_properties(public_page_captured_commands PROPERTIES TIMEOUT 120 LABELS "application;webengine;qml")
     add_test(NAME public_page_captured_navigation COMMAND public_page_host_integration_tests
         capturedNavigationUsesProductionDispatcher)

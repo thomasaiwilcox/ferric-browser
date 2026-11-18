@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cold-document Hint rendering baseline</title>
+<style>
+  html, body { margin:0; width:100%; height:100%; overflow:hidden; }
+  a { position:absolute; display:block; color:black; font:1px sans-serif; line-height:1; }
+</style>
+<script>
+  // Deterministic local subjects only. Each navigation creates a fresh realm;
+  // there is no collector warmup, event tracing, or page activation.
+  const parameters = new URL(location.href).searchParams;
+  const requested = Number(parameters.get('count'));
+  const textWorkload = parameters.get('text') === '1';
+  if (![500, 1000, 5000].includes(requested)) throw new Error('Unsupported fixture size');
+  document.addEventListener('DOMContentLoaded', () => {
+    const fragment = document.createDocumentFragment();
+    for (let index = 0; index < requested; ++index) {
+      const anchor = document.createElement('a');
+      anchor.href = '#target-' + index;
+      const text = textWorkload && index % 3 === 0 ? 'z' : 'x';
+      anchor.textContent = text;
+      anchor.setAttribute('aria-label', textWorkload ? text : 'Target ' + index);
+      fragment.append(anchor);
+    }
+    document.body.append(fragment);
+    const anchors = Array.from(document.querySelectorAll('a'));
+    function layout() {
+      const columns = requested === 500 ? 20 : requested === 1000 ? 40 : 100;
+      const rows = Math.ceil(requested / columns);
+      const cellWidth = (innerWidth - 24) / columns;
+      const cellHeight = (innerHeight - 24) / rows;
+      for (let index = 0; index < anchors.length; ++index) {
+        const width = Math.max(2, Math.min(12, cellWidth / 2));
+        const height = Math.max(2, Math.min(10, cellHeight / 2));
+        Object.assign(anchors[index].style, {
+          left: (12 + (index % columns + .5) * cellWidth - width / 2) + 'px',
+          top: (12 + (Math.floor(index / columns) + .5) * cellHeight - height / 2) + 'px',
+          width: width + 'px', height: height + 'px'
+        });
+      }
+      document.body.dataset.layoutWidth = String(innerWidth);
+      document.body.dataset.layoutHeight = String(innerHeight);
+    }
+    addEventListener('resize', layout);
+    layout();
+    document.body.dataset.ready = 'true';
+    document.body.dataset.targetCount = String(requested);
+  });
+</script>

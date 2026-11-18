@@ -1,11 +1,22 @@
 [advisories]
 version = 2
 yanked = "deny"
-ignore = []
+# This advisory describes the bundled C source, which Ferric does not build.
+# The feature allowlist below enforces that condition; the system SQLite's
+# security updates remain the platform/package maintainer's responsibility.
+# https://rustsec.org/advisories/RUSTSEC-2026-0459.html
+ignore = [
+    { id = "RUSTSEC-2026-0459", reason = "Ferric links system SQLite; bundled SQLite features are forbidden below. rusqlite 0.41 also exceeds our Rust 1.88 MSRV." },
+]
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+
+[[bans.features]]
+name = "libsqlite3-sys"
+allow = ["default", "min_sqlite_version_3_14_0", "pkg-config", "vcpkg"]
+reason = "Only system SQLite is supported; enabling bundled SQLite invalidates the advisory exception."
 
 [licenses]
 version = 2

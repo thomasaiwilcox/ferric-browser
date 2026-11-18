@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native origin receipt child</title>
+<button id="target">Receipt focus</button>
+<script>
+addEventListener('message', event => {
+  if (event.data === 'receipt-focus') document.getElementById('target').focus();
+});
+</script>

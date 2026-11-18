@@ -45,15 +45,26 @@ impl qobject::BrowserUi {
                     &operation_id,
                     count,
                 );
+                let read_turn =
+                    super::browser_ui_configuration_read::ConfigurationReadTurn::capture(
+                        self.as_ref().get_ref(),
+                    );
                 let execution = if commands.len() == 1 {
-                    self.as_mut().execute_ipc_command_with_operation(
+                    self.as_mut().execute_ipc_command_with_read(
                         command,
                         &route,
                         Some(&operation_id),
+                        None,
+                        read_turn.as_ref(),
                     )
                 } else {
-                    self.as_mut()
-                        .execute_routed_ipc_chain(commands, Some(&operation_id))
+                    self.as_mut().execute_routed_ipc_chain_with_read(
+                        commands,
+                        Some(&operation_id),
+                        &mut None,
+                        None,
+                        read_turn.as_ref(),
+                    )
                 };
                 match execution {
                     Ok(mut result) => {
@@ -174,10 +185,16 @@ impl qobject::BrowserUi {
                         command_context,
                     );
                 }
-                match self.as_mut().execute_ipc_command_with_operation(
+                let read_turn =
+                    super::browser_ui_configuration_read::ConfigurationReadTurn::capture(
+                        self.as_ref().get_ref(),
+                    );
+                match self.as_mut().execute_ipc_command_with_read(
                     command,
                     &route,
                     Some(&operation_id),
+                    None,
+                    read_turn.as_ref(),
                 ) {
                     Ok(mut result) => {
                         let root_operation = operation_id.clone();

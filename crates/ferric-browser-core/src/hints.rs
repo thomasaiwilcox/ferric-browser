@@ -1,10 +1,26 @@
 use crate::{DocumentId, HintSessionId, IdSource, TabId, switcher_rank, tokenize_switcher_query};
 use std::collections::{BTreeMap, BTreeSet};
 
+mod enhanced;
+use enhanced::EnhancedHintState;
+pub use enhanced::{
+    HintEnhancedError, HintInteractionKind, HintRefreshIssue, HintReservation,
+    HintReservationReason, HintReservationState, HintRetentionBudget, HintSelectionUnavailable,
+    HintSpecialAssignment, HintSpecialBinding,
+};
+
 const DEFAULT_HINT_CHARS: &str = "asdfghjkl";
 pub const MAX_HINT_CANDIDATES: usize = 5_000;
 pub const MAX_HINT_REGIONS: usize = 256;
 pub const MAX_HINT_SURFACES: usize = 256;
+pub const MIN_HINT_ALPHABET_CHARS: usize = 2;
+pub const MAX_HINT_ALPHABET_CHARS: usize = 32;
+/// Shared collector pass budget; actual DOM accounting is adapter-owned.
+pub const MAX_HINT_INSPECTIONS: usize = 50_000;
+pub const MAX_HINT_ROOT_DEPTH: usize = 8;
+pub const MAX_HINT_EARLY_INTENTS: usize = 256;
+/// Page/native events are never deferred through the abstract Hint queue.
+pub const MAX_HINT_QUEUED_NATIVE_EVENTS: usize = 0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HintKind {
@@ -269,6 +285,8 @@ pub enum HintError {
     CandidateNotVisible,
     InvalidAlphabet,
     InvalidMinimumWidth,
+    DuplicateCandidate,
+    RetainedStateExhausted { required: usize, limit: usize },
 }
 
 impl std::fmt::Display for HintError {
@@ -287,6 +305,13 @@ impl std::fmt::Display for HintError {
             Self::CandidateNotVisible => formatter.write_str("hint candidate is no longer visible"),
             Self::InvalidAlphabet => formatter.write_str("hint alphabet is invalid"),
             Self::InvalidMinimumWidth => formatter.write_str("hint minimum width is invalid"),
+            Self::DuplicateCandidate => {
+                formatter.write_str("hint snapshot repeats a physical candidate")
+            }
+            Self::RetainedStateExhausted { required, limit } => write!(
+                formatter,
+                "Hint retained-state payload needs {required} bytes with a {limit}-byte caller budget; start a new session"
+            ),
         }
     }
 }
@@ -370,29 +395,53 @@ impl HintSession {
             .iter()
             .find(|hint| hint.label == label)
             .ok_or_else(|| HintError::UnknownLabel(label.to_owned()))?;
-        if hint.candidate.frame_path != frame_path {
+        self.select_candidate(&hint.candidate, target, frame_path, visible, geometry)
+    }
+
+    /// Checks a browser-captured canonical selection without resolving a label.
+    ///
+    /// # Errors
+    /// Rejects a different session target, absent identity/meaning, wrong frame,
+    /// or an ineligible fresh fragment, using the ordinary selection checks.
+    pub fn select_candidate(
+        &self,
+        candidate: &HintCandidate,
+        target: HintTarget,
+        frame_path: &str,
+        visible: bool,
+        geometry: HintGeometry,
+    ) -> Result<&HintCandidate, HintError> {
+        if self.target != target {
+            return Err(HintError::StaleTarget);
+        }
+        let captured = self
+            .hints
+            .iter()
+            .find(|hint| &hint.candidate == candidate)
+            .ok_or(HintError::StaleTarget)?;
+        if captured.candidate.frame_path != frame_path {
             return Err(HintError::WrongFrame);
         }
         if !visible || !geometry.is_valid() {
             return Err(HintError::CandidateNotVisible);
         }
-        let captured = hint.candidate.geometry;
+        let captured_geometry = captured.candidate.geometry;
         let captured_center = (
-            captured.x + captured.width / 2.0,
-            captured.y + captured.height / 2.0,
+            captured_geometry.x + captured_geometry.width / 2.0,
+            captured_geometry.y + captured_geometry.height / 2.0,
         );
         let fresh_center = (
             geometry.x + geometry.width / 2.0,
             geometry.y + geometry.height / 2.0,
         );
-        let x_tolerance = captured.width.max(16.0);
-        let y_tolerance = captured.height.max(16.0);
+        let x_tolerance = captured_geometry.width.max(16.0);
+        let y_tolerance = captured_geometry.height.max(16.0);
         if (captured_center.0 - fresh_center.0).abs() > x_tolerance
             || (captured_center.1 - fresh_center.1).abs() > y_tolerance
         {
             return Err(HintError::CandidateNotVisible);
         }
-        Ok(&hint.candidate)
+        Ok(&captured.candidate)
     }
 }
 
@@ -530,7 +579,7 @@ pub fn refresh_labels(
 
 fn validate_label_options(alphabet: &str, minimum_width: usize) -> Result<(), HintError> {
     let mut unique = BTreeSet::new();
-    if !(2..=32).contains(&alphabet.len())
+    if !(MIN_HINT_ALPHABET_CHARS..=MAX_HINT_ALPHABET_CHARS).contains(&alphabet.len())
         || !alphabet.is_ascii()
         || alphabet
             .bytes()
@@ -545,17 +594,22 @@ fn validate_label_options(alphabet: &str, minimum_width: usize) -> Result<(), Hi
 }
 
 fn sort_candidates(candidates: &mut [HintCandidate]) {
-    candidates.sort_by(|left, right| {
-        left.geometry
-            .y
-            .total_cmp(&right.geometry.y)
-            .then_with(|| left.geometry.x.total_cmp(&right.geometry.x))
-            .then_with(|| left.frame_owner.cmp(&right.frame_owner))
-            .then_with(|| left.frame_path.cmp(&right.frame_path))
-            .then_with(|| left.element_id.cmp(&right.element_id))
-            .then_with(|| left.related_element_id.cmp(&right.related_element_id))
-            .then_with(|| left.text.cmp(&right.text))
-    });
+    candidates.sort_by(compare_hint_candidates);
+}
+
+/// Canonical candidate order, independent of special/display label order.
+/// Geometry validation remains the caller's existing admission responsibility.
+#[must_use]
+pub fn compare_hint_candidates(left: &HintCandidate, right: &HintCandidate) -> std::cmp::Ordering {
+    left.geometry
+        .y
+        .total_cmp(&right.geometry.y)
+        .then_with(|| left.geometry.x.total_cmp(&right.geometry.x))
+        .then_with(|| left.frame_owner.cmp(&right.frame_owner))
+        .then_with(|| left.frame_path.cmp(&right.frame_path))
+        .then_with(|| left.element_id.cmp(&right.element_id))
+        .then_with(|| left.related_element_id.cmp(&right.related_element_id))
+        .then_with(|| left.text.cmp(&right.text))
 }
 
 fn label_width(count: usize, base: usize, minimum_width: usize) -> usize {
@@ -613,6 +667,9 @@ pub struct HintInteractionSnapshot {
     pub remaining: usize,
     pub total: usize,
     pub refresh_required: bool,
+    pub kind: HintInteractionKind,
+    pub unavailable_reason: Option<HintSelectionUnavailable>,
+    pub refresh_issue: Option<HintRefreshIssue>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -644,6 +701,7 @@ struct HintLabelBinding {
     label: String,
     meaning: HintMeaning,
     state: HintBindingState,
+    special_slot: Option<usize>,
 }
 
 type HintIdentity = (String, String, u32, Option<u32>);
@@ -675,9 +733,16 @@ pub struct HintInteraction {
     next_label_index: usize,
     refresh_required: bool,
     initial_activation_available: bool,
+    enhanced: Option<EnhancedHintState>,
+    loading: bool,
 }
 
 impl HintInteraction {
+    #[must_use]
+    pub const fn input_mode(&self) -> HintInputMode {
+        self.mode
+    }
+
     #[must_use]
     pub fn new(hints: Vec<LabeledHint>, alphabet: String, auto_follow: HintAutoFollow) -> Self {
         let matches = (0..hints.len()).collect();
@@ -692,6 +757,7 @@ impl HintInteraction {
                         label: hint.label.clone(),
                         meaning: HintMeaning::of(&hint.candidate),
                         state: HintBindingState::Available,
+                        special_slot: None,
                     },
                 )
             })
@@ -712,7 +778,20 @@ impl HintInteraction {
             next_label_index: 0,
             refresh_required: false,
             initial_activation_available: true,
+            enhanced: None,
+            loading: false,
         }
+    }
+
+    /// Provisional editing state only. Candidate-dependent selection and every
+    /// activation remain unavailable until the queued intents are replayed.
+    #[must_use]
+    pub fn loading() -> Self {
+        let alphabet = ('!'..='~').collect();
+        let mut model = Self::new(Vec::new(), alphabet, HintAutoFollow::Never);
+        model.loading = true;
+        model.initial_activation_available = false;
+        model
     }
 
     #[must_use]
@@ -720,11 +799,33 @@ impl HintInteraction {
         &self.hints
     }
 
+    /// A committed Hint page command relinquishes label selection, including
+    /// the ordinary model's default row. Query editing is never affected.
+    pub fn clear_label_selection(&mut self) -> bool {
+        if self.mode != HintInputMode::Label {
+            return false;
+        }
+        self.prefix.clear();
+        self.filter_label_matches();
+        self.active = None;
+        self.initial_activation_available = false;
+        self.clear_enhanced_selection(HintSelectionUnavailable::NoSelection);
+        true
+    }
+
     /// Reconciles a validated snapshot without an activation-producing transition.
     ///
     /// # Errors
     /// Rejects invalid geometry or a snapshot exceeding the candidate limit.
+    /// Enhanced snapshots also reject duplicate identities and an exceeded
+    /// caller retention budget. Malformed snapshots preserve the old model;
+    /// adapters must retain their dirty/proof guard on those failures. Failed
+    /// positive budget admission preserves observed revocations and blocks
+    /// confirmation until a successful fresh reconciliation.
     pub fn refresh(&mut self, mut candidates: Vec<HintCandidate>) -> Result<(), HintError> {
+        if self.enhanced.is_some() {
+            return self.refresh_enhanced(candidates);
+        }
         if candidates.len() > MAX_HINT_CANDIDATES {
             return Err(HintError::TooManyCandidates {
                 count: candidates.len(),
@@ -766,6 +867,7 @@ impl HintInteraction {
                         label: label.clone(),
                         meaning,
                         state: HintBindingState::Available,
+                        special_slot: None,
                     },
                 );
                 label
@@ -811,10 +913,20 @@ impl HintInteraction {
 
     /// A rapid action consumes its binding, not a reusable label slot.
     pub fn consume(&mut self, candidate: &HintCandidate) {
-        if let Some(binding) = self.bindings.get_mut(&hint_identity(candidate)) {
+        let identity = hint_identity(candidate);
+        // Completion acknowledges the captured physical target even if refresh
+        // has since removed its row or changed its meaning. It only revokes
+        // repeat eligibility; it does not authorize another activation.
+        if self.enhanced.is_some() && !self.bindings.contains_key(&identity) {
+            return;
+        }
+        let slot = self
+            .bindings
+            .get(&identity)
+            .and_then(|binding| binding.special_slot);
+        if let Some(binding) = self.bindings.get_mut(&identity) {
             binding.state = HintBindingState::Consumed;
         }
-        let identity = hint_identity(candidate);
         self.hints
             .retain(|hint| hint_identity(&hint.candidate) != identity);
         self.prefix.clear();
@@ -824,11 +936,19 @@ impl HintInteraction {
             self.filter_label_matches();
         }
         self.active = None;
+        if let Some(enhanced) = &mut self.enhanced
+            && let Some(slot) = slot
+            && enhanced.reservations[slot].state == HintReservationState::Live
+        {
+            enhanced.reservations[slot].state = HintReservationState::Consumed;
+        }
+        self.clear_enhanced_selection(HintSelectionUnavailable::NoSelection);
     }
 
     #[must_use]
     pub fn initial_activation(&self) -> Option<&str> {
         (self.initial_activation_available
+            && self.enhanced.is_none()
             && self.mode == HintInputMode::Label
             && self.auto_follow == HintAutoFollow::Always
             && self.matches.len() == 1)
@@ -851,15 +971,33 @@ impl HintInteraction {
             remaining: self.matches.len(),
             total: self.hints.len(),
             refresh_required: self.refresh_required,
+            kind: self.interaction_kind(),
+            unavailable_reason: self.enhanced.as_ref().and_then(|state| state.unavailable),
+            refresh_issue: self.enhanced.as_ref().and_then(|state| state.issue),
         }
     }
 
     pub fn handle(&mut self, input: HintInteractionInput) -> HintInteractionOutcome {
         match input {
             HintInteractionInput::Cancel => HintInteractionOutcome::Cancel,
-            HintInteractionInput::RotateCollision => HintInteractionOutcome::RotateCollision,
+            HintInteractionInput::RotateCollision => {
+                if self.enhanced.is_some() {
+                    self.note_enhanced_selection();
+                    if self.active.is_none() {
+                        return HintInteractionOutcome::NoMatches;
+                    }
+                }
+                HintInteractionOutcome::RotateCollision
+            }
             HintInteractionInput::SetText(query) => {
                 self.set_text(&query);
+                if self.enhanced.is_some() {
+                    if self.query.is_empty() {
+                        self.clear_enhanced_selection(HintSelectionUnavailable::NoSelection);
+                    } else {
+                        self.note_enhanced_selection();
+                    }
+                }
                 HintInteractionOutcome::Updated
             }
             HintInteractionInput::SelectLabel(label) => {
@@ -869,8 +1007,17 @@ impl HintInteraction {
                     .position(|hint| self.hints[*hint].label == label)
                 {
                     self.active = Some(index);
-                    HintInteractionOutcome::Updated
+                    self.note_enhanced_selection();
+                    if self.active.is_some() {
+                        HintInteractionOutcome::Updated
+                    } else {
+                        HintInteractionOutcome::NoMatches
+                    }
                 } else {
+                    if self.enhanced.is_some() {
+                        let reason = self.label_unavailable(&label);
+                        self.clear_enhanced_selection(reason);
+                    }
                     HintInteractionOutcome::NoMatches
                 }
             }
@@ -878,10 +1025,12 @@ impl HintInteraction {
                 self.mode = HintInputMode::Text;
                 self.query.clear();
                 self.rank_text_matches();
+                self.clear_enhanced_selection(HintSelectionUnavailable::NoSelection);
                 HintInteractionOutcome::Updated
             }
             HintInteractionInput::EnterTextMode => {
                 self.push_text('/');
+                self.note_enhanced_selection();
                 HintInteractionOutcome::Updated
             }
             HintInteractionInput::Character(character) => self.handle_character(character),
@@ -894,6 +1043,7 @@ impl HintInteraction {
                     self.query.clear();
                     self.rank_text_matches();
                 }
+                self.clear_enhanced_selection(HintSelectionUnavailable::NoSelection);
                 HintInteractionOutcome::Updated
             }
             HintInteractionInput::Next => {
@@ -903,6 +1053,7 @@ impl HintInteraction {
                             .map_or(0, |active| (active + 1) % self.matches.len()),
                     );
                 }
+                self.note_enhanced_selection();
                 HintInteractionOutcome::Updated
             }
             HintInteractionInput::Previous => {
@@ -911,23 +1062,38 @@ impl HintInteraction {
                         (active + self.matches.len() - 1) % self.matches.len()
                     }));
                 }
+                self.note_enhanced_selection();
                 HintInteractionOutcome::Updated
             }
-            HintInteractionInput::Activate => self
-                .active_label()
-                .map_or(HintInteractionOutcome::NoMatches, |label| {
-                    HintInteractionOutcome::Activate(label.to_owned())
-                }),
+            HintInteractionInput::Activate => {
+                if self.active.is_some() {
+                    self.note_enhanced_selection();
+                }
+                self.active_label()
+                    .map_or(HintInteractionOutcome::NoMatches, |label| {
+                        HintInteractionOutcome::Activate(label.to_owned())
+                    })
+            }
         }
     }
 
     fn handle_character(&mut self, character: char) -> HintInteractionOutcome {
         if self.mode == HintInputMode::Text {
             self.push_text(character);
+            self.note_enhanced_selection();
             return HintInteractionOutcome::Updated;
+        }
+        if self.enhanced.is_some() {
+            return self.enhanced_label_input(character);
         }
         if !character.is_ascii() || !self.alphabet.contains(character) {
             return HintInteractionOutcome::InvalidCharacter(character);
+        }
+        if self.loading {
+            if self.prefix.len() < 256 {
+                self.prefix.push(character);
+            }
+            return HintInteractionOutcome::Updated;
         }
         let old_prefix = self.prefix.clone();
         let old_active = self.active_label().map(str::to_owned);
@@ -970,6 +1136,7 @@ impl HintInteraction {
             self.prefix.pop();
             self.filter_label_matches();
         }
+        self.clear_enhanced_selection(HintSelectionUnavailable::NoSelection);
         HintInteractionOutcome::Updated
     }
 
@@ -1036,6 +1203,129 @@ impl HintInteraction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn loading_uses_query_editing_without_any_selection_or_activation() {
+        let mut model = HintInteraction::loading();
+        for input in [
+            HintInteractionInput::Character('a'),
+            HintInteractionInput::EnterTextMode,
+            HintInteractionInput::Character('p'),
+            HintInteractionInput::Character('k'),
+            HintInteractionInput::Character('f'),
+            HintInteractionInput::Character(' '),
+            HintInteractionInput::Character('/'),
+        ] {
+            assert!(!matches!(
+                model.handle(input),
+                HintInteractionOutcome::Activate(_)
+            ));
+        }
+        assert_eq!(model.snapshot().mode, HintInputMode::Text);
+        assert_eq!(model.snapshot().query, "pkf /");
+        assert!(model.snapshot().active_label.is_none());
+        assert_eq!(
+            model.handle(HintInteractionInput::Activate),
+            HintInteractionOutcome::NoMatches
+        );
+        model.handle(HintInteractionInput::Clear);
+        assert!(!model.clear_label_selection());
+        model.handle(HintInteractionInput::Backspace);
+        assert_eq!(model.snapshot().mode, HintInputMode::Label);
+        assert_eq!(model.snapshot().prefix, "a");
+        assert!(model.clear_label_selection());
+        assert_eq!(model.snapshot().prefix.len(), 0);
+    }
+
+    #[test]
+    fn page_command_commit_clears_even_the_ordinary_default_selection() {
+        let labels = assign_labels(vec![candidate(0., 0., "one")]).unwrap();
+        let mut model = HintInteraction::new(labels, "asdfghjkl".into(), HintAutoFollow::Never);
+        assert!(model.snapshot().active_label.is_some());
+        assert!(model.clear_label_selection());
+        assert_eq!(
+            model.handle(HintInteractionInput::Activate),
+            HintInteractionOutcome::NoMatches
+        );
+        model.handle(HintInteractionInput::Next);
+        assert!(matches!(
+            model.handle(HintInteractionInput::Activate),
+            HintInteractionOutcome::Activate(_)
+        ));
+    }
+
+    #[test]
+    fn canonical_selection_checks_identity_without_a_label() {
+        let target = HintTarget {
+            tab: crate::TabId::from_display("tabid-1").unwrap(),
+            document: crate::DocumentId::from_display("documentid-2").unwrap(),
+            generation: 3,
+        };
+        let original = candidate(0., 0., "one");
+        let mut ids = crate::IdSource::default();
+        let session = HintSession::new(
+            &mut ids,
+            target,
+            vec![LabeledHint {
+                label: String::new(),
+                candidate: original.clone(),
+            }],
+        );
+        assert_eq!(
+            session
+                .select_candidate(&original, target, "0", true, original.geometry)
+                .unwrap(),
+            &original
+        );
+        assert!(
+            session
+                .select("", target, "0", true, original.geometry)
+                .is_err()
+        );
+        let mut replacement = original.clone();
+        replacement.element_id += 1;
+        assert!(
+            session
+                .select_candidate(&replacement, target, "0", true, replacement.geometry)
+                .is_err()
+        );
+        let mut changed = original.clone();
+        changed.href = Some("https://example.test/new".into());
+        assert!(
+            session
+                .select_candidate(&changed, target, "0", true, changed.geometry)
+                .is_err()
+        );
+        assert!(
+            session
+                .select_candidate(&original, target, "0", false, original.geometry)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn ordinary_alphabet_bounds_apply_at_the_real_allocator() {
+        let chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+        for length in [1, 2, 3, 31, 32, 33] {
+            let alphabet = &chars[..length];
+            let result = assign_labels_with_options(vec![candidate(0., 0., "one")], alphabet, 1);
+            assert_eq!(result.is_ok(), (2..=32).contains(&length));
+        }
+    }
+
+    #[test]
+    fn enhanced_code_limit_does_not_shrink_legacy_ordinary_capacity() {
+        let candidates = (1..=5000)
+            .map(|index| {
+                let mut candidate = candidate(0., f64::from(index), "ordinary");
+                candidate.element_id = index;
+                candidate
+            })
+            .collect();
+        let labels = assign_labels_with_options(candidates, "ab", 1).unwrap();
+        assert_eq!(labels.len(), 5000);
+        assert!(labels.iter().all(|hint| hint.label.len() == 13));
+    }
 
     fn candidate(x: f64, y: f64, text: &str) -> HintCandidate {
         HintCandidate {

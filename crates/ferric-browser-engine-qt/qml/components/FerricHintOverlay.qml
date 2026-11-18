@@ -19,10 +19,31 @@ Item {
 
     anchors.fill: parent
     z: 30
-    visible: hintsVisible && hintResults.length > 0
+    visible: hintsVisible && (hintResults.length > 0 || hintState.kind === "unavailable-only")
     // FerricBrowserKeyRouter owns hint gestures at the window boundary. Moving
     // Quick focus here would blur the page and invalidate focused-frame proof.
     focus: false
+
+    Label {
+        objectName: "unavailablePolicyHints"
+        visible: hintOverlay.hintState.kind === "unavailable-only"
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 20
+        width: Math.min(parent.width - 32, 640)
+        padding: 12
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        text: {
+            var rows = hintOverlay.hintState.reservations || []
+            var details = rows.slice(0,4).map(function(row){return String(row.code) + ": " + String(row.reason || "Unavailable")})
+            return details.join(" · ") + (rows.length > 4 ? " · …" : "")
+                    + "\nStart hints again to take a new snapshot. Escape cancels."
+        }
+        color: hintOverlay.browserWindow.primaryTextColor
+        background: Rectangle { color: hintOverlay.browserWindow.backgroundColor; radius: 6; border.color: hintOverlay.browserWindow.warningColor }
+        Accessible.name: text
+    }
 
     property var laidOutHints: []
     property var placementCache: ({})
@@ -30,6 +51,7 @@ Item {
     property bool stackExpanded: false
     property string lastInteractionState: ""
     readonly property real clampedScale: Math.max(0.75, Math.min(2, markerScale))
+    readonly property color markerTextColor: browserWindow.contrastText(browserWindow.warningColor)
     FontMetrics { id: labelMetrics; font.bold: true; font.pixelSize: 13 }
 
     function layoutHints(values, viewportWidth, viewportHeight, sourceWidth, sourceHeight, scale, previous) {
@@ -147,30 +169,71 @@ Item {
     onLaidOutHintsChanged: connectors.requestPaint()
     onMatchingLabelLookupChanged: connectors.requestPaint()
 
+    Component {
+        id: collisionBadgeComponent
+        Rectangle {
+            id: collisionBadge
+            objectName: "hintCollisionBadge"
+            property var hintRow: null
+            anchors.right: parent ? parent.right : undefined
+            anchors.top: parent ? parent.top : undefined
+            anchors.rightMargin: -5
+            anchors.topMargin: -8
+            z: 2
+            Accessible.role: Accessible.Button
+            Accessible.name: "Show " + hintOverlay.clusterRows(hintRow).length + " overlapping targets"
+            Accessible.onPressAction: {
+                if (!hintRow) return
+                hintOverlay.selectionRequested(hintRow.label)
+                hintOverlay.stackExpanded = true
+            }
+            width: countLabel.implicitWidth+6
+            height: 14 * hintOverlay.clampedScale
+            radius: 3
+            color: hintOverlay.browserWindow.backgroundColor
+            Text {
+                id: countLabel
+                anchors.centerIn: parent
+                text: collisionBadge.hintRow ? "+"+(hintOverlay.clusterRows(collisionBadge.hintRow).length-1) : ""
+                color: hintOverlay.browserWindow.primaryTextColor
+                font.pixelSize: 10 * hintOverlay.clampedScale
+            }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    if (!collisionBadge.hintRow) return
+                    hintOverlay.selectionRequested(collisionBadge.hintRow.label)
+                    hintOverlay.stackExpanded = true
+                }
+            }
+        }
+    }
+
     Repeater {
         objectName: "hintMarkerRepeater"
         model: hintOverlay.displayedMarkers
         delegate: Rectangle {
             id: badge
+            readonly property bool selected: hintOverlay.active(modelData.label)
             visible: hintOverlay.markerVisible(modelData)
             opacity: hintOverlay.matching(modelData.label) || hintOverlay.unmatchedPolicy === "show" ? 1 : 0.24
             x: modelData.marker_x; y: modelData.marker_y
             width: modelData.marker_width; height: modelData.marker_height
             color: hintOverlay.browserWindow.warningColor
-            border.color: hintOverlay.active(modelData.label) ? hintOverlay.browserWindow.primaryTextColor : hintOverlay.browserWindow.backgroundColor
-            border.width: hintOverlay.active(modelData.label) ? 2 : 1
+            border.color: badge.selected ? hintOverlay.browserWindow.primaryTextColor : hintOverlay.browserWindow.backgroundColor
+            border.width: badge.selected ? 2 : 1
             radius: 3 * hintOverlay.clampedScale
-            z: hintOverlay.active(modelData.label) ? 3 : 1
+            z: badge.selected ? 3 : 1
             Accessible.role: Accessible.Button
             Accessible.selectable: true
-            Accessible.selected: hintOverlay.active(modelData.label)
-            Accessible.description: hintOverlay.active(modelData.label) ? "Active hint target" : "Hint target"
+            Accessible.selected: badge.selected
+            Accessible.description: badge.selected ? "Active hint target" : "Hint target"
             Accessible.name: HintPresentation.description(modelData)
                 + (modelData.collision_cluster > 1 ? ". " + modelData.collision_cluster + " overlapping targets. Space cycles." : "")
             Accessible.onPressAction: hintOverlay.activationRequested(modelData.label)
             Text {
                 anchors.centerIn: parent
-                textFormat: Text.RichText
+                textFormat: Text.StyledText
                 text: {
                     var label = String(modelData.label)
                     var prefix = hintOverlay.hintState && hintOverlay.hintState.mode === "label" ? String(hintOverlay.hintState.prefix || "") : ""
@@ -178,27 +241,26 @@ Item {
                             ? "<u>"+hintOverlay.escaped(prefix)+"</u>"+hintOverlay.escaped(label.slice(prefix.length)) : hintOverlay.escaped(label)
                     return letters + (modelData.document_scroll ? " ↕ Page scroll" : "")
                 }
-                color: hintOverlay.browserWindow.contrastText(parent.color)
+                color: hintOverlay.markerTextColor
                 font.bold: true; font.pixelSize: 13 * hintOverlay.clampedScale
                 Accessible.ignored: true
             }
-            Rectangle {
-                visible: hintOverlay.clusterRows(modelData).length > 1
-                z: 2
-                Accessible.role: Accessible.Button
-                Accessible.name: "Show " + hintOverlay.clusterRows(modelData).length + " overlapping targets"
-                Accessible.onPressAction: { hintOverlay.selectionRequested(modelData.label); hintOverlay.stackExpanded = true }
-                anchors.right: parent.right; anchors.top: parent.top
-                anchors.rightMargin: -5; anchors.topMargin: -8
-                width: countLabel.implicitWidth+6; height: 14 * hintOverlay.clampedScale
-                radius: 3
-                color: hintOverlay.browserWindow.backgroundColor
-                Text { id:countLabel;anchors.centerIn:parent;text:"+"+(hintOverlay.clusterRows(modelData).length-1);color:hintOverlay.browserWindow.primaryTextColor;font.pixelSize:10*hintOverlay.clampedScale }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: { hintOverlay.selectionRequested(modelData.label); hintOverlay.stackExpanded = true }
+            readonly property bool collisionNeeded: hintOverlay.clusterRows(modelData).length > 1
+            property Item collisionControl: null
+            function updateCollisionControl() {
+                if (collisionNeeded && !collisionControl) {
+                    collisionControl = collisionBadgeComponent.createObject(badge, {
+                        hintRow: Qt.binding(function() { return modelData })
+                    })
+                } else if (!collisionNeeded && collisionControl) {
+                    collisionControl.visible = false
+                    collisionControl.enabled = false
+                    collisionControl.destroy()
+                    collisionControl = null
                 }
             }
+            onCollisionNeededChanged: updateCollisionControl()
+            Component.onCompleted: updateCollisionControl()
             MouseArea {
                 anchors.fill: parent
                 acceptedButtons: Qt.LeftButton | Qt.RightButton

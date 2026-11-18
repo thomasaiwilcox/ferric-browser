@@ -38,6 +38,7 @@ mod action_request_decoder;
 mod background_workers;
 mod binding_policy;
 mod binding_presentation;
+mod binding_source_index;
 mod blocking_evidence;
 mod blocking_presentation;
 mod browser_ui_browsing_commands;
@@ -51,6 +52,7 @@ use browser_ui_context_reload::{
     ConfigReloadPublication, ContextReloadWorker, PendingContextReload,
 };
 mod browser_ui_configuration;
+mod browser_ui_configuration_preparation;
 mod browser_ui_content_tools;
 mod browser_ui_context_commands;
 mod browser_ui_context_navigation;
@@ -62,6 +64,8 @@ mod browser_ui_downloads_permissions;
 mod browser_ui_edit_commands;
 mod browser_ui_external_actions;
 mod browser_ui_guide;
+mod browser_ui_site_policy;
+mod configuration_completion;
 mod gui_application;
 pub use gui_application::{new_gui_application, new_gui_application_with_network_policy};
 mod browser_ui_hint_pointer;
@@ -84,6 +88,8 @@ mod browser_ui_library;
 mod browser_ui_switcher_sources;
 mod switcher_sources;
 use switcher_sources::{CatalogReadState, SourceNeeds, SourceProfile, SwitcherAvailability};
+mod browser_ui_configuration_inspection;
+mod browser_ui_configuration_read;
 mod browser_ui_download_finalization;
 mod browser_ui_download_stream;
 mod browser_ui_local_files;
@@ -103,6 +109,8 @@ mod browser_ui_page_transfer;
 mod browser_ui_page_windows;
 mod browser_ui_page_workflows;
 mod browser_ui_persistence;
+mod browser_ui_policy_association;
+mod browser_ui_policy_observation;
 mod browser_ui_popup_owner;
 mod browser_ui_popups;
 mod browser_ui_process_actions;
@@ -140,6 +148,7 @@ mod command_options;
 mod compatibility;
 mod config_projection;
 mod config_watch;
+mod configuration_inspection_projection;
 mod configuration_workers;
 mod desktop_portals;
 mod desktop_preferences;
@@ -159,11 +168,15 @@ mod engine_requests;
 mod feature_preferences;
 mod feature_state;
 mod focus_policy;
+mod hint_collection_work;
 mod hint_payload;
 mod hint_policy;
+mod hint_policy_cache;
+mod hint_request_capture;
 mod hyprland;
 mod hyprland_events;
 mod input_validation;
+pub mod interaction_proof;
 mod ipc_command_decoder;
 mod ipc_contract;
 mod ipc_dispatch_context;
@@ -192,6 +205,7 @@ mod operation_policy;
 mod operation_projection;
 mod page_document_identity;
 mod page_group_runtime;
+mod page_key_capabilities;
 mod page_window_focus;
 mod page_window_macros;
 mod page_window_native;
@@ -199,10 +213,15 @@ mod page_window_operations;
 mod page_window_order;
 mod page_window_undo;
 mod page_workflow_expansion;
+mod policy_refresh_capture;
 mod presentation_text;
 mod process_output;
 mod profile_management;
 mod profile_startup;
+mod site_doctor_completion;
+mod site_rule_projection;
+mod startup_configuration;
+pub use startup_configuration::startup_configuration_value;
 mod profile_workers;
 mod renderer_lifecycle;
 mod runtime_bridge;
@@ -210,6 +229,7 @@ mod runtime_event_projection;
 mod runtime_facts;
 mod runtime_guard;
 mod selector_validation;
+mod selector_validation_receipts;
 mod settings_presentation;
 mod shutdown_control;
 mod switcher_index;
@@ -255,9 +275,7 @@ use command_options::{
     scroll as parse_scroll_options, scroll_target as parse_scroll_target_options,
     search_next as parse_search_next_options, selection_yank_command,
 };
-use config_projection::{
-    config_value_at_path, configured_editor_argv, runtime_override_value, toml_string_array_literal,
-};
+use config_projection::{configured_editor_argv, toml_string_array_literal};
 use config_watch::ConfigWatch;
 use configuration_workers::{ConfigReadOperation, ConfigReloadWorker, ConfigWriteWorker};
 use desktop_portals::{PortalCapabilities, PortalProbeWorker};
@@ -459,25 +477,24 @@ use ferric_browser_application::{
 use ferric_browser_config::{
     ActionTargetConfig, Config, ContextsConfig, HyprlandConfig, LoggingConfig, RuntimeOverrides,
     ThemePalette, load_theme_palette, matching_context_routes, matching_site_rules,
-    save_contexts_atomic, setting_metadata, setting_metadata_all, setting_supported_scopes,
-    setting_supports_site_scope,
+    save_contexts_atomic, setting_metadata, setting_metadata_all, setting_supports_site_scope,
 };
 #[cfg(test)]
 use ferric_browser_core::ActionSubject;
 use ferric_browser_core::{
     ActionDefinition, ActionRegistry, ActionSource, BindingOutcome, BindingResolver, BindingTrie,
     CleanLinkResult, CommandInvocation, CommandRegistry, CommandSource, CompletionCandidate,
-    CompletionCategory, DEFAULT_COMPLETION_LIMIT, Diagnostic, DispatchTarget, Effect,
-    EffectiveMixedKeyPolicy, EngineEffect, Event, ExistenceState, GridCell,
-    HintAutoFollow as CoreHintAutoFollow, HintInteraction, HintInteractionInput,
-    HintInteractionOutcome, HintSession, HintTarget, HintTransport, IdSource, JourneyEdgeKind,
-    JourneyNodeId, LoadingState, LogicalRect, Mode, NavigationContext, NavigationError,
-    NavigationSource, ParseInput, ParsedCommand, PointerButton, PrivacyKind, ResourceLifecycle,
-    SearchCase, SpatialAck, SpatialAction, SpatialCancelReason, SpatialDispatchOutcome,
-    SpatialError, SpatialLifecycle, SpatialOwner, SpatialScope, SpatialSession, SpatialTarget,
-    SurfaceStamp, TabId, TabTransfer, Target, ValidatedUrl, WindowId, assign_labels_with_options,
-    canonical_origin, clean_link, complete, hint_intent_for_candidate, map_css_rect_to_view_local,
-    parse_chain, resolve_input, switcher_rank, tokenize_switcher_query,
+    CompletionCategory, DEFAULT_COMPLETION_LIMIT, Diagnostic, DispatchTarget, Effect, EngineEffect,
+    Event, ExistenceState, GridCell, HintAutoFollow as CoreHintAutoFollow, HintInteraction,
+    HintInteractionInput, HintInteractionOutcome, HintSession, HintTarget, HintTransport, IdSource,
+    JourneyEdgeKind, JourneyNodeId, LoadingState, LogicalRect, Mode, NavigationContext,
+    NavigationError, NavigationSource, ParseInput, ParsedCommand, PointerButton, PrivacyKind,
+    ResourceLifecycle, SearchCase, SpatialAck, SpatialAction, SpatialCancelReason,
+    SpatialDispatchOutcome, SpatialError, SpatialLifecycle, SpatialOwner, SpatialScope,
+    SpatialSession, SpatialTarget, SurfaceStamp, TabId, TabTransfer, Target, ValidatedUrl,
+    WindowId, assign_labels_with_options, canonical_origin, clean_link, complete,
+    hint_intent_for_candidate, map_css_rect_to_view_local, parse_chain, resolve_input,
+    switcher_rank, tokenize_switcher_query,
 };
 use ferric_browser_ipc::{
     PublicError, Request, Response, has_pending_requests, install_pending_request_waker,
@@ -551,6 +568,7 @@ pub struct BrowserUiRust {
     navigation_failure_visible: bool,
     mode: QString,
     input_epoch: i32,
+    raw_passthrough: bool,
     learning_mode: bool,
     view_alive: bool,
     // The application boundary owns reducer state and durable resources; Qt
@@ -559,9 +577,14 @@ pub struct BrowserUiRust {
     runtime_waker: Option<Arc<dyn Fn() + Send + Sync>>,
     window: Option<WindowId>,
     tab: Option<TabId>,
+    active_tab_projection: Option<(i32, Target)>,
+    selected_context_projection_depth: usize,
+    url_projection_input: Option<Arc<policy_refresh_capture::UrlProjectionInput>>,
+    completed_url_projection: Option<Arc<policy_refresh_capture::UrlProjectionInput>>,
     registry: Arc<CommandRegistry>,
     bindings: Option<BindingResolver>,
-    mixed_policy: EffectiveMixedKeyPolicy,
+    binding_context: QString,
+    mixed_policy: mixed_policy_runtime::MixedPolicyState,
     core_mode: Mode,
     binding_clock: Instant,
     pending_engine_action: Option<String>,
@@ -786,6 +809,7 @@ pub struct BrowserUiRust {
     external_navigation_scheme: QString,
     external_navigation_visible: bool,
     pending_external_navigation: Option<PendingExternalNavigation>,
+    hint_invocation: QString,
     hint_values: QString,
     hint_visible: bool,
     target_search_active: bool,
@@ -856,6 +880,7 @@ pub struct BrowserUiRust {
     runtime_setting_error: QString,
     setting_action_id: QString,
     setting_action_state: QString,
+    site_policy_result: QString,
     setting_action_message: QString,
     setting_action_detail: QString,
     chrome_font_family: QString,
@@ -886,6 +911,8 @@ pub struct BrowserUiRust {
     feature_page_grouping_status: QString,
     feature_page_grouping_reason: QString,
     config_base_json: QString,
+    base_authored_input: std::sync::Arc<ferric_browser_config::ConfigurationSources>,
+    startup_configuration_set: bool,
     cli_overrides_json: QString,
     profile_overrides_json: QString,
     config_path: QString,
@@ -1009,6 +1036,7 @@ pub struct BrowserUiRust {
     request_resolution_counts: BTreeMap<(String, String), u64>,
     active_site_experiment: Option<SiteExperiment>,
     last_site_doctor_result: Option<Value>,
+    site_doctor_fix: Option<site_doctor_completion::SiteDoctorFix>,
     last_repeatable: Option<RepeatableCommand>,
     macro_registers: BTreeMap<String, Vec<RepeatableCommand>>,
     recording_macro: Option<(String, Vec<RepeatableCommand>)>,
@@ -1021,6 +1049,7 @@ pub struct BrowserUiRust {
     navigation: feature_state::NavigationState,
     processes: feature_state::ProcessState,
     configuration_io: feature_state::ConfigurationIoState,
+    configuration_reads: browser_ui_configuration_read::ReadQueueState,
     library: feature_state::LibraryState,
     interaction: feature_state::InteractionState,
     diagnostic_work: feature_state::DiagnosticState,

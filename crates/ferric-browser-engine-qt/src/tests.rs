@@ -57,6 +57,7 @@ const ADAPTER_SOURCE: &str = concat!(
     include_str!("browser_ui_session_save.rs"),
     include_str!("browser_ui_sessions.rs"),
     include_str!("browser_ui_site.rs"),
+    include_str!("browser_ui_policy_observation.rs"),
     include_str!("browser_ui_spatial.rs"),
     include_str!("browser_ui_storage_writes.rs"),
     include_str!("browser_ui_tab_state.rs"),

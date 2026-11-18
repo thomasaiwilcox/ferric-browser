@@ -21,6 +21,7 @@ FerricModalSurface {
 
     signal closeRequested()
     signal refreshRequested()
+    signal sitePoliciesRequested()
     signal activeOriginDataClearRequested()
     signal sanitizedReportCopyRequested(bool includeHost)
     signal siteDoctorProposalApplyRequested(string proposalId)
@@ -84,6 +85,7 @@ FerricModalSurface {
                 wrapMode: Text.Wrap
             }
             Button { text: "Refresh"; onClicked: ledger.refreshRequested() }
+            Button { text: "Site Policies…"; onClicked: ledger.sitePoliciesRequested() }
             Button { id: closeButton; objectName: "siteLedgerCloseButton"; text: "Close"; onClicked: ledger.closeRequested() }
         }
         Label {
@@ -210,11 +212,10 @@ FerricModalSurface {
                     }
                 }
                 Label {
+                    objectName: "siteDoctorProposalStatus"
                     Layout.fillWidth: true
                     visible: ledger.hasSiteProposal
-                    text: ledger.proposal.state === "applied" ? "The content-blocking exception was saved for this site."
-                        : "The test suggests a content-blocking exception for " + (ledger.proposal.origin || "this site")
-                          + ". Saving it allows this site's requests through content blocking. Site permissions and connection security stay unchanged."
+                    text: ledger.hasSiteProposal ? ChromePresentation.siteDoctorProposalSummary(ledger.proposal) : ""
                     textFormat: Text.PlainText
                     color: ledger.browserWindow.warningColor
                     wrapMode: Text.Wrap

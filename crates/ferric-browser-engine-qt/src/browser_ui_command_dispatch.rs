@@ -25,10 +25,49 @@ impl qobject::BrowserUi {
 
     #[allow(clippy::too_many_lines)]
     pub(super) fn execute_counted_parsed_commands_with_handoff(
+        self: Pin<&mut Self>,
+        commands: Vec<ParsedCommand>,
+        count: u32,
+        handoff: &mut Option<super::browser_ui_page_windows::PageHandoff>,
+    ) -> bool {
+        self.execute_counted_parsed_commands_in_turn(commands, count, handoff, None)
+    }
+
+    pub(super) fn execute_counted_parsed_commands_in_turn(
+        self: Pin<&mut Self>,
+        commands: Vec<ParsedCommand>,
+        count: u32,
+        handoff: &mut Option<super::browser_ui_page_windows::PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
+    ) -> bool {
+        let read = preparation
+            .filter(|turn| turn.is_current(self.as_ref().get_ref()))
+            .and_then(|_| {
+                super::browser_ui_configuration_read::ConfigurationReadTurn::capture(
+                    self.as_ref().get_ref(),
+                )
+            });
+        self.execute_counted_parsed_commands_with_read(
+            commands,
+            count,
+            handoff,
+            preparation,
+            read.as_ref(),
+        )
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub(super) fn execute_counted_parsed_commands_with_read(
         mut self: Pin<&mut Self>,
         commands: Vec<ParsedCommand>,
         count: u32,
         handoff: &mut Option<super::browser_ui_page_windows::PageHandoff>,
+        preparation: Option<
+            &super::browser_ui_configuration_preparation::ConfigurationPreparationTurn,
+        >,
+        read: Option<&super::browser_ui_configuration_read::ConfigurationReadTurn>,
     ) -> bool {
         let registry = self.as_ref().rust().registry.clone();
         let commands = match registry.expand_chain(commands) {
@@ -46,7 +85,7 @@ impl qobject::BrowserUi {
                 .iter()
                 .any(super::browser_ui_page_windows::is_command_workflow)
         {
-            return match self.as_mut().execute_page_workflow(
+            return match self.as_mut().execute_page_workflow_with_read(
                 commands
                     .into_iter()
                     .map(|command| crate::RepeatableCommand {
@@ -57,6 +96,37 @@ impl qobject::BrowserUi {
                     .collect(),
                 None,
                 handoff,
+                preparation,
+                read,
+            ) {
+                Ok(_) => true,
+                Err(error) => {
+                    self.set_status_text(QString::from(error.user_message()));
+                    false
+                }
+            };
+        }
+        if !self.as_ref().in_page_window_mode()
+            && super::browser_ui_page_workflows::needs_read_expansion(commands.iter())
+            && let Some(expanded) = super::browser_ui_page_workflows::expanded_read_workflow(
+                self.as_ref().rust(),
+                commands
+                    .iter()
+                    .cloned()
+                    .map(|command| crate::RepeatableCommand {
+                        command,
+                        count,
+                        route: None,
+                    })
+                    .collect(),
+            )
+        {
+            return match self.as_mut().execute_page_recorded_commands_with_read(
+                expanded,
+                None,
+                handoff,
+                preparation,
+                read,
             ) {
                 Ok(_) => true,
                 Err(error) => {
@@ -69,6 +139,36 @@ impl qobject::BrowserUi {
         for (command_index, mut command) in commands.iter().cloned().enumerate() {
             if command_index > 0 {
                 self.as_mut().queue_pending_engine_action();
+            }
+            if command_index > 0
+                && preparation.is_none()
+                && let Some(read) = read
+                && let Err(error) = read.validate_continuation(self.as_ref().get_ref())
+            {
+                self.set_status_text(QString::from(error.user_message()));
+                return false;
+            }
+
+            if preparation.is_some_and(|turn| !turn.is_current(self.as_ref().get_ref())) {
+                self.set_status_text(QString::from(
+                    "The command owner changed during settings preparation",
+                ));
+                return false;
+            }
+            if preparation.is_none()
+                && super::browser_ui_configuration_preparation::needs_preparation(
+                    &command, &registry,
+                )
+            {
+                return match self.as_mut().queue_configuration_preparation(
+                    super::browser_ui_configuration_preparation::DeferredConfigurationAction::Commands(
+                        super::browser_ui_page_windows::PageContinuation::Interactive {
+                            commands: commands[command_index..].to_vec(), count,
+                        }), None, handoff,
+                ) {
+                    Ok(_) => true,
+                    Err(error) => { self.set_status_text(QString::from(error)); false }
+                };
             }
             if self.as_ref().in_page_window_mode() {
                 let creation = if command.name == "tab-open" {
@@ -97,6 +197,7 @@ impl qobject::BrowserUi {
                         },
                         None,
                         handoff,
+                        preparation,
                     ) {
                         Ok(_) => true,
                         Err(error) => {
@@ -108,7 +209,7 @@ impl qobject::BrowserUi {
             }
             match self
                 .as_mut()
-                .dispatch_workflow_command(&mut command, &registry)
+                .dispatch_workflow_command(&mut command, &registry, preparation)
             {
                 CommandDispatchControl::Continue => continue,
                 CommandDispatchControl::Failed => return false,
@@ -124,6 +225,7 @@ impl qobject::BrowserUi {
                     },
                     None,
                     handoff,
+                    preparation,
                 ) {
                     Ok(_) => {
                         self.as_mut()
@@ -147,6 +249,7 @@ impl qobject::BrowserUi {
                     },
                     None,
                     handoff,
+                    preparation,
                 ) {
                     Ok(_) => true,
                     Err(error) => {
@@ -167,6 +270,7 @@ impl qobject::BrowserUi {
                     continuation,
                     None,
                     handoff,
+                    preparation,
                 ) {
                     Ok(_) => {
                         self.as_mut()
@@ -196,6 +300,7 @@ impl qobject::BrowserUi {
                     continuation,
                     None,
                     handoff.clone(),
+                    preparation,
                 ) {
                     Ok(_) => {
                         handoff.take();
@@ -544,8 +649,36 @@ impl qobject::BrowserUi {
                 }
                 continue;
             }
-            if command.name == "get" {
-                if let Err(error) = self.as_mut().execute_config_get_command(&command) {
+            if command.name == "get" || super::browser_ui_site_policy::uses_read_turn(&command) {
+                let rebound = preparation
+                    .filter(|turn| turn.is_current(self.as_ref().get_ref()))
+                    .and_then(|_| {
+                        super::browser_ui_configuration_read::ConfigurationReadTurn::capture(
+                            self.as_ref().get_ref(),
+                        )
+                    });
+                let read = rebound.as_ref().or(read);
+                let Some(read) = read else {
+                    return match self.as_mut().queue_configuration_read(
+                        command.clone(),
+                        super::browser_ui_page_windows::PageContinuation::Interactive {
+                            commands: commands[command_index + 1..].to_vec(),
+                            count,
+                        },
+                        None,
+                        handoff,
+                    ) {
+                        Ok(_) => true,
+                        Err(error) => {
+                            self.set_status_text(QString::from(error.user_message()));
+                            false
+                        }
+                    };
+                };
+                if let Err(error) = self
+                    .as_mut()
+                    .execute_configuration_read_command(&command, read)
+                {
                     self.set_status_text(QString::from(error.user_message()));
                     return false;
                 }
@@ -861,7 +994,10 @@ impl qobject::BrowserUi {
                     self.set_status_text(QString::from(error.to_string()));
                     return false;
                 }
-                if let Err(error) = self.as_mut().execute_command_action(&command, None) {
+                if let Err(error) =
+                    self.as_mut()
+                        .execute_command_action(&command, None, preparation)
+                {
                     self.set_status_text(QString::from(error));
                     return false;
                 }

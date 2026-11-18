@@ -46,6 +46,7 @@ TestCase {
             return index === 0 && targetValid ? {tabId:"tab",generation:3,documentId:4} : null
         }
         function navigation_kind_for(index, history) {}
+        function navigation_url_changed_for(index, url) {}
         function navigation_completed_for(index) { completed++; if (index === active_tab_index) load_state="complete" }
         function navigation_failed_for(index) { failed++; if (index === active_tab_index) load_state="failed" }
         function navigation_stopped_for(index) { stopped++; if (index === active_tab_index) load_state="cancelled" }

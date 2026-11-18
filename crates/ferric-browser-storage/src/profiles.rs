@@ -556,7 +556,21 @@ impl ProfileRegistry {
             message: error.to_string(),
         })?;
         let path = roots.state.join("profiles.json");
-        let _lock = RegistryLock::acquire(&path).map_err(|error| io_error(&path, &error))?;
+        let lock = RegistryLock::acquire(&path).map_err(|error| io_error(&path, &error))?;
+        Self::open_locked(roots, &lock)
+    }
+
+    pub(crate) fn open_locked(
+        roots: &StorageRoots,
+        lock: &RegistryLock,
+    ) -> Result<Self, RegistryError> {
+        let path = roots.state.join("profiles.json");
+        if !lock.protects(&path) {
+            return Err(io_error(
+                &path,
+                &io::Error::other("incorrect profile registry lock"),
+            ));
+        }
         let profiles = load_records(&path)?;
         recover_deletion_manifests(roots, &profiles).map_err(|error| RegistryError::Io {
             path: roots.state.join("profile-deletions"),
@@ -594,24 +608,38 @@ impl ProfileRegistry {
         name: &str,
         label: &str,
     ) -> Result<&ProfileRecord, RegistryError> {
+        let lock =
+            RegistryLock::acquire(&self.path).map_err(|error| io_error(&self.path, &error))?;
+        self.get_or_create_locked(name, label, &lock)
+    }
+
+    pub(crate) fn get_or_create_locked(
+        &mut self,
+        name: &str,
+        label: &str,
+        lock: &RegistryLock,
+    ) -> Result<&ProfileRecord, RegistryError> {
         validate_name(name)?;
         validate_label(label)?;
         let mut selected_id = None;
-        self.mutate(|profiles| {
-            if let Some(profile) = profiles.iter().find(|profile| profile.name == name) {
-                selected_id = Some(profile.id);
-                return Ok(());
-            }
-            let id = Uuid::new_v4();
-            profiles.push(ProfileRecord {
-                id,
-                name: name.into(),
-                label: label.into(),
-                privacy: ProfilePrivacy::Normal,
-            });
-            selected_id = Some(id);
-            Ok(())
-        })?;
+        self.mutate_locked(
+            |profiles| {
+                if let Some(profile) = profiles.iter().find(|profile| profile.name == name) {
+                    selected_id = Some(profile.id);
+                    return Ok(());
+                }
+                let id = Uuid::new_v4();
+                profiles.push(ProfileRecord {
+                    id,
+                    name: name.into(),
+                    label: label.into(),
+                    privacy: ProfilePrivacy::Normal,
+                });
+                selected_id = Some(id);
+                Ok(())
+            },
+            lock,
+        )?;
         let id = selected_id.ok_or(RegistryError::NotFound)?;
         self.profiles
             .iter()
@@ -713,8 +741,22 @@ impl ProfileRegistry {
         &mut self,
         mutation: impl FnOnce(&mut Vec<ProfileRecord>) -> Result<(), RegistryError>,
     ) -> Result<(), RegistryError> {
-        let _lock =
+        let lock =
             RegistryLock::acquire(&self.path).map_err(|error| io_error(&self.path, &error))?;
+        self.mutate_locked(mutation, &lock)
+    }
+
+    fn mutate_locked(
+        &mut self,
+        mutation: impl FnOnce(&mut Vec<ProfileRecord>) -> Result<(), RegistryError>,
+        lock: &RegistryLock,
+    ) -> Result<(), RegistryError> {
+        if !lock.protects(&self.path) {
+            return Err(io_error(
+                &self.path,
+                &io::Error::other("incorrect profile registry lock"),
+            ));
+        }
         let mut profiles = load_records(&self.path)?;
         recover_deletion_manifests(&self.roots, &profiles).map_err(|error| RegistryError::Io {
             path: self.roots.state.join("profile-deletions"),

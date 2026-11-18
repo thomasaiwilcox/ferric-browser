@@ -14,18 +14,34 @@ pub use command_executors::CommonCommandExecutor;
 mod completion;
 mod dispatcher;
 mod guide;
+mod hint_codebook;
 mod hints;
 pub use guide::{GuideArticle, guide_article};
+pub use hint_codebook::{
+    CheckedHintCodebook, HintCodeDeclaration, HintCodeExclusion, HintCodebookError,
+    HintCodebookOptions, HintLabelAllocator, HintReservationCategory, MAX_HINT_CODE_BYTES,
+    MAX_HINT_SPECIAL_RESERVATIONS,
+};
 mod id;
 mod input;
 mod internal_page;
 pub use internal_page::{ContentEntry, ContentHistory, InternalPage};
 mod journey;
+mod key_token;
 mod link_cleaning;
+pub use key_token::{
+    LogicalKey, LogicalKeyModifiers, LogicalKeyToken, LogicalKeyTokenError, LogicalNamedKey,
+    MAX_LOGICAL_KEY_TOKEN_BYTES,
+};
 mod mixed_policy;
 mod model;
 mod navigation;
+mod site_policy_command;
 mod spatial_navigation;
+pub use site_policy_command::{
+    SitePolicyCommand, SitePolicyEdit, SitePolicyExplanation, SitePolicyExportSubject,
+    SitePolicyRuleRef, SitePolicySource, parse_site_policy_command,
+};
 mod switcher;
 mod url;
 
@@ -34,8 +50,9 @@ pub use action::{
 };
 pub use command::{
     ArgumentDefinition, ArgumentKind, CommandAlias, CommandDefinition, CommandError,
-    CommandRegistry, CommandScope, CompletionProvider, CountPolicy, EffectClass, ParseInput,
-    ParsedCommand, parse_chain, validate_open_target,
+    CommandRegistry, CommandScope, CompletionProvider, CountPolicy, EffectClass, ModeEnterError,
+    ModeEnterOptions, ParseInput, ParsedCommand, parse_chain, parse_mode_enter,
+    validate_open_target,
 };
 pub use completion::{
     CompletionCandidate, CompletionCategory, CompletionResult, DEFAULT_COMPLETION_LIMIT, complete,
@@ -45,11 +62,15 @@ pub use dispatcher::{
     dispatch_command, dispatch_command_for,
 };
 pub use hints::{
-    HintAutoFollow, HintCandidate, HintCapability, HintError, HintGeometry, HintInputMode,
-    HintIntent, HintInteraction, HintInteractionInput, HintInteractionOutcome,
-    HintInteractionSnapshot, HintKind, HintPoint, HintPresentationGeometry, HintSession,
-    HintTarget, HintTransport, HintUnmatchedPolicy, LabeledHint, MAX_HINT_CANDIDATES,
-    MAX_HINT_REGIONS, MAX_HINT_SURFACES, assign_labels, assign_labels_with_options,
+    HintAutoFollow, HintCandidate, HintCapability, HintEnhancedError, HintError, HintGeometry,
+    HintInputMode, HintIntent, HintInteraction, HintInteractionInput, HintInteractionKind,
+    HintInteractionOutcome, HintInteractionSnapshot, HintKind, HintPoint, HintPresentationGeometry,
+    HintRefreshIssue, HintReservation, HintReservationReason, HintReservationState,
+    HintRetentionBudget, HintSelectionUnavailable, HintSession, HintSpecialAssignment,
+    HintSpecialBinding, HintTarget, HintTransport, HintUnmatchedPolicy, LabeledHint,
+    MAX_HINT_ALPHABET_CHARS, MAX_HINT_CANDIDATES, MAX_HINT_EARLY_INTENTS, MAX_HINT_INSPECTIONS,
+    MAX_HINT_QUEUED_NATIVE_EVENTS, MAX_HINT_REGIONS, MAX_HINT_ROOT_DEPTH, MAX_HINT_SURFACES,
+    MIN_HINT_ALPHABET_CHARS, assign_labels, assign_labels_with_options, compare_hint_candidates,
     hint_capabilities, hint_intent_for_candidate, hint_kind_is_region_or_surface, refresh_labels,
 };
 pub use id::{
@@ -68,10 +89,9 @@ pub use link_cleaning::{
     clean_link,
 };
 pub use mixed_policy::{
-    BrowserKeySequenceState, EffectiveMixedKeyPolicy, InputOwner, LogicalKeyToken,
-    LogicalKeyTokenError, MAX_MIXED_PAGE_KEYS, MixedKeyDecision, MixedKeyDecisionReason,
-    MixedPolicyError, MixedPolicyLayer, MixedPolicySource, ShortcutPolicy,
-    resolve_mixed_key_policy,
+    BrowserKeySequenceState, EffectiveMixedKeyPolicy, InputOwner, MAX_MIXED_PAGE_KEYS,
+    MixedKeyDecision, MixedKeyDecisionReason, MixedPolicyError, MixedPolicyLayer,
+    MixedPolicySource, ShortcutPolicy, resolve_mixed_key_policy,
 };
 pub use model::reducer::{
     ClipboardEdit, Diagnostic, Effect, EngineEffect, Event, PersistEffect, ReduceError,
@@ -96,4 +116,4 @@ pub use switcher::{
     MAX_SWITCHER_QUERY_TERMS, MAX_SWITCHER_TERM_BYTES, rank as switcher_rank,
     tokenize_query as tokenize_switcher_query,
 };
-pub use url::{UrlError, ValidatedUrl, canonical_origin, canonicalize};
+pub use url::{MAX_URL_BYTES, UrlError, ValidatedUrl, canonical_origin, canonicalize};

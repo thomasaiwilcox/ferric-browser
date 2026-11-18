@@ -1,0 +1,170 @@
+--- a/crates/ferric-browser-engine-qt/src/hint_frame_broker.cpp
++++ b/crates/ferric-browser-engine-qt/src/hint_frame_broker.cpp
+@@ -1,6 +1,9 @@
+ #include "hint_frame_broker.h"
+ 
++#include <QtCore/QDebug>
++#include <QtCore/QElapsedTimer>
+ #include <QtCore/QJsonArray>
++#include <QtCore/QJsonObject>
+ #include <QtCore/QJsonDocument>
+ #include <QtCore/QPointer>
+ #include <QtCore/QTimer>
+@@ -30,7 +33,7 @@
+ }
+ 
+ void FerricFrameBroker::evaluate(QWebEngineFrame frame, const QString &script,
+-                                    Completion completion) {
++                                    const char *diagnosticOperation, Completion completion) {
+     if (!frame.isValid() || inFlight_ >= 128) { completion(failure("frame-operation-limit")); return; }
+     ++inFlight_;
+     auto completed = std::make_shared<bool>(false);
+@@ -39,18 +42,47 @@
+     const QPointer<QTimer> deadline(timer);
+     const QPointer<FerricFrameBroker> guard(this);
+     const auto generation = generation_;
+-    auto finish = [guard, deadline, generation, completed, completion](const QVariant &value) {
+-        if (*completed) return;
++    // P00 diagnostic overlay only. Never interpret these instrumented timings
++    // as the unprofiled baseline. No script, URL, owner ID or page value is logged.
++    const bool tracing = qEnvironmentVariableIsSet("FERRIC_P00_BROKER_TRACE");
++    const auto clock = tracing ? std::make_shared<QElapsedTimer>() : nullptr;
++    static quint64 diagnosticSequence = 0;
++    const auto operationId = tracing ? ++diagnosticSequence : 0;
++    if (clock) clock->start();
++    const auto brokerNamespace = documentProperty_ == QStringLiteral("__ferric_hintFrameDocument")
++        ? QStringLiteral("hint") : QStringLiteral("selection");
++    const auto trace = [guard, generation, clock, operationId, diagnosticOperation, brokerNamespace]
++                       (const char *event) {
++        if (!clock) return;
++        const QJsonObject row{{"operation_id", QString::number(operationId)},
++            {"operation", QString::fromLatin1(diagnosticOperation)},
++            {"event", QString::fromLatin1(event)}, {"namespace", brokerNamespace},
++            {"generation", QString::number(generation)},
++            {"current_generation", guard ? QString::number(guard->generation_) : QString()},
++            {"broker_alive", bool(guard)}, {"in_flight", guard ? guard->inFlight_ : -1},
++            {"elapsed_ms", clock->nsecsElapsed() / 1e6}, {"deadline_ms", 1000}};
++        qInfo().noquote() << "FERRIC_P00_BROKER_JSON " + QJsonDocument(row).toJson(QJsonDocument::Compact);
++    };
++    auto finish = [guard, deadline, generation, completed, completion, trace](const QVariant &value) {
++        if (*completed) { trace("late-completion-discarded"); return; }
+         *completed = true;
+         if (deadline) { deadline->stop(); deadline->deleteLater(); }
+         if (guard) {
+             --guard->inFlight_;
+-            if (guard->generation_ == generation) completion(value);
+-        }
++            if (guard->generation_ == generation) {
++                trace("deliver");
++                completion(value);
++            } else trace("retired-generation-discarded");
++        } else trace("retired-broker-discarded");
+     };
+-    connect(timer, &QTimer::timeout, this, [finish] { finish(failure("frame-timeout")); });
++    connect(timer, &QTimer::timeout, this, [finish, trace] {
++        trace("timeout");
++        finish(failure("frame-timeout"));
++    });
+     timer->start(1000);
+-    frame.runJavaScript(script, QWebEngineScript::ApplicationWorld, finish);
++    trace("submit");
++    frame.runJavaScript(script, QWebEngineScript::ApplicationWorld,
++        [finish, trace](const QVariant &value) { trace("callback"); finish(value); });
+ }
+ 
+ bool FerricFrameBroker::reachable(const QString &owner) const {
+@@ -73,7 +105,7 @@
+         if (it->frame == frame && it->parent == parent) {
+             const auto owner = it.key();
+             const auto epoch = it->epoch;
+-            evaluate(frame, QStringLiteral("window.") + documentProperty_ + QStringLiteral("===") + quoted(epoch),
++            evaluate(frame, QStringLiteral("window.") + documentProperty_ + QStringLiteral("===") + quoted(epoch), "attach-lease-check",
+                      [this, frame, parent, owner, completion](const QVariant &value) {
+                 if (value.metaType().id() == QMetaType::Bool && value.toBool()
+                     && reachable(owner)) completion(QVariantMap{{"owner", owner}});
+@@ -95,7 +127,7 @@
+     const auto owner = QStringLiteral("frame-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
+     const auto epoch = QUuid::createUuid().toString(QUuid::WithoutBraces);
+     evaluate(frame, QStringLiteral("(()=>{window.") + documentProperty_ + QStringLiteral("=") + quoted(epoch)
+-             + QStringLiteral(";return true;})()"),
++             + QStringLiteral(";return true;})()"), "attach-initialize",
+              [this, frame, parent, owner, epoch, completion](const QVariant &value) {
+         if (value.metaType().id() != QMetaType::Bool || !value.toBool() || !frame.isValid()) {
+             completion(failure("frame-initialization-failed")); return;
+@@ -128,7 +160,7 @@
+     auto scan = std::make_shared<Scan>();
+     scan->remaining = children.size();
+     for (const auto &child : children) {
+-        evaluate(child, QStringLiteral("document.hasFocus()"),
++        evaluate(child, QStringLiteral("document.hasFocus()"), "focused-child-scan",
+                  [this, scan, child, parent, callback](const QVariant &value) {
+             if (value.metaType().id() != QMetaType::Bool) scan->failed = true;
+             else if (value.toBool()) scan->focused.append(child);
+@@ -159,7 +191,15 @@
+     const auto wrapped = QStringLiteral("(()=>{if(window.") + documentProperty_ + QStringLiteral("!==")
+         + quoted(lease.epoch) + QStringLiteral(")return {error:'stale-frame-document'};return (")
+         + script + QStringLiteral(");})()");
+-    evaluate(lease.frame, wrapped, [this, owner, callback, action](const QVariant &value) {
++    const char *operation = action ? "dispatch" : "run-other";
++    if (!action) {
++        if (script.startsWith(QStringLiteral("/*FERRIC_P00:collect-root*/"))) operation = "collect-root";
++        else if (script.startsWith(QStringLiteral("/*FERRIC_P00:collect-child*/"))) operation = "collect-child";
++        else if (script.startsWith(QStringLiteral("/*FERRIC_P00:dirty-root*/"))) operation = "dirty-root";
++        else if (script.startsWith(QStringLiteral("/*FERRIC_P00:dirty-child*/"))) operation = "dirty-child";
++        else if (script.startsWith(QStringLiteral("/*FERRIC_P00:discover*/"))) operation = "discover";
++    }
++    evaluate(lease.frame, wrapped, operation, [this, owner, callback, action](const QVariant &value) {
+         // An acknowledged action may intentionally dismiss/remove its frame.
+         // Only the exact successful boolean completion is accepted after removal;
+         // collection and preflight must still reject any detached owner.
+--- a/crates/ferric-browser-engine-qt/src/hint_frame_broker.h
++++ b/crates/ferric-browser-engine-qt/src/hint_frame_broker.h
+@@ -26,7 +26,7 @@
+ private:
+     struct Lease { QWebEngineFrame frame; QString epoch; QString parent; };
+     using Completion = std::function<void(const QVariant &)>;
+-    void evaluate(QWebEngineFrame frame, const QString &script, Completion completion);
++    void evaluate(QWebEngineFrame frame, const QString &script, const char *diagnosticOperation, Completion completion);
+     void attachFrame(const QWebEngineFrame &frame, const QString &parent, Completion completion);
+     void deliver(const QJSValue &callback, const QVariant &value);
+     bool reachable(const QString &owner) const;
+--- a/crates/ferric-browser-engine-qt/qml/components/FerricHintFrameProvider.qml
++++ b/crates/ferric-browser-engine-qt/qml/components/FerricHintFrameProvider.qml
+@@ -51,7 +51,7 @@
+         run(owner, "({width:innerWidth,height:innerHeight,focused:document.hasFocus()})", callback)
+     }
+     function discover(parent, depth, foreign, modal, callback) {
+-        run(parent, Scripts.hintFrameHost(""), function(host) {
++        run(parent, "/*FERRIC_P00:discover*/" + Scripts.hintFrameHost(""), function(host) {
+             if (!host || host.error || host.none) {
+                 callback(host && host.error ? host : {owner:parent,foreign:foreign,modal:modal})
+                 return
+@@ -156,7 +156,7 @@
+                 verifyChain(owner, function(proof) {
+                     if (proof.error) { callback(proof); return }
+                     var budget = {depth:Math.max(0,8-proof.entries.length),inspections:Math.max(0,50000-Number(base.inspected_nodes||0)),candidates:Math.max(0,5000-(base.candidates||[]).length)}
+-                    run(owner, Scripts.hintCollector(options.family,options.proxy,options.selectors,"",false,budget), function(child) {
++                    run(owner, "/*FERRIC_P00:collect-child*/" + Scripts.hintCollector(options.family,options.proxy,options.selectors,"",false,budget), function(child) {
+                         if (!child || child.error) { callback(child || {error:"frame-collection-failed"}); return }
+                         // Projection is captured after collection, not before a possibly slow DOM pass.
+                         verifyChain(owner, function(finalProof) {
+@@ -179,7 +179,7 @@
+                 })
+                 return
+             }
+-            root(script, function(base) {
++            root("/*FERRIC_P00:collect-root*/" + script, function(base) {
+                 if (!base || base.error || options.scope || options.pointer || options.family === "surfaces" || options.family === "regions") { finish(base); return }
+                 discover(rootOwner,0,false,false,function(found) {
+                     // Passive focus loss never turns an ordinary top-level hint session into an error.
+@@ -257,8 +257,8 @@
+             polledRevisions[owner]=revision
+             if (--pending===0) {pollPending=false;callback({dirty:dirty,revision:-1})}
+         }
+-        root(Scripts.hintDirtyRevision(),function(value){completed("root",value)})
+-        owners.forEach(function(owner) {run(owner,Scripts.hintDirtyRevision(),function(value){completed(owner,value)})})
++        root("/*FERRIC_P00:dirty-root*/" + Scripts.hintDirtyRevision(),function(value){completed("root",value)})
++        owners.forEach(function(owner) {run(owner,"/*FERRIC_P00:dirty-child*/" + Scripts.hintDirtyRevision(),function(value){completed(owner,value)})})
+     }
+     function stop() {
+         ++epoch

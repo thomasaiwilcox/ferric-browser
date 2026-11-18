@@ -1,0 +1,16 @@
+[[collections]]
+id = "list"
+families = ["links", "actions"]
+codes = ["1", "2"]
+container_selector = "#list"
+item_selector = ".card"
+primary_selector = "a.primary"
+identity_attributes = ["data-id"]
+order = "row-major-ltr"
+row_tolerance_px = 8
+[[collections.item_attributes]]
+name = "data-id"
+prefix = "item-"
+[collections.primary_predicates.href]
+origin = "https://example.test"
+path = "/*a"

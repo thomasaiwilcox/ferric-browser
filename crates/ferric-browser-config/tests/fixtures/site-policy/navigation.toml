@@ -1,0 +1,46 @@
+schema_version = 3
+
+[[site_rules]]
+id = "fixture-navigation"
+pattern = "https://shop.example.test/*"
+priority = 100
+
+[site_rules.interaction]
+enabled = true
+
+[site_rules.interaction.labels]
+alphabet = "asdfghjkl"
+min_chars = 2
+fallback_prefix = "z"
+auto_follow = "full-match"
+
+[[site_rules.interaction.anchors]]
+id = "nav-mac"
+families = ["links", "actions", "all"]
+code = "m"
+scope_selector = "#fixture-global-nav"
+target_selector = "a"
+
+[site_rules.interaction.anchors.predicates.hint_name]
+equals = "Mac"
+case = "sensitive"
+
+[[site_rules.interaction.anchors]]
+id = "nav-watch"
+families = ["links", "actions", "all"]
+code = "w"
+scope_selector = "#fixture-global-nav"
+target_selector = "a"
+
+[site_rules.interaction.anchors.predicates.hint_name]
+equals = "Watch"
+
+[[site_rules.interaction.anchors]]
+id = "nav-iphone"
+families = ["links", "actions", "all"]
+code = "ip"
+scope_selector = "#fixture-global-nav"
+target_selector = "a"
+
+[site_rules.interaction.anchors.predicates.hint_name]
+equals = "iPhone"

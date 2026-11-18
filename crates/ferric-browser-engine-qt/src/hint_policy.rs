@@ -331,6 +331,156 @@ fn is_hint_target(value: &str) -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn site_policy_baseline_family_target_invocation_matrix() {
+        // This is an explicit compatibility oracle, not a list obtained from
+        // the parser. It deliberately preserves every baseline invocation.
+        // Columns: target, ordinary selection, rapid selection, immediate.
+        let targets = [
+            (None, true, true, true),
+            (Some("current"), true, true, true),
+            (Some("tab"), true, false, true),
+            (Some("tab-bg"), true, true, true),
+            (Some("window"), true, false, true),
+            (Some("yank"), true, true, true),
+            (Some("clean-yank"), true, true, true),
+            (Some("download"), true, true, true),
+            (Some("userscript"), true, true, true),
+            (Some("ephemeral"), true, false, true),
+            (Some("choose"), true, false, true),
+            (Some("pointer"), true, false, false),
+            (Some("external:reader"), true, false, true),
+        ];
+        let selections: [(&str, &[&str]); 4] = [
+            ("interactive", &[]),
+            ("first", &["--first"]),
+            ("indexed", &["--first", "--index", "2"]),
+            ("index-without-first", &["--index", "2"]),
+        ];
+        let mut cells = 0;
+        for family in [
+            "actions",
+            "all",
+            "focus",
+            "links",
+            "inputs",
+            "buttons",
+            "images",
+            "media",
+            "scrollables",
+            "regions",
+            "surfaces",
+        ] {
+            for (target, ordinary, rapid_allowed, immediate) in targets {
+                for rapid in [false, true] {
+                    for (selection, flags) in selections {
+                        for script in [false, true] {
+                            let family_allows = match family {
+                                "focus" => matches!(target, None | Some("current")) && !rapid,
+                                "regions" | "surfaces" => {
+                                    matches!(target, None | Some("choose"))
+                                        && !rapid
+                                        && selection == "interactive"
+                                }
+                                _ => match selection {
+                                    "interactive" => {
+                                        if rapid {
+                                            rapid_allowed
+                                        } else {
+                                            ordinary
+                                        }
+                                    }
+                                    "first" | "indexed" => immediate && !rapid,
+                                    _ => false,
+                                },
+                            };
+                            let expected = family_allows
+                                && selection != "index-without-first"
+                                && script == (target == Some("userscript"));
+                            let mut arguments = vec![family.to_owned()];
+                            if let Some(target) = target {
+                                arguments.extend(["--target".into(), target.into()]);
+                            }
+                            if rapid {
+                                arguments.push("--rapid".into());
+                            }
+                            arguments.extend(flags.iter().map(|flag| (*flag).to_owned()));
+                            if script {
+                                arguments.extend(["--script".into(), "reader".into()]);
+                            }
+                            let command = ParsedCommand {
+                                name: "hint".into(),
+                                arguments,
+                            };
+                            let result = parse_hint_options(&command);
+                            assert_eq!(result.is_ok(), expected, "{command:?}: {result:?}");
+                            if let Ok(options) = result {
+                                let expected_target = match (family, target, rapid) {
+                                    ("regions" | "surfaces", None, _) => "choose",
+                                    (_, None | Some("current"), true) => "yank",
+                                    (_, None, false) => "current",
+                                    (_, Some(target), _) => target,
+                                };
+                                assert_eq!(options.family, family);
+                                assert_eq!(options.target, expected_target);
+                                assert_eq!(options.rapid, rapid);
+                                assert_eq!(options.first, matches!(selection, "first" | "indexed"));
+                                assert_eq!(
+                                    options.index,
+                                    if selection == "indexed" { 2 } else { 1 }
+                                );
+                                assert_eq!(options.script.as_deref(), script.then_some("reader"));
+                            }
+                            cells += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cells, 11 * 13 * 2 * 4 * 2);
+    }
+
+    #[test]
+    fn site_policy_baseline_defaults_and_index_boundaries() {
+        let parse = |arguments: &[&str]| {
+            parse_hint_options(&ParsedCommand {
+                name: "hint".into(),
+                arguments: arguments.iter().map(|value| (*value).into()).collect(),
+            })
+        };
+        assert_eq!(
+            parse(&[]).unwrap(),
+            HintOptions {
+                family: "actions".into(),
+                rapid: false,
+                target: "current".into(),
+                script: None,
+                first: false,
+                index: 1,
+            }
+        );
+        assert_eq!(parse(&["--rapid"]).unwrap().target, "yank");
+        for index in ["1", "5000"] {
+            let options = parse(&["--first", "--index", index]).unwrap();
+            assert_eq!(options.index.to_string(), index);
+            assert!(options.first);
+        }
+        for index in ["0", "5001", "-1", "1.5", "NaN", "184467440737095516160"] {
+            let error = parse(&["--first", "--index", index]).unwrap_err();
+            assert_eq!(error, "hint index must be 1..=5000", "index {index}");
+        }
+        assert!(parse(&["--first", "--index"]).is_err());
+        assert!(parse(&["--target", "pointer"]).is_err());
+        // The baseline accepts repeated targets with last-target wins. Do not
+        // accidentally count a new strictness rule as no-policy compatibility.
+        assert_eq!(
+            parse(&["--target", "tab", "--target", "yank"])
+                .unwrap()
+                .target,
+            "yank"
+        );
+    }
+
     fn local_owner() -> LocalInteractionOwner {
         LocalInteractionOwner {
             window: WindowId::from_display("windowid-1").expect("window ID"),

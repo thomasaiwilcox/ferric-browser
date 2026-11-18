@@ -21,6 +21,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 add_executable(application_tests tst_application.cpp tst_permission_scope.cpp tst_notifications.cpp tst_file_choosers.cpp tst_action_feedback.cpp tst_hint_controls.cpp tst_navigation_usability.cpp tst_page_search.cpp tst_privacy_identity.cpp tst_live_titles.cpp tst_tab_recovery.cpp tst_last_tab_undo.cpp tst_open_targets.cpp tst_repeat.cpp tst_application.h)
 target_sources(application_tests PRIVATE tst_page_windows.cpp)
+target_sources(application_tests PRIVATE tst_peer_configuration.cpp)
+target_sources(application_tests PRIVATE tst_profile_metadata.cpp)
+target_sources(application_tests PRIVATE tst_site_policy_native.cpp)
+target_sources(application_tests PRIVATE tst_hint_media_tabs.cpp)
+target_sources(application_tests PRIVATE tst_binding_aliases.cpp)
+target_include_directories(application_tests PRIVATE "${FERRIC_ENGINE_CXX_INCLUDE_DIR}")
 target_link_libraries(application_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 add_executable(context_reload_tests tst_context_reload.cpp)
 target_link_libraries(context_reload_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
@@ -29,6 +35,7 @@ target_link_libraries(context_reload_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt
 add_library(context_quit_test_plugin MODULE context_quit_test_plugin.cpp)
 target_link_libraries(context_quit_test_plugin PRIVATE Qt6::Quick Qt6::Test)
 set_target_properties(context_quit_test_plugin PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/plugins/generic")
+add_dependencies(application_tests context_quit_test_plugin)
 add_executable(switcher_tests tst_switcher.cpp)
 target_link_libraries(switcher_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 add_executable(downloads_tests tst_downloads.cpp)
@@ -40,6 +47,20 @@ target_link_libraries(downloads_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::Wa
 add_executable(close_request_tests tst_close_requests.cpp)
 target_link_libraries(close_request_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 enable_testing()
+add_test(NAME application_binding_aliases COMMAND application_tests bindingAliases bindingAliasGuide)
+set_tests_properties(application_binding_aliases PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+add_test(NAME application_site_policy_native COMMAND application_tests
+    sitePolicyNativeProductionGesture sitePolicyNativeProductionPrompt sitePolicyNativeProductionViewDestruction)
+set_tests_properties(application_site_policy_native PROPERTIES TIMEOUT 180 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+add_test(NAME application_hint_media_tabs COMMAND application_tests hintPageKeyAcrossTabs)
+set_tests_properties(application_hint_media_tabs PROPERTIES TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+add_test(NAME application_site_policy_drafts COMMAND application_tests sitePolicyDraftWorkflow)
+set_tests_properties(application_site_policy_drafts PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+add_test(NAME application_site_policy_draft_ipc COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/run_site_policy_ipc_probe.py" --executable "${FERRIC_BROWSER_EXECUTABLE}")
+set_tests_properties(application_site_policy_draft_ipc PROPERTIES TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+add_test(NAME application_hint_request_ownership COMMAND application_tests hintRequestNativeOwnership hintRequestCaptureClassification hintRequestCollectionBinding hintRequestObservationDocuments)
+set_tests_properties(application_hint_request_ownership PROPERTIES TIMEOUT 240 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_test(NAME application_credential_association COMMAND application_tests credentialViewAssociation)
 set_tests_properties(application_credential_association PROPERTIES TIMEOUT 180 LABELS "credential;wayland;qml")
 add_test(NAME application_page_windows COMMAND "${Python3_EXECUTABLE}"
@@ -128,6 +149,10 @@ add_test(NAME application_settings_durability COMMAND "${DBUS_RUN_SESSION}"
     FERRIC_SETTINGS_SYNC_FIXTURE=1 $<TARGET_FILE:application_tests> productPolishSettingDurability)
 set_tests_properties(application_settings_durability PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME application_binding_alias_ipc COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/run_binding_alias_ipc_probe.py"
+    --executable "${FERRIC_BROWSER_EXECUTABLE}")
+set_tests_properties(application_binding_alias_ipc PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_test(NAME application_credential_association_wayland COMMAND "${DBUS_RUN_SESSION}"
     --config-file=${CMAKE_CURRENT_SOURCE_DIR}/notification-test-bus.conf --
     ${CMAKE_COMMAND} -E env FERRIC_PORTAL_TEST_BUS=isolated "${Python3_EXECUTABLE}"
@@ -346,7 +371,8 @@ add_test(NAME application_clipboard COMMAND application_tests clipboardNativeEdi
 set_tests_properties(application_clipboard PROPERTIES TIMEOUT 360 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 
 add_test(NAME application_product_polish COMMAND application_tests embeddedResourceParity targetSearchNeedsConfirmation promptAcceptCancelAndNestedRestoration productPolishPagePrompts productPolishWindowPrompts productPolishTlsPrompt productPolishCertificateGuards productPolishIdentityWindows productPolishPromptTeardown productPolishHttpAuthentication productPolishFileChooser productPolishDownloadSelectionFailure productPolishDownloadIdentity productPolishWebAuthStates productPolishNavigationFailure productPolishManagementSurfaces productPolishWindowSettings productPolishNativePageHistory productPolishSecondaryHistoryCommands productPolishTransferredSourceClose productPolishPopupSourceClose productPolishPopupCommands productPolishSecondaryHints productPolishCopyFeedback productPolishNewWindows productPolishStartupCleanLink productPolishCleanLinkOwner productPolishDevToolsOwner productPolishInteractiveNewWindow productPolishSessionPermissionSharing productPolishCombinedSessionPermissionReset productPolishPermissionReadiness productPolishPermissionRevocationScope productPolishPermissionResetOwner productPolishPermissionResetQueue productPolishPendingPermissionPolicy productPolishPermissionQueueBound productPolishPermissionCapacity productPolishPopupDurableWork productPolishNotificationResetScope productPolishContextCatalogBootstrap productPolishContextCatalogRetainedAfterFailedProfile productPolishNewWindowRouting productPolishProvisionalTransferFallback productPolishSecondaryTabs productPolishSecondaryManagers productPolishIndependentWindowInput productPolishPermissionWindowOwnership productPolishOverlappingModalInput productPolishUserscriptFeedback productPolishWindowClose productPolishPopupScripts productPolishSiteLedger productPolishSessionPreview productPolishSessionSaveBackpressure productPolishManagerFeedback productPolishLibrary productPolishPrivateLibrary productPolishStartupProblems productPolishProfileRecovery productPolishFailedProfileDiagnostics productPolishDiagnosticOwners productPolishDiagnosticReport productPolishDiagnosticLifecycle productPolishLocalFilePaths productPolishUnavailableStorage productPolishBookmarkTransfer)
-set_tests_properties(application_product_polish PROPERTIES TIMEOUT 600 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+# Allow runner headroom for the full asynchronous UI matrix.
+set_tests_properties(application_product_polish PROPERTIES TIMEOUT 900 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 
 add_test(NAME application_deferred_requests COMMAND application_tests deferredNativeRequestsKeepCapturedTargets)
 set_tests_properties(application_deferred_requests PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
@@ -395,5 +421,90 @@ set_tests_properties(application_repeat_cli PROPERTIES TIMEOUT 180)
 # its shipped QML resources.  Keep this registration additive to the baseline.
 add_subdirectory(../everyday everyday)
 
+# Opaque startup ownership uses the selected engine's generated native bridge.
+add_executable(startup_configuration_tests tst_startup_configuration.cpp)
+target_include_directories(startup_configuration_tests PRIVATE "${FERRIC_ENGINE_CXX_INCLUDE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../../src")
+target_link_libraries(startup_configuration_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::WaylandClient Qt6::WebChannel Qt6::QuickWidgets Qt6::WebEngineWidgets PkgConfig::FERRIC_WAYLAND_CLIENT Qt6::DBus Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::Test Qt6::Widgets SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+add_test(NAME application_startup_configuration COMMAND startup_configuration_tests)
+set_tests_properties(application_startup_configuration PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
 include("${CMAKE_CURRENT_LIST_DIR}/../EngineArchive.cmake")
 ferric_require_current_engine_archive("${FERRIC_ENGINE_LIBRARY}")
+
+add_test(NAME application_site_policy_recovery COMMAND application_tests sitePolicyProtectedRecovery)
+set_tests_properties(application_site_policy_recovery PROPERTIES TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+add_test(NAME application_site_policy_transfer COMMAND application_tests sitePolicyTransferObservation)
+add_test(NAME application_settings_preparation COMMAND application_tests runtimeSettingsDeferPreparation)
+set_tests_properties(application_settings_preparation PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;FERRIC_TEST_SETTINGS_PAGE_WINDOWS=0")
+add_test(NAME application_settings_preparation_windows COMMAND application_tests runtimeSettingsDeferPreparation)
+set_tests_properties(application_settings_preparation_windows PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;FERRIC_TEST_SETTINGS_PAGE_WINDOWS=1")
+add_test(NAME application_site_doctor_completion COMMAND ${CMAKE_COMMAND} -E env "LD_PRELOAD=$<TARGET_FILE:settings_sync_interposer>" FERRIC_SETTINGS_SYNC_FIXTURE=1 $<TARGET_FILE:application_tests> siteDoctorCompletion)
+set_tests_properties(application_site_doctor_completion PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+add_test(NAME application_settings_handoff_completion COMMAND ${CMAKE_COMMAND} -E env "LD_PRELOAD=$<TARGET_FILE:settings_sync_interposer>" FERRIC_SETTINGS_SYNC_FIXTURE=1 $<TARGET_FILE:application_tests> runtimeSettingsHandoffCompletion)
+set_tests_properties(application_settings_handoff_completion PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+add_test(NAME application_settings_handoff_ipc COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/run_settings_handoff_ipc_probe.py"
+    --executable "${FERRIC_BROWSER_EXECUTABLE}" --interposer $<TARGET_FILE:settings_sync_interposer>
+    --record "${CMAKE_CURRENT_BINARY_DIR}/settings-handoff-ipc.json")
+set_tests_properties(application_settings_handoff_ipc PROPERTIES TIMEOUT 180)
+add_test(NAME application_configuration_inspection_ipc COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/run_configuration_inspection_ipc_probe.py"
+    --executable "${FERRIC_BROWSER_EXECUTABLE}"
+    --record "${CMAKE_CURRENT_BINARY_DIR}/configuration-inspection-ipc.json")
+set_tests_properties(application_configuration_inspection_ipc PROPERTIES TIMEOUT 90)
+set_tests_properties(application_site_policy_transfer PROPERTIES TIMEOUT 180 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+add_test(NAME application_site_policy_cache_actions COMMAND application_tests policyCacheDirtyClosesPendingActions policyCacheLoadingCancellation)
+set_tests_properties(application_site_policy_cache_actions PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+add_test(NAME application_site_policy_prompts COMMAND application_tests promptAcceptCancelAndNestedRestoration productPolishPagePrompts productPolishWindowPrompts)
+set_tests_properties(application_site_policy_prompts PROPERTIES TIMEOUT 180 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_site_policy_foreign_negatives COMMAND application_tests crossOriginUnsupportedScopedActions crossOriginHostileFacetResults)
+set_tests_properties(application_site_policy_foreign_negatives PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+target_sources(application_tests PRIVATE tst_site_policy_performance.cpp)
+
+# Keep the benchmark's observation/dispatch code optimized independently of
+# functional-harness build type; its inclusive observer cost is also recorded.
+set_source_files_properties(tst_site_policy_performance.cpp PROPERTIES
+    COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU,Clang>:-O2>")
+
+add_test(NAME application_selector_receipts COMMAND application_tests
+    profilePublicationReentryKeepsNewRequest configurationCheckCannotReplaceProfileValidation
+    replacedStartupSelectorCallbackCannotPublish lateStartupSelectorCallbackUsesSafeFallback startupSelectorValidation
+    selectorValidationRejectsWholeCandidate selectorReloadRejectsInvalidAndStaleCandidates
+    selectorReloadTimeoutPreservesConfiguration staleSelectorCallbackCannotPublish
+    unavailableSelectorDocumentTimesOut releasedProfileSelectorCannotRestoreResources)
+set_tests_properties(application_selector_receipts PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_committed_peer_configuration COMMAND application_tests
+    committedPeerSelectorRevisionAba profileFallbackConfigurationMirrors)
+set_tests_properties(application_committed_peer_configuration PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_shared_policy_preflight COMMAND application_tests
+    sharedPolicyPreparingOwner sharedPolicyPrivateErrorRecovery)
+set_tests_properties(application_shared_policy_preflight PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_mixed_policy_normalization COMMAND application_tests
+    mixedLoadedEnumNormalization mixedPolicySelectedTabOwnership
+    mixedPageKeysAndBrowserSequence mixedReservedKeysAndUnmappedDelivery)
+set_tests_properties(application_mixed_policy_normalization PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_saved_runtime_repair COMMAND application_tests
+  savedRuntimeSelectorRepair runtimeEditsBeforeProfile transientRuntimeEditsUseMemoryOnly
+  durablePersistenceSelectorPreparationAba)
+set_tests_properties(application_saved_runtime_repair PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_held_browser_repeat COMMAND application_tests heldBrowserRepeatKeepsCommandAuthority)
+set_tests_properties(application_held_browser_repeat PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_unavailable_bindings COMMAND application_tests unavailableBindingsKeepBrowserOwnership)
+set_tests_properties(application_unavailable_bindings PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_profile_binding_fallback COMMAND application_tests invalidProfileBindingsUseValidatedFallback)
+set_tests_properties(application_profile_binding_fallback PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_profile_metadata_admission COMMAND application_tests profileMetadataWaitsForEngineValidation)
+set_tests_properties(application_profile_metadata_admission PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_inherited_profile_reentry COMMAND application_tests inheritedProfileReentryKeepsConfiguration)
+set_tests_properties(application_inherited_profile_reentry PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
