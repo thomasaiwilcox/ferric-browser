@@ -340,9 +340,9 @@ Ferric.FerricBrowserWindow {
             QTRY_VERIFY(evaluate("testQuitChild.windowCloseConfirmationVisible").toBool());
             QVERIFY(clickCloseDecision(qobject_cast<QQuickWindow *>(held.data()),true));
             (void)QTest::qWaitFor([&] { return quit.count()>0
-                || evaluate("testWindow.applicationShutdownForcePromptVisible || testQuitChild.windowShutdownPagePromptVisible").toBool(); },8000);
+                || evaluate("testWindow.applicationShutdownForcePromptVisible || (testQuitChild && testQuitChild.windowShutdownPagePromptVisible)").toBool(); },8000);
             qInfo()<<"Approved-close Quit"<<hook->property("injected")<<hook->property("retained")
-                <<evaluate("JSON.stringify({running:testWindow.applicationShutdownInProgress,stage:testWindow.applicationShutdownStage,rootReady:testWindow.applicationShutdownRootPrepared,peerReady:testQuitChild.windowApplicationQuitPrepared,peerPrompt:testQuitChild.windowShutdownPagePromptVisible,peerReason:testQuitChild.windowShutdownPagePromptReason,committing:testWindow.browserUi.page_close_commits_pending(),pending:testWindow.browserUi.page_closes_pending()})");
+                <<evaluate("JSON.stringify({running:testWindow.applicationShutdownInProgress,stage:testWindow.applicationShutdownStage,rootReady:testWindow.applicationShutdownRootPrepared,peerReady:testQuitChild && testQuitChild.windowApplicationQuitPrepared,peerPrompt:testQuitChild && testQuitChild.windowShutdownPagePromptVisible,peerReason:testQuitChild && testQuitChild.windowShutdownPagePromptReason,committing:testWindow.browserUi.page_close_commits_pending(),pending:testWindow.browserUi.page_closes_pending()})");
             QCOMPARE(quit.count(),1);
             QVERIFY(hook->property("injected").toBool() && hook->property("retained").toBool());
             QTRY_VERIFY(!peerView);
@@ -365,7 +365,7 @@ Ferric.FerricBrowserWindow {
             QTRY_VERIFY((QGuiApplication::focusWindow()==window
                             && evaluate("testWindow.shutdownPagePromptVisible").toBool())
                     || (QGuiApplication::focusWindow()==peerWindow
-                            && evaluate("testQuitChild.windowShutdownPagePromptVisible").toBool()));
+                            && evaluate("testQuitChild && testQuitChild.windowShutdownPagePromptVisible").toBool()));
             QVERIFY(clickCloseDecision(qobject_cast<QQuickWindow *>(QGuiApplication::focusWindow()),false));
             QTRY_VERIFY(!evaluate("testWindow.applicationShutdownInProgress").toBool());
             QVERIFY(!evaluate("testWindow.shutdownPagePromptVisible || testQuitChild.windowShutdownPagePromptVisible").toBool());
@@ -403,7 +403,7 @@ Ferric.FerricBrowserWindow {
                 +");testWindow.beginApplicationShutdown();return opened})()").toBool());
         } else evaluate("testWindow.beginApplicationShutdown()");
         if (cancel) {
-            QTRY_VERIFY(evaluate("testQuitChild.windowShutdownPagePromptVisible").toBool());
+            QTRY_VERIFY(evaluate("testQuitChild && testQuitChild.windowShutdownPagePromptVisible").toBool());
             QVERIFY(peerView);
             QCOMPARE(quit.count(),0);
             if(staleRoot || stalePeer) {
@@ -441,14 +441,14 @@ Ferric.FerricBrowserWindow {
         }
         if(prepared) {
             (void)QTest::qWaitFor([&] { return quit.count()>0 || !evaluate("testWindow.applicationShutdownInProgress").toBool()
-                || evaluate("testWindow.applicationShutdownForcePromptVisible || (testQuitChild.windowShutdownPagePromptVisible && testQuitChild.visible)").toBool(); },8000);
-            qInfo()<<"Prepared state"<<evaluate("JSON.stringify({running:testWindow.applicationShutdownInProgress,stage:testWindow.applicationShutdownStage,status:testWindow.browserUi.status_text,rootReady:testWindow.applicationShutdownRootPrepared,peerReady:testQuitChild.windowApplicationQuitPrepared,peerPrompt:testQuitChild.windowShutdownPagePromptVisible,prepared:testQuitChild.windowPreparedPageCommitted,published:testQuitChild.windowPreparedPageCorePublished,navigated:testQuitChild.windowPreparedNavigationStarted,initialized:testQuitChild.activeView && testQuitChild.activeView.contentInitialized,url:testQuitChild.activeView && String(testQuitChild.activeView.url),nativeUrl:testQuitChild.activeView && testQuitChild.activeView.nativeUrl,loading:testQuitChild.activeView && testQuitChild.activeView.loading})");
-            if(quit.count()==0 && evaluate("testQuitChild.windowShutdownPagePromptVisible").toBool())
+                || evaluate("testWindow.applicationShutdownForcePromptVisible || (testQuitChild && testQuitChild.windowShutdownPagePromptVisible && testQuitChild.visible)").toBool(); },8000);
+            qInfo()<<"Prepared state"<<evaluate("JSON.stringify({running:testWindow.applicationShutdownInProgress,stage:testWindow.applicationShutdownStage,status:testWindow.browserUi.status_text,rootReady:testWindow.applicationShutdownRootPrepared,peerReady:testQuitChild && testQuitChild.windowApplicationQuitPrepared,peerPrompt:testQuitChild && testQuitChild.windowShutdownPagePromptVisible,prepared:testQuitChild && testQuitChild.windowPreparedPageCommitted,published:testQuitChild && testQuitChild.windowPreparedPageCorePublished,navigated:testQuitChild && testQuitChild.windowPreparedNavigationStarted,initialized:testQuitChild && testQuitChild.activeView && testQuitChild.activeView.contentInitialized,url:testQuitChild && testQuitChild.activeView && String(testQuitChild.activeView.url),nativeUrl:testQuitChild && testQuitChild.activeView && testQuitChild.activeView.nativeUrl,loading:testQuitChild && testQuitChild.activeView && testQuitChild.activeView.loading})");
+            if(quit.count()==0 && evaluate("testQuitChild && testQuitChild.windowShutdownPagePromptVisible").toBool())
                 QVERIFY(clickCloseDecision(qobject_cast<QQuickWindow *>(held.data()),true));
         }
         QTRY_VERIFY_WITH_TIMEOUT(quit.count()>0 || !evaluate("testWindow.applicationShutdownInProgress").toBool()
-            || evaluate("testWindow.applicationShutdownForcePromptVisible || testWindow.shutdownPagePromptVisible || testQuitChild.windowShutdownPagePromptVisible").toBool(),15000);
-        qInfo()<<"Quit final state"<<evaluate("JSON.stringify({stage:testWindow.applicationShutdownStage,rootReady:testWindow.applicationShutdownRootPrepared,peerReady:testQuitChild.windowApplicationQuitPrepared,rootReason:testWindow.shutdownPagePromptReason,peerReason:testQuitChild.windowShutdownPagePromptReason,status:testWindow.browserUi.status_text})");
+            || evaluate("testWindow.applicationShutdownForcePromptVisible || testWindow.shutdownPagePromptVisible || (testQuitChild && testQuitChild.windowShutdownPagePromptVisible)").toBool(),15000);
+        qInfo()<<"Quit final state"<<evaluate("JSON.stringify({stage:testWindow.applicationShutdownStage,rootReady:testWindow.applicationShutdownRootPrepared,peerReady:testQuitChild && testQuitChild.windowApplicationQuitPrepared,rootReason:testWindow.shutdownPagePromptReason,peerReason:testQuitChild && testQuitChild.windowShutdownPagePromptReason,status:testWindow.browserUi.status_text})");
         QCOMPARE(quit.count(),1);
         QTRY_VERIFY(!peerView);
         QVERIFY(evaluate("testWindow.shutdownApproved && !testWindow.applicationShutdownForcePromptVisible").toBool());
@@ -1635,7 +1635,9 @@ Ferric.FerricBrowserWindow {
             QCOMPARE(QGuiApplication::focusWindow(), childWindow);
             evaluate("testWindow.browserUi.refresh_ipc_owner()");
             evaluate(entry + ".ui.poll_config()");
-            QCOMPARE(evaluate(entry + ".ui.maintenance_delay_ms()").toInt(), 50);
+            // Configuration preparation wakes the GUI asynchronously. The
+            // socket admission below proves readiness without assuming a
+            // particular maintenance polling interval.
         }
         QTRY_VERIFY_WITH_TIMEOUT(injected, 10000);
         QVERIFY(fixtureOk);

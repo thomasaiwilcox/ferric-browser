@@ -601,10 +601,12 @@ void ApplicationTests::init() {
     const auto storageBase = QDir::cleanPath(directory.filePath(
         "durable-test/" + testName + "/" + QString::fromLatin1(QTest::currentDataTag())));
     if (testName == "productPolishUnavailableStorage") {
-        QVERIFY(QDir().mkpath(QFileInfo(storageBase).absolutePath()));
-        QFile blockedRoot(storageBase);
+        // Keep WebEngine storage and read-only registry inspection usable
+        // while making the durable data root unavailable.
+        QVERIFY(QDir().mkpath(storageBase));
+        QFile blockedRoot(storageBase + "/data");
         QVERIFY(blockedRoot.open(QIODevice::WriteOnly));
-        blockedRoot.write("fixture blocks profile directory");
+        blockedRoot.write("fixture blocks durable data directory");
     }
     QString startupConfigPath;
     if(testName=="sitePolicySourceCopies") {
@@ -675,6 +677,12 @@ void ApplicationTests::init() {
         if (!fixtureTags) QVERIFY(!evaluate("testWindow.pageWindowTagRequested").toBool());
         else if (window->isVisible())
             QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.pageWindowTagRequested").toBool(), 1000);
+    }
+    if (testName == "productPolishUnavailableStorage") {
+        // Unusable metadata must reject the initial profile before any view
+        // or catalog is published. This case deliberately has no page fixture.
+        QTRY_VERIFY_WITH_TIMEOUT(text("profile_startup_notice").contains("couldn't be opened"),10000);
+        return;
     }
     QTRY_VERIFY2_WITH_TIMEOUT(
         evaluate("testWindow.activeWebView() !== null").toBool(),
@@ -5166,6 +5174,7 @@ void ApplicationTests::productPolishNewWindows() {
     owner="testWindow.liveWindowEntries().find(function(e){return e.windowToken==="+quoted(sourceToken)+"})";
     pageReceiver=owner+".view";
     QVERIFY(evaluate(owner+".ui.execute_command('set --temp ui.font_size_pt=17')").toBool());
+    QTRY_COMPARE(evaluate("JSON.parse("+owner+".ui.config_json).ui.font_size_pt").toInt(),17);
     const auto before=evaluate("testWindow.liveWindowEntries().length").toInt();
     const auto tokens=evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return e.windowToken}))").toString();
     const auto desired=initial+"?new-window="+sourceKind;
@@ -5315,9 +5324,12 @@ void ApplicationTests::productPolishSecondaryHints() {
     QVERIFY(!hintLabel("Same document").isEmpty());
     const auto primaryHints=text("hint_values");
     QVERIFY(evaluate(entry+".ui.set_runtime_setting('ui.tabs','always',true)").toBool());
+    QTRY_COMPARE(evaluate(entry+".ui.setting_action_state").toString(),QString("succeeded"));
     const auto position=kind=="secondary" ? "bottom" : kind=="private" ? "left" : "right";
     QVERIFY(evaluate(entry+".ui.set_runtime_setting('ui.tab_position',"+quoted(position)+",true)").toBool());
+    QTRY_COMPARE(evaluate(entry+".ui.setting_action_state").toString(),QString("succeeded"));
     QVERIFY(evaluate(entry+".ui.set_runtime_setting('ui.font_size_pt','16',true)").toBool());
+    QTRY_COMPARE(evaluate(entry+".ui.setting_action_state").toString(),QString("succeeded"));
     evaluate(pageReceiver+".zoomFactor="+QString::number(pointer ? 1.25 : 0.8));
     child->requestActivate();QTRY_VERIFY(child->isActive());evaluate(pageReceiver+".forceActiveFocus()");
     const auto request=pointer ? "hint --target pointer links" : "hint links";
@@ -5644,10 +5656,11 @@ void ApplicationTests::productPolishSecondaryTabs() {
     QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command(" +
                      quoted("set --temp input.shortcut_policy=mixed") + ")")
                 .toBool());
+    QTRY_COMPARE(evaluate("JSON.parse(" + entry + ".ui.config_json).input.shortcut_policy").toString(),QString("mixed"));
     QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command(" +
                      quoted("set --temp \"input.page_keys=['x']\"") + ")")
                 .toBool());
-    evaluate(entry + ".host.processRuntimeWork()");
+    QTRY_COMPARE(evaluate(entry + ".ui.mixed_key_route('x')").toString(),QString("page"));
     const auto xRoute = evaluate(entry + ".ui.mixed_key_route('x')").toString();
     qInfo() << "T013 effective mixed_key_route(x)" << xRoute;
     QCOMPARE(xRoute, QString("page"));
@@ -6638,6 +6651,12 @@ void ApplicationTests::productPolishManagerFeedback() {
 void ApplicationTests::productPolishUnavailableStorage() {
     QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
     QVERIFY(!evaluate("testWindow.temporaryProfile").toBool());
+    QVERIFY(!evaluate("testWindow.profileBootstrapComplete").toBool());
+    QVERIFY(!evaluate("testWindow.activeWebView()").value<QObject *>());
+    QVERIFY(evaluate("testWindow.browserUi.profile_startup_details()").toString().contains("Profile metadata admission rejected before catalog writes"));
+    const auto storageBase=evaluate("testWindow.storageBasePath").toString();
+    QVERIFY(!QFileInfo::exists(storageBase+"/state/profiles.json"));
+    QVERIFY(!QFileInfo::exists(storageBase+"/state/contexts.json"));
     QVERIFY(!command("history"));
     QVERIFY(text("status_text").contains("Profile storage is unavailable"));
     QVERIFY(!text("status_text").contains("Private"));
@@ -6680,9 +6699,13 @@ void ApplicationTests::productPolishStartupProblems() {
     // startup/navigation status happens to win the initial event ordering.
     QFile invalidConfig(configPath);
     QVERIFY(invalidConfig.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    invalidConfig.write("schema_version = [ malformed private setting after watcher");
+    const QByteArray invalidBytes("schema_version = [ malformed private setting after watcher");
+    const auto watchedLocation=QString("at bytes %1..%1").arg(invalidBytes.size());
+    QVERIFY(!evaluate("testWindow.browserUi.profile_startup_details()").toString().contains(watchedLocation));
+    QCOMPARE(invalidConfig.write(invalidBytes),invalidBytes.size());
     invalidConfig.close();
-    QTRY_VERIFY(evaluate("testWindow.browserUi.profile_startup_details()").toString().contains("after watcher"));
+    QTRY_VERIFY2(evaluate("testWindow.browserUi.profile_startup_details()").toString().contains(watchedLocation),
+        qPrintable(evaluate("testWindow.browserUi.profile_startup_details()").toString()));
     QVERIFY(evaluate("testWindow.browserUi.profile_startup_notice").toString().contains("settings couldn't be loaded"));
     // Navigation may replace transient startup status; the retained local
     // issue and the diagnostics summary must still explain the degradation.
@@ -6698,7 +6721,8 @@ void ApplicationTests::productPolishStartupProblems() {
     const auto detail = evaluate("testWindow.browserUi.profile_startup_details()").toString();
     QVERIFY(detail.contains("Latest profile attempt"));
     QVERIFY(detail.contains(configPath));
-    QVERIFY(detail.contains("\n1 |"));
+    QVERIFY(detail.contains(watchedLocation));
+    QVERIFY(!detail.contains("malformed private setting"));
     QVERIFY(!detail.contains(QChar(0xfffd)));
     evaluate("testWindow.showDiagnostics()");
     QTRY_VERIFY(evaluate("testWindow.browserUi.diagnostics_available").toBool());
@@ -6743,8 +6767,11 @@ void ApplicationTests::productPolishProfileRecovery() {
     QFETCH(QString, position);
     QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
     QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('ui.statusbar','never',true)").toBool());
+    QTRY_COMPARE(text("setting_action_state"),QString("succeeded"));
     QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('ui.tabs','always',true)").toBool());
+    QTRY_COMPARE(text("setting_action_state"),QString("succeeded"));
     QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('ui.tab_position',"+quoted(position)+",true)").toBool());
+    QTRY_COMPARE(text("setting_action_state"),QString("succeeded"));
     auto notice=findVisualItem(window->contentItem(),"profileHealthNotice");
     auto action=findVisualItem(window->contentItem(),"profileHealthDetails");
     QVERIFY(notice && action);QTRY_VERIFY(notice->isVisible());
@@ -6873,9 +6900,13 @@ void ApplicationTests::productPolishDiagnosticOwners() {
     QTRY_VERIFY(page("location.href === "+quoted(documentUrl)+" && document.readyState === 'complete'").toBool());
     QCOMPARE(page("window.diagnosticOwnerSentinel=83;window.diagnosticOwnerSentinel").toInt(),83);
     QVERIFY(evaluate(owner+".ui.set_runtime_setting('ui.font_size_pt','15',true)").toBool());
+    QTRY_COMPARE(evaluate(owner+".ui.setting_action_state").toString(),QString("succeeded"));
     QVERIFY(evaluate(owner+".ui.set_runtime_setting('ui.statusbar','never',true)").toBool());
+    QTRY_COMPARE(evaluate(owner+".ui.setting_action_state").toString(),QString("succeeded"));
     QVERIFY(evaluate(owner+".ui.set_runtime_setting('ui.tabs','always',true)").toBool());
+    QTRY_COMPARE(evaluate(owner+".ui.setting_action_state").toString(),QString("succeeded"));
     QVERIFY(evaluate(owner+".ui.set_runtime_setting('ui.tab_position',"+quoted(position)+",true)").toBool());
+    QTRY_COMPARE(evaluate(owner+".ui.setting_action_state").toString(),QString("succeeded"));
     evaluate(owner+".ui.configure_profile(false,false,'Failed replacement','',testWindow.storageBasePath)");
     QTRY_VERIFY(evaluate(owner+".ui.profile_startup_notice.indexOf('current profile is still active')>=0").toBool());
     auto notice=findVisualItem(child->contentItem(),"profileHealthNotice");
@@ -7445,9 +7476,12 @@ void ApplicationTests::productPolishCopyFeedback() {
     pageReceiver=entry+".host.activeView";
     QTRY_VERIFY(page("document.readyState==='complete' && document.getElementById('button')!==null").toBool());
     QVERIFY(evaluate(entry+".ui.set_runtime_setting('ui.font_size_pt','16',true)").toBool());
+    QTRY_COMPARE(evaluate(entry+".ui.setting_action_state").toString(),QString("succeeded"));
     QVERIFY(evaluate(entry+".ui.set_runtime_setting('ui.tabs','always',true)").toBool());
+    QTRY_COMPARE(evaluate(entry+".ui.setting_action_state").toString(),QString("succeeded"));
     const auto tabPosition=kind=="secondary" ? "bottom" : kind=="private" ? "left" : "right";
     QVERIFY(evaluate(entry+".ui.set_runtime_setting('ui.tab_position',"+quoted(tabPosition)+",true)").toBool());
+    QTRY_COMPARE(evaluate(entry+".ui.setting_action_state").toString(),QString("succeeded"));
     child->requestActivate();QTRY_VERIFY(child->isActive());
     const auto copied=QString("https://example.test/copied-")+kind;
     QVERIFY(evaluate("testWindow.copyToClipboard("+quoted(copied)+",false,false,"+entry+".ui)").toBool());

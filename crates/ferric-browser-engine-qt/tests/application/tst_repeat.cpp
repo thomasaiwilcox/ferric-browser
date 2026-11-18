@@ -173,11 +173,16 @@ void ApplicationTests::repeatWindowRouting() {
     QVERIFY(command("open --target window --profile repeat-work " + initial + "?repeat-window=yes"));
     evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
     QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 2);
+    QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.every(function(entry){return entry.host.profileBootstrapComplete && !entry.ui.profile_bootstrap_pending})").toBool());
     QVERIFY(text("macro_status_text").endsWith("(1)"));
     QVERIFY(command("macro-stop"));
+    int expectedWindows = 2;
     for (const auto &replay : {QString("repeat"), QString("macro-play w")}) {
         QVERIFY(command(replay));
         evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+        ++expectedWindows;
+        QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), expectedWindows);
+        QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.every(function(entry){return entry.host.profileBootstrapComplete && !entry.ui.profile_bootstrap_pending})").toBool());
     }
     QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 4);
     QCOMPARE(evaluate("testWindow.browserUi.tab_count").toInt(), 1);

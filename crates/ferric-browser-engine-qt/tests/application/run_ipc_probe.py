@@ -2,14 +2,43 @@
 """Exercise real BrowserUi IPC using a disposable standalone browser instance."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+import threading
 import time
 
 ROOT = Path(__file__).resolve().parents[4]
+
+
+class PageHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = b'<!doctype html><title>IPC fixture</title><button>Action</button>'
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+@contextmanager
+def page_fixture():
+    with ThreadingHTTPServer(('127.0.0.1', 0), PageHandler) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield f'http://127.0.0.1:{server.server_port}/fixture.html'
+        finally:
+            server.shutdown()
+            thread.join(timeout=3)
+            assert not thread.is_alive(), 'Fixture server did not stop'
 
 
 def main():
@@ -19,10 +48,10 @@ def main():
     env = os.environ.copy()
     env.update(QT_QPA_PLATFORM='offscreen', QT_QPA_PLATFORMTHEME='', QT_QUICK_BACKEND='software',
                QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu', FERRIC_BROWSER_ALLOW_NON_WAYLAND='1')
-    with tempfile.TemporaryDirectory(prefix='ferric-application-ipc-') as temporary:
+    with page_fixture() as page_url, tempfile.TemporaryDirectory(prefix='ferric-application-ipc-') as temporary:
         prefix = [str(args.executable), '--basedir', temporary, '--instance', 'completion']
         with tempfile.TemporaryFile(mode='w+') as log:
-            app = subprocess.Popen([*prefix, '--software-rendering', '--userscripts-off', 'open', 'rb://blank'],
+            app = subprocess.Popen([*prefix, '--software-rendering', '--userscripts-off', 'open', page_url],
                                    env=env, stdout=log, stderr=log)
             def invoke(*arguments, accepted=True, error_code=None):
                 result = subprocess.run([*prefix, *arguments], env=env, capture_output=True,
@@ -49,7 +78,7 @@ def main():
                     assert app.poll() is None, 'browser exited during bootstrap'
                     try:
                         before = invoke('query', 'active-tab', '--format', 'json')
-                        if before.get('tabs', [{}])[0].get('url') == 'rb://blank':
+                        if before.get('tabs', [{}])[0].get('url') == page_url:
                             break
                         if time.monotonic() >= deadline:
                             raise AssertionError(('bootstrap active-tab', before))
@@ -75,8 +104,18 @@ def main():
                 after = invoke('query', 'active-tab', '--format', 'json')
                 assert before['tabs'][0]['url'] == after['tabs'][0]['url'], (before, after)
                 print('remote chain rejection preserved active URL', after['tabs'][0]['url'], flush=True)
-                invoke('command', 'set --temp input.shortcut_policy=mixed')
-                invoke('command', "set --temp \"input.page_keys=['f']\"")
+                # Page routing needs a real page policy context. Each admitted
+                # configuration request must publish before the next request.
+                for key, literal, expected in [('input.shortcut_policy', 'mixed', 'mixed'),
+                                               ('input.page_keys', "['f']", ['f'])]:
+                    invoke('command', f'set --temp "{key}={literal}"')
+                    deadline = time.monotonic() + 5
+                    while True:
+                        setting = invoke('query', 'config', key, '--format', 'json')
+                        if setting['value'] == expected:
+                            break
+                        assert time.monotonic() < deadline, setting
+                        time.sleep(.05)
                 explanation = invoke('query', 'binding-explain', 'f', '--mode', 'normal', '--format', 'json')
                 print('binding explanation', json.dumps(explanation, sort_keys=True), flush=True)
                 assert explanation['mixed_routing']['owner'] == 'page', explanation
@@ -110,12 +149,27 @@ def main():
                 assert 'config.get' not in rejected, rejected
                 invoke('command', '--window', 'windowid-18446744073709551615',
                        '--', 'get downloads.ask_destination', accepted=False, error_code='E_STALE_TARGET')
-                rejected = invoke('command',
-                                  'set --temp downloads.ask_destination=false ;; get no.such.setting ;; '
-                                  'set --temp downloads.ask_destination=true ;; open https://should-not-open.invalid/',
-                                  accepted=False, error_code='E_NOT_FOUND')
-                assert 'earlier commands were accepted' in rejected, rejected
-                assert 'Unknown setting: no.such.setting.' in rejected and ':settings' in rejected, rejected
+                retained_operations = {row['operation_id'] for row in
+                                       invoke('query', 'operations', '--format', 'json')['operations']}
+                invoke('command',
+                       'set --temp downloads.ask_destination=false ;; get no.such.setting ;; '
+                       'set --temp downloads.ask_destination=true ;; open https://should-not-open.invalid/')
+                # Deferred configuration admits the chain first, then reports
+                # its typed terminal failure through the operation ledger.
+                deadline = time.monotonic() + 5
+                while True:
+                    operations = [row for row in invoke('query', 'operations', '--format', 'json')['operations']
+                                  if row['operation_id'] not in retained_operations]
+                    assert len(operations) == 1, operations
+                    failed = operations[0]
+                    if failed['status'].startswith('failed'):
+                        break
+                    assert not failed['status'].startswith('completed'), failed
+                    assert time.monotonic() < deadline, failed
+                    time.sleep(.05)
+                assert failed['error']['code'] == 'E_NOT_FOUND', failed
+                rejected = failed['error']['message']
+                assert 'Unknown setting: no.such.setting.' in rejected and ':settings' in rejected, failed
                 retained_setting = invoke('query', 'config', 'downloads.ask_destination', '--format', 'json')
                 assert retained_setting['value'] is False, retained_setting
                 assert invoke('query', 'active-tab', '--format', 'json')['tabs'][0]['url'] == before['tabs'][0]['url']

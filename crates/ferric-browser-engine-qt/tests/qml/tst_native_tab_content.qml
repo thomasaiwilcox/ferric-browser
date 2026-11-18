@@ -669,6 +669,17 @@ TestCase {
         verify(!content.navigationPending)
         compare(ui.load_state, "cancelled")
     }
+    function test_stopping_an_uncommitted_load_reports_the_retained_native_url() {
+        var content = createTemporaryObject(fixture, host.contentItem)
+        content.beginNavigation(false, false)
+        ui.load_state = "provisional"
+        // Qt can revert to this URL without emitting urlChanged after Stop.
+        web.url = "https://retained.test"
+        ui.urlChanges = []
+        content.noteStopped()
+        compare(ui.urlChanges, [{index: 0, url: "https://retained.test"}])
+        compare(ui.load_state, "cancelled")
+    }
     function test_stay_on_a_completed_page_releases_its_expected_native_position() {
         var content = createTemporaryObject(fixture, host.contentItem)
         content.engineLoadState = "complete"

@@ -18,6 +18,8 @@ void ApplicationTests::productPolishSwitcherLiveUpdates() {
         for (int i=0;i<7;++i) {
             evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"+quoted(url)
                 +",windowProfileName:"+quoted("busy-window-"+QString::number(i))+"})");
+            QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),i+2);
+            QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.every(function(entry){return entry.host.profileBootstrapComplete && !entry.ui.profile_bootstrap_pending})").toBool());
         }
         QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),8);
         QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.every(function(entry){return entry.host.profileBootstrapComplete && !entry.ui.profile_bootstrap_pending && entry.host.activeWebView() && !entry.host.activeWebView().loading && entry.ui.load_state==='complete'})").toBool());

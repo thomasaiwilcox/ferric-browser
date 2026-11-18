@@ -532,6 +532,12 @@ Item {
     }
     function noteStopped() {
         if (!hasLiveOwner()) return
+        // Stopping before commit can revert Qt's URL without urlChanged.
+        // Reconcile it while the pending navigation still suppresses a new
+        // same-document history visit, before navigation_stopped_for clears it.
+        var retainedUrl = webView.url.toString()
+        if (nativeUrl.length === 0 && !webView.loading && retainedUrl.length > 0)
+            reportUrlChange(liveTabIndex(), retainedUrl)
         engineLoadState = "stopped"
         navigationPending = false
         requestedHistoryIndex = -1

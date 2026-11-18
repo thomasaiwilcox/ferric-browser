@@ -1894,8 +1894,9 @@ class SwitcherTests final : public QObject {
             ready.start();
             do {
                 key(host, Qt::Key_Return);
-                if (evaluate(ui + ".runtime_setting_error").toString()
-                        != "Settings are being reloaded. Try again in a moment.") return;
+                const auto error = evaluate(ui + ".runtime_setting_error").toString();
+                if (error != "Settings are being reloaded. Try again in a moment."
+                        && error != "Another configuration operation is still pending. Wait for it to finish.") return;
                 // Startup and changes to the watched override path can both
                 // reserve configuration. Check the visible rejection and
                 // retained edit before issuing a fresh keyboard retry.

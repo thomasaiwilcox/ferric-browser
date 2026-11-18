@@ -457,6 +457,7 @@ impl qobject::BrowserUi {
         } else {
             None
         };
+        let mut operation_failure_kind = crate::FailureKind::Config;
         let result = if current {
             let turn = ConfigurationPreparationTurn {
                 origin: ConfigurationRequestOrigin {
@@ -509,7 +510,11 @@ impl qobject::BrowserUi {
                         &mut preparation.handoff,
                         Some(&turn),
                     )
-                    .map_err(|error| error.to_string()),
+                    .map_err(|error| {
+                        operation_failure_kind =
+                            crate::browser_ui_operations::failure_kind(error.code());
+                        error.to_string()
+                    }),
                 DeferredConfigurationAction::Commands(PageContinuation::Recorded {
                     commands,
                     ..
@@ -560,7 +565,7 @@ impl qobject::BrowserUi {
                 if let Some(id) = pending.operation_id {
                     self.as_mut().rust_mut().as_mut().get_mut().set_operation(
                         id,
-                        crate::OperationUpdate::failed(crate::FailureKind::Config, error.clone()),
+                        crate::OperationUpdate::failed(operation_failure_kind, error.clone()),
                     );
                 }
                 self.as_mut().set_status_text(QString::from(error));
