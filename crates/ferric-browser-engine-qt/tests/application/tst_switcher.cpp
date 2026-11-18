@@ -1474,6 +1474,10 @@ class SwitcherTests final : public QObject {
         };
         submitAt(host, ui, "start-page-view favourites");
         QTRY_COMPARE(evaluate(ui + ".current_url").toString(), QString("rb://start"));
+        // Navigation and the visible view switch precede its storage write.
+        // Wait for the persisted choice, not an earlier idle metadata read,
+        // before the first favourite save uses the same storage lane.
+        QTRY_COMPARE(evaluate(ui + ".start_page_view").toString(), QString("favourites"));
         QTRY_VERIFY(evaluate(ui + ".start_page_ready && !" + ui + ".start_page_busy").toBool());
         QTRY_VERIFY(visual(host->contentItem(), "startSiteTile1"));
         QTRY_COMPARE(host->activeFocusItem(), visual(host->contentItem(), "startSiteTile1"));
@@ -1511,7 +1515,10 @@ class SwitcherTests final : public QObject {
             key(host, Qt::Key_Return);QTRY_COMPARE(host->activeFocusItem(), name);
             key(host, Qt::Key_Return);
         }
-        QTRY_COMPARE(evaluate(ui + ".favourite_action_state").toString(), QString("succeeded"));
+        QTRY_VERIFY2(evaluate(ui + ".favourite_action_state").toString() == "succeeded",
+            qPrintable(evaluate("JSON.stringify({id:" + ui + ".favourite_action_id,state:" + ui
+                + ".favourite_action_state,detail:" + ui + ".favourite_action_detail,error:"
+                + ui + ".start_page_error,busy:" + ui + ".start_page_busy})").toString()));
         QTRY_VERIFY(!editor->property("visible").toBool());
         QTRY_COMPARE(host->activeFocusItem(), visual(host->contentItem(), "startSiteTile1"));
 
@@ -1893,8 +1900,14 @@ class SwitcherTests final : public QObject {
             QElapsedTimer ready;
             ready.start();
             do {
+                const auto previousId = evaluate(ui + ".setting_action_id").toString();
                 key(host, Qt::Key_Return);
-                const auto error = evaluate(ui + ".runtime_setting_error").toString();
+                // Admission is not completion: preparation can discover a
+                // watched reload after the keyboard handler has returned.
+                QTRY_VERIFY2(evaluate(ui + ".setting_action_id").toString() != previousId
+                    && evaluate("['succeeded','failed'].includes(" + ui + ".setting_action_state)").toBool(),
+                    qPrintable(evaluate(ui + ".setting_action_detail").toString()));
+                const auto error = evaluate(ui + ".setting_action_detail").toString();
                 if (error != "Settings are being reloaded. Try again in a moment."
                         && error != "Another configuration operation is still pending. Wait for it to finish.") return;
                 // Startup and changes to the watched override path can both
@@ -1909,6 +1922,7 @@ class SwitcherTests final : public QObject {
                 qInfo() << "Owned Settings submission waits for the watched configuration reload";
                 QTest::qWait(20);
             } while (ready.elapsed() < 5000);
+            QFAIL("The watched configuration reload did not release the settings request");
         };
         submitWhenReady("21");
         QTRY_COMPARE(evaluate(ui + ".chrome_font_size_pt").toDouble(), 21.0);
@@ -2753,15 +2767,22 @@ class SwitcherTests final : public QObject {
                              " && String(v.nativeUrl)==='rb://blank'})()").toBool());
         // This fixture needs an accepted scoped setting before inspecting
         // the combined limit. Startup can still own the reload reservation;
-        // honor its explicit retry response without retrying other failures.
+        // use the typed setting receipt to await completion and honor its
+        // explicit retry response without retrying other failures.
         QElapsedTimer settingReady;
         settingReady.start();
         do {
-            submitAt(child, ui, "set --temp switcher.max_results=10");
-            if (evaluate(ui + ".status_text").toString()
-                    != "Settings are being reloaded. Try again in a moment.") break;
+            const auto previousId = evaluate(ui + ".setting_action_id").toString();
+            evaluate(ui + ".set_runtime_setting('switcher.max_results','10',true)");
+            QTRY_VERIFY2(evaluate(ui + ".setting_action_id").toString() != previousId
+                && evaluate("['succeeded','failed'].includes(" + ui + ".setting_action_state)").toBool(),
+                qPrintable(evaluate(ui + ".setting_action_detail").toString()));
+            const auto error = evaluate(ui + ".setting_action_detail").toString();
+            if (error != "Settings are being reloaded. Try again in a moment."
+                    && error != "Another configuration operation is still pending. Wait for it to finish.") break;
             QTest::qWait(20);
         } while (settingReady.elapsed() < 5000);
+        QCOMPARE(evaluate(ui + ".setting_action_state").toString(), QString("succeeded"));
         QTRY_VERIFY2(evaluate(ui + ".feature_switcher_max_results").toInt() == 10,
                      qPrintable(evaluate("JSON.stringify({mode:" + ui + ".mode,status:" + ui
                          + ".status_text,limit:" + ui + ".feature_switcher_max_results})").toString()));
